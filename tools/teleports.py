@@ -77,7 +77,7 @@ def main():
     PERF.mkdir(parents=True, exist_ok=True)
     frames, logp = PERF / f"{label}-frames.csv", PERF / f"{label}.log"
     env = dict(os.environ, SOJOURN_FRAME_LOG=str(frames))
-    cmd = [str(DOTNET), str(dll_dir / "Sojourn.dll"), "--grid", "http://127.0.0.1:9740", "--first", first, "--last", last,
+    cmd = [str(DOTNET), str(dll_dir / "SojournVR.dll"), "--grid", "http://127.0.0.1:9740", "--first", first, "--last", last,
            "--password", "sojourn-local", "--base-dir", str(base), "--bridge-port", str(port), "--no-assistant", "--no-voice",
            "--start", "uri:Atelier&200&200&30", "--minutes", f"{(stops + 1) * stay / 60 + 2:.2f}", *extra]
     t0 = time.time()

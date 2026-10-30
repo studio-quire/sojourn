@@ -7,8 +7,9 @@ namespace Sojourn.Launcher;
 /// <summary>
 /// Where things are. In the repo (src/Sojourn.Client above the launcher): the client's Release build run by the .NET
 /// SDK in %LOCALAPPDATA%\dotnet-sdk (its apphost finds only the machine's .NET 6), the person's own base dir
-/// local/main (their headset settings, accounts in local/secrets/logins). Packaged: Sojourn.exe and SojournAccess.exe
-/// beside the launcher, data in %LOCALAPPDATA%\Sojourn (the client's login store goes there by itself).
+/// local/main (their headset settings, accounts in local/secrets/logins). Packaged: the launcher is Sojourn.exe and the
+/// VR client SojournVR.exe beside it, data in %LOCALAPPDATA%\Sojourn (the client's login store goes there by itself).
+/// Sojourn Access ships on its own and isn't started from here.
 /// </summary>
 sealed class Places
 {
@@ -56,14 +57,7 @@ sealed class Places
     }
 
     public (ProcessStartInfo? Psi, string? Missing) Client() =>
-        Program("Sojourn.exe", Path.Combine("src", "Sojourn.Client", "bin", "Release", "net10.0", "Sojourn.dll"));
-
-    public (ProcessStartInfo? Psi, string? Missing) Access()
-    {
-        var (psi, missing) = Program("SojournAccess.exe", Path.Combine("src", "Sojourn.Access", "bin", "Release", "net10.0-windows10.0.22621.0", "SojournAccess.dll"));
-        if (psi != null && Repo != null) psi.WorkingDirectory = Path.GetDirectoryName(psi.ArgumentList[0])!;   // as access.py runs it
-        return (psi, missing);
-    }
+        Program("SojournVR.exe", Path.Combine("src", "Sojourn.Client", "bin", "Release", "net10.0", "SojournVR.dll"));
 
     /// <summary>The version as the client sends it (0.1.0.N in a packaged build, stamped by the package; 0.1.0.0 in the repo).</summary>
     public static string Version

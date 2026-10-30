@@ -156,7 +156,12 @@ public sealed partial class MainForm
             items.Add(($"Assistant key: {(Sojourn.Session.Assistant.ProviderKeys.Has(kind) ? "kept (Enter to put in another, Delete to forget it)" : "none (Enter to put it in)")}",
                 "@key", "@key"));
         if (kind == "openrouter")
+        {
             items.Add(($"Assistant model on OpenRouter: {ModelName(st.OpenRouterModel)} (Enter for the next, Control+Enter to type one)", "@model", "@model"));
+            items.Add(($"OpenRouter, no data collection: {(st.OpenRouterDenyDataCollection ? "on, only providers that don't store or train on what's sent" : "off, any provider")}",
+                "@data", "@data"));
+        }
+        items.Add(($"Assistant auto mode: {(st.AssistantAutoMode ? "on" : "off, no shell, web or helpers")}", "@auto", "@auto"));
         return items;
     }
 
@@ -201,6 +206,16 @@ public sealed partial class MainForm
             if (kept == null) { Reader?.Answer("That isn't an Anthropic or OpenRouter key. Nothing kept."); return true; }
             st.AssistantProvider = kept;
             said = $"{Sojourn.Session.Assistant.ProviderKeys.Name(kept)} key kept; the assistant uses it now.";
+        }
+        else if (row == "@data")
+        {
+            st.OpenRouterDenyDataCollection = !st.OpenRouterDenyDataCollection;
+            said = st.OpenRouterDenyDataCollection ? "No data collection: on." : "No data collection: off; any OpenRouter provider may answer.";
+        }
+        else if (row == "@auto")
+        {
+            st.AssistantAutoMode = !st.AssistantAutoMode;
+            said = st.AssistantAutoMode ? "Auto mode on." : "Auto mode off: the assistant has no shell, web or helpers.";
         }
         else
         {

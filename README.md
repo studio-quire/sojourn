@@ -47,8 +47,8 @@ and an OpenJPEG build come with the source as DLLs.
 Running:
 
 ```
-dotnet src/Sojourn.Client/bin/Release/net10.0/Sojourn.dll --login          # desktop, with the login screen
-dotnet src/Sojourn.Client/bin/Release/net10.0/Sojourn.dll --login --vr     # in the headset
+dotnet src/Sojourn.Client/bin/Release/net10.0/SojournVR.dll --login          # desktop, with the login screen
+dotnet src/Sojourn.Client/bin/Release/net10.0/SojournVR.dll --login --vr     # in the headset
 src/Sojourn.Access/bin/Release/net10.0-windows10.0.22621.0/SojournAccess.exe
 ```
 

@@ -141,6 +141,13 @@ public sealed class VrSettings
     /// <summary>With OpenRouter: "claude" (Anthropic's models there, the modes as usual), or any OpenRouter model id,
     /// which then takes every request itself.</summary>
     public string OpenRouterModel { get; set; } = "claude";
+    /// <summary>With OpenRouter: only providers that don't collect the person's data (OpenRouter's provider preference
+    /// data_collection: "deny", added to each request by provider.py's proxy). On by default (the user, 2026-10-29).</summary>
+    public bool OpenRouterDenyDataCollection { get; set; } = true;
+    /// <summary>The assistant's sessions under Claude Code's auto mode (its safety classifier reviewing each action), the
+    /// default; off: no classifier calls at all and only the tools that are safe without a reviewer (assistant/harness.py
+    /// MANUAL_TOOLS; docs/assistant.md > Auto mode off). The person's own choice, in the launcher and Sojourn Access.</summary>
+    public bool AssistantAutoMode { get; set; } = true;
     /// <summary>The menu's short list (provider.py's SUGGESTED): OpenRouter's rolling ids with tool use and pictures.</summary>
     public static readonly (string Id, string Name)[] OpenRouterModels =
     {
@@ -167,12 +174,11 @@ public sealed class VrSettings
     /// <summary>What hears the person (assistant/ears.py): "parakeet" (Parakeet TDT and a name pass; the default, the
     /// user's pick 2026-10-27: quicker, so a slip is quicker to say again) or "whisper" (small.en prompted with the names
     /// around them; other languages), both on the CPU, or "soniox" (the cloud, the person's opt-in, only with their key
-    /// in local/secrets/soniox.key; Whisper stands in without it or when it's slow).</summary>
+    /// kept encrypted beside the provider keys, Assistant/ProviderKeys.cs; Whisper stands in without it or when it's slow).</summary>
     public string Hearing { get; set; } = "parakeet";
     public static readonly string[] Hearings = { "whisper", "parakeet", "soniox" };
     /// <summary>Whether the person has put a Soniox key in place (the menu offers soniox only then).</summary>
-    public static bool SonioxKey() =>
-        File.Exists(Path.Combine(Sojourn.Session.Assistant.Sidecar.Root ?? AppContext.BaseDirectory, "local", "secrets", "soniox.key"));
+    public static bool SonioxKey() => Sojourn.Session.Assistant.ProviderKeys.HasSoniox();
     /// <summary>Voice chat with residents (Voice/VoiceClient.cs): on or off; push-to-talk (the default, user
     /// 2026-10-25) or open mic with a mute (starts muted); how loud residents are, 1 = the viewer's own level.</summary>
     public bool VoiceEnabled { get; set; } = true;
@@ -343,6 +349,9 @@ public sealed class VrSettings
     };
 
     public static string PathIn(string baseDir) => Path.Combine(baseDir, "vr-settings.json");
+
+    /// <summary>The settings as the file has them (for GraphicsPresets.Match).</summary>
+    public System.Text.Json.Nodes.JsonObject AsJson() => (System.Text.Json.Nodes.JsonObject)JsonSerializer.SerializeToNode(this, Json)!;
 
     public static VrSettings Load(string path, Action<string>? log = null)
     {

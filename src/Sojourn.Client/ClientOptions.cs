@@ -14,6 +14,8 @@ public sealed record ClientOptions : SessionOptions
     public bool LoginResume { get; init; }
     /// <summary>The account the login screen shows selected (LoginRestart: after Back or logging out).</summary>
     public string? LoginAccount { get; init; }
+    /// <summary>The launcher's answers pipe for this run (an inherited handle: Login/LauncherAnswers.cs).</summary>
+    public string? LauncherAnswers { get; init; }
     public int WindowWidth { get; init; } = 1600;
     public int WindowHeight { get; init; } = 900;
     /// <summary>Render size per eye; null = the window's size (mono) or half its width (stereo).</summary>
@@ -78,6 +80,7 @@ public sealed record ClientOptions : SessionOptions
                 case "--login": o = o with { Login = true }; break;
                 case "--login-resume": o = o with { LoginResume = true }; break;
                 case "--login-account": o = o with { LoginAccount = Next() }; break;
+                case "--launcher-answers": o = o with { LauncherAnswers = Next() }; break;
                 case "--window": { var (w, h) = Size(Next()); o = o with { WindowWidth = w, WindowHeight = h }; break; }
                 case "--eye": o = o with { EyeSize = Size(Next()) }; break;
                 case "--stereo": o = o with { Stereo = true }; break;

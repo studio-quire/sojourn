@@ -6,14 +6,17 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using System.Text.Json.Nodes;
+using Sojourn.Session.Assistant;
 using Sojourn.Session.Login;
 
 namespace Sojourn.Launcher;
 
 /// <summary>
 /// The launcher's one window: the account (saved ones to pick, or a new one), the password unless it's remembered,
-/// where to start; behind the gear the headset, graphics and the assistant's provider; Launch, then the run's state
-/// in its place; Sojourn Access at the foot. Little text: names, fields and a word or two of state.
+/// where to start; behind the gear the headset, graphics and the assistant (its provider, the key, OpenRouter's model
+/// and data setting, auto mode: chosen only here); Launch, then the run's state in its place, and the grid's terms or
+/// MFA code answered in the card while the client waits. Little text: names, fields and a word or two of state.
 /// Written by Claude Opus 5.5, 2026-10-29.
 /// </summary>
 public partial class LauncherView : UserControl
@@ -35,6 +38,8 @@ public partial class LauncherView : UserControl
     string? _failed;   // the grid said no: the run is stopped and the reason stays at the foot
     bool _arrived;     // the run got in world, so the client kept the account (and its password if asked)
     DateTime _noteUntil = DateTime.MaxValue;
+    long _forgetArmedAt = -10_000;
+    string? _asked;    // the question last answered from here (its JSON): Continue waits for the next one
 
     public event Action? CloseRequested, MinimiseRequested;
 
@@ -51,9 +56,33 @@ public partial class LauncherView : UserControl
         foreach (var (value, label) in SettingsFile.Providers)
         {
             var rb = new RadioButton { GroupName = "provider", Style = (Style)FindResource("Segment"), Content = label, Tag = value };
-            rb.Checked += (_, _) => { if (!_loading) _settings.Provider = value; };
+            rb.Checked += (_, _) => { if (!_loading) { _settings.Provider = value; ShowAssistant(); } };
             ProviderTrack.Children.Add(rb);
         }
+        foreach (var (id, name) in SettingsFile.OpenRouterModels)
+        {
+            var row = new Button { Style = (Style)FindResource("Row"), Margin = new Thickness(0),
+                Content = new TextBlock { Text = name, FontSize = 14, Foreground = (Brush)FindResource("Ink") } };
+            System.Windows.Automation.AutomationProperties.SetName(row, name);
+            row.Click += (_, _) => { ModelList.IsOpen = false; ModelBox.Text = id; CommitModel(); };
+            ModelChoices.Children.Add(row);
+        }
+        KeyBox.PasswordChanged += (_, _) => { Mark.SetWrong(KeyBox, false); KeyHint.Visibility = KeyBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed; TryKeep(enter: false); };
+        KeyBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) { TryKeep(enter: true); e.Handled = true; } };
+        ForgetKey.Click += (_, _) => ForgetTheKey();
+        ModelBox.LostKeyboardFocus += (_, _) => CommitModel();
+        ModelBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) { CommitModel(); e.Handled = true; } };
+        ModelListKey.Click += (_, _) => ModelList.IsOpen = !ModelList.IsOpen;
+        foreach (var sw in new[] { AutoSwitch, DenyDataSwitch, AgreeSwitch })
+        {
+            sw.Checked += (_, _) => Switched(sw);
+            sw.Unchecked += (_, _) => Switched(sw);
+        }
+        CodeBox.TextChanged += (_, _) => { Mark.SetWrong(CodeBox, false); UpdateContinue(); };
+        CodeBox.PreviewTextInput += (_, e) => e.Handled = !e.Text.All(char.IsAsciiDigit);
+        CodeBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Answer(accept: true); e.Handled = true; } };
+        ContinueKey.Click += (_, _) => Answer(accept: true);
+        DeclineKey.Click += (_, _) => Answer(accept: false);
 
         CloseKey.Click += (_, _) => CloseRequested?.Invoke();
         MinKey.Click += (_, _) => MinimiseRequested?.Invoke();
@@ -80,7 +109,6 @@ public partial class LauncherView : UserControl
         SettingsKey.Click += (_, _) => ShowSettings(!_settingsOpen);
         LaunchKey.Click += (_, _) => Launch();
         StopKey.Click += (_, _) => { _run.Stop(); ShowStatus(_run.Status); };
-        AccessKey.Click += (_, _) => OpenAccess();
         LogKey.Click += (_, _) => OpenLog();
         _timer.Tick += (_, _) => Tick();
 
@@ -220,7 +248,163 @@ public partial class LauncherView : UserControl
         (g switch { "light" => GfxLight, "balanced" => GfxBalanced, "full" => GfxFull, _ => GfxYours }).IsChecked = true;
         var provider = _settings.Provider ?? SettingsFile.Providers[0].Value;
         foreach (RadioButton rb in ProviderTrack.Children) rb.IsChecked = (string)rb.Tag == provider;
+        ModelBox.Text = _settings.OpenRouterModel;
+        AutoSwitch.IsChecked = _settings.AutoMode;
+        DenyDataSwitch.IsChecked = _settings.OpenRouterDenyData;
         _loading = false;
+        ShowAssistant();
+    }
+
+    // ---- the assistant: its key, OpenRouter's model and data setting ----
+
+    string ProviderNow => _settings.Provider ?? SettingsFile.Providers[0].Value;
+
+    /// <summary>The rows under the provider as they stand: the key's hint (kept or not, never the key), forgetting it,
+    /// and OpenRouter's own rows.</summary>
+    void ShowAssistant()
+    {
+        var kind = ProviderNow;
+        bool keyed = kind != "claude";
+        bool kept = keyed && ProviderKeys.Has(kind);
+        bool armed = Environment.TickCount64 - _forgetArmedAt < 4000;
+        KeyHint.Text = !keyed ? "API key" : kept ? (armed ? "forget the key?" : "key kept") : $"{ProviderKeys.Name(kind)} key";
+        KeyHint.Foreground = (Brush)FindResource(armed && kept ? "Coral" : "Faint");
+        ForgetKey.Visibility = kept ? Visibility.Visible : Visibility.Collapsed;
+        ForgetKey.Foreground = (Brush)FindResource(armed ? "Coral" : "Faint");
+        bool openRouter = kind == "openrouter";
+        ModelRow.Visibility = openRouter ? Visibility.Visible : Visibility.Collapsed;
+        DenyDataSwitch.Visibility = openRouter ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>A key in the box (pasted, or Enter): kept encrypted if it's an Anthropic or OpenRouter key, its provider
+    /// chosen, the box cleared. Only from the person's own keys or mouse (RealPress); never shown back or logged.</summary>
+    void TryKeep(bool enter)
+    {
+        if (_loading || KeyBox.Password.Length == 0) return;
+        if (!RealPress.Now()) return;   // (not the person's own keys: nothing kept until they press Enter)
+        var text = KeyBox.Password;
+        if (ProviderKeys.Recognise(text) == null)
+        {
+            if (enter) Mark.SetWrong(KeyBox, true);
+            return;
+        }
+        string? kind;
+        try { kind = ProviderKeys.Keep(text); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException) { kind = null; }
+        KeyBox.Clear();
+        if (kind == null) { Note("couldn't keep the key", null, TimeSpan.FromSeconds(8), alarm: true); return; }
+        _settings.Provider = kind;
+        LoadSettings();
+        Note($"{ProviderKeys.Name(kind)} key kept", null, TimeSpan.FromSeconds(8));
+    }
+
+    /// <summary>× twice within four seconds: the provider's key deleted.</summary>
+    void ForgetTheKey()
+    {
+        var kind = ProviderNow;
+        if (!ProviderKeys.Has(kind)) return;
+        if (Environment.TickCount64 - _forgetArmedAt >= 4000)
+        {
+            _forgetArmedAt = Environment.TickCount64;
+            ShowAssistant();
+            return;
+        }
+        _forgetArmedAt = -10_000;
+        ProviderKeys.Forget(kind);
+        ShowAssistant();
+        Note($"{ProviderKeys.Name(kind)} key forgotten", null, TimeSpan.FromSeconds(8));
+    }
+
+    /// <summary>OpenRouter's model as typed (any id) or picked from the quick list; empty: claude.</summary>
+    void CommitModel()
+    {
+        if (_loading) return;
+        var id = ModelBox.Text.Trim();
+        if (id.Length == 0) id = "claude";
+        if (ModelBox.Text != id) ModelBox.Text = id;
+        if (id != _settings.OpenRouterModel) _settings.OpenRouterModel = id;
+    }
+
+    void Switched(CheckBox sw)
+    {
+        if (sw == AgreeSwitch) { UpdateContinue(); return; }
+        if (_loading) return;
+        if (sw == AutoSwitch) _settings.AutoMode = sw.IsChecked == true;
+        else _settings.OpenRouterDenyData = sw.IsChecked == true;
+    }
+
+    // ---- the grid's question at the desk (the client takes the answer through ClientRun's pipe) ----
+
+    RunStatus? _questionShown;
+
+    /// <summary>The terms or the code in the card while the client waits for them, if it takes answers from here.</summary>
+    void ShowQuestion(RunStatus s)
+    {
+        bool show = s.Answers && s.Question is not null && s.Phase is Phase.Terms or Phase.Code;
+        var key = show ? s.Question!.ToJsonString() : null;
+        bool fresh = show && key != _questionShown?.Question?.ToJsonString();
+        _questionShown = show ? s : null;
+        QuestionPage.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        Pages.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
+        if (!show) { _asked = null; return; }
+        if (!fresh) return;
+        bool terms = s.Phase == Phase.Terms;
+        TermsBlock.Visibility = terms ? Visibility.Visible : Visibility.Collapsed;
+        CodeBlock.Visibility = terms ? Visibility.Collapsed : Visibility.Visible;
+        DeclineKey.Visibility = terms ? Visibility.Visible : Visibility.Collapsed;
+        if (terms)
+        {
+            bool tos = (string?)s.Question!["kind"] == "tos";
+            TermsTitle.Text = tos ? "Terms of Service" : "From the grid";
+            TermsText.Text = (string?)s.Question["text"] is { Length: > 0 } t ? t : tos ? "lindenlab.com/tos" : "";
+            AgreeSwitch.Visibility = tos ? Visibility.Visible : Visibility.Collapsed;
+            AgreeSwitch.IsChecked = false;
+        }
+        else
+        {
+            CodeBox.Clear();
+            int asks = (int?)s.Question!["asks"] ?? 1;
+            CodeAgain.Visibility = asks > 1 ? Visibility.Visible : Visibility.Collapsed;
+            if (asks > 1) Mark.SetWrong(CodeBox, true);
+            if (!Places.Background) CodeBox.Focus();
+        }
+        _asked = null;
+        UpdateContinue();
+    }
+
+    void UpdateContinue()
+    {
+        if (_questionShown is not { } s) return;
+        bool sent = _asked != null;
+        ContinueKey.IsEnabled = !sent && (s.Phase == Phase.Terms
+            ? (string?)s.Question?["kind"] != "tos" || AgreeSwitch.IsChecked == true
+            : CodeBox.Text.Trim().Length >= 6);
+        DeclineKey.IsEnabled = !sent;
+        ContinueKey.Opacity = ContinueKey.IsEnabled ? 1 : 0.45;
+    }
+
+    /// <summary>Continue (accept, or the code) or Decline, from the person's own press only.</summary>
+    void Answer(bool accept)
+    {
+        if (_questionShown is not { } s || _asked != null) return;
+        if (!RealPress.Now()) { Note("press it with the mouse or keyboard", null, TimeSpan.FromSeconds(8), alarm: true); return; }
+        JsonObject answer;
+        if (s.Phase == Phase.Terms)
+        {
+            var kind = (string?)s.Question?["kind"] ?? "tos";
+            if (accept && kind == "tos" && AgreeSwitch.IsChecked != true) return;
+            answer = new JsonObject { ["terms"] = kind, ["accept"] = accept };
+        }
+        else
+        {
+            var code = CodeBox.Text.Trim();
+            if (!accept || code.Length < 6 || !code.All(char.IsAsciiDigit)) { Mark.SetWrong(CodeBox, true); return; }
+            answer = new JsonObject { ["code"] = code, ["remember"] = RememberComputer.IsChecked == true };
+            CodeBox.Clear();
+        }
+        if (!_run.Answer(answer)) { Note($"answer {(s.Headset ? "in the headset" : "in the window")}", null, TimeSpan.FromSeconds(8), alarm: true); return; }
+        _asked = s.Question?.ToJsonString();
+        UpdateContinue();
     }
 
     void Graphics(string preset)
@@ -304,19 +488,21 @@ public partial class LauncherView : UserControl
         Pages.Opacity = running ? 0.55 : 1;
         SettingsKey.IsEnabled = !running;
         string where = s.Headset ? "in the headset" : "in the window";
+        bool here = s.Answers && s.Question is not null;   // answered here as well as there
         StatusText.Text = s.Phase switch
         {
             Phase.Starting => "starting",
             Phase.Form => $"log in {where}",
             Phase.Connecting => "logging in",
-            Phase.Terms => $"terms, {where}",
-            Phase.Code => $"code, {where}",
+            Phase.Terms => here ? "terms" : $"terms, {where}",
+            Phase.Code => here ? "code" : $"code, {where}",
             Phase.Failed => $"didn't log in",
             Phase.World => s.Headset ? "in the headset" : "on the desktop",
             Phase.Ending => "closing",
             _ => "",
         };
         if (s.Phase == Phase.World) _arrived = true;
+        ShowQuestion(s);
         bool waiting = s.Phase is Phase.Terms or Phase.Code or Phase.Form;
         bool busy = s.Phase is Phase.Starting or Phase.Connecting or Phase.Ending;
         Orb.Fill = (Brush)FindResource(s.Phase == Phase.Failed ? "Coral" : "Accent");
@@ -359,16 +545,6 @@ public partial class LauncherView : UserControl
             else Process.Start(new ProcessStartInfo("explorer.exe", $"\"{Path.GetDirectoryName(p)}\"") { UseShellExecute = false });
         }
         catch (Exception) { }
-    }
-
-    void OpenAccess()
-    {
-        var (psi, missing) = _places.Access();
-        if (psi == null) { Note(missing, null, TimeSpan.FromSeconds(8)); return; }
-        psi.UseShellExecute = false;
-        psi.CreateNoWindow = true;
-        try { Process.Start(psi); }
-        catch (Exception e) { Note(e.Message, null, TimeSpan.FromSeconds(8)); }
     }
 
     // ---- for the pictures (Shots.cs) ----

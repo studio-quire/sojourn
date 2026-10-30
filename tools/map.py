@@ -168,7 +168,7 @@ def headset(dll):
     import media_fixtures as mf
     if "agni" in grid.URL or not grid.ready():
         sys.exit("the local grid isn't up (python tools/grid.py start)")
-    P.os.environ["SOJOURN_CLIENT_DLL"] = str(Path(dll) / "Sojourn.dll")
+    P.os.environ["SOJOURN_CLIENT_DLL"] = str(Path(dll) / "SojournVR.dll")
     base = BASE / "headset"
     proc = mf.start_client(base, A, vr=True, minutes=3, env_extra={"SOJOURN_VR_SCRIPT": "map", "SOJOURN_MAP_SHOTS": "1", "SOJOURN_PANEL_IN_EYES": "1", "SOJOURN_MAP_DEBUG": "1"})
     log = base / "console.txt"

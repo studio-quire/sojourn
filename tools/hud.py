@@ -202,7 +202,7 @@ def test(names):
     (PILOT / "vr-settings.json").write_text(json.dumps({"confirmTouches": False, "panelHidden": True}))
     env = dict(os.environ, SOJOURN_TEST_INPUT="1")
     dotnet = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
-    client = ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "Sojourn.dll"
+    client = ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "SojournVR.dll"
     log = open(PILOT / "console.txt", "w", encoding="utf-8")
     W, H = 960, 540
     proc = subprocess.Popen([str(dotnet), str(client), "--window", f"{W}x{H}", "--fps", "30", "--no-assistant", "--no-voice",

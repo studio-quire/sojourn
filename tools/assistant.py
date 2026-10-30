@@ -5,8 +5,9 @@
   python tools/assistant.py check              microphones, the Claude Code CLI, Whisper, Parakeet, whether a Soniox key is there,
                                                whether Claude Code is signed in and which provider keys are kept
   python tools/assistant.py key [FILE]         keep an Anthropic or OpenRouter key (its kind by its shape), encrypted for this
-                                               Windows account, from FILE or typed unseen; `key forget KIND` deletes one.
-                                               The menus do the same (docs/assistant.md > Switching it on)
+                                               Windows account, from FILE or typed unseen; `key forget KIND` deletes one;
+                                               `key --soniox [FILE]` keeps Soniox's (cloud hearing) the same way.
+                                               The launcher and Access do the same (docs/assistant.md > Switching it on)
   python tools/assistant.py ask "TEXT"         a typed request, as Enter in the window would send it
   python tools/assistant.py hear FILE.wav      a spoken request from a file (transcribed by the same Whisper)
   python tools/assistant.py talk FILE.wav      press talk, wait the file's length, release: the full push-to-talk path;
@@ -92,7 +93,7 @@ def check():
             "import faster_whisper, claude_agent_sdk\nprint('faster-whisper', faster_whisper.__version__, '| agent sdk', claude_agent_sdk.__version__)\n"
             "import sys; sys.path.insert(0, 'assistant')\nimport ears, cloud, sherpa_onnx, websockets\n"
             "print('parakeet:', 'there' if (ears.PARAKEET / 'encoder.int8.onnx').exists() else 'missing (setup fetches it)', '| sherpa-onnx', sherpa_onnx.__version__)\n"
-            "print('soniox key:', 'there' if cloud.available() else 'none (hearing: soniox needs local/secrets/soniox.key)')")
+            "print('soniox key:', 'kept' if cloud.available() else 'none (hearing: soniox needs one: tools/assistant.py key --soniox)')")
     subprocess.run([str(PY), "-c", code], cwd=ROOT)
     subprocess.run(["claude", "--version"])
     code = ("import sys, json; sys.path.insert(0, 'assistant'); import provider\n"
@@ -100,7 +101,7 @@ def check():
             "print('claude account:', 'signed in' if p.ready else 'not signed in', '| claude code:', provider.cli())\n"
             "print('keys kept:', ', '.join(k for k in provider.KEY_KINDS if provider.has_key(k)) or 'none', 'in', provider.keys_dir())")
     subprocess.run([str(PY), "-c", code], cwd=ROOT)
-    print("which provider is used is the client's setting (menu > assistant > provider); "
+    print("which provider is used is the launcher's setting (Access: Alt+0); "
           "tools/provider_check.py tests them (real KIND with a kept key)")
 
 
@@ -112,17 +113,25 @@ def key(args):
         provider.forget_key(args[1])
         print(f"{args[1]} key forgotten")
         return
+    soniox = "--soniox" in args
+    args = [a for a in args if a != "--soniox"]
     if args:
         text = Path(args[0]).read_text(encoding="utf-8")
     else:
         import getpass
         text = getpass.getpass("key (not shown): ")
+    if soniox:   # Soniox's keys have no telling shape: whatever was given, trimmed
+        if not text.strip():
+            sys.exit("no key given; nothing kept")
+        provider.save_key("soniox", text.strip())
+        print(f"soniox key kept, encrypted, in {provider.keys_dir()}" + (f"; {args[0]} still holds it in the clear" if args else ""))
+        return
     kind = provider.kind_of(text)
     if not kind:
         sys.exit("that isn't an Anthropic (sk-ant-...) or OpenRouter (sk-or-...) key; nothing kept")
     provider.save_key(kind, provider.shape(kind, text))
     print(f"{kind} key kept, encrypted, in {provider.keys_dir()}" + (f"; {args[0]} still holds it in the clear" if args else ""))
-    print(f"to use it: menu > assistant > provider: {kind}")
+    print(f"to use it: the launcher's settings > assistant: {kind} (Access: Alt+0)")
 
 
 def tts(text, out):

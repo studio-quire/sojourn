@@ -11,7 +11,10 @@ namespace Sojourn.Session.Assistant;
 /// loopback proxy that adds the key. The folder is the repo's local/secrets/assistant, or a release's
 /// %LOCALAPPDATA%\Sojourn\secrets\assistant (SOJOURN_KEYS for tests), both under the assistant's deny rules and shell
 /// guard (assistant/harness.py). No settings file, log or agent API op holds or returns a key: keys come only from the
-/// person's own hands (the clipboard on their press, Sojourn Access's key box), and settings carry only which provider.
+/// person's own hands (the launcher's key box, Sojourn Access's key box), and settings carry only which provider. The
+/// launcher (src/Sojourn.Launcher) links this file, so it depends on nothing of the session's.
+/// Soniox's key (cloud hearing, assistant/cloud.py) is kept the same way, as soniox.key here; cloud.py moves a plain
+/// local/secrets/soniox.key in once and deletes it.
 /// Written by Claude Opus 5.5, 2026-10-29.
 /// </summary>
 public static class ProviderKeys
@@ -30,13 +33,25 @@ public static class ProviderKeys
         get
         {
             if (Environment.GetEnvironmentVariable("SOJOURN_KEYS") is { Length: > 0 } env) return Path.GetFullPath(env);
-            if (Sidecar.Root is { } root && Directory.Exists(Path.Combine(root, "src", "Sojourn.Client")))
-                return Path.Combine(root, "local", "secrets", "assistant");
+            if (RepoRoot() is { } root) return Path.Combine(root, "local", "secrets", "assistant");
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sojourn", "secrets", "assistant");
         }
     }
 
+    /// <summary>The repo this runs from (src/Sojourn.Client above it), or null: a release.</summary>
+    static string? RepoRoot()
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+            if (Directory.Exists(Path.Combine(d.FullName, "src", "Sojourn.Client")) && Directory.Exists(Path.Combine(d.FullName, "assistant")))
+                return d.FullName;
+        return null;
+    }
+
     static string FileOf(string kind) => Path.Combine(Dir, kind + ".key");
+
+    /// <summary>Soniox's key is kept (encrypted), or still in its old plain file, which the sidecar moves in.</summary>
+    public static bool HasSoniox() => File.Exists(FileOf("soniox"))
+        || RepoRoot() is { } root && File.Exists(Path.Combine(root, "local", "secrets", "soniox.key"));
 
     public static string Name(string kind) => kind == "openrouter" ? "OpenRouter" : "Anthropic";
 

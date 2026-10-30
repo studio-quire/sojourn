@@ -73,6 +73,7 @@
                     </Border.Effect>
                 </Border>
                 <Border CornerRadius="24" BorderBrush="{StaticResource Rim}" BorderThickness="1" Padding="18,18,18,18">
+                    <Grid>
                     <Grid x:Name="Pages">
 
                         <!-- the login -->
@@ -156,7 +157,62 @@
                             <Border Style="{StaticResource Track}">
                                 <UniformGrid x:Name="ProviderTrack" Rows="1"/>
                             </Border>
+                            <!-- a key pasted here is kept encrypted (ProviderKeys) and switches to its provider; never shown back -->
+                            <Grid Margin="0,10,0,0">
+                                <PasswordBox x:Name="KeyBox" AutomationProperties.Name="API key"/>
+                                <TextBlock x:Name="KeyHint" Text="API key" Foreground="{StaticResource Faint}" FontSize="15" Margin="15,0,0,0"
+                                           VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                <Button x:Name="ForgetKey" Style="{StaticResource Key}" Content="&#xE711;" FontSize="11" HorizontalAlignment="Right"
+                                        Margin="0,0,4,0" Foreground="{StaticResource Faint}" Visibility="Collapsed" AutomationProperties.Name="Forget the key"/>
+                            </Grid>
+                            <Grid x:Name="ModelRow" Margin="0,10,0,0" Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="ModelBox" Tag="model" AutomationProperties.Name="OpenRouter model"/>
+                                <Button x:Name="ModelListKey" Grid.Column="1" Style="{StaticResource Key}" Content="&#xE70D;" FontSize="11" Margin="4,0,0,0"
+                                        AutomationProperties.Name="Models"/>
+                                <Popup x:Name="ModelList" PlacementTarget="{Binding ElementName=ModelRow}" Placement="Bottom" AllowsTransparency="True"
+                                       StaysOpen="False" VerticalOffset="4">
+                                    <Border CornerRadius="13" Background="#F5FFFFFF" BorderBrush="{StaticResource Rim}" BorderThickness="1" Padding="4"
+                                            MinWidth="220">
+                                        <StackPanel x:Name="ModelChoices"/>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                            <WrapPanel Margin="4,14,0,0">
+                                <CheckBox x:Name="AutoSwitch" Style="{StaticResource Switch}" Content="auto mode" Margin="0,0,22,0"/>
+                                <CheckBox x:Name="DenyDataSwitch" Style="{StaticResource Switch}" Content="no data collection" Visibility="Collapsed"/>
+                            </WrapPanel>
                         </StackPanel>
+                    </Grid>
+
+                    <!-- the grid's question, answered here while the client waits (terms, or the MFA code) -->
+                    <StackPanel x:Name="QuestionPage" Visibility="Collapsed">
+                        <StackPanel x:Name="TermsBlock">
+                            <TextBlock x:Name="TermsTitle" Text="Terms of Service" FontSize="17" FontWeight="SemiBold" Margin="4,0,0,10"/>
+                            <Border CornerRadius="13" Background="#66FFFFFF" BorderBrush="{StaticResource Rim}" BorderThickness="1" Height="250">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,10" Focusable="False">
+                                    <TextBlock x:Name="TermsText" TextWrapping="Wrap" FontSize="13" Foreground="{StaticResource Dim}"/>
+                                </ScrollViewer>
+                            </Border>
+                            <CheckBox x:Name="AgreeSwitch" Style="{StaticResource Switch}" Content="I agree" Margin="4,14,0,0" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                        <StackPanel x:Name="CodeBlock">
+                            <TextBlock Style="{StaticResource Label}" Text="code"/>
+                            <TextBox x:Name="CodeBox" Tag="000000" MaxLength="8" FontSize="18" AutomationProperties.Name="Code"/>
+                            <TextBlock x:Name="CodeAgain" Text="that code didn't work" FontSize="12" Foreground="{StaticResource Coral}" Margin="4,6,0,0"
+                                       Visibility="Collapsed"/>
+                            <CheckBox x:Name="RememberComputer" Style="{StaticResource Switch}" Content="remember this computer" Margin="4,14,0,0"
+                                      HorizontalAlignment="Left"/>
+                        </StackPanel>
+                        <Grid Margin="0,14,0,-6">
+                            <Button x:Name="DeclineKey" Style="{StaticResource WordKey}" Content="Decline" HorizontalAlignment="Left"/>
+                            <Button x:Name="ContinueKey" Style="{StaticResource WordKey}" Content="Continue" HorizontalAlignment="Right"
+                                    Foreground="{StaticResource Accent}" FontWeight="SemiBold"/>
+                        </Grid>
+                    </StackPanel>
                     </Grid>
                 </Border>
             </Grid>
@@ -196,7 +252,6 @@
                     <Button x:Name="LogKey" Style="{StaticResource WordKey}" Content="log" Height="26" Foreground="{StaticResource Accent}" Margin="2,0,0,0"
                             Padding="8,0" Visibility="Collapsed" AutomationProperties.Name="Open the log"/>
                 </StackPanel>
-                <Button x:Name="AccessKey" Style="{StaticResource WordKey}" Content="Access" HorizontalAlignment="Right" AutomationProperties.Name="Sojourn Access"/>
             </Grid>
         </Grid>
     </Grid>

@@ -114,7 +114,7 @@ class Ears:
                 self._load("whisper")
             self.hearing = "soniox"
             import cloud
-            self.notice = None if cloud.available() else "Soniox needs its key (local/secrets/soniox.key); hearing with Whisper meanwhile."
+            self.notice = None if cloud.available() else "Soniox needs its key (python tools/assistant.py key --soniox); hearing with Whisper meanwhile."
             return
         if which == "parakeet" and not (PARAKEET / "encoder.int8.onnx").exists():
             self.notice = "Parakeet isn't set up (python tools/assistant.py setup); hearing with Whisper."

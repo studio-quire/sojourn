@@ -303,7 +303,7 @@ def start_client(base, vr, minutes, env_extra=None):
     else:
         args = ["--window", "960x540", "--fps", "30", *args]
     dotnet = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
-    dll = Path(os.environ.get("SOJOURN_DLL") or ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "Sojourn.dll")
+    dll = Path(os.environ.get("SOJOURN_DLL") or ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "SojournVR.dll")
     log = open(base / "console.txt", "w", encoding="utf-8")
     return subprocess.Popen([str(dotnet), str(dll), *args], cwd=ROOT, env=env, stdin=subprocess.DEVNULL, stdout=log,
                             stderr=subprocess.STDOUT, text=True, creationflags=0x00004000)

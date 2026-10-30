@@ -16,7 +16,14 @@ environment would find no key. The folder is under harness.py's deny rules, shel
 The proxy is also where the providers' differences are met: Claude Code's model ids become OpenRouter's, auto mode's
 safety checks stay on Claude (Sonnet 5 through OpenRouter) whatever model answers, and for other makers' models what's
 Claude-only (effort, thinking, context management, Anthropic's beta headers) is left out, and pictures too for a model
-that can't see them (a line saying so instead), rather than an error.
+that can't see them (a line saying so instead), rather than an error. With the person's "no data collection" (on by
+default) every OpenRouter messages request carries OpenRouter's provider preference data_collection: "deny", which its
+Anthropic-compatible /api/v1/messages takes in the body (its API reference, checked 2026-10-29): only providers that
+don't store or train on what's sent answer; if none serves the model, OpenRouter refuses the request and the person
+hears why.
+
+Auto mode (prefs auto_mode, on by default) rides along here because changing it restarts the sessions as a provider
+change does: off, the sessions run in dontAsk mode with harness.py's MANUAL_TOOLS and no classifier is ever called.
 
 SOJOURN_PROVIDER_UPSTREAM sends both providers to a test server instead (tools/provider_mock.py).
 Written by Claude Opus 5.5, 2026-10-29.
@@ -190,8 +197,9 @@ class Proxy:
     def __init__(self, log):
         self.log = log
         self.token = "sojourn-" + secrets.token_urlsafe(24)
-        self.route = None        # (kind, key, single model or None, can it see pictures)
+        self.route = None        # (kind, key, single model or None, can it see pictures, deny data collection)
         self.on_refused = None   # (status, words) -> None: the provider said no (a bad key, no credits)
+        self.on_policy = None    # () -> None: OpenRouter had no provider for the model that keeps to "no data collection"
         self._idle = []          # idle upstream connections
         self._lock = threading.Lock()
         proxy = self
@@ -236,8 +244,12 @@ class Proxy:
                 return
         c.close()
 
-    def rewrite(self, body, single, sees):
-        """An OpenRouter request made OpenRouter's: its model, and for another maker's model what's Claude's alone."""
+    def rewrite(self, body, single, sees, deny_data=False, messages=True):
+        """An OpenRouter request made OpenRouter's: its model, the person's data preference, and for another maker's
+        model what's Claude's alone."""
+        if deny_data and messages:
+            given = body.get("provider") if isinstance(body.get("provider"), dict) else {}
+            body["provider"] = {**given, "data_collection": "deny"}
         m = re.sub(r"\[\w+\]$", "", body.get("model") or "")
         session_ids = {"claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"}
         slug = single if single and m in session_ids else or_slug(m)
@@ -261,7 +273,7 @@ class Proxy:
             return _reply(h, 401, {"type": "error", "error": {"type": "authentication_error", "message": "not this run's token"}})
         if not route:
             return _reply(h, 503, {"type": "error", "error": {"type": "api_error", "message": "no provider set up"}})
-        kind, key, single, sees = route
+        kind, key, single, sees, deny_data = route
         path = h.path
         claude = True
         headers = {"Content-Type": h.headers.get("Content-Type") or "application/json", "Accept-Encoding": "identity",
@@ -273,7 +285,7 @@ class Proxy:
             if raw and h.command == "POST":
                 try:
                     body = json.loads(raw)
-                    claude = self.rewrite(body, single, sees)
+                    claude = self.rewrite(body, single, sees, deny_data, path.split("?")[0].endswith("/v1/messages"))
                     raw = json.dumps(body).encode()
                 except ValueError:
                     pass
@@ -309,6 +321,8 @@ class Proxy:
             length = r.getheader("Content-Length")
             if length is not None and r.getheader("Transfer-Encoding") is None:
                 data = r.read()
+                if kind == "openrouter" and deny_data and r.status in (400, 404) and self.on_policy and _policy_refusal(data):
+                    self.on_policy()
                 h.send_header("Content-Length", str(len(data)))
                 h.end_headers()
                 h.wfile.write(data)
@@ -328,6 +342,13 @@ class Proxy:
             c.close()
         else:
             self._done(base, c)
+
+
+def _policy_refusal(data):
+    """OpenRouter's refusal when no provider for the model keeps to the data policy ("No endpoints found matching your
+    data policy")."""
+    t = data.decode("utf-8", "replace").lower()
+    return "data policy" in t or "data_collection" in t or "data collection" in t
 
 
 def _no_picture(b):
@@ -358,6 +379,8 @@ class Provider:
     def __init__(self, log=print):
         self.log = log
         self.kind, self.model, self.stamp = "claude", "claude", None
+        self.deny_data = True       # OpenRouter: only providers that don't collect data (the person's setting)
+        self.auto = True            # the sessions under auto mode (the person's setting; harness.py MANUAL_TOOLS when off)
         self.ready = False
         self.state = "checking"     # ready, checking, no_login, no_key, refused, credits, no_tools, offline
         self.words = ""             # for the person: what's set up and, if it isn't working, how to switch it on
@@ -373,22 +396,25 @@ class Provider:
     def wanted(self, prefs):
         p = prefs or {}
         kind = p.get("provider") if p.get("provider") in KINDS else "claude"
-        return kind, (p.get("openrouter_model") or "claude").strip(), p.get("key_stamp")
+        return (kind, (p.get("openrouter_model") or "claude").strip(), p.get("key_stamp"),
+                p.get("openrouter_deny_data") is not False, p.get("auto_mode") is not False)
 
     def differs(self, prefs):
-        return self.wanted(prefs) != (self.kind, self.model, self.stamp)
+        return self.wanted(prefs) != (self.kind, self.model, self.stamp, self.deny_data, self.auto)
 
     def configure(self, prefs):
         """Take the person's settings and check them (blocking: a request or two, a few seconds at most)."""
         with self._lock:
-            self.kind, self.model, self.stamp = self.wanted(prefs)
+            self.kind, self.model, self.stamp, self.deny_data, self.auto = self.wanted(prefs)
             self.single = self.single_name = None
             self.window, self.caveat = 1_000_000, ""
             if self.kind == "claude":
                 self._claude()
             else:
                 self._keyed()
-            self.log(f"provider: {self.kind}{' ' + self.model if self.kind == 'openrouter' else ''}: {self.state}")
+            data = "" if self.kind != "openrouter" else ", no data collection" if self.deny_data else ", data collection allowed"
+            self.log(f"provider: {self.kind}{' ' + self.model if self.kind == 'openrouter' else ''}{data}"
+                     f"{'' if self.auto else ', auto mode off'}: {self.state}")
 
     def _claude(self):
         if self.proxy:
@@ -437,7 +463,9 @@ class Provider:
         if not self.proxy:
             self.proxy = Proxy(self.log)
             self.proxy.on_refused = self.refused
-        self.proxy.route = (self.kind, key, self.single, not self.single or (self.models.get(self.single) or {}).get("pictures", True))
+            self.proxy.on_policy = self.policy
+        self.proxy.route = (self.kind, key, self.single, not self.single or (self.models.get(self.single) or {}).get("pictures", True),
+                            self.kind == "openrouter" and self.deny_data)
         self.ready = True
         self.state = "ready" if verdict == "ok" else "offline"
         self.words = (f"your {name} key" + (f", {self.single_name}" if self.single else "")
@@ -466,6 +494,14 @@ class Provider:
                       f"{'Anthropic' if self.kind == 'anthropic' else 'OpenRouter'} refused the key.")
         self.log(f"provider: the {self.kind} key was refused ({status})")
 
+    def policy(self):
+        """OpenRouter refused a request: no provider for this model keeps to "no data collection"."""
+        if self.state == "no_private":
+            return
+        self.state = "no_private"
+        self.words = "OpenRouter has no provider for this model that keeps to no data collection."
+        self.log("provider: openrouter has no provider for the model under data_collection deny")
+
     def _not(self, state, why):
         self.ready, self.state = False, state
         if self.proxy:
@@ -474,27 +510,33 @@ class Provider:
 
     def how(self):
         """What the person is told when it isn't working: why, and how to switch it on."""
-        where = "Alt+0, the assistant's provider" if self.app == "access" else "settings, assistant, provider"
+        access = self.app == "access"
+        where = "Alt+0, the assistant's provider" if access else "the launcher's settings"
         if self.state in ("no_key", "refused", "credits"):
-            how = (f"Copy your key, then {'choose its row in Alt+0 and paste it' if self.app == 'access' else 'press paste key there'}"
+            how = (f"Copy your key, then {'choose its row in Alt+0 and paste it' if access else 'paste it into the key box in the launcher'}"
                    if self.state == "no_key" else "Put in another key or choose another provider")
             return f"The assistant is off: {self.words} {how} ({where})."
         if self.state == "no_tools":
-            return f"The assistant is off: {self.words} Choose another model ({where})."
+            return f"The assistant is off: {self.words} Choose another model ({'Alt+0' if access else 'settings, assistant, openrouter model'})."
+        if self.state == "no_private":
+            return (f"The assistant can't answer: {self.words} Choose another model, or allow data collection "
+                    f"({'Alt+0' if access else "the launcher's settings"}).")
         return (f"The assistant is off: {self.words} To switch it on, sign in to Claude Code on this PC with a Claude "
                 f"subscription, or use your own Anthropic or OpenRouter key: copy it, then "
-                f"{'choose the assistant key row in Alt+0' if self.app == 'access' else 'press paste key in settings, assistant'}. "
+                f"{'choose the assistant key row in Alt+0' if access else 'paste it into the key box in the launcher (its settings)'}. "
                 "Everything else works without it.")
 
     def status(self):
-        """For the client's menu (the provider row's note)."""
+        """For the client's menu (a trouble note on the first model row) and Access's provider row."""
         short = {"ready": "signed in" if self.kind == "claude" else "key works", "offline": "key kept, not checked",
                  "no_login": "not signed in", "no_key": "no key yet", "refused": "key refused", "credits": "no credits",
-                 "no_tools": "can't use tools", "checking": "checking"}.get(self.state, self.state)
+                 "no_tools": "can't use tools", "checking": "checking",
+                 "no_private": "no provider without data collection"}.get(self.state, self.state)
         if self.ready and self.single and not (self.models.get(self.single) or {}).get("pictures", True):
             short += ", can't see pictures"
-        return {"kind": self.kind, "state": self.state, "short": short, "words": self.words if self.ready else self.how(),
-                "caveat": self.caveat or None, "model": self.single_name}
+        ok = self.ready and self.state != "no_private"
+        return {"kind": self.kind, "state": self.state, "short": short, "words": self.words if ok else self.how(),
+                "caveat": self.caveat or None, "model": self.single_name, "auto": self.auto}
 
     def env(self):
         """What a Claude Code session needs for this provider (never the key: the proxy's token)."""
@@ -502,7 +544,7 @@ class Provider:
             return {}   # the subscription (main.py takes ANTHROPIC_* out of the sidecar's environment at start)
         # (an API key outranks a signed-in subscription in Claude Code, so nothing else needs clearing)
         e = {"ANTHROPIC_BASE_URL": self.proxy.url, "ANTHROPIC_API_KEY": self.proxy.token}
-        if self.kind == "openrouter":
+        if self.kind == "openrouter" and self.auto:
             # the safety classifier's own requests, on Claude through the proxy (OpenRouter wouldn't review in-band)
             e.update({"CLAUDE_CODE_AUTO_MODE_MODEL": CLASSIFIER, "CLAUDE_CODE_AUTO_MODE_SERVER": "0"})
         return e
@@ -514,10 +556,16 @@ class Provider:
         return None
 
     def prompt_note(self):
-        """For another maker's model: what it is, plainly (Claude Code's own text calls every model Claude)."""
+        """For another maker's model: what it is, plainly (Claude Code's own text calls every model Claude); and with
+        auto mode off, what that leaves the session."""
+        manual = "" if self.auto else (
+            "\nAuto mode is off (the person's choice, in Sojourn's launcher or Sojourn Access's Alt+0): nothing reviews "
+            "your actions, so you have only the tools that are safe without a reviewer: your sojourn tools, reading files, "
+            "and writing files in your own folder and scratch folder. No shell or scripts, no web search or fetching, no "
+            "helpers. When a request needs one of those, say so plainly and that turning auto mode on gives it.\n")
         if not self.single:
-            return ""
-        return (f"\nYou are {self.single_name} ({self.single}), reached through OpenRouter with the person's own key: their "
+            return manual
+        return manual + (f"\nYou are {self.single_name} ({self.single}), reached through OpenRouter with the person's own key: their "
                 "choice. Claude Code's own instructions around these call the model Claude; that's the harness, not you. "
                 + (self.caveat + " " if self.caveat else "") + "Say so plainly if something can't be done because of it.\n")
 

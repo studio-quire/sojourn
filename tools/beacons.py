@@ -121,7 +121,7 @@ def run(dll, stereo):
     grid.account("Sojourn", "Beacon", "sojourn-local")
     (BASE / "a").mkdir(parents=True, exist_ok=True)
     log = open(BASE / "a-console.txt", "w", encoding="utf-8")
-    args = [str(DOTNET), str(Path(dll) / "Sojourn.dll"), "--first", "Sojourn", "--last", "Beacon", "--password", "sojourn-local",
+    args = [str(DOTNET), str(Path(dll) / "SojournVR.dll"), "--first", "Sojourn", "--last", "Beacon", "--password", "sojourn-local",
             "--bridge-port", str(PORT), "--window", f"{W}x{H}", "--fps", "20", "--no-assistant", "--no-voice",
             "--base-dir", str(BASE / "a"), "--start", f"uri:Atelier&{int(X0 - 2)}&{int(Y0)}&{int(Z0 + 1)}", "--minutes", "6"]
     if stereo:

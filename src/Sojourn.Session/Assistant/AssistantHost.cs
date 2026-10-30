@@ -142,6 +142,8 @@ public sealed class AssistantHost
         // whose models answer (never a key: the sidecar reads that itself; the stamp says when it last changed)
         ["provider"] = Settings.AssistantProvider,
         ["openrouter_model"] = Settings.OpenRouterModel,
+        ["openrouter_deny_data"] = Settings.OpenRouterDenyDataCollection,
+        ["auto_mode"] = Settings.AssistantAutoMode,
         ["key_stamp"] = ProviderKeys.Stamp(Settings.AssistantProvider),
     };
 
@@ -151,7 +153,7 @@ public sealed class AssistantHost
     /// <summary>The provider's state changed (the settings menu redraws its row).</summary>
     public Action? ProviderStatusChanged;
 
-    /// <summary>The person pressed "paste key" (the settings menu) or kept one in Sojourn Access: the key on the
+    /// <summary>A "paste key" press (no longer in the headset's menu: keys go in through the launcher or Access): the key on the
     /// clipboard is kept, the provider switched to its kind, the sidecar told. Returns what to say (never the key).</summary>
     public string PasteKey()
     {

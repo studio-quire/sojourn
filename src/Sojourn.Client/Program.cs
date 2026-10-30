@@ -27,6 +27,7 @@ using Vector2 = System.Numerics.Vector2;
 // or in a headset (--vr, OpenXR) with the eyes mirrored to the window. See docs/client.md and docs/vr.md.
 var opt = ClientOptions.Parse(args);
 DeviceLoss.WaitForPrevious();   // restarted after a lost GPU: the old run lets go of the headset first
+Sojourn.Client.Login.LauncherAnswers.Start(opt.LauncherAnswers);   // before anything is started from here (it isn't inherited)
 if (opt.LoginShots != null)
 {
     Sojourn.Client.Login.LoginSheet.Shots(opt.LoginShots);
@@ -663,6 +664,7 @@ while (!window.IsClosing && !chat.QuitRequested && !(bench?.Done ?? false) && !l
     long loopStart = Stopwatch.GetTimestamp();
     window.DoEvents();
     LaunchState.Tick(login, session, headset != null);
+    Sojourn.Client.Login.LauncherAnswers.Apply(login);
     (fbWidth, fbHeight) = (window.FramebufferSize.X, window.FramebufferSize.Y);
     if (window.IsClosing) break;
     settingsApi.Drain();

@@ -214,6 +214,11 @@ class Session:
         effort = self.effort
         prov = providermod.current
         self.label = prov.label(self.model) or label(self.model)
+        # auto mode off (the person's choice): no classifier, only what's safe without one (harness.MANUAL_TOOLS)
+        manual = not prov.auto
+        own_tools = [] if blind else (SEEING_TOOLS if sees else None)
+        if manual:
+            own_tools = [t for t in (own_tools if own_tools is not None else harness.MANUAL_TOOLS) if t in harness.MANUAL_TOOLS]
         opts = ClaudeAgentOptions(
             system_prompt={"type": "file", "path": str(prompt_file)},
             model=self.model,
@@ -221,14 +226,15 @@ class Session:
             allowed_tools=names + more,
             disallowed_tools=self.disallowed,
             # incognito, blind: no files, shell, web or helpers at all; seeing: reading and the web, nothing that writes
-            tools=[] if blind else SEEING_TOOLS if sees else None,
+            # auto mode off: of those, only harness.MANUAL_TOOLS
+            tools=own_tools,
 
             mcp_servers={"sojourn": server, **servers},
             hooks=hooks,
             settings=settings,
             strict_mcp_config=True,            # not the account's connectors
             setting_sources=[],                # no settings files, hooks or CLAUDE.md but harness.py's
-            permission_mode="auto",
+            permission_mode="dontAsk" if manual else "auto",
             cwd=str(incognito_dir()) if sees else workdir(),
             cli_path=providermod.cli(),
             # the person's provider (provider.py): for a key, the loopback proxy and its token, never the key
@@ -247,7 +253,7 @@ class Session:
         self.context, self.handoff_asked, self.up_effort = 0, False, effort
         self.used = time.time()
         self.log(f"{self.name} session up ({self.model}{f' as {self.label}' if prov.single else ''}, {effort}, "
-                 f"{prov.kind}) in {time.time() - t:.1f}s")
+                 f"{prov.kind}{'' if prov.auto else ', auto mode off'}) in {time.time() - t:.1f}s")
 
     async def close(self):
         async with self.lock:
@@ -435,14 +441,17 @@ class Brain:
         """What a session gets beyond tools.py's tools: its own (memory housekeeping, jobs), building from a spec, the
         hooks that keep its status line and guard its shell and helpers, and the deny rules and auto mode's rules."""
         job = getattr(s.kit, "job", None)
+        auto = self.provider.auto
+        only = SEEING_TOOLS if s.private == "sees" else None
+        if not auto:
+            only = [t for t in (only or harness.MANUAL_TOOLS) if t in harness.MANUAL_TOOLS]
         guard = harness.Guard(s.kit.status, self.log, inbox=job.take_told if job else None,
                               plan_first=job.plan_needed if job else None,
-                              handoff=lambda: self.handoff_instruction(s),
-                              only=SEEING_TOOLS if s.private == "sees" else None)
+                              handoff=lambda: self.handoff_instruction(s), only=only)
         if s.private == "sees":
-            settings = harness.settings_file(self.home.root, incognito_dir(), incognito=True)
+            settings = harness.settings_file(self.home.root, incognito_dir(), incognito=True, auto=auto)
         else:
-            settings = harness.settings_file(self.home.root, homemod.work_dir())
+            settings = harness.settings_file(self.home.root, homemod.work_dir(), auto=auto)
         if s.private:   # no memory housekeeping, jobs or building while incognito
             return {}, [], guard.hooks(), settings
         own, own_names = jobmod.own_server(self, s)

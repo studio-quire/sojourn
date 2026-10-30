@@ -126,7 +126,7 @@ def main():
     frames = PERF / f"{label}-frames.csv"
     logp = PERF / f"{label}.log"
     env = dict(os.environ, SOJOURN_FRAME_LOG=str(frames))
-    cmd = [str(DOTNET), str(dll_dir / "Sojourn.dll"), "--grid", "http://127.0.0.1:9740", "--first", first, "--last", last,
+    cmd = [str(DOTNET), str(dll_dir / "SojournVR.dll"), "--grid", "http://127.0.0.1:9740", "--first", first, "--last", last,
            "--password", "sojourn-local", "--base-dir", str(base), "--bridge-port", str(port), "--no-assistant", "--no-voice",
            "--start", f"uri:{region}&{x}&{y}&{z}", "--minutes", f"{seconds / 60:.3f}"]
     if "--headset-size" in args:

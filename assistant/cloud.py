@@ -8,10 +8,13 @@ processed transiently and not stored, that customer content (audio, transcripts,
 train, evaluate or improve its models, and that its logs hold no audio or transcripts. Checked 2026-10-27; if those terms
 change, this stops qualifying.
 
-The key is the person's, in local/secrets/soniox.key (one line): read here at each connection, never put in the
-environment or a log, and out of the assistant's reach with the SL password (harness.py's deny rules on local/secrets,
-the shell hook, auto mode's hard rules). Nothing of the audio or the text is logged here: only how long it took or an
-error's type. SOJOURN_SONIOX_URL and SOJOURN_SONIOX_KEY_FILE point it at a test server and a decoy key (tools/soniox_mock.py).
+The key is the person's, kept as the provider keys are (provider.py: soniox.key in the keys folder, encrypted for this
+Windows account by DPAPI; `python tools/assistant.py key --soniox` puts it there): decrypted here at each connection,
+never put in the environment or a log, and out of the assistant's reach with the SL password (harness.py's deny rules on
+the secrets folders, the shell hook, auto mode's hard rules). A key left in the old plain local/secrets/soniox.key is
+moved in once (encrypted, read back, then the plain file deleted). Nothing of the audio or the text is logged here: only
+how long it took or an error's type. SOJOURN_SONIOX_URL and SOJOURN_SONIOX_KEY_FILE point it at a test server and a
+decoy key in a plain file (tools/soniox_mock.py).
 """
 import json
 import os
@@ -21,18 +24,41 @@ from pathlib import Path
 
 import numpy as np
 
-KEY = Path(os.environ.get("SOJOURN_SONIOX_KEY_FILE") or Path(__file__).resolve().parents[1] / "local" / "secrets" / "soniox.key")
+import provider
+
+TEST_KEY = os.environ.get("SOJOURN_SONIOX_KEY_FILE")   # tests: a decoy key in a plain file
+LEGACY = Path(__file__).resolve().parents[1] / "local" / "secrets" / "soniox.key"   # before 2026-10-29: plain
 URL = "wss://stt-rt.soniox.com/transcribe-websocket"
 MODEL = "stt-rt-v5"
 RATE = 16000
 
 
-def key():
+def migrate(log=print):
+    """A key in the old plain file is kept encrypted instead, then the plain file deleted (only once the kept copy reads
+    back the same)."""
+    if TEST_KEY or not LEGACY.exists():
+        return
     try:
-        k = KEY.read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-    return k or None
+        k = LEGACY.read_text(encoding="utf-8").strip()
+        if k:
+            provider.save_key("soniox", k)
+            if provider.load_key("soniox") != k:
+                log("soniox: couldn't keep the key encrypted; the plain file stays")
+                return
+        LEGACY.unlink()
+        log("soniox: the key moved from its plain file into the encrypted keys folder")
+    except OSError as e:
+        log(f"soniox: moving the key in failed ({type(e).__name__})")
+
+
+def key():
+    if TEST_KEY:
+        try:
+            return Path(TEST_KEY).read_text(encoding="utf-8").strip() or None
+        except OSError:
+            return None
+    migrate()
+    return provider.load_key("soniox")
 
 
 def available():

@@ -40,7 +40,7 @@ SPOT = (43.0, 45.5, 24.0)       # north-east of Sojourn Tester's usual start (40
 BASE = ROOT / "local" / "tester"
 PORT = 9722
 W, H = 960, 540
-DLL = ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "Sojourn.dll"
+DLL = ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "SojournVR.dll"
 DOTNET = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
 
 SCRIPT = """// Animesh Dancer (tools/animesh.py): dances on its own skeleton; channel 8: "animesh play <name>", "animesh stop"

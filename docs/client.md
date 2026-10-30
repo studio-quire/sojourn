@@ -21,8 +21,9 @@ shows without taking focus and never captures the mouse, so tests don't take ove
 `dev.py start` and `client.py vr` do; in tests, use posted input (`tools/winmouse.ps1`, `winkey.ps1`), never real input
 or activation.
 
-The .NET 10 SDK is `%LOCALAPPDATA%\dotnet-sdk\dotnet.exe` (not on PATH); `Sojourn.exe` won't start on its own
-(it finds only the machine's .NET 6), so run `dotnet Sojourn.dll`, which `tools/client.py` does. The window is
+The client builds as **SojournVR.exe** / `SojournVR.dll` (since 2026-10-29; `Sojourn.exe` is the launcher, what people
+start: docs/launcher.md). The .NET 10 SDK is `%LOCALAPPDATA%\dotnet-sdk\dotnet.exe` (not on PATH); `SojournVR.exe`
+won't start on its own (it finds only the machine's .NET 6), so run `dotnet SojournVR.dll`, which `tools/client.py` does. The window is
 titled "Sojourn ..." (fps, CPU and GPU ms, size, draws, mode, where); it never contains "Second Life", because OBS
 captures Tessel's viewer by that title. Vsync is on by default, which caps the frame rate at the display's; the
 GPU is shared with Tessel's viewer, so keep uncapped runs (`--no-vsync`, `--bench`) to a few minutes.

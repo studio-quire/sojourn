@@ -202,7 +202,7 @@ https://wiki.secondlife.com/wiki/WebRTC_Voice). Vivox is gone from SL since 2026
   .tar.zst into `local/webrtc/` (include/, lib/release/webrtc.lib; ~800 MB unpacked). Don't link Tessel's copy.
 - `python tools/voice.py build` (CMake from the VS 2022 Build Tools, /MT release, C++20) builds `sojourn_voice.dll`
   and the test program `sv_loopback.exe` into `local/voice/build/Release/` when the sources changed;
-  `tools/client.py build` runs it first, and the client's csproj copies the DLL next to `Sojourn.dll`. Without the DLL
+  `tools/client.py build` runs it first, and the client's csproj copies the DLL next to `SojournVR.dll`. Without the DLL
   the client runs without voice.
 
 ## The local voice server

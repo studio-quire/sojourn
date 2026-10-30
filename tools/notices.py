@@ -150,7 +150,7 @@ def test():
     if fixture():
         print("the Notices Harp isn't in the world")
         return 1
-    dll = Path(os.environ.get("SOJOURN_DLL") or ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "Sojourn.dll")
+    dll = Path(os.environ.get("SOJOURN_DLL") or ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "SojournVR.dll")
     shutil.rmtree(BASE / "client", ignore_errors=True)
     (BASE / "client").mkdir(parents=True)
     (BASE / "client" / "vr-settings.json").write_text(json.dumps({"confirmTouches": False, "panelHidden": True}))

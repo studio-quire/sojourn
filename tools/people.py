@@ -67,7 +67,7 @@ def check(name, cond, detail=""):
 def client(first, last, port, base, size, fps, dll, start, env=None):
     (BASE / base).mkdir(parents=True, exist_ok=True)
     log = open(BASE / f"{base}-console.txt", "w", encoding="utf-8")
-    return subprocess.Popen([str(DOTNET), str(Path(dll) / "Sojourn.dll"), "--first", first, "--last", last, "--password", "sojourn-local",
+    return subprocess.Popen([str(DOTNET), str(Path(dll) / "SojournVR.dll"), "--first", first, "--last", last, "--password", "sojourn-local",
                              "--bridge-port", str(port), "--window", size, "--fps", str(fps), "--no-assistant", "--no-voice", "--no-sounds",
                              "--base-dir", str(BASE / base), "--start", start, "--minutes", "20"],
                             cwd=ROOT, env=env or dict(os.environ), stdout=log, stderr=subprocess.STDOUT, creationflags=0x00004000)

@@ -43,10 +43,7 @@ public static class MenuGuide
         A("moving/your gaze", "What others see of where you look: your head turning toward who you look at, only the direction, or nothing."),
 
         // --- assistant
-        S("assistant/provider", "Whose AI answers: your Claude account signed in on this PC, your own Anthropic key, or your OpenRouter key. Under it, whether it works."),
-        S("assistant/key", "Copy your key on the PC, then press this. It's kept encrypted for your Windows account and taken off the clipboard."),
-        S("assistant/forget key", "Deletes the kept key. Press twice to be sure."),
-        S("assistant/openrouter model", "Which model OpenRouter runs. Claude keeps the usual models; another maker's model answers everything itself and may not do all Claude does."),
+        S("assistant/openrouter model", "Which model OpenRouter runs. Claude keeps the usual models; another maker's model answers everything itself and may not do all Claude does. The provider and its key are set in the launcher."),
         S("assistant/model","Who answers first. Haiku is quickest and opus the most careful; the quicker ones hand big jobs to opus."),
         A("assistant/haiku effort", "How hard haiku thinks before acting. More is slower and surer."),
         A("assistant/sonnet effort", "How hard sonnet thinks before acting. More is slower and surer."),
@@ -159,6 +156,7 @@ public static class MenuGuide
         A("view/size", "How big the menus and the assistant's panel are."),
         A("view/menus", "Brings every menu you've moved back in front of you, following you again."),
         S("view/draw distance", "How far you can see. Further shows more, but loads more and can slow things down."),
+        S("view/quality", "Light, balanced or full: shadows, reflections, detail and distance set together, as in the launcher. Yours: changed by hand."),
         A("view/graphics/", "Shadows, reflections, detail and the rest of how the world is drawn."),
         A("view/graphics/shadows", "Shadows from the sun, moon and lights. Off is easier on the computer."),
         A("view/graphics/reflections", "Shiny surfaces reflect what's around them. Off, they reflect only the sky."),

@@ -75,7 +75,7 @@ def main(dll):
         sys.exit("tools/avatarfx didn't build: " + built.stdout[-2000:])
     env = dict(os.environ, SOJOURN_TEST_LIPSYNC="1")
     log = open(BASE / "a-console.txt", "w", encoding="utf-8")
-    pa = subprocess.Popen([str(DOTNET), str(Path(dll) / "Sojourn.dll"), "--first", "Sojourn", "--last", "Peer", "--password", "sojourn-local",
+    pa = subprocess.Popen([str(DOTNET), str(Path(dll) / "SojournVR.dll"), "--first", "Sojourn", "--last", "Peer", "--password", "sojourn-local",
                            "--bridge-port", str(PORT), "--window", f"{W}x{H}", "--fps", "20", "--no-assistant", "--no-voice", "--no-sounds",
                            "--base-dir", str(BASE / "a"), "--start", "uri:Atelier&124&112&22", "--minutes", "8"],
                           cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=0x00004000)

@@ -274,7 +274,7 @@ DOTNET = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
 # tree's build mid-test; local/voice/wt-sync.sh keeps one at HEAD plus voice's working files)
 CLIENT_ROOT = Path(os.environ.get("SOJOURN_CLIENT_ROOT") or ROOT)
 # SOJOURN_CLIENT_DLL=path: a client built elsewhere (an agent's own output dir inside the project); not rebuilt here
-CLIENT = Path(os.environ.get("SOJOURN_CLIENT_DLL") or CLIENT_ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "Sojourn.dll")
+CLIENT = Path(os.environ.get("SOJOURN_CLIENT_DLL") or CLIENT_ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "SojournVR.dll")
 
 
 # the test's own two accounts (tools/grid.py account Voice Pilot|Friend sojourn-local), so they never kick another

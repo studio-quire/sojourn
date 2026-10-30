@@ -595,7 +595,7 @@ class Run:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="quick")
-    ap.add_argument("--dll", default=str(ROOT / "local" / "incognito-build" / "bin" / "Sojourn.Client" / "Release" / "net10.0" / "Sojourn.dll"))
+    ap.add_argument("--dll", default=str(ROOT / "local" / "incognito-build" / "bin" / "Sojourn.Client" / "Release" / "net10.0" / "SojournVR.dll"))
     ap.add_argument("--keep", action="store_true", help="leave the talker in the world")
     a = ap.parse_args()
     import grid

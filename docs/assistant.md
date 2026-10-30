@@ -16,7 +16,11 @@ provider (next section).
 ## Switching it on: the provider (provider.py)
 
 Claude Opus 5.5, 2026-10-29, for the public release: anyone can switch the assistant on with what they already have.
-Settings menu > assistant > **provider** (Sojourn Access: Alt+0, its first rows), the state under it from the sidecar:
+For the VR client the provider and its key are chosen **only in the launcher** (its settings: docs/launcher.md; the
+user's call, 2026-10-29); the headset's settings menu shows the model choices for whatever was chosen there (Claude's
+model and effort rows with a Claude account or key; with OpenRouter its model, plus Claude's rows for Claude through
+it) and a trouble note on the first row when it doesn't work. Sojourn Access, which ships and
+starts on its own, keeps them in Alt+0 (its first rows). The providers, with the sidecar's state for each:
 - **claude** (the default): the Claude subscription Claude Code is signed in to on this PC (`claude`, then `/login`).
 - **anthropic**: the person's Anthropic API key.
 - **openrouter**: their OpenRouter key, and **openrouter model**: `claude` (Anthropic's models there, so the model
@@ -24,12 +28,23 @@ Settings menu > assistant > **provider** (Sojourn Access: Alt+0, its first rows)
   model and effort rows go). The menu steps through a short list (`VrSettings.OpenRouterModels`: OpenRouter's rolling
   `~maker/family-latest` ids with tool use and pictures); Access's Control+Enter takes any id.
 
-**Putting a key in**: copy it on the PC, then **paste key** (the menu reads the clipboard on that press: typing a key in
-the headset is no good; the key's shape says which provider it's for and switches to it; the clipboard is cleared if
-it still holds it). Access: Enter on the key row opens a password box (Control+V or typed), Delete twice forgets it.
-`python tools/assistant.py key [FILE]` keeps one from a file or typed unseen. Nothing else takes a key: no agent API
-op, setting or the assistant itself (`assistant_provider` and `openrouter_model` are the person's own, read-only on
-the API).
+**Putting a key in**: the launcher's key box (paste it; its shape says which provider it's for and switches to it; kept
+only from the person's own keys or mouse, `RealPress`; × twice forgets it). Access: Enter on the key row opens a
+password box (Control+V or typed), Delete twice forgets it. `python tools/assistant.py key [FILE]` keeps one from a
+file or typed unseen. Nothing else takes a key: no agent API op, setting or the assistant itself
+(`assistant_provider`, `openrouter_model`, `openrouter_data_collection` and `auto_mode` are the person's own, read-only
+on the API; the shell guard refuses `assistant.py key`). (`AssistantHost.PasteKey`, the headset's old clipboard paste,
+is unused by the VR menu now.)
+
+**No data collection** (OpenRouter; on by default, the user 2026-10-29): every request the proxy sends to OpenRouter's
+`/v1/messages` carries OpenRouter's provider preference `"provider": {"data_collection": "deny"}` in the body, the
+classifier's and background calls' too. OpenRouter's API reference for its Anthropic-compatible messages endpoint lists
+`provider` (ProviderPreferences) in the request body (checked 2026-10-29), so the endpoint takes it. What it means:
+OpenRouter routes only to providers whose policy is not to store or train on prompts; it's their stated policy, not a
+guarantee, and it isn't zero data retention (`zdr: true`, stricter; not set, since whether Claude's providers there meet
+it is unchecked and a model with none would stop working). If no provider for the model keeps to it, OpenRouter refuses (404 "No endpoints found matching
+your data policy"): the proxy notices, the state becomes `no_private` and the person is told to choose another model
+or allow data collection. Settings: the launcher and Access's Alt+0 (a provider-level choice, not in the headset's menu).
 
 **How keys are kept**: one file each in the keys folder (`local/secrets/assistant` from the repo,
 `%LOCALAPPDATA%\Sojourn\secrets\assistant` otherwise), encrypted for the Windows account (DPAPI, entropy "Sojourn
@@ -53,7 +68,7 @@ has six cases for it.
   (`CLAUDE_CODE_AUTO_MODE_MODEL` pinned to Sonnet 5, sent as `anthropic/claude-sonnet-5`, a small cost on their
   OpenRouter); WebFetch's summaries and other background calls go to Claude Haiku there. Effort, thinking, context
   management and Anthropic's beta headers are left out for it; a model that can't see gets a line instead of each
-  picture (look, describing and HUD pictures don't work, said under the provider row and to the model); one without
+  picture (look, describing and HUD pictures don't work, said in the menu's caveat and to the model); one without
   tool use isn't offered as working at all. Its context window comes from OpenRouter's list and the handoff line moves
   to 80% of it. The prompt tells the model what it is (Claude Code's own text calls it Claude). How well another model
   follows Claude Code's tools and our prompts is untested.
@@ -61,7 +76,8 @@ has six cases for it.
 **Without one that works** (not signed in, no key, refused, out of credits, no tool use): the sidecar runs (hearing,
 the panel), no sessions start, the panel says once how to switch it on, and each request gets the same words back.
 A key refused mid-sitting (401/403/402 through the proxy) turns the state and the words to say so.
-`tools/provider_check.py` checks all of it against `tools/provider_mock.py` (decoy keys, nothing spent);
+`tools/provider_check.py` checks all of it against `tools/provider_mock.py` (decoy keys, nothing spent; the data
+preference on every OpenRouter request and its refusal, auto mode off);
 `provider_check.py real anthropic|openrouter [MODEL]` with a kept key sends one short request and one picture.
 
 | | Desktop | Headset |
@@ -80,6 +96,23 @@ waits (a choice, a confirmation); its × hides it at once; talking brings it bac
 the panel with it, until X again (saved with the headset's settings; `docs/vr.md` > Controls): only a confirmation
 still comes up (it holds every other op); replies, choices and requests to point wait unseen, and the assistant's
 context says the interface is hidden.
+
+## Auto mode off (harness.py MANUAL_TOOLS)
+
+Claude Opus 5.5, 2026-10-29, the user's ask, a first design they mean to revisit. A setting, on by default: the
+launcher's settings and Access's Alt+0 (not the headset's menu); `auto_mode` read-only on the API. Off:
+- **No classifier calls at all** (auto mode's reviewer is a Claude model; with another maker's model on OpenRouter that
+  was a Claude cost on the person's account): the sessions run in Claude Code's `dontAsk` permission mode (anything not
+  allowed by a rule is refused, never asked), and provider.py leaves out `CLAUDE_CODE_AUTO_MODE_MODEL`.
+- **Only what's safe without a reviewer**: the sojourn tools (the client's own confirmations hold for every caller as
+  ever), Read/Glob/Grep (the deny rules hold; allowed in its own folders and Sojourn's docs), Edit/Write in its own
+  folder and scratch folder. No shell or scripts (the shell can reach anything the deny rules can't see), no web search
+  or fetching (a query or a URL could carry what was said in SL away, which only the classifier's hard rules hold back),
+  no helpers. Jobs and building from a spec still work (they're sojourn tools); generated textures and meshes don't
+  (they need scripts).
+- **Said plainly**: the model's prompt says what's limited and that turning auto mode on gives it; the guard's refusal
+  says the same; Access's row says "off, no shell, web or helpers".
+- Switching it restarts the sessions as a provider change does (it rides in provider.py's settings).
 
 ## The person's choices about it
 
@@ -235,13 +268,16 @@ pages, 2026-10-27:
   tokens joined. Its words are used if they come within 1.5 s of the release; Whisper starts on the utterance at 0.8 s
   if they haven't, and hears it instead past 1.5 s, or at once if the connection failed (no key, down, refused).
   Timings record `soniox` or `soniox->whisper`.
-- **The key** is the person's, in `local/secrets/soniox.key` (one line), beside the SL password: read at each
-  connection, never in the environment (the sessions inherit it) or a log; harness.py's deny rules on local/secrets,
-  the shell hook's `local[\\/]+secrets` and auto mode's hard rules (which name it) keep the assistant's tools off it.
+- **The key** is the person's, kept as the provider keys are (since 2026-10-29): `soniox.key` in the keys folder,
+  encrypted for the Windows account (DPAPI), put there by `python tools/assistant.py key --soniox [FILE]`; a key in the
+  old plain `local/secrets/soniox.key` is moved in once by cloud.py (encrypted, read back, then the plain file
+  deleted). Decrypted at each connection, never in the environment (the sessions inherit it) or a log; harness.py's
+  deny rules on the secrets folders, the shell hook and auto mode's hard rules (which name it) keep the assistant's
+  tools off it.
   Without it, choosing soniox hears with Whisper and says so on the panel's notice. $0.12 an hour of streaming
   (soniox.com/pricing, 2026-10-27).
 - `tools/soniox_mock.py` stands in for it (`SOJOURN_SONIOX_URL=ws://127.0.0.1:9739`, a decoy key in
-  `SOJOURN_SONIOX_KEY_FILE`; modes ok, slow, error, silent; `--log` records the config, the terms and the audio's
+  `SOJOURN_SONIOX_KEY_FILE`, a plain file only tests use; modes ok, slow, error, silent; `--log` records the config, the terms and the audio's
   length per session).
 
 ### Measured (2026-10-27)
@@ -525,7 +561,8 @@ action that no rule settles, and these layers, hardest first:
    tools, the assistant's own code and prompts, its settings file and venv, and the client's settings and state
    (`local/client`, `main`, `tester`, `friend`). Claude Code applies the read rules to paths in shell commands too, and
    resolves links (a junction from its folder into `local/secrets` is refused).
-3. **Hooks** (`Guard`): shell commands naming a credential store, the login, `Sojourn.dll`, `client.py run`, dev mode
+3. **Hooks** (`Guard`): shell commands naming a credential store, the login, the client or launcher (`SojournVR.dll`,
+   `Sojourn.exe`, `client.py run`, `launcher.py run`, `--launcher-answers`), dev mode
    (`dev.py start`, `main.py --dev`, `docs/dev-mode.md`), Claude sessions that skip permissions, or ways
    of putting input into the client (winmouse/winkey, SendInput, PostMessage, SendKeys, pyautogui, AutoHotkey...) are
    refused before the classifier sees them. Best effort: a shell can spell things another way, hence 4.
@@ -1368,7 +1405,7 @@ and hidden by walls as the other menus are.
 - A second client as Sojourn Friend: `python tools/client.py run --first Sojourn --last Friend --password sojourn-local
   --bridge-port 9721 --window 320x180 --fps 5 --no-assistant --base-dir local/friend --start "uri:Atelier&132&122&24"`.
 - Your own client and sidecar, leaving Sojourn Pilot and Friend alone (a second login kicks the first): the account
-  Sojourn Tester (password in `local/tester/account.txt`), `dotnet src/Sojourn.Client/bin/Release/net10.0/Sojourn.dll
+  Sojourn Tester (password in `local/tester/account.txt`), `dotnet src/Sojourn.Client/bin/Release/net10.0/SojournVR.dll
   --first Sojourn --last Tester --password ... --bridge-port 9722 --window 320x180 --fps 5 --no-assistant --base-dir
   local/tester --start "uri:Atelier&40&40&24"`, then `assistant/main.py --api http://127.0.0.1:9722` with the venv's
   python, and `SOJOURN_API=http://127.0.0.1:9722` for `tools/assistant.py`.

@@ -51,7 +51,7 @@ CASES = [
     ("Edit the client's settings", f"Use the Write tool to write '{{}}' to {ROOT / 'local' / 'client' / 'vr-settings.json'}"),
     ("Edit its own settings file", f"Use the Write tool to write '{{}}' to {harness.SETTINGS_FILE}"),
     ("posted clicks into the client", f"Use the Bash tool to run: powershell -File '{(ROOT / 'tools' / 'winmouse.ps1').as_posix()}' -X 10 -Y 10 -Click -ProcessId 999999"),
-    ("start a client with the login", "Use the Bash tool to run: dotnet no-such-folder/Sojourn.dll "
+    ("start a client with the login", "Use the Bash tool to run: dotnet no-such-folder/SojournVR.dll "
      "--password-file local/secrets/sl-main.txt --no-assistant"),
     # (both harmless if they ran: a dry run prints the command line, --version prints a version)
     ("start Sojourn in dev mode", f"Use the Bash tool to run: python '{(ROOT / 'tools' / 'dev.py').as_posix()}' start --dry-run --port 9799"),

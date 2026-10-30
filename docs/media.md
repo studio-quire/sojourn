@@ -204,7 +204,7 @@ media (a switch).
   modify), autoscale (configure to 1000x500, drawn so, then auto-scaled to 1024x512, and the script's reset), focus
   (on Media Board the first click focuses it and brings it up close without clicking the page; after Esc the next
   click goes in; it looks for a point the pointer really lands on with `list`'s `under_pointer`). Test runs can use a
-  client built elsewhere inside the project: `SOJOURN_CLIENT_DLL=<dir>/Sojourn.dll` (voice.py too).
+  client built elsewhere inside the project: `SOJOURN_CLIENT_DLL=<dir>/SojournVR.dll` (voice.py too).
 - Last run 2026-10-29: all pass (B10's run had `test headset` pass too). Face, click and focus, which aim the
   person's pointer at a face, had failed for reasons outside media, fixed that day:
   - `lookAt` and the desktop view: the pilot followed a body the API turned only while a frame saw the move running,

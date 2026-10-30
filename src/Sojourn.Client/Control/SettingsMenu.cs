@@ -118,18 +118,15 @@ public sealed class SettingsMenu : ISettingsMenu
         assistant.ProviderStatusChanged = () => Interlocked.Increment(ref _version);
     }
 
-    /// <summary>Whose models the assistant runs on (the person's own choice, never the agent API's): saved, and the
-    /// sidecar checks it and starts its sessions again on it.</summary>
-    void SetProvider(string kind, string? openRouterModel = null)
+    /// <summary>With OpenRouter, which model answers (the person's own choice, never the agent API's): saved, and the
+    /// sidecar checks it and starts its sessions again. Whose models answer, the keys, data collection and auto mode are
+    /// chosen in the launcher (Sojourn.Launcher), not here.</summary>
+    void SetOpenRouterModel(string model)
     {
-        _s.AssistantProvider = kind;
-        if (openRouterModel != null) _s.OpenRouterModel = openRouterModel;
-        _assistant.UseKey(kind);   // (saves, redraws and tells the sidecar; a kind without a key is said so by it)
-        _say($"assistant provider: {kind}{(kind == "openrouter" ? " " + _s.OpenRouterModel : "")}");
+        _s.OpenRouterModel = model;
+        _assistant.UseKey("openrouter");   // (saves, redraws and tells the sidecar)
+        _say($"openrouter model: {model}");
     }
-
-    string? _keySaid;          // what the last "paste key" press found, shown on the key row
-    bool _forgetKeyArmed, _forgetKeyWasArmed;
 
     /// <summary>The assistant's model, from the menu, a key (F8 cycles), the console or the agent API: saved, and the
     /// sidecar switches at once.</summary>
@@ -157,7 +154,7 @@ public sealed class SettingsMenu : ISettingsMenu
 
     static AssistantModel NextModel(AssistantModel m) => (AssistantModel)(((int)m + 1) % Enum.GetValues<AssistantModel>().Length);
 
-    public void Toggle() { Open = !Open; _down = null; _forgetArmed = _forgetKeyArmed = false; _keySaid = null; _restOn = Nowhere; _tip = null; Used(); Interlocked.Increment(ref _version); }
+    public void Toggle() { Open = !Open; _down = null; _forgetArmed = false; _restOn = Nowhere; _tip = null; Used(); Interlocked.Increment(ref _version); }
 
     long _usedAt = Environment.TickCount64;
     /// <summary>The person is using it (the pointer on it, a press).</summary>
@@ -281,6 +278,10 @@ public sealed class SettingsMenu : ISettingsMenu
         // while any menu is put somewhere: every one back to following, in front (X held does the same)
         if (_assistant.InHeadset && Places is { AnyPut: true } places) rows.Add((new MenuRow("menus", "reset", false), _ => places.Reset()));
         rows.Add((new MenuRow("draw distance", $"{DrawDistance!():0} m", true), d => SetDrawDistance?.Invoke(Step(VrSettings.DrawDistances, DrawDistance!(), d))));
+        // the launcher's presets (GraphicsPresets): settings that match none show as "yours", left alone until one is picked
+        var preset = GraphicsPresets.Match(_s.AsJson());
+        var presets = preset == GraphicsPresets.Yours ? GraphicsPresets.Names.Append(GraphicsPresets.Yours).ToArray() : GraphicsPresets.Names;
+        rows.Add((MenuRow.Choice("quality", presets, Array.IndexOf(presets, preset)), i => { if (i < GraphicsPresets.Names.Length) ApplyPreset(GraphicsPresets.Names[i]); }));
         rows.Add(MenuRow.Group("graphics", GraphicsRows));
         rows.Add(MenuRow.Group("avatars", AvatarRows));
         // pressed again, a sky is put back as it was (its own sun, after the time of day moved it)
@@ -321,6 +322,25 @@ public sealed class SettingsMenu : ISettingsMenu
         }
         if (_assistant.InHeadset) rows.Add(MenuRow.Group("menus", MenuRows));
         return rows;
+    }
+
+    /// <summary>A graphics preset's settings, each set as its own row or the agent API would set it (live, and saved).</summary>
+    void ApplyPreset(string name)
+    {
+        foreach (var (key, value) in GraphicsPresets.Values[name])
+        {
+            if (key == "resolution") { _s.Resolution = GraphicsPresets.Number(value) is { } r ? (float)r : null; continue; }
+            var setting = key switch
+            {
+                "drawDistance" => "draw_distance", "shadowCap" => "shadow_resolution", "mirrorResolution" => "mirror_resolution",
+                "farShadows" => "far_shadows", "fullAvatars" => "full_avatars", _ => key,
+            };
+            if (value is null || _api?.Has(setting) != true) continue;
+            _api.Change(setting, value.GetValueKind() is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
+                ? System.Text.Json.Nodes.JsonValue.Create(value.GetValue<bool>() ? "on" : "off")
+                : System.Text.Json.Nodes.JsonValue.Create(GraphicsPresets.Number(value) ?? 0));
+        }
+        _say($"graphics: {name}");
     }
 
     static void SetSwitch(SettingsApi api, string name, bool on) => api.Change(name, System.Text.Json.Nodes.JsonValue.Create(on ? "on" : "off"));
@@ -566,44 +586,31 @@ public sealed class SettingsMenu : ISettingsMenu
         || api.Text("radar_age_alert") is not (null or "0");
 
     static readonly string[] ModelNames = { "haiku", "sonnet", "opus" };
-    static readonly string[] ProviderNames = { "claude", "anthropic", "openrouter" };
+
+    /// <summary>The provider's state from the sidecar when it isn't working (no key, not signed in, refused...), for the
+    /// first model row's note; null when it works or isn't known yet.</summary>
+    string? ProviderTrouble()
+    {
+        var st = _assistant.ProviderStatus;
+        if (st?["kind"]?.GetValue<string>() != _s.AssistantProvider) return null;
+        return st["state"]?.GetValue<string>() is "ready" or "offline" or "checking" ? null : st["short"]?.GetValue<string>();
+    }
 
     /// <summary>
-    /// Whose models answer (docs/assistant.md > Switching it on): the provider, its state from the sidecar under it,
-    /// the key (paste: the PC's clipboard, since typing a key in the headset is no good; the key goes straight to the
-    /// keys folder, encrypted, and off the clipboard), forgetting it (twice), and OpenRouter's model.
+    /// OpenRouter's model, when it's the provider (docs/assistant.md > Switching it on): the rolling "latest" list,
+    /// Claude through OpenRouter first; one set by name in the launcher shows as its id. The provider itself, its key
+    /// and its data setting are the launcher's.
     /// </summary>
-    List<(MenuRow Row, Action<int> Act)> ProviderRows()
+    List<(MenuRow Row, Action<int> Act)> OpenRouterRows()
     {
-        var kind = _s.AssistantProvider;
-        var st = _assistant.ProviderStatus;
-        string? state = st?["kind"]?.GetValue<string>() == kind ? st?["short"]?.GetValue<string>() : _assistant.SidecarAlive ? "checking" : null;
-        var rows = new List<(MenuRow, Action<int>)>
+        var models = VrSettings.OpenRouterModels.ToList();
+        int at = models.FindIndex(m => m.Id == _s.OpenRouterModel);
+        if (at < 0) { models.Add((_s.OpenRouterModel, _s.OpenRouterModel)); at = models.Count - 1; }   // one set by name
+        return new List<(MenuRow, Action<int>)>
         {
-            (MenuRow.Choice("provider", ProviderNames, Math.Max(0, Array.IndexOf(VrSettings.Providers, kind))) with { Note = state },
-                i => SetProvider(VrSettings.Providers[i])),
+            (new MenuRow("openrouter model", models[at].Name, true, Note: ProviderTrouble()),
+                d => SetOpenRouterModel(models[(at + (d < 0 ? -1 : 1) + models.Count) % models.Count].Id)),
         };
-        if (kind == "claude") return rows;
-        bool has = ProviderKeys.Has(kind);
-        rows.Add((new MenuRow("key", has ? "paste new" : "paste", false, Note: _keySaid ?? (has ? null : $"copy your {ProviderKeys.Name(kind)} key, then paste")),
-            _ => _keySaid = _assistant.PasteKey()));
-        if (has)
-            rows.Add((new MenuRow("forget key", _forgetKeyArmed ? "sure?" : "forget", false), _ =>
-            {
-                if (!_forgetKeyWasArmed) { _forgetKeyArmed = true; return; }
-                ProviderKeys.Forget(kind);
-                _keySaid = $"{ProviderKeys.Name(kind)} key forgotten";
-                _assistant.UseKey(kind);
-            }));
-        if (kind == "openrouter")
-        {
-            var models = VrSettings.OpenRouterModels.ToList();
-            int at = models.FindIndex(m => m.Id == _s.OpenRouterModel);
-            if (at < 0) { models.Add((_s.OpenRouterModel, _s.OpenRouterModel)); at = models.Count - 1; }   // one set by name
-            rows.Add((new MenuRow("openrouter model", models[at].Name, true),
-                d => SetProvider("openrouter", models[(at + (d < 0 ? -1 : 1) + models.Count) % models.Count].Id)));
-        }
-        return rows;
     }
 
     List<(MenuRow Row, Action<int> Act)> AssistantRows()
@@ -624,10 +631,15 @@ public sealed class SettingsMenu : ISettingsMenu
         var levels = AssistantEfforts.Levels;
         rows.InsertRange(2, AssistantEfforts.InMode(_s.AssistantModel).Select(m => ((MenuRow, Action<int>))(
             MenuRow.Choice($"{m} effort", levels, Array.IndexOf(levels, _s.AssistantEffort.Get(m))), i => SetAssistantEffort(m, levels[i]))));
-        // another maker's model through OpenRouter takes everything itself: Claude's model and effort rows don't apply
-        if (_s.AssistantProvider == "openrouter" && _s.OpenRouterModel != "claude")
-            rows.RemoveAll(r => r.Item1.Label == "model" || r.Item1.Label.EndsWith(" effort"));
-        rows.InsertRange(0, ProviderRows());
+        // the model rows follow the provider chosen in the launcher: Claude's (account or key) as they are; with
+        // OpenRouter its own choices, and Claude's model and effort rows only for Claude through it (another maker's
+        // model takes everything itself)
+        if (_s.AssistantProvider == "openrouter")
+        {
+            if (_s.OpenRouterModel != "claude") rows.RemoveAll(r => r.Item1.Label == "model" || r.Item1.Label.EndsWith(" effort"));
+            rows.InsertRange(0, OpenRouterRows());
+        }
+        else if (ProviderTrouble() is { } trouble) rows[0] = (rows[0].Item1 with { Note = trouble }, rows[0].Item2);
         // soniox (the cloud) only once the person has put its key in place
         var hearings = VrSettings.SonioxKey() || _s.Hearing == "soniox" ? VrSettings.Hearings : VrSettings.Hearings[..2];
         rows.Add((MenuRow.Choice("hearing", hearings, Math.Max(0, Array.IndexOf(hearings, _s.Hearing))),
@@ -910,7 +922,7 @@ public sealed class SettingsMenu : ISettingsMenu
             _page = _group != null && k.Index == _section ? _groupFrom : 0;
             _section = k.Index;
             _group = null;
-            _forgetArmed = _forgetKeyArmed = false;
+            _forgetArmed = false;
             Interlocked.Increment(ref _version);
             return;
         }
@@ -930,8 +942,7 @@ public sealed class SettingsMenu : ISettingsMenu
             return;
         }
         _forgetWasArmed = _forgetArmed;
-        _forgetKeyWasArmed = _forgetKeyArmed;
-        _forgetArmed = _forgetKeyArmed = false;   // any press but a forget row's second disarms it
+        _forgetArmed = false;   // any press but a forget row's second disarms it
         rows[row].Act(part >= 3 ? part - 3 : part == 1 ? -1 : part == 2 ? 1 : 0);
         Interlocked.Increment(ref _version);
         Save();

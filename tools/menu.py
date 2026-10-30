@@ -78,6 +78,11 @@ PRESSES = [
     ("you", "turn away", "one-to-one calls", 0, None),
     ("you", "AO", "stands", 0, None),
     ("you", "AO", "lock its folder", 0, None),
+    # the launcher's graphics presets (GraphicsPresets): light, then full
+    ("view", None, "quality", 3 + 0, {"draw_distance": 64, "shadow_resolution": 1024, "reflections": "off", "mirrors": "off",
+                                      "far_shadows": 0, "full_avatars": 8, "detail": 1}),
+    ("view", None, "quality", 3 + 2, {"draw_distance": 256, "shadow_resolution": 3072, "reflections": "on", "mirrors": "on",
+                                      "mirror_resolution": 1, "far_shadows": 2048, "full_avatars": 24, "detail": 2.5}),
     ("view", None, "location line", 3 + 1, {"location_line": "on", "lag_meter": "off"}),
     ("view", None, "location line", 3 + 2, {"location_line": "on", "lag_meter": "on"}),
     ("view", "avatars", "lip sync", 0, None),
@@ -121,7 +126,7 @@ def main(dll, size):
     BASE.mkdir(parents=True, exist_ok=True)
     log = open(BASE / "console.txt", "w", encoding="utf-8")
     env = dict(os.environ, SOJOURN_TEST_MENU="1")
-    proc = subprocess.Popen([str(DOTNET), str(Path(dll) / "Sojourn.dll"), "--first", "Sojourn", "--last", "Menu", "--password", "sojourn-local",
+    proc = subprocess.Popen([str(DOTNET), str(Path(dll) / "SojournVR.dll"), "--first", "Sojourn", "--last", "Menu", "--password", "sojourn-local",
                              "--bridge-port", str(PORT), "--window", "640x360", "--fps", "10", "--no-assistant",
                              "--base-dir", str(BASE / "client"), "--start", "uri:Atelier&124&112&22", "--minutes", "10"],
                             cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=0x00004000)
@@ -194,7 +199,7 @@ def headset(dll):
     import media_fixtures as mf
     if "agni" in grid.URL or not grid.ready():
         sys.exit("the local grid isn't up (python tools/grid.py start)")
-    os.environ["SOJOURN_CLIENT_DLL"] = str(Path(dll) / "Sojourn.dll")
+    os.environ["SOJOURN_CLIENT_DLL"] = str(Path(dll) / "SojournVR.dll")
     base = BASE / "headset"
     pictures = Path(os.environ["USERPROFILE"]) / "Pictures" / "Sojourn"
     had = set(pictures.glob("*")) if pictures.exists() else set()

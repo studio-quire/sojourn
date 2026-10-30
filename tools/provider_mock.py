@@ -9,7 +9,8 @@ The provider's proxy talks to it when SOJOURN_PROVIDER_UPSTREAM points here. It 
   classifier gets an allow (so a command's environment can be checked); anything else "mock reply".
 - GET .../v1/models: a few models in both Anthropic's and OpenRouter's shapes (with and without tools and pictures),
   public as OpenRouter's is; GET .../v1/key: OpenRouter's key info.
-A key with "bad" in it gets 401, one with "credits" in it 402.
+A key with "bad" in it gets 401, one with "credits" in it 402. The model "test/no-private" has no provider that keeps
+to OpenRouter's data_collection "deny": a request for it carrying that preference gets OpenRouter's 404.
 --log appends a line per request: the path, the model, how it was authorised (x-api-key or Bearer, the key's length,
 whether it's one of the --secret decoys; never the key), the system prompt's start, how many tools and pictures,
 effort and thinking, and whether a decoy appears anywhere in the body: the check that a key never reaches a model.
@@ -87,7 +88,8 @@ class H(BaseHTTPRequestHandler):
         if path.endswith("/v1/models"):
             # both shapes at once: Anthropic's (id, display_name) and OpenRouter's (name, context, tools, pictures)
             models = [("anthropic/claude-sonnet-5.5", 1_000_000, True, True), ("~google/gemini-pro-latest", 1_048_576, True, True),
-                      ("test/no-pictures", 200_000, True, False), ("test/no-tools", 128_000, False, True)]
+                      ("test/no-pictures", 200_000, True, False), ("test/no-tools", 128_000, False, True),
+                      ("test/no-private", 128_000, True, True)]
             return self.send(200, {"data": [{"type": "model", "id": m, "display_name": m, "name": m, "context_length": ctx,
                                              "supported_parameters": ["tools"] if tools else [],
                                              "architecture": {"input_modalities": ["text", "image"] if pics else ["text"]}}
@@ -112,7 +114,8 @@ class H(BaseHTTPRequestHandler):
         rec = {"t": time.time(), "post": path, "model": body.get("model"), "auth": kind, "key_len": len(key),
                "stream": bool(body.get("stream")), "tools": len(body.get("tools") or []),
                "system": re.sub(r"\s+", " ", system or "")[:140], "user": text[:100],
-               "output_config": body.get("output_config"), "thinking": body.get("thinking")}
+               "output_config": body.get("output_config"), "thinking": body.get("thinking"),
+               "provider_prefs": body.get("provider")}
         if a.secret:
             rec["secret_in_body"] = any(x.encode() in raw for x in a.secret)
             rec["auth_is_secret"] = key in a.secret
@@ -128,6 +131,8 @@ class H(BaseHTTPRequestHandler):
         if not path.endswith("/v1/messages"):
             return self.send(404, {"type": "error", "error": {"type": "not_found_error", "message": path}})
         model = body.get("model") or "mock"
+        if model == "test/no-private" and (body.get("provider") or {}).get("data_collection") == "deny":
+            return self.send(404, {"error": {"code": 404, "message": "No endpoints found matching your data policy (Paid model training). Configure: https://openrouter.ai/settings/privacy"}})
         m = re.search(r"MOCK_BASH: (.+)", text or "")
         if "security monitor" in (system or ""):
             # auto mode's classifier: every action allowed, so what a command can see gets tested (this is a mock)

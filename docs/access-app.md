@@ -48,14 +48,20 @@ repo's own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access
   `AccessOptions.AssistantInBuild`): Control+D says once a session that describing needs the assistant, which this
   build doesn't include, then what the lists know, and Alt+9's input is named "Ask the assistant (not in this build)".
   `//about` says the version, the commit, the disclaimer and the data folder; F1 ends by pointing to it.
-- **Checked** (2026-10-29, the zip unpacked in a folder outside the repo, on the hidden desktop through QuireUia,
-  `--local --autologin --reader on --no-voice`, world audio to a file): the apphost starts with no .NET installed for
-  it, logs in to the local grid in 2 s, UDP and TCP on loopback only, the main window and the focus in Say, arriving,
-  F1 and `//about` read out as UIA notifications, Control+D's absence said once, chat sent, the renderer out of sight
-  drawing (Vulkan, shaders compiled by the shipped shaderc), and `nvdaControllerClient.dll`, `sojourn_voice.dll`,
-  `openjp2.dll`, `shaderc_shared.dll` loaded from the package's folder. The package's folder was byte-for-byte
-  unchanged after the run, and nothing was written outside it and `%LOCALAPPDATA%\Sojourn Access` (the GPU driver's
-  own shader cache aside). Not checked: Second Life itself from a packaged build, voice, Windows Hello, a real PC
+- **Checked** by `python tools/access.py package --check [ZIP]` (default the newest zip; about a minute; passed 38 of
+  38 on 0.1.0.493, 2026-10-29): the zip unpacked in a fresh folder under %TEMP%, run on a hidden desktop of its own
+  through QuireUia as Package Tester (`--local --autologin --reader on --no-voice`, world audio to a file, no mic, the
+  data folder `--base` in the check's folder: .NET's GetFolderPath ignores %LOCALAPPDATA%, so the default folder itself
+  isn't exercised), with no dotnet on PATH and %TEMP%, %LOCALAPPDATA% and %APPDATA% pointed into the check's folder.
+  It checks: no .NET loaded from outside the exe, logged in to the local grid, the main window and the focus in Say,
+  arriving, F1 and `//about` read out as UIA notifications (`//about` naming github.com/studio-quire/sojourn and the
+  data folder), Control+D's absence said once in two presses, chat sent (the grid's echo), the renderer out of sight
+  up and the GPU working for it, `nvdaControllerClient.dll`, `sojourn_voice.dll`, `openjp2.dll`, `shaderc_shared.dll`
+  loaded from the package's folder and nothing from the repo, no TCP listener at all (9725 included) and every socket
+  on loopback (Windows' "Bound" rows of outgoing sockets aside), no failures in the log, a clean exit and logout, the
+  package's folder byte-for-byte unchanged, nothing written through the redirected folders nor anything named as ours
+  new in the profile's real ones (the GPU driver's own cache aside); then it removes everything it made. It refuses
+  to run beside the VR client or dev mode. Not checked: Second Life itself from a packaged build, voice, Windows Hello, a real PC
   without our SDK or GPU, SmartScreen and the firewall's question (the first SL login asks for a new exe: UDP binds
   every interface).
 - **Not signed**: SmartScreen warns on first start; the README walks through it and the zip's Unblock. Signing is the

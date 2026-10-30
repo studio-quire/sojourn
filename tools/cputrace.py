@@ -32,7 +32,7 @@ def ensure_tool():
 
 
 def sojourn_pid():
-    ps = ("Get-CimInstance Win32_Process -Filter \"name='dotnet.exe'\" | Where-Object { $_.CommandLine -like '*Sojourn.dll*' } | "
+    ps = ("Get-CimInstance Win32_Process -Filter \"name='dotnet.exe'\" | Where-Object { $_.CommandLine -like '*SojournVR.dll*' } | "
           "Sort-Object CreationDate | Select-Object -Last 1 -ExpandProperty ProcessId")
     out = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True).stdout.strip()
     return int(out) if out else None

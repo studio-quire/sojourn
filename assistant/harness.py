@@ -94,7 +94,15 @@ def protected():
             ROOT / "local" / "assistant" / "settings.json", ROOT / "local" / "assistant-venv"]
 
 
-def settings(home: Path, work: Path):
+# auto mode off (the person's choice: provider.py's auto): no classifier, so only what's safe without a reviewer, in
+# dontAsk mode (anything not allowed below is refused, never asked): reading (the deny rules hold), writing in its own
+# folders, and the sojourn tools. No shell (it could reach anything the deny rules can't see), no web (fetching or even a
+# search query could send what was said in SL away, which only the classifier's hard rules hold back), no helpers.
+# A first design the user means to revisit (docs/assistant.md > Auto mode off).
+MANUAL_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write"]
+
+
+def settings(home: Path, work: Path, auto=True):
     # Read rules hold for every tool that reads (Read, Grep, Glob) and Edit rules for every one that writes
     def dir_rules(tools, paths):
         return [f"{t}({rule_path(p)}{'' if Path(p).is_file() else '/**'})" for p in paths for t in tools]
@@ -109,10 +117,12 @@ def settings(home: Path, work: Path):
             + ["CronCreate", "CronDelete", "CronList", "ScheduleWakeup", "RemoteTrigger", "PushNotification", "Workflow"])
     allow = (dir_rules(("Read", "Edit", "Write"), [home, work])
              + ["WebSearch", "mcp__sojourn", "mcp__own", "mcp__build"])
+    if not auto:   # (dontAsk: reads outside its folders need a rule; Sojourn's docs, to learn how something works)
+        allow = [a for a in allow if a != "WebSearch"] + dir_rules(("Read", "Glob", "Grep"), [home, work, ROOT / "docs"])
     sl = "Second Life"
     api = "the Sojourn client's agent API at http://127.0.0.1:9720 (POST /cmd {pump, data: {op, ...}}, GET /events, GET /status)"
     return {
-        "permissions": {"allow": allow, "deny": deny, "defaultMode": "auto"},
+        "permissions": {"allow": allow, "deny": deny, "defaultMode": "auto" if auto else "dontAsk"},
         # no compaction, automatic or while idle: near the context limit the session writes its own handoff and a fresh
         # one takes over (brain.py, docs/assistant.md > Long sessions; the user's direction, 2026-10-26). The user's own
         # Claude Code settings say the same, but these sessions load none (setting_sources=[]), so it's said here.
@@ -185,7 +195,7 @@ SHELL_REFUSED = re.compile(
     r"sl-main|local[\\/]+secrets|Sojourn[\\/]+secrets|SOJOURN_LOGINS|mfa_hash|account\.txt|\.credentials|\.claude\b|\.ssh\b|git-credential|\bcmdkey\b|"
     r"vaultcmd|CredentialManager|StoredCredential|CredRead|Login Data|logins\.json|key4\.db|\bgh\s+auth\b|"
     r"winmouse|winkey|SendInput|PostMessage|SendMessage[AW]?\b|SendKeys|keybd_event|mouse_event|UIAutomation|"
-    r"pyautogui|pywinauto|AutoHotkey|\bahk\b|AttachConsole|WriteConsoleInput|--password|Sojourn\.dll|client\.py['\"]?\s+(run|vr)|"
+    r"pyautogui|pywinauto|AutoHotkey|\bahk\b|AttachConsole|WriteConsoleInput|--password|Sojourn(VR)?\.(dll|exe)|client\.py['\"]?\s+(run|vr)|launcher\.py['\"]?\s+run|--launcher-answers|assistant\.py['\"]?\s+key|"
     # dev mode (docs/dev-mode.md): a client whose assistant is a Claude Code session in bypass mode, never the assistant's
     r"dev\.py['\"]?\s+(start|restart)|main\.py\b.*--dev\b|dangerously-skip-permissions|bypassPermissions|"
     # private mode: the sidecar's token (only the person's own words turn it off), and reading other processes' memory
@@ -231,7 +241,10 @@ class Guard:
         if name.startswith("mcp__"):
             return {}
         if self.only is not None and name not in self.only:
-            # incognito: the session was started without it; should one turn up anyway, nothing that writes
+            # incognito or auto mode off: the session was started without it; should one turn up anyway, refused
+            if "Write" in self.only:
+                self.log(f"guard: {name} refused with auto mode off")
+                return self.deny("auto mode is off (the person's choice): no shell, web or helpers; say so if the request needs them")
             self.log(f"guard: {name} refused while incognito")
             return self.deny("not while incognito: nothing from this time is kept, so no shell, file writes or helpers")
         if name in ("Bash", "PowerShell"):
@@ -302,14 +315,15 @@ def env():
 SETTINGS_FILE = ROOT / "local" / "assistant" / "settings.json"
 
 
-def settings_file(home, work, incognito=False):
+def settings_file(home, work, incognito=False, auto=True):
     """The settings as a file (they're too long for a command line), written afresh before every session starts, so
     nothing changed in it between sessions survives; the file tools can't edit it, and auto mode's rules forbid it.
-    incognito: a seeing spell's sessions (work: its folder), their own file, with nothing writable anywhere."""
-    s = settings(home, work)
-    path = SETTINGS_FILE
+    incognito: a seeing spell's sessions (work: its folder), their own file, with nothing writable anywhere.
+    auto: False with auto mode off (MANUAL_TOOLS in dontAsk mode)."""
+    s = settings(home, work, auto)
+    path = SETTINGS_FILE if auto else SETTINGS_FILE.with_name("settings-manual.json")
     if incognito:
-        path = SETTINGS_FILE.with_name("settings-incognito.json")
+        path = SETTINGS_FILE.with_name("settings-incognito.json" if auto else "settings-incognito-manual.json")
         perms = s["permissions"]
         perms["allow"] = [r for r in perms["allow"] if not r.startswith(("Edit(", "Write("))]
         perms["deny"] += [f"{t}(//**)" for t in ("Edit", "Write")]

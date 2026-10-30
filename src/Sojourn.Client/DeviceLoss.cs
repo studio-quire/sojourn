@@ -130,6 +130,7 @@ public static class DeviceLoss
             if (i >= 0 && i + 1 < rest.Count) rest[i + 1] = where;
             else rest.AddRange(new[] { "--start", where });
         }
+        Login.LauncherAnswers.PassOn(rest);   // the launcher's answers reach the new run too
         var exe = System.Environment.ProcessPath ?? throw new InvalidOperationException("no process path");
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = System.Environment.CurrentDirectory };
         if (Path.GetFileNameWithoutExtension(exe).Equals("dotnet", StringComparison.OrdinalIgnoreCase))

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -9,7 +10,9 @@ namespace Sojourn.Launcher;
 /// <summary>What the launcher shows of a run.</summary>
 enum Phase { Idle, Starting, Form, Connecting, Terms, Code, Failed, World, Ending, Ended, Crashed }
 
-sealed record RunStatus(Phase Phase, bool Headset = false, string? Detail = null, string? Log = null);
+/// <summary>Question: the grid's question while terms or code (terms: {kind, text}; code: {asks}); Answers: the client
+/// takes answers from here (its LauncherAnswers is open).</summary>
+sealed record RunStatus(Phase Phase, bool Headset = false, string? Detail = null, string? Log = null, JsonObject? Question = null, bool Answers = false);
 
 /// <summary>
 /// One run of the VR client: started with the login already handed over (LoginStore.HandOver; the client logs in
@@ -17,6 +20,9 @@ sealed record RunStatus(Phase Phase, bool Headset = false, string? Detail = null
 /// and its state read from the file it writes (the client's LaunchState.cs). A run that starts itself again (a lost
 /// GPU, back to its login screen) is followed: the new process writes its own pid there, and is the old one's child.
 /// Stop asks the client's window to close, as the person closing it would, and ends it after 20 s if it hasn't.
+/// The grid's terms and MFA code can be answered here (docs/launcher.md > The grid's questions at the desk): each run
+/// gets an anonymous pipe whose read end it inherits (--launcher-answers H) and whose write end only this process
+/// holds; an answer is one JSON line, sent only from the person's own press (RealPress), never logged.
 /// </summary>
 sealed class ClientRun
 {
@@ -28,6 +34,7 @@ sealed class ClientRun
     DateTime _stateTime;
     DateTime? _stopAskedAt;
     bool _crashMarked;
+    AnonymousPipeServerStream? _answers;
 
     public RunStatus Status { get; private set; } = new(Phase.Idle);
     public bool Running => Status.Phase is not (Phase.Idle or Phase.Ended or Phase.Crashed);
@@ -40,6 +47,11 @@ sealed class ClientRun
         var (psi, missing) = _places.Client();
         if (psi == null) return missing;
         foreach (var a in new[] { "--login", "--login-resume", "--base-dir", _places.BaseDir }) psi.ArgumentList.Add(a);
+        // the answers' pipe: its read end inheritable until the client has it (nothing else is started meanwhile)
+        _answers?.Dispose();
+        _answers = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
+        psi.ArgumentList.Add("--launcher-answers");
+        psi.ArgumentList.Add(_answers.GetClientHandleAsString());
         if (!desktop) psi.ArgumentList.Add("--vr");
         foreach (var a in extra) psi.ArgumentList.Add(a);
         psi.UseShellExecute = false;
@@ -61,7 +73,13 @@ sealed class ClientRun
         p.OutputDataReceived += (_, e) => Copy(e.Data);
         p.ErrorDataReceived += (_, e) => Copy(e.Data);
         try { p.Start(); }
-        catch (Exception e) { return e.Message; }
+        catch (Exception e)
+        {
+            _answers.Dispose();
+            _answers = null;
+            return e.Message;
+        }
+        finally { try { _answers?.DisposeLocalCopyOfClientHandle(); } catch (Exception) { } }
         p.StandardInput.Close();
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
@@ -82,6 +100,23 @@ sealed class ClientRun
             try { _console?.WriteLine(line); } catch (Exception) { }
             if (line.Contains("Unhandled exception", StringComparison.Ordinal)) _crashMarked = true;
         }
+    }
+
+    /// <summary>The person's answer to the grid's question, to the client (it takes it only for the question it's showing).
+    /// False if the client can't be reached that way (it closed, or started without the pipe).</summary>
+    public bool Answer(JsonObject answer)
+    {
+        if (_answers is not { IsConnected: true } pipe || !Status.Answers) return false;
+        try
+        {
+            var line = Encoding.UTF8.GetBytes(answer.ToJsonString() + "\n");
+            pipe.Write(line);
+            pipe.Flush();
+            Array.Clear(line);
+            return true;
+        }
+        catch (IOException) { return false; }
+        catch (ObjectDisposedException) { return false; }
     }
 
     /// <summary>Asks the client to close; ended after 20 s if it hasn't.</summary>
@@ -116,12 +151,14 @@ sealed class ClientRun
                 bool crashed = _stopAskedAt == null && (code != 0 || _crashMarked);
                 Status = crashed ? new(Phase.Crashed, Detail: code == 75 ? "the graphics card was reset" : null, Log: log) : new(Phase.Ended, Log: log);
                 lock (_consoleLock) { _console?.Dispose(); _console = null; }
+                _answers?.Dispose();
+                _answers = null;
                 _proc = null;
                 new Sojourn.Session.Login.LoginStore(_places.BaseDir).DropHandOver();   // a handover nobody took
             }
         }
         else if (file is { } st && st.Pid == _pid && _stopAskedAt == null)
-            Status = new(st.Phase, st.Headset, st.Detail, st.Log);
+            Status = new(st.Phase, st.Headset, st.Detail, st.Log, st.Question, st.Answers && _answers != null);
         return Status != before;
     }
 
@@ -132,7 +169,7 @@ sealed class ClientRun
         _ = next.Handle;   // opened now, so its exit code can be read once it's gone
     }
 
-    sealed record FileState(int Pid, Phase Phase, bool Headset, string? Detail, string? Log);
+    sealed record FileState(int Pid, Phase Phase, bool Headset, string? Detail, string? Log, JsonObject? Question, bool Answers);
     FileState? _last;
 
     FileState? ReadState()
@@ -150,7 +187,8 @@ sealed class ClientRun
                 "starting" => Phase.Starting, "form" => Phase.Form, "connecting" => Phase.Connecting, "terms" => Phase.Terms,
                 "code" => Phase.Code, "failed" => Phase.Failed, "world" => Phase.World, "ending" => Phase.Ending, _ => Phase.Starting,
             };
-            return _last = new((int?)o["pid"] ?? 0, phase, (bool?)o["headset"] ?? false, (string?)o["detail"], (string?)o["log"]);
+            return _last = new((int?)o["pid"] ?? 0, phase, (bool?)o["headset"] ?? false, (string?)o["detail"], (string?)o["log"],
+                o["question"] is JsonObject q ? (JsonObject)q.DeepClone() : null, (bool?)o["answers"] ?? false);
         }
         catch (Exception) { return _last; }
     }

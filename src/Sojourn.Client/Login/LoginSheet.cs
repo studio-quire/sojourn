@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Text;
+using System.Text.Json.Nodes;
 using SkiaSharp;
 using Sojourn.Client.Assistant;
 using Sojourn.Client.Control;
@@ -349,6 +350,40 @@ public sealed partial class LoginSheet
         _session.SubmitMfa(code);
         _code.Clear();
         _log($"login: the person gave a code{(_rememberComputer ? ", this computer remembered" : "")}");
+    }
+
+    /// <summary>An answer the person gave at the launcher (Login/LauncherAnswers.cs), taken only for the question
+    /// showing now: the terms of that kind, or a code while the grid asks for one.</summary>
+    public void FromLauncher(LauncherAnswer a)
+    {
+        var stage = Current;
+        if (a.TermsKind != null && stage == Stage.Terms && _session?.PendingTerms is { } t && t.Kind == a.TermsKind)
+        {
+            _log(a.Accept ? $"login: the person accepted the grid's {(t.Kind == "tos" ? "Terms of Service" : "message")} at the launcher"
+                          : "login: the person declined at the launcher");
+            _session.AnswerTerms(a.Accept);
+            _agree = false;
+        }
+        else if (a.Code != null && stage == Stage.Mfa && _session != null)
+        {
+            _rememberComputer = a.RememberComputer;
+            _session.KeepMfaHash = a.RememberComputer;
+            _session.SubmitMfa(a.Code);
+            _code.Clear();
+            _log($"login: the person gave a code at the launcher{(a.RememberComputer ? ", this computer remembered" : "")}");
+        }
+        else return;
+        Changed();
+    }
+
+    /// <summary>For the launcher (LaunchState): the question the grid is asking, as the sheet shows it, or null.</summary>
+    public JsonObject? Question()
+    {
+        var stage = Current;
+        if (stage == Stage.Terms && _session?.PendingTerms is { } t)
+            return new JsonObject { ["kind"] = t.Kind, ["text"] = Clean(t.Message ?? "") };
+        if (stage == Stage.Mfa && _session != null) return new JsonObject { ["asks"] = _session.MfaAsks };
+        return null;
     }
 
     // ---- typing: the PC's keyboard, or the headset's (Control/HeadsetKeyboard.cs) ----

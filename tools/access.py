@@ -21,6 +21,11 @@
                                    README and licences, zipped to local/dist/SojournAccess-0.1.0.N-win-x64.zip (N the
                                    commit count; uncommitted changes under src/ refused unless --dirty); it keeps its
                                    data in %LOCALAPPDATA%\\Sojourn Access and logs in to Second Life unless run with --local
+  python tools/access.py package --check [ZIP] [--keep]
+                                   the zip (default the newest in local/dist) unpacked in a fresh folder under %TEMP% and
+                                   run as a tester would, on a hidden desktop of its own, as Package Tester on the local
+                                   grid: ok/FAIL lines as the test's (docs/access-app.md > Packaging); then everything it
+                                   made removed (--keep leaves the folder)
   python tools/access.py stop      close whatever a broken run left (our app, visitors and QuireUia server, by path)
   python tools/access.py sweep     delete whatever the Access Visitor still owns in Atelier (the grid console)
 
@@ -3107,10 +3112,362 @@ def finish(run):
     return 0 if not run.failed else 1
 
 
+# ---- the package checked as a tester would run it ---------------------------------------------------------------------
+
+CHECK_ACCOUNT = ("Package", "Tester")   # its own account, so a check never throws out a person's Access Tester
+CHECK_DESKTOP = "sojourn-package"
+CHECK_Q_PORT = 9905
+SHIPPED_DLLS = ("nvdaControllerClient.dll", "sojourn_voice.dll", "openjp2.dll", "shaderc_shared.dll")
+OURS_NAMED = re.compile(r"(?i)sojourn|metaverse|quire")
+
+
+def ps_json(script):
+    """A PowerShell script's ConvertTo-Json output as a list."""
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", script], capture_output=True, text=True,
+                       creationflags=CREATE_NO_WINDOW)
+    out = r.stdout.strip()
+    if not out:
+        return []
+    got = json.loads(out)
+    return got if isinstance(got, list) else [got]
+
+
+def sockets_of(pid):
+    """The process's TCP connections and listeners and its UDP endpoints: (kind, local, port, remote, state)."""
+    rows = ps_json(f"@(Get-NetTCPConnection -OwningProcess {pid} -ErrorAction SilentlyContinue | ForEach-Object {{ "
+                   "[pscustomobject]@{k='tcp'; l=$_.LocalAddress; p=$_.LocalPort; r=$_.RemoteAddress; s=[string]$_.State} }) + "
+                   f"@(Get-NetUDPEndpoint -OwningProcess {pid} -ErrorAction SilentlyContinue | ForEach-Object {{ "
+                   "[pscustomobject]@{k='udp'; l=$_.LocalAddress; p=$_.LocalPort; r=''; s=''} }) | ConvertTo-Json -Compress")
+    return [(x["k"], x["l"], x["p"], x["r"], x["s"]) for x in rows]
+
+
+def loopback(addr):
+    return addr in ("127.0.0.1", "::1") or addr.startswith(("127.", "::ffff:127."))
+
+
+def modules_of(pid):
+    return [m["p"] for m in ps_json(f"(Get-Process -Id {pid}).Modules | ForEach-Object {{ [pscustomobject]@{{p=$_.FileName}} }} "
+                                    "| ConvertTo-Json -Compress")]
+
+
+def gpu_of(pid):
+    """(the GPU engines' running time so far in 100 ns, dedicated video memory in bytes) for the process."""
+    rows = ps_json(f"$t = (Get-Counter '\\GPU Engine(pid_{pid}_*)\\Running Time' -ErrorAction SilentlyContinue).CounterSamples | "
+                   "Measure-Object RawValue -Sum; "
+                   f"$m = (Get-Counter '\\GPU Process Memory(pid_{pid}_*)\\Dedicated Usage' -ErrorAction SilentlyContinue).CounterSamples | "
+                   "Measure-Object RawValue -Sum; [pscustomobject]@{t=[double]$t.Sum; m=[double]$m.Sum} | ConvertTo-Json -Compress")
+    return (rows[0]["t"], rows[0]["m"]) if rows else (0, 0)
+
+
+def known_folders():
+    """The profile's folders a program might write to on its own (the real ones: .NET's GetFolderPath ignores %LOCALAPPDATA%)."""
+    names = ("LocalApplicationData", "ApplicationData", "UserProfile", "MyDocuments", "MyPictures", "MyVideos", "MyMusic",
+             "Desktop", "CommonApplicationData")
+    rows = ps_json("@(" + ",".join(f"[pscustomobject]@{{n='{n}'; p=[Environment]::GetFolderPath('{n}')}}" for n in names)
+                   + ") | ConvertTo-Json -Compress")
+    return [Path(r["p"]) for r in rows if r["p"]]
+
+
+def top_level(folders):
+    """Each folder's entries: path -> mtime."""
+    seen = {}
+    for d in folders:
+        try:
+            for e in os.scandir(d):
+                try:
+                    seen[e.path] = e.stat(follow_symlinks=False).st_mtime
+                except OSError:
+                    pass
+        except OSError:
+            pass
+    return seen
+
+
+def tree_hashes(root):
+    import hashlib
+    out = {}
+    for f in sorted(root.rglob("*")):
+        rel = f.relative_to(root).as_posix()
+        if f.is_dir():
+            out[rel + "/"] = "dir"
+        else:
+            h = hashlib.sha256()
+            with open(f, "rb") as fh:
+                for chunk in iter(lambda: fh.read(1 << 20), b""):
+                    h.update(chunk)
+            out[rel] = h.hexdigest()
+    return out
+
+
+def files_under(root):
+    return sorted(f.relative_to(root).as_posix() for f in root.rglob("*") if f.is_file()) if root.exists() else []
+
+
+def others_running():
+    """The VR client or dev mode running (the user may be in the headset): their command lines."""
+    ps = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'dev\\.py|Sojourn\\.Client' -and "
+          "$_.Name -ne 'powershell.exe' } | ForEach-Object { \"$($_.ProcessId) $($_.CommandLine)\" }")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+    return [l for l in r.stdout.splitlines() if l.strip()]
+
+
+def package_check():
+    """`package --check [ZIP]`: the zip (default the newest in local/dist) unpacked in a fresh folder outside the repo
+    and run as a tester would, on a hidden desktop (docs/access-app.md > Packaging): the local grid, the reader on,
+    no voice, world audio to a file, data in a folder of the check's own; prints ok/FAIL per check, then removes
+    everything it made. --keep leaves the folder (its path printed)."""
+    import tempfile
+    import zipfile
+    import grid
+    global Q_PORT, EVENTS, APP_PID
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    rest = [a for a in sys.argv[2:] if a not in ("--check", "--keep")]
+    keep = "--keep" in sys.argv[2:]
+    zips = [Path(rest[0]).resolve()] if rest else sorted(DIST.glob("SojournAccess-*.zip"), key=lambda p: p.stat().st_mtime)
+    if not zips or not zips[-1].exists():
+        print("no zip (python tools/access.py package)")
+        return 1
+    zip_path = zips[-1]
+    version = re.search(r"SojournAccess-(0\.1\.0\.\d+)", zip_path.name)
+    version = version[1] if version else "?"
+    print(f"checking {zip_path.name}")
+
+    others = others_running()
+    if others:
+        print("the VR client or dev mode is running (the user may be in the headset); not starting a renderer beside it:\n  "
+              + "\n  ".join(others))
+        return 1
+    if not QUIREUIA.exists():
+        print("missing local/bin/QuireUia (python tools/access.py tools)")
+        return 1
+    if not grid.ready():
+        print("the local grid is down (python tools/grid.py start)")
+        return 1
+    Q_PORT = CHECK_Q_PORT
+    if not port_free(Q_PORT):
+        print(f"port {Q_PORT} is in use (another check?)")
+        return 1
+    grid.account(*CHECK_ACCOUNT, PASSWORD)
+    if online(*CHECK_ACCOUNT):
+        print(f"{' '.join(CHECK_ACCOUNT)} is logged in already (another check?)")
+        return 1
+
+    run = Run()
+    check = run.check
+    work = Path(tempfile.mkdtemp(prefix="sojourn-package-check-"))   # under %TEMP%, outside the repo
+    pkg, data, out = work / "package", work / "LocalAppData" / "Sojourn Access", work / "out"
+    env_dirs = {"TEMP": work / "temp", "LOCALAPPDATA": work / "LocalAppData", "APPDATA": work / "AppData"}
+    for d in (pkg, out, *env_dirs.values()):
+        d.mkdir(parents=True, exist_ok=True)
+    EVENTS = out / "events.jsonl"
+    server = app = None
+    try:
+        with zipfile.ZipFile(zip_path) as z:
+            z.extractall(pkg)
+        tops = [d for d in pkg.iterdir() if d.is_dir()]
+        folder = tops[0] if len(tops) == 1 else pkg
+        exe = folder / "SojournAccess.exe"
+        if not check("the zip holds one folder with SojournAccess.exe", exe.exists(), str(exe.relative_to(work))):
+            raise Stop
+        before = tree_hashes(folder)
+        profile = known_folders()
+        profile_before = top_level(profile)
+        started = time.time()
+
+        # a tester's PC: no .NET of ours on the way (the SDK and any install off PATH, no DOTNET_ variables), %TEMP%,
+        # %TMP%, %LOCALAPPDATA% and %APPDATA% pointed into the check's folder so whatever follows them shows up there
+        path = os.pathsep.join(p for p in os.environ.get("PATH", "").split(os.pathsep) if "dotnet" not in p.lower())
+        env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("DOTNET_", "SOJOURN_", "ACCESS_"))}
+        env.update(PATH=path, TEMP=str(env_dirs["TEMP"]), TMP=str(env_dirs["TEMP"]), LOCALAPPDATA=str(env_dirs["LOCALAPPDATA"]),
+                   APPDATA=str(env_dirs["APPDATA"]),
+                   SOJOURN_TEST_INPUT="keys",            # posted keys judged as the hand's
+                   SOJOURN_TEST_NO_CLIPBOARD="1",
+                   SOJOURN_VOICE_OUT_FILE=str(out / "heard.wav"),   # world audio to a file, never the speakers
+                   SOJOURN_VOICE_MIC_FILE="none")         # and no microphone
+
+        server = launch_hidden_on(CHECK_DESKTOP, [QUIREUIA, "serve", "--port", Q_PORT, "--log", EVENTS])
+        if not check("QuireUia's server answers", wait(lambda: u("help", timeout=5), 20), f"pid {server}"):
+            raise Stop
+        listening = wait(lambda: any(e.get("src") == "server" and e.get("kind") == "listening" and e.get("text") == "com notification"
+                                     for e in events()), 15, 0.5)
+        if not check("it's listening for announcements", listening, "UIA notifications registered" if listening else "no"):
+            raise Stop
+
+        args = [exe, "--local", "--user", " ".join(CHECK_ACCOUNT), "--password", PASSWORD, "--start",
+                "uri:%s&%d&%d&%d" % (REGION, *TESTER_START), "--autologin", "--reader", "on", "--no-voice", "--base", data]
+        t0 = time.time()
+        app = APP_PID = launch_hidden_on(CHECK_DESKTOP, args, env=env, cwd=folder)
+        u(f"watch {app}")
+
+        # ---- logged in, the window, the focus, arriving said
+        # the main window shows on arrival; the login form ("Sojourn Access: log in") hides then
+        title = wait(lambda: next((l for l in u(f"windows {app}").splitlines()
+                                   if '"Sojourn Access' in l and "log in" not in l), None), LOGIN_SECS, 1)
+        took = time.time() - t0
+        if not check("the main window, titled Sojourn Access", title, f"{title} ({took:.0f} s from start)" if title else
+                     f"not after {LOGIN_SECS} s; alive: {alive(app)}; windows: {u(f'windows {app}')}"):
+            raise Stop
+        check("logged in to the local grid", online(*CHECK_ACCOUNT), f"{' '.join(CHECK_ACCOUNT)} in the grid's users")
+        mods = modules_of(app)
+        dotnets = [m for m in mods if re.search(r"(?i)\\dotnet(-sdk)?\\|\\(coreclr|hostfxr|hostpolicy)\.dll$", m)]
+        check("started with no .NET of its own (the runtime inside the exe)", not dotnets,
+              "no dotnet folder, hostfxr or coreclr among its modules" if not dotnets else "; ".join(dotnets))
+        try:
+            u(f"activate {app}")
+        except ToolError as e:
+            print(f"     (activate: {e})")
+        f = wait_focus(lambda d: d["id"] == "chatInput", 15)
+        check("the focus lands in the Say box", f, label(f) if f else focus_label())
+        run.expect("arriving is read out", ["Logged in"], 0, 10)
+
+        def network(when):
+            socks = sockets_of(app)
+            listen = [s for s in socks if s[0] == "tcp" and s[4] == "Listen"]
+            # "Bound" rows are Windows' record of an outgoing socket's port (bound to any address before ConnectEx, as
+            # every program's are): nothing can connect to them; the connections themselves are rows of their own
+            bound = [s for s in socks if s[0] == "tcp" and s[4] == "Bound"]
+            used = [s for s in socks if s not in bound]
+            wide = [s for s in used if not loopback(s[1]) or (s[0] == "tcp" and not loopback(s[3]) and s[4] != "Listen")]
+            check(f"nothing listening on TCP ({when})", not listen,
+                  f"{len(socks) - len(bound) - sum(1 for s in socks if s[0] == 'udp')} TCP connections, none listening" if not listen else
+                  "; ".join(f"{s[1]}:{s[2]}" for s in listen))
+            check(f"TCP and UDP on loopback only ({when})", used and not wide,
+                  ", ".join(sorted({f"{s[0]} {s[1]}" + (f"->{s[3]}" if s[3] else f":{s[2]}") for s in used}))[:300]
+                  + f" ({len(bound)} outgoing sockets' Bound rows aside)" if not wide
+                  else "; ".join(f"{s[0]} {s[1]}:{s[2]}->{s[3]} {s[4]}" for s in wide))
+        network("logged in")
+        check("nothing at all on the agent API's port 9725", port_free(9725), "connection refused" if port_free(9725)
+              else "something answers on 9725 (ours if the app is the owner above)")
+
+        # ---- F1, //about, Control+D without the assistant, chat
+        m = mark()
+        key("f1")
+        run.expect("F1 is read out", ["Alt+1 nearby chat"], m, 8)   # in several announcements: it's long
+        run.expect("and ends pointing to //about", ["//about says which version"], m, 8)
+        back_to_chat()
+        m = mark()
+        say_in_app("//about")
+        got = run.expect("//about is read out", ["Sojourn Access " + version], m, 8)
+        if got:
+            text = got["text"]
+            check("//about names the public source", "github.com/studio-quire/sojourn" in text, text[:200])
+            check("//about names the data folder", str(data) in text, text[-160:])
+        m = mark()
+        key("ctrl+d")
+        run.expect("Control+D answers", ["Describing needs the assistant"], m, 10)
+        wait(lambda: False, 1.5)
+        m2 = mark()
+        key("ctrl+d")
+        wait(lambda: said_since(m2), 10)
+        wait(lambda: False, 1.5)
+        absent = [e["text"] for e in said_since(m) if "this build doesn't include" in (e.get("text") or "")]
+        check("Control+D's absence said once, not again", len(absent) == 1 and said_since(m2),
+              f"said {len(absent)} time(s) in two presses; the second: {' | '.join(e.get('text') or '' for e in said_since(m2))[:160]}")
+        back_to_chat()
+        line = f"package check {uuid.uuid4().hex[:6]}"
+        say_in_app(line)
+        heard = wait(lambda: line in value_of("id=chatHistory"), 10)
+        check("chat sent (the grid's echo in the Nearby chat history)", heard, line if heard else value_of("id=chatHistory")[-200:])
+
+        # ---- the renderer out of sight, the natives
+        logs = data / "logs"
+        def log_text():
+            return "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in sorted(logs.glob("*.log")))
+        up = wait(lambda: re.search(r"the view out of sight is up on ([^:]+)", log_text()), 60, 1)
+        check("the renderer out of sight starts", up, up[0] if up else "no such line in the session's log")
+        g0 = gpu_of(app)
+        wait(lambda: False, 5)
+        g1 = gpu_of(app)
+        check("and draws (the GPU working for it)", g1[0] > g0[0] and g1[1] > 50e6,
+              f"{(g1[0] - g0[0]) / 1e4:.0f} ms of GPU engine time in 5 s, {g1[1] / 1e6:.0f} MB of video memory")
+        failed = re.findall(r".*(?:couldn't start|the GPU was lost|stopped:).*", log_text())
+        check("no renderer failures in the log", not failed, "; ".join(failed)[:200] or "none")
+        mods = modules_of(app)
+        for dll in SHIPPED_DLLS:
+            where = next((m for m in mods if Path(m).name.lower() == dll.lower()), None)
+            check(f"{dll} loaded from the package's folder", where and Path(where).parent == folder, where or "not loaded")
+        foreign = [m for m in mods if str(ROOT).lower() in m.lower()]
+        check("nothing loaded from the repo", not foreign, "; ".join(foreign) or f"{len(mods)} modules")
+        network("after the renderer and chat")
+        crashes = re.findall(r".*(?:Unhandled exception|fail:).*", log_text())
+        check("no unhandled exceptions or failures in the log", not crashes, "; ".join(crashes)[:300] or "none")
+    except Stop:
+        pass
+    except Exception as e:
+        check("the check (stopped)", False, f"{type(e).__name__}: {e}")
+    finally:
+        if app:
+            try:
+                u(f"close {app}")
+            except Exception:
+                pass
+            if wait(lambda: not alive(app), 20, 0.5) is None:
+                kill(app)
+                print("     (the app didn't close in 20 s after WM_CLOSE: killed)")
+        if server:
+            try:
+                u("quit", timeout=5)
+            except Exception:
+                pass
+            if wait(lambda: not alive(server), 5, 0.5) is None:
+                kill(server)
+    left = [p for p in (app, server) if p and alive(p)]
+    check("the app and QuireUia gone", not left, "; ".join(map(str, left)) or "both exited")
+    if app:
+        logged_out = wait(lambda: not online(*CHECK_ACCOUNT), 20, 1)
+        check("logged out of the grid on close", logged_out, "gone from the grid's users" if logged_out else "still in the grid's users")
+
+    if "before" in locals():
+        after = tree_hashes(folder)
+        changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+        check("the package's folder unchanged", not changed, f"{len(before)} entries, the same bytes" if not changed
+              else "; ".join(changed[:10]))
+        strays = {k: files_under(d) for k, d in env_dirs.items()}
+        strays["LOCALAPPDATA"] = [f for f in strays["LOCALAPPDATA"] if not f.startswith("Sojourn Access/")]
+        driver = {k: [f for f in fs if f.split("/")[0] in ("NVIDIA", "D3DSCache", "AMD", "Intel")] for k, fs in strays.items()}
+        strays = {k: [f for f in fs if f not in driver[k]] for k, fs in strays.items()}
+        written = [f"%{k}%/{f}" for k, fs in strays.items() for f in fs]
+        check("nothing written by way of %TEMP%, %LOCALAPPDATA% or %APPDATA% but the data folder", not written,
+              "none" + (f" (the GPU driver's cache aside: {sum(map(len, driver.values()))} files)" if any(driver.values()) else "")
+              if not written else "; ".join(written[:10]))
+        profile_after = top_level(profile)
+        new = [p for p in profile_after if p not in profile_before]
+        touched = [p for p, t in profile_after.items() if p in profile_before and t != profile_before[p] and t >= started
+                   and OURS_NAMED.search(Path(p).name)]
+        ours_new = [p for p in new if OURS_NAMED.search(Path(p).name)]
+        check("nothing of ours in the profile's own folders (AppData, Documents, Pictures...)", not ours_new and not touched,
+              "; ".join(ours_new + touched) if ours_new or touched else
+              "nothing new or changed named as ours" + (f"; new there, by other programs: {', '.join(Path(p).name for p in new)[:200]}" if new else ""))
+        check("its data in the data folder", (data / "logs").exists(), ", ".join(sorted({f.split('/')[0] for f in files_under(data)})))
+        heard = out / "heard.wav"
+        check("world audio went to the file, not the speakers", heard.exists() and heard.stat().st_size > 44,
+              f"{heard.stat().st_size / 1e6:.1f} MB" if heard.exists() else "no file")
+
+    if keep:
+        print(f"     (kept: {work})")
+    else:
+        shutil.rmtree(work, ignore_errors=True)
+        check("the check's folder removed", not work.exists(), str(work))
+    total = run.ok + len(run.failed)
+    print(f"\n{zip_path.name}: {run.ok} of {total} passed" + (f"; failed: {', '.join(run.failed)}" if run.failed else ""))
+    return 0 if not run.failed else 1
+
+
+def launch_hidden_on(desktop, args, env=None, cwd=None):
+    """launch_hidden on a desktop of its own."""
+    cmd = [str(QUIREUIA), "launch", "--desktop", desktop] + (["--cwd", str(cwd)] if cwd else []) + ["--"] + [str(a) for a in args]
+    r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=90, creationflags=CREATE_NO_WINDOW)
+    if r.returncode != 0 or not r.stdout.strip().split()[0].isdigit():
+        raise ToolError(f"launch {Path(str(args[0])).name}: {r.stdout.strip()} {r.stderr.strip()}")
+    return int(r.stdout.strip().split()[0])
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "test"
+    if cmd == "package" and "--check" in sys.argv[2:]:
+        cmd = "package-check"
     commands = {"build": build, "run": run_for_person, "visitor": lambda: visitor_command(sys.argv[2:]), "tools": tools,
-                "test": test, "stop": stop, "sweep": sweep, "package": package}
+                "test": test, "stop": stop, "sweep": sweep, "package": package, "package-check": package_check}
     if cmd not in commands:
         print(__doc__)
         sys.exit(2)

@@ -29,7 +29,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Sojourn" />
+    <InternalsVisibleTo Include="SojournVR" />
     <InternalsVisibleTo Include="Sojourn.SessionProbe" />
   </ItemGroup>
 

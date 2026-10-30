@@ -134,7 +134,7 @@ def test():
             print(f"port {API_PORT} is taken (another client's agent API?): the test would talk to it")
             return 1
     radio = audio.serve(background=True)
-    dll = Path(os.environ.get("SOJOURN_DLL") or ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "Sojourn.dll")
+    dll = Path(os.environ.get("SOJOURN_DLL") or ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "SojournVR.dll")
     shutil.rmtree(BASE, ignore_errors=True)
     (BASE / "client").mkdir(parents=True)
     (BASE / "client" / "vr-settings.json").write_text(json.dumps({"screenReader": {"mode": "on"}, "panelHidden": True}))

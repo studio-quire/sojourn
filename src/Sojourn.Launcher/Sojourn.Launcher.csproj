@@ -1,17 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The Sojourn launcher (docs/launcher.md): how a person starts Sojourn. Their Second Life login (saved accounts in
-       the client's own store), where to start, the settings that matter before going in, then the VR client started
-       with the login handed over, and its state while it runs; Sojourn Access a press away. WPF for the glass. Light on
-       purpose: it shares the login store's source file with the session host rather than referencing the session, so
-       it starts at once and builds in seconds. -->
+  <!-- The Sojourn launcher (docs/launcher.md): Sojourn.exe, what a person starts. Their Second Life login (saved
+       accounts in the client's own store), where to start, the settings that matter before going in (the assistant's
+       provider and key among them), then the VR client (SojournVR.exe) started with the login handed over, its state
+       while it runs, and the grid's terms and MFA code answered here at the desk. WPF for the glass. Light on purpose: it
+       shares a few of the session host's source files rather than referencing the session, so it starts at once and
+       builds in seconds. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>SojournLauncher</AssemblyName>
+    <AssemblyName>Sojourn</AssemblyName>
     <RootNamespace>Sojourn.Launcher</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <PlatformTarget>x64</PlatformTarget>
@@ -20,6 +21,9 @@
   <ItemGroup>
     <!-- saved accounts (DPAPI), grids, starts and the handover to the client: the session host's own file -->
     <Compile Include="..\Sojourn.Session\Login\LoginStore.cs" Link="Shared\LoginStore.cs" />
+    <!-- the graphics presets the headset's menu offers too, and the assistant's keys (DPAPI) -->
+    <Compile Include="..\Sojourn.Session\Control\GraphicsPresets.cs" Link="Shared\GraphicsPresets.cs" />
+    <Compile Include="..\Sojourn.Session\Assistant\ProviderKeys.cs" Link="Shared\ProviderKeys.cs" />
     <!-- the wordmark: Archivo (OFL-1.1), as the panel ships it -->
     <Resource Include="..\Sojourn.Session\Assets\Fonts\Archivo-Light.ttf" Link="Fonts\Archivo-Light.ttf" />
     <Resource Include="..\Sojourn.Session\Assets\Fonts\Archivo-Regular.ttf" Link="Fonts\Archivo-Regular.ttf" />

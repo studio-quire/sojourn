@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOTNET = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
 PROJECT = ROOT / "src" / "Sojourn.Client" / "Sojourn.Client.csproj"
-DLL = ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "Sojourn.dll"
+DLL = ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "SojournVR.dll"
 XR_LAYERS = ROOT / "local" / "openxr-sdk" / "x64" / "bin" / "api_layers"
 VK_LAYER = ROOT / "local" / "vulkan-validation" / "layer"
 XR_SIM = ROOT / "local" / "xrsim"

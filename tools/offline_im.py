@@ -99,7 +99,7 @@ def client(first, last, port, base, minutes, dll):
     sys.path.insert(0, str(ROOT / "tools"))
     import grid
     log = open(ROOT / "local" / "perf" / f"offline-{first}.log", "w", encoding="utf-8")
-    return subprocess.Popen([str(DOTNET), str(Path(dll) / "Sojourn.dll"), "--grid", grid.URL, "--first", first, "--last", last,
+    return subprocess.Popen([str(DOTNET), str(Path(dll) / "SojournVR.dll"), "--grid", grid.URL, "--first", first, "--last", last,
                              "--password", "sojourn-local", "--base-dir", str(ROOT / "local" / "perf" / base), "--bridge-port", str(port),
                              "--no-assistant", "--no-voice", "--no-sounds", "--window", "320x180", "--fps", "5", "--minutes", str(minutes)],
                             cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, creationflags=0x00004000)

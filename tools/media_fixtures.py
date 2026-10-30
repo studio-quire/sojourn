@@ -420,7 +420,7 @@ def test(names):
     heard = PILOT / "heard.wav"
     env = dict(os.environ, SOJOURN_VOICE_OUT_FILE=str(heard), SOJOURN_TEST_INPUT="1")
     dotnet = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
-    client = Path(os.environ.get("SOJOURN_CLIENT_DLL") or ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "Sojourn.dll")   # SOJOURN_CLIENT_DLL: built elsewhere, not rebuilt
+    client = Path(os.environ.get("SOJOURN_CLIENT_DLL") or ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "SojournVR.dll")   # SOJOURN_CLIENT_DLL: built elsewhere, not rebuilt
     log = open(PILOT / "console.txt", "w", encoding="utf-8")
     W, H = 960, 540
     proc = subprocess.Popen([str(dotnet), str(client), "--window", f"{W}x{H}", "--fps", "30", "--no-assistant", "--no-voice",
@@ -826,7 +826,7 @@ def start_client(base, port, vr, minutes, env_extra=None, args_extra=(), stand=N
     else:
         args = ["--window", "960x540", "--fps", "30", *args]
     dotnet = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
-    client = Path(os.environ.get("SOJOURN_CLIENT_DLL") or ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "Sojourn.dll")   # SOJOURN_CLIENT_DLL: built elsewhere, not rebuilt
+    client = Path(os.environ.get("SOJOURN_CLIENT_DLL") or ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "SojournVR.dll")   # SOJOURN_CLIENT_DLL: built elsewhere, not rebuilt
     log = open(base / "console.txt", "w", encoding="utf-8")
     return subprocess.Popen([str(dotnet), str(client), *args], cwd=ROOT, env=env, stdin=subprocess.DEVNULL, stdout=log,
                             stderr=subprocess.STDOUT, text=True, creationflags=0x00004000)

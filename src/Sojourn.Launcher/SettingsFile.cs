@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Sojourn.Session.Control;
 
 namespace Sojourn.Launcher;
 
@@ -10,8 +11,8 @@ namespace Sojourn.Launcher;
 /// it was. The client reads the file when it starts; while it runs the launcher leaves the file alone (the client saves
 /// it whole from its menu).
 ///
-/// Graphics presets are the launcher's own idea: a few of the view's settings set together. A file whose values match
-/// none of them shows as "yours" (changed in the headset's menu) and is left as it is until a preset is picked.
+/// Graphics presets (GraphicsPresets, shared with the headset's menu): a few of the view's settings set together. A file
+/// whose values match none of them shows as "yours" and is left as it is until a preset is picked.
 /// </summary>
 sealed class SettingsFile
 {
@@ -44,58 +45,17 @@ sealed class SettingsFile
         set => Change(o => o["seated"] = value);
     }
 
-    // ---- graphics ----
+    // ---- graphics: the presets (Sojourn.Session's GraphicsPresets, linked; the headset's menu offers the same) ----
 
-    public static readonly string[] PresetNames = { "light", "balanced", "full" };
-
-    /// <summary>VrSettings' own defaults for the keys the presets set (a key missing from the file reads as these).</summary>
-    static readonly Dictionary<string, JsonNode?> Defaults = new()
-    {
-        ["drawDistance"] = 128, ["shadows"] = true, ["shadowCap"] = null, ["reflections"] = true, ["mirrors"] = true,
-        ["mirrorResolution"] = 0.5, ["detail"] = 1.75, ["farShadows"] = 1024, ["fullAvatars"] = 16, ["resolution"] = 1,
-    };
-
-    /// <summary>light: for a modest GPU or a busy place (the eyes' size following the GPU); balanced: what the client
-    /// was tuned at on this PC's RTX 5070 (the headset's 1536 shadow cap); full: further and sharper, for a faster card.</summary>
-    static readonly Dictionary<string, Dictionary<string, JsonNode?>> Presets = new()
-    {
-        ["light"] = new()
-        {
-            ["drawDistance"] = 64, ["shadows"] = true, ["shadowCap"] = 1024, ["reflections"] = false, ["mirrors"] = false,
-            ["mirrorResolution"] = 0.5, ["detail"] = 1, ["farShadows"] = 0, ["fullAvatars"] = 8, ["resolution"] = null,
-        },
-        ["balanced"] = new()
-        {
-            ["drawDistance"] = 128, ["shadows"] = true, ["shadowCap"] = 1536, ["reflections"] = true, ["mirrors"] = true,
-            ["mirrorResolution"] = 0.5, ["detail"] = 1.75, ["farShadows"] = 1024, ["fullAvatars"] = 16, ["resolution"] = 1,
-        },
-        ["full"] = new()
-        {
-            ["drawDistance"] = 256, ["shadows"] = true, ["shadowCap"] = 3072, ["reflections"] = true, ["mirrors"] = true,
-            ["mirrorResolution"] = 1, ["detail"] = 2.5, ["farShadows"] = 2048, ["fullAvatars"] = 24, ["resolution"] = 1,
-        },
-    };
-
-    static bool Same(JsonNode? a, JsonNode? b)
-    {
-        if (a is null || b is null) return a is null && b is null;
-        if (a is JsonValue va && b is JsonValue vb && va.TryGetValue(out double da) && vb.TryGetValue(out double db)) return Math.Abs(da - db) < 1e-4;
-        return JsonNode.DeepEquals(a, b);
-    }
+    public static string[] PresetNames => GraphicsPresets.Names;
 
     /// <summary>The preset the file matches, or "yours".</summary>
     public string Graphics
     {
-        get
-        {
-            var o = Read();
-            foreach (var (name, keys) in Presets)
-                if (keys.All(k => Same(o.TryGetPropertyValue(k.Key, out var v) ? v : Defaults[k.Key], k.Value))) return name;
-            return "yours";
-        }
+        get => GraphicsPresets.Match(Read());
         set
         {
-            if (!Presets.TryGetValue(value, out var keys)) return;
+            if (!GraphicsPresets.Values.TryGetValue(value, out var keys)) return;
             Change(o => { foreach (var (k, v) in keys) o[k] = v?.DeepClone(); });
         }
     }
@@ -110,9 +70,9 @@ sealed class SettingsFile
     // ---- the assistant ----
 
     /// <summary>Whose models the assistant runs on: VrSettings.AssistantProvider and its values (assistant/provider.py):
-    /// the Claude account signed in on this PC, the person's Anthropic key, or their OpenRouter key. The launcher only
-    /// offers the choice; the keys are pasted in the client's menu or Access (Sojourn.Session's ProviderKeys) and never
-    /// pass through here. Null: not in the file, the client's default (claude).</summary>
+    /// the Claude account signed in on this PC, the person's Anthropic key, or their OpenRouter key; chosen here only
+    /// (the headset's menu shows the model choices for it). The keys go to ProviderKeys, never into this file.
+    /// Null: not in the file, the client's default (claude).</summary>
     public const string ProviderKey = "assistantProvider";
     public static readonly (string Value, string Label)[] Providers =
     {
@@ -121,7 +81,38 @@ sealed class SettingsFile
 
     public string? Provider
     {
-        get => Read()[ProviderKey] is JsonValue v && v.TryGetValue(out string? s) ? s : null;
+        get => Str(ProviderKey);
         set => Change(o => o[ProviderKey] = value);
     }
+
+    /// <summary>With OpenRouter, the model: "claude" (Anthropic's, the usual three) or any OpenRouter id.</summary>
+    public string OpenRouterModel
+    {
+        get => Str("openRouterModel") is { Length: > 0 } m ? m : "claude";
+        set => Change(o => o["openRouterModel"] = value);
+    }
+
+    /// <summary>The menu's quick list (VrSettings.OpenRouterModels, kept the same): OpenRouter's rolling "latest" ids.</summary>
+    public static readonly (string Id, string Name)[] OpenRouterModels =
+    {
+        ("claude", "claude"), ("~google/gemini-pro-latest", "gemini pro"), ("~google/gemini-flash-latest", "gemini flash"),
+        ("~openai/gpt-sol-latest", "gpt sol"), ("~x-ai/grok-latest", "grok"), ("~moonshotai/kimi-latest", "kimi"),
+    };
+
+    /// <summary>With OpenRouter, only providers that don't collect data (on unless the file says otherwise).</summary>
+    public bool OpenRouterDenyData
+    {
+        get => Bool("openRouterDenyDataCollection") ?? true;
+        set => Change(o => o["openRouterDenyDataCollection"] = value);
+    }
+
+    /// <summary>The assistant under Claude Code's auto mode (on unless the file says otherwise).</summary>
+    public bool AutoMode
+    {
+        get => Bool("assistantAutoMode") ?? true;
+        set => Change(o => o["assistantAutoMode"] = value);
+    }
+
+    string? Str(string key) => Read()[key] is JsonValue v && v.TryGetValue(out string? s) ? s : null;
+    bool? Bool(string key) => Read()[key] is JsonValue v && v.TryGetValue(out bool b) ? b : null;
 }

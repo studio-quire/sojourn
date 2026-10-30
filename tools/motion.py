@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import grid  # noqa: E402
 
 DOTNET = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
-DLL = Path(os.environ.get("SOJOURN_DLL", ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "Sojourn.dll"))
+DLL = Path(os.environ.get("SOJOURN_DLL", ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "SojournVR.dll"))
 BASE = ROOT / "local" / "motion"
 PORT = 9781
 API = f"http://127.0.0.1:{PORT}"
