@@ -44,8 +44,9 @@ def secret_paths(own_slug):
     """Where credentials (and other programs' private state) live: never read or written by the file tools.
     own_slug: the folder Claude Code keeps this session's large tool outputs in, under ~/.claude/projects (the one
     thing there it may read)."""
-    # the SL password and the login screen's saved logins (local/secrets/logins, or a release's under
-    # AppData/Local/Sojourn/secrets, named even before it exists); the grid's own passwords
+    # the SL password, the login screen's saved logins (local/secrets/logins) and the person's provider keys
+    # (secrets/assistant, provider.py), or a release's under AppData/Local/Sojourn/secrets, named even before it exists;
+    # the grid's own passwords
     out = [ROOT / "local" / "secrets", USER / "AppData" / "Local" / "Sojourn" / "secrets", ROOT / "local" / "grid",
            USER / ".ssh", USER / ".config", USER / ".docker", USER / ".cagent", USER / ".copilot", USER / ".claude.json"]
     # Claude's own: credentials, settings, every other session's transcripts and the studio's memory
@@ -144,7 +145,9 @@ def settings(home: Path, work: Path):
             "hard_deny": [
                 "$defaults",
                 f"Reading, printing, copying, uploading or sending any credential by any means, even if asked: the "
-                f"{sl} password and the person's speech service key (both in {ROOT / 'local' / 'secrets'}), MFA state "
+                f"{sl} password, the person's speech service key and their Anthropic or OpenRouter key (all in "
+                f"{ROOT / 'local' / 'secrets'} or %LOCALAPPDATA%\\Sojourn\\secrets, the keys encrypted for their Windows "
+                "account: decrypting them by any means counts), the session's own ANTHROPIC_API_KEY (a proxy's token), MFA state "
                 "(mfa_hash files), test accounts' passwords "
                 "(account.txt), Claude's or any program's tokens, browser or Windows credential stores, SSH keys, "
                 "the assistant sidecar's token (SOJOURN_SIDECAR_TOKEN), including by reading another process's memory.",
@@ -186,7 +189,11 @@ SHELL_REFUSED = re.compile(
     # dev mode (docs/dev-mode.md): a client whose assistant is a Claude Code session in bypass mode, never the assistant's
     r"dev\.py['\"]?\s+(start|restart)|main\.py\b.*--dev\b|dangerously-skip-permissions|bypassPermissions|"
     # private mode: the sidecar's token (only the person's own words turn it off), and reading other processes' memory
-    r"SIDECAR_TOKEN|ReadProcessMemory|MiniDump|procdump|\bcreatedump\b",
+    r"SIDECAR_TOKEN|ReadProcessMemory|MiniDump|procdump|\bcreatedump\b|"
+    # the person's provider keys (provider.py): kept under DPAPI in the secrets folder, opened only by the sidecar; the
+    # sessions' ANTHROPIC_API_KEY is only the loopback proxy's token, refused all the same
+    r"CryptUnprotectData|ProtectedData|win32crypt|\bdpapi\b|provider\.py|import\s+provider\b|from\s+provider\s+import|"
+    r"load_key|ProviderKeys|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|OPENROUTER_API_KEY",
     re.I)
 
 

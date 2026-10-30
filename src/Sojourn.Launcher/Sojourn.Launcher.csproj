@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Sojourn launcher (docs/launcher.md): how a person starts Sojourn. Their Second Life login (saved accounts in
+       the client's own store), where to start, the settings that matter before going in, then the VR client started
+       with the login handed over, and its state while it runs; Sojourn Access a press away. WPF for the glass. Light on
+       purpose: it shares the login store's source file with the session host rather than referencing the session, so
+       it starts at once and builds in seconds. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>SojournLauncher</AssemblyName>
+    <RootNamespace>Sojourn.Launcher</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- saved accounts (DPAPI), grids, starts and the handover to the client: the session host's own file -->
+    <Compile Include="..\Sojourn.Session\Login\LoginStore.cs" Link="Shared\LoginStore.cs" />
+    <!-- the wordmark: Archivo (OFL-1.1), as the panel ships it -->
+    <Resource Include="..\Sojourn.Session\Assets\Fonts\Archivo-Light.ttf" Link="Fonts\Archivo-Light.ttf" />
+    <Resource Include="..\Sojourn.Session\Assets\Fonts\Archivo-Regular.ttf" Link="Fonts\Archivo-Regular.ttf" />
+  </ItemGroup>
+
+</Project>

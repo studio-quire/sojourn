@@ -24,9 +24,9 @@ public sealed class AssistantApi : LeapApi
     public AssistantApi(AgentSession s, AssistantHost host) : base(s)
     {
         _host = host;
-        Op("hello", "{mic?, notice?} -> {vr, hint, mode, effort, prefs, dev}: the sidecar is up (send every few seconds)", a =>
+        Op("hello", "{mic?, notice?, provider?} -> {vr, hint, mode, effort, prefs, dev}: the sidecar is up (send every few seconds)", a =>
         {
-            _host.SidecarHello(a.Str("mic"), a.Has("notice") ? a.Str("notice") : null);
+            _host.SidecarHello(a.Str("mic"), a.Has("notice") ? a.Str("notice") : null, a["provider"] as JsonObject is { } p ? (JsonObject)p.DeepClone() : null);
             return new JsonObject
             {
                 ["vr"] = _host.InHeadset, ["hint"] = _host.Hint, ["mode"] = AssistantHost.ModelName(_host.Model),

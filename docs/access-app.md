@@ -94,7 +94,7 @@ account after a failed one restarts the app with the form filled in (each accoun
 | Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touch", nearest first, within 30 m (Show: your HUDs instead); Tab: the selected one's parts, then a part's faces (Parts and faces, below) |
 | Alt+8 | Notices | what waits for an answer, newest first; the selected one's text, keys and reply box |
 | Alt+9 | Assistant | a typed request ("Ask the assistant"), its replies, its choices as buttons |
-| Alt+0 | Settings | the ones that matter here (read-out and its kinds, mutes, timestamps, arrivals, earcons and volumes, walk mode's cues); Enter or Space moves one to its next value, Shift+Enter or Shift+Space to the one before (a sound's row plays it) |
+| Alt+0 | Settings | the ones that matter here (read-out and its kinds, mutes, timestamps, arrivals, earcons and volumes, walk mode's cues); Enter or Space moves one to its next value, Shift+Enter or Shift+Space to the one before (a sound's row plays it). First, the assistant's provider (Claude account, Anthropic key, OpenRouter key) and whether it works; its key (Enter: a password box, Control+V or typed; Delete twice forgets it); OpenRouter's model (Control+Enter types any id). `docs/assistant.md` > Switching it on |
 
 **Keys** (F1 says them):
 - In any input: Enter says (or sends), Shift+Enter whispers, Ctrl+Enter shouts (nearby only); Ctrl+Up/Down bring back

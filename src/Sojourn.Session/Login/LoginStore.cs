@@ -59,6 +59,39 @@ public static class Grids
     }
 }
 
+/// <summary>Where a login starts, as the login screen and the launcher take it: last, home, or a place typed as a
+/// region name or SLurl (secondlife://, maps.secondlife.com, hop://, Region/x/y/z) made "uri:Region&amp;x&amp;y&amp;z".</summary>
+public static class Starts
+{
+    /// <summary>The start for a choice (0 last, 1 home, 2 a place) and the place's text; null: no place given.</summary>
+    public static string? Of(int start, string place)
+    {
+        if (start == 0) return "last";
+        if (start == 1) return "home";
+        var t = Uri.UnescapeDataString(place.Trim());
+        if (t.Length == 0) return null;
+        bool hop = t.StartsWith("hop://", StringComparison.OrdinalIgnoreCase);
+        foreach (var prefix in new[] { "secondlife:///app/teleport/", "secondlife://", "https://maps.secondlife.com/secondlife/", "http://maps.secondlife.com/secondlife/",
+                     "https://slurl.com/secondlife/", "http://slurl.com/secondlife/", "hop://" })
+            if (t.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { t = t[prefix.Length..]; break; }
+        var p = t.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (hop && p.Length > 1) p = p[1..];   // hop://grid:port/Region/x/y/z
+        if (p.Length == 0) return null;
+        return $"uri:{p[0]}&{N(p, 1, "128")}&{N(p, 2, "128")}&{N(p, 3, "0")}";
+
+        static string N(string[] p, int i, string d) => i < p.Length && float.TryParse(p[i], System.Globalization.CultureInfo.InvariantCulture, out var f)
+            ? ((int)MathF.Round(f)).ToString(System.Globalization.CultureInfo.InvariantCulture) : d;
+    }
+
+    /// <summary>A start as a person reads it back into the place field: the region and position, or "".</summary>
+    public static string PlaceText(string start)
+    {
+        if (!start.StartsWith("uri:", StringComparison.Ordinal)) return "";
+        var p = start[4..].Split('&');
+        return p.Length >= 4 && p[1] == "128" && p[2] == "128" && p[3] == "0" ? p[0] : string.Join('/', p);
+    }
+}
+
 /// <summary>A saved account: who, on which grid, where to start, and (only if the person asked) the password as the
 /// viewers keep it: "$1$" and the MD5 of it, never plain, protected by Windows for this user (DPAPI).</summary>
 public sealed record SavedAccount
@@ -187,23 +220,31 @@ public sealed class LoginStore
     /// <summary>The kept "$1$..." for an account, or null.</summary>
     public static string? HashOf(SavedAccount a) => a.Secret is { } s ? Unprotect(s) : null;
 
-    // ---- across a restart after a lost GPU: the account and its hash for the next run, for seconds ----
+    // ---- across a restart after a lost GPU, or from the launcher: the account and its hash for the next run, for seconds ----
 
-    /// <summary>The next run (started at once) logs this account in again without asking: its hash goes to a file
-    /// protected as a remembered password is, which the next run reads and deletes; older than two minutes it's
-    /// ignored and deleted.</summary>
-    public void HandOver(SavedAccount account, string hash)
+    /// <summary>The next run (started at once) logs this account in without asking: its hash goes to a file protected
+    /// as a remembered password is, which the next run reads and deletes; older than two minutes it's ignored and
+    /// deleted. <paramref name="remember"/>: whether that run keeps the password after it works (null: as the account
+    /// already is). The launcher (Sojourn.Launcher) hands its login to the client this way.</summary>
+    public void HandOver(SavedAccount account, string hash, bool? remember = null)
     {
         try
         {
             Directory.CreateDirectory(Dir);
             var o = new JsonObject { ["account"] = JsonSerializer.SerializeToNode(account with { Secret = null }, Json), ["hash"] = hash, ["at"] = DateTime.UtcNow.ToString("o") };
+            if (remember is { } r) o["remember"] = r;
             File.WriteAllText(ResumePath, Protect(o.ToJsonString()));
         }
         catch (Exception) { }
     }
 
-    public (SavedAccount Account, string Hash)? TakeOver()
+    /// <summary>A handed-over login nobody took (the client never started): gone.</summary>
+    public void DropHandOver()
+    {
+        try { File.Delete(ResumePath); } catch (Exception) { }
+    }
+
+    public (SavedAccount Account, string Hash, bool? Remember)? TakeOver()
     {
         try
         {
@@ -215,7 +256,8 @@ public sealed class LoginStore
                 || DateTime.UtcNow - at > TimeSpan.FromMinutes(2)) return null;
             var acct = o["account"].Deserialize<SavedAccount>(Json);
             var hash = o["hash"]?.GetValue<string>();
-            return acct != null && hash != null ? (acct, hash) : null;
+            bool? remember = o["remember"]?.GetValue<bool>();
+            return acct != null && hash != null ? (acct, hash, remember) : null;
         }
         catch (Exception) { return null; }
     }

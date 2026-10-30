@@ -115,7 +115,21 @@ public sealed class SettingsMenu : ISettingsMenu
         assistant.Confirmations.ConfirmTouches = () => _s.ConfirmTouches;
         _panel.Look = settings.PanelLook = PanelLook.Restore(settings.PanelLook);
         assistant.ChangeLook = look => { _s.PanelLook = look; _panel.Look = look; Save(); Interlocked.Increment(ref _version); };
+        assistant.ProviderStatusChanged = () => Interlocked.Increment(ref _version);
     }
+
+    /// <summary>Whose models the assistant runs on (the person's own choice, never the agent API's): saved, and the
+    /// sidecar checks it and starts its sessions again on it.</summary>
+    void SetProvider(string kind, string? openRouterModel = null)
+    {
+        _s.AssistantProvider = kind;
+        if (openRouterModel != null) _s.OpenRouterModel = openRouterModel;
+        _assistant.UseKey(kind);   // (saves, redraws and tells the sidecar; a kind without a key is said so by it)
+        _say($"assistant provider: {kind}{(kind == "openrouter" ? " " + _s.OpenRouterModel : "")}");
+    }
+
+    string? _keySaid;          // what the last "paste key" press found, shown on the key row
+    bool _forgetKeyArmed, _forgetKeyWasArmed;
 
     /// <summary>The assistant's model, from the menu, a key (F8 cycles), the console or the agent API: saved, and the
     /// sidecar switches at once.</summary>
@@ -143,7 +157,7 @@ public sealed class SettingsMenu : ISettingsMenu
 
     static AssistantModel NextModel(AssistantModel m) => (AssistantModel)(((int)m + 1) % Enum.GetValues<AssistantModel>().Length);
 
-    public void Toggle() { Open = !Open; _down = null; _forgetArmed = false; _restOn = Nowhere; _tip = null; Used(); Interlocked.Increment(ref _version); }
+    public void Toggle() { Open = !Open; _down = null; _forgetArmed = _forgetKeyArmed = false; _keySaid = null; _restOn = Nowhere; _tip = null; Used(); Interlocked.Increment(ref _version); }
 
     long _usedAt = Environment.TickCount64;
     /// <summary>The person is using it (the pointer on it, a press).</summary>
@@ -552,6 +566,45 @@ public sealed class SettingsMenu : ISettingsMenu
         || api.Text("radar_age_alert") is not (null or "0");
 
     static readonly string[] ModelNames = { "haiku", "sonnet", "opus" };
+    static readonly string[] ProviderNames = { "claude", "anthropic", "openrouter" };
+
+    /// <summary>
+    /// Whose models answer (docs/assistant.md > Switching it on): the provider, its state from the sidecar under it,
+    /// the key (paste: the PC's clipboard, since typing a key in the headset is no good; the key goes straight to the
+    /// keys folder, encrypted, and off the clipboard), forgetting it (twice), and OpenRouter's model.
+    /// </summary>
+    List<(MenuRow Row, Action<int> Act)> ProviderRows()
+    {
+        var kind = _s.AssistantProvider;
+        var st = _assistant.ProviderStatus;
+        string? state = st?["kind"]?.GetValue<string>() == kind ? st?["short"]?.GetValue<string>() : _assistant.SidecarAlive ? "checking" : null;
+        var rows = new List<(MenuRow, Action<int>)>
+        {
+            (MenuRow.Choice("provider", ProviderNames, Math.Max(0, Array.IndexOf(VrSettings.Providers, kind))) with { Note = state },
+                i => SetProvider(VrSettings.Providers[i])),
+        };
+        if (kind == "claude") return rows;
+        bool has = ProviderKeys.Has(kind);
+        rows.Add((new MenuRow("key", has ? "paste new" : "paste", false, Note: _keySaid ?? (has ? null : $"copy your {ProviderKeys.Name(kind)} key, then paste")),
+            _ => _keySaid = _assistant.PasteKey()));
+        if (has)
+            rows.Add((new MenuRow("forget key", _forgetKeyArmed ? "sure?" : "forget", false), _ =>
+            {
+                if (!_forgetKeyWasArmed) { _forgetKeyArmed = true; return; }
+                ProviderKeys.Forget(kind);
+                _keySaid = $"{ProviderKeys.Name(kind)} key forgotten";
+                _assistant.UseKey(kind);
+            }));
+        if (kind == "openrouter")
+        {
+            var models = VrSettings.OpenRouterModels.ToList();
+            int at = models.FindIndex(m => m.Id == _s.OpenRouterModel);
+            if (at < 0) { models.Add((_s.OpenRouterModel, _s.OpenRouterModel)); at = models.Count - 1; }   // one set by name
+            rows.Add((new MenuRow("openrouter model", models[at].Name, true),
+                d => SetProvider("openrouter", models[(at + (d < 0 ? -1 : 1) + models.Count) % models.Count].Id)));
+        }
+        return rows;
+    }
 
     List<(MenuRow Row, Action<int> Act)> AssistantRows()
     {
@@ -571,6 +624,10 @@ public sealed class SettingsMenu : ISettingsMenu
         var levels = AssistantEfforts.Levels;
         rows.InsertRange(2, AssistantEfforts.InMode(_s.AssistantModel).Select(m => ((MenuRow, Action<int>))(
             MenuRow.Choice($"{m} effort", levels, Array.IndexOf(levels, _s.AssistantEffort.Get(m))), i => SetAssistantEffort(m, levels[i]))));
+        // another maker's model through OpenRouter takes everything itself: Claude's model and effort rows don't apply
+        if (_s.AssistantProvider == "openrouter" && _s.OpenRouterModel != "claude")
+            rows.RemoveAll(r => r.Item1.Label == "model" || r.Item1.Label.EndsWith(" effort"));
+        rows.InsertRange(0, ProviderRows());
         // soniox (the cloud) only once the person has put its key in place
         var hearings = VrSettings.SonioxKey() || _s.Hearing == "soniox" ? VrSettings.Hearings : VrSettings.Hearings[..2];
         rows.Add((MenuRow.Choice("hearing", hearings, Math.Max(0, Array.IndexOf(hearings, _s.Hearing))),
@@ -853,7 +910,7 @@ public sealed class SettingsMenu : ISettingsMenu
             _page = _group != null && k.Index == _section ? _groupFrom : 0;
             _section = k.Index;
             _group = null;
-            _forgetArmed = false;
+            _forgetArmed = _forgetKeyArmed = false;
             Interlocked.Increment(ref _version);
             return;
         }
@@ -873,7 +930,8 @@ public sealed class SettingsMenu : ISettingsMenu
             return;
         }
         _forgetWasArmed = _forgetArmed;
-        _forgetArmed = false;   // any press but the forget row's second disarms it
+        _forgetKeyWasArmed = _forgetKeyArmed;
+        _forgetArmed = _forgetKeyArmed = false;   // any press but a forget row's second disarms it
         rows[row].Act(part >= 3 ? part - 3 : part == 1 ? -1 : part == 2 ? 1 : 0);
         Interlocked.Increment(ref _version);
         Save();

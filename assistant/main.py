@@ -22,6 +22,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from api import Api, ApiError  # noqa: E402
 
 os.environ.pop("CLAUDE_CODE_PLUGIN_DIRS", None)  # the user's own Claude Code mods stay out of the assistant
+# whose models answer is the person's setting (provider.py), not whatever this PC's environment happens to say
+for _k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"):
+    os.environ.pop(_k, None)
 # the client's proof that a call is the person's own dictated words through this process: out of the environment before
 # any Claude session or subprocess starts, so no model's shell can print it
 SIDECAR_TOKEN = os.environ.pop("SOJOURN_SIDECAR_TOKEN", "")
@@ -97,6 +100,29 @@ async def main():
         await asyncio.to_thread(ears.set_hearing, brain.prefs.get("hearing"))
     except ApiError:
         pass
+    if kit:   # the person's provider, checked before any session starts (none start without one that works)
+        brain.provider.app = brain.app
+        await asyncio.to_thread(brain.provider.configure, brain.prefs)
+    providing = False
+
+    def provider_pref(prefs):
+        """The provider, its model or its key changed (a hello or a prefs event): check it, sessions start again on it."""
+        nonlocal providing
+        if kit and not providing and isinstance(prefs, dict) and brain.provider.differs(prefs):
+            providing = True
+
+            async def change():
+                nonlocal providing
+                try:
+                    await brain.set_provider(prefs)
+                finally:
+                    providing = False
+            asyncio.create_task(change())
+
+    def hello_args():
+        """The mic, and what the panel should say once when something's missing: no mic, or no provider that works."""
+        notice = ears.notice or (None if not kit or brain.provider.ready else brain.provider.how())
+        return {"mic": ears.mic_name, "notice": notice, **({"provider": brain.provider.status()} if kit else {})}
     if kit:
         kit.words = words   # the context line's names (brain.context)
     from private import Private
@@ -110,7 +136,7 @@ async def main():
         nonlocal gone_since
         while True:
             try:
-                r = await asyncio.to_thread(api.cmd, "SojournAssistant", "hello", 5, mic=ears.mic_name, notice=ears.notice)
+                r = await asyncio.to_thread(api.cmd, "SojournAssistant", "hello", 5, **hello_args())
                 if a.dev and r.get("dev") is not True:
                     log("dev mode: the client isn't in dev mode; exiting")
                     os._exit(1)
@@ -121,6 +147,7 @@ async def main():
                 brain.set_efforts(r.get("effort"))
                 brain.apply_prefs(r.get("prefs"))
                 hearing_pref((r.get("prefs") or {}).get("hearing"))
+                provider_pref(r.get("prefs"))
                 gone_since = None
                 await private.sync()   # a missed or forged `private` event can't leave the sessions wrong for long
             except ApiError:
@@ -227,6 +254,7 @@ async def main():
                 brain.apply_prefs({k: d.get(k) for k in ("name", "character", "speak", "voice", "memory")})
                 words.memory = d.get("memory") is not False
                 hearing_pref(d.get("hearing"))
+                provider_pref(d)
             elif what == "memory_cleared":
                 asyncio.create_task(brain.forget_all())
             elif what == "shown_done":

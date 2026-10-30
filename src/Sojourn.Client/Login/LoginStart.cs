@@ -8,8 +8,8 @@ namespace Sojourn.Client.Login;
 /// or a login handed over after a lost GPU), and the choice turned into the session's config.</summary>
 public static class LoginStart
 {
-    /// <summary>The sheet for a --login run; resumed: the choice handed over by the run that lost the GPU, which
-    /// logs in without the form.</summary>
+    /// <summary>The sheet for a --login run; resumed: the choice handed over by the run that lost the GPU, or by the
+    /// launcher (Sojourn.Launcher), which logs in without the form.</summary>
     public static LoginSheet Prepare(ClientOptions opt, HostConfig host, Action<string> log, out LoginChoice? resumed)
     {
         var settings = VrSettings.Load(VrSettings.PathIn(opt.BaseDir));
@@ -20,10 +20,10 @@ public static class LoginStart
         resumed = null;
         if (opt.LoginResume && store.TakeOver() is { } back)
         {
-            bool kept = store.Accounts().Any(a => a.Id == back.Account.Id && a.Remembered);
+            bool kept = back.Remember ?? store.Accounts().Any(a => a.Id == back.Account.Id && a.Remembered);
             resumed = new LoginChoice(back.Account, back.Hash, kept) { StartNow = opt.StartGiven ? opt.Start : null };
             sheet.Chosen = resumed;
-            log("login: the same account again, after the GPU was lost");
+            log(back.Remember == null ? "login: the same account again, after the GPU was lost" : "login: the account the launcher handed over");
         }
         else if (LoginRestart.Decode(opt.LoginAccount) is { } shown)
             sheet.Preselect(shown, opt.StartGiven ? opt.Start : null);

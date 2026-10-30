@@ -42,6 +42,7 @@ import harness
 import home as homemod
 import jobs as jobmod
 import privatetools
+import provider as providermod
 import tools as toolmod
 from api import ApiError
 
@@ -52,6 +53,16 @@ IDLE_RESET = 15 * 60
 CONTEXT_WINDOW = 1_000_000
 HANDOFF_AT = int(os.environ.get("SOJOURN_HANDOFF_AT") or 800_000)
 HARD_AT = max(HANDOFF_AT, int(os.environ.get("SOJOURN_HANDOFF_HARD_AT") or 900_000))
+
+
+def handoff_at():
+    """The handoff line for the model answering now: HANDOFF_AT, or 80% of a smaller window (another maker's model
+    through OpenRouter)."""
+    return min(HANDOFF_AT, int(providermod.current.window * 0.8))
+
+
+def hard_at():
+    return max(handoff_at(), min(HARD_AT, int(providermod.current.window * 0.9)))
 
 
 def model_env(name, default):
@@ -201,6 +212,8 @@ class Session:
         prompt_file.parent.mkdir(parents=True, exist_ok=True)
         prompt_file.write_text(self.system or "", encoding="utf-8")
         effort = self.effort
+        prov = providermod.current
+        self.label = prov.label(self.model) or label(self.model)
         opts = ClaudeAgentOptions(
             system_prompt={"type": "file", "path": str(prompt_file)},
             model=self.model,
@@ -217,8 +230,9 @@ class Session:
             setting_sources=[],                # no settings files, hooks or CLAUDE.md but harness.py's
             permission_mode="auto",
             cwd=str(incognito_dir()) if sees else workdir(),
-            cli_path=os.environ.get("SOJOURN_CLAUDE") or "claude",
-            env=harness.env(),
+            cli_path=providermod.cli(),
+            # the person's provider (provider.py): for a key, the loopback proxy and its token, never the key
+            env={**harness.env(), **prov.env()},
             extra_args={"no-session-persistence": None, "effort": effort},
             include_partial_messages=True,     # for the time to the model's first token
             # a picture of the view or a big file read comes back as one message; the SDK's 1 MB default killed the
@@ -232,7 +246,8 @@ class Session:
         self.client, self.synced, self.memory_seen = client, 0, None
         self.context, self.handoff_asked, self.up_effort = 0, False, effort
         self.used = time.time()
-        self.log(f"{self.name} session up ({self.model}, {effort}) in {time.time() - t:.1f}s")
+        self.log(f"{self.name} session up ({self.model}{f' as {self.label}' if prov.single else ''}, {effort}, "
+                 f"{prov.kind}) in {time.time() - t:.1f}s")
 
     async def close(self):
         async with self.lock:
@@ -338,7 +353,7 @@ class Session:
     def handoff_due(self, mid_turn):
         """The instruction to hand off, once, when its context has grown past the line (mid-turn: after a tool call,
         where a job hands off and a request session only past HARD_AT), else None."""
-        line = HANDOFF_AT if (mid_turn is False or self.turns is None) else HARD_AT
+        line = handoff_at() if (mid_turn is False or self.turns is None) else hard_at()
         if self.handoff_asked or self.context < line:
             return None
         self.handoff_asked = True
@@ -359,6 +374,8 @@ class Brain:
         self.api, self.kit, self.vr, self.log = api, kit, vr, log
         self.app = None       # which app the person uses: None the VR client, "access" Sojourn Access (the first hello says)
         self.speaker = speaker
+        self.provider = providermod.current   # whose models answer (the person's provider: provider.py)
+        self.provider.log = log
         self.prefs = {}       # the person's choices: name, character, speak, voice (the client's settings)
         self.persona = (None, None)
         self.persona_pending = False
@@ -385,9 +402,14 @@ class Brain:
         self.waiting = False
         self.started = False
 
+    def first(self):
+        """The session that takes a request first: the mode's; with another maker's model through OpenRouter, the one
+        model takes everything itself (no handover to the same model)."""
+        return PLANNER if self.provider.single else MODES[self.mode]
+
     def wanted(self):
-        """The sessions kept warm: the mode's first and the planner."""
-        return {MODES[self.mode], PLANNER}
+        """The sessions kept warm: the mode's first and the planner (none while no provider works)."""
+        return {self.first(), PLANNER} if self.provider.ready else set()
 
     def persona_text(self):
         """The person's choices about how the assistant comes across, as what they'd like (it's still Claude, operating
@@ -447,7 +469,7 @@ class Brain:
 
     async def handoff(self, s):
         """s is past the line: one more turn writes its handoff, then it closes; the next request starts afresh."""
-        if s.handoff_asked and s.context >= HANDOFF_AT and self.handoff_file(s).exists():
+        if s.handoff_asked and s.context >= handoff_at() and self.handoff_file(s).exists():
             pass   # it wrote the handoff in the turn it was on
         else:
             s.handoff_asked = True
@@ -537,7 +559,7 @@ class Brain:
     def base_prompt(self):
         return ((HERE / "prompt.md").read_text(encoding="utf-8").rstrip() + "\n" + self.app_text() + "\n"
                 + (HERE / "prompt-powers.md").read_text(encoding="utf-8").rstrip().replace("{work}", str(homemod.work_dir()))
-                + "\n" + self.memory_text() + self.persona_text())
+                + "\n" + self.memory_text() + self.persona_text() + self.provider.prompt_note())
 
     def prompts(self, catalog):
         self.catalog = catalog
@@ -546,20 +568,23 @@ class Brain:
         # client_api); seeing: the usual instructions but those for its own powers (memory, jobs, files, the shell),
         # what incognito means for it (prompt-incognito-sees.md), the person's choices and the op list
         if private == "blind":
-            base = (HERE / "prompt-incognito.md").read_text(encoding="utf-8").rstrip() + "\n" + self.persona_text()
+            base = ((HERE / "prompt-incognito.md").read_text(encoding="utf-8").rstrip() + "\n" + self.persona_text()
+                    + self.provider.prompt_note())
         elif private == "sees":
             base = ((HERE / "prompt.md").read_text(encoding="utf-8").rstrip() + "\n" + self.app_text() + "\n"
-                    + (HERE / "prompt-incognito-sees.md").read_text(encoding="utf-8").rstrip() + "\n" + self.persona_text())
+                    + (HERE / "prompt-incognito-sees.md").read_text(encoding="utf-8").rstrip() + "\n" + self.persona_text()
+                    + self.provider.prompt_note())
         else:
             base = self.base_prompt()
         api = ("\nThe client's agent API, for client_api (each pump, then its ops: {arguments} -> what comes back):\n"
                + catalog + "\n") if catalog and private != "blind" else ""
         for s in self.sessions.values():
             s.private = private
+            escalate = s.escalate and not self.provider.single
             s.system = base + (
                 "- escalate hands a request to a planner (call it first, then stop; it takes it from there) when it "
                 "needs several steps or careful judgement and should be done now, while they wait. Building more than "
-                "one plain prim, or other long work, is better as a job.\n" if s.escalate else
+                "one plain prim, or other long work, is better as a job.\n" if escalate else
                 "- Requests come to you straight from the person, or handed over by a quicker model when they need "
                 "several steps. Do simple ones in a call or two; work through the bigger ones, then give the short "
                 "reply.\n") + api
@@ -610,14 +635,27 @@ class Brain:
                 s.lost_upto = self.seq   # its conversation is gone: what came before goes in with the next request
         await asyncio.gather(*(self._bring_up(self.sessions[n]) for n in self.wanted()))
 
+    async def set_provider(self, prefs):
+        """The person changed the provider, its model or the key: it's checked, then the sessions start again on it
+        once the request in progress is done (none start if it doesn't work: requests are answered with how to switch
+        it on). A job pauses if whose models answer changed under it; the person can carry it on."""
+        before = (self.provider.kind, self.provider.single)
+        await asyncio.to_thread(self.provider.configure, prefs)
+        while self.task and not self.task.done():
+            await asyncio.sleep(0.5)
+        if before != (self.provider.kind, self.provider.single) and (titles := await self.jobs.pause_all("provider")):
+            asyncio.create_task(self.notify(f"{' and '.join(titles)} paused while the assistant's provider changed; say when to carry on."))
+        self.prompts(self.catalog)
+        await self.restart_sessions()
+
     def set_mode(self, mode):
         """The person picked another mode: its first model gets warm now, so the next request needn't wait."""
         if mode not in MODES or mode == self.mode:
             return
         self.mode = mode
-        s = self.sessions[MODES[mode]]
+        s = self.sessions[self.first()]
         self.log(f"mode: {mode} ({s.label} first)")
-        if not s.client:
+        if not s.client and self.provider.ready:
             asyncio.create_task(self._bring_up(s))
 
     def set_efforts(self, efforts):
@@ -764,7 +802,15 @@ class Brain:
         api, kit = self.api, self.kit
         # what's only looked at (not pointed at) never stands for "that" in the tools
         kit.target, kit.escalated, kit.actions = (None if target and target.get("looking") else target), None, []
-        first = last = self.sessions[MODES[self.mode]]
+        if not self.provider.ready:
+            # no provider that works: said plainly (how to switch it on), and nothing else is held up
+            reply = self.provider.how()
+            self.log(f"a request with no provider working ({self.provider.state}): told how to switch it on")
+            api.panel(heard=request, result=reply, working=False, status=None, hearing=False, choices=[], prompt=None)
+            if self.speaker and self.prefs.get("speak"):
+                self.speaker.say(reply)
+            return
+        first = last = self.sessions[self.first()]
         mode = self.mode
         api.panel(heard=request, status="thinking", result=None, working=True, hearing=False, choices=[], prompt=None,
                   model=first.label)
@@ -834,7 +880,7 @@ class Brain:
             asyncio.create_task(self.restart_sessions())
         private = was_private or bool(self.private)   # anything touching a spell stays out of the sitting and the logs
         for s in {first, last}:
-            if s.client and s.context >= HANDOFF_AT and not s.handing_off and not private:
+            if s.client and s.context >= handoff_at() and not s.handing_off and not private:
                 s.handoff_task = asyncio.create_task(self.handoff(s))   # the next request to it waits for this
         self.refresh_efforts()   # an effort changed during the request
         self.seq += 1

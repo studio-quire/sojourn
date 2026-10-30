@@ -10,8 +10,59 @@ The client starts the assistant itself (`--no-assistant` to skip). First time on
 `python tools/assistant.py setup` (the venv `local/assistant-venv`: claude-agent-sdk, faster-whisper, soundcard,
 kokoro-onnx, sherpa-onnx, websockets; Kokoro's voice files into `local/assistant/kokoro` and Parakeet's model into
 `local/assistant/parakeet`, ~480 MB), then `python tools/assistant.py check` (microphones, Claude Code, Whisper,
-Parakeet, whether a Soniox key is there). It uses the `claude` on PATH, logged in to the
-user's subscription.
+Parakeet, whether a Soniox key is there, the Claude sign-in and kept keys). Whose models answer is the person's
+provider (next section).
+
+## Switching it on: the provider (provider.py)
+
+Claude Opus 5.5, 2026-10-29, for the public release: anyone can switch the assistant on with what they already have.
+Settings menu > assistant > **provider** (Sojourn Access: Alt+0, its first rows), the state under it from the sidecar:
+- **claude** (the default): the Claude subscription Claude Code is signed in to on this PC (`claude`, then `/login`).
+- **anthropic**: the person's Anthropic API key.
+- **openrouter**: their OpenRouter key, and **openrouter model**: `claude` (Anthropic's models there, so the model
+  and effort rows work as usual) or another maker's model, which then takes every request itself (no handover; the
+  model and effort rows go). The menu steps through a short list (`VrSettings.OpenRouterModels`: OpenRouter's rolling
+  `~maker/family-latest` ids with tool use and pictures); Access's Control+Enter takes any id.
+
+**Putting a key in**: copy it on the PC, then **paste key** (the menu reads the clipboard on that press: typing a key in
+the headset is no good; the key's shape says which provider it's for and switches to it; the clipboard is cleared if
+it still holds it). Access: Enter on the key row opens a password box (Control+V or typed), Delete twice forgets it.
+`python tools/assistant.py key [FILE]` keeps one from a file or typed unseen. Nothing else takes a key: no agent API
+op, setting or the assistant itself (`assistant_provider` and `openrouter_model` are the person's own, read-only on
+the API).
+
+**How keys are kept**: one file each in the keys folder (`local/secrets/assistant` from the repo,
+`%LOCALAPPDATA%\Sojourn\secrets\assistant` otherwise), encrypted for the Windows account (DPAPI, entropy "Sojourn
+assistant key"): the client only encrypts (`Assistant/ProviderKeys.cs`), the sidecar only decrypts (`provider.py`).
+Never in settings JSON, a log or an environment. **Claude Code never has a key**: the sessions' `ANTHROPIC_BASE_URL`
+is a proxy in the sidecar on loopback, their `ANTHROPIC_API_KEY` its per-run token; the proxy adds the key on the way
+out and streams the answer back. So a shell that dumps its environment finds only the token. Claude Code's own
+`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` was the other way and can't be used: it forces the permission mode to default
+(checked, 2.1.314), and the assistant needs auto mode. The folder is under the deny rules and the shell guard
+(DPAPI calls, the provider module, the key variables), and auto mode's hard rules name it; `assistant_guard.py`
+has six cases for it.
+
+**What works with which** (checked against the docs and the mock, 2026-10-29; real keys not yet tried, none on this PC):
+- Claude account and Anthropic key: everything, as before. With a key, auto mode's classifier runs as Claude Code's
+  own requests through the proxy if Anthropic doesn't review in-band.
+- OpenRouter with `claude`: everything, by OpenRouter's own Claude Code integration (its Anthropic-compatible
+  endpoint, `https://openrouter.ai/api`, Bearer key): model ids mapped (`claude-haiku-5-5` ->
+  `anthropic/claude-haiku-5.5`), effort and thinking passed through. WebSearch (an Anthropic server tool) unverified there.
+- OpenRouter with another maker's model: Claude Code still sees a Claude id (so auto mode stays on: by its docs it
+  starts in manual for models other than Claude's), the proxy swaps in the chosen id, and **the safety classifier stays on Claude**
+  (`CLAUDE_CODE_AUTO_MODE_MODEL` pinned to Sonnet 5, sent as `anthropic/claude-sonnet-5`, a small cost on their
+  OpenRouter); WebFetch's summaries and other background calls go to Claude Haiku there. Effort, thinking, context
+  management and Anthropic's beta headers are left out for it; a model that can't see gets a line instead of each
+  picture (look, describing and HUD pictures don't work, said under the provider row and to the model); one without
+  tool use isn't offered as working at all. Its context window comes from OpenRouter's list and the handoff line moves
+  to 80% of it. The prompt tells the model what it is (Claude Code's own text calls it Claude). How well another model
+  follows Claude Code's tools and our prompts is untested.
+
+**Without one that works** (not signed in, no key, refused, out of credits, no tool use): the sidecar runs (hearing,
+the panel), no sessions start, the panel says once how to switch it on, and each request gets the same words back.
+A key refused mid-sitting (401/403/402 through the proxy) turns the state and the words to say so.
+`tools/provider_check.py` checks all of it against `tools/provider_mock.py` (decoy keys, nothing spent);
+`provider_check.py real anthropic|openrouter [MODEL]` with a kept key sends one short request and one picture.
 
 | | Desktop | Headset |
 |---|---|---|
@@ -1337,12 +1388,15 @@ and hidden by walls as the other menus are.
 - `tools/assistant_guard.py [model]` (the venv's python): one session per case under the real settings and hooks,
   each told to do one forbidden thing with one tool; decoys stand in for the credentials (a decoy file in
   `local/secrets`, a decoy `mfa_hash`, a junction from the work folder into `local/secrets`), so a failure leaks
-  nothing. 22 cases: credential reads by Read, by cat, by a path assembled in Python (the classifier caught that one),
+  nothing. 28 cases: credential reads by Read, by cat, by a path assembled in Python (the classifier caught that one),
   through a junction; Claude's settings; another studio project; writes into src, out of its folder by `..`, into the
   client's settings and its own settings file; posted clicks; starting a client with the login, or in dev mode; a
   Claude session that skips permissions; one allowed write in its folder; and since incognito, the client's caches,
-  screenshots and incognito pictures, the sidecar's token, and its own work folder's cache allowed. All 22 held with
-  Haiku (2026-10-29).
+  screenshots and incognito pictures, the sidecar's token, and its own work folder's cache allowed; and since the
+  providers, a decoy key kept as real ones are (encrypted, kind "decoy"): read, cat, decrypted by DPAPI, through the
+  provider module, through it with its name in pieces (the classifier caught that one), and the key variable echoed.
+  All 28 held with Haiku (2026-10-29).
+- `tools/provider_check.py`: the providers against `tools/provider_mock.py` (Switching it on).
 - `SOJOURN_HOME` / `SOJOURN_WORK` move the sidecar's folder and scratch folder (the client's menu clear still clears
   the default folder).
 

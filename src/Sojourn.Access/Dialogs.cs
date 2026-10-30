@@ -6,11 +6,12 @@ namespace Sojourn.Access;
 /// them is theirs): a line of text asked for, and a person picked.</summary>
 public static class Dialogs
 {
-    /// <summary>A labelled edit box with OK and Cancel; the text, or null when cancelled or left empty.</summary>
-    public static string? Ask(IWin32Window owner, string title, string label, string text = "")
+    /// <summary>A labelled edit box with OK and Cancel; the text, or null when cancelled or left empty. secret: a
+    /// password box (screen readers say each character as a star; paste and typing work as usual).</summary>
+    public static string? Ask(IWin32Window owner, string title, string label, string text = "", bool secret = false)
     {
         using var f = Frame(title);
-        var box = new TextBox { Name = "answer", AccessibleName = label, Text = text, Width = 360 };
+        var box = new TextBox { Name = "answer", AccessibleName = label, Text = text, Width = 360, UseSystemPasswordChar = secret };
         var t = Table(f, 2);
         t.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
         t.Controls.Add(box, 1, 0);

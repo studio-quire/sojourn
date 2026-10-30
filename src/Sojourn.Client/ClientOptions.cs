@@ -9,7 +9,8 @@ public sealed record ClientOptions : SessionOptions
     /// <summary>The login screen (Login/): the person picks or adds an account, grid and start before there's a session;
     /// the login options are ignored then.</summary>
     public bool Login { get; init; }
-    /// <summary>After a lost GPU, a login-screen run logs the same account in again (Login/LoginStore.cs HandOver).</summary>
+    /// <summary>A login handed over (Login/LoginStore.cs HandOver) is logged in without the form: the same account again
+    /// after a lost GPU, or the launcher's (docs/launcher.md).</summary>
     public bool LoginResume { get; init; }
     /// <summary>The account the login screen shows selected (LoginRestart: after Back or logging out).</summary>
     public string? LoginAccount { get; init; }

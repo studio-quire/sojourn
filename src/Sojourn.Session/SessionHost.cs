@@ -173,6 +173,8 @@ public sealed class SessionHost : IAsyncDisposable
         {
             InHeadset = inHeadset,
             App = App,
+            Settings = Settings,   // the person's (the provider, memory, hearing...); the VR client's menu sets the same
+            SettingsChanged = SaveSettings,
             DevToken = Options.Dev ? Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(24)) : null,
         };
         Session.Api.Register(new AssistantApi(Session, Assistant));

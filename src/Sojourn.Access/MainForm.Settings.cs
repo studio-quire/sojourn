@@ -84,6 +84,7 @@ public sealed partial class MainForm
         _settingsList.KeyDown += (_, e) =>
         {
             var item = _settingsList.SelectedItems.Count > 0 ? _settingsList.SelectedItems[0] : _settingsList.FocusedItem;
+            if (item?.Tag is string own && own.StartsWith('@') && ProviderKey(own, e)) return;
             if (e.KeyCode is not (Keys.Enter or Keys.Space) || e.Control || e.Alt || item?.Tag is not string name) return;
             e.Handled = e.SuppressKeyPress = true;
             // incognito's off, and letting it see mid-spell, are the person's own key here, judged as it's handled
@@ -127,9 +128,100 @@ public sealed partial class MainForm
             var items = new List<(string, string, object)>();
             foreach (var (name, label) in Shown)
                 if (all[name] is JsonObject s) items.Add(($"{label}: {Value(s["value"])}", name, name));
+            if (items.Count > 0) items.InsertRange(0, ProviderItems());
             Fill(_settingsList, items, "No settings (not logged in?).");
         }
         finally { if (first) Looking(_settingsList, "Settings", false); }
+    }
+
+    // --- whose models the assistant runs on (docs/assistant.md > Switching it on): the person's own rows here, never the
+    // agent API's. Its key is typed or pasted into a password box, kept encrypted for this Windows account
+    // (ProviderKeys), and never read back or said.
+
+    static readonly string[] ProviderLabels = { "your Claude account", "your Anthropic key", "your OpenRouter key" };
+    bool _forgetKeyArmed;
+
+    List<(string, string, object)> ProviderItems()
+    {
+        if (Host is not { } h || !AccessOptions.AssistantInBuild) return new();
+        var st = h.Settings;
+        var kind = st.AssistantProvider;
+        var status = h.Assistant.ProviderStatus is { } p && p["kind"]?.GetValue<string>() == kind ? p["short"]?.GetValue<string>() : null;
+        var items = new List<(string, string, object)>
+        {
+            ($"Assistant provider: {ProviderLabels[Math.Max(0, Array.IndexOf(Sojourn.Session.Control.VrSettings.Providers, kind))]}"
+             + (status != null ? $", {status}" : ""), "@provider", "@provider"),
+        };
+        if (kind != "claude")
+            items.Add(($"Assistant key: {(Sojourn.Session.Assistant.ProviderKeys.Has(kind) ? "kept (Enter to put in another, Delete to forget it)" : "none (Enter to put it in)")}",
+                "@key", "@key"));
+        if (kind == "openrouter")
+            items.Add(($"Assistant model on OpenRouter: {ModelName(st.OpenRouterModel)} (Enter for the next, Control+Enter to type one)", "@model", "@model"));
+        return items;
+    }
+
+    static string ModelName(string id) =>
+        Sojourn.Session.Control.VrSettings.OpenRouterModels.FirstOrDefault(m => m.Id == id).Name ?? id;
+
+    /// <summary>A key on one of the provider rows: true if it was theirs.</summary>
+    bool ProviderKey(string row, KeyEventArgs e)
+    {
+        if (Host is not { } h) return false;
+        var st = h.Settings;
+        var kind = st.AssistantProvider;
+        bool enter = e.KeyCode is (Keys.Enter or Keys.Space) && !e.Alt;
+        bool delete = e.KeyCode == Keys.Delete && row == "@key";
+        if (!enter && !delete) return false;
+        e.Handled = e.SuppressKeyPress = true;
+        if (!delete) _forgetKeyArmed = false;
+        string said;
+        if (row == "@provider")
+        {
+            var all = Sojourn.Session.Control.VrSettings.Providers;
+            int at = Array.IndexOf(all, kind);
+            st.AssistantProvider = all[((at < 0 ? 0 : at) + (e.Shift ? -1 : 1) + all.Length) % all.Length];
+            said = $"Assistant provider: {ProviderLabels[Array.IndexOf(all, st.AssistantProvider)]}."
+                   + (st.AssistantProvider != "claude" && !Sojourn.Session.Assistant.ProviderKeys.Has(st.AssistantProvider) ? " No key yet: the next row puts it in." : "");
+        }
+        else if (delete)
+        {
+            if (!Sojourn.Session.Assistant.ProviderKeys.Has(kind)) return true;
+            if (!_forgetKeyArmed) { _forgetKeyArmed = true; Reader?.Answer("Press Delete again to forget the key.", keep: false); return true; }
+            _forgetKeyArmed = false;
+            Sojourn.Session.Assistant.ProviderKeys.Forget(kind);
+            said = $"{Sojourn.Session.Assistant.ProviderKeys.Name(kind)} key forgotten.";
+        }
+        else if (row == "@key")
+        {
+            var text = Dialogs.Ask(this, "Assistant key", "Anthropic or OpenRouter key (paste with Control+V)", secret: true);
+            if (text == null) { Reader?.Answer("Nothing kept.", keep: false); return true; }
+            string? kept;
+            try { kept = Sojourn.Session.Assistant.ProviderKeys.Keep(text); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException) { Reader?.Answer("Couldn't keep it."); return true; }
+            if (kept == null) { Reader?.Answer("That isn't an Anthropic or OpenRouter key. Nothing kept."); return true; }
+            st.AssistantProvider = kept;
+            said = $"{Sojourn.Session.Assistant.ProviderKeys.Name(kept)} key kept; the assistant uses it now.";
+        }
+        else
+        {
+            var models = Sojourn.Session.Control.VrSettings.OpenRouterModels;
+            if (e.Control)
+            {
+                if (Dialogs.Ask(this, "OpenRouter model", "OpenRouter model id", st.OpenRouterModel) is not { } id) return true;
+                st.OpenRouterModel = id;
+            }
+            else
+            {
+                int at = Array.FindIndex(models, m => m.Id == st.OpenRouterModel);
+                st.OpenRouterModel = models[((at < 0 ? 0 : at) + (e.Shift ? -1 : 1) + models.Length) % models.Length].Id;
+            }
+            said = $"Assistant model on OpenRouter: {ModelName(st.OpenRouterModel)}.";
+        }
+        h.SaveSettings();
+        h.Assistant.PrefsChanged();
+        _ = RefreshSettings();
+        Reader?.Answer(said);
+        return true;
     }
 
     static string Value(JsonNode? v) => v switch

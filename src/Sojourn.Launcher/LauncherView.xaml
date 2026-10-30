@@ -1,0 +1,203 @@
+<UserControl x:Class="Sojourn.Launcher.LauncherView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="400" Height="660" FontFamily="{StaticResource Ui}" Foreground="{StaticResource Ink}"
+             UseLayoutRounding="True" TextOptions.TextFormattingMode="Ideal">
+    <Grid>
+        <!-- the light behind the glass: a pale sky going to pearl, a few soft glows drifting in it -->
+        <Rectangle>
+            <Rectangle.Fill>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0.3,1">
+                    <GradientStop Color="#CBE4EE" Offset="0"/>
+                    <GradientStop Color="#E3EEF1" Offset="0.45"/>
+                    <GradientStop Color="#F4F0EC" Offset="1"/>
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+        <Canvas ClipToBounds="True" IsHitTestVisible="False">
+            <Ellipse x:Name="GlowA" Canvas.Left="-130" Canvas.Top="-120" Width="440" Height="380">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#B09CD8D1" Offset="0"/>
+                        <GradientStop Color="#009CD8D1" Offset="1"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+            <Ellipse x:Name="GlowB" Canvas.Left="190" Canvas.Top="150" Width="400" Height="400">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#99D6CDF3" Offset="0"/>
+                        <GradientStop Color="#00D6CDF3" Offset="1"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+            <Ellipse x:Name="GlowC" Canvas.Left="-150" Canvas.Top="420" Width="500" Height="340">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#99F6D9C6" Offset="0"/>
+                        <GradientStop Color="#00F6D9C6" Offset="1"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+        </Canvas>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,6,0" VerticalAlignment="Top">
+                <Button x:Name="MinKey" Style="{StaticResource Key}" Content="&#xE921;" FontSize="10" AutomationProperties.Name="Minimise" IsTabStop="False"/>
+                <Button x:Name="CloseKey" Style="{StaticResource Key}" Content="&#xE8BB;" FontSize="10" AutomationProperties.Name="Close" IsTabStop="False"/>
+            </StackPanel>
+
+            <TextBlock Grid.Row="1" Text="Sojourn" FontFamily="{StaticResource Wordmark}" FontSize="44" HorizontalAlignment="Center"
+                       Margin="0,0,0,20">
+                <TextBlock.Foreground>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#2F474C" Offset="0"/>
+                        <GradientStop Color="#1F736D" Offset="1"/>
+                    </LinearGradientBrush>
+                </TextBlock.Foreground>
+            </TextBlock>
+
+            <!-- the glass: its shadow and fill behind, the content on a layer of its own so text stays crisp -->
+            <Grid Grid.Row="2" Margin="24,0" VerticalAlignment="Top">
+                <Border CornerRadius="24" Background="#85FFFFFF">
+                    <Border.Effect>
+                        <DropShadowEffect Color="{StaticResource InkColor}" Opacity="0.10" BlurRadius="36" ShadowDepth="10" Direction="270"/>
+                    </Border.Effect>
+                </Border>
+                <Border CornerRadius="24" BorderBrush="{StaticResource Rim}" BorderThickness="1" Padding="18,18,18,18">
+                    <Grid x:Name="Pages">
+
+                        <!-- the login -->
+                        <StackPanel x:Name="LoginPage">
+                            <Button x:Name="AccountKey" Style="{StaticResource Row}" Margin="-14,-8,-14,6" AutomationProperties.Name="Account">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock x:Name="AccountName" FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="AccountGrid" FontSize="12" Foreground="{StaticResource Faint}" Margin="0,1,0,0"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="&#xE70D;" FontFamily="{StaticResource Icons}" FontSize="11" Foreground="{StaticResource Faint}"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                            </Button>
+
+                            <StackPanel x:Name="NewBlock">
+                                <TextBox x:Name="UserBox" Tag="username" AutomationProperties.Name="Username" Margin="0,0,0,10"/>
+                                <Border Style="{StaticResource Track}" Margin="0,0,0,10">
+                                    <UniformGrid Rows="1">
+                                        <RadioButton x:Name="GridSl" GroupName="grid" Style="{StaticResource Segment}" Content="Second Life" IsChecked="True"/>
+                                        <RadioButton x:Name="GridBeta" GroupName="grid" Style="{StaticResource Segment}" Content="Beta"/>
+                                        <RadioButton x:Name="GridOther" GroupName="grid" Style="{StaticResource Segment}" Content="other"/>
+                                    </UniformGrid>
+                                </Border>
+                                <TextBox x:Name="UriBox" Tag="login URI" AutomationProperties.Name="Login URI" Margin="0,0,0,10" Visibility="Collapsed"/>
+                            </StackPanel>
+
+                            <Grid>
+                                <PasswordBox x:Name="PassBox" AutomationProperties.Name="Password"/>
+                                <TextBlock x:Name="PassHint" Text="password" Foreground="{StaticResource Faint}" FontSize="15" Margin="15,0,0,0"
+                                           VerticalAlignment="Center" IsHitTestVisible="False"/>
+                            </Grid>
+                            <CheckBox x:Name="RememberSwitch" Style="{StaticResource Switch}" Content="remember" Margin="4,12,0,16"
+                                      HorizontalAlignment="Left"/>
+
+                            <TextBlock Style="{StaticResource Label}" Text="start"/>
+                            <Border Style="{StaticResource Track}">
+                                <UniformGrid Rows="1">
+                                    <RadioButton x:Name="StartLast" GroupName="start" Style="{StaticResource Segment}" Content="last" IsChecked="True"/>
+                                    <RadioButton x:Name="StartHome" GroupName="start" Style="{StaticResource Segment}" Content="home"/>
+                                    <RadioButton x:Name="StartPlace" GroupName="start" Style="{StaticResource Segment}" Content="a place"/>
+                                </UniformGrid>
+                            </Border>
+                            <TextBox x:Name="PlaceBox" Tag="region or SLurl" AutomationProperties.Name="Place" Margin="0,10,0,0" Visibility="Collapsed"/>
+                        </StackPanel>
+
+                        <!-- the accounts -->
+                        <StackPanel x:Name="AccountsPage" Visibility="Collapsed">
+                            <StackPanel x:Name="AccountList"/>
+                            <Button x:Name="NewAccountKey" Style="{StaticResource Row}" Margin="-14,2,-14,-8" AutomationProperties.Name="New account">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE710;" FontFamily="{StaticResource Icons}" FontSize="13" Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="new account" FontSize="15" Foreground="{StaticResource Dim}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- before going in -->
+                        <StackPanel x:Name="SettingsPage" Visibility="Collapsed">
+                            <TextBlock Style="{StaticResource Label}" Text="headset"/>
+                            <Border Style="{StaticResource Track}" Margin="0,0,0,16">
+                                <UniformGrid Rows="1">
+                                    <RadioButton x:Name="Standing" GroupName="body" Style="{StaticResource Segment}" Content="standing"/>
+                                    <RadioButton x:Name="Seated" GroupName="body" Style="{StaticResource Segment}" Content="seated"/>
+                                </UniformGrid>
+                            </Border>
+                            <TextBlock Style="{StaticResource Label}" Text="graphics"/>
+                            <Border Style="{StaticResource Track}" Margin="0,0,0,16">
+                                <UniformGrid x:Name="GraphicsTrack" Rows="1">
+                                    <RadioButton x:Name="GfxLight" GroupName="gfx" Style="{StaticResource Segment}" Content="light"/>
+                                    <RadioButton x:Name="GfxBalanced" GroupName="gfx" Style="{StaticResource Segment}" Content="balanced"/>
+                                    <RadioButton x:Name="GfxFull" GroupName="gfx" Style="{StaticResource Segment}" Content="full"/>
+                                    <RadioButton x:Name="GfxYours" GroupName="gfx" Style="{StaticResource Segment}" Content="yours" IsEnabled="False" Visibility="Collapsed"/>
+                                </UniformGrid>
+                            </Border>
+                            <TextBlock Style="{StaticResource Label}" Text="assistant"/>
+                            <Border Style="{StaticResource Track}">
+                                <UniformGrid x:Name="ProviderTrack" Rows="1"/>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- the way in, and while it runs, how it's going -->
+            <Grid Grid.Row="3" Margin="24,18,24,0">
+                <Button x:Name="LaunchKey" Style="{StaticResource Launch}" Content="Launch" IsDefault="True"/>
+                <Grid x:Name="StatusPill" Height="56" Visibility="Collapsed">
+                    <Border CornerRadius="28" Background="#8CFFFFFF">
+                        <Border.Effect>
+                            <DropShadowEffect Color="{StaticResource InkColor}" Opacity="0.10" BlurRadius="20" ShadowDepth="5" Direction="270"/>
+                        </Border.Effect>
+                    </Border>
+                    <Border CornerRadius="28" BorderBrush="{StaticResource Rim}" BorderThickness="1"/>
+                    <Grid Margin="22,0,10,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Ellipse x:Name="Orb" Width="12" Height="12" Fill="{StaticResource Accent}" VerticalAlignment="Center">
+                            <Ellipse.Effect>
+                                <DropShadowEffect x:Name="OrbGlow" Color="{StaticResource AccentColor}" Opacity="0.6" BlurRadius="10" ShadowDepth="0"/>
+                            </Ellipse.Effect>
+                        </Ellipse>
+                        <TextBlock x:Name="StatusText" Grid.Column="1" FontSize="16" Margin="14,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        <Button x:Name="StopKey" Grid.Column="2" Style="{StaticResource Key}" Content="&#xE71A;" FontSize="13" AutomationProperties.Name="Stop"/>
+                    </Grid>
+                </Grid>
+            </Grid>
+
+            <Grid Grid.Row="4" Margin="14,10,14,12">
+                <Button x:Name="SettingsKey" Style="{StaticResource Key}" Content="&#xE713;" FontSize="15" HorizontalAlignment="Left" AutomationProperties.Name="Settings"/>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                    <TextBlock x:Name="NoteText" FontSize="12" Foreground="{StaticResource Faint}" VerticalAlignment="Center" MaxWidth="230"
+                               TextTrimming="CharacterEllipsis"/>
+                    <Button x:Name="LogKey" Style="{StaticResource WordKey}" Content="log" Height="26" Foreground="{StaticResource Accent}" Margin="2,0,0,0"
+                            Padding="8,0" Visibility="Collapsed" AutomationProperties.Name="Open the log"/>
+                </StackPanel>
+                <Button x:Name="AccessKey" Style="{StaticResource WordKey}" Content="Access" HorizontalAlignment="Right" AutomationProperties.Name="Sojourn Access"/>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

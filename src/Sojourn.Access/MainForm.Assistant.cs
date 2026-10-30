@@ -42,7 +42,7 @@ public sealed partial class MainForm
         if (!_opt.Assistant || (!h.Assistant.SidecarAlive && h.Sidecar == null))
         {
             var none = AccessOptions.AssistantInBuild
-                ? "The assistant isn't running: it needs a Claude account (and its Python side set up). Everything else works without it."
+                ? "The assistant isn't running: its Python side isn't set up on this PC. Everything else works without it."
                 : "The assistant isn't in this build. Everything else works without it.";
             Append(_assistantHistory, none);
             Reader?.Answer(none);

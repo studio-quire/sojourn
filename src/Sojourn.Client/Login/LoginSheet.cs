@@ -191,25 +191,7 @@ public sealed partial class LoginSheet
     }
 
     /// <summary>The start as the login sends it: last, home, or uri:Region&amp;x&amp;y&amp;z from a name or a SLurl.</summary>
-    static string? StartOf(int start, string region)
-    {
-        if (start == 0) return "last";
-        if (start == 1) return "home";
-        var t = Uri.UnescapeDataString(region.Trim());
-        if (t.Length == 0) return null;
-        // SLurls: secondlife://Region/x/y/z, http(s)://maps.secondlife.com/secondlife/Region/x/y/z, or Region/x/y/z
-        bool hop = t.StartsWith("hop://", StringComparison.OrdinalIgnoreCase);
-        foreach (var prefix in new[] { "secondlife:///app/teleport/", "secondlife://", "https://maps.secondlife.com/secondlife/", "http://maps.secondlife.com/secondlife/",
-                     "https://slurl.com/secondlife/", "http://slurl.com/secondlife/", "hop://" })
-            if (t.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { t = t[prefix.Length..]; break; }
-        var p = t.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (hop && p.Length > 1) p = p[1..];   // hop://grid:port/Region/x/y/z
-        if (p.Length == 0) return null;
-        return $"uri:{p[0]}&{N(p, 1, "128")}&{N(p, 2, "128")}&{N(p, 3, "0")}";
-
-        static string N(string[] p, int i, string d) => i < p.Length && float.TryParse(p[i], System.Globalization.CultureInfo.InvariantCulture, out var f)
-            ? ((int)MathF.Round(f)).ToString(System.Globalization.CultureInfo.InvariantCulture) : d;
-    }
+    static string? StartOf(int start, string region) => Starts.Of(start, region);
 
     // ---- what the person does ----
 

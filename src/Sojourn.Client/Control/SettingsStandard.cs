@@ -108,7 +108,12 @@ public static class SettingsStandard
             () => N(st.AdaptiveInk), Switch("adaptive_ink", on => st.AdaptiveInk = on)));
         api.Own("confirm_touches", "assistant", "touches and menu answers on other people's things wait for the person's press; a safeguard on the assistant, so only the person turns it off in the menu",
             () => N(st.ConfirmTouches));
-        api.Own("assistant_memory", "assistant", "the assistant keeps notes about the person between sittings (its memory); the person's own switch, in the menu, where they can also clear it",
+        api.Own("assistant_provider", "assistant", "whose models the assistant runs on (claude: the Claude account signed in on this PC; "
+            + "anthropic or openrouter: the person's own key); the person's own choice in the menu, since it spends their money, and keys never pass through here",
+            () => N(st.AssistantProvider));
+        api.Own("openrouter_model", "assistant", "with OpenRouter, which model answers (claude: Anthropic's, as usual; any other OpenRouter id takes "
+            + "every request itself); the person's own choice in the menu", () => N(st.OpenRouterModel));
+        api.Own("assistant_memory", "assistant","the assistant keeps notes about the person between sittings (its memory); the person's own switch, in the menu, where they can also clear it",
             () => N(st.AssistantMemory));
 
         // voice chat

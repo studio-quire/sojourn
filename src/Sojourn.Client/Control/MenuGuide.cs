@@ -43,7 +43,11 @@ public static class MenuGuide
         A("moving/your gaze", "What others see of where you look: your head turning toward who you look at, only the direction, or nothing."),
 
         // --- assistant
-        S("assistant/model", "Who answers first. Haiku is quickest and opus the most careful; the quicker ones hand big jobs to opus."),
+        S("assistant/provider", "Whose AI answers: your Claude account signed in on this PC, your own Anthropic key, or your OpenRouter key. Under it, whether it works."),
+        S("assistant/key", "Copy your key on the PC, then press this. It's kept encrypted for your Windows account and taken off the clipboard."),
+        S("assistant/forget key", "Deletes the kept key. Press twice to be sure."),
+        S("assistant/openrouter model", "Which model OpenRouter runs. Claude keeps the usual models; another maker's model answers everything itself and may not do all Claude does."),
+        S("assistant/model","Who answers first. Haiku is quickest and opus the most careful; the quicker ones hand big jobs to opus."),
         A("assistant/haiku effort", "How hard haiku thinks before acting. More is slower and surer."),
         A("assistant/sonnet effort", "How hard sonnet thinks before acting. More is slower and surer."),
         A("assistant/opus effort", "How hard opus thinks before acting. More is slower and surer."),

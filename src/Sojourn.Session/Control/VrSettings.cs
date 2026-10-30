@@ -133,6 +133,20 @@ public sealed class VrSettings
     /// <summary>What others see of where you look (Control/Gaze.cs): your head turning that way, toward the person
     /// you look at, or nothing.</summary>
     public GazeSharing Gaze { get; set; } = GazeSharing.EyeContact;
+    /// <summary>Whose models the assistant runs on (assistant/provider.py; docs/assistant.md > Switching it on): "claude"
+    /// (the Claude subscription Claude Code is signed in to here, the default), "anthropic" (the person's API key) or
+    /// "openrouter" (their OpenRouter key). The keys themselves are never here: Assistant/ProviderKeys.cs.</summary>
+    public string AssistantProvider { get; set; } = "claude";
+    public static readonly string[] Providers = { "claude", "anthropic", "openrouter" };
+    /// <summary>With OpenRouter: "claude" (Anthropic's models there, the modes as usual), or any OpenRouter model id,
+    /// which then takes every request itself.</summary>
+    public string OpenRouterModel { get; set; } = "claude";
+    /// <summary>The menu's short list (provider.py's SUGGESTED): OpenRouter's rolling ids with tool use and pictures.</summary>
+    public static readonly (string Id, string Name)[] OpenRouterModels =
+    {
+        ("claude", "claude"), ("~google/gemini-pro-latest", "gemini pro"), ("~google/gemini-flash-latest", "gemini flash"),
+        ("~openai/gpt-sol-latest", "gpt sol"), ("~x-ai/grok-latest", "grok"), ("~moonshotai/kimi-latest", "kimi"),
+    };
     public AssistantModel AssistantModel { get; set; } = AssistantModel.Quick;
     public AssistantEfforts AssistantEffort { get; set; } = new();
     /// <summary>The assistant reads its replies out loud as well as showing them (off: the panel only).</summary>

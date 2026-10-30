@@ -281,6 +281,9 @@ memory): textures shrink and evict to stay under the process's budget, and loadi
 Claude Opus 5.5, 2026-10-28 (batch R, `src/Sojourn.Client/Login/`). Two ways in:
 - **The command line** (`--grid`, `--first`, `--last`, `--password(-file)`, `--start`; what `tools/client.py`,
   `dev.py` and every test use) logs straight in, as before.
+- **The launcher** (`src/Sojourn.Launcher`, `docs/launcher.md`): the person's way in; it gathers the account and
+  start and hands them over as a lost GPU's restart does (`--login --login-resume`, the remember choice with it), and
+  reads the run's state from `SOJOURN_STATE_FILE` (`LaunchState.cs`).
 - **The login screen** (`--login`; the options above are ignored): before any session, assistant, voice or agent API
   exists, the window and the headset show the void (`Render/Realtime/FrameRenderer.Void.cs`: a slate clear with the
   overlay drawn over it, so sheets keep their frost and the rays show) and the login sheet, in the panel's look,

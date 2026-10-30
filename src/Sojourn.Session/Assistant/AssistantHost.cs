@@ -139,7 +139,35 @@ public sealed class AssistantHost
         ["voice"] = Settings.AssistantVoice,
         ["memory"] = Settings.AssistantMemory,
         ["hearing"] = Settings.Hearing,
+        // whose models answer (never a key: the sidecar reads that itself; the stamp says when it last changed)
+        ["provider"] = Settings.AssistantProvider,
+        ["openrouter_model"] = Settings.OpenRouterModel,
+        ["key_stamp"] = ProviderKeys.Stamp(Settings.AssistantProvider),
     };
+
+    /// <summary>The provider as the sidecar last found it: {kind, state (ready, offline, no_login, no_key, refused,
+    /// credits, no_tools, checking), short, words, caveat, model}; null before its first word.</summary>
+    public JsonObject? ProviderStatus { get; private set; }
+    /// <summary>The provider's state changed (the settings menu redraws its row).</summary>
+    public Action? ProviderStatusChanged;
+
+    /// <summary>The person pressed "paste key" (the settings menu) or kept one in Sojourn Access: the key on the
+    /// clipboard is kept, the provider switched to its kind, the sidecar told. Returns what to say (never the key).</summary>
+    public string PasteKey()
+    {
+        var (kind, said) = ProviderKeys.FromClipboard();
+        if (kind != null) UseKey(kind);
+        return said;
+    }
+
+    /// <summary>A key was just kept for kind: that provider is used from now on (saved, the sidecar told).</summary>
+    public void UseKey(string kind)
+    {
+        Settings.AssistantProvider = kind;
+        ProviderStatus = null;
+        SettingsChanged?.Invoke();
+        PrefsChanged();
+    }
 
     /// <summary>The assistant's memory: notes it keeps in its own folder (assistant/home.py).</summary>
     public static string MemoryDir => Path.Combine(Sidecar.Root ?? AppContext.BaseDirectory, "local", "assistant", "home");
@@ -176,17 +204,26 @@ public sealed class AssistantHost
         Send(d);
     }
 
-    /// <summary>The sidecar checked in (its mic, or why there's none).</summary>
-    public void SidecarHello(string? mic, string? notice)
+    string? _shownNotice;
+
+    /// <summary>The sidecar checked in (its mic, or why there's none; its provider's state). A notice brings the panel
+    /// up once, when it's new (no mic, no provider that works, a key refused).</summary>
+    public void SidecarHello(string? mic, string? notice, JsonObject? provider = null)
     {
-        bool first = !SidecarAlive;
         _lastHello = _clock.Elapsed.TotalSeconds;
         _mic = mic;
+        bool fresh = notice != null && notice != _shownNotice;
+        _shownNotice = notice;
         Panel.Update(p =>
         {
             p.Notice = notice;
             if (p.Status == Starting) p.Status = null;
-        }, show: first && notice != null);
+        }, show: fresh);
+        if (provider != null && provider.ToJsonString() != ProviderStatus?.ToJsonString())
+        {
+            ProviderStatus = provider;
+            ProviderStatusChanged?.Invoke();
+        }
     }
 
     // private, what the pointer is on goes as a blind handle (Agents/PrivateMode.cs)

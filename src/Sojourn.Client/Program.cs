@@ -41,6 +41,7 @@ if (opt.PanelShots != null)
 // API, the assistant, voice, audio and the rest; its steps run below in its order, between the window's and headset's
 await using var sessionHost = new SessionHost(opt);
 var sessionLog = sessionHost.SessionLogPath;
+LaunchState.Started(sessionLog);   // the launcher's view of this run (LaunchState.cs)
 var logs = sessionHost.Logs;
 var log = sessionHost.Log;
 var rlog = logs.CreateLogger("render");
@@ -154,6 +155,7 @@ if (opt.Login)
     if (choice == null)
     {
         loginInput = window.CreateInput();
+        LaunchState.Set("form", headset != null);
         try
         {
             choice = new Sojourn.Client.Login.LoginScreen
@@ -660,6 +662,7 @@ while (!window.IsClosing && !chat.QuitRequested && !(bench?.Done ?? false) && !l
     TakeRendered();
     long loopStart = Stopwatch.GetTimestamp();
     window.DoEvents();
+    LaunchState.Tick(login, session, headset != null);
     (fbWidth, fbHeight) = (window.FramebufferSize.X, window.FramebufferSize.Y);
     if (window.IsClosing) break;
     settingsApi.Drain();
@@ -841,6 +844,7 @@ while (!window.IsClosing && !chat.QuitRequested && !(bench?.Done ?? false) && !l
 // goodbyes (SL's logout up to 10 s, voice ~2 s, Meta's ASW restored by a process ~2 s, the sidecar) run side by side.
 // They used to run one after another behind the last frame, the headset showing it frozen (the user, 2026-10-28).
 log.LogInformation("shutting down");
+LaunchState.Set("ending", headset != null);
 var shutdownClock = Stopwatch.StartNew();
 void Step(string what, Action act)
 {

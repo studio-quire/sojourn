@@ -2,7 +2,11 @@
 
   python tools/assistant.py setup              the venv (local/assistant-venv): claude-agent-sdk, faster-whisper, soundcard,
                                                sherpa-onnx, websockets; Kokoro's voice and Parakeet's model into local/assistant
-  python tools/assistant.py check              microphones, the Claude Code CLI, Whisper, Parakeet, whether a Soniox key is there
+  python tools/assistant.py check              microphones, the Claude Code CLI, Whisper, Parakeet, whether a Soniox key is there,
+                                               whether Claude Code is signed in and which provider keys are kept
+  python tools/assistant.py key [FILE]         keep an Anthropic or OpenRouter key (its kind by its shape), encrypted for this
+                                               Windows account, from FILE or typed unseen; `key forget KIND` deletes one.
+                                               The menus do the same (docs/assistant.md > Switching it on)
   python tools/assistant.py ask "TEXT"         a typed request, as Enter in the window would send it
   python tools/assistant.py hear FILE.wav      a spoken request from a file (transcribed by the same Whisper)
   python tools/assistant.py talk FILE.wav      press talk, wait the file's length, release: the full push-to-talk path;
@@ -91,6 +95,34 @@ def check():
             "print('soniox key:', 'there' if cloud.available() else 'none (hearing: soniox needs local/secrets/soniox.key)')")
     subprocess.run([str(PY), "-c", code], cwd=ROOT)
     subprocess.run(["claude", "--version"])
+    code = ("import sys, json; sys.path.insert(0, 'assistant'); import provider\n"
+            "p = provider.Provider(log=lambda s: None); p.configure({'provider': 'claude'})\n"
+            "print('claude account:', 'signed in' if p.ready else 'not signed in', '| claude code:', provider.cli())\n"
+            "print('keys kept:', ', '.join(k for k in provider.KEY_KINDS if provider.has_key(k)) or 'none', 'in', provider.keys_dir())")
+    subprocess.run([str(PY), "-c", code], cwd=ROOT)
+    print("which provider is used is the client's setting (menu > assistant > provider); "
+          "tools/provider_check.py tests them (real KIND with a kept key)")
+
+
+def key(args):
+    """Keep a key typed unseen or read from a file (never echoed, logged or put in the environment)."""
+    sys.path.insert(0, str(ROOT / "assistant"))
+    import provider
+    if args[:1] == ["forget"] and len(args) == 2:
+        provider.forget_key(args[1])
+        print(f"{args[1]} key forgotten")
+        return
+    if args:
+        text = Path(args[0]).read_text(encoding="utf-8")
+    else:
+        import getpass
+        text = getpass.getpass("key (not shown): ")
+    kind = provider.kind_of(text)
+    if not kind:
+        sys.exit("that isn't an Anthropic (sk-ant-...) or OpenRouter (sk-or-...) key; nothing kept")
+    provider.save_key(kind, provider.shape(kind, text))
+    print(f"{kind} key kept, encrypted, in {provider.keys_dir()}" + (f"; {args[0]} still holds it in the clear" if args else ""))
+    print(f"to use it: menu > assistant > provider: {kind}")
 
 
 def tts(text, out):
@@ -116,6 +148,8 @@ if __name__ == "__main__":
         setup()
     elif cmd == "check":
         check()
+    elif cmd == "key":
+        key(rest)
     elif cmd == "ask":
         print(event({"what": "typed", "text": " ".join(rest), "target": target()}))
     elif cmd == "hear":
