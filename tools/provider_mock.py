@@ -87,7 +87,7 @@ class H(BaseHTTPRequestHandler):
             return self.send(402, {"error": {"code": 402, "message": "Insufficient credits"}})
         if path.endswith("/v1/models"):
             # both shapes at once: Anthropic's (id, display_name) and OpenRouter's (name, context, tools, pictures)
-            models = [("anthropic/claude-sonnet-5.5", 1_000_000, True, True), ("~google/gemini-pro-latest", 1_048_576, True, True),
+            models = [("anthropic/claude-sonnet-5.5", 1_000_000, True, True), ("google/gemini-4-argon", 1_048_576, True, True),
                       ("test/no-pictures", 200_000, True, False), ("test/no-tools", 128_000, False, True),
                       ("test/no-private", 128_000, True, True)]
             return self.send(200, {"data": [{"type": "model", "id": m, "display_name": m, "name": m, "context_length": ctx,

@@ -124,7 +124,7 @@ Touch controllers (`Xr/XrInput.cs`, bound for `/interaction_profiles/oculus/touc
   press what's on it, as in the world; on an empty part they drag the board.
 - Incognito (`docs/assistant.md` > Incognito): while it's on, a token lit in the accent with its mark (a hat and
   glasses; open lenses when the assistant may see) sits on the left forearm past the other tokens; the right ray and
-  trigger on it end incognito. The menu's incognito section turns it on and off, holds "let it see" and its automatic
+  trigger on it end incognito. The menu's incognito section turns it on and off, holds "let the assistant see" and its automatic
   triggers. The window on the PC shows a dark fill instead of the eyes while it lasts.
 - Notices (`docs/social.md` > Notices): while any wait for an answer, a bell on the left forearm past the HUD token and
   the stand key, lit while some aren't on the chat feed; the right ray and trigger on it put them all back on the feed,

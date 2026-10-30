@@ -79,14 +79,14 @@ log at its "input/output" level, add-ons such as speech history), which is the p
   the history, Speakable), `ReaderActions.cs` (confirmations through an `IConfirmGate`, stepping, pressing and putting
   away notices, repeating; no key bindings).
 - The session's part, `Sojourn.Session/Access/AccessWiring.cs` (shared with Sojourn Access: watches the feed, the panel
-  and the music stream ten times a second on a thread of its own, the menu's reader section, the settings,
+  and the music stream ten times a second on a thread of its own, the menu's screen reader section, the settings,
   `SojournScreenReader status`), and this client's keys, `Sojourn.Client/Access/ReaderKeys.cs` (the bindings above).
   Program.cs starts it through `SessionHost.StartScreenReader` and passes keys.
 - NVDA's controller client: `python tools/screenreader.py setup` puts NV Access's x64 DLL (2026.3, LGPL-2.1, pinned
   by SHA-256) with its licence in `local/nvda/`, where the client looks after its own folder. It isn't in the repo. A
   release ships it beside Sojourn.exe with its licence (LGPL-2.1 allows that, unmodified, dynamically loaded).
 - Settings: `screen_reader` (auto, on, off), `announce_nearby`, `_objects`, `_ims`, `_group`, `_notices`,
-  `_replies`, `_music` (SojournSettings, the assistant's settings tool), the menu's **reader** section (its first
+  `_replies`, `_music` (SojournSettings, the assistant's settings tool), the menu's **screen reader** section (its first
   row notes which reader runs). Kept in vr-settings.json as `screenReader`.
 
 ## Testing

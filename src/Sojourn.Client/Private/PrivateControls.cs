@@ -134,7 +134,7 @@ public sealed class PrivateControls
         {
             (MenuRow.Switch("incognito", _s.Private.On), _ => Toggle("menu", _headset || _lastDownReal)),
             // letting it see during a spell takes the person's own hand, as ending one does
-            (MenuRow.Switch("let it see", _s.Private.Sees), _ =>
+            (MenuRow.Switch("let the assistant see", _s.Private.Sees), _ =>
             {
                 if (!_s.Private.Sees && _s.Private.On && !(_headset || _lastDownReal)) return;
                 SetSees(!_s.Private.Sees);

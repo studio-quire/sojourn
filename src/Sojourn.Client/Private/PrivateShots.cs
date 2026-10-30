@@ -31,7 +31,7 @@ public static class PrivateShots
         var rows = new List<MenuRow>
         {
             MenuRow.Switch("incognito", true),
-            MenuRow.Switch("let it see", false),
+            MenuRow.Switch("let the assistant see", false),
             MenuRow.Switch("always here", true, note: "Lighthouse Point"),
             MenuRow.Switch("always with Kestrel Moonfall", true),
             MenuRow.Switch("always with Ardent", false),

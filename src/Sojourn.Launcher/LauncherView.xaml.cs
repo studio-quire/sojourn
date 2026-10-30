@@ -32,6 +32,7 @@ public partial class LauncherView : UserControl
     List<SavedAccount> _accounts = new();
     SavedAccount? _account;   // null: a new one
     bool _settingsOpen, _listOpen, _loading;
+    bool _keyForeign;   // the key box holds text that didn't come from the person's own press
     string? _forgetArmed;
     long _forgetArmedAt;
     string? _logPath;
@@ -59,20 +60,38 @@ public partial class LauncherView : UserControl
             rb.Checked += (_, _) => { if (!_loading) { _settings.Provider = value; ShowAssistant(); } };
             ProviderTrack.Children.Add(rb);
         }
-        foreach (var (id, name) in SettingsFile.OpenRouterModels)
+        // OpenRouter's list arrives off this thread (a fetch at most every 3 days, only once OpenRouter is chosen)
+        OpenRouterCatalog.Changed += () => Dispatcher.BeginInvoke(() => { if (ModelList.IsOpen && !_typedList) ShowModels(null); ShowModelName(); });
+        ModelBox.TextChanged += (_, _) =>
         {
-            var row = new Button { Style = (Style)FindResource("Row"), Margin = new Thickness(0),
-                Content = new TextBlock { Text = name, FontSize = 14, Foreground = (Brush)FindResource("Ink") } };
-            System.Windows.Automation.AutomationProperties.SetName(row, name);
-            row.Click += (_, _) => { ModelList.IsOpen = false; ModelBox.Text = id; CommitModel(); };
-            ModelChoices.Children.Add(row);
-        }
-        KeyBox.PasswordChanged += (_, _) => { Mark.SetWrong(KeyBox, false); KeyHint.Visibility = KeyBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed; TryKeep(enter: false); };
+            ShowModelName();
+            // typing: the ids that match, from everything OpenRouter lists that can act (any id is still taken as typed)
+            if (_loading || !ModelBox.IsKeyboardFocusWithin) return;
+            var typed = ModelBox.Text.Trim();
+            var hits = typed.Length >= 2 && typed != OpenRouterCatalog.ClaudeName ? OpenRouterCatalog.Matching(typed, 8) : new();
+            if (hits.Count > 0 && !(hits.Count == 1 && hits[0].Id == typed)) ShowModels(hits);
+            else if (_typedList) ModelList.IsOpen = false;
+        };
+        KeyBox.PasswordChanged += (_, _) =>
+        {
+            // text in the box not from the person's own keys or mouse (UI Automation setting it, posted characters)
+            // spoils what's there: the person's Enter mustn't keep a key someone else put in
+            _keyForeign = KeyBox.Password.Length > 0 && (_keyForeign || !RealPress.Now());
+            Mark.SetWrong(KeyBox, false);
+            KeyHint.Visibility = KeyBox.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            TryKeep(enter: false);
+        };
         KeyBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) { TryKeep(enter: true); e.Handled = true; } };
         ForgetKey.Click += (_, _) => ForgetTheKey();
         ModelBox.LostKeyboardFocus += (_, _) => CommitModel();
         ModelBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) { CommitModel(); e.Handled = true; } };
-        ModelListKey.Click += (_, _) => ModelList.IsOpen = !ModelList.IsOpen;
+        // a popup that doesn't stay open closes on the mouse-down over ▾ itself, before its click: that click mustn't reopen it
+        ModelList.Closed += (_, _) => _modelListClosedAt = Environment.TickCount64;
+        ModelListKey.Click += (_, _) =>
+        {
+            if (ModelList.IsOpen && !_typedList) ModelList.IsOpen = false;
+            else if (Environment.TickCount64 - _modelListClosedAt > 300) ShowModels(null);
+        };
         foreach (var sw in new[] { AutoSwitch, DenyDataSwitch, AgreeSwitch })
         {
             sw.Checked += (_, _) => Switched(sw);
@@ -169,8 +188,12 @@ public partial class LauncherView : UserControl
 
     void UpdatePassHint()
     {
-        PassHint.Text = _account is { Remembered: true } ? "remembered" : "password";
-        PassHint.Visibility = PassBox.SecurePassword.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        // a remembered password: the field greyed out and closed, saying so; turning remember off forgets it and opens it
+        bool kept = _account is { Remembered: true };
+        PassBox.IsEnabled = !kept;
+        PassField.Opacity = kept ? 0.6 : 1;
+        PassHint.Text = kept ? "password remembered" : "password";
+        PassHint.Visibility = kept || PassBox.SecurePassword.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void BuildList()
@@ -248,7 +271,7 @@ public partial class LauncherView : UserControl
         (g switch { "light" => GfxLight, "balanced" => GfxBalanced, "full" => GfxFull, _ => GfxYours }).IsChecked = true;
         var provider = _settings.Provider ?? SettingsFile.Providers[0].Value;
         foreach (RadioButton rb in ProviderTrack.Children) rb.IsChecked = (string)rb.Tag == provider;
-        ModelBox.Text = _settings.OpenRouterModel;
+        ModelBox.Text = Shown(_settings.OpenRouterModel);
         AutoSwitch.IsChecked = _settings.AutoMode;
         DenyDataSwitch.IsChecked = _settings.OpenRouterDenyData;
         _loading = false;
@@ -267,12 +290,17 @@ public partial class LauncherView : UserControl
         bool keyed = kind != "claude";
         bool kept = keyed && ProviderKeys.Has(kind);
         bool armed = Environment.TickCount64 - _forgetPressedAt < 4000;
-        KeyHint.Text = !keyed ? "API key" : kept ? (armed ? "forget the key?" : "key kept") : $"{ProviderKeys.Name(kind)} key";
+        KeyHint.Text = !keyed ? "API key" : kept ? (armed ? "forget the key?" : $"{ProviderKeys.Name(kind)} key kept") : $"{ProviderKeys.Name(kind)} key";
+        // a kept key: the box greyed out and closed, as a remembered password; × (twice) forgets it and opens it again
+        KeyBox.IsEnabled = !kept;
+        KeyBox.Opacity = kept ? 0.6 : 1;
         KeyHint.Foreground = (Brush)FindResource(armed && kept ? "Coral" : "Faint");
+        KeyField.Visibility = keyed ? Visibility.Visible : Visibility.Collapsed;   // a Claude account takes no key
         ForgetKey.Visibility = kept ? Visibility.Visible : Visibility.Collapsed;
         ForgetKey.Foreground = (Brush)FindResource(armed ? "Coral" : "Faint");
         bool openRouter = kind == "openrouter";
         ModelRow.Visibility = openRouter ? Visibility.Visible : Visibility.Collapsed;
+        if (openRouter) OpenRouterCatalog.Refresh();
         DenyDataSwitch.Visibility = openRouter ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -282,6 +310,12 @@ public partial class LauncherView : UserControl
     {
         if (_loading || KeyBox.Password.Length == 0) return;
         if (!RealPress.Now()) return;   // (not the person's own keys: nothing kept until they press Enter)
+        if (_keyForeign)
+        {
+            KeyBox.Clear();
+            Note("paste the key again", null, TimeSpan.FromSeconds(8), alarm: true);
+            return;
+        }
         var text = KeyBox.Password;
         if (ProviderKeys.Recognise(text) == null)
         {
@@ -315,14 +349,65 @@ public partial class LauncherView : UserControl
         Note($"{ProviderKeys.Name(kind)} key forgotten", null, TimeSpan.FromSeconds(8));
     }
 
-    /// <summary>OpenRouter's model as typed (any id) or picked from the quick list; empty: claude.</summary>
+    /// <summary>OpenRouter's model as typed (any id) or picked from the list; empty: Claude's three.</summary>
     void CommitModel()
     {
         if (_loading) return;
-        var id = ModelBox.Text.Trim();
-        if (id.Length == 0) id = "claude";
-        if (ModelBox.Text != id) ModelBox.Text = id;
+        var typed = ModelBox.Text.Trim();
+        var id = typed.Length == 0 || typed == OpenRouterCatalog.ClaudeName ? OpenRouterCatalog.Claude : typed;
+        if (ModelBox.Text != Shown(id)) ModelBox.Text = Shown(id);
         if (id != _settings.OpenRouterModel) _settings.OpenRouterModel = id;
+    }
+
+    bool _typedList;   // the list shows what matches the typing, not the quick list
+
+    /// <summary>In the box: a model's tag, or Claude's three by name.</summary>
+    static string Shown(string id) => id == OpenRouterCatalog.Claude ? OpenRouterCatalog.ClaudeName : id;
+
+    /// <summary>Under the box, the other half: a tag's name, or Claude's three tags (an id OpenRouter doesn't list: nothing).</summary>
+    long _modelListClosedAt = -10_000;
+
+    void ShowModelName()
+    {
+        var typed = ModelBox.Text.Trim();
+        // Claude's three are special: their name says it all, no tags (the user, 2026-10-30)
+        ModelName.Text = typed.Length == 0 || typed == OpenRouterCatalog.ClaudeName ? "" : OpenRouterCatalog.NameOf(typed) ?? "";
+        ModelName.Visibility = ModelName.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>The list under the box: Claude's three and OpenRouter's families' current models (hits null), or the
+    /// models matching what's typed. Each row its tag, its name under it.</summary>
+    void ShowModels(List<OpenRouterCatalog.Model>? hits)
+    {
+        FillModels(hits);
+        ModelList.IsOpen = ModelChoices.Children.Count > 0;
+    }
+
+    void FillModels(List<OpenRouterCatalog.Model>? hits)
+    {
+        _typedList = hits != null;
+        ModelChoices.Children.Clear();
+        var rows = hits?.Select(m => (m.Id, Top: m.Id, Under: m.Name))
+            ?? new[] { (Id: OpenRouterCatalog.Claude, Top: OpenRouterCatalog.ClaudeName, Under: "") }
+                .Concat(OpenRouterCatalog.Quick.Select(m => (m.Id, Top: m.Id, Under: m.Name)));
+        foreach (var (id, top, under) in rows)
+        {
+            var text = new StackPanel();
+            text.Children.Add(new TextBlock { Text = top, FontSize = 14, Foreground = (Brush)FindResource("Ink"), TextTrimming = TextTrimming.CharacterEllipsis });
+            if (under.Length > 0) text.Children.Add(new TextBlock { Text = under, FontSize = 12, Foreground = (Brush)FindResource("Faint"), TextTrimming = TextTrimming.CharacterEllipsis });
+            var row = new Button { Style = (Style)FindResource("Row"), Margin = new Thickness(0), Content = text, Focusable = false };
+            System.Windows.Automation.AutomationProperties.SetName(row, under.Length == 0 ? top : top == id ? $"{id}, {under}" : $"{top}, {under}");
+            row.Click += (_, _) => { ModelList.IsOpen = false; ModelBox.Text = Shown(id); CommitModel(); };
+            ModelChoices.Children.Add(row);
+        }
+    }
+
+    /// <summary>For the pictures: the list's card as it opens from ▾, drawn on its own (a popup isn't in the view).</summary>
+    internal FrameworkElement ModelListShot()
+    {
+        FillModels(null);
+        ModelList.Child = null;
+        return ModelListCard;
     }
 
     void Switched(CheckBox sw)
@@ -495,7 +580,7 @@ public partial class LauncherView : UserControl
             Phase.Form => $"log in {where}",
             Phase.Connecting => "logging in",
             Phase.Terms => here ? "terms" : $"terms, {where}",
-            Phase.Code => here ? "code" : $"code, {where}",
+            Phase.Code => here ? "authenticator code" : $"authenticator code, {where}",
             Phase.Failed => $"didn't log in",
             Phase.World => s.Headset ? "in the headset" : "on the desktop",
             Phase.Ending => "closing",

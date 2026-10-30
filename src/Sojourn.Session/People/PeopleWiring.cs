@@ -226,7 +226,7 @@ public sealed class PeopleWiring : IDisposable
 
     static readonly int[] AwayChoices = Presence.AwayAfterChoices;
     static string Minutes(int m) => m == 0 ? "never" : m < 60 ? $"{m} min" : $"{m / 60.0:0.#} h";
-    static string TeleportLabel(string mode) => mode switch { "all" => "all", "not_friends" => "not friends'", _ => "off" };
+    static string TeleportLabel(string mode) => mode switch { "all" => "all", "not_friends" => "not friends'", _ => "none" };   // under "turn away": none of them
     static readonly string[] TeleportOrder = { "off", "not_friends", "all" };   // as they grow
     /// <summary>Whether anything of the person's is turned away (the turn-away group's faint "some").</summary>
     static bool Busy(Rejects rj) => rj.FriendsOnly || rj.RejectTeleports != "off" || rj.RejectFriendships || rj.RejectGroupInvites;

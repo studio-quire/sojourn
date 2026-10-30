@@ -223,7 +223,11 @@ public sealed partial class Panel
             else if (r.Options is { Length: > 0 } opts)
             {
                 float SizeOf(int o) => r.OptionSizes is { } sz && o < sz.Length ? sz[o] : 14.5f;
-                var widths = opts.Select((o, n) => r.OptionSizes != null ? Measure(Font(k.Regular, SizeOf(n)), o) + 24 : Measure(valueF, o) + 26).ToArray();
+                var texts = opts.Select((o, n) => r.OptionSizes != null ? Measure(Font(k.Regular, SizeOf(n)), o) : Measure(valueF, o)).ToArray();
+                // the options' air gives way (down to 12 px each) before the row's name would be cut short
+                float room = right - (row.Left + 32 + Measure(labelF, r.Label)) - 6;
+                float air = Math.Clamp((room - texts.Sum()) / opts.Length, 12, r.OptionSizes != null ? 24 : 26);
+                var widths = texts.Select(t => t + air).ToArray();
                 float total = widths.Sum() + 6;
                 var well = new SKRect(right - total, cy - 17, right, cy + 17);
                 draw.Recess(well, 17);
@@ -285,7 +289,7 @@ public sealed partial class Panel
                 // the value as a key; pressing anywhere on the row steps it
                 bool lit = r.Enabled && hover == keys.Count;
                 if (lit) draw.Fill(new SKRect(row.Left, row.Top + 2, row.Right, row.Bottom - 2), 14, k.Look.KeyOpacity * 0.9f);
-                float vw = Math.Min(Measure(valueF, r.Value) + 30, 200);
+                float vw = Math.Min(Measure(valueF, r.Value) + 30, 260);   // room for an OpenRouter tag
                 var cap = new SKRect(right - vw, cy - 16, right, cy + 16);
                 draw.Key(cap, Ellipsize(r.Value, valueF, vw - 20), lit, 15);
                 if (r.Enabled) keys.Add(new PanelKey(KeyKind.Menu, i * 16, row));

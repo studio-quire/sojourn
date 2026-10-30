@@ -89,7 +89,7 @@ public static class MapPainter
                 MapKey.Help => new SKRect(W - Side - 72, 8, W - Side - 40, 40),
                 MapKey.Close => Slot(0),
                 MapKey.Go => new SKRect(W - Side - 76, Top + MapH + 10, W - Side, Top + MapH + 46),
-                MapKey.Track => new SKRect(W - Side - 76 - 46, Top + MapH + 10, W - Side - 76 - 8, Top + MapH + 46),
+                MapKey.Track => new SKRect(W - Side - 76 - 8 - 76, Top + MapH + 10, W - Side - 76 - 8, Top + MapH + 46),
                 _ => SKRect.Empty,
             };
         // the mini-map: zoom and find me on the left; on the right the world map, then (on the hand) out to a board of
@@ -106,7 +106,7 @@ public static class MapPainter
             MapKey.PutBack when dock == MapDock.Free => Slot(1),
             MapKey.Close when dock == MapDock.Free => Slot(0),
             MapKey.Go => go,
-            MapKey.Track => new SKRect(go.Left - 6 - 32, go.Top, go.Left - 6, go.Bottom),
+            MapKey.Track => new SKRect(go.Left - 6 - 62, go.Top, go.Left - 6, go.Bottom),
             _ => SKRect.Empty,
         };
     }
@@ -384,11 +384,13 @@ public static class MapPainter
             case MapKey.Close: draw.GlyphKey(r, Painter.Glyph.Close, lit); return;
             case MapKey.Help: draw.GlyphKey(r, Painter.Glyph.Help, lit, v.Help); return;
             case MapKey.Go: draw.Key(r, "Go", lit, v.Dock == MapDock.World ? 16 : 15); return;
+            // a word beside Go, as Go is (the user, 2026-10-30: like keys all words or all icons); lit while tracking
+            case MapKey.Track: draw.Key(r, "Track", lit, v.Dock == MapDock.World ? 16 : 15, s.Tracking && !lit ? 1.4f : 1); return;
         }
         bool on = key switch { MapKey.Me => v.Follow, MapKey.Sale => v.Sale, MapKey.Events => v.Events, MapKey.Track => s.Tracking, MapKey.World => s.WorldUp, _ => false };
         var c = draw.Canvas!;
         var k = draw.K;
-        if (lit || on || key == MapKey.Track) draw.KeyFace(r, r.Height / 2, lit, on && !lit ? 1.4f : 1);
+        if (lit || on) draw.KeyFace(r, r.Height / 2, lit, on && !lit ? 1.4f : 1);
         var ink = lit || on ? k.Text : k.Dim;
         using var p = new SKPaint { Color = ink, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.7f, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round };
         float cx = r.MidX, cy = r.MidY, sz = r.Height * 0.2f;
@@ -422,18 +424,6 @@ public static class MapPainter
                 break;
             case MapKey.Events:
                 using (var star = StarPath(cx, cy + 0.5f, sz * 1.5f)) c.DrawPath(star, p);
-                break;
-            case MapKey.Track:
-                // a pin: the place marked, a beacon there to follow
-                using (var pinPath = new SKPath())
-                {
-                    float pr = sz * 0.95f, top = cy - sz * 0.5f;
-                    pinPath.AddArc(new SKRect(cx - pr, top - pr, cx + pr, top + pr), 150, 240);
-                    pinPath.LineTo(cx, cy + sz * 1.55f);
-                    pinPath.Close();
-                    c.DrawPath(pinPath, p);
-                    c.DrawCircle(cx, top, sz * 0.35f, p);
-                }
                 break;
             case MapKey.World:
                 // a globe: its rim, a meridian and two parallels

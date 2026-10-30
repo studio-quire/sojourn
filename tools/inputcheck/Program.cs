@@ -15,6 +15,14 @@ void Check(bool ok, string what) { Console.WriteLine((ok ? "ok   " : "FAIL ") + 
 const int Enter = 0x0D, One = 0x31, Two = 0x32, Shift = 0x10, LShift = 0xA0, Delete = 0x2E, Space = 0x20, Down = 0x28;
 const long Settle = InputJudge.Settle, Match = InputJudge.Match;
 nint W = 0x1000, Other = 0x2000;   // the app's window, and another of its windows
+if (args is ["-wpf", var wpfOut])
+{
+    Console.SetOut(new System.IO.StreamWriter(wpfOut) { AutoFlush = true });
+    if (!OnHiddenDesktop()) { Console.WriteLine("FAIL -wpf brings a window to the front: only on a hidden desktop"); return 1; }
+    LauncherInWpf();
+    Console.WriteLine(fails == 0 ? "all passed" : $"{fails} failed");
+    return fails;
+}
 InputJudge j;
 Standing s, s2;
 
@@ -264,6 +272,115 @@ foreach (var (msg, name) in new[] { (0x0106, "WM_SYSCHAR"), (0x0102, "WM_CHAR") 
     f.Close();
 }
 
+// ---- the launcher's judge (src/Sojourn.Launcher/PressJudge.cs): the hooks' presses against the window's messages,
+// where WPF's real keys say unavailable (the 2026-10-30 guided test) ----
+{
+    var LH = Sojourn.Launcher.InputSource.Hardware;
+    var LI = Sojourn.Launcher.InputSource.Injected;
+    var LU = Sojourn.Launcher.InputSource.Unavailable;
+    const int V = 0x56, A = 0x41, LCtrl = 0xA2, Ctrl = 0x11;
+    var k = new Sojourn.Launcher.PressJudge();
+    k.Key(Enter, true, 1000, W);
+    Check(k.KeyMessage(Enter, true, LU, 1010, W), "Launcher: Enter the hook saw, its message unavailable (as WPF's real keys): counts");
+    Check(!k.KeyMessage(Enter, true, LU, 1020, W), "Launcher: a second message on the same press (a posted copy): refused");
+    k.Key(Enter, true, 2000, W);
+    Check(!k.KeyMessage(Enter, true, LU, 3100, W), "Launcher: a message more than a second after the press: refused");
+    k.Key(Enter, true, 4000, W);
+    Check(!k.KeyMessage(Enter, true, LU, 4010, Other), "Launcher: into another window than the one in front at the press: refused");
+    Check(!k.KeyMessage(Two, true, LU, 4020, W), "Launcher: another key than the one pressed: refused");
+    Check(k.KeyMessage(Enter, true, LI, 4030, W), "Launcher: injected on the hand's press (a screen reader's pass-on): counts");
+    Check(!k.KeyMessage(Enter, true, LI, 5000, W), "Launcher: injected with no press (SendInput): refused");
+    Check(!k.KeyMessage(Enter, true, LU, 5010, W), "Launcher: posted with no press: refused");
+    Check(k.KeyMessage(Enter, true, LH, 6000, W), "Launcher: hardware with no hook press (the hook not on yet): counts");
+    k.Key(Enter, true, 7000, W);
+    Check(k.KeyMessage(Enter, true, LH, 7005, W) && !k.KeyMessage(Enter, true, LU, 7010, W), "Launcher: a hardware message takes its press, so a posted copy after it is refused");
+    k.Key(Space, false, 8000, W);
+    Check(!k.KeyMessage(Space, true, LU, 8001, W), "Launcher: a release the hook saw doesn't let a key-down count");
+    Check(k.KeyMessage(Space, false, LU, 8002, W), "Launcher: but its key-up message counts (Space on a button)");
+    k.Key(LCtrl, true, 9000, W); k.Key(V, true, 9100, W);
+    Check(k.KeyMessage(Ctrl, true, LU, 9001, W) && k.KeyMessage(V, true, LU, 9101, W), "Launcher: Ctrl+V, the hook's left Ctrl as the window's Ctrl: both count");
+    k.Key(A, true, 10000, W);
+    k.KeyMessage(A, true, LU, 10001, W);
+    Check(k.CharMessage('a', LU) && !k.CharMessage('b', LU), "Launcher: a counted key-down's character counts, a second character doesn't");
+    k.Key(A, true, 10100, W);
+    k.KeyMessage(A, true, LU, 10101, W);
+    Check(k.CharMessage((char)0xD83D, LU) && k.CharMessage((char)0xDE00, LU) && !k.CharMessage('x', LU), "Launcher: a surrogate pair is one key's character");
+    k.KeyMessage(A, true, LU, 10200, W);
+    Check(!k.CharMessage('a', LU), "Launcher: the character of a refused key-down: refused");
+    Check(k.CharMessage('a', LH), "Launcher: a character Windows calls hardware: counts");
+    k.Button(true, 100, 200, 11000); k.Button(false, 100, 200, 11080);
+    Check(k.ButtonMessage(true, 101, 199, LU, 11001) && k.ButtonMessage(false, 100, 200, LU, 11081), "Launcher: a click the hook saw: its down and up count at its point");
+    k.Button(false, 100, 200, 12000);
+    Check(!k.ButtonMessage(false, 300, 200, LU, 12001), "Launcher: a posted release elsewhere (on Continue) just after the hand's: refused");
+    Check(!k.ButtonMessage(true, 100, 200, LU, 12002), "Launcher: a button-down on a release's press: refused");
+    Check(k.ButtonMessage(false, 100, 200, LU, 12003), "Launcher: and the hand's own release still counts");
+    Check(!k.ButtonMessage(false, 100, 200, LI, 13000), "Launcher: an injected click with no press: refused");
+    k.Key(Enter, true, 14000, W); k.Button(false, 1, 1, 14000);
+    k.Forget(keys: true, buttons: false);
+    Check(!k.KeyMessage(Enter, true, LU, 14001, W) && k.ButtonMessage(false, 1, 1, LU, 14001), "Launcher: the keyboard hook off: its presses go, the mouse's stay");
+}
+
+// ---- -wpf OUT: the launcher's RealPress as WPF handles input, in a window of our own brought to the front, so only
+// on a hidden desktop (tools/launcher.py check runs it there through QuireUia); no app, so no hooks: presses are given
+// to its judge here as the hooks would ----
+void LauncherInWpf()
+{
+    var seen = new System.Collections.Concurrent.BlockingCollection<(string What, bool Counts)>();
+    nint hwnd = 0;
+    using var shown = new ManualResetEventSlim();
+    var ui = new Thread(() =>
+    {
+        var box = new System.Windows.Controls.TextBox();
+        var win = new System.Windows.Window
+        {
+            Left = 100, Top = 100, Width = 200, Height = 100, ShowActivated = false, ShowInTaskbar = false,
+            WindowStyle = System.Windows.WindowStyle.None, Background = System.Windows.Media.Brushes.White, Content = box,
+        };
+        win.PreviewKeyDown += (_, e) =>
+        {
+            seen.Add(("key", Sojourn.Launcher.RealPress.Now()));
+            if (e.Key == System.Windows.Input.Key.F6) win.Dispatcher.BeginInvoke(() => seen.Add(("later", Sojourn.Launcher.RealPress.Now())));
+        };
+        box.TextChanged += (_, _) => seen.Add(("text", Sojourn.Launcher.RealPress.Now()));
+        Sojourn.Launcher.RealPress.Start(win);
+        win.Show();
+        hwnd = new System.Windows.Interop.WindowInteropHelper(win).Handle;
+        // WPF raises keys only in the focused window and clicks only where it's on screen: this desktop is hidden
+        if (!win.Activate()) SwitchToThisWindow(hwnd, true);
+        box.Focus();
+        shown.Set();
+        System.Windows.Threading.Dispatcher.Run();
+    });
+    ui.SetApartmentState(ApartmentState.STA);
+    ui.IsBackground = true;
+    ui.Start();
+    shown.Wait(10_000);
+    Thread.Sleep(300);
+    var judge = Sojourn.Launcher.RealPress.Judge;
+    string Next() => seen.TryTake(out var x, 1500) ? $"{x.What} {(x.Counts ? "counts" : "refused")}" : "nothing";
+    string n, n2;
+    PostMessage(hwnd, 0x0100, 0x74, 1);
+    Check((n = Next()) == "key refused", $"Launcher in WPF: a posted F5 the hook didn't see: refused ({n})");
+    judge.Key(0x74, true, Environment.TickCount64, hwnd);
+    PostMessage(hwnd, 0x0100, 0x74, 1);
+    Check((n = Next()) == "key counts", $"Launcher in WPF: F5 the hook saw: counts while WPF handles it ({n})");
+    PostMessage(hwnd, 0x0100, 0x74, 1);
+    Check((n = Next()) == "key refused", $"Launcher in WPF: F5 again on the same press: refused ({n})");
+    judge.Key(0x75, true, Environment.TickCount64, hwnd);
+    PostMessage(hwnd, 0x0100, 0x75, 1);
+    n = Next(); n2 = Next();
+    Check(n == "key counts" && n2 == "later refused", $"Launcher in WPF: F6 counts, work it leaves for later doesn't ({n}, {n2})");
+    judge.Key(0x41, true, Environment.TickCount64, hwnd);
+    PostMessage(hwnd, 0x0100, 0x41, 1);   // its WM_CHAR made by TranslateMessage, as for the hand's key
+    var typed = $"{Next()}, {Next()}";
+    PostMessage(hwnd, 0x0102, 'b', 1);
+    typed += $", {Next()}";
+    Check(typed == "key counts, text counts, text refused", $"Launcher in WPF: A's character counts, a character posted after it doesn't ({typed})");
+    // (clicks aren't checked here: WPF takes a posted click only where the real cursor is, and this desktop's isn't
+    // ours to move; PressJudge's checks above have the points, and clicks go through the same filter as keys)
+    System.Windows.Threading.Dispatcher.FromThread(ui)?.InvokeShutdown();
+}
+
 if (args.Contains("-raw")) RawInput.Show();
 
 Console.WriteLine(fails == 0 ? "all passed" : $"{fails} failed");
@@ -274,6 +391,23 @@ return fails;
 [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")] static extern nint SendText(nint hwnd, int msg, nint w, string l);
 [DllImport("user32.dll")] static extern bool PeekMessage(out WinMsg msg, nint hwnd, uint min, uint max, uint remove);
 [DllImport("user32.dll")] static extern nint DispatchMessage(ref WinMsg msg);
+[DllImport("user32.dll")] static extern void SwitchToThisWindow(nint hwnd, bool altTab);
+[DllImport("user32.dll")] static extern nint GetThreadDesktop(uint thread);
+[DllImport("user32.dll")] static extern nint OpenInputDesktop(uint flags, bool inherit, uint access);
+[DllImport("user32.dll")] static extern bool CloseDesktop(nint desktop);
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool GetUserObjectInformation(nint obj, int index, char[] info, int length, out int needed);
+[DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+
+// This thread's desktop isn't the one the person's input goes to (nor the usual one)
+static bool OnHiddenDesktop()
+{
+    static string Name(nint d) { var b = new char[256]; return d != 0 && GetUserObjectInformation(d, 2, b, b.Length * 2, out _) ? new string(b).TrimEnd('\0') : ""; }
+    var mine = Name(GetThreadDesktop(GetCurrentThreadId()));
+    var input = OpenInputDesktop(0, false, 0x0001);   // DESKTOP_READOBJECTS
+    var theirs = Name(input);
+    if (input != 0) CloseDesktop(input);
+    return mine.Length > 0 && !mine.Equals("Default", StringComparison.OrdinalIgnoreCase) && !mine.Equals(theirs, StringComparison.OrdinalIgnoreCase);
+}
 
 [StructLayout(LayoutKind.Sequential)] struct WinMsg { public nint H; public uint M; public nint W, L; public uint T; public int X, Y; }
 

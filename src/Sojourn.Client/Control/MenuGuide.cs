@@ -2,12 +2,12 @@ namespace Sojourn.Client.Control;
 
 /// <summary>
 /// Every settings-menu row's tip (what it does, in plain words, shown when the pointer rests on it) and its level: S
-/// rows show in the simple menu (the default), A rows only with "advanced" on. The test for S: would a person using the
+/// rows show in the simple menu (the default), A rows only with "advanced menu" on. The test for S: would a person using the
 /// assistant need to change this by hand, rather than just asking? (the user, 2026-10-29: Sojourn is assistant first;
 /// graphics are for asking, draw distance excepted.) Hiding a row changes only the menu, never the setting or what the
 /// assistant can reach. A section with no S rows isn't shown in the simple menu; a group marked S shows all its rows.
 /// Paths: "section" (its tab), "section/label", a group's own row "section/group/" (a row and a group can share a
-/// label: view's menus), a row in it "section/group/label"; a * stands for a part of a label that changes (a name, a
+/// label), a row in it "section/group/label"; a * stands for a part of a label that changes (a name, a
 /// count). A row missing here is advanced and has no tip.
 /// </summary>
 public static class MenuGuide
@@ -22,7 +22,7 @@ public static class MenuGuide
         A("social", "Names, chat and alerts about the people around you."),
         A("voice", "Talking with people by voice."),
         A("sound", "Volumes, music, speakers, and web pages and videos on objects."),
-        A("reader", "What your screen reader reads out, if you use one."),
+        A("screen reader", "What your screen reader reads out, if you use one."),
         A("safety", "Comfort, being pushed around, aiming, and things that flood or take over."),
         A("view", "How far and how well you see, and the menus themselves."),
 
@@ -57,11 +57,11 @@ public static class MenuGuide
         A("assistant/called *", "The assistant goes by the name you gave it."),
         A("assistant/its character", "The assistant takes on the character you described."),
         S("assistant/ask before touching others' things", "The assistant waits for your press before it touches or answers menus on things that aren't yours."),
-        S("assistant/advanced", "Shows every setting, for experienced Second Life players. Either way, the assistant can change any of them when you ask."),
+        S("assistant/advanced menu", "Shows every setting, for experienced Second Life players. Either way, the assistant can change any of them when you ask."),
 
         // --- incognito (by hand on purpose: some of it is better not said aloud)
         S("incognito/incognito", "Nothing from now on is kept, and the assistant sees only a general picture. Only you can end it."),
-        S("incognito/let it see", "During incognito the assistant sees and helps as usual. Still nothing is kept."),
+        S("incognito/let the assistant see", "During incognito the assistant sees and helps as usual. Still nothing is kept."),
         S("incognito/always here", "Incognito comes on by itself whenever you're on this land."),
         S("incognito/always at *", "Incognito comes on by itself at this place. Off takes the place off the list."),
         S("incognito/always with *", "Incognito comes on by itself when this person is near."),
@@ -94,8 +94,8 @@ public static class MenuGuide
         A("you/animations", "Restarts your animations when others see you stuck or out of step."),
 
         // --- social
-        A("social/names", "Names over people's heads."),
-        A("social/chat", "Nearby chat, messages and notices shown on the left."),
+        A("social/name tags", "Names over people's heads."),
+        A("social/chat feed", "Nearby chat, messages and notices shown on the left."),
         A("social/hover text", "Floating text over objects, like prices and signs."),
         A("social/chat bubbles", "What people say shows over their heads for a while."),
         A("social/tags through walls", "Names show through walls and things in front of people."),
@@ -126,20 +126,20 @@ public static class MenuGuide
         A("sound/music volume", "How loud the music is."),
         A("sound/speakers", "Which speakers or headphones Sojourn plays through."),
         A("sound/microphone", "Which microphone Sojourn listens to."),
-        A("sound/media", "Which web pages and videos on objects play by themselves: yours, everyone's, or none until you touch them."),
+        A("sound/media autoplay", "Which web pages and videos on objects play by themselves: yours, everyone's, or none until you touch them."),
         A("sound/media volume", "How loud web pages and videos are."),
-        A("sound/first click", "Whose web pages and videos your first click goes to, rather than to the object."),
+        A("sound/media first click", "Whose web pages and videos your first click goes to, rather than to the object."),
         A("sound/zoom to media", "Clicking a web page or video brings it up close."),
 
-        // --- reader (the screen reader's)
-        A("reader/read out", "What arrives is read out through your screen reader. Auto does it whenever one is running."),
-        A("reader/nearby chat", "Read out what people nearby say."),
-        A("reader/objects", "Read out what objects say."),
-        A("reader/IMs", "Read out private messages."),
-        A("reader/group chat", "Read out group chat."),
-        A("reader/notices", "Read out offers, menus, invitations and alerts."),
-        A("reader/the assistant", "Read out the assistant's replies."),
-        A("reader/music titles", "Read out each song's title as the music changes."),
+        // --- screen reader
+        A("screen reader/read out", "What arrives is read out through your screen reader. Auto does it whenever one is running."),
+        A("screen reader/nearby chat", "Read out what people nearby say."),
+        A("screen reader/objects", "Read out what objects say."),
+        A("screen reader/IMs", "Read out private messages."),
+        A("screen reader/group chat", "Read out group chat."),
+        A("screen reader/notices", "Read out offers, menus, invitations and alerts."),
+        A("screen reader/the assistant", "Read out the assistant's replies."),
+        A("screen reader/music titles", "Read out each song's title as the music changes."),
 
         // --- safety
         A("safety/comfort vignette", "The edges of the view darken while you move: never, only when something else moves you, or always."),
@@ -153,8 +153,8 @@ public static class MenuGuide
         S("safety/* hidden", "Shows again everything you've hidden from view."),
 
         // --- view
-        A("view/size", "How big the menus and the assistant's panel are."),
-        A("view/menus", "Brings every menu you've moved back in front of you, following you again."),
+        A("view/menu size", "How big the menus and the assistant's panel are."),
+        A("view/menu positions", "Brings every menu you've moved back in front of you, following you again."),
         S("view/draw distance", "How far you can see. Further shows more, but loads more and can slow things down."),
         S("view/quality", "Light, balanced or full: shadows, reflections, detail and distance set together, as in the launcher. Yours: changed by hand."),
         A("view/graphics/", "Shadows, reflections, detail and the rest of how the world is drawn."),
@@ -181,7 +181,7 @@ public static class MenuGuide
         A("view/avatars/complexity limit", "Avatars heavier than this show as plain shapes, to keep things smooth."),
         A("view/avatars/avatar physics", "Bodies sway and bounce as their owners set them up."),
         A("view/avatars/lip sync", "People's mouths move when they speak by voice."),
-        A("view/avatars/beams", "Beams from people's hands to what they point at or build."),
+        A("view/avatars/selection beams", "Beams from people's hands to what they point at or build."),
         A("view/sky", "The region's own sky, or a time of day just for you."),
         A("view/time of day", "Moves the sun earlier or later, just for you. Press the sky again to put it back."),
         A("view/location line", "Where you are, above your left wrist, with a lag meter if you like. Press it for the map."),

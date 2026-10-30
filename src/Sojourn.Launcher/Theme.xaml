@@ -2,14 +2,14 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:local="clr-namespace:Sojourn.Launcher">
 
-    <!-- Sojourn's own glass (Sojourn.Session/Assistant/PanelLook.cs, the default): clear white glass, deep teal ink, one
-         teal accent; the colour lives in the light behind the glass, a pale sky toward pearl. -->
-    <Color x:Key="InkColor">#2F474C</Color>
-    <Color x:Key="AccentColor">#1F736D</Color>
-    <SolidColorBrush x:Key="Ink" Color="#2F474C"/>
-    <SolidColorBrush x:Key="Dim" Color="#465E63"/>
-    <SolidColorBrush x:Key="Faint" Color="#7A8F93"/>
-    <SolidColorBrush x:Key="Accent" Color="#1F736D"/>
+    <!-- Sojourn's glass, light blue (the user, 2026-10-30): clear glass for everything, a light blue accent for the controls
+         that act (toggles, Launch), slate ink, and behind the glass only a very light blue; no other colours. -->
+    <Color x:Key="InkColor">#2B3F52</Color>
+    <Color x:Key="AccentColor">#7DBCEE</Color>
+    <SolidColorBrush x:Key="Ink" Color="#2B3F52"/>
+    <SolidColorBrush x:Key="Dim" Color="#46596B"/>
+    <SolidColorBrush x:Key="Faint" Color="#7A8A99"/>
+    <SolidColorBrush x:Key="Accent" Color="#7DBCEE"/>
     <SolidColorBrush x:Key="Coral" Color="#B85A52"/>
     <FontFamily x:Key="Ui">Segoe UI Variable Text, Segoe UI</FontFamily>
     <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
@@ -21,7 +21,7 @@
         <GradientStop Color="#40FFFFFF" Offset="1"/>
     </LinearGradientBrush>
 
-    <!-- a field: a lighter well in the glass, its rim catching the light at the top, teal when it has the keys -->
+    <!-- a field: a lighter well in the glass, its rim catching the light at the top, light blue when it has the keys -->
     <Style TargetType="TextBox">
         <Setter Property="FontFamily" Value="{StaticResource Ui}"/>
         <Setter Property="FontSize" Value="15"/>
@@ -44,7 +44,7 @@
                             <Setter TargetName="Hint" Property="Visibility" Value="Visible"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Well" Property="BorderBrush" Value="#B31F736D"/>
+                            <Setter TargetName="Well" Property="BorderBrush" Value="#B37DBCEE"/>
                             <Setter TargetName="Well" Property="Background" Value="#D9FFFFFF"/>
                         </Trigger>
                         <Trigger Property="local:Mark.Wrong" Value="True">
@@ -71,7 +71,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Well" Property="BorderBrush" Value="#B31F736D"/>
+                            <Setter TargetName="Well" Property="BorderBrush" Value="#B37DBCEE"/>
                             <Setter TargetName="Well" Property="Background" Value="#D9FFFFFF"/>
                         </Trigger>
                         <Trigger Property="local:Mark.Wrong" Value="True">
@@ -118,7 +118,7 @@
                             <Setter Property="Foreground" Value="{StaticResource Ink}"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Pill" Property="BorderBrush" Value="#991F736D"/>
+                            <Setter TargetName="Pill" Property="BorderBrush" Value="#997DBCEE"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Cursor" Value="Arrow"/>
@@ -139,7 +139,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
                     <StackPanel Orientation="Horizontal" Background="Transparent">
-                        <Border x:Name="Track" Width="36" Height="20" CornerRadius="10" Background="#262F474C" VerticalAlignment="Center">
+                        <Border x:Name="Track" Width="36" Height="20" CornerRadius="10" Background="#262B3F52" VerticalAlignment="Center">
                             <Ellipse x:Name="Bead" Width="16" Height="16" Fill="White" HorizontalAlignment="Left" Margin="2,0">
                                 <Ellipse.Effect>
                                     <DropShadowEffect Color="{StaticResource InkColor}" Opacity="0.25" BlurRadius="4" ShadowDepth="1" Direction="270"/>
@@ -198,12 +198,12 @@
         <Setter Property="Padding" Value="12,0"/>
     </Style>
 
-    <!-- the way in: a lens of teal light -->
+    <!-- the way in: a lens of light blue -->
     <Style x:Key="Launch" TargetType="Button">
         <Setter Property="FontFamily" Value="{StaticResource Ui}"/>
         <Setter Property="FontSize" Value="17"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="Foreground" Value="{StaticResource Ink}"/>
         <Setter Property="Height" Value="56"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Template">
@@ -213,9 +213,9 @@
                         <Border x:Name="Body" CornerRadius="28">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop Color="#2C9189" Offset="0"/>
-                                    <GradientStop Color="#1F736D" Offset="0.55"/>
-                                    <GradientStop Color="#1A635E" Offset="1"/>
+                                    <GradientStop Color="#C4E4FA" Offset="0"/>
+                                    <GradientStop Color="#9ACDF3" Offset="0.55"/>
+                                    <GradientStop Color="#86C1EE" Offset="1"/>
                                 </LinearGradientBrush>
                             </Border.Background>
                             <Border.Effect>

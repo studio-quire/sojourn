@@ -445,7 +445,7 @@ public sealed partial class LoginSheet
 
     sealed class FieldKeys(LoginSheet s, Field f) : IKeyTarget
     {
-        public string Label => f == s._pass ? "password" : f == s._code ? "code" : f == s._uri ? "login URI" : f == s._region ? "region" : "username";
+        public string Label => f == s._pass ? "password" : f == s._code ? "authenticator code" : f == s._uri ? "login URI" : f == s._region ? "region" : "username";
         public bool Alive => s.Active && s._focus == f;
         public object Owner => f;
         public void Char(char ch) { f.Add(ch); s.Changed(); }

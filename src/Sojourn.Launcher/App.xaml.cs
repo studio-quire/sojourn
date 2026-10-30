@@ -36,6 +36,7 @@ public partial class App : Application
         }
         var view = new LauncherView(places, new LoginStore(places.BaseDir), desktop, extra);
         MainWindow = new LauncherWindow(view);
+        RealPress.Start(MainWindow);   // before the window's first message
         MainWindow.Show();
     }
 }

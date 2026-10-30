@@ -355,9 +355,9 @@ public sealed partial class Panel
         }
 
         /// <summary>A labelled key, a capsule unless it's tall.</summary>
-        public void Key(SKRect r, string label, bool lit, float size = 16)
+        public void Key(SKRect r, string label, bool lit, float size = 16, float strength = 1)
         {
-            KeyFace(r, Math.Min(r.Height / 2, k.Look.Radius * 0.8f), lit);
+            KeyFace(r, Math.Min(r.Height / 2, k.Look.Radius * 0.8f), lit, strength);
             var f = Font(k.Regular, size);
             Text(label, r.MidX - Measure(f, label) / 2, r.MidY + size * 0.36f, f, k.Text);
         }

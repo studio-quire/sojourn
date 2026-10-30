@@ -62,7 +62,7 @@ public static class PanelShots
         string Tip(string section, MenuRow? row) => Sojourn.Client.Control.MenuGuide.Tip(section, null, row) ?? "(no tip)";
         Shot("7i-settings-tip", Panel.DrawMenu(look, Tabs, 0, MovingRows, null, -1, scale, 1, tip: (3, Tip("moving", MovingRows[3]))));
         Shot("7j-settings-tip-last", Panel.DrawMenu(look, Tabs, 0, MovingRows, null, -1, scale, 1, tip: (MovingRows.Length - 1, Tip("moving", MovingRows[^1]))));
-        Shot("7k-settings-tip-tab", Panel.DrawMenu(look, AllTabs, 4, SocialRows, null, -1, scale, 1, 0, 44 / UiSize.BaseDegPerPx, tip: (-1 - 7, Tip("reader", null))));
+        Shot("7k-settings-tip-tab", Panel.DrawMenu(look, AllTabs, 4, SocialRows, null, -1, scale, 1, 0, 44 / UiSize.BaseDegPerPx, tip: (-1 - 7, Tip("screen reader", null))));
         Shot("7l-settings-tip-long", Panel.DrawMenu(look, Tabs, 1, AssistantRows(0), null, -1, scale, 1, tip: (6, Tip("assistant", AssistantRows(0)[6]))));
         Shot("7-settings-moving", Panel.DrawMenu(look, Tabs, 0, MovingRows, null, -1, scale, 1));
         Shot("8-settings-assistant", Panel.DrawMenu(look, Tabs, 1, AssistantRows(0), null, -1, scale, 1));
@@ -473,14 +473,14 @@ public static class PanelShots
 
     static readonly string[] Tabs = { "moving", "assistant", "voice" };
     static readonly string[] ViewTabs = { "moving", "assistant", "voice", "view" };
-    static readonly string[] AllTabs = { "moving", "assistant", "incognito", "you", "social", "voice", "sound", "reader", "safety", "view" };
+    static readonly string[] AllTabs = { "moving", "assistant", "incognito", "you", "social", "voice", "sound", "screen reader", "safety", "view" };
 
     static List<(MenuRow Row, Action<int> Act)> NoRows() => new();
 
     /// <summary>The social section: switches, a stepper shown with hover tips, two groups (one with a value).</summary>
     static readonly MenuRow[] SocialRows =
     {
-        MenuRow.Switch("names", true), MenuRow.Switch("chat", true), MenuRow.Switch("hover text", true),
+        MenuRow.Switch("name tags", true), MenuRow.Switch("chat feed", true), MenuRow.Switch("hover text", true),
         MenuRow.Switch("chat bubbles", false), MenuRow.Switch("tags through walls", false), MenuRow.Switch("group titles", true),
         MenuRow.Switch("friend colour", false), MenuRow.Choice("hover tips", new[] { "off", "0.3 s", "0.7 s", "1.5 s" }, 2),
         MenuRow.Group("alerts", NoRows).Row, MenuRow.Group("radar", NoRows, "on").Row,
@@ -500,7 +500,7 @@ public static class PanelShots
     static readonly MenuRow[] ViewRows =
     {
         UiSize.Row(new VrSettings()),
-        new("menus", "reset", false),
+        new("menu positions", "reset", false),
         new("draw distance", "128 m", true),
         MenuRow.Group("graphics", NoRows).Row, MenuRow.Group("avatars", NoRows).Row,
         MenuRow.Choice("sky", new[] { "region", "dawn", "noon", "dusk", "night" }, 0),

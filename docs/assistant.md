@@ -23,10 +23,19 @@ it) and a trouble note on the first row when it doesn't work. Sojourn Access, wh
 starts on its own, keeps them in Alt+0 (its first rows). The providers, with the sidecar's state for each:
 - **claude** (the default): the Claude subscription Claude Code is signed in to on this PC (`claude`, then `/login`).
 - **anthropic**: the person's Anthropic API key.
-- **openrouter**: their OpenRouter key, and **openrouter model**: `claude` (Anthropic's models there, so the model
-  and effort rows work as usual) or another maker's model, which then takes every request itself (no handover; the
-  model and effort rows go). The menu steps through a short list (`VrSettings.OpenRouterModels`: OpenRouter's rolling
-  `~maker/family-latest` ids with tool use and pictures); Access's Control+Enter takes any id.
+- **openrouter**: their OpenRouter key, and **openrouter model**: `claude`, shown as **Claude Haiku · Sonnet ·
+  Opus** with its tags (anthropic/claude-haiku-5.5 · sonnet-5.5 · opus-5.5: Claude Code's ids as `or_slug` maps them,
+  so the model and effort rows work as usual), or any OpenRouter model id, which then takes every request itself (no
+  handover; the model and effort rows go). The choices offered are real tags, never OpenRouter's rolling aliases
+  (`Assistant/OpenRouterCatalog.cs`, Claude Opus 5.5, 2026-10-30, the user's ask): Claude's three first, then each
+  rolling family's current model (the alias's `alias_target` in OpenRouter's public `/api/v1/models`, no key) that has
+  tool use, the `/api/v1/messages` endpoint the proxy speaks and pictures, Anthropic's (Fable) first, then by maker;
+  typing in the launcher's box also matches every model that can act (tools and messages, `:batch` and other variants
+  left out). Read off the UI thread only once OpenRouter is chosen, cached in `local/cache/openrouter-models.json`
+  (`%LOCALAPPDATA%\Sojourn\cache` packaged), fetched again when the cache is 3 days old; offline, the cache or a list
+  built in (2026-10-30). A chosen tag stays as chosen when a family moves on. The launcher's box takes any id typed;
+  the headset's row steps through the list (the name, or Claude's tags, under its label); Access's Enter steps it,
+  Control+Enter takes any id.
 
 **Putting a key in**: the launcher's key box (paste it; its shape says which provider it's for and switches to it; kept
 only from the person's own keys or mouse, `RealPress`; × twice forgets it). Access: Enter on the key row opens a
@@ -897,7 +906,7 @@ incognito), the lenses dark while blind and open rings while the assistant may s
   in the look's accent with the mark sits on the left forearm, past the mic, HUD, stand and notice tokens (`along`
   0.195 m); on the desktop the same token sits at the bottom middle of the window, just left of voice's mic token. The
   glyph is a distance field in `overlay.frag` (styles 22 and 23, `OverlayGlyphKind.Private`, `PrivateSees`).
-- **On and off**: the settings menu's **incognito** section (its first row the switch, then **let it see**), P on the
+- **On and off**: the settings menu's **incognito** section (its first row the switch, then **let the assistant see**), P on the
   desktop, the token (the right ray and trigger on it, or a click: it only ends incognito, which is why it shows only
   while on), the assistant asked (`SojournPrivate set {on}`), the `incognito` setting (on only). Off, and let it see
   during a spell, take the person's own hand: the token pressed by the controller or a real click, the menu's switches
@@ -1072,32 +1081,38 @@ unintuitive is made intuitive first, and only then explained, behind a small tog
   character until asked for; beacons' kinds while beacons are off; the wall test with menus over walls).
   - **Simple and advanced** (Claude Opus 5.5, 2026-10-29, the user's call: Sojourn is assistant first, so the menu
     holds only what a person would change by hand rather than ask for; graphics are for asking, draw distance
-    excepted): by default the menu shows assistant (model, memory, forget everything, ask before touching, advanced),
+    excepted): by default the menu shows assistant (model, memory, forget everything, ask before touching, advanced menu),
     incognito (all of it: by hand on purpose, some of it better not said aloud), voice (mic on, in open mic), safety
     (a script's controls back, hidden things shown again, when there are any) and view (draw distance); a section with
-    none of those isn't shown. The **advanced** switch (last in assistant, `advanced_menu` in SojournSettings, saved)
+    none of those isn't shown. The **advanced menu** switch (last in assistant, `advanced_menu` in SojournSettings, saved)
     shows every row below. Only the menu changes: the settings and the assistant's reach are the same either way.
     Each row's level is one letter in `Control/MenuGuide.cs`; the tests' presses and pictures use the whole menu.
+  - **Names that say what they are** (the user, 2026-10-30: minimal must stay readable): a row's few words name the
+    thing, not just its value or a bare noun (name tags, chat feed, media autoplay, media first click, selection
+    beams, menu size, menu positions, advanced menu, let the assistant see, screen reader); like keys in a group are
+    all words or all icons, never mixed (the map's Track beside Go). A segmented row's options give up their air (to
+    12 px) before its name would be cut short (haiku effort).
   - **Tips** (same day, the user's ask: names stay minimal): the pointer (right ray, or the mouse on the desktop)
     resting 0.5 s on a row or tab shows what it does in a sentence or two, on a small raised pane of the menu's glass
     just under it (above it at the foot), over the rows below; it goes as soon as the pointer leaves the row or a key is
     pressed, and crossing rows never shows one. The words are the person's, not the settings' `desc` (which is for the
     assistant): `MenuGuide`, beside each row's level, keyed by section, group and label. Drawn into the menu's own
     raster, so it follows the menu and costs a redraw only when it comes or goes. `--panel-shots`: `7i`-`7l`.
-  - **Sections** (advanced, headset; the desktop has no moving, size or menus): **moving**; **assistant** (model, each of the
+  - **Sections** (advanced, headset; the desktop has no moving, menu size, menu positions or menus): **moving**; **assistant** (model, each of the
     mode's models' effort, look, adaptive ink, spoken replies, memory, hearing, forget everything, called X, its
-    character, ask before touching others' things, advanced); **incognito**; **you** (do not disturb, away, away after, hover
-    height, show typing, *turn away* › only friends IM me, teleports off/not friends'/all, friendships, group invites,
+    character, ask before touching others' things, advanced menu); **incognito** (incognito, let the assistant see, its triggers); **you** (do not disturb, away, away after, hover
+    height, show typing, *turn away* › only friends IM me, teleports none/not friends'/all, friendships, group invites,
     one-to-one, group and conference calls; *AO* › the AO, its set, stands, OpenCollar, LockMeister, lock its folder;
     then skeleton · reset, attachments · refresh, animations · resync, the person's own avatar but the last, which is
     everyone's, run as the person's own press on SojournAvatars' ops, the key showing … then done or failed);
-    **social** (names, chat, hover text, chat bubbles, tags through walls, group titles, friend colour, hover tips
+    **social** (name tags, chat feed, hover text, chat bubbles, tags through walls, group titles, friend colour, hover tips
     off/0.3/0.7/1.5 s, *alerts* › mentions, keywords, sound; *radar* › chat range, draw distance, region each
     off/enter/leave/both, new accounts); **voice** (+ hear from: head (the viewer's camera)/avatar/mixed); **sound**
-    (+ first click, a stepper through none to all, and zoom to media, after media's two rows); **reader**; **safety**;
-    **view** (size, menus · reset, draw distance, *graphics* › the renderer's quality, the GPU options to judge,
+    (media autoplay and media volume, + media first click, a stepper through none to all, and zoom to media);
+    **screen reader** (what's read out through one); **safety**;
+    **view** (menu size, menu positions · reset, draw distance, *graphics* › the renderer's quality, the GPU options to judge,
     resolution, depth reprojection, load all around; *avatars* › full avatars, complexity limit, avatar physics, lip
-    sync, beams; sky; location line off/on/+ lag; *beacons* › beacons and, while on, its kinds, lines, line width,
+    sync, selection beams; sky; location line off/on/+ lag; *beacons* › beacons and, while on, its kinds, lines, line width,
     highlights, sun, moon, then highlight transparent, tracking beacon, tracking beep; *parcel lines* › property lines,
     ban lines; maturity; *menus* › menus over walls, wall test, frost bias, menus on desktop).
   - **Where the rows come from**: the client's own (`SettingsMenu`, `SettingsStandard`), a part's own section through
@@ -1246,7 +1261,7 @@ unintuitive is made intuitive first, and only then explained, behind a small tog
   - **Bringing them all back** (`Assistant/MenuPlaces.cs`): every menu back to following in its own place, from in
     front, every kept place forgotten, and the interface shown if X had hidden it. X held 0.6 s (the user's call,
     2026-10-28; a tap still hides and shows everything, on its release, so a hold never toggles), the view section's
-    **menus · reset** key (shown only while one is put somewhere), or the assistant
+    **menu positions · reset** key (shown only while one is put somewhere), or the assistant
     (`SojournAssistant resetMenus`; its `bring_panel` tool with `all`).
   Why these two: in SL the panel is mostly news (answers, choices, the listening capsule) that should stay out of the
   way of faces and the scene, so the default rests low and comes to you; a person who settles somewhere (seated at a

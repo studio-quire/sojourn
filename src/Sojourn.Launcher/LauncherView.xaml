@@ -4,13 +4,13 @@
              Width="400" Height="660" FontFamily="{StaticResource Ui}" Foreground="{StaticResource Ink}"
              UseLayoutRounding="True" TextOptions.TextFormattingMode="Ideal">
     <Grid>
-        <!-- the light behind the glass: a pale sky going to pearl, a few soft glows drifting in it -->
+        <!-- behind the glass: a very light blue, nothing else -->
         <Rectangle>
             <Rectangle.Fill>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="0.3,1">
-                    <GradientStop Color="#CBE4EE" Offset="0"/>
-                    <GradientStop Color="#E3EEF1" Offset="0.45"/>
-                    <GradientStop Color="#F4F0EC" Offset="1"/>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#E2F0FB" Offset="0"/>
+                    <GradientStop Color="#EDF5FC" Offset="0.45"/>
+                    <GradientStop Color="#F6FAFD" Offset="1"/>
                 </LinearGradientBrush>
             </Rectangle.Fill>
         </Rectangle>
@@ -18,24 +18,24 @@
             <Ellipse x:Name="GlowA" Canvas.Left="-130" Canvas.Top="-120" Width="440" Height="380">
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#B09CD8D1" Offset="0"/>
-                        <GradientStop Color="#009CD8D1" Offset="1"/>
+                        <GradientStop Color="#00FFFFFF" Offset="0"/>
+                        <GradientStop Color="#00FFFFFF" Offset="1"/>
                     </RadialGradientBrush>
                 </Ellipse.Fill>
             </Ellipse>
             <Ellipse x:Name="GlowB" Canvas.Left="190" Canvas.Top="150" Width="400" Height="400">
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#99D6CDF3" Offset="0"/>
-                        <GradientStop Color="#00D6CDF3" Offset="1"/>
+                        <GradientStop Color="#00FFFFFF" Offset="0"/>
+                        <GradientStop Color="#00FFFFFF" Offset="1"/>
                     </RadialGradientBrush>
                 </Ellipse.Fill>
             </Ellipse>
             <Ellipse x:Name="GlowC" Canvas.Left="-150" Canvas.Top="420" Width="500" Height="340">
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#99F6D9C6" Offset="0"/>
-                        <GradientStop Color="#00F6D9C6" Offset="1"/>
+                        <GradientStop Color="#00FFFFFF" Offset="0"/>
+                        <GradientStop Color="#00FFFFFF" Offset="1"/>
                     </RadialGradientBrush>
                 </Ellipse.Fill>
             </Ellipse>
@@ -59,8 +59,8 @@
                        Margin="0,0,0,20">
                 <TextBlock.Foreground>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                        <GradientStop Color="#2F474C" Offset="0"/>
-                        <GradientStop Color="#1F736D" Offset="1"/>
+                        <GradientStop Color="#2B3F52" Offset="0"/>
+                        <GradientStop Color="#3D78A8" Offset="1"/>
                     </LinearGradientBrush>
                 </TextBlock.Foreground>
             </TextBlock>
@@ -94,7 +94,8 @@
                             </Button>
 
                             <StackPanel x:Name="NewBlock">
-                                <TextBox x:Name="UserBox" Tag="username" AutomationProperties.Name="Username" Margin="0,0,0,10"/>
+                                <TextBox x:Name="UserBox" Tag="username" AutomationProperties.Name="Username" Margin="0,0,0,12"/>
+                                <TextBlock Style="{StaticResource Label}" Text="grid"/>
                                 <Border Style="{StaticResource Track}" Margin="0,0,0,10">
                                     <UniformGrid Rows="1">
                                         <RadioButton x:Name="GridSl" GroupName="grid" Style="{StaticResource Segment}" Content="Second Life" IsChecked="True"/>
@@ -105,12 +106,12 @@
                                 <TextBox x:Name="UriBox" Tag="login URI" AutomationProperties.Name="Login URI" Margin="0,0,0,10" Visibility="Collapsed"/>
                             </StackPanel>
 
-                            <Grid>
+                            <Grid x:Name="PassField">
                                 <PasswordBox x:Name="PassBox" AutomationProperties.Name="Password"/>
                                 <TextBlock x:Name="PassHint" Text="password" Foreground="{StaticResource Faint}" FontSize="15" Margin="15,0,0,0"
                                            VerticalAlignment="Center" IsHitTestVisible="False"/>
                             </Grid>
-                            <CheckBox x:Name="RememberSwitch" Style="{StaticResource Switch}" Content="remember" Margin="4,12,0,16"
+                            <CheckBox x:Name="RememberSwitch" Style="{StaticResource Switch}" Content="remember password" Margin="4,12,0,16"
                                       HorizontalAlignment="Left"/>
 
                             <TextBlock Style="{StaticResource Label}" Text="start"/>
@@ -158,7 +159,7 @@
                                 <UniformGrid x:Name="ProviderTrack" Rows="1"/>
                             </Border>
                             <!-- a key pasted here is kept encrypted (ProviderKeys) and switches to its provider; never shown back -->
-                            <Grid Margin="0,10,0,0">
+                            <Grid x:Name="KeyField" Margin="0,10,0,0">
                                 <PasswordBox x:Name="KeyBox" AutomationProperties.Name="API key"/>
                                 <TextBlock x:Name="KeyHint" Text="API key" Foreground="{StaticResource Faint}" FontSize="15" Margin="15,0,0,0"
                                            VerticalAlignment="Center" IsHitTestVisible="False"/>
@@ -170,14 +171,23 @@
                                     <ColumnDefinition/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBox x:Name="ModelBox" Tag="model" AutomationProperties.Name="OpenRouter model"/>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <!-- the model's OpenRouter tag (any id typed), its name under it; Claude's three: the name, their tags under it -->
+                                <TextBox x:Name="ModelBox" Tag="OpenRouter model" AutomationProperties.Name="OpenRouter model"/>
                                 <Button x:Name="ModelListKey" Grid.Column="1" Style="{StaticResource Key}" Content="&#xE70D;" FontSize="11" Margin="4,0,0,0"
                                         AutomationProperties.Name="Models"/>
-                                <Popup x:Name="ModelList" PlacementTarget="{Binding ElementName=ModelRow}" Placement="Bottom" AllowsTransparency="True"
+                                <TextBlock x:Name="ModelName" Grid.Row="1" Grid.ColumnSpan="2" FontSize="12" Foreground="{StaticResource Faint}" Margin="15,4,0,0"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <Popup x:Name="ModelList" PlacementTarget="{Binding ElementName=ModelBox}" Placement="Bottom" AllowsTransparency="True"
                                        StaysOpen="False" VerticalOffset="4">
-                                    <Border CornerRadius="13" Background="#F5FFFFFF" BorderBrush="{StaticResource Rim}" BorderThickness="1" Padding="4"
-                                            MinWidth="220">
-                                        <StackPanel x:Name="ModelChoices"/>
+                                    <Border x:Name="ModelListCard" CornerRadius="13" Background="#F5FFFFFF" BorderBrush="{StaticResource Rim}" BorderThickness="1" Padding="4"
+                                            Width="352">
+                                        <ScrollViewer MaxHeight="340" VerticalScrollBarVisibility="Auto" Focusable="False">
+                                            <StackPanel x:Name="ModelChoices"/>
+                                        </ScrollViewer>
                                     </Border>
                                 </Popup>
                             </Grid>
@@ -200,8 +210,8 @@
                             <CheckBox x:Name="AgreeSwitch" Style="{StaticResource Switch}" Content="I agree" Margin="4,14,0,0" HorizontalAlignment="Left"/>
                         </StackPanel>
                         <StackPanel x:Name="CodeBlock">
-                            <TextBlock Style="{StaticResource Label}" Text="code"/>
-                            <TextBox x:Name="CodeBox" Tag="000000" MaxLength="8" FontSize="18" AutomationProperties.Name="Code"/>
+                            <TextBlock Style="{StaticResource Label}" Text="authenticator code"/>
+                            <TextBox x:Name="CodeBox" Tag="000000" MaxLength="8" FontSize="18" AutomationProperties.Name="Authenticator code"/>
                             <TextBlock x:Name="CodeAgain" Text="that code didn't work" FontSize="12" Foreground="{StaticResource Coral}" Margin="4,6,0,0"
                                        Visibility="Collapsed"/>
                             <CheckBox x:Name="RememberComputer" Style="{StaticResource Switch}" Content="remember this computer" Margin="4,14,0,0"

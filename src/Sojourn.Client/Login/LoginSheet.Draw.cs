@@ -275,7 +275,12 @@ public sealed partial class LoginSheet
             if (s.Selected < 0) draw.KeyFace(add, 14, s.Hover == Ids.New);
             else if (s.Hover == Ids.New) draw.Fill(add, 14, k.Look.KeyOpacity * 0.9f);
             var pf = Font(k.Regular, 20);
-            draw.Text("+", add.MidX - Measure(pf, "+") / 2, add.MidY + 7, pf, s.Selected < 0 ? k.Text : k.Dim);
+            // + and its words, as the launcher's "new account"
+            var af = Font(k.Regular, 16.5f);
+            const string adding = "new account";
+            float aw = Measure(pf, "+") + 10 + Measure(af, adding), ax = add.MidX - aw / 2;
+            draw.Text("+", ax, add.MidY + 7, pf, s.Selected < 0 ? k.Text : k.Dim);
+            draw.Text(adding, ax + Measure(pf, "+") + 10, add.MidY + 6, af, s.Selected < 0 ? k.Text : k.Dim);
             keys.Add(new SheetKey(Ids.New, add));
             y = add.Bottom + 8;
             draw.Hairline(Pad, draw.W - Pad, y);
@@ -288,14 +293,14 @@ public sealed partial class LoginSheet
         y = SwitchRow(draw, s, keys, Ids.Remember, "remember password", s.Remember, y);
         if (s.Selected < 0)
         {
-            y = SegmentRow(draw, s, keys, Ids.Grid, "", new[] { "Second Life", "Beta", "other" }, s.Grid, y);
+            y = SegmentRow(draw, s, keys, Ids.Grid, "grid", new[] { "Second Life", "Beta", "other" }, s.Grid, y);
             if (s.Grid == 2) y = FieldBox(draw, s, keys, Ids.UriField, s.Uri, "login URI", y, s.Focus == Ids.UriField);
         }
-        y = SegmentRow(draw, s, keys, Ids.Start, "start", new[] { "last", "home", "region" }, s.Start, y);
+        y = SegmentRow(draw, s, keys, Ids.Start, "start", new[] { "last", "home", "a place" }, s.Start, y);
         if (s.Start == 2) y = FieldBox(draw, s, keys, Ids.RegionField, s.Region, "region or SLurl", y, s.Focus == Ids.RegionField);
         if (s.Note is { } note) y = Lines(draw, note + "?", 15, k.Accent, y, 1);
         y += 4;
-        y = Keys(draw, s, keys, y, s.Selected >= 0 ? (Ids.Forget, s.ForgetArmed ? "sure?" : "forget") : null, (Ids.LogIn, "Log in", true), plainWidth: 120);
+        y = Keys(draw, s, keys, y, s.Selected >= 0 ? (Ids.Forget, s.ForgetArmed ? "sure?" : "forget account") : null, (Ids.LogIn, "Log in", true), plainWidth: 150);
         // the version, as the TPV policy asks of a login screen (1.g)
         var vf = Font(k.Regular, 12.5f);
         var version = s.About;
@@ -358,7 +363,7 @@ public sealed partial class LoginSheet
     {
         var k = draw.K;
         draw.Body(height);
-        float y = Header(draw, s, keys, "Code", close: false);
+        float y = Header(draw, s, keys, "Authenticator code", close: false);
         y = Help(draw, s, y, new[] { "the code your authenticator app shows for this account", "remember: this computer won't be asked again for 30 days" });
         if (s.MfaAsks > 1) y = Lines(draw, "That code didn't work.", 15, k.Accent, y, 1);
         y = FieldBox(draw, s, keys, Ids.CodeField, s.Code, "000000", y, s.Focus == Ids.CodeField);

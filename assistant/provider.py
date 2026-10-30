@@ -148,11 +148,9 @@ def cli():
 
 # --- OpenRouter's models --------------------------------------------------------------------------------------------
 
-# the menu's short list (the client has it too, Control/VrSettings.cs): OpenRouter's rolling "latest" ids, each with tool
-# use and pictures; any other id can be set by the person (Access's Alt+0, the agent API is read-only for it)
-SUGGESTED = {"claude": "Claude (Haiku, Sonnet and Opus)", "~google/gemini-pro-latest": "Gemini Pro",
-             "~google/gemini-flash-latest": "Gemini Flash", "~openai/gpt-sol-latest": "GPT Sol",
-             "~x-ai/grok-latest": "Grok", "~moonshotai/kimi-latest": "Kimi"}
+# the choices offered (the launcher's list, the menu's row, Access's Alt+0) are the client's: Sojourn.Session's
+# Assistant/OpenRouterCatalog.cs, "claude" (Claude's three by the model setting, as or_slug maps them) and OpenRouter's
+# families' current models by their real tags; any other id can be set by the person (the agent API is read-only for it)
 
 
 def openrouter_models(log=print):
@@ -449,7 +447,7 @@ class Provider:
                 if info and not info["tools"]:
                     return self._not("no_tools", f"{info['name']} can't use tools on OpenRouter, so it can't act for you.")
                 self.single = self.model
-                self.single_name = (info or {}).get("name") or SUGGESTED.get(self.model) or self.model
+                self.single_name = (info or {}).get("name") or self.model
                 if info and info["context"]:
                     self.window = min(1_000_000, info["context"])
                 notes = []

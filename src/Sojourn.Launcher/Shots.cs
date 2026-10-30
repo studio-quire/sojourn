@@ -34,9 +34,15 @@ static class Shots
             Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings.png"));
             // OpenRouter with a decoy key kept (never a real one: the keys folder is the scratch one)
             var file = new SettingsFile(places.SettingsPath) { Provider = "openrouter" };
-            file.OpenRouterModel = "~google/gemini-pro-latest";
             Sojourn.Session.Assistant.ProviderKeys.Keep("sk-or-v1-" + new string('0', 40));
+            Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings-openrouter-claude.png"));
+            file.OpenRouterModel = "google/gemini-4-argon";
             Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings-openrouter.png"));
+            // the list under ▾, drawn on its own over the window's light (a popup isn't part of the view)
+            var list = Make(places, v => v.ShowPage("settings")).ModelListShot();
+            var back = new System.Windows.Controls.Border { Background = new SolidColorBrush(Color.FromRgb(0xE3, 0xEE, 0xF1)), Padding = new Thickness(12), Child = list };
+            back.Width = list.Width + 24; back.Measure(new Size(back.Width, double.PositiveInfinity)); back.Height = back.DesiredSize.Height;
+            Draw(back, Path.Combine(dir, "settings-openrouter-list.png"));
             file.Provider = "anthropic";
             Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings-anthropic.png"));
             Draw(Make(places, v => v.ShowStatus(new RunStatus(Phase.Code, Headset: true))), Path.Combine(dir, "code-headset.png"));

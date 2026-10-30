@@ -86,21 +86,21 @@ PRESSES = [
     ("view", None, "location line", 3 + 1, {"location_line": "on", "lag_meter": "off"}),
     ("view", None, "location line", 3 + 2, {"location_line": "on", "lag_meter": "on"}),
     ("view", "avatars", "lip sync", 0, None),
-    ("view", "avatars", "beams", 0, None),
+    ("view", "avatars", "selection beams", 0, None),
     ("view", "graphics", "load all around", 0, None),
     ("view", "beacons", "beacons", 0, None),
     ("view", "beacons", "highlight transparent", 0, None),
     ("view", "beacons", "tracking beacon", 0, None),
     ("view", "parcel lines", "property lines", 0, None),
     ("view", "parcel lines", "ban lines", 3 + 2, {"ban_lines": "proximity"}),
-    ("sound", None, "first click", 1, {"media_first_click": "any"}),
+    ("sound", None, "media first click", 1, {"media_first_click": "any"}),
     ("sound", None, "zoom to media", 0, None),
     ("voice", None, "hear from", 3 + 1, {"voice_hear_from": "avatar"}),
 ]
 
 # the switch each label flips, where the check is "it changed"
 SWITCHES = {"chat bubbles": "chat_bubbles", "keywords": "keyword_alerts", "one-to-one calls": "reject_p2p_calls", "stands": "ao_stands",
-            "lock its folder": "ao_lock_folders", "lip sync": "lip_sync", "beams": "selection_beams", "load all around": "interest_360",
+            "lock its folder": "ao_lock_folders", "lip sync": "lip_sync", "selection beams": "selection_beams", "load all around": "interest_360",
             "beacons": "beacons", "highlight transparent": "highlight_transparent", "tracking beacon": "tracking_beacon",
             "property lines": "property_lines", "zoom to media": "media_auto_zoom"}
 

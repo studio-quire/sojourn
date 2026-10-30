@@ -59,7 +59,7 @@ turns with you by default; not here). Each keeps its own view; the layers (land 
   wider (below); about 125 m across when it first opens (0.5 m a pixel), following you; reopened from the line it follows you again, what was picked on it let go (its zoom kept).
   Keys along the top: zoom out, in, find me; on the right the globe (the world map up or away; lit while it's up),
   then, on the hand, out (a frame with an arrow leaving it), or, out on its own, back to the hand (the arrow going in)
-  and ×. What's picked shows on a glass band over the map's foot with the track key and Go; Go keeps the mini-map up,
+  and ×. What's picked shows on a glass band over the map's foot with Track and Go (words, alike); Go keeps the mini-map up,
   following you again. Where it is (`MiniHome`: off, hand, free) is kept in `map-settings.json` (`MiniMap`).
   - **On the hand**: stacked over the location line in its plane (its bottom 6 mm above the line's top), at the line's
     scale (the panel's angular size at 0.45 m, ~0.55 mm a logical px at UI size 1), a fixed 380 x 306 px (a 250 px map;
@@ -82,7 +82,7 @@ turns with you by default; not here). Each keeps its own view; the layers (land 
   assistant (`show` at a place), and kept as it was between openings: the place, the zoom, following or not, what's
   picked and its Go (the user, 2026-10-29). The first opening follows you a few regions across (2 m a pixel, 1.2 km).
   Keys: zoom out, in, find me (follow again), land for sale, events, `?` (the legend in the map's colours), ×. What's
-  picked shows in the strip under the map with the track key and Go; with nothing picked, the region in the middle and
+  picked shows in the strip under the map with Track and Go; with nothing picked, the region in the middle and
   the statistics line. Go puts it away, the pick kept with it.
 - **Tiles** (`MapTiles`): the viewer's world mipmap, `{map server}map-{level}-{x}-{y}-objects.jpg` from the login's
   `map-server-url` (Second Life's `https://map.secondlife.com/` if none), the level by `scaleToLevel` on the board's
@@ -100,7 +100,7 @@ turns with you by default; not here). Each keeps its own view; the layers (land 
   scrolls (`Control/SheetStick.cs`, `MapWiring.Sheet`): meanwhile the stick doesn't turn, jump or climb, and a push
   begun on the map stays the map's until the stick is back in the middle. Left and right do nothing there.
 - **Pressing** (both): a press on the map that doesn't move picks the spot (the nearest mark within 12 px, else the
-  place); the track key drives the tracking beacon (`Beacons/Tracker.cs`, docs/rendering.md: someone picked is tracked
+  place); Track drives the tracking beacon (`Beacons/Tracker.cs`, docs/rendering.md: someone picked is tracked
   as them, anywhere else as the place; pressed while tracking, it stops); pressing the spot again lets it go. Go
   teleports there (`AgentSession.TeleportAsync` by region name, the point at ground level): the person's own press,
   nothing waits for a confirmation, as the viewer's map.

@@ -24,6 +24,7 @@
     <!-- the graphics presets the headset's menu offers too, and the assistant's keys (DPAPI) -->
     <Compile Include="..\Sojourn.Session\Control\GraphicsPresets.cs" Link="Shared\GraphicsPresets.cs" />
     <Compile Include="..\Sojourn.Session\Assistant\ProviderKeys.cs" Link="Shared\ProviderKeys.cs" />
+    <Compile Include="..\Sojourn.Session\Assistant\OpenRouterCatalog.cs" Link="Shared\OpenRouterCatalog.cs" />
     <!-- the wordmark: Archivo (OFL-1.1), as the panel ships it -->
     <Resource Include="..\Sojourn.Session\Assets\Fonts\Archivo-Light.ttf" Link="Fonts\Archivo-Light.ttf" />
     <Resource Include="..\Sojourn.Session\Assets\Fonts\Archivo-Regular.ttf" Link="Fonts\Archivo-Regular.ttf" />

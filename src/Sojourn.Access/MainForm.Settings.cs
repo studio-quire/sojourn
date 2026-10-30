@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Sojourn.Core;
+using Sojourn.Session.Assistant;
 
 namespace Sojourn.Access;
 
@@ -21,7 +22,7 @@ public sealed partial class MainForm
         ("announce_notices", "Read out notices"),
         ("announce_replies", "Read out the assistant"),
         ("announce_music", "Read out music titles"),
-        ("access_mute_all", "Everything muted (F6)"),
+        ("access_mute_all", "Read-out muted (F6)"),
         ("access_timestamps", "Times in the histories"),
         ("access_answers_without_key", "Answers without a physical key"),
         ("earcon_im", "Sound for an IM"),
@@ -29,7 +30,7 @@ public sealed partial class MainForm
         ("earcon_menu", "Sound for a script menu or question"),
         ("earcon_offer", "Sound for an offer"),
         ("earcon_group", "Sound for group chat"),
-        ("earcon_nearby", "Sound for nearby chat, from the speaker"),
+        ("earcon_nearby", "Sound for nearby chat, from whoever spoke"),
         ("earcon_objects", "Sound for objects' chat, from the object"),
         ("earcon_friends", "Sound for friends online and offline"),
         ("earcon_radar", "Sound for arrivals and departures, from the person"),
@@ -58,7 +59,7 @@ public sealed partial class MainForm
         ("walk_beacon", "Walk mode, the beacon on where you're heading"),
         ("walk_beacon_volume", "Walk mode, the beacon's volume"),
         ("walk_marks", "Walk mode, doors, seats and touchable things (O)"),
-        ("walk_marks_volume", "Walk mode, their sounds' volume"),
+        ("walk_marks_volume", "Walk mode, doors, seats and touchable things' volume"),
         ("walk_follow", "Following someone, their stops and turns"),
         ("walk_vehicle", "Driving, what's ahead and the speed"),
         ("walk_vehicle_volume", "Driving, its sounds' volume"),
@@ -109,7 +110,7 @@ public sealed partial class MainForm
             _set.SetAnswersWithoutKey(value);
             _ = RefreshSettings();
             var label = Shown.First(s => s.Name == name).Label;
-            Reader?.Answer($"{label}: {value}.");
+            Reader?.Answer($"{label}: {ValueWords(name, value)}.");
         }
     }
 
@@ -127,7 +128,7 @@ public sealed partial class MainForm
             var all = (await SettingsOp(new JsonObject(), "get"))["settings"] as JsonObject ?? new();
             var items = new List<(string, string, object)>();
             foreach (var (name, label) in Shown)
-                if (all[name] is JsonObject s) items.Add(($"{label}: {Value(s["value"])}", name, name));
+                if (all[name] is JsonObject s) items.Add(($"{label}: {ValueWords(name, Value(s["value"]))}", name, name));
             if (items.Count > 0) items.InsertRange(0, ProviderItems());
             Fill(_settingsList, items, "No settings (not logged in?).");
         }
@@ -165,8 +166,11 @@ public sealed partial class MainForm
         return items;
     }
 
+    /// <summary>OpenRouter's model as said: Claude's three with their tags, or a model's name and its tag
+    /// (Sojourn.Session's OpenRouterCatalog), or an id typed that OpenRouter doesn't list, as it is.</summary>
     static string ModelName(string id) =>
-        Sojourn.Session.Control.VrSettings.OpenRouterModels.FirstOrDefault(m => m.Id == id).Name ?? id;
+        id == OpenRouterCatalog.Claude ? $"Claude Haiku, Sonnet and Opus ({OpenRouterCatalog.ClaudeTagLine.Replace(" ·", ",")})"
+        : OpenRouterCatalog.NameOf(id) is { } name ? $"{name}, {id}" : id;
 
     /// <summary>A key on one of the provider rows: true if it was theirs.</summary>
     bool ProviderKey(string row, KeyEventArgs e)
@@ -199,10 +203,10 @@ public sealed partial class MainForm
         else if (row == "@key")
         {
             var text = Dialogs.Ask(this, "Assistant key", "Anthropic or OpenRouter key (paste with Control+V)", secret: true);
-            if (text == null) { Reader?.Answer("Nothing kept.", keep: false); return true; }
+            if (text == null) { Reader?.Answer("No key kept.", keep: false); return true; }
             string? kept;
             try { kept = Sojourn.Session.Assistant.ProviderKeys.Keep(text); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException) { Reader?.Answer("Couldn't keep it."); return true; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException) { Reader?.Answer("Couldn't keep the key."); return true; }
             if (kept == null) { Reader?.Answer("That isn't an Anthropic or OpenRouter key. Nothing kept."); return true; }
             st.AssistantProvider = kept;
             said = $"{Sojourn.Session.Assistant.ProviderKeys.Name(kept)} key kept; the assistant uses it now.";
@@ -219,16 +223,17 @@ public sealed partial class MainForm
         }
         else
         {
-            var models = Sojourn.Session.Control.VrSettings.OpenRouterModels;
+            OpenRouterCatalog.Refresh();
+            var models = new[] { OpenRouterCatalog.Claude }.Concat(OpenRouterCatalog.Quick.Select(m => m.Id)).ToArray();
             if (e.Control)
             {
                 if (Dialogs.Ask(this, "OpenRouter model", "OpenRouter model id", st.OpenRouterModel) is not { } id) return true;
-                st.OpenRouterModel = id;
+                st.OpenRouterModel = id.Trim() is { Length: > 0 } typed ? typed : OpenRouterCatalog.Claude;
             }
             else
             {
-                int at = Array.FindIndex(models, m => m.Id == st.OpenRouterModel);
-                st.OpenRouterModel = models[((at < 0 ? 0 : at) + (e.Shift ? -1 : 1) + models.Length) % models.Length].Id;
+                int at = Array.IndexOf(models, st.OpenRouterModel);
+                st.OpenRouterModel = models[((at < 0 ? 0 : at) + (e.Shift ? -1 : 1) + models.Length) % models.Length];
             }
             said = $"Assistant model on OpenRouter: {ModelName(st.OpenRouterModel)}.";
         }
@@ -246,6 +251,17 @@ public sealed partial class MainForm
         _ => v.ToString(),
     };
 
+    /// <summary>A value as its row says it: the setting's own word, or what it means where the word alone doesn't say
+    /// (a walk cue's "both" is a sound and a line; hello is Windows Hello; no underscores read out).</summary>
+    static string ValueWords(string name, string value) => (name, value) switch
+    {
+        (_, "both") when name.StartsWith("walk_") => "sound and text",
+        ("access_answers_without_key", "refuse") => "refused",
+        ("access_answers_without_key", "hello") => "Windows Hello",
+        ("access_talk_key", "f4" or "f12") => value.ToUpperInvariant(),
+        _ => value.Replace('_', ' '),
+    };
+
     /// <summary>The setting's next value (dir 1: Enter or Space) or the one before (-1: with Shift), round the ends.</summary>
     async Task NextValueAsync(string name, int dir = 1)
     {
@@ -260,7 +276,7 @@ public sealed partial class MainForm
         bool isNumber = one["value"] is JsonValue num && double.TryParse(num.ToJsonString(), System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out was) && (one.Str("values") ?? "") == "0-2";
         if (isNumber) values = new[] { "0", "0.15", "0.25", "0.5", "0.75", "1", "1.5", "2" };
-        if (values.Length < 2) { Reader?.Answer($"{now}. This one is changed by asking the assistant.", keep: false); return; }
+        if (values.Length < 2) { Reader?.Answer($"{ValueWords(name, now)}. This one is changed by asking the assistant.", keep: false); return; }
         string next;
         if (isNumber)
         {
@@ -282,7 +298,7 @@ public sealed partial class MainForm
         if (PersonOps.Error(r) is { } e) { Reader?.Answer($"Not changed: {e}"); return; }
         await RefreshSettings();
         var label = Shown.FirstOrDefault(s => s.Name == name).Label ?? name;
-        Reader?.Answer($"{label}: {next}.");
+        Reader?.Answer($"{label}: {ValueWords(name, next)}.");
         _earcons?.Preview(name);
     }
 }

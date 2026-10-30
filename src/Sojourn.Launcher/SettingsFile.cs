@@ -76,7 +76,7 @@ sealed class SettingsFile
     public const string ProviderKey = "assistantProvider";
     public static readonly (string Value, string Label)[] Providers =
     {
-        ("claude", "Claude"), ("anthropic", "Anthropic"), ("openrouter", "OpenRouter"),
+        ("claude", "Claude plan"), ("anthropic", "Anthropic API"), ("openrouter", "OpenRouter"),
     };
 
     public string? Provider
@@ -85,19 +85,13 @@ sealed class SettingsFile
         set => Change(o => o[ProviderKey] = value);
     }
 
-    /// <summary>With OpenRouter, the model: "claude" (Anthropic's, the usual three) or any OpenRouter id.</summary>
+    /// <summary>With OpenRouter, the model: "claude" (Claude's three, by the headset's model row) or any OpenRouter id;
+    /// the choices offered: Sojourn.Session's OpenRouterCatalog (linked).</summary>
     public string OpenRouterModel
     {
         get => Str("openRouterModel") is { Length: > 0 } m ? m : "claude";
         set => Change(o => o["openRouterModel"] = value);
     }
-
-    /// <summary>The menu's quick list (VrSettings.OpenRouterModels, kept the same): OpenRouter's rolling "latest" ids.</summary>
-    public static readonly (string Id, string Name)[] OpenRouterModels =
-    {
-        ("claude", "claude"), ("~google/gemini-pro-latest", "gemini pro"), ("~google/gemini-flash-latest", "gemini flash"),
-        ("~openai/gpt-sol-latest", "gpt sol"), ("~x-ai/grok-latest", "grok"), ("~moonshotai/kimi-latest", "kimi"),
-    };
 
     /// <summary>With OpenRouter, only providers that don't collect data (on unless the file says otherwise).</summary>
     public bool OpenRouterDenyData

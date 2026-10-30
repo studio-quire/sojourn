@@ -67,7 +67,7 @@ public static class UiSize
         int at = 0;
         for (int i = 1; i < Steps.Length; i++)
             if (MathF.Abs(Steps[i] - st.UiSize) < MathF.Abs(Steps[at] - st.UiSize)) at = i;
-        return MenuRow.Choice("size", Steps.Select(_ => "A").ToArray(), at) with { OptionSizes = new[] { 12f, 14.5f, 17f, 20f } };
+        return MenuRow.Choice("menu size", Steps.Select(_ => "A").ToArray(), at) with { OptionSizes = new[] { 12f, 14.5f, 17f, 20f } };
     }
 
     public static void Set(VrSettings st, float size)

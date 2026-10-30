@@ -133,10 +133,10 @@ public sealed class MediaWiring : IDisposable, Sojourn.Client.Hud.HudView.IMedia
         menu.SoundRows = () =>
         {
             var rows = before?.Invoke() ?? [];
-            rows.Add((MenuRow.Choice("media", Modes, (int)_st.MediaAutoPlay), i => { _st.MediaAutoPlay = (MediaAutoPlay)Math.Clamp(i, 0, 2); Apply(); }));
+            rows.Add((MenuRow.Choice("media autoplay", Modes, (int)_st.MediaAutoPlay), i => { _st.MediaAutoPlay = (MediaAutoPlay)Math.Clamp(i, 0, 2); Apply(); }));
             rows.Add((new MenuRow("media volume", Pct(_st.MediaVolume), true), d => { _st.MediaVolume = Step(_st.MediaVolume, d); Apply(); }));
             // whose faces take the first click, each step including those before it (B10 suggested trimming these for release)
-            rows.Add((new MenuRow("first click", Manager.FirstClicks == FirstClick.Huds ? "HUDs" : FirstClickNames[(int)Manager.FirstClicks], true), d =>
+            rows.Add((new MenuRow("media first click", Manager.FirstClicks == FirstClick.Huds ? "HUDs" : FirstClickNames[(int)Manager.FirstClicks], true), d =>
             {
                 int i = Math.Clamp((int)Manager.FirstClicks + (d == 0 ? 1 : d), 0, FirstClickNames.Length - 1);
                 Manager.FirstClicks = (FirstClick)i;

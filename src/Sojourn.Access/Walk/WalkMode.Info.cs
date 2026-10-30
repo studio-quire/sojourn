@@ -59,7 +59,7 @@ public sealed partial class WalkMode
         var (lo, hi) = Heights(b);
         var rays = new[] { lo, (lo + hi) / 2, hi }.Select(z => (new Vector3(b.Pos.X, b.Pos.Y, z), Dir(yaw), 30f)).ToList();
         var got = await _view!.CollideManyAsync(rays, b.Linkset);
-        if (got is not { } batch) { Line("The view couldn't answer."); return; }
+        if (got is not { } batch) { Line("The 3D view couldn't answer."); return; }
         var hit = batch.Hits.Aggregate((CollideHit?)null, Nearer);
         Line(hit is { } h ? $"{Obstacle(h)}, {Bearings.Metres(h.Distance)} ahead." : "Clear for 30 metres ahead.");
     }
@@ -83,7 +83,7 @@ public sealed partial class WalkMode
             for (int i = 0; i < SweepRays; i++)
                 rays.Add((new Vector3(b.Pos.X, b.Pos.Y, z), Dir(yaw + i * 2 * MathF.PI / SweepRays), SweepRange));
         var got = await _view!.CollideManyAsync(rays, b.Linkset);
-        if (got is not { } batch) { Line("The view couldn't answer."); return; }
+        if (got is not { } batch) { Line("The 3D view couldn't answer."); return; }
         var d = new double[SweepRays];
         for (int i = 0; i < SweepRays; i++)
         {

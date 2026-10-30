@@ -208,11 +208,11 @@ async def mock():
         check(all(not r.get("output_config") and not r.get("thinking") for r in mine), "Claude-only effort and thinking left out for it")
         check(all(r.get("images") == 0 for r in mine), "a picture it can't see is left out (a line says so)")
 
-        p.configure({"provider": "openrouter", "openrouter_model": "~google/gemini-pro-latest", "key_stamp": 3})
+        p.configure({"provider": "openrouter", "openrouter_model": "google/gemini-4-argon", "key_stamp": 3})
         check(p.ready and p.window == 1_000_000 and "can't see pictures" not in p.caveat, "a model that sees: no picture caveat")
         t = time.time()
         await session(p, "What's in this picture?", model="claude-opus-5-5[1m]", picture=True)
-        mine = [r for r in mock_log(log, t) if r.get("model") == "~google/gemini-pro-latest"]
+        mine = [r for r in mock_log(log, t) if r.get("model") == "google/gemini-4-argon"]
         check(bool(mine) and any(r.get("images") for r in mine), "a model that sees gets the picture")
         p.configure({"provider": "openrouter", "openrouter_model": "test/no-tools", "key_stamp": 3})
         check(not p.ready and p.state == "no_tools" and "another model" in p.how(), f"a model without tools: off, said why ({p.state})")

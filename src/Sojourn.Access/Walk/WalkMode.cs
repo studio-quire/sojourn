@@ -213,7 +213,7 @@ public sealed partial class WalkMode
         bool down = !_view.Running;
         if (down == _viewDown) return;
         _viewDown = down;
-        if (On) Line(down ? "Walk cues paused: the view out of sight is starting again." : "Walk cues back.");
+        if (On) Line(down ? "Walk cues paused: the 3D view is starting again." : "Walk cues back.");
     }
 
     static float Speed(Body b) => new Vector2(b.Vel.X, b.Vel.Y).Length();

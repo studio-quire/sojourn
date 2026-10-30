@@ -106,7 +106,7 @@ account after a failed one restarts the app with the form filled in (each accoun
 | Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touch", nearest first, within 30 m (Show: your HUDs instead); Tab: the selected one's parts, then a part's faces (Parts and faces, below) |
 | Alt+8 | Notices | what waits for an answer, newest first; the selected one's text, keys and reply box |
 | Alt+9 | Assistant | a typed request ("Ask the assistant"), its replies, its choices as buttons |
-| Alt+0 | Settings | the ones that matter here (read-out and its kinds, mutes, timestamps, arrivals, earcons and volumes, walk mode's cues); Enter or Space moves one to its next value, Shift+Enter or Shift+Space to the one before (a sound's row plays it). First, the assistant's provider (Claude account, Anthropic key, OpenRouter key) and whether it works; its key (Enter: a password box, Control+V or typed; Delete twice forgets it); OpenRouter's model (Control+Enter types any id). `docs/assistant.md` > Switching it on |
+| Alt+0 | Settings | the ones that matter here (read-out and its kinds, mutes, timestamps, arrivals, earcons and volumes, walk mode's cues); Enter or Space moves one to its next value, Shift+Enter or Shift+Space to the one before (a sound's row plays it). First, the assistant's provider (Claude account, Anthropic key, OpenRouter key) and whether it works; its key (Enter: a password box, Control+V or typed; Delete twice forgets it); OpenRouter's model, said as its name and tag (Enter steps through Claude's three, then each OpenRouter family's current model; Control+Enter types any id). `docs/assistant.md` > Switching it on |
 
 **Keys** (F1 says them):
 - In any input: Enter says (or sends), Shift+Enter whispers, Ctrl+Enter shouts (nearby only); Ctrl+Up/Down bring back
@@ -295,7 +295,7 @@ boat, a ride's controls. H and V then say the vehicle's heading and speed, A and
 leaving out its own parts.
 
 **The cues**, each a sound and a line for the screen reader (sound is never the only channel), each with its own
-setting for how it reaches you (both, text, sound or off) and its sound's level (quiet, medium, loud, full), in Alt+0
+setting for how it reaches you (both, text, sound or off; Alt+0 says both as "sound and text") and its sound's level (quiet, medium, loud, full), in Alt+0
 and on SojournSettings (`walk_NAME`, `walk_NAME_volume`). The sounds are our own, made in code (`Walk/CueSounds.cs`),
 played through world audio's mixer, placed: a cue about something on your left is in your left ear.
 
@@ -509,7 +509,7 @@ pictures (said so), only the facts and textures.
     (`tools/inputcheck` checks it). I agree is undone if anything but the person's press ticks it.
   - Negative answers (Cancel, Put away) and the assistant's offered choices take the person's input, passed-on keys
     included.
-  - **Without a physical key** (`access_answers_without_key`, Settings: `refuse` by default, or `hello`; lowering it to
+  - **Without a physical key** (`access_answers_without_key`, Settings: `refuse` by default, or `hello`, "refused" and "Windows Hello" in Alt+0; lowering it to
     hello is the person's own, in Alt+0 by a physical key or Windows Hello, and SojournSettings refuses it to callers,
     since it guards against programs, the assistant's among them; back to refuse anyone may): braille
     keyboards, Dragon, Voice Access, on-screen keyboards and switch access type through injected input, which can't be

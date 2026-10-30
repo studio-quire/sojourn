@@ -6,7 +6,10 @@
        (SOJOURN_TEST_INPUT=keys), with a UI Automation client reading the window from another thread.
          run it with dotnet run, the project tools/inputcheck (exit code: the number of failed checks);
          given -raw after the separator it also shows that raw input never sees a key a low-level hook swallows (one injected F24,
-         swallowed by its own hook, so no window gets it). -->
+         swallowed by its own hook, so no window gets it).
+       Also the launcher's (src/Sojourn.Launcher/PressJudge.cs): the hooks' presses against WPF's messages; and given
+       -wpf OUT, only on a hidden desktop (tools/launcher.py check runs it there), RealPress in a WPF window of its own
+       brought to the front there, its results written to OUT. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -20,5 +23,9 @@
     <Compile Include="..\..\src\Sojourn.Access\InputJudge.cs" Link="InputJudge.cs" />
     <Compile Include="..\..\src\Sojourn.Access\RealInput.cs" Link="RealInput.cs" />
     <Compile Include="..\..\src\Sojourn.Access\KeyHook.cs" Link="KeyHook.cs" />
+    <!-- and the launcher's (src/Sojourn.Launcher/RealPress.cs): its judge, and RealPress in a WPF window -->
+    <Compile Include="..\..\src\Sojourn.Launcher\PressJudge.cs" Link="Launcher\PressJudge.cs" />
+    <Compile Include="..\..\src\Sojourn.Launcher\RealPress.cs" Link="Launcher\RealPress.cs" />
+    <Compile Include="..\..\src\Sojourn.Launcher\HandHooks.cs" Link="Launcher\HandHooks.cs" />
   </ItemGroup>
 </Project>

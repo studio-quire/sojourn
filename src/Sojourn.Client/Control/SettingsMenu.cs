@@ -230,7 +230,7 @@ public sealed class SettingsMenu : ISettingsMenu
         sections.Add(("social", SocialRows()));
         if (_voice is { Available: true }) sections.Add(("voice", VoiceRows()));
         if (SoundRows != null) sections.Add(("sound", SoundRows()));
-        if (ReaderRows != null) sections.Add(("reader", ReaderRows()));   // the screen reader's (the tabs are crowded)
+        if (ReaderRows != null) sections.Add(("screen reader", ReaderRows()));   // the screen reader's (the tabs are crowded)
         if (SafetyRows != null) sections.Add(("safety", SafetyRows()));
         if (DrawDistance != null) sections.Add(("view", ViewRows()));
         return sections;
@@ -276,7 +276,7 @@ public sealed class SettingsMenu : ISettingsMenu
         // how big the headset's sheets are, this menu included (Assistant/UiSize.cs)
         if (_assistant.InHeadset) rows.Add((UiSize.Row(_s), i => UiSize.Set(_s, UiSize.Steps[i])));
         // while any menu is put somewhere: every one back to following, in front (X held does the same)
-        if (_assistant.InHeadset && Places is { AnyPut: true } places) rows.Add((new MenuRow("menus", "reset", false), _ => places.Reset()));
+        if (_assistant.InHeadset && Places is { AnyPut: true } places) rows.Add((new MenuRow("menu positions", "reset", false), _ => places.Reset()));
         rows.Add((new MenuRow("draw distance", $"{DrawDistance!():0} m", true), d => SetDrawDistance?.Invoke(Step(VrSettings.DrawDistances, DrawDistance!(), d))));
         // the launcher's presets (GraphicsPresets): settings that match none show as "yours", left alone until one is picked
         var preset = GraphicsPresets.Match(_s.AsJson());
@@ -405,7 +405,7 @@ public sealed class SettingsMenu : ISettingsMenu
         if (Quality is { } q)
             rows.Add((MenuRow.Switch("avatar physics", q.AvatarPhysics), _ => q.AvatarPhysics = _s.AvatarPhysics = !q.AvatarPhysics));
         if (_api?.SwitchRow("lip_sync", "lip sync") is { } lips) rows.Add(lips);
-        if (_api?.SwitchRow("selection_beams", "beams") is { } beams) rows.Add(beams);
+        if (_api?.SwitchRow("selection_beams", "selection beams") is { } beams) rows.Add(beams);
         return rows;
     }
 
@@ -535,8 +535,8 @@ public sealed class SettingsMenu : ISettingsMenu
     {
         var rows = new List<(MenuRow, Action<int>)>
         {
-            (MenuRow.Switch("names", _s.ShowNames), _ => _s.ShowNames = !_s.ShowNames),
-            (MenuRow.Switch("chat", _s.ShowChat), _ => _s.ShowChat = !_s.ShowChat),
+            (MenuRow.Switch("name tags", _s.ShowNames), _ => _s.ShowNames = !_s.ShowNames),
+            (MenuRow.Switch("chat feed", _s.ShowChat), _ => _s.ShowChat = !_s.ShowChat),
             (MenuRow.Switch("hover text", _s.ShowHoverText), _ => _s.ShowHoverText = !_s.ShowHoverText),
         };
         if (_api is not { } api) return rows;
@@ -597,19 +597,25 @@ public sealed class SettingsMenu : ISettingsMenu
     }
 
     /// <summary>
-    /// OpenRouter's model, when it's the provider (docs/assistant.md > Switching it on): the rolling "latest" list,
-    /// Claude through OpenRouter first; one set by name in the launcher shows as its id. The provider itself, its key
-    /// and its data setting are the launcher's.
+    /// OpenRouter's model, when it's the provider (docs/assistant.md > Switching it on): Claude's three first, then
+    /// each of OpenRouter's families' current model by its tag (Assistant/OpenRouterCatalog.cs, read live); one typed in
+    /// the launcher shows as its id. Under the label, its name (for Claude's three, their tags), or the trouble. The
+    /// provider itself, its key and its data setting are the launcher's.
     /// </summary>
     List<(MenuRow Row, Action<int> Act)> OpenRouterRows()
     {
-        var models = VrSettings.OpenRouterModels.ToList();
-        int at = models.FindIndex(m => m.Id == _s.OpenRouterModel);
-        if (at < 0) { models.Add((_s.OpenRouterModel, _s.OpenRouterModel)); at = models.Count - 1; }   // one set by name
+        OpenRouterCatalog.Refresh();
+        var models = new List<string> { OpenRouterCatalog.Claude };
+        models.AddRange(OpenRouterCatalog.Quick.Select(m => m.Id));
+        int at = models.IndexOf(_s.OpenRouterModel);
+        if (at < 0) { models.Add(_s.OpenRouterModel); at = models.Count - 1; }   // one typed in the launcher
+        var id = models[at];
+        string value = id == OpenRouterCatalog.Claude ? "Claude" : id;
+        string? note = id == OpenRouterCatalog.Claude ? OpenRouterCatalog.ClaudeTagLine : OpenRouterCatalog.NameOf(id);
         return new List<(MenuRow, Action<int>)>
         {
-            (new MenuRow("openrouter model", models[at].Name, true, Note: ProviderTrouble()),
-                d => SetOpenRouterModel(models[(at + (d < 0 ? -1 : 1) + models.Count) % models.Count].Id)),
+            (new MenuRow("openrouter model", value, true, Note: ProviderTrouble() ?? note),
+                d => SetOpenRouterModel(models[(at + (d < 0 ? -1 : 1) + models.Count) % models.Count])),
         };
     }
 
@@ -656,7 +662,7 @@ public sealed class SettingsMenu : ISettingsMenu
                 _ => { _s.UseAssistantCharacter = !_s.UseAssistantCharacter; _assistant.PrefsChanged(); }));
         rows.Add((MenuRow.Switch("ask before touching others' things", _s.ConfirmTouches), _ => _s.ConfirmTouches = !_s.ConfirmTouches));
         // every row, or only what's reached for by hand (MenuGuide)
-        rows.Add((MenuRow.Switch("advanced", _s.AdvancedMenu), _ => SetAdvanced(!_s.AdvancedMenu)));
+        rows.Add((MenuRow.Switch("advanced menu", _s.AdvancedMenu), _ => SetAdvanced(!_s.AdvancedMenu)));
         return rows;
     }
 
@@ -732,9 +738,9 @@ public sealed class SettingsMenu : ISettingsMenu
         var pages = new List<(string Name, int Section, List<MenuRow> Rows, string? Group)>();
         for (int i = 0; i < sections.Count; i++)
         {
-            pages.Add((sections[i].Name, i, sections[i].Rows.Select(r => r.Row).ToList(), null));
+            pages.Add((sections[i].Name.Replace(' ', '_'), i, sections[i].Rows.Select(r => r.Row).ToList(), null));
             foreach (var g in sections[i].Rows.Where(r => r.Row.Rows != null))
-                pages.Add(($"{sections[i].Name}-{g.Row.Label.ToLowerInvariant().Replace(' ', '_')}", i, g.Row.Rows!().Select(r => r.Row).ToList(), g.Row.Label));
+                pages.Add(($"{sections[i].Name.Replace(' ', '_')}-{g.Row.Label.ToLowerInvariant().Replace(' ', '_')}", i, g.Row.Rows!().Select(r => r.Row).ToList(), g.Row.Label));
         }
         var look = _panel.Look;
         float maxHeight = 44 / UiSize.DegPerPx, wide = UiSize.Wide;
