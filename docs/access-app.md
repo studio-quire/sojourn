@@ -49,7 +49,7 @@ repo's own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access
   build doesn't include, then what the lists know, and Alt+9's input is named "Ask the assistant (not in this build)".
   `//about` says the version, the commit, the disclaimer and the data folder; F1 ends by pointing to it.
 - **Checked** by `python tools/access.py package --check [ZIP]` (default the newest zip; about a minute; passed 38 of
-  38 on 0.1.0.504, 2026-10-30, as --bare too; released as v0.1.0.504 on studio-quire/sojourn-access): the zip unpacked in a fresh folder under %TEMP%, run on a hidden desktop of its own
+  38 on 0.1.0.510, 2026-10-30, as --bare too; released as v0.1.0.510 on studio-quire/sojourn-access): the zip unpacked in a fresh folder under %TEMP%, run on a hidden desktop of its own
   through QuireUia as Package Tester (`--local --autologin --reader on --no-voice`, world audio to a file, no mic, the
   data folder `--base` in the check's folder: .NET's GetFolderPath ignores %LOCALAPPDATA%, so the default folder itself
   isn't exercised), with no dotnet on PATH and %TEMP%, %LOCALAPPDATA% and %APPDATA% pointed into the check's folder.
@@ -834,7 +834,11 @@ own input logs off.
 4. `//about`: the release's version and github.com/studio-quire/sojourn? F1 read out?
 5. A short round where people are: Alt+3 (a person read with distance and clock direction), Alt+7 (the first object
    read without arrowing), Ctrl+D (says once that this build has no assistant, then what the lists know), F3 and S (the
-   sonar), Escape. Music, if the parcel has any: under NVDA at its start level?
+   sonar), Escape. Music, if the parcel has any: under NVDA at its start level? Somewhere busy (a few minutes in), read
+   its cost yourself, nothing for the user to do: working set and private bytes (psutil on its pid) and video memory
+   (`gpu_of` in `tools/access.py`), against 2026-10-29's 1.7 GB and 1.9 GB at Firestorm Social Island before unseen
+   mode; and the session log's `render[0] view:` lines (textures 0 resident, unseen). Walk mode's warnings and the
+   sonar should be as good as before: unseen mode's first run on Second Life.
 6. Alt+F4, Enter. Windows+R `%LOCALAPPDATA%\Sojourn Access`: the logs there, nothing new beside the program.
 7. Removing it as the README says (the folder and the data folder). Record findings in `docs/access.md`, take the item
    off the board.

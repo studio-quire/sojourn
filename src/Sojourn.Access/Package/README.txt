@@ -16,7 +16,7 @@ Starting it
 
 Open the folder this file is in and press Enter on SojournAccess.exe. In File Explorer, typing "sojourna" quickly moves to it (other files start with "sojourn" too).
 
-Windows will probably warn you, because the program isn't signed. The warning is titled "Windows protected your PC". To start it anyway, Tab to the "More info" link and press Enter, then Tab to the "Run anyway" button and press Enter.
+Windows will probably warn you, because the program isn't signed. The warning is titled "Windows protected your PC". To start it anyway, Tab to the "More info" link and press Enter, then Tab to the "Run anyway" button and press Enter. NVDA may read that button as just "R".
 
 To stop the warning, before unzipping: on the zip file, press Alt+Enter for its properties, check "Unblock" near the bottom of the General tab, press Enter, then unzip. If you've unzipped it already, do the same on SojournAccess.exe.
 

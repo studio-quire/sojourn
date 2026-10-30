@@ -67,6 +67,7 @@ public sealed class ConsoleChat
         {
             if (e.Type is ChatType.StartTyping or ChatType.StopTyping or ChatType.Debug) return;
             if (e.AudibleLevel != ChatAudibleLevel.Fully || string.IsNullOrEmpty(e.Message)) return;
+            if (Sojourn.Core.Agents.AgentSession.IsBridgeTalk(e)) return;
             if (_session?.Mutes.IsMuted(e.SourceID, e.FromName, e.OwnerID) == true) return;   // blocked (TesselAgent mute)
             var how = e.Type switch { ChatType.Shout => " shouts", ChatType.Whisper => " whispers", _ => "" };
             var msg = e.Message.StartsWith("/me ") ? $"{e.FromName}{e.Message[3..]}" : $"{e.FromName}{how}: {e.Message}";

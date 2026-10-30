@@ -119,13 +119,17 @@ public sealed partial class AgentSession
 
     // ---------- chat ----------
 
+    /// <summary>Firestorm's own worn LSL bridge talking to its viewer by llOwnerSay (its URL, its auth key...):
+    /// Firestorm keeps that out of chat, and so does everything here that shows, reads or logs chat (it showed on the
+    /// feed 2026-10-29, and in Sojourn Access's session log, the one testers may share, 2026-10-30).</summary>
+    public static bool IsBridgeTalk(ChatEventArgs e) =>
+        e.Type == ChatType.OwnerSay && (e.FromName ?? "").StartsWith("#Firestorm LSL Bridge", StringComparison.Ordinal);
+
     void OnChat(GridClient c, ChatEventArgs e)
     {
         if (e.Type is ChatType.StartTyping or ChatType.StopTyping) return;
         if (Ao.TakeOwnerSay(c, e)) return;   // a worn relay switching the AO (Agents/AoDriver.cs), kept out of chat
-        // Firestorm's own worn LSL bridge talks to its viewer by llOwnerSay (<bridgeURL>, its auth key...); Firestorm
-        // keeps that out of chat, and so do we (it showed on the feed, 2026-10-29)
-        if (e.Type == ChatType.OwnerSay && (e.FromName ?? "").StartsWith("#Firestorm LSL Bridge", StringComparison.Ordinal)) return;
+        if (IsBridgeTalk(e)) return;
         if (e.AudibleLevel != ChatAudibleLevel.Fully) return;
         if (e.SourceType == ChatSourceType.Agent) Private.WordsFrom?.Invoke(e.SourceID, "chat");
         var msg = (e.Message ?? "").Replace("\t", "    ");

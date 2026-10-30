@@ -397,6 +397,27 @@ inventory, describing and walk mode. Found, and done (Claude Opus 5.5):
   inventory have a line to land on while they load. The test checks the last focus event after Alt+3 and Alt+7 by
   both UI Automation and MSAA, with the first fills held back as on Second Life.
 
+### The release as a tester gets it, on Second Life (the user, sighted, with NVDA, 2026-10-30)
+
+0.1.0.510 downloaded from the front door's README, unzipped without Unblock, run on SL at Firestorm Social Island,
+guided by Companion. Worked: SmartScreen's Run anyway, no Firewall question at all, the login form's focus in Username
+with Second Life chosen, `//about`, People, Objects, Control+D's absence, walk mode and the sonar, the music under NVDA,
+a clean quit with nothing written beside the program. Unseen mode's first run on SL there: 965 MB working set and 312 MB
+of video memory (1.7 GB and 1.9 GB at the same place the night before), 11 MB of textures resident (sculpt maps).
+Found, and done (Claude Opus 5.5):
+- **The front page and release notes were too much text**: people skip to the download button. The front door now
+  leads with three steps to the newest build (`releases/latest`), the rest below; release notes are three short lines
+  (`tools/publish/access/RELEASES.md` says so).
+- **NVDA read SmartScreen's Run anyway button as just "R"**: the front door and README.txt say so.
+- **The user's own Firestorm LSL bridge's line (its URL and auth key) went into the session log**, the one testers are
+  invited to share: the console printer listened to chat apart from the core's filter. Both use
+  `AgentSession.IsBridgeTalk` now. It was never read out.
+- Open: the arrival line ("Logged in, in ...") wasn't remembered among the notices that came with it. It's an
+  answer that cuts in, so the later arrivals can't cut it; NVDA's own reading of the window and the Say box at the
+  same moment may. The next NVDA run with speech logged says which.
+- Seen, for a blind tester: a sighted gamer reached for WASD in walk mode, where A and S are taken (what's ahead, the
+  sonar); walk mode itself didn't make sense to a sighted person, as expected.
+
 ### Questions for a blind tester
 
 - What "edit notecards without going back two versions" means (her list): the Radegast agents couldn't reproduce
