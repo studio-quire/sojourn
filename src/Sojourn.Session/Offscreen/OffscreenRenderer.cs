@@ -43,12 +43,20 @@ public readonly record struct FaceSet(FaceShape[] Faces);
 /// later, every region fed to it again (the VR client restarts its process instead: Sojourn.Client/DeviceLoss.cs; here
 /// the app and the session go on, only the view starts again). Three losses in ten minutes and it stops for the
 /// session. Claude Opus 5.5, 2026-10-29.
+///
+/// Unseen (2026-10-30): while nothing can look at its pictures (no assistant up, no picture asked for in the last
+/// <see cref="PicturesLinger"/>: a packaged build always, a repo run without its assistant), it draws only what the
+/// picks, faces and collision model need, which is geometry: no textures fetched, decoded or held but sculpt maps, no
+/// avatars or what they wear (the collision model counts standing avatars as boxes from the world model), no shadows,
+/// reflection probes, particles, flexible prims' sway or avatar physics (the draw distance stays: <see cref="UnseenDrawDistance"/>).
+/// The first picture asked for, or the assistant coming up, draws it whole again at once (what's in view loading from
+/// then on; a picture waits its usual settling time for it).
 /// </summary>
 public sealed partial class OffscreenRenderer : IDisposable
 {
     readonly AgentSession _s;
     readonly LiveSnapshots _snapshots;
-    readonly Func<bool> _busy;
+    readonly Func<bool> _busy, _assistantUp;
     readonly string _cacheDir;
     readonly Action<string> _log;
     readonly Thread _thread;
@@ -78,6 +86,20 @@ public sealed partial class OffscreenRenderer : IDisposable
     public double MovingHz { get; set; } = 4;
     /// <summary>The person is moving (walking, flying, driving): at least <see cref="MovingHz"/> frames a second.</summary>
     public volatile bool Moving;
+    /// <summary>How long it stays drawn whole after anything last could look at its pictures (the assistant up, a
+    /// picture asked for), before it's unseen again.</summary>
+    public TimeSpan PicturesLinger { get; set; } = TimeSpan.FromMinutes(10);
+    /// <summary>The draw distance while unseen, at most the person's (default: theirs). Kept: in the perf grid's forest
+    /// and crowd unseen at 64 m instead of 128 saved only ~50 MB of memory and no video memory, while paths for walks
+    /// (their area plus 12 m, up to 200 m: Sojourn.Access/Walk/PathPlanner.cs) know only what's been drawn.
+    /// SOJOURN_OFFSCREEN_UNSEEN_DISTANCE=M for comparing.</summary>
+    public float UnseenDrawDistance { get; set; } = float.TryParse(Environment.GetEnvironmentVariable("SOJOURN_OFFSCREEN_UNSEEN_DISTANCE"),
+        System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d) && d > 0 ? d : float.PositiveInfinity;
+    /// <summary>Nothing can look at its pictures now: only what picks, faces and the collision model need is drawn.</summary>
+    public bool Unseen => _unseen;
+    volatile bool _unseen;
+    FrameRenderer? _appliedTo;
+    long _seenAt;   // when anything last could look at its pictures (0: never yet)
 
     /// <summary>Whether a renderer is up (false while starting, after a loss, or once given up).</summary>
     public bool Running => _r != null;
@@ -95,11 +117,13 @@ public sealed partial class OffscreenRenderer : IDisposable
     long _windowAt;
     string _device = "";
 
-    public OffscreenRenderer(AgentSession session, LiveSnapshots snapshots, Func<bool> assistantBusy, string cacheDir, Action<string> log)
+    /// <param name="assistantUp">an assistant is running (or starting) that may ask for pictures</param>
+    public OffscreenRenderer(AgentSession session, LiveSnapshots snapshots, Func<bool> assistantBusy, Func<bool> assistantUp, string cacheDir, Action<string> log)
     {
         _s = session;
         _snapshots = snapshots;
         _busy = assistantBusy;
+        _assistantUp = assistantUp;
         _cacheDir = cacheDir;
         _log = log;
         _thread = new Thread(Run) { Name = "offscreen render", IsBackground = true, Priority = ThreadPriority.BelowNormal };
@@ -299,6 +323,8 @@ public sealed partial class OffscreenRenderer : IDisposable
                 WorkerThreads = 2,
                 ShadowResolutionCap = 1024,
                 ProbeCacheCount = 128,
+                // a quarter of the client's (1M vertices, 72 MB): unseen, a busy place's geometry near fits in one
+                GeometryArenaScale = 0.25,
                 Log = m => _log(m),
             });
             r.Quality.Mirrors = false;   // a second render of the scene per mirror in view, for nobody to see
@@ -388,6 +414,9 @@ public sealed partial class OffscreenRenderer : IDisposable
         var look = _snapshots.WaitingSize ?? (_snapshots.SeenWaiting ? (1024, 576) : null);
         var glance = _waiting.Select(j => j.Glance).FirstOrDefault(g => g != null);
         bool busy = _busy();
+        if (look != null || busy || _assistantUp()) _seenAt = now;
+        bool unseen = _seenAt == 0 || Stopwatch.GetElapsedTime(_seenAt, now) > PicturesLinger;
+        if (unseen != _unseen || _appliedTo != r) Apply(r, unseen);
         double hz = busy ? Math.Max(BusyHz, IdleHz) : IdleHz;
         if (Moving) hz = Math.Max(hz, MovingHz);
         bool idleDue = hz > 0 && now >= _nextIdle;
@@ -427,7 +456,7 @@ public sealed partial class OffscreenRenderer : IDisposable
             req = new FrameRequest
             {
                 RegionHandle = sim.Handle, Position = eyes.Eye, Forward = Vector3.Normalize(dir), Width = 512, Height = 512,
-                VerticalFov = 0.9f, DrawDistance = _s.Camera.FarClip, HideAvatars = hide,
+                VerticalFov = 0.9f, DrawDistance = Reach, HideAvatars = hide, NoAvatars = _unseen,
             };
             _glanceFrames++;
         }
@@ -445,7 +474,7 @@ public sealed partial class OffscreenRenderer : IDisposable
             req = new FrameRequest
             {
                 RegionHandle = sim.Handle, Position = eyes.Eye, Forward = new Vector3(MathF.Cos(yaw) * MathF.Cos(pitch), MathF.Sin(yaw) * MathF.Cos(pitch), MathF.Sin(pitch)),
-                Width = w, Height = h, VerticalFov = 1.31f, DrawDistance = _s.Camera.FarClip, HideAvatars = hide,
+                Width = w, Height = h, VerticalFov = 1.31f, DrawDistance = Reach, HideAvatars = hide, NoAvatars = _unseen,
             };
             _idleFrames++;
         }
@@ -462,10 +491,36 @@ public sealed partial class OffscreenRenderer : IDisposable
         return (width, width * 9 / 16);
     }
 
+    /// <summary>The draw distance its frames use: the person's, or less while unseen.</summary>
+    public float Reach => _unseen ? MathF.Min(_s.Camera.FarClip, UnseenDrawDistance) : _s.Camera.FarClip;
+
+    /// <summary>Something is about to look at a picture: drawn whole from now on (render thread).</summary>
+    void Seen(FrameRenderer r)
+    {
+        _seenAt = Stopwatch.GetTimestamp();
+        if (_unseen || _appliedTo != r) Apply(r, unseen: false);
+    }
+
+    /// <summary>Unseen, only what picks, faces and the collision model need; else everything (the renderer's own
+    /// defaults, mirrors aside).</summary>
+    void Apply(FrameRenderer r, bool unseen)
+    {
+        bool whole = !unseen;
+        var q = r.Quality;
+        q.Textures = q.Particles = q.Flexi = q.AvatarPhysics = whole;
+        q.Shadows = q.ProjectorShadows = q.Reflections = whole;
+        bool first = _appliedTo == null, changed = first || _unseen != unseen;
+        (_unseen, _appliedTo) = (unseen, r);
+        if (!changed) return;
+        if (unseen) _log($"the view out of sight is unseen{(first ? "" : " again")} (nothing can look at its pictures): only geometry drawn, " +
+                         "no textures but sculpt maps, no avatars, shadows, reflections or particles");
+        else if (!first) _log("the view out of sight is drawn whole: something can look at its pictures");
+    }
+
     FrameRequest Ahead(ulong region, (Vector3 Eye, Vector3 Forward, Vector3 Avatar) eyes, (int W, int H) size, float fov, IReadOnlyCollection<UUID>? hide) => new()
     {
         RegionHandle = region, Position = eyes.Eye, Forward = Vector3.Normalize(eyes.Forward + new Vector3(0, 0, -0.08f)),
-        Width = size.W, Height = size.H, VerticalFov = fov, DrawDistance = _s.Camera.FarClip, HideAvatars = hide,
+        Width = size.W, Height = size.H, VerticalFov = fov, DrawDistance = Reach, HideAvatars = hide, NoAvatars = _unseen,
     };
 
     /// <summary>A picture: frames at its size until what's in view has arrived (or the settling time is up), then one

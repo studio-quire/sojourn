@@ -49,6 +49,7 @@ public sealed partial class OffscreenRenderer
             if (_s.Client is not { Network.CurrentSim: { } sim } c) { done(null); return true; }
             var specs = plan(r, sim);
             if (specs is not { Count: > 0 }) { done(null); return true; }
+            Seen(r);   // (unseen until now: what's in them loads while they settle)
             r.AvatarLimits.Self = c.Self.AgentID;
             // dark: the sun below about 10 degrees in the sky last drawn (the place's own: nothing relit yet this batch), and
             // no sky of the person's own (a shot's sky preset clears the renderer's personal one after it)

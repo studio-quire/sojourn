@@ -63,7 +63,9 @@ public readonly record struct MeshRange(int Arena, uint FirstVertex, uint Vertex
 
 /// <summary>
 /// All scene geometry lives in a few big vertex/index arenas (48-byte vertices, 32-bit indices). Draws bucket by
-/// arena so multi-draw-indirect can cover a whole arena with one call.
+/// arena so multi-draw-indirect can cover a whole arena with one call. A renderer with little to hold (the one out of
+/// sight) takes smaller arenas (<see cref="GeometryPool(VulkanContext, Uploader, double)"/>); a mesh bigger than one
+/// gets an arena of its own size.
 /// </summary>
 public sealed class GeometryPool : IDisposable
 {
@@ -73,26 +75,32 @@ public sealed class GeometryPool : IDisposable
     public sealed class Arena(GpuBuffer vb, GpuBuffer ib)
     {
         public GpuBuffer Vertices = vb, Indices = ib;
-        public RangeAllocator VAlloc = new(VertexArenaBytes / PipelineBuilder.VertexStride);
-        public RangeAllocator IAlloc = new(IndexArenaBytes / 4);
+        public RangeAllocator VAlloc = new(vb.Size / PipelineBuilder.VertexStride);
+        public RangeAllocator IAlloc = new(ib.Size / 4);
+        public ulong Bytes => Vertices.Size + Indices.Size;
     }
 
     readonly VulkanContext _vk;
     readonly Uploader _up;
+    readonly ulong _vertexBytes, _indexBytes;
     public readonly List<Arena> Arenas = new();
-    public ulong Bytes => (ulong)Arenas.Count * (VertexArenaBytes + IndexArenaBytes);
+    public ulong Bytes => Arenas.Aggregate(0UL, (s, a) => s + a.Bytes);
     public ulong UsedBytes => Arenas.Aggregate(0UL, (s, a) => s + a.VAlloc.Used * PipelineBuilder.VertexStride + a.IAlloc.Used * 4);
 
-    public GeometryPool(VulkanContext vk, Uploader up)
+    /// <param name="scale">each arena's size as a share of the usual (1: 4M vertices, 24M indices)</param>
+    public GeometryPool(VulkanContext vk, Uploader up, double scale = 1)
     {
         _vk = vk;
         _up = up;
+        scale = Math.Clamp(scale, 1.0 / 64, 1);
+        _vertexBytes = (ulong)(VertexArenaBytes / PipelineBuilder.VertexStride * scale) * PipelineBuilder.VertexStride;
+        _indexBytes = (ulong)(IndexArenaBytes / 4 * scale) * 4;
     }
 
-    Arena NewArena()
+    Arena NewArena(ulong vertexBytes, ulong indexBytes)
     {
-        var vb = new GpuBuffer(_vk, VertexArenaBytes, BufferUsageFlags.VertexBufferBit | BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit, MemoryUse.GpuOnly);
-        var ib = new GpuBuffer(_vk, IndexArenaBytes, BufferUsageFlags.IndexBufferBit | BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit, MemoryUse.GpuOnly);
+        var vb = new GpuBuffer(_vk, Math.Max(vertexBytes, _vertexBytes), BufferUsageFlags.VertexBufferBit | BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit, MemoryUse.GpuOnly);
+        var ib = new GpuBuffer(_vk, Math.Max(indexBytes, _indexBytes), BufferUsageFlags.IndexBufferBit | BufferUsageFlags.StorageBufferBit | BufferUsageFlags.TransferDstBit, MemoryUse.GpuOnly);
         var a = new Arena(vb, ib);
         Arenas.Add(a);
         return a;
@@ -113,9 +121,9 @@ public sealed class GeometryPool : IDisposable
                 _up.CopyToBuffer(System.Runtime.InteropServices.MemoryMarshal.AsBytes(indices), a.Indices.Handle, i * 4);
                 return new MeshRange(ai, (uint)v, (uint)vertices.Length, (uint)i, (uint)indices.Length);
             }
-            if ((ulong)vertices.Length * PipelineBuilder.VertexStride > VertexArenaBytes || (ulong)indices.Length * 4 > IndexArenaBytes)
-                throw new InvalidOperationException("mesh larger than an arena");
-            NewArena();
+            ulong vbytes = (ulong)vertices.Length * PipelineBuilder.VertexStride, ibytes = (ulong)indices.Length * 4;
+            if (vbytes > VertexArenaBytes || ibytes > IndexArenaBytes) throw new InvalidOperationException("mesh larger than an arena");
+            NewArena(vbytes, ibytes);
         }
         throw new InvalidOperationException("geometry arena allocation failed");
     }

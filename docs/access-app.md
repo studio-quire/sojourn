@@ -49,7 +49,7 @@ repo's own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access
   build doesn't include, then what the lists know, and Alt+9's input is named "Ask the assistant (not in this build)".
   `//about` says the version, the commit, the disclaimer and the data folder; F1 ends by pointing to it.
 - **Checked** by `python tools/access.py package --check [ZIP]` (default the newest zip; about a minute; passed 38 of
-  38 on 0.1.0.493, 2026-10-29): the zip unpacked in a fresh folder under %TEMP%, run on a hidden desktop of its own
+  38 on 0.1.0.504, 2026-10-30, as --bare too; released as v0.1.0.504 on studio-quire/sojourn-access): the zip unpacked in a fresh folder under %TEMP%, run on a hidden desktop of its own
   through QuireUia as Package Tester (`--local --autologin --reader on --no-voice`, world audio to a file, no mic, the
   data folder `--base` in the check's folder: .NET's GetFolderPath ignores %LOCALAPPDATA%, so the default folder itself
   isn't exercised), with no dotnet on PATH and %TEMP%, %LOCALAPPDATA% and %APPDATA% pointed into the check's folder.
@@ -61,9 +61,15 @@ repo's own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access
   on loopback (Windows' "Bound" rows of outgoing sockets aside), no failures in the log, a clean exit and logout, the
   package's folder byte-for-byte unchanged, nothing written through the redirected folders nor anything named as ours
   new in the profile's real ones (the GPU driver's own cache aside); then it removes everything it made. It refuses
-  to run beside the VR client or dev mode. Not checked: Second Life itself from a packaged build, voice, Windows Hello, a real PC
-  without our SDK or GPU, SmartScreen and the firewall's question (the first SL login asks for a new exe: UDP binds
-  every interface).
+  to run beside the VR client or dev mode. `--bare` runs it as on a PC unlike ours (2026-10-30): Vulkan's drivers
+  hidden (`VK_LOADER_DRIVERS_DISABLE=*`: a VM, Microsoft's basic display adapter, an old card) and `sojourn_voice.dll`
+  removed, which fails as it would on Windows' N editions (it imports Media Foundation's `MFPlat.DLL`). It still logs
+  in, reads out, chats and quits clean; the renderer gives up after three tries (`NeverRan`), and walk mode, the sonar
+  and faces say so in a person's words (`ViewWords`); arrival says once that sounds can't play and why (`SoundWords`;
+  README.txt tells how to add the Media Feature Pack). The other natives need nothing beyond Windows itself
+  (shaderc only the universal CRT, voice's CRT static; checked with objdump). Not checked: Second Life itself from a
+  packaged build, voice, Windows Hello, SmartScreen and the firewall's question (the first SL login asks for a new
+  exe: UDP binds every interface): the guided test of a release, below.
 - **Not signed**: SmartScreen warns on first start; the README walks through it and the zip's Unblock. Signing is the
   user's call.
 - **An assistant-enabled package** would need: the sidecar (`assistant/`) and a Python runtime shipped (an embeddable
@@ -561,6 +567,30 @@ pictures (said so), only the facts and textures.
   person's confirmation for others' things. `SojournView` reports its state and casts the collision model's rays
   (`collide`), and walk mode's cues and paths come from its collision model. A lost GPU restarts it within the app in 3 s. Its log lines are
   `render`'s in the session log.
+  **Unseen** (2026-10-30, after the first run on Second Life: at Firestorm Social Island it held ~1.7 GB of memory and
+  ~1.9 GB of video memory, 1.2 GB of it textures fetched at 2-3 MB/s, for pictures nothing could look at): while nothing
+  can look at its pictures it draws only geometry, which is all the picks, faces, the collision model, rays, physics
+  shapes and paths use. No textures but sculpt maps (`TextureStore.DataOnly` through `RenderQuality.Textures`: nothing
+  else fetched, decoded or uploaded, what was resident let go within seconds); no avatars or what they wear
+  (`FrameRequest.NoAvatars`; the collision model's standing avatars are boxes from the world model, and Objects lists
+  no attachments); no shadows, reflection probes, particles, flexible prims' sway or avatar physics. The draw distance
+  stays the person's: at 64 m instead of 128 it saved only ~50 MB of memory in the perf grid's forest and no video
+  memory, while paths for `//go` (their area plus 12 m, up to 200 m) know only what's been drawn
+  (`UnseenDrawDistance`). Its geometry arenas are a quarter of the client's (`GeometryArenaScale`, 72 MB each, more as needed), unseen or not.
+  Nothing can look while no assistant is up or starting (`AssistantHost.SidecarAlive`, or the sidecar's process
+  running: a packaged build always, a repo run with `--no-assistant` or without the venv) and no picture was asked for
+  in the last 10 minutes (`PicturesLinger`). A picture asked for (the snapshot ops, SojournDescribe's, the assistant's
+  look) or the assistant coming up draws it whole again at once; what's in view loads from then on, and the picture
+  waits its usual settling (at most 3 s, so on Second Life the first one after an unseen spell may still lack some
+  textures). `SojournView status` has `unseen` and `draw_distance`; the log says when it changes;
+  `SOJOURN_OFFSCREEN_UNSEEN_DISTANCE=M` for comparing. Numbers (2026-10-30, perf grid `forestcrowd`, Atelier 128,140
+  by the dancing crowd, no assistant, three minutes from a cold cache; before / unseen): working set 630-740 / 520-600
+  MB, private bytes 1.50 / 0.80 GB, video memory 0.90 / 0.32 GB, textures 96 MB from 106 fetches / none, CPU 3% / 2%
+  of a core (the first minute 6% / 4%), GPU 4-5 / 1 ms a second (a frame 2.1-2.2 / 0.4 ms of GPU, 2.6-3.6 / 0.7-0.9 ms
+  of CPU). That scene understates it: ~90 distinct textures and its 40 avatars jelly dolls (over the complexity
+  limit), where Social Island's cost was mostly ~2,000 textures and whole avatars, none of which load unseen. A
+  packaged build idle on the light local grid (`package --check`): 546 MB in memory and 328 MB of video memory, from
+  531 and 574.
 - **Walk mode** (`Walk/`, 2026-10-29): `WalkMode.cs` (the body as it is now, footsteps, the listener), `.Keys.cs`
   (keys to control flags, turning, braking, driving), `.Probe.cs` (ten batches of rays a second while moving: ahead,
   both sides, underfoot, down a step and a half ahead; the warnings, openings, edges, surface), `.Info.cs` (H, V, L, A,
@@ -661,11 +691,12 @@ named; Pay from a person's Applications key asking the amount (the local grid ha
 said). Menus open on the Applications key's press (`MenuOn`), not by WinForms' ContextMenuStrip, which opens on
 WM_CONTEXTMENU and never for posted keys. Ctrl+G isn't (the clipboard is the person's desktop's).
 The renderer step (`ACCESS_STEPS=renderer`; the app runs with `SOJOURN_OFFSCREEN_LOSE_AFTER=15`, so its GPU is "lost"
-once first): the view runs again with one loss counted, `saveSnapshot` gives a 1024x576 picture that isn't flat, the
-visitor's `facebox` (a box whose script says each touch's face and surface coordinates) is met by `SojournView collide`
-at its distance, and two touches through the person's confirmation (Ctrl+N, Enter): one on face 4, the box's side away
-from the tester, and a plain one, landing on the face toward the eyes; the box's script reports both faces with their
-coordinates. The app's renderer is light (about 0.2% of the GPU); a run that wants clean GPU timings elsewhere should
+once first): the view runs again with one loss counted and is unseen (the test has no assistant), the visitor's
+`facebox` (a box whose script says each touch's face and surface coordinates) is met by `SojournView collide` at its
+distance, and two touches through the person's confirmation (Ctrl+N, Enter): one on face 4, the box's side away from
+the tester, and a plain one, landing on the face toward the eyes; the box's script reports both faces with their
+coordinates. All that unseen; then `saveSnapshot` gives a 1024x576 picture that isn't flat, and the view is drawn
+whole from then on (for the next 10 minutes of the run). The app's renderer is light (about 0.2% of the GPU); a run that wants clean GPU timings elsewhere should
 still not overlap it.
 The walk-mode step (`ACCESS_STEPS="walk mode"`, about 4 minutes; after the faked GPU loss so it doesn't fall mid-walk):
 first a seated crossing (the visitor's `kart`, a physical LSL car, near Atelier's east edge where the ground is about

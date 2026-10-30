@@ -161,6 +161,43 @@ public sealed class TextureStore : IDisposable
         _ = Task.Run(Schedule);
     }
 
+    /// <summary>
+    /// Only what's kept as data loads (sculpt maps: their pixels shape a prim); nothing else is fetched, decoded or
+    /// uploaded, and what's resident is let go at the next idle passes (<see cref="Reclaim"/>). For a view nobody sees
+    /// (Sojourn Access with nothing to look at its pictures: Sojourn.Session/Offscreen/OffscreenRenderer.cs), set through
+    /// RenderQuality.Textures. Entries are still made and marked wanted as usual, so turning it off again loads what's
+    /// in view as if it had just come into it: streamed ones by the scheduler, whole ones (bakes, bump maps) started then.
+    /// </summary>
+    public bool DataOnly
+    {
+        get => _dataOnly;
+        set
+        {
+            if (_dataOnly == value) return;
+            _dataOnly = value;
+            if (value) return;
+            List<SceneTexture> held;
+            lock (_deferred) { held = _deferred.ToList(); _deferred.Clear(); }
+            foreach (var t in held)
+                if (t.State != TexState.Ready && !t.KeepCpu) StartLoad(t);
+        }
+    }
+    volatile bool _dataOnly;
+    /// <summary>Whole loads asked for while <see cref="DataOnly"/>: started when it's turned off.</summary>
+    readonly HashSet<SceneTexture> _deferred = new();
+
+    /// <summary>A whole load (not the scheduler's), or held for later while only data loads.</summary>
+    void LoadWhole(SceneTexture tex)
+    {
+        if (_dataOnly && !tex.KeepCpu)
+        {
+            Volatile.Write(ref tex.WholeLoad, 1);   // (a whole-load source asking again doesn't start it either)
+            lock (_deferred) _deferred.Add(tex);
+            return;
+        }
+        StartLoad(tex);
+    }
+
     public int Count => _textures.Count;
 
     /// <summary>Get (and start loading if new) a texture, wanted at full size. keepCpu keeps decoded pixels (sculpt maps).</summary>
@@ -195,7 +232,7 @@ public sealed class TextureStore : IDisposable
                 if (!Ranged(tex) && tex.State != TexState.Ready && Interlocked.CompareExchange(ref tex.WholeLoad, 1, 0) == 0)
                 {
                     tex.State = TexState.Loading;
-                    StartLoad(tex);
+                    LoadWhole(tex);
                 }
             }
         }
@@ -207,7 +244,7 @@ public sealed class TextureStore : IDisposable
                 {
                     tex.Source = source;
                     // ranged sources are the scheduler's; anything else loads whole, at once
-                    if (!Ranged(tex)) StartLoad(tex);
+                    if (!Ranged(tex)) LoadWhole(tex);
                 }
             }
         }
@@ -238,7 +275,7 @@ public sealed class TextureStore : IDisposable
                     tex.Source = source;
                     // from the grid: the scheduler's, while it's wanted (whole loads went to LibreMetaverse's download
                     // queue, every bumped face's diffuse in full, never cancelled: ahead of every mesh after a while)
-                    if (!Ranged(tex)) StartLoad(tex);
+                    if (!Ranged(tex)) LoadWhole(tex);
                 }
             }
         }
@@ -249,7 +286,7 @@ public sealed class TextureStore : IDisposable
     {
         tex.Source = source;
         if (Ranged(tex)) return;   // the scheduler decodes it again at full size (KeepCpu wants all of it)
-        StartLoad(tex);
+        LoadWhole(tex);
     }
 
     // --- whole textures (bakes, bump maps, sources without ranges) ---------------------------------------------
@@ -343,6 +380,7 @@ public sealed class TextureStore : IDisposable
     // again every pass until the upload came, under lag several times over, each pass a file read and a decode)
     bool NeedsWork(SceneTexture t, long now) =>
         t.Busy == 0 && t.Source != null && t.State != TexState.Missing && now - t.LastUsed < 3000 && now >= t.RetryAt && Ranged(t)
+        && (!_dataOnly || t.KeepCpu)
         && (t.Pending == null || Want(t, now) > t.PendingDiscard)
         && (t.Discard < 0 || (!HoldGrowth && Want(t, now) < t.Discard) || (t.KeepCpu && t.Rgba == null));
 
@@ -830,8 +868,9 @@ public sealed class TextureStore : IDisposable
     /// <summary>Render thread, under the face resolvers' write lock. Every frame (<paramref name="idle"/> false) lets go
     /// of textures when the slot table runs low: longest unseen first (left behind, out of draw distance, then behind
     /// the person), none drawn in the last 2 s, until a sixteenth of the table is free again counting slots on their
-    /// way back. Every 2 s (<paramref name="idle"/>) also those unseen <see cref="IdleMs"/>, a few hundred a pass. Let
-    /// go textures load again when next wanted (streamed ones from disk). Returns how many went.</summary>
+    /// way back. Every 2 s (<paramref name="idle"/>) also those unseen <see cref="IdleMs"/>, a few hundred a pass, and
+    /// while only data loads (<see cref="DataOnly"/>) every one not kept as data, drawn or not. Let go textures load
+    /// again when next wanted (streamed ones from disk). Returns how many went.</summary>
     public int Reclaim(Bindless bindless, bool idle)
     {
         int max = (int)bindless.MaxTextures - SlotReserve;
@@ -840,11 +879,15 @@ public sealed class TextureStore : IDisposable
         int need = left < low ? Math.Min(SlotsPerFrame, high - left) : 0;
         if (need <= 0 && !idle) return 0;
         long now = System.Environment.TickCount64;
+        bool dataOnly = _dataOnly && idle;
         _reclaim.Clear();
         foreach (var kv in _textures)
         {
             var t = kv.Value;
-            if (t.Image == null || now - t.LastUsed < 2000) continue;
+            if (t.Image == null) continue;
+            // (unwanted: counted as unseen at least the idle time, so they all go, a pass's worth at a time)
+            if (dataOnly && !t.KeepCpu) { _reclaim.Add((Math.Min(t.Seen, now - IdleMs), t)); continue; }
+            if (now - t.LastUsed < 2000) continue;
             long seen = t.Seen;
             if (need > 0 || now - seen >= IdleMs) _reclaim.Add((seen, t));
         }

@@ -24,7 +24,6 @@ public sealed partial class WalkMode
     bool _wasHeld, _ranSet, _turnSmooth, _toldBlocked;
     long _turnSince, _moveSince, _brakeUntil, _brakeFrom, _sentAt;
     uint _lastControls;
-    LQuaternion? _bodySent;
 
     const ScriptControlChange MoveKeys = ScriptControlChange.Forward | ScriptControlChange.Back | ScriptControlChange.Left |
         ScriptControlChange.Right | ScriptControlChange.RotateLeft | ScriptControlChange.RotateRight;
@@ -132,6 +131,8 @@ public sealed partial class WalkMode
         if (Held) return;
         StopOthers?.Invoke();
         if (S.Client is { } c && S.Motion.Moving) { S.Motion.StopAutoPilot(c, false); S.Motion.Stop(c); }
+        // from the body as it is now (the tick follows it, but a //face or the autopilot may have turned it since)
+        if (!_wasHeld && Me() is { } b && !Driving(b)) _yaw = b.Yaw;
     }
 
     /// <summary>A tap of Left or Right: the facing moves to the next multiple of the step that way (so steps of 22.5
@@ -158,7 +159,6 @@ public sealed partial class WalkMode
         if (S.Client is not { } c) return;
         var body = LQuaternion.CreateFromAxisAngle(LVector3.UnitZ, _yaw);
         c.Self.Movement.BodyRotation = c.Self.Movement.HeadRotation = body;
-        _bodySent = body;
         c.Self.Movement.SendUpdate(true);
         _sentAt = Environment.TickCount64;
     }
@@ -201,8 +201,10 @@ public sealed partial class WalkMode
         int fwd = Get(K.Fwd) - Get(K.Back), side = Get(K.SideR) - Get(K.SideL), up = Get(K.Up) - Get(K.Down), turn = Get(K.TurnL) - Get(K.TurnR);
         if (!driving)
         {
-            // the facing follows the body (a //face, the autopilot) whenever nobody's turning it here
-            if (!held && !_wasHeld && (_bodySent == null || mv.BodyRotation != _bodySent)) _yaw = b.Yaw;
+            // the facing follows the body (a //face, the autopilot) whenever no key here moves or turns it. (Following only
+            // a body unlike the one last sent here missed a turn back to that same rotation: //face north after an
+            // autopilot had turned it, and the next held Up walked on at the autopilot's heading.)
+            if (!held && !_wasHeld) _yaw = b.Yaw;
             if (_k[(int)K.TurnL] || _k[(int)K.TurnR]) { if (!_turnSmooth && _set.WalkTurnStep > 0 && now - _turnSince > 450) _turnSmooth = true; }
             else turn = 0;   // a tap turned its step already
             if (turn != 0 && _turnSmooth) _yaw += (float)(turn * _set.WalkTurnRate * Math.PI / 180 * dt);
@@ -224,7 +226,6 @@ public sealed partial class WalkMode
             var body = LQuaternion.CreateFromAxisAngle(LVector3.UnitZ, _yaw);
             rotated = body != mv.BodyRotation;
             mv.BodyRotation = mv.HeadRotation = body;
-            _bodySent = body;
         }
         bool run = fwd != 0 && !driving && (Control.ModifierKeys & Keys.Shift) != 0;
         if (run != _ranSet) { mv.AlwaysRun = run; _ranSet = run; }

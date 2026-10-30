@@ -23,7 +23,8 @@ public sealed class ViewApi : LeapApi
     {
         _view = view;
         Op("status", "-> {state: starting|running|restarting|stopped, device, frames, idle, looks, glances, pictures, gpu_ms (a frame, "
-            + "lately), cpu_ms, video_mb, textures_mb, losses (in ten minutes), idle_hz, idle_size}", _ => Status());
+            + "lately), cpu_ms, video_mb, textures_mb, losses (in ten minutes), idle_hz, idle_size, unseen (nothing can look at its "
+            + "pictures: only geometry drawn, no textures, avatars, shadows or reflections), draw_distance}", _ => Status());
         Op("collide", "{heading?: degrees from the way I face (0 ahead, 90 left), dir?: [x,y,z] in the region instead, pitch?: degrees, "
             + "from?: [x,y,z] (default my chest), max?: metres (20)} -> {hit: false} or {hit, distance, normal, prim?, avatar}: "
             + "the first solid surface along the ray in the local collision model (prims by their physics shapes, phantom ones "
@@ -40,7 +41,7 @@ public sealed class ViewApi : LeapApi
             ["gpu_ms"] = double.IsFinite(st.GpuMs) ? Math.Round(st.GpuMs, 2) : null, ["gpu_frames"] = st.GpuFrames,
             ["cpu_ms"] = double.IsFinite(st.CpuMs) ? Math.Round(st.CpuMs, 2) : null,
             ["video_mb"] = st.VramUsed >> 20, ["textures_mb"] = st.TextureBytes >> 20, ["losses"] = st.Losses,
-            ["idle_hz"] = _view.IdleHz, ["idle_size"] = _view.IdleSize,
+            ["idle_hz"] = _view.IdleHz, ["idle_size"] = _view.IdleSize, ["unseen"] = _view.Unseen, ["draw_distance"] = Math.Round(_view.Reach),
         };
     }
 

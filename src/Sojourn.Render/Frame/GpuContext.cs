@@ -22,13 +22,14 @@ public sealed class GpuContext : IDisposable
     public GpuContext(string shaderDir, string cacheDir, bool validation = false, Action<string>? log = null, int framesInFlight = 2)
         : this(shaderDir, cacheDir, new VulkanSetup { Validation = validation, Log = log }, framesInFlight) { }
 
-    public GpuContext(string shaderDir, string cacheDir, VulkanSetup setup, int framesInFlight = 2)
+    /// <param name="geometryScale">the geometry arenas' size as a share of the usual (GeometryPool)</param>
+    public GpuContext(string shaderDir, string cacheDir, VulkanSetup setup, int framesInFlight = 2, double geometryScale = 1)
     {
         Vk = new VulkanContext(setup);
         Bindless = new Bindless(Vk);
         Shaders = new ShaderCompiler(Vk, shaderDir, Path.Combine(cacheDir, "spirv"));
         Uploader = new Uploader(Vk);
-        GeometryPool = new GeometryPool(Vk, Uploader);
+        GeometryPool = new GeometryPool(Vk, Uploader, geometryScale);
         SkinVertices = new StoragePool(Vk, Uploader, PipelineBuilder.VertexStride);
         SkinWeights = new StoragePool(Vk, Uploader, 16);
         Luts = new Luts(Vk, Bindless, Uploader, shaderDir);

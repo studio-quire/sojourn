@@ -308,7 +308,9 @@ public sealed class SessionHost : IAsyncDisposable
     public OffscreenRenderer StartOffscreen(Action<OffscreenRenderer>? configure = null)
     {
         var rlog = Logs.CreateLogger("render");
+        // unseen (no textures, avatars, shadows...) unless an assistant that may ask for pictures is up or starting
         var view = Offscreen = new OffscreenRenderer(Session, Assistant.Snapshots, () => Assistant.Panel.Read(p => p.Working),
+            () => Assistant.SidecarAlive || Sidecar?.Running == true,
             Path.Combine(Options.BaseDir, "cache", "render"), m => rlog.LogInformation("{Msg}", m));
         configure?.Invoke(view);
         Sojourn.Core.Rendering.Snapshots.Provider = Assistant.Snapshots;

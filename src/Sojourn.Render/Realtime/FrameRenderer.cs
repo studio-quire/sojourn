@@ -19,6 +19,9 @@ public sealed record FrameRendererOptions
     public required string CacheDirectory { get; init; }
     public VulkanSetup Vulkan { get; init; } = new();
     public int WorkerThreads { get; init; } = 3;
+    /// <summary>The geometry arenas' size as a share of the usual 4M vertices (Gpu/GeometryPool.cs): less for a renderer
+    /// that holds little (out of sight); more arenas come as needed either way.</summary>
+    public double GeometryArenaScale { get; init; } = 1;
     public ViewOptions View { get; init; } = new();
     /// <summary>Sun/moon shadows (the viewer's RenderShadowDetail >= 1).</summary>
     public bool Shadows { get; init; } = true;
@@ -74,6 +77,12 @@ public sealed class RenderQuality
     public volatile bool Flexi = true;
     /// <summary>Avatar physics (the viewer's AvatarPhysics): breast, belly and butt movement from physics wearables.</summary>
     public volatile bool AvatarPhysics = true;
+    /// <summary>Textures (World/TextureStore.DataOnly when off): off, only those whose pixels shape something load
+    /// (sculpt maps) and faces are drawn without the rest, for a view nobody sees (Sojourn Access with nothing to look
+    /// at its pictures: Sojourn.Session/Offscreen/OffscreenRenderer.cs). Back on, what's in view loads as it's drawn.</summary>
+    public volatile bool Textures = true;
+    /// <summary>Particles simulated and drawn (off: none, for a view nobody sees).</summary>
+    public volatile bool Particles = true;
     // GPU options to judge (docs/rendering.md > GPU options; all off by default, each a small change in look):
     /// <summary>The sun-light map (sun shadow, SSAO, projector shadows) and its blur at half the eye's size, brought
     /// back up depth-aware (Frame/Renderer.HalfLight.cs).</summary>
@@ -121,6 +130,9 @@ public sealed record FrameRequest
     public float DrawDistance { get; init; } = 128f;
     public IReadOnlyList<EyeSpec> Eyes { get; init; } = Mono;
     public IReadOnlyCollection<UUID>? HideAvatars { get; init; }
+    /// <summary>No avatar drawn at all, nor what they wear (a view nobody sees: their bakes, worn meshes and poses aren't
+    /// loaded or made for it).</summary>
+    public bool NoAvatars { get; init; }
     /// <summary>The person's own avatar as seen from the headset (<see cref="Sojourn.Render.SelfBody"/>).</summary>
     public SelfBody? Self { get; init; }
     public bool ShowNames { get; init; }
@@ -301,7 +313,7 @@ public sealed partial class FrameRenderer : IDisposable
         };
         _view = options.View;
         var shaderDir = _opt.ShaderDirectory ?? Path.Combine(AppContext.BaseDirectory, "Shaders");
-        _gpu = new GpuContext(shaderDir, _opt.CacheDirectory, _opt.Vulkan with { Log = _opt.Vulkan.Log ?? _opt.Log }, framesInFlight: 2);
+        _gpu = new GpuContext(shaderDir, _opt.CacheDirectory, _opt.Vulkan with { Log = _opt.Vulkan.Log ?? _opt.Log }, framesInFlight: 2, _opt.GeometryArenaScale);
         _drawLists = _gpu.Frames.Select(_ => new DrawList()).ToArray();
         _world = new RenderWorld(_gpu, _opt.WorkerThreads) { Log = _opt.Log, ResolveThreads = _workers?.Workers ?? 1, Quality = Quality };
         _world.Media.Log = _opt.Log;
@@ -337,6 +349,7 @@ public sealed partial class FrameRenderer : IDisposable
     public void Tick()
     {
         CheckWorld();
+        _world.Textures.DataOnly = !Quality.Textures;
         ApplyRegionChanges();
         _world.BeginFrame();
         Periodic();
@@ -423,6 +436,7 @@ public sealed partial class FrameRenderer : IDisposable
         double waitMs = Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
 
         CheckWorld();
+        _world.Textures.DataOnly = !Quality.Textures;
         ApplyRegionChanges();
         _world.BeginFrame();
         _world.Avatars.Poll();
@@ -1018,7 +1032,8 @@ public sealed partial class FrameRenderer : IDisposable
         _phases.Shadows += Lap(ref tPhase);
         // avatars first: their poses place their attachments, which the scenes draw with their other objects
         long avStart = Stopwatch.GetTimestamp();
-        var avReq = new RenderRequest { RegionHandle = req.RegionHandle, CameraPosition = req.Position, ShowUi = req.ShowNames, HideAvatars = req.HideAvatars, Self = req.Self };
+        var hidden = req.NoAvatars ? scenes.SelectMany(s => s.Scene.Source.Avatars.Values.Select(a => a.ID)).ToHashSet() : req.HideAvatars;
+        var avReq = new RenderRequest { RegionHandle = req.RegionHandle, CameraPosition = req.Position, ShowUi = req.ShowNames, HideAvatars = hidden, Self = req.Self };
         pending += _world.Avatars.AddAvatars(scenes, v, dl, avReq, frustum, casters, View);
         avatarMs = Stopwatch.GetElapsedTime(avStart).TotalMilliseconds;
         tPhase = Stopwatch.GetTimestamp();
@@ -1045,6 +1060,8 @@ public sealed partial class FrameRenderer : IDisposable
         culled += rs.Culled;
         _phases.Objects += Lap(ref tPhase);
         _particles.Extra ??= _world.Avatars.BeamParticles;   // others' beams (World/Avatars.Effects.cs)
+        var particles = Quality.Particles ? _opt.Particles : _noParticles ??= _opt.Particles with { MaxParticles = 0 };
+        if (!ReferenceEquals(_particles.Settings, particles)) _particles.Settings = particles;
         pending += _particles.Build(v, _world.Regions, scene =>
         {
             Utils.LongToUInts(scene.Source.Handle, out uint sx, out uint sy);
@@ -1076,6 +1093,7 @@ public sealed partial class FrameRenderer : IDisposable
                $"{dl.ParticleQuads.Count} particles, {eye / 1e6:F1}M triangles an eye, {shadow / 1e6:F1}M in shadows";
     }
     string _lastContent = "";
+    Particles.ParticleSettings? _noParticles;
 
     static double Lap(ref long since)
     {

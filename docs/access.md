@@ -150,7 +150,10 @@ side of a part too (`RegionScene.FaceAim`), with the face's own surface coordina
 the collision model's ray from the chest by heading or direction). A lost GPU drops the renderer and starts a fresh one
 in the same process 3 s later, every region fed again (the app and session go on; three in ten minutes and it stops
 for the session); `SOJOURN_OFFSCREEN_LOSE_AFTER=S` fakes one. `SessionHost.StartOffscreen` starts it (Access, and the
-session probe with `--render`); Access's rate and size are settings.
+session probe with `--render`); Access's rate and size are settings. Since 2026-10-30 it's unseen while nothing can
+look at its pictures (no assistant up or starting, no picture asked for in 10 minutes: a packaged build always): only
+geometry drawn, no textures but sculpt maps, no avatars, shadows, reflections or particles; a picture asked for or the assistant coming up draws it whole again (`docs/access-app.md` > How it fits > The renderer
+out of sight). The numbers below are for drawing it whole.
 Numbers (local grid, Atelier, RTX 5070): an idle 640x480 frame ~1.1 ms of GPU, ~3-5 ms of CPU, so ~0.2% of the GPU at
 2 a second; a picture 0.4 s once the place is loaded (the first after arriving waits up to its 3 s); the renderer adds
 ~400 MB of working set (~1 GB committed, mostly the driver's and the GPU allocator's) and ~0.5-0.6 GB of video memory

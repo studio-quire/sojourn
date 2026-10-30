@@ -1827,7 +1827,8 @@ def describing(run):
     back_to_chat()
     m = mark()
     key("ctrl+d")
-    run.expect("Control+D without the assistant says it needs one", ["needs the assistant", "Claude account"], m, 10)
+    # said once a session: the parts step's describing may have had it first, so looked for since the run began
+    run.expect("Control+D without the assistant says it needs one (once a session)", ["needs the assistant", "Claude account"], 0, 10)
     run.expect("then what the lists know of the place, the visitor by name", ["What the lists know", VNAME], m, 10)
     m = mark()
     key("ctrl+shift+d")
@@ -1965,15 +1966,19 @@ def touch_confirmed(run, what, box_id, **args):
 
 def offscreen(run):
     """The renderer out of sight (Sojourn.Session's Offscreen/, docs/access.md > M0b): it runs (and came back after the
-    GPU loss SOJOURN_OFFSCREEN_LOSE_AFTER fakes), the assistant's look gets a real picture, the collision model has a box
-    the visitor puts out, and touches land on its faces as the VR client's do (the box's script says which). The box
-    stays out until the visitor's cleanup at the end."""
+    GPU loss SOJOURN_OFFSCREEN_LOSE_AFTER fakes), unseen (the test has no assistant: no textures), the collision model
+    has a box the visitor puts out, touches land on its faces as the VR client's do (the box's script says which), and
+    the assistant's look then gets a real picture, drawing the view whole. The box stays out until the visitor's cleanup
+    at the end."""
     def running():
         st = api("SojournView", "status")
         return st if st["state"] == "running" and st["losses"] >= 1 and st["frames"] > 2 else None
     st = wait(running, 60, 1)
     run.check("the view out of sight runs, and came back after a lost GPU", st,
               json.dumps(st) if st else json.dumps(api("SojournView", "status")))
+    st = api("SojournView", "status")
+    run.check("unseen with no assistant (only geometry drawn)", st.get("unseen") is True, json.dumps(st))
+    box_checks(run)
     path = OUT / "look.png"
     r = api("LLViewerWindow", "saveSnapshot", timeout=20, filename=str(path), width=1024, height=1024, tool="assistant")
     detail = json.dumps(r)
@@ -1986,6 +1991,12 @@ def offscreen(run):
         detail += f"; {im.size[0]}x{im.size[1]}, spread {spread:.0f} ({path.relative_to(ROOT)})"
     run.check("the assistant's look (saveSnapshot) gets a picture of the view", r.get("ok") and ok, detail)
 
+    st = api("SojournView", "status")
+    run.check("and the view is drawn whole from then on", st.get("unseen") is False, json.dumps(st))
+
+
+def box_checks(run):
+    """The collision model and touches on the visitor's facebox (unseen, in the step above)."""
     x, y, z, _ = tester_where()
     made = v(f"facebox {FACEBOX_XY[0]} {FACEBOX_XY[1]} {z:.1f}", timeout=30)
     box = re.search(r"id ([0-9a-f-]{36})", made)
@@ -3411,6 +3422,14 @@ def package_check():
             failed = re.findall(r".*(?:couldn't start|the GPU was lost|stopped:).*", log_text())
             check("no renderer failures in the log", not failed, "; ".join(failed)[:200] or "none")
             dlls = SHIPPED_DLLS
+        # what it costs a PC while nothing happens (a tester's may be a small laptop, and NVDA wants the CPU too)
+        import psutil
+        p = psutil.Process(app)
+        c0, g0, t0i = sum(p.cpu_times()[:2]), gpu_of(app), time.time()
+        wait(lambda: False, 20)
+        c1, g1, dt = sum(p.cpu_times()[:2]), gpu_of(app), time.time() - t0i
+        print(f"     idle for {dt:.0f} s: CPU {100 * (c1 - c0) / dt:.0f}% of one core, GPU {(g1[0] - g0[0]) / 1e4 / dt:.0f} ms a second, "
+              f"{p.memory_info().rss / 1e6:.0f} MB in memory, {g1[1] / 1e6:.0f} MB of video memory")
         mods = modules_of(app)
         for dll in dlls:
             where = next((m for m in mods if Path(m).name.lower() == dll.lower()), None)
