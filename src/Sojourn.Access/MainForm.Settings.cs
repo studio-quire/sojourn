@@ -73,7 +73,6 @@ public sealed partial class MainForm
         ("voice_chat", "Voice chat"),
         ("voice_mode", "Voice: push to talk or open mic"),
         ("voice_volume", "Voice: how loud residents are"),
-        ("voice_hear_from", "Voice: heard from"),
         ("access_talk_key", "Voice: the talk key"),
         ("access_voice_speakers", "Voice: say who starts speaking"),
     };

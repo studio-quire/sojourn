@@ -11,7 +11,7 @@ public static class Dialogs
     public static string? Ask(IWin32Window owner, string title, string label, string text = "", bool secret = false)
     {
         using var f = Frame(title);
-        var box = new TextBox { Name = "answer", AccessibleName = label, Text = text, Width = 360, UseSystemPasswordChar = secret };
+        var box = new LineBox { Name = "answer", AccessibleName = label, Text = text, Width = 360, UseSystemPasswordChar = secret };
         var t = Table(f, 2);
         t.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
         t.Controls.Add(box, 1, 0);

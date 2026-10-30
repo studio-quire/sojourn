@@ -337,6 +337,17 @@ public sealed class SocialView
         Interlocked.Increment(ref _use);
     }
 
+    /// <summary>The desktop's Esc: the blocks opened in full close again. False if none still on the feed was open.</summary>
+    public bool CloseOpened()
+    {
+        if (_open.Count == 0) return false;
+        bool shown = Feed.Snapshot().Entries.Any(e => _open.Contains(e.Seq));
+        _open.Clear();
+        Opened = [];
+        Interlocked.Increment(ref _use);
+        return shown;
+    }
+
     void Use(FeedPainter.FeedKey k)
     {
         switch (k.Kind)

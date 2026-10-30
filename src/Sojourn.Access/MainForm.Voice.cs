@@ -11,7 +11,8 @@ namespace Sojourn.Access;
 /// held when the window loses the focus lets go. Shift+talk key switches between push-to-talk and an open mic.
 /// Control+Shift+V says who's in voice and who's speaking; with access_voice_speakers on, someone starting to speak is
 /// said as they start (at most once in ten seconds each). A call ringing is said, and `//voice answer` or `//voice
-/// decline` answers it. Voice chat on or off, its volume and where it's heard from are in Alt+0.
+/// decline` answers it. Voice chat on or off and its volume are in Alt+0 (not where it's heard from: Access hears from the
+/// avatar's head, having no camera).
 /// </summary>
 public sealed partial class MainForm
 {

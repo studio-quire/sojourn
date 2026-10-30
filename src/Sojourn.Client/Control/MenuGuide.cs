@@ -53,7 +53,7 @@ public static class MenuGuide
         A("assistant/spoken replies", "The assistant's replies are read aloud as well as shown."),
         S("assistant/memory", "The assistant keeps notes about you between sessions. Only you can turn this on or off."),
         A("assistant/hearing", "What turns your speech into words. Parakeet and whisper run on this PC; soniox is an online service."),
-        S("assistant/forget everything", "Clears everything the assistant remembers about you. Press twice to be sure."),
+        S("assistant/forget memory", "Clears everything the assistant remembers about you. Press twice to be sure."),
         A("assistant/called *", "The assistant goes by the name you gave it."),
         A("assistant/its character", "The assistant takes on the character you described."),
         S("assistant/ask before touching others' things", "The assistant waits for your press before it touches or answers menus on things that aren't yours."),

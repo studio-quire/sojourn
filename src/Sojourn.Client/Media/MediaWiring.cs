@@ -278,9 +278,18 @@ public sealed class MediaWiring : IDisposable, Sojourn.Client.Hud.HudView.IMedia
     public bool Wheel(float notches) => Guard("wheel", false, () => View.DesktopWheel(notches) || Input.DesktopWheel(notches));
     public bool Char(char ch) => Guard("keys", false, () => Input.Char(ch));
 
-    /// <summary>A key on the desktop: typing into a page's focused field; Esc puts the up-close view away; Z shows what's
-    /// under the pointer up close (or puts it away). True if media took it.</summary>
+    /// <summary>A key on the desktop: typing into a page's focused field (Esc takes the keys back); Z shows what's under
+    /// the pointer up close (or puts it away). True if media took it.</summary>
     public bool Key(Key key, bool down, IKeyboard kb) => Guard("keys", false, () => KeyIn(key, down, kb));
+
+    /// <summary>Esc on the desktop, in its turn among what's open (Program.cs, DeskEscape): the up-close view put away,
+    /// else the focus taken off a face in the world (LLViewerMediaFocus). True if media took it.</summary>
+    public bool Escape() => Guard("keys", false, () =>
+    {
+        if (View.Shown) { View.Close(); return true; }
+        if (Manager.Locked(() => Manager.Focused != null)) { Manager.Locked(Manager.ClearFocus); return true; }
+        return false;
+    });
 
     bool KeyIn(Key key, bool down, IKeyboard kb)
     {
@@ -289,9 +298,6 @@ public sealed class MediaWiring : IDisposable, Sojourn.Client.Hud.HudView.IMedia
         bool alt = kb.IsKeyPressed(Silk.NET.Input.Key.AltLeft) || kb.IsKeyPressed(Silk.NET.Input.Key.AltRight);
         if (Input.Key(key, down, shift, ctrl, alt)) return true;
         if (!down || ctrl || alt) return false;
-        if (key == Silk.NET.Input.Key.Escape && View.Shown) { View.Close(); return true; }
-        // Esc takes the focus off a face in the world (LLViewerMediaFocus), as it does the up-close view
-        if (key == Silk.NET.Input.Key.Escape && Manager.Locked(() => Manager.Focused != null)) { Manager.Locked(Manager.ClearFocus); return true; }
         if (key == Silk.NET.Input.Key.Z)
         {
             if (View.Shown) { View.Close(); return true; }

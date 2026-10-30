@@ -23,6 +23,7 @@
 //   fmenu UUID | ftext UUID | fperm UUID | fgive UUID     the fixture sends that avatar a script menu (Red, Green,
 //                                                         Blue; says "picked X"), a text box ("typed X"), a request
 //                                                         to animate it ("permission N") or the notecard
+//   fmenu12 UUID                                          a script menu of twelve (One ... Ten, Next, Back)
 //   heard [N] | events [N] [since S]                      the last N chat lines heard / other things received (script
 //                                                         dialogs, permission questions, IMs and offers), as JSON lines
 //                                                         with a running number "n"; "since S" keeps those after n=S
@@ -217,6 +218,7 @@ static class Program
             case "cart": return await Cart(rest);
             case "kart": return await Kart(rest);
             case "fmenu": return Tell("menu", rest);
+            case "fmenu12": return Tell("menu12", rest);
             case "ftext": return Tell("text", rest);
             case "fperm": return Tell("perm", rest);
             case "fgive": return Tell("give", rest);
@@ -465,6 +467,7 @@ static class Program
                 string cmd = llList2String(w, 0);
                 key who = (key)llList2String(w, 1);
                 if (cmd == "menu") llDialog(who, "Access Menu: pick one.", ["Red", "Green", "Blue"], chMenu);
+                else if (cmd == "menu12") llDialog(who, "Access Long Menu: pick one.", ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Next", "Back"], chMenu);
                 else if (cmd == "text") llTextBox(who, "Access Box: type a word.", chText);
                 else if (cmd == "perm") llRequestPermissions(who, PERMISSION_TRIGGER_ANIMATION);
                 else if (cmd == "give") llGiveInventory(who, "Access Card");

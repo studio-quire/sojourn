@@ -524,7 +524,7 @@ public sealed partial class MainForm
         var notWorn = wearable.Where(i => !worn.Ids.Contains(i.UUID)).ToList();
         var isWorn = wearable.Where(i => worn.Ids.Contains(i.UUID)).ToList();
         if (notWorn.Count > 0) list.Add(new("&Wear", () => _ = WearAsync(p, notWorn, replace: true)));
-        if (notWorn.Any(i => i.AssetType is AssetType.Object or AssetType.Clothing)) list.Add(new("&Add", () => _ = WearAsync(p, notWorn, replace: false)));
+        if (notWorn.Any(i => i.AssetType is AssetType.Object or AssetType.Clothing)) list.Add(new("&Add to outfit", () => _ = WearAsync(p, notWorn, replace: false)));
         if (isWorn.Count > 0) list.Add(new("Ta&ke off", () => _ = TakeOffAsync(p, isWorn)));
         if (one && target!.AssetType == AssetType.Object && !worn.Ids.Contains(target.UUID))
         {
@@ -555,7 +555,7 @@ public sealed partial class MainForm
         {
             new("&Replace outfit", () => _ = OutfitAsync(f, append: false)),
             new("&Add to outfit", () => _ = OutfitAsync(f, append: true)),
-            new("Ta&ke off these", () => _ = TakeOffFolderAsync(f)),
+            new("Ta&ke off the folder's items", () => _ = TakeOffFolderAsync(f)),
             new("-", () => { }),
             new("New &folder", () => _ = NewFolderAsync(f)),
             new("New n&otecard", () => _ = NewNotecardAsync(p, f)),   // (Re&name has N)

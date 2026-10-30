@@ -117,7 +117,7 @@ public sealed partial class MainForm
     void BuildConversations()
     {
         _conversationsPage = new TabPage("Conversations") { Name = "conversationsPage", AccessibleName = "Conversations" };
-        _conversations = new TabControl { Name = "conversations", AccessibleName = "Conversations", Dock = DockStyle.Fill };
+        _conversations = new TabControl { Name = "conversations", AccessibleName = "Conversations", Dock = DockStyle.Fill, TabStop = false };   // (Control+Tab switches)
         _noConversations = new TextBox
         {
             Name = "noConversations", AccessibleName = "Conversations", ReadOnly = true, Multiline = true, Dock = DockStyle.Fill, BackColor = SystemColors.Window,

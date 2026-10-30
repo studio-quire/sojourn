@@ -22,8 +22,8 @@ public sealed class LoginForm : Form
 {
     readonly ComboBox _grid = new() { Name = "grid", AccessibleName = "Grid", DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
     readonly LineBox _gridUri = new() { Name = "gridUri", AccessibleName = "Login URI", Width = 320, Visible = false };
-    readonly TextBox _user = new() { Name = "user", AccessibleName = "Username", Width = 320 };
-    readonly TextBox _password = new() { Name = "password", AccessibleName = "Password", UseSystemPasswordChar = true, Width = 320 };
+    readonly LineBox _user = new() { Name = "user", AccessibleName = "Username", Width = 320 };
+    readonly LineBox _password = new() { Name = "password", AccessibleName = "Password", UseSystemPasswordChar = true, Width = 320 };
     readonly CheckBox _showPassword = new() { Name = "showPassword", Text = "Sho&w password", AutoSize = true };
     readonly ComboBox _start = new() { Name = "start", AccessibleName = "Start at", DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
     readonly LineBox _place = new() { Name = "place", AccessibleName = "Place", Width = 320, Visible = false };

@@ -47,14 +47,14 @@ repo's own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access
   the login, the local grid not listed unless `--local`; no assistant (its Python side only exists in the repo,
   `AccessOptions.AssistantInBuild`): Control+D says once a session that describing needs the assistant, which this
   build doesn't include, then what the lists know, and Alt+9's input is named "Ask the assistant (not in this build)".
-  `//about` says the version, the commit, the disclaimer and the data folder; F1 ends by pointing to it.
+  `//about` says the version, the commit, the disclaimer and the data folder; F1's list ends by pointing to it.
 - **Checked** by `python tools/access.py package --check [ZIP]` (default the newest zip; about a minute; passed 38 of
   38 on 0.1.0.510, 2026-10-30, as --bare too; released as v0.1.0.510 on studio-quire/sojourn-access): the zip unpacked in a fresh folder under %TEMP%, run on a hidden desktop of its own
   through QuireUia as Package Tester (`--local --autologin --reader on --no-voice`, world audio to a file, no mic, the
   data folder `--base` in the check's folder: .NET's GetFolderPath ignores %LOCALAPPDATA%, so the default folder itself
   isn't exercised), with no dotnet on PATH and %TEMP%, %LOCALAPPDATA% and %APPDATA% pointed into the check's folder.
   It checks: no .NET loaded from outside the exe, logged in to the local grid, the main window and the focus in Say,
-  arriving, F1 and `//about` read out as UIA notifications (`//about` naming github.com/studio-quire/sojourn and the
+  arriving, F1's keys window, `//about` read out as UIA notifications (`//about` naming github.com/studio-quire/sojourn and the
   data folder), Control+D's absence said once in two presses, chat sent (the grid's echo), the renderer out of sight
   up and the GPU working for it, `nvdaControllerClient.dll`, `sojourn_voice.dll`, `openjp2.dll`, `shaderc_shared.dll`
   loaded from the package's folder and nothing from the repo, no TCP listener at all (9725 included) and every socket
@@ -103,17 +103,22 @@ account after a failed one restarts the app with the form filled in (each accoun
 | Alt+4 | Inventory | the tree ("Red Dress, skirt, worn"; "Hair, object, worn on Skull"; "..., marked"), Search, and Show (everything, worn, recent) |
 | Alt+5 | Search | Search for (words), Look for (people, places, events, groups, classifieds), Results |
 | Alt+6 | Places | Landmarks (a tree: the Landmarks folder and Favorites), Teleport history ("Bay City, Harbour, today 14:05"), Go to region (a box), Regions around ("Bay City, 3 people, next door to the north") |
-| Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touch", nearest first, within 30 m (Show: your HUDs instead); Tab: the selected one's parts, then a part's faces (Parts and faces, below) |
+| Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touchable" (or ", can sit"), nearest first, within 30 m (Show: your HUDs instead); Tab: the selected one's parts, then a part's faces (Parts and faces, below) |
 | Alt+8 | Notices | what waits for an answer, newest first; the selected one's text, keys and reply box |
 | Alt+9 | Assistant | a typed request ("Ask the assistant"), its replies, its choices as buttons |
 | Alt+0 | Settings | the ones that matter here (read-out and its kinds, mutes, timestamps, arrivals, earcons and volumes, walk mode's cues); Enter or Space moves one to its next value, Shift+Enter or Shift+Space to the one before (a sound's row plays it). First, the assistant's provider (Claude account, Anthropic key, OpenRouter key) and whether it works; its key (Enter: a password box, Control+V or typed; Delete twice forgets it); OpenRouter's model, said as its name and tag (Enter steps through Claude's three, then each OpenRouter family's current model; Control+Enter types any id). `docs/assistant.md` > Switching it on |
 
-**Keys** (F1 says them):
+**Keys** (F1 shows them in a window, one a line under short headings, the focus in its read-only text; Escape closes it
+and the focus goes back where it was. Spoken, they ran to some 2,000 characters in pieces, and the screen reader's
+stop key lost the rest, outside the review history; walk mode's F1 the same, its own keys):
 - In any input: Enter says (or sends), Shift+Enter whispers, Ctrl+Enter shouts (nearby only); Ctrl+Up/Down bring back
-  earlier lines. `/me`, `/7 text` (a channel) as in any viewer; `//` commands below.
+  earlier lines; Ctrl+Backspace deletes the word before the caret (`LineBox`, `TextKeys`: a plain Windows edit box types
+  U+007F for it). Tab and Shift+Tab go between a history and its input: the tab strips aren't Tab stops (Alt+number
+  and Ctrl+Tab switch them). `/me`, `/7 text` (a channel) as in any viewer; `//` commands below.
 - Ctrl+Tab / Ctrl+Shift+Tab: nearby chat and the conversations as one ring (focus to the input). Ctrl+W closes the
   conversation you're in.
-- Ctrl+N: the newest notice (the Notices area, it selected). On the notices list: 1-9 and 0 press its keys in order,
+- Ctrl+N: the newest notice (the Notices area, it selected). On the notices list: 1-9, 0, minus and equals press its keys in order (a
+  script menu's twelve: "... 0 Ten, minus Next, equals Back"),
   Enter goes to its keys (or the reply box for llTextBox), Delete puts it away; on a confirmation, Enter confirms and
   Escape cancels. Tab from the list reaches the notice's text, its reply box and its buttons ("1: Red").
 - Applications key (or Shift+F10, or Enter) on a person nearby: Send IM, Walk to, Face, Where, Follow, Beacon, Profile, Pay...,
@@ -132,9 +137,9 @@ account after a failed one restarts the app with the form filled in (each accoun
   or unmarks ("3 marked"; the item's words end "marked": no check boxes, which NVDA read on every item and the guided
   test took for worn or not), and what's marked is what every action takes, else the selected one; an item's words
   follow a wear or take-off as it lands ("worn" comes and goes within a second); the
-  Applications key (or Shift+F10) lists every action: Wear, Add, Take off, Rez on the ground, Unbox, Give to...,
+  Applications key (or Shift+F10) lists every action: Wear, Add to outfit, Take off, Rez on the ground, Unbox, Give to...,
   Cut, Copy, Paste, Rename, Details (rights, maker, date), Delete; on a folder Replace outfit, Add to outfit, Take
-  off these, New folder, New notecard. Ctrl+X / Ctrl+C then Ctrl+V on a folder (or an item in it) move or copy;
+  off the folder's items, New folder, New notecard. Ctrl+X / Ctrl+C then Ctrl+V on a folder (or an item in it) move or copy;
   Delete and Give ask first (the confirmation comes up selected in Notices: Enter confirms, Escape cancels, then the
   focus is back in the tree; as in the official viewer and Firestorm, a worn body part isn't deleted, said at once
   without asking, and other worn items, the folder's too, are taken off first, the confirmation saying so); F2 renames; Ctrl+F goes to Search, where typing lists what matches flat with its folder
@@ -163,10 +168,12 @@ account after a failed one restarts the app with the form filled in (each accoun
   (they're read when the area opens, and on Alt+6 while it's open).
 - Ctrl+G: teleport to the SLurl on the clipboard; "Teleporting to Bay City 128, 128, 22." then "Arrived in Bay City,
   at ...".
+- Ctrl+Shift+H: teleport home, Radegast's key: "Teleporting home.", then the arrival; through the session's teleport
+  watch as the VR client's way out, so a refusal is said ("Couldn't go home: ...").
 - F6: mute all read-out of what arrives (answers to your keys are still said; a voice call ringing, who starts speaking
   and the music's titles are muted too); Shift+F6: mute or unmute the source you're in (nearby chat, or this
   conversation). Kept in access-settings.json.
-- Answers longer than a line (F1's keys, `//help`, a long outfit or parcel list) are read whole, a few sentences at a
+- Answers longer than a line (`//help`, a long outfit or parcel list) are read whole, a few sentences at a
   time in turn, each its own line for review (`Announcer.WholeAnswers`; other announcers cut at 700 characters).
 - Ctrl+[ / Ctrl+] (the bracket keys right of P): back and forward through what was read (the last 200 lines); Ctrl+Shift+[ the oldest, Ctrl+R or
   Ctrl+Shift+] the newest. Ctrl+Shift+M marks the line you're on (or the newest), Ctrl+Shift+C copies the lines from
@@ -176,7 +183,7 @@ account after a failed one restarts the app with the form filled in (each accoun
 - Ctrl+D: describe what's selected (a person or object in its list, a part or the part a face is on, a friend, an
   inventory item, a profile's pictures), or else where you are; Ctrl+Shift+D: you and what you're wearing; the same key again on the same thing: more
   (Describing, below).
-- Ctrl+Shift+A: arrivals and departures within chat range read out ("Kestrel came into chat range (12 m).", "Kestrel
+- Ctrl+Shift+A: arrivals and departures within chat range read out ("Kestrel came into chat range, 12 metres away.", "Kestrel
   left chat range."), or none; Firestorm's radar reports, the finer choices in Alt+0.
 - Alt+F4 (or the close button) while in world asks "Log out and quit?": Enter quits, Escape stays (Alt+F4 is next to
   Alt+4, and a slip closed the app at once in the guided test).
@@ -311,7 +318,7 @@ played through world audio's mixer, placed: a cue about something on your left i
 | follow (`walk_follow`, text) | following someone | none | "With Kestrel, 3 m, twelve o'clock." / "Kestrel sat down, ..." / "Kestrel is getting away: 24 m, ..." |
 | vehicle (`walk_vehicle`, both) | driving: what's ahead (as the warning, further at speed), the speed when it changes by a third, a seated border crossing | as the warning | "12 m a second." / "Still on Walk Kart after the crossing." / "The crossing left you standing: you're no longer seated." |
 | beacon (`walk_beacon`, both; volume quiet) | a walk under way (`//go`, walk to, a follow, the assistant's walk), else one put on someone or something | a soft pip from the target's direction, every 1.4 s far off down to 0.6 s near, with a fifth above it while it's within 20 degrees ahead (front and back are hard to tell by ear); a small bell flourish on reaching a hand beacon | "Reached Bench." / "Beacon lost: Kestrel isn't here now."; B says where it is |
-| marks (`walk_marks`, both) | O | each thing in turn round from ahead to the right, as the sonar: a door knocks (as the warning's door), a seat sinks (two low notes falling), a touchable thing taps (a small high bell) | "Bench, a seat, 4 metres, twelve o'clock. Garden Gate, a door, 4 metres, three o'clock. Bell, touch, 4 metres, nine o'clock." |
+| marks (`walk_marks`, both) | O | each thing in turn round from ahead to the right, as the sonar: a door knocks (as the warning's door), a seat sinks (two low notes falling), a touchable thing taps (a small high bell) | "Bench, a seat, 4 metres, twelve o'clock. Garden Gate, a door, 4 metres, three o'clock. Bell, touchable, 4 metres, nine o'clock." |
 
 **The beacon** (M4): while the app walks somewhere (a `//go`, walk to, a follow: on the person as they move, the
 assistant's walk: the session's autopilot's last point), a pip comes from where it's heading, placed a metre from the
@@ -344,10 +351,10 @@ about, the Radegast guided test's lesson, and no list changes while you're in it
 - **Parts of X** (`parts`): every part, root first then in the order the region made them (their local ids, which
   follow the link order the linkset was made in; not promised to be the scripts' link numbers). Named ones by name,
   unnamed ones ("Object", "Primitive", or the root's own name on a child) by number, what and where: "Treasure Chest,
-  part 1 of 4, the root, a box", "Part 2 of 4, a box above the root, touch", "Latch, part 3 of 4, a tiny box in front of
+  part 1 of 4, the root, a box", "Part 2 of 4, a box above the root, touchable", "Latch, part 3 of 4, a tiny box in front of
   the root, nearer you, above it". Sizes: tiny under 12 cm, small under 40, large over 2.5 m, huge over 8. Where: up and
-  down, left and right as you face the object, nearer or further from you; on a HUD, as on the screen. ", touch" when
-  the part's own script takes touches, ", sit" for a sit click; a short description when it's unnamed ("described as
+  down, left and right as you face the object, nearer or further from you; on a HUD, as on the screen. ", touchable" when
+  the part's own script takes touches, ", can sit" for a sit click; a short description when it's unnamed ("described as
   Play"). Names come from selecting every part briefly, as the edit tool's linked parts are (on the local grid neither the
   root's selection nor a child's family properties brought a child's name). Enter touches that part (the part
   itself, never the root: the renderer's ray counts that part alone first); the Applications key: Touch, Sit, Where,
@@ -383,15 +390,15 @@ while you're in an IM (the conversation in focus is the VR feed's open IM here),
 Applications key has Always incognito with them (Session's Triggers: within chat range or an IM with them, ending by
 itself once neither holds). The reader keeps reading (on the desktop the window is the view); the review history
 drops the spell's lines when it ends; the session log pauses; the title says "incognito" instead of the region (the
-status bar adds ", incognito"). Access writes nothing of its own from a spell (its histories are on screen only).
+status bar, named "Location" for the screen reader, adds ", incognito"). Access writes nothing of its own from a spell (its histories are on screen only).
 
 **Voice chat** (M1; `MainForm.Voice.cs` over Session's Voice/). On unless `--no-voice`, push to talk by default: hold the
 talk key (F4; `access_talk_key`: f4, f12, scroll_lock, pause), only your own key opens the mic; a key held when the
 window loses the focus lets go. Shift+F4 switches to an open mic (it starts muted; F4 then mutes and unmutes,
 unmuting by your own key only) and back. Ctrl+Shift+V or `//voice`: where (nearby voice, a call, voice off here), who's
 speaking, who else is in voice, your mic. `access_voice_speakers` (off): someone starting to speak said, each at most
-once in ten seconds. A call ringing is said; `//voice answer` or `//voice decline`. Alt+0 has voice on or off, the mode,
-how loud residents are and where they're heard from.
+once in ten seconds. A call ringing is said; `//voice answer` or `//voice decline`. Alt+0 has voice on or off, the mode and
+how loud residents are (not where voice is heard from: Access hears from the avatar's head, having no camera).
 
 **The assistant** (Alt+9) works only with a Claude account and the assistant's Python side set up (`python
 tools/assistant.py setup`); without them it says so and everything else works. Replies are read by the announcer (A1's
@@ -653,16 +660,17 @@ real-input guard applying, so Ctrl+N then a number and a confirmation then Enter
 `ACCESS_TEST_INPUT=1` lets every key through instead) and `SOJOURN_TEST_NO_NVDA=1` (on a hidden desktop NVDA's
 controller client claims NVDA runs, so speech would go nowhere), and a bot (`tools/visitor`, Access Visitor) that
 talks, IMs, and owns a scripted fixture box sending menus, llTextBox, permission requests and offers. It covers
-login and focus, every area's controls named with their roles and the Tab order (the history one Shift+Tab back from Say), chat in and out (say, whisper,
+login and focus, every area's controls named with their roles and the Tab order (the history one Shift+Tab back from Say, no tab strip a stop), chat in and out (say, whisper,
 shout), an IM's tab arriving without taking the focus, Ctrl+Tab and Ctrl+W, people and objects with their bearings
 measured against positions (their first fills held back 3 s, `SOJOURN_TEST_LIST_DELAY_MS`, as Second Life's objects
 wait for names: arriving, the list says "looking"; once it and the lists under it have filled, its own item is the only
-one with the keyboard focus and the last focus event, by UI Automation and MSAA), F1 (all of it, none cut short), F6,
+one with the keyboard focus and the last focus event, by UI Automation and MSAA), F1's window (every key, Escape back to Say), Ctrl+Backspace, F6,
 Ctrl+R, SojournSettings refusing to lower `access_answers_without_key`, the music and world sounds starting at 0.15
 and 0.5 (kept in the session's file, applied once), the music's volume stepped by Enter and Shift+Enter in Alt+0,
 `//status music`, a notice silenced by Control alone not said again, Alt+0, Alt+F4's question (Escape stays), a menu (and its announcement
-said again when a key cuts it off), a text box and a permission question answered by keys, a
-`//go` and a `//tp` checked against the region's positions, the assistant's walk (the session's autopilot) stopping
+said again when a key cuts it off; a menu of twelve, its keys read to "minus Next, equals Back" and those two pressed
+by minus and equals), a text box and a permission question answered by keys, a
+`//go`, Ctrl+Shift+H ("Teleporting home.", then the arrival or why not) and a `//tp` checked against the region's positions, the assistant's walk (the session's autopilot) stopping
 about its stop distance short. The inventory step makes its own fixtures through the agent API (a folder, notecards,
 a crate with a notecard inside) and then, by keys only: Alt+4 and the arrows (what an MSAA reader is
 told, as NVDA reads WinForms' trees, is the highlighted item: as first shown, after F5, inside a folder), a search, a notecard opened, edited, saved (checked by
@@ -681,7 +689,8 @@ scratch driver like the test's that builds a poster sign, presses the keys with 
 what was announced. The review step: three lines from the
 visitor, Ctrl+[ twice to the middle one, Ctrl+Shift+M, Ctrl+], Ctrl+Shift+C ("Copied 2 lines", the clipboard left
 alone by `SOJOURN_TEST_NO_CLIPBOARD=1`), Ctrl+Shift+[; Ctrl+Shift+T and a line with its time in the history;
-Ctrl+Shift+A and the visitor walking out of chat range and back, both said (after the radar's 8 s settling). The
+Ctrl+Shift+A and the visitor walking out of chat range and back, both said (after the radar's 8 s settling; coming back
+with how far, "12 metres away"). The
 places step: a region by name typed into Go to region (arrival said, position
 checked), a landmark made where the tester stood found in the tree and teleported to by Enter, the history newest
 first with "here now" and the one before teleported to, the regions around listed, and a route notecard (a note
@@ -774,8 +783,8 @@ says). Tell the user Companion's push-to-talk is Right Ctrl; Sojourn Access's ow
 4. Shift+Tab once to the history and arrow up and down. Ask: does it read line by line, and does a new line
    (visitor says something) leave your place alone?
 5. The visitor IMs you (`visitor im hello`). Ask: did NVDA say "Access Visitor, new IM: hello" and did the focus stay
-   put? Then Ctrl+Tab: "Message to Access Visitor"? Type a reply and Enter. Shift+Tab to the tab strip: does NVDA
-   say the conversation's tab name? (UI Automation doesn't list it.) Ctrl+Tab back to Say.
+   put? Then Ctrl+Tab: "Message to Access Visitor"? Type a reply and Enter. Shift+Tab: straight to the conversation's
+   history (the tab strips aren't Tab stops)? Ctrl+Tab back to Say.
 6. Alt+3. Ask: does the list say "Access Visitor, 4 metres, two o'clock" or similar? Is the clock direction right
    (the visitor stands where the bot was put)? Applications key: the menu reads? Choose Face; then Alt+3, F5: is
    the visitor at twelve o'clock now? Alt+0: settings; Enter on one changes it (put it back).
@@ -798,7 +807,7 @@ says). Tell the user Companion's push-to-talk is Right Ctrl; Sojourn Access's ow
     Space again to unmark.
 Walk mode (its sounds play on the PC's speakers: say so first; a quiet room helps):
 
-14. F3. Ask: did NVDA say "Walk mode. Arrows walk, F1 for its keys."? F1: the keys read? H: "Facing ..."?
+14. F3. Ask: did NVDA say "Walk mode. Arrows walk, F1 for its keys."? F1: the keys in a window, line by line, Escape back to walk mode? H: "Facing ..."?
 15. S, the sonar. Ask: did the words come at once and the twelve pings go round from ahead to the right, higher
     where something's near? Could you tell from the sound alone where it's open? Too long, too loud?
 16. Hold Up a few seconds toward a building (Atelier's are around 70-100, 40-70; A says what's ahead first). Ask: are
@@ -810,7 +819,7 @@ Walk mode (its sounds play on the PC's speakers: say so first; a quiet room help
     way", each stretch said, and "Finished walking ..." at the end?
 Parts and the rest of M2 (before step 19; `python tools/access.py visitor treasure 66 40 23` puts the chest out):
 
-- Alt+7, arrow to Treasure Chest, Tab. Ask: are the parts clear ("Part 2 of 4, a box above the root, touch")? Enter on
+- Alt+7, arrow to Treasure Chest, Tab. Ask: are the parts clear ("Part 2 of 4, a box above the root, touchable")? Enter on
   part 2: did the box say "chest lid touched"? Tab: the faces read by direction? Enter on "The top": face 0?
 - Alt+4, Alt+4 again: "Second pane"? Alt+4 back and forth, Ctrl+W closes it. Ctrl+Shift+W: what you're wearing, clear?
 - Ctrl+Shift+I: "Incognito on."; Ctrl+Shift+I again: "Incognito off."? F4: what does it say (voice on or off)?
@@ -831,7 +840,7 @@ own input logs off.
    your PC"? (Unblocked, there shouldn't be.) Did the login window's focus land in Username with Second Life chosen?
 3. Log in (their typing). Ask: did Windows Firewall ask, and what was chosen? An MFA code or the Terms, if asked, in
    their small window? "Logged in, in ..." and the cursor in Say?
-4. `//about`: the release's version and github.com/studio-quire/sojourn? F1 read out?
+4. `//about`: the release's version and github.com/studio-quire/sojourn? F1: the keys in a window, Escape back to Say?
 5. A short round where people are: Alt+3 (a person read with distance and clock direction), Alt+7 (the first object
    read without arrowing), Ctrl+D (says once that this build has no assistant, then what the lists know), F3 and S (the
    sonar), Escape. Music, if the parcel has any: under NVDA at its start level? Somewhere busy (a few minutes in), read

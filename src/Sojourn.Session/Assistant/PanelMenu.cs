@@ -298,7 +298,7 @@ public sealed partial class Panel
 
             float labelRoom = controlLeft - row.Left - 22;
             draw.Text(Ellipsize(r.Label, labelF, labelRoom), row.Left + 10, labelY, labelF, labelInk);
-            if (note) draw.Text(Ellipsize(r.Note!, noteF, row.Width - 20), row.Left + 10, row.Top + 48, noteF, k.Faint);
+            if (note) draw.Text(Ellipsize(r.Note!, noteF, row.Width - 20), row.Left + 10, row.Top + 48, noteF, k.Text);   // the ink, as the row's name: faint was unreadable over bright frost (the user, 2026-10-30)
             y += rowH;
         }
         if (pages.Count > 1)

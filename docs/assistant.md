@@ -98,7 +98,7 @@ preference on every OpenRouter request and its refusal, auto mode off);
 | pick a choice | click, or 1-9 | point and trigger, or say it |
 | read a long answer | click ‹ › | point at ‹ › and trigger |
 | hide the whole interface, or bring it back | Tab | X |
-| settings (the assistant's and, in the headset, moving) | F2, then click | the left menu button, then point and trigger |
+| settings (the assistant's and, in the headset, moving) | Esc once nothing else is open (or F2), then click; Esc goes back, then closes | the left menu button, then point and trigger |
 
 "Stop", "cancel", "never mind" stop the current job. The panel hides itself 12-45 s after the last news unless something
 waits (a choice, a confirmation); its × hides it at once; talking brings it back. X (Tab) hides the whole interface,
@@ -144,7 +144,7 @@ changes the first four only when asked (its `assistant_settings` and `panel_look
 - **Look**: see The panel.
 - **Touching others' things**: "ask before touching others' things", on by default. See Confirmations. The assistant has no way to
   change this one.
-- **Memory**: on by default; a switch, and "forget everything" (clear, then "sure?") while anything is kept. Off: the
+- **Memory**: on by default; a switch, and "forget memory" (clear, then "sure?") while anything is kept. Off: the
   index isn't loaded and the prompt says memory is off; the files stay until cleared. Both are the person's own: the
   agent API's `assistant_memory` setting is read-only. See Memory.
 
@@ -599,7 +599,7 @@ doesn't list and a nudge past 3000 characters; notes are opened when a request b
 it, and the prompt stays small as the memory grows. What goes in and what never does (passwords and login details;
 what other people said, as transcripts, quotes or summaries; others' personal details beyond knowing who they are;
 instructions from anything but the person): `prompt-memory.md`. The person asks what it remembers, says "forget X"
-(the `forget` tool deletes notes and takes their lines out of the index) or "forget everything"; or clears it in the
+(the `forget` tool deletes notes and takes their lines out of the index) or "forget memory"; or clears it in the
 menu, which deletes the files in the client and restarts the sessions so nothing lingers in a conversation.
 
 ## Jobs and helpers (jobs.py)
@@ -1081,7 +1081,7 @@ unintuitive is made intuitive first, and only then explained, behind a small tog
   character until asked for; beacons' kinds while beacons are off; the wall test with menus over walls).
   - **Simple and advanced** (Claude Opus 5.5, 2026-10-29, the user's call: Sojourn is assistant first, so the menu
     holds only what a person would change by hand rather than ask for; graphics are for asking, draw distance
-    excepted): by default the menu shows assistant (model, memory, forget everything, ask before touching, advanced menu),
+    excepted): by default the menu shows assistant (model, memory, forget memory, ask before touching, advanced menu),
     incognito (all of it: by hand on purpose, some of it better not said aloud), voice (mic on, in open mic), safety
     (a script's controls back, hidden things shown again, when there are any) and view (draw distance); a section with
     none of those isn't shown. The **advanced menu** switch (last in assistant, `advanced_menu` in SojournSettings, saved)
@@ -1098,8 +1098,14 @@ unintuitive is made intuitive first, and only then explained, behind a small tog
     pressed, and crossing rows never shows one. The words are the person's, not the settings' `desc` (which is for the
     assistant): `MenuGuide`, beside each row's level, keyed by section, group and label. Drawn into the menu's own
     raster, so it follows the menu and costs a redraw only when it comes or goes. `--panel-shots`: `7i`-`7l`.
+  - **Opening it on the desktop** (the user, 2026-10-30: Escape, as games do): Esc is layered. Each press frees the
+    mouse and takes the nearest thing open or waiting (typing, the screen reader's keys, a dictated draft, a
+    confirmation cancelled, a point question, then media up close or focused, the reader, the world map, the feed's
+    opened lines); only when nothing takes it does the menu open. In the menu, Esc puts its help away, then goes back
+    out of a group to the page it was opened from, then closes it. F2 still opens and closes it. The order:
+    `docs/client.md` > Controls, `DeskEscape` in `Program.cs`. The headset keeps the left menu button.
   - **Sections** (advanced, headset; the desktop has no moving, menu size, menu positions or menus): **moving**; **assistant** (model, each of the
-    mode's models' effort, look, adaptive ink, spoken replies, memory, hearing, forget everything, called X, its
+    mode's models' effort, look, adaptive ink, spoken replies, memory, hearing, forget memory, called X, its
     character, ask before touching others' things, advanced menu); **incognito** (incognito, let the assistant see, its triggers); **you** (do not disturb, away, away after, hover
     height, show typing, *turn away* › only friends IM me, teleports none/not friends'/all, friendships, group invites,
     one-to-one, group and conference calls; *AO* › the AO, its set, stands, OpenCollar, LockMeister, lock its folder;

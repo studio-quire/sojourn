@@ -5,8 +5,8 @@ using Sojourn.Render.Realtime;
 namespace Sojourn.Client.Control;
 
 /// <summary>
-/// The settings menu (the left controller's menu button; F2 on the desktop), in sections: moving (the headset's posture,
-/// eye height, turning, your body) and the assistant (its panel, model and effort, look, spoken replies, name and character once
+/// The settings menu (the left controller's menu button; on the desktop Esc, once nothing else takes it, or F2), in
+/// sections: moving (the headset's posture, eye height, turning, your body) and the assistant (its panel, model and effort, look, spoken replies, name and character once
 /// asked for, and whether its touches on other people's things wait for it). Controls say what they are (switches,
 /// segments, swatches); the controls nothing on screen shows are behind the help key. Drawn in the panel's look on the
 /// same quad layer (the assistant's panel gives way while it's open; a confirmation takes the layer back). Point with
@@ -154,7 +154,31 @@ public sealed class SettingsMenu : ISettingsMenu
 
     static AssistantModel NextModel(AssistantModel m) => (AssistantModel)(((int)m + 1) % Enum.GetValues<AssistantModel>().Length);
 
-    public void Toggle() { Open = !Open; _down = null; _forgetArmed = false; _restOn = Nowhere; _tip = null; Used(); Interlocked.Increment(ref _version); }
+    public void Toggle()
+    {
+        Open = !Open; _down = null; _forgetArmed = false; _restOn = Nowhere; _tip = null; Used(); Interlocked.Increment(ref _version);
+        _say(Open ? "settings menu open" : "settings menu closed");
+    }
+
+    /// <summary>Esc on the desktop with the menu open: its help put away, else out of a group to the page it was opened
+    /// from, else the menu closed.</summary>
+    public void Back()
+    {
+        if (!Open) return;
+        Used();
+        _restOn = Nowhere;
+        _tip = null;
+        if (_help) _help = false;
+        else if (_group != null)
+        {
+            _say($"settings menu: back from {_group}");
+            _page = _groupFrom;
+            _group = null;
+            _forgetArmed = false;
+        }
+        else { Close(); return; }
+        Interlocked.Increment(ref _version);
+    }
 
     long _usedAt = Environment.TickCount64;
     /// <summary>The person is using it (the pointer on it, a press).</summary>
@@ -184,7 +208,7 @@ public sealed class SettingsMenu : ISettingsMenu
     /// <summary>The X button, Tab.</summary>
     public void ToggleHidden() => SetHidden(!_s.InterfaceHidden);
 
-    /// <summary>The menu button, F2: while the interface is hidden, it comes back with the menu open (an open menu out
+    /// <summary>The menu button, Esc or F2: while the interface is hidden, it comes back with the menu open (an open menu out
     /// of sight would only be in the way).</summary>
     public void Summon()
     {
@@ -652,7 +676,7 @@ public sealed class SettingsMenu : ISettingsMenu
             i => { _s.Hearing = hearings[i]; _assistant.PrefsChanged(); }));
         // what it remembers, cleared by the person's own two presses (the second within this menu, nothing between)
         if (AssistantHost.MemoryKept())
-            rows.Add((new MenuRow("forget everything", _forgetArmed ? "sure?" : "clear", false),
+            rows.Add((new MenuRow("forget memory", _forgetArmed ? "sure?" : "clear", false),
                 _ => { if (_forgetWasArmed) _assistant.ClearMemory(); else _forgetArmed = true; }));
         // a name and a character exist once the person has asked for one; here they're switched on and off
         if (_s.AssistantName is { } name)
@@ -716,7 +740,8 @@ public sealed class SettingsMenu : ISettingsMenu
     static readonly string[] DesktopHelp =
     {
         "hold T and speak to the assistant, or press Enter to type",
-        "Tab hides everything and brings it back · F2 opens and closes this · F8 changes the model",
+        "Esc closes whatever is open, then opens this (and goes back out of it)",
+        "Tab hides everything and brings it back · F8 changes the model",
         "voice: hold B or the middle mouse button to talk · open mic: B mutes",
         "P: incognito · hold Y: dictate words for people, never heard by the assistant · Ctrl+`: a picture",
     };

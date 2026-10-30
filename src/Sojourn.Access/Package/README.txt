@@ -30,12 +30,13 @@ When you've arrived, the cursor is in the Say box, as in Radegast.
 
 The first keys
 
-F1: the keys, spoken. In walk mode, F1 tells walk mode's own keys.
+F1: the keys, in a window to read line by line; Escape closes it. In walk mode, F1 shows walk mode's own keys.
 Type //help in the Say box and press Enter: the commands.
 Enter says what you typed, Shift+Enter whispers, Control+Enter shouts.
 Alt+1 to Alt+9 and Alt+0: the areas (nearby chat, conversations, people, inventory, search, places, objects, notices, the assistant, settings).
 Control+Tab: the next conversation.
-Control+N: the newest notice (menus, offers, questions); numbers press its buttons.
+Control+N: the newest notice (menus, offers, questions); 1 to 9, 0, minus and equals press its buttons.
+Control+Shift+H: teleport home.
 F3: walk mode. The arrows walk and turn, with a sound for each step and spoken warnings. Escape leaves it.
 F4 held: talk in voice chat.
 F6: mute what's read out, and again to turn it back on.

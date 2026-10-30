@@ -167,7 +167,7 @@ public sealed partial class WalkMode
         LastMarks = things.Select(x => (x.t.Name, x.Item2, x.bearing, x.t.Dist)).ToList();
         if (things.Count == 0) { Line($"No doors, seats or touchable things within {Bearings.Metres(MarksRange)}."); return; }
         if (_set.WalkText("marks"))
-            Line(string.Join(" ", things.Select(x => $"{x.t.Name}, {(x.Item2 == "door" ? "a door" : x.Item2 == "seat" ? "a seat" : "touch")}, "
+            Line(string.Join(" ", things.Select(x => $"{x.t.Name}, {(x.Item2 == "door" ? "a door" : x.Item2 == "seat" ? "a seat" : "touchable")}, "
                 + $"{Bearings.Metres(x.t.Dist)}, {Bearings.Clock(x.bearing)}.")));
         if (!_set.WalkSound("marks")) return;
         float level = _set.WalkLevel("marks");

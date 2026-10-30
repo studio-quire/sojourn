@@ -10,8 +10,8 @@ namespace Sojourn.Access;
 /// An object's parts and a part's faces in words (docs/access.md > M2, a blind tester's child prims: the Linden sunken city's
 /// Treasure Chest 6 answered only on a child prim, which Radegast lists by name alone). Every part numbered, root first,
 /// then the rest in the order the region made them (their local ids, which follow the link order a linkset is made in):
-/// a named one by its name ("Latch, part 3 of 5, a tiny box in front of the root, nearer you, touch"), an unnamed one by
-/// what and where it is ("Part 2 of 5, a box above the root, touch"). Faces by direction from where the person is:
+/// a named one by its name ("Latch, part 3 of 5, a tiny box in front of the root, nearer you, touchable"), an unnamed one by
+/// what and where it is ("Part 2 of 5, a box above the root, touchable"). Faces by direction from where the person is:
 /// the top, the bottom, the side facing you, the far side, the left and right sides as you face it, a curved side, an
 /// inside; always with the face's number, which scripts and builders use. Pure words over the world model.
 /// </summary>
@@ -57,8 +57,8 @@ public static class Linkset
         return list;
     }
 
-    /// <summary>"Treasure Chest, part 1 of 5, the root, a box", "Part 2 of 5, a box above the root, touch",
-    /// "Latch, part 3 of 5, a tiny box in front of the root, nearer you, touch"; a lone prim is "the whole object".</summary>
+    /// <summary>"Treasure Chest, part 1 of 5, the root, a box", "Part 2 of 5, a box above the root, touchable",
+    /// "Latch, part 3 of 5, a tiny box in front of the root, nearer you, touchable"; a lone prim is "the whole object".</summary>
     public static string Words(Part p, string rootName, System.Numerics.Vector3 rootPos, System.Numerics.Vector3? me)
     {
         string number = p.Count == 1 ? "the whole object" : $"part {p.Number} of {p.Count}";
@@ -72,8 +72,8 @@ public static class Linkset
             words = (p.Named ? $"{p.Name}, {number}, " : $"Part {p.Number} of {p.Count}, ") + what + (where.Length > 0 ? " " + where : "");
         }
         if (p.Desc != null && !p.Named) words += $", described as {p.Desc}";
-        if (p.Touch) words += ", touch";
-        if (p.Sit) words += ", sit";
+        if (p.Touch) words += ", touchable";
+        if (p.Sit) words += ", can sit";
         return words;
     }
 

@@ -65,6 +65,7 @@ public sealed class EditorForm : Form
     {
         if (keyData == (Keys.Control | Keys.S)) { _ = SaveAsync(); return true; }
         if (keyData == Keys.Escape) { Close(); return true; }
+        if (keyData == (Keys.Control | Keys.Back) && ActiveControl == _text && TextKeys.DeleteWordBack(_text)) return true;
         return base.ProcessCmdKey(ref msg, keyData);
     }
 

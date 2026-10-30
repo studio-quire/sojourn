@@ -210,7 +210,7 @@ the voice server in the hidden-desktop test (its step with `ACCESS_VOICE=1` need
 
 M2 progress (2026-10-29, Claude Opus 5.5; `docs/access-app.md` > Parts and faces, Placing by words, the inventory's
 second pane). Built: **every part reachable**: in Objects the selected object's parts listed under it, root first,
-named ones by name and unnamed ones by number, what and where ("Part 2 of 4, a box above the root, touch"), each
+named ones by name and unnamed ones by number, what and where ("Part 2 of 4, a box above the root, touchable"), each
 part's faces under that by direction from her ("The top, face 0", "The side facing you", "The left side"), Enter
 touching that part or face (never the root instead); Tab passing a list never changes what the next is about (the
 Radegast guided test lost the part that way); Show: your HUDs makes a HUD's buttons parts like any other; `//touch
@@ -468,7 +468,7 @@ Found, and done (Claude Opus 5.5):
   lit as at midday for true colours and the description says it's night there: would she want that, or the place's own
   light? Would an overview on arriving somewhere new be welcome as an option, or only ever on her key? Without a Claude
   account, is hearing what the lists know (names, an object's own description, what's worn by name) any use?
-- For parts and faces (M2): is "Part 2 of 4, a box above the root, touch" the right amount (what, where, whether it
+- For parts and faces (M2): is "Part 2 of 4, a box above the root, touchable" the right amount (what, where, whether it
   takes touches), and is "the root" a word she uses? Are parts and faces as lists under the objects list (Tab, then
   Tab) easy to reach, or would she rather a key on an object? Faces by direction from where she stands ("the side
   facing you", "the left side") or by the object's own sides, or numbers only? Did the sunken city's chests have

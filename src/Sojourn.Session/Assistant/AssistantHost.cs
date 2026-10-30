@@ -37,7 +37,7 @@ public sealed class AssistantHost
     public bool Typing => Panel.Read(s => s.Typing != null);
 
     public string PointHow => InHeadset ? "Point, then pull the trigger" : "Click on it";
-    public string Hint => InHeadset ? "hold the right grip and speak" : "hold T and speak, or press Enter to type";
+    public string Hint => InHeadset ? "hold the right grip and speak" : "hold T and speak, Enter to type · Esc: settings";
 
     public AssistantHost(AgentSession session, bool uploadsCost)
     {
@@ -246,6 +246,9 @@ public sealed class AssistantHost
         Panel.Update(p => { p.PointAsk = null; p.Status = target is { } t ? t.Label : null; });
         Send(new JsonObject { ["what"] = "pointed", ["target"] = target?.ToJson() });
     }
+
+    /// <summary>The desktop's Esc: the question put away, as its close key does.</summary>
+    public void CancelPointAsk() { if (PointAsked) PointCancelled(); }
 
     /// <summary>The person put the question away (its close key).</summary>
     void PointCancelled()
@@ -501,6 +504,13 @@ public sealed class AssistantHost
                     Pick(d.Choice!);
                 break;
         }
+    }
+
+    /// <summary>The desktop's Esc: the confirmation waiting cancelled, as its cancel key (which, saying no, takes any
+    /// press, not only a hand's).</summary>
+    public void DeclineConfirm()
+    {
+        if (Panel.Read(p => p.Confirm) is { } pc) Confirmations.Answer(pc, false);
     }
 
     /// <summary>Number keys on the desktop pick a choice (not while a confirmation is up: the choices are hidden).</summary>

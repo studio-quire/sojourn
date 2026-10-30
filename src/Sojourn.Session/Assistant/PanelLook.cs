@@ -45,8 +45,8 @@ public sealed record PanelLook
     public string Dim { get; init; } = "#465e63";
     public string Faint { get; init; } = "#7a8f93";
     /// <summary>The light in the glass: the confirm key, an "on" switch, the listening orb.</summary>
-    public string Accent { get; init; } = "#1f736d";
-    public string OnAccent { get; init; } = "#ffffff";
+    public string Accent { get; init; } = "#7dbcee";   // light blue (the user, 2026-10-30), as the launcher's accent
+    public string OnAccent { get; init; } = "#2b3f52";
     /// <summary>Keys are a lighter (or darker) layer of this colour.</summary>
     public string Key { get; init; } = "#ffffff";
     public float KeyOpacity { get; init; } = 0.5f;

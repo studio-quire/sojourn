@@ -27,7 +27,7 @@ public sealed partial class MainForm : Form
     Commands _cmd = null!;
     Announcer? Reader => Host?.ScreenReader?.Announcer;
 
-    readonly TabControl _areas = new() { Name = "areas", AccessibleName = "Areas", Dock = DockStyle.Fill };
+    readonly TabControl _areas = new() { Name = "areas", AccessibleName = "Areas", Dock = DockStyle.Fill, TabStop = false };   // (Alt+number switches)
     readonly StatusStrip _statusStrip = new() { Name = "statusBar", AccessibleName = "Status" };
     readonly ToolStripStatusLabel _where = new() { Name = "where", Spring = true, TextAlign = ContentAlignment.MiddleLeft };
     readonly System.Windows.Forms.Timer _tick = new() { Interval = 50 };
@@ -202,9 +202,18 @@ public sealed partial class MainForm : Form
 
     string? _lastRegion;
 
+    /// <summary>The status bar's text; once logged in, a screen reader hears it named "Location" (a label's name is all
+    /// it reads of it, so the words follow the name).</summary>
+    void ShowWhere(string text, bool place)
+    {
+        if (_where.Text != text) _where.Text = text;
+        string? name = place ? $"Location: {text}" : null;
+        if (_where.AccessibleName != name) _where.AccessibleName = name;
+    }
+
     void UpdateWhere()
     {
-        if (_ops?.Me() is not { } me) { _where.Text = Host?.Session.StatusMessage ?? ""; return; }
+        if (_ops?.Me() is not { } me) { ShowWhere(Host?.Session.StatusMessage ?? "", place: false); return; }
         var c = _ops.Client!;
         var name = c.Self.Name;
         // incognito: the title (in the taskbar and Alt+Tab, where others may see it) leaves out the place
@@ -212,7 +221,7 @@ public sealed partial class MainForm : Form
         var title = incognito ? $"Sojourn Access: {name}, incognito" : $"Sojourn Access: {name}, {me.Region}";
         if (Text != title) Text = title;
         var money = Host!.Session.BalanceKnown ? $", L${c.Self.Balance}" : "";
-        _where.Text = $"{me.Region} {Math.Round(me.Pos.X)}, {Math.Round(me.Pos.Y)}, {Math.Round(me.Pos.Z)}{money}{(incognito ? ", incognito" : "")}";
+        ShowWhere($"{me.Region} {Math.Round(me.Pos.X)}, {Math.Round(me.Pos.Y)}, {Math.Round(me.Pos.Z)}{money}{(incognito ? ", incognito" : "")}", place: true);
         if (_lastRegion != null && me.Region != _lastRegion && !_cmd.TeleportingSelf && Environment.TickCount64 - _teleportedAt > 15_000
             && _walk?.SeatedRecently != true)   // a seated crossing is walk mode's to say, with whether the seat held
             Announce($"Now in {me.Region}.");
@@ -421,19 +430,113 @@ public sealed partial class MainForm : Form
 
     // --- keys -----------------------------------------------------------------------------------------------------------
 
-    const string KeysHelp = "Alt+1 nearby chat, Alt+2 conversations, Alt+3 people, Alt+4 inventory, Alt+5 search, Alt+6 places, Alt+7 objects, Alt+8 notices, Alt+9 the assistant, Alt+0 settings. "
-        + "Control+Tab next conversation, Control+W closes one. Enter says, Shift+Enter whispers, Control+Enter shouts; "
-        + "slash slash commands in the Say box, //help lists them. Control+N the newest notice; on a notice, numbers press its "
-        + "keys and Delete puts it away. Control+G teleports to the SLurl on the clipboard. Applications key: a person's or "
-        + "object's actions, and a profile from any list of people. F5 refreshes a list. F6 mutes read-out, Shift+F6 this conversation. Control+left bracket and "
-        + "right bracket go back and forward through what was read, with Shift the oldest and newest, Control+R repeats; Control+Shift+M "
-        + "marks a line and Control+Shift+C copies from the mark to the line you're on; Control+Shift+T times in the histories; "
-        + "Control+Shift+A arrivals and departures read out. Control+D describes what's selected, or where you are; Control+Shift+D you and what you're wearing; "
-        + "the same key again tells more. F3 walk mode: arrows walk, F1 there for its keys. In the inventory: Enter wears or opens, Space "
-        + "marks, Control+X, C and V move and copy, Delete deletes, F2 renames, Control+F searches; Alt+4 again opens a second pane, Control+M moves "
-        + "what's marked into the folder selected there. In Objects, Tab goes to the selected one's parts and a part's faces; Enter touches. "
-        + "Control+Shift+W what you're wearing. F4 held talks in voice, Shift+F4 switches to an open mic, Control+Shift+V who's in voice. "
-        + "Control+Shift+I incognito on and off. //about says which version this is.";
+    /// <summary>F1: the keys, one a line under short headings (shown in a window to read, ShowKeys).</summary>
+    const string KeysHelp = """
+        Areas
+        Alt+1: nearby chat
+        Alt+2: conversations
+        Alt+3: people
+        Alt+4: inventory
+        Alt+5: search
+        Alt+6: places
+        Alt+7: objects
+        Alt+8: notices
+        Alt+9: the assistant
+        Alt+0: settings
+        Control+Tab: the next conversation, with Shift the one before
+        Control+W: close a conversation
+        Tab and Shift+Tab: between the history and where you type
+
+        Chat
+        Enter: say
+        Shift+Enter: whisper
+        Control+Enter: shout
+        //help in the Say box: the slash commands
+        Control+Backspace: delete the word before the caret
+
+        Notices
+        Control+N: the newest notice
+        On a notice, 1 to 9, 0, minus and equals: press its keys
+        On a notice, Delete: put it away
+
+        Lists
+        Applications key: a person's or object's actions; a profile from any list of people
+        F5: refresh a list
+
+        Reading out
+        F6: mute read-out
+        Shift+F6: mute this conversation
+        Control+left bracket and Control+right bracket: back and forward through what was read
+        With Shift: the oldest and newest
+        Control+R: repeat
+        Control+Shift+M: mark a line
+        Control+Shift+C: copy from the mark to the line you're on
+        Control+Shift+T: times in the histories
+        Control+Shift+A: arrivals and departures read out
+
+        Describing
+        Control+D: what's selected, or where you are
+        Control+Shift+D: you and what you're wearing
+        The same key again: more
+        Control+Shift+W: what you're wearing
+
+        Going places
+        Control+G: teleport to the SLurl on the clipboard
+        Control+Shift+H: teleport home
+        F3: walk mode (F1 there for its keys)
+
+        Inventory
+        Enter: wear or open
+        Space: mark
+        Control+X, C and V: move and copy
+        Delete: delete
+        F2: rename
+        Control+F: search
+        Alt+4 again: a second pane
+        Control+M: move what's marked into the folder selected there
+
+        Objects
+        Tab: the selected one's parts, then a part's faces
+        Enter: touch
+
+        Voice
+        F4 held: talk
+        Shift+F4: switch to an open mic
+        Control+Shift+V: who's in voice
+
+        Other
+        Control+Shift+I: incognito on and off
+        //about: which version this is
+        F1: this list
+        """;
+
+    /// <summary>F1: the keys in a window of their own, a read-only text read line by line at the person's pace (spoken,
+    /// they ran to some 2,000 characters in pieces, and the screen reader's stop key lost the rest, outside the review
+    /// history); Escape closes it, the focus back where it was (as the profile's window).</summary>
+    void ShowKeys(bool walk)
+    {
+        var title = walk ? "Walk mode keys" : "Sojourn Access keys";
+        using var form = new Form
+        {
+            Name = "keys", Text = title, AccessibleName = title, Size = new Size(560, 560),
+            StartPosition = FormStartPosition.CenterParent, ShowInTaskbar = false, MinimizeBox = false, MaximizeBox = false,
+        };
+        var text = new TextBox
+        {
+            Name = "keysText", AccessibleName = title, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+            Dock = DockStyle.Fill, BackColor = SystemColors.Window,
+            Text = (walk ? Sojourn.Access.Walk.WalkMode.Help : KeysHelp).ReplaceLineEndings("\r\n").TrimEnd(),
+        };
+        var close = new Button { Name = "keysClose", Text = "Close", AutoSize = true, DialogResult = DialogResult.Cancel };
+        form.CancelButton = close;
+        var row = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Bottom };
+        row.Controls.Add(close);
+        form.Controls.Add(text);
+        form.Controls.Add(row);
+        form.ActiveControl = text;
+        form.Shown += (_, _) => { text.SelectionStart = 0; text.SelectionLength = 0; };
+        form.ShowDialog(this);
+    }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
@@ -455,6 +558,7 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.W: if (InInventory && _pane == _pane2) CloseSecondPane(); else CloseConversation(); return true;
             case Keys.Control | Keys.N: NewestNotice(); return true;
             case Keys.Control | Keys.G: TeleportClipboard(); return true;
+            case Keys.Control | Keys.Shift | Keys.H: _ = HomeAsync(); return true;
             case Keys.F6: MuteAll(); return true;
             case Keys.Shift | Keys.F6: MuteSource(); return true;
             case Keys.Control | Keys.OemOpenBrackets: Reader?.Older(); return true;
@@ -466,7 +570,7 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.Shift | Keys.C: CopyFromMark(); return true;
             case Keys.Control | Keys.Shift | Keys.T: ToggleTimestamps(); return true;
             case Keys.Control | Keys.Shift | Keys.A: _ = ToggleArrivalsAsync(); return true;
-            case Keys.F1: Reader?.Answer(_walkPad.Focused ? Sojourn.Access.Walk.WalkMode.Help : KeysHelp, keep: false); return true;
+            case Keys.F1: ShowKeys(walk: _walkPad.Focused); return true;
             case Keys.F3: ToggleWalk(); return true;
             case Keys.Control | Keys.D: DescribeKey(me: false); return true;
             case Keys.Control | Keys.Shift | Keys.D: DescribeKey(me: true); return true;
@@ -657,6 +761,37 @@ public sealed partial class MainForm : Form
                 }
             }
         }) { IsBackground = true, Name = "access events", Priority = ThreadPriority.BelowNormal }.Start();
+    }
+
+    int _goingHome;
+
+    /// <summary>Control+Shift+H, Radegast's (and the viewer's) Teleport Home: through the session's teleport watch, as
+    /// the VR client's way out (Session/Control/WayOut.cs), so a refusal is heard in plain words (LibreMetaverse's own
+    /// go-home never hears one). The arrival is Teleported()'s to say.</summary>
+    async Task HomeAsync()
+    {
+        if (Host?.Session is not { } s || s.Client is not { Network.Connected: true } c) { Answer("Not logged in."); return; }
+        if (Interlocked.Exchange(ref _goingHome, 1) == 1) { Answer("Still on the way home."); return; }
+        try
+        {
+            Answer("Teleporting home.");
+            long asked = Environment.TickCount64;
+            var r = await Task.Run(() => s.Teleports.GoAsync(c, () => c.Self.RequestTeleport(LibreMetaverse.UUID.Zero), "home", quiet: true));
+            switch (r.Outcome)
+            {
+                case Sojourn.Core.Agents.TeleportWatch.Outcome.Arrived:
+                    // home in this region: no teleport event to say it, so it's said here
+                    await Task.Delay(1500);
+                    if (_teleportedAt < asked) Answer(_cmd.ArrivedLine());
+                    break;
+                case Sojourn.Core.Agents.TeleportWatch.Outcome.Stalled:
+                    break;   // (the session logs in again and says so)
+                default:
+                    Answer($"Couldn't go home: {r.Why ?? "no answer"}.");
+                    break;
+            }
+        }
+        finally { Volatile.Write(ref _goingHome, 0); }
     }
 
     /// <summary>A teleport arrived that this app didn't start (an offer taken, home, the assistant): where.</summary>

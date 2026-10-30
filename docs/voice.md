@@ -33,7 +33,7 @@ a real P2P call) and the headset (echo from the Quest's speakers, latency, how p
 | mute / unmute (open mic) | B | the right stick's click |
 | talk to the assistant (never heard by residents) | hold T | hold the right grip |
 | answer or decline a call | the panel's keys (click, or 1 / 2) | the panel's keys (point, trigger) |
-| settings | F2 > voice | the left menu button > voice |
+| settings | Esc > voice | the left menu button > voice |
 
 - The settings menu's **voice** section: voice chat on or off (with the status line under it: "nearby voice:
   connected, 2 others", "voice is off on this parcel", "call with ..."), talking: hold to talk / open mic, mic on (open

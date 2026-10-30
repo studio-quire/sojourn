@@ -73,8 +73,7 @@ mesh downloads, and the garbage collector's counts and pauses.
 
 W/S or up/down walk, A/D strafe, Q/E or left/right turn, Shift runs, Space jumps (up while flying), C or PgDn
 down, F or Home toggles flying, V or M switches first/third person (first person hides your own avatar and
-captures the mouse), hold the right mouse button to steer with the mouse in third person, wheel zooms, Esc frees
-the mouse. F3 stats in the title, F5 stereo, F6 prints the GPU pass report to the console, F7 vsync, F12 a shot.
+captures the mouse), hold the right mouse button to steer with the mouse in third person, wheel zooms. F3 stats in the title, F5 stereo, F6 prints the GPU pass report to the console, F7 vsync, F12 a shot.
 A left click in the world (not on the panel, a key or a card's ×) touches or sits as the viewer's does, and the
 headset's left trigger (`docs/vr.md` > Controls); in first person it's the mouselook button for scripts only, as in the
 viewer. It needs a hand on the mouse: clicks posted by programs don't touch (`Assistant/RealInput.cs`).
@@ -84,8 +83,15 @@ Media (`docs/media.md`): a click on a page in the world clicks it (the wheel scr
 focused, Esc gives the keys back), on a video pauses or plays it, on media that waits starts it; Z shows what's under
 the pointer up close (Z, Esc or a click outside puts it away).
 The assistant (`docs/assistant.md`): hold T to talk, Enter to type a request (Enter sends, Esc cancels), the mouse
-points at "that", click keys on its panel (top right), 1-9 pick a choice, Tab hides or shows the panel, F8 cycles its model (quick, sonnet, opus), F2 opens the settings (the assistant's section on the desktop). `/ask ...` in the console
+points at "that", click keys on its panel (top right), 1-9 pick a choice, Tab hides or shows the panel, F8 cycles its model (quick, sonnet, opus). `/ask ...` in the console
 types one too; `/model [quick|sonnet|opus]` shows or sets the model.
+Esc is layered, as in games: each press frees the mouse and closes or cancels the nearest thing open or waiting, and
+only when nothing is does it open the settings menu. In order: typing (to the assistant, a page's field), the screen
+reader's confirmation or picked notice, a dictated draft, a confirmation, the assistant asking you to point, the
+menu itself (its help, then out of a group back to its page, then closed), media up close, a face's media focus,
+the reader, the world map, the feed's lines opened in full. With everything hidden (Tab), it brings the interface back
+with the menu open. The assistant's cards stay (each has its ×). F2 still opens and closes the menu
+(`Program.cs`, DeskEscape).
 Voice chat (`docs/voice.md`): hold B or the middle mouse button to talk; in open mic, B mutes and unmutes.
 With a screen reader running (`docs/screen-reader.md`), what arrives is read out through it, and Enter/Escape answer a
 confirmation, Ctrl+N steps through waiting notices (their number keys answer, Delete puts one away), Ctrl+R says it

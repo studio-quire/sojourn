@@ -179,7 +179,7 @@ public sealed partial class MainForm
             bool huds = ShowingHuds;
             var things = huds ? await HudsAsync() : await _ops.ObjectsAsync(30, 60);
             await ListDelay(_objects);
-            Fill(_objects, things.Select(t => (Text: t.Hud ? $"{t.Name}, {t.Text}" : $"{t.Name}, {_ops.Where(t.Pos)}{(t.Sit ? ", sit" : t.Touch ? ", touch" : "")}",
+            Fill(_objects, things.Select(t => (Text: t.Hud ? $"{t.Name}, {t.Text}" : $"{t.Name}, {_ops.Where(t.Pos)}{(t.Sit ? ", can sit" : t.Touch ? ", touchable" : "")}",
                 Key: t.Id.ToString(), Tag: (object)t)).ToList(), huds ? "No HUDs worn." : "Nothing nearby.");
             if (first) Looking(_objects, "Objects nearby", false);
             if (asked) Reader?.Answer(things.Count == 0 ? (huds ? "No HUDs worn." : "Nothing nearby.")

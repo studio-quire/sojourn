@@ -65,7 +65,7 @@ Touch controllers (`Xr/XrInput.cs`, bound for `/interaction_profiles/oculus/touc
     voice's push-to-talk and mute, both grips' dictation, A (the pointer's setting, used once shown), aiming's shots.
   - Not taken: nothing hidden takes a ray or a press (the pointer isn't live, so the right trigger neither touches
     nor sits nor presses; the right stick turns). The menu button brings the interface back with the menu open.
-  - Tab does the same on the desktop (the HUDs there are the viewer's and stay); Enter, F2 bring it back (Enter
+  - Tab does the same on the desktop (the HUDs there are the viewer's and stay); Enter, Esc (with the menu open) or F2 bring it back (Enter
     doesn't type or send a draft out of sight), 1-9 pick nothing. Also the `interface` setting.
 - The settings menu (`Control/SettingsMenu.cs`, drawn by `Assistant/PanelMenu.cs` in the panel's look on the panel's
   quad layer, placed in front of you when it opens, `docs/assistant.md` > The panel): moving has posture

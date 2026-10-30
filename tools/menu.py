@@ -3,7 +3,8 @@ client has them, and rows pressed as the person's press would, each read back fr
 is put back at the end.
 
   python tools/menu.py [--dll DIR] [--size 0.7]   one desktop client, Sojourn Menu, on :9873 (base dir local/menu/),
-                                                  SOJOURN_TEST_MENU=1 (SojournSettings menuShots and menuPress)
+                                                  SOJOURN_TEST_MENU=1 (SojournSettings menuShots and menuPress);
+                                                  then Esc's layers and F2, by keys posted to its window
   python tools/menu.py --headset [--dll DIR]      the camera (Control/Shutter.cs) in Meta's XR Simulator,
                                                   SOJOURN_VR_SCRIPT=camera: token, out, a picture, put away; and
                                                   the headset's menu shots (local/menu/headset/)
@@ -172,6 +173,7 @@ def main(dll, size):
         check("beacons' kinds while on", any(f.startswith("menu-view-beacons-") for f in files), ", ".join(f for f in files if "beacons" in f))
         shown = press("you", "skeleton")
         check("skeleton · reset runs", shown in ("…", "done"), shown)
+        escape(proc.pid, BASE / "console.txt")
         print(f"     shots: {shots}", flush=True)
     finally:
         if before is not None:
@@ -191,6 +193,42 @@ def main(dll, size):
         except subprocess.TimeoutExpired:
             proc.kill()
     print("all ok" if ok_all else "SOME FAILED", flush=True)
+
+
+VK_ESC, VK_ENTER, VK_F2 = 0x1B, 0x0D, 0x71
+
+
+def escape(pid, console):
+    """Esc layered on the desktop (Program.cs, DeskEscape), by keys posted to the window (tools/winkey.ps1): what's open
+    goes first, one a press, then the menu opens; Esc in it closes it; F2 still opens and closes it."""
+    def key(vk):
+        subprocess.run(["powershell", "-NoProfile", "-File", str(ROOT / "tools" / "winkey.ps1"), "-ProcessId", str(pid), "-Vk", str(vk)],
+                       capture_output=True)
+        time.sleep(0.8)
+
+    def lines():
+        text = console.read_text(encoding="utf-8", errors="replace")
+        return text.count("settings menu open"), text.count("settings menu closed")
+
+    def reader_open():
+        return api("SojournReader", "state").get("open")
+
+    opened, closed = lines()
+    api("SojournReader", "open", text="Esc closes this before the menu opens.", title="Esc")
+    check("(the reader open)", wait(reader_open, 5))
+    key(VK_ESC)
+    check("Esc closes the reader first, the menu staying shut", not reader_open() and lines()[0] == opened, f"reader open {reader_open()}, {lines()}")
+    key(VK_ESC)
+    check("Esc again, nothing open: the menu opens", lines()[0] == opened + 1, lines())
+    key(VK_ESC)
+    check("Esc in the menu closes it", lines()[1] == closed + 1, lines())
+    key(VK_ENTER)   # typing to the assistant
+    key(VK_ESC)
+    check("Esc while typing cancels the typing, the menu staying shut", lines()[0] == opened + 1, lines())
+    key(VK_ESC)
+    check("then the menu opens", lines()[0] == opened + 2, lines())
+    key(VK_F2)
+    check("F2 still closes it", lines()[1] == closed + 2, lines())
 
 
 def headset(dll):

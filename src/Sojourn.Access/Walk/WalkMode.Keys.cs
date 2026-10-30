@@ -31,11 +31,35 @@ public sealed partial class WalkMode
     /// <summary>Seated, or a script keeps the movement keys: the arrows drive (CONTROL_FWD, ROT_LEFT ...) instead of walking.</summary>
     bool Driving(Body b) => b.Sitting || (S.ControlsKept & MoveKeys) != 0;
 
-    public const string Help = "Walk mode. Up and Down arrows walk forward and back, Shift runs; Left and Right turn, a tap a step, "
-        + "held smoothly; Shift with Left or Right steps sideways; Page Up and Page Down go up and down (flying, or jump and crouch); Home flies or lands; "
-        + "Space stops. H heading, V speed, L where you are, A what's ahead, S sonar sweep, T touches what's ahead, D a door or opening nearby, "
-        + "O doors, seats and touchable things around, sounding from where they are; B where the beacon is, Shift+B takes it off. "
-        + "Seated on a vehicle the arrows drive it. Escape or F3 leaves walk mode.";
+    /// <summary>F1 in walk mode: its keys, one a line under short headings (shown in a window to read, MainForm.ShowKeys).</summary>
+    public const string Help = """
+        Moving
+        Up and Down arrows: walk forward and back
+        Shift with Up or Down: run
+        Left and Right: turn, a tap a step, held smoothly
+        Shift with Left or Right: step sideways
+        Page Up and Page Down: up and down (flying, or jump and crouch)
+        Home: fly or land
+        Space: stop
+        Seated on a vehicle, the arrows drive it
+
+        Asking
+        H: your heading
+        V: your speed
+        L: where you are
+        A: what's ahead
+        S: the sonar sweep
+        D: a door or opening nearby
+        O: doors, seats and touchable things around, each sounding from where it is
+        B: where the beacon is
+        Shift+B: take the beacon off
+
+        Doing
+        T: touch what's ahead
+
+        Leaving
+        Escape or F3: leave walk mode
+        """;
 
     /// <summary>The walk pad got the focus.</summary>
     public void Enter()

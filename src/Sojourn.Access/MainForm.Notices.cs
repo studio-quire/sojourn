@@ -142,8 +142,12 @@ public sealed partial class MainForm
             if (sb.Length > 0) sb.Append(sb[^1] is '.' or '?' or '!' or ':' or ',' or ';' ? " " : ". ");
             sb.Append(line);
         }
-        return sb.ToString();
+        // the radar's "came into chat range (12 m)" in Access's words for distances
+        return ShortMetres().Replace(sb.ToString(), m => $", {Bearings.Metres(int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture))} away");
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@" \((\d+) m\)")]
+    private static partial System.Text.RegularExpressions.Regex ShortMetres();
 
     void PollNotices()
     {
@@ -193,7 +197,7 @@ public sealed partial class MainForm
     static string KeyWords(Notice n)
     {
         if (n.Confirm != null) return " Enter confirms, Escape cancels.";
-        var keys = string.Join(", ", n.Buttons.Select((b, i) => i < 10 ? $"{(i + 1) % 10} {b.Label}" : b.Label));
+        var keys = string.Join(", ", n.Buttons.Select((b, i) => ButtonKey(i) is { } k ? $"{k} {b.Label}" : b.Label));
         var end = n.Words.Length > 0 && n.Words[^1] is '.' or '?' or '!' ? "" : ".";
         return end + (keys.Length > 0 ? $" Keys: {keys}." : "") + (n.TextBox ? " Enter to reply." : "");
     }
@@ -213,7 +217,7 @@ public sealed partial class MainForm
                 var label = n.Buttons[i].Label;
                 var b = new Button
                 {
-                    Name = $"noticeButton{i + 1}", Text = n.Confirm != null ? label : i < 10 ? $"{(i + 1) % 10}: {label}" : label, AutoSize = true, UseMnemonic = false,
+                    Name = $"noticeButton{i + 1}", Text = n.Confirm != null ? label : ButtonKey(i) is { } k ? $"{k}: {label}" : label, AutoSize = true, UseMnemonic = false,
                 };
                 b.Click += (_, _) => Press(n, at, fromButton: true);
                 _noticeButtons.Controls.Add(b);
@@ -223,6 +227,9 @@ public sealed partial class MainForm
         _noticeIgnore.Enabled = n != null && n.Confirm == null;
     }
 
+    /// <summary>The key that presses a notice's button i: 1 to 9, 0, minus, equals (twelve, a script menu's most).</summary>
+    static string? ButtonKey(int i) => i switch { < 9 => $"{i + 1}", 9 => "0", 10 => "minus", 11 => "equals", _ => null };
+
     void NoticeKey(KeyEventArgs e)
     {
         var n = Selected();
@@ -230,7 +237,10 @@ public sealed partial class MainForm
         int digit = e.KeyCode is >= System.Windows.Forms.Keys.D0 and <= System.Windows.Forms.Keys.D9 && !e.Control && !e.Alt
             ? (e.KeyCode == System.Windows.Forms.Keys.D0 ? 9 : e.KeyCode - System.Windows.Forms.Keys.D1)
             : e.KeyCode is >= System.Windows.Forms.Keys.NumPad0 and <= System.Windows.Forms.Keys.NumPad9
-                ? (e.KeyCode == System.Windows.Forms.Keys.NumPad0 ? 9 : e.KeyCode - System.Windows.Forms.Keys.NumPad1) : -1;
+                ? (e.KeyCode == System.Windows.Forms.Keys.NumPad0 ? 9 : e.KeyCode - System.Windows.Forms.Keys.NumPad1)
+            // a script menu's 11th and 12th, as on the top row after 0 (and the VR client's reader keys)
+            : e.KeyCode is System.Windows.Forms.Keys.OemMinus or System.Windows.Forms.Keys.Subtract && !e.Control && !e.Alt ? 10
+            : e.KeyCode == System.Windows.Forms.Keys.Oemplus && !e.Control && !e.Alt && !e.Shift ? 11 : -1;
         if (digit >= 0 && n.Confirm == null) { e.Handled = e.SuppressKeyPress = true; Press(n, digit, fromButton: false); }
         else if (e.KeyCode == System.Windows.Forms.Keys.Delete && n.Confirm == null) { e.Handled = true; PutAway(fromButton: false); }
         else if (e.KeyCode == System.Windows.Forms.Keys.Enter && n.Confirm != null) { e.Handled = e.SuppressKeyPress = true; Press(n, 0, false); }
@@ -262,7 +272,7 @@ public sealed partial class MainForm
             Answered(a, fromButton);
             return;
         }
-        if (n.Confirm == null && index >= n.Buttons.Count) { Reader?.Answer($"No key {index + 1} there.", keep: false); return; }
+        if (n.Confirm == null && index >= n.Buttons.Count) { Reader?.Answer($"No key {ButtonKey(index) ?? $"{index + 1}"} there.", keep: false); return; }
         if (RealInput.Confirms) { Give(RealInput.PressedAt); return; }
         var what = n.Confirm != null ? $"{n.Confirm.Title.TrimEnd('.')}." : $"answer {n.Words.TrimEnd('.')} with {n.Buttons[index].Label}.";
         Hello.Instead(_set.ConfirmByHello, Handle, what, RealInput.Why, w => Reader?.Answer(w, keep: false), () => Give(Environment.TickCount64));

@@ -391,12 +391,33 @@ void SetSteering(bool on)
     if (mouse != null && !Sojourn.Client.Window.Background.On) mouse.Cursor.CursorMode = on ? CursorMode.Raw : CursorMode.Normal;
     if (mouse != null) lastMouse = mouse.Position;
 }
+bool escHeld = false;
+// Esc on the desktop, once typing (to the assistant or in a page), the screen reader's keys and a dictated draft have
+// had theirs: the mouse comes free, and what waits or is open goes, one a press, the nearest first; only when nothing
+// takes it does the settings menu open. With the interface hidden (Tab), it comes back with the menu open.
+void DeskEscape()
+{
+    SetSteering(false);
+    if (assistant.Confirmations.Pending) { assistant.DeclineConfirm(); return; }
+    if (!settingsMenu.Hidden)
+    {
+        if (assistant.PointAsked) { assistant.CancelPointAsk(); return; }
+        if (settingsMenu.Open) { settingsMenu.Back(); return; }   // help, then out of a group, then closed
+        if (media?.Escape() == true) return;                       // the up-close sheet, then a face's focus
+        if (reader.Reader.Open) { reader.Reader.Close(); return; }
+        if (map.World.Shown) { map.World.Show(false); return; }
+        if (social.CloseOpened()) return;                          // the feed's lines opened in full
+    }
+    settingsMenu.Summon();
+}
 if (kb != null)
 {
     kb.KeyChar += (_, ch) => { if (login.TakesKeys) { login.Char(ch); return; } if (assistant.Typing) assistant.Type(ch); else if (headset == null) media?.Char(ch); };
-    kb.KeyUp += (_, key, _) => { readerKeys.KeyUp(key); privateUi.KeyUp(key); if (headset == null && media?.Key(key, false, kb) == true) return; if (key == Key.T) assistant.TalkUp(); };
+    kb.KeyUp += (_, key, _) => { if (key == Key.Escape) escHeld = false; readerKeys.KeyUp(key); privateUi.KeyUp(key); if (headset == null && media?.Key(key, false, kb) == true) return; if (key == Key.T) assistant.TalkUp(); };
     kb.KeyDown += (_, key, _) =>
     {
+        // Esc does one thing a press: a held one's repeats don't go on to the next layer (DeskEscape)
+        if (key == Key.Escape) { if (escHeld) return; escHeld = true; }
         // the login sheet's fields and keys first (Enter answers the grid only from a hand on the keyboard)
         if (login.Active && login.Key(key, kb.IsKeyPressed(Key.ShiftLeft) || kb.IsKeyPressed(Key.ShiftRight),
                 kb.IsKeyPressed(Key.ControlLeft) || kb.IsKeyPressed(Key.ControlRight), () => kb.ClipboardText,
@@ -417,6 +438,7 @@ if (kb != null)
         // the interface hidden (Tab): Enter brings it back rather than typing or sending a draft out of sight
         if (settingsMenu.Hidden && key is Key.Enter or Key.KeypadEnter) { settingsMenu.SetHidden(false); return; }
         if (privateUi.KeyDown(key)) return;   // P private, Y dictation, a draft's Enter and Esc
+        if (key == Key.Escape && headset == null) { DeskEscape(); return; }
         switch (key)
         {
             // while private, only a hand on the keyboard opens the mic to the assistant (not a key a program posts)
@@ -431,7 +453,7 @@ if (kb != null)
                 if (sessionHost.Capture is { } cap) shutter.Desktop(cap);
                 return;
             case Key.F8: settingsMenu.CycleAssistantModel(); return;
-            case Key.F2: if (headset == null) settingsMenu.Summon(); return;
+            case Key.F2: if (headset == null) settingsMenu.Summon(); return;   // (the menu's old key, kept)
             // the viewer's Teleport Home, as the person's way out: stand up and go home (Control/WayOut.cs)
             case Key.H when (kb.IsKeyPressed(Key.ControlLeft) || kb.IsKeyPressed(Key.ControlRight)) && (kb.IsKeyPressed(Key.ShiftLeft) || kb.IsKeyPressed(Key.ShiftRight)):
                 wayOut.Go("Ctrl+Shift+H");
@@ -449,7 +471,6 @@ if (kb != null)
                 pilot.ToggleMode();
                 SetSteering(pilot.Mode == CameraMode.FirstPerson);
                 break;
-            case Key.Escape: SetSteering(false); break;
             case Key.F3: showStats = !showStats; break;
             case Key.F5: stereo = !stereo; break;
             case Key.F6: Console.WriteLine(renderer.Profiler.Report()); break;
@@ -1129,7 +1150,7 @@ void HeadsetFrame(XrSession hs, MirrorTarget target)
 }
 
 // The assistant on the desktop: the mouse is the pointer (the screen's centre while steering), the panel sits at the
-// top right of the image; F2 puts the settings menu in its place (a confirmation takes it back).
+// top right of the image; Esc (or F2) puts the settings menu in its place (a confirmation takes it back).
 OverlayScene? DesktopAssistant(CameraPose? pose, int ew, int eh)
 {
     // the login sheet in the middle while it's up (Login/LoginSheet.View.cs): the panel and the pointer wait

@@ -138,9 +138,9 @@ ROLES = {"chatInput": {"Edit"}, "chatHistory": {"Edit", "Document"}, "conversati
          "landmarks": {"Tree"}, "history": {"List", "DataGrid", "Table"}, "goRegion": {"Edit"},
          "regions": {"List", "DataGrid", "Table"}, "searchWords": {"Edit"}, "searchKind": {"ComboBox"},
          "results": {"List", "DataGrid", "Table"}, "friends": {"List", "DataGrid", "Table"}, "groups": {"List", "DataGrid", "Table"},
-         "profileText": {"Edit", "Document"}}
+         "profileText": {"Edit", "Document"}, "keysText": {"Edit", "Document"}}
 
-VK = {"tab": 9, "enter": 13, "ctrl": 17, "esc": 27, "space": 32, "del": 46, "oem_open": 219, "oem_close": 221, "f1": 112, "f3": 114, "f4": 115, "f5": 116, "f6": 117, "apps": 93,
+VK = {"back": 8, "minus": 189, "equals": 187, "tab": 9, "enter": 13, "ctrl": 17, "esc": 27, "space": 32, "del": 46, "oem_open": 219, "oem_close": 221, "f1": 112, "f3": 114, "f4": 115, "f5": 116, "f6": 117, "apps": 93,
       "home": 36, "end": 35, "up": 38, "down": 40, "left": 37, "right": 39,
       **{str(d): 48 + d for d in range(10)}, **{c: ord(c.upper()) for c in "abcdefghijklmnopqrstuvwxyz"}}
 
@@ -1010,6 +1010,11 @@ def tab_order(run):
               label(stops[-2]) if len(stops) > 2 else "focus didn't move")
     run.check("Tab goes round and back to Say, no dead ends", stuck is None and stops[-1]["id"] == "chatInput",
               order if stuck is None else f"stuck at {label(stuck)}: {order}")
+    # the tab strips aren't stops (Alt+number and Control+Tab switch them): Tab and Shift+Tab go between history and Say
+    strips = [label(d) for d in stops if d["id"] in ("areas", "conversations") or d["type"] in ("Tab", "TabItem")]
+    run.check("no tab strip among the Tab stops", not strips, "; ".join(strips) or order)
+    run.check("Tab from Say goes straight to the history", len(stops) > 1 and stops[1]["id"] == "chatHistory",
+              label(stops[1]) if len(stops) > 1 else "focus didn't move")
     nameless = [label(d) for d in stops if not d["name"].strip()]
     run.check("every Tab stop has a name", not nameless, "; ".join(nameless) or f"{len(stops) - 1} stops")
     if stops[-1]["id"] == "chatInput" and len(stops) > 2:
@@ -1138,13 +1143,25 @@ def lists(run):
 
 
 def keys(run, nonce):
-    m = mark()
+    # F1: the keys in a window to read line by line (spoken, Control dropped the rest of some 2,000 characters)
     key("f1")
-    # whole, in pieces, to its last key (the announcer cut anything past 700 characters short, mid-list)
-    got = wait(lambda: (lambda s: s if any("incognito" in (e.get("text") or "") for e in s) else None)(said_since(m)), 8)
-    said = " ".join(e.get("text") or "" for e in said_since(m))
-    run.check("F1 says the keys, all of them (none cut short)", got and "Alt+1" in said and "cut short" not in said,
-              f"{said[:80]} ... {said[-80:]}" if said else "nothing said")
+    d = wait_focus(lambda d: d["id"] == "keysText", 5)
+    if run.check("F1 opens the keys in a window, the focus in its text", d, label(d) if d else focus_label()):
+        lines = value_of("id=keysText").splitlines()
+        run.check("one key a line under headings, all of them", "Alt+1: nearby chat" in lines and "Areas" in lines
+                  and "Control+Shift+H: teleport home" in lines and lines[-1:] == ["F1: this list"], f"{len(lines)} lines, last {lines[-1:]}")
+        key("esc")
+        back = wait_focus(lambda d: d["id"] == "chatInput", 4)
+        run.check("Escape closes it, the focus back in Say", back, label(back) if back else focus_label())
+    # Control+Backspace deletes the word before the caret (a plain edit box types U+007F for it)
+    u("set id=chatInput |")
+    type_text("hello brave world", "id=chatInput")
+    wait(lambda: value_of("id=chatInput") == "hello brave world", 3, 0.2)
+    key("end")
+    key("ctrl+back")
+    got = wait(lambda: value_of("id=chatInput") == "hello brave ", 3, 0.2)
+    run.check("Control+Backspace in Say deletes the word before the caret", got, repr(value_of("id=chatInput")))
+    u("set id=chatInput |")
     m = mark()
     v(f"say a line to repeat {nonce}")
     line = run.expect("(a line arrives)", [f"a line to repeat {nonce}"], m, 8)
@@ -1257,6 +1274,18 @@ def notice_menu(run, tester_id):
         n = visitor_n()
         key("2")
         run.heard_by_visitor("2 on the list answers Green", lambda d: d["msg"] == "picked Green", n, 10, "picked Green")
+    # a menu of twelve (a script's most): after 1 to 9 and 0, minus and equals press the 11th and 12th
+    for k, pick in (("minus", "Next"), ("equals", "Back")):
+        back_to_chat()
+        time.sleep(1)
+        m = mark()
+        v(f"fmenu12 {tester_id}")
+        if run.expect(f"(a menu of twelve announced, for {k})", ["Access Long Menu"], m, NOTICE_SECS) and open_newest_notice(run, ["Access Long Menu"]):
+            sel = selection("id=notices")
+            run.check("its keys read to the last: 0 Ten, minus Next, equals Back", "0 Ten, minus Next, equals Back" in sel, sel)
+            n = visitor_n()
+            key(k)
+            run.heard_by_visitor(f"{k} answers {pick}", lambda d, p=pick: d["msg"] == f"picked {p}", n, 10, f"picked {pick}")
     # Control alone is the screen reader's own key to stop speech: a notice silenced that way was meant to be, and
     # isn't said again (as one cut off by another key is)
     back_to_chat()
@@ -1930,7 +1959,7 @@ def review_and_arrivals(run, nonce):
         print(f"     (visitor at {visitor_where()}, tester at {tester_where()[:3]})")
     m = mark()
     v(f"goto {VISITOR_START[0]} {VISITOR_START[1]}")
-    run.expect("and coming back", [f"{VNAME} came into chat range"], m, 30)
+    run.expect("and coming back, how far in Access's words", [f"{VNAME} came into chat range, ", " metres away"], m, 30)
     m = mark()
     key("ctrl+shift+a")
     run.expect("Control+Shift+A again: not read out", ["not read out"], m, 5)
@@ -2079,7 +2108,7 @@ def parts(run):
             kids = api("TesselObjects", "get", 15, ids=[ids[1]], children=True, full=True).get("objects", [{}])[0].get("children", [])
             print("     (the agent API's children: " + "; ".join(f'{k.get("name")!r} {k.get("id")}' for k in kids) + f"; latch {ids[3]})")
         run.check("the unnamed foot as a tiny box below", foot, " | ".join(got))
-        run.check("only the lid marked as taking touches", [n for n in got if n.endswith(", touch")] == [lid], " | ".join(got))
+        run.check("only the lid marked as taking touches", [n for n in got if n.endswith(", touchable")] == [lid], " | ".join(got))
         key("tab")
         d = wait_focus(lambda d: d["id"] == "parts" or d["type"] == "ListItem", 4)
         run.check("Tab goes to the parts, named for the chest", d and wait(lambda: any(
@@ -2207,7 +2236,7 @@ def huds(run, nonce):
         wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 3)
         select_in("id=objects", name)
         play = wait(lambda: (lambda ps: ps if ps else None)([n for n in list_items("id=parts") if n.startswith("Play, part 2 of 2")]), 10)
-        run.check("its parts: the button Play by name, above the base, taking touches", play and "above the root" in play[0] and play[0].endswith("touch"),
+        run.check("its parts: the button Play by name, above the base, taking touches", play and "above the root" in play[0] and play[0].endswith(", touchable"),
                   " | ".join(list_items("id=parts")))
         key("tab")
         wait_focus(lambda d: d["id"] == "parts" or d["type"] == "ListItem", 3)
@@ -2434,12 +2463,35 @@ def walk(run):
 
 
 def teleport(run):
+    # home set where the tester stands if the parcel allows (the agent API's setHome), away by //tp, back by Control+Shift+H (Radegast's
+    # Teleport Home: said as it goes, the arrival said), then //tp again for the steps after
+    home = tester_where()
+    set_home = api("TesselAgent", "setHome", timeout=15)
     m = mark()
     say_in_app(TP_COMMAND)
     run.expect(f"{TP_COMMAND} arrives, saying where", ["Arrived"], m, 40)
     x, y, z, _ = tester_where()
     off = math.dist((x, y), TP_TO[:2])
     run.check("the tester is there", off < 3, f"at {x:.1f}, {y:.1f}: {off:.1f} m from {TP_TO[:2]}")
+    time.sleep(2)
+    back_to_chat()
+    m = mark()
+    key("ctrl+shift+h")
+    run.expect("Control+Shift+H: teleporting home, said", ["Teleporting home."], m, 4)
+    got = wait(lambda: next((e["text"] for e in said_since(m) if re.search(r"Arrived|Couldn't go home", e.get("text") or "")), None), 45)
+    time.sleep(1)
+    x, y, z, _ = tester_where()
+    off = math.dist((x, y), home[:2])
+    if "not allowed" in str(set_home):
+        # (Atelier's parcel doesn't let the tester set home there: then the refusal, in plain words, is what's checked)
+        run.check("and where it ended said (home can't be set here, so the grid's refusal)", got, got or "nothing said after it")
+    else:
+        run.check("and the arrival said, home where it was set", got and got.startswith("Arrived") and off < 4,
+                  f"{got or 'nothing said'}; {off:.1f} m from home (setHome: {set_home})")
+    time.sleep(2)
+    m = mark()
+    say_in_app(TP_COMMAND)
+    run.expect("(back by //tp for the steps after)", ["Arrived"], m, 40)
 
 
 def pilot_walk(run):
@@ -2596,11 +2648,11 @@ def sound_map(run, tester_id):
         t0 = time.time()
         m = mark()
         key("o")
-        got = run.expect("O names the doors, seats and touchable things around", ["Marks Bench, a seat", "Marks Gate, a door", "Marks Bell, touch"], m, 8)
+        got = run.expect("O names the doors, seats and touchable things around", ["Marks Bench, a seat", "Marks Gate, a door", "Marks Bell, touchable"], m, 8)
         text = (got or {}).get("text") or ""
         run.check("each by its clock face (bench ahead, gate right, bell left)",
                   re.search(r"Marks Bench, a seat, 4 metres, twelve o'clock", text) and re.search(r"Marks Gate, a door, 4 metres, three o'clock", text)
-                  and re.search(r"Marks Bell, touch, 4 metres, nine o'clock", text), text)
+                  and re.search(r"Marks Bell, touchable, 4 metres, nine o'clock", text), text)
         time.sleep(3.5)
         sent = cues_since(t0, "MarkSeat", "Door", "MarkTouch")
         want = {"MarkSeat": 0, "Door": 90, "MarkTouch": 270}
@@ -2979,9 +3031,13 @@ def walk_mode(run):
         f = wait_focus(lambda d: d["id"] == "walkPad", 5)
         run.check("F3 puts the focus on the walk pad", f, label(f) if f else focus_label())
         run.expect("and says walk mode is on", ["Walk mode", "F1"], m, 5)
-        m = mark()
         key("f1")
-        run.expect("F1 there says walk mode's keys", ["Up and Down arrows walk", "sonar"], m, 5)
+        d = wait_focus(lambda d: d["id"] == "keysText", 5)
+        run.check("F1 there opens walk mode's keys in a window", d and "Up and Down arrows: walk forward and back" in value_of("id=keysText").splitlines(),
+                  label(d) if d else focus_label())
+        key("esc")
+        d = wait_focus(lambda d: d["id"] == "walkPad", 5)
+        run.check("Escape closes it, back on the walk pad (still in walk mode)", d, label(d) if d else focus_label())
         m = mark()
         key("h")
         run.expect("H says the heading", ["Facing north, 90 degrees"], m, 5)
@@ -3361,10 +3417,10 @@ def package_check():
               else "something answers on 9725 (ours if the app is the owner above)")
 
         # ---- F1, //about, Control+D without the assistant, chat
-        m = mark()
         key("f1")
-        run.expect("F1 is read out", ["Alt+1 nearby chat"], m, 8)   # in several announcements: it's long
-        run.expect("and ends pointing to //about", ["//about says which version"], m, 8)
+        d = wait_focus(lambda d: d["id"] == "keysText", 5)
+        check("F1 opens the keys in a window", d and "Alt+1: nearby chat" in value_of("id=keysText").splitlines(), label(d) if d else focus_label())
+        key("esc")
         back_to_chat()
         m = mark()
         say_in_app("//about")
