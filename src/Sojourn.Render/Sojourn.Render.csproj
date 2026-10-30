@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Sojourn.Render</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="LibreMetaverse" Version="3.2.0" />
+    <PackageReference Include="LibreMetaverse.Rendering.MeshFoundry" Version="3.2.0" />
+    <PackageReference Include="LibreMetaverse.Imaging.Skia" Version="3.2.0" />
+    <PackageReference Include="CoreJ2K.Skia" Version="2.4.1.108" />
+    <PackageReference Include="Silk.NET.Vulkan" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.Shaderc" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.Shaderc.Native" Version="2.23.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Sojourn.Core\Sojourn.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Shaders\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- the system avatar (meshes, skeleton, params) from the Second Life viewer's character folder, LGPL 2.1 -->
+    <None Include="Character\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- the viewer's default particle image (skins/default/textures/pixiesmall.j2c, Second Life viewer, LGPL 2.1) -->
+    <None Include="Textures\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- OpenJPEG 2.5.3 (BSD-2-Clause), the J2C decoder, built from its source with MinGW by tools/openjpeg.py -->
+    <None Include="native\openjp2.dll" CopyToOutputDirectory="PreserveNewest" Link="openjp2.dll" />
+  </ItemGroup>
+</Project>

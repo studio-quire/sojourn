@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Sojourn.Client</RootNamespace>
+    <AssemblyName>Sojourn</AssemblyName>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- the bridge API (Kestrel) and console logging -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.Windowing.Glfw" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.Input.Glfw" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.OpenXR" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.OpenXR.Extensions.KHR" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.OpenXR.Extensions.FB" Version="2.23.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- the Khronos OpenXR loader 1.1.65 (Apache-2.0), x64 release build from KhronosGroup/OpenXR-SDK-Source -->
+    <None Include="native\openxr_loader.dll" CopyToOutputDirectory="PreserveNewest" Link="openxr_loader.dll" />
+    <!-- (voice's native shim and the panel's fonts come with Sojourn.Session) -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="4.152.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sojourn.Core\Sojourn.Core.csproj" />
+    <ProjectReference Include="..\Sojourn.Render\Sojourn.Render.csproj" />
+    <ProjectReference Include="..\Sojourn.Session\Sojourn.Session.csproj" />
+  </ItemGroup>
+
+  <!-- Multitude's baker layer over LibreMetaverse's: upperbody_color.tga without the viewer's nipple discs, so a
+       textureless skin bakes as a smooth body (our own avatar is baked client-side on OpenSim). -->
+  <ItemGroup>
+    <BakerLayer Include="linden\character\*.tga" />
+  </ItemGroup>
+  <Target Name="CopyBakerLayers" AfterTargets="Build">
+    <Copy SourceFiles="@(BakerLayer)" DestinationFolder="$(OutDir)linden\character" SkipUnchangedFiles="false" />
+  </Target>
+
+</Project>

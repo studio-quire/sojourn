@@ -1,0 +1,5 @@
+# bench views of render_scenes.py shore (Atelier, the default grid): name, eye x y z, focus x y z
+bank 88 128 23.1 72 131 19.6
+low 80 136 21.3 66 128 19.6
+above 84 145 28 72 128 19.5
+under 72 126 18.8 90 134 20.5

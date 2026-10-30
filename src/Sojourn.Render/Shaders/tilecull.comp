@@ -1,0 +1,144 @@
+#version 460
+// Light tiles for one eye (tiles.glsl): a workgroup per 16x16-pixel tile finds the tile's nearest and farthest depth,
+// then keeps the local lights and projectors whose spheres reach the part of the view the tile's pixels lie in (its
+// four side planes and the box around it between those depths). It's the same sphere the light passes test each pixel
+// against, so a light left out reaches none of the tile's pixels: the picture is unchanged, only the loop shorter.
+// A projector also has to have the tile in its frustum, unless a pixel there is a legacy face with an environment
+// reflection (which takes a projector's light from outside its frustum; projectors.frag skips the same pixels).
+// pc: viewRef the eye, lightRef the lights (i0 of them), instRef the projectors (i1), matRef the tile records, i2 the
+// depth's bindless slot | the normal map's << 16, i3 tiles a row. Written by Claude Opus 5.5, 2026-10-27.
+#include "common.glsl"
+#include "gbuffer_util.glsl"
+#include "projector.glsl"
+#include "tiles.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+#define TILE_MAX (TILE_STRIDE - 1u)
+
+shared uint sNear, sFar;   // depth bits; reverse-Z, so the largest is the nearest (sky is 0 and left out)
+shared uint sEnv;          // a pixel takes projectors' light from outside their frusta
+shared uint sLights, sProj;
+shared uint sLightList[TILE_MAX];
+shared uint sProjList[TILE_MAX];
+shared vec4 sPlanes[4];
+shared vec3 sBoxMin, sBoxMax;
+shared vec3 sCorner[8];    // the tile's part of the view, region space
+
+// eye-space position, as deferred.glsl's getPositionWithDepth (tc y down)
+vec3 viewPos(vec2 tc, float depth)
+{
+    vec4 p = VIEW.invProj * vec4(tc * 2.0 - 1.0, depth, 1.0);
+    return p.xyz / p.w;
+}
+
+bool reaches(vec3 c, float r)
+{
+    r = r * 1.0001 + 0.001;
+    for (int k = 0; k < 4; k++)
+        if (dot(sPlanes[k].xyz, c) < -r) return false;
+    vec3 d = max(max(sBoxMin - c, c - sBoxMax), vec3(0));
+    return dot(d, d) <= r * r;
+}
+
+// false when every corner is on the outside of one of the projector's frustum planes: x, y over w in 0..1 (w > 0)
+// and its texture-space z >= 0, as projectors.frag tests a pixel
+bool inFrustum(mat4 m)
+{
+    vec4 rx = vec4(m[0][0], m[1][0], m[2][0], m[3][0]), ry = vec4(m[0][1], m[1][1], m[2][1], m[3][1]);
+    vec4 rz = vec4(m[0][2], m[1][2], m[2][2], m[3][2]), rw = vec4(m[0][3], m[1][3], m[2][3], m[3][3]);
+    vec4 planes[5] = vec4[](rx, rw - rx, ry, rw - ry, rz);
+    for (int k = 0; k < 5; k++)
+    {
+        bool out_ = true;
+        for (int c = 0; c < 8 && out_; c++)
+        {
+            vec4 p = vec4(sCorner[c], 1.0);
+            out_ = dot(planes[k], p) < -1e-4 * (abs(dot(abs(planes[k]), abs(p))) + 1.0);
+        }
+        if (out_) return false;
+    }
+    return true;
+}
+
+void main()
+{
+    uint local = gl_LocalInvocationIndex;
+    if (local == 0u) { sNear = 0u; sFar = 0xFFFFFFFFu; sEnv = 0u; sLights = 0u; sProj = 0u; }
+    barrier();
+    vec2 size = VIEW.viewport.xy;
+    uvec2 px = gl_GlobalInvocationID.xy;
+    if (px.x < uint(size.x) && px.y < uint(size.y))
+    {
+        float d = texelFetch(textures[nonuniformEXT(int(pc.i2 & 0xFFFFu))], ivec2(px), 0).r;
+        if (d > 0.0)
+        {
+            atomicMax(sNear, floatBitsToUint(d));
+            atomicMin(sFar, floatBitsToUint(d));
+            vec4 norm = gbNormIn(texelFetch(textures[nonuniformEXT(int(pc.i2 >> 16))], ivec2(px), 0));
+            if (norm.b > 0.0 && !GET_GBUFFER_FLAG(norm.w, GBUFFER_FLAG_HAS_PBR)) sEnv = 1u;
+        }
+    }
+    barrier();
+    bool any = sNear != 0u;
+    if (local == 0u && any)
+    {
+        float dn = uintBitsToFloat(sNear), df = uintBitsToFloat(sFar);
+        vec2 t0 = vec2(gl_WorkGroupID.xy * TILE_SIZE) / size;
+        vec2 t1 = min(vec2((gl_WorkGroupID.xy + 1u) * TILE_SIZE), size) / size;
+        vec2 corner[4] = vec2[](t0, vec2(t1.x, t0.y), t1, vec2(t0.x, t1.y));
+        vec3 lo = vec3(1e30), hi = vec3(-1e30), ray[4];
+        for (int k = 0; k < 4; k++)
+        {
+            vec3 a = viewPos(corner[k], dn), b = viewPos(corner[k], df);
+            lo = min(lo, min(a, b));
+            hi = max(hi, max(a, b));
+            ray[k] = a;   // the eye is at the origin
+            sCorner[k] = (VIEW.invView * vec4(a, 1.0)).xyz;
+            sCorner[k + 4] = (VIEW.invView * vec4(b, 1.0)).xyz;
+        }
+        vec3 mid = viewPos((t0 + t1) * 0.5, dn);
+        for (int k = 0; k < 4; k++)
+        {
+            vec3 n = normalize(cross(ray[k], ray[(k + 1) & 3]));
+            sPlanes[k] = vec4(dot(n, mid) < 0.0 ? -n : n, 0.0);
+        }
+        vec3 pad = 0.001 + 1e-4 * max(abs(lo), abs(hi));
+        sBoxMin = lo - pad;
+        sBoxMax = hi + pad;
+    }
+    barrier();
+    if (any)
+    {
+        for (uint i = local; i < pc.i0; i += 256u)
+        {
+            vec4 pr = LIGHTS[i].positionRadius;
+            if (LIGHTS[i].directionCutoff.w > -1.5) continue;   // spotlights: the projector pass
+            if (!reaches((VIEW.view * vec4(pr.xyz, 1.0)).xyz, pr.w)) continue;
+            uint k = atomicAdd(sLights, 1u);
+            if (k < TILE_MAX) sLightList[k] = i;
+        }
+        ProjectorRef projectors = ProjectorRef(uint64_t(pc.instRef));
+        bool env = sEnv != 0u;
+        for (uint i = local; i < pc.i1; i += 256u)
+        {
+            vec4 cs = projectors.p[i].centerSize;
+            if (!reaches((VIEW.view * vec4(cs.xyz, 1.0)).xyz, cs.w)) continue;
+            if (!env && !inFrustum(projectors.p[i].regionToTc)) continue;
+            uint k = atomicAdd(sProj, 1u);
+            if (k < TILE_MAX) sProjList[k] = i;
+        }
+    }
+    barrier();
+    TileListRef tiles = TileListRef(uint64_t(pc.matRef));
+    uint base = (gl_WorkGroupID.y * pc.i3 + gl_WorkGroupID.x) * TILE_STRIDE;
+    uint nl = sLights, np = sProj;
+    if (nl + np > TILE_MAX)
+    {
+        if (local == 0u) tiles.d[base] = TILE_ALL;
+        return;
+    }
+    if (local == 0u) tiles.d[base] = nl | (np << 16);
+    for (uint k = local; k < nl; k += 256u) tiles.d[base + 1u + k] = sLightList[k];
+    for (uint k = local; k < np; k += 256u) tiles.d[base + 1u + nl + k] = sProjList[k];
+}

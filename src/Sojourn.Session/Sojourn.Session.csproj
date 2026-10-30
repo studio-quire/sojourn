@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The session host: everything an app of ours needs around one logged-in person except a window, a headset and
+       drawn menus (login, the agent API and ops, the assistant, confirmations, voice, world audio, the feed, incognito,
+       media, settings, logs). The VR client (Sojourn.Client) and Sojourn Access build on it. It never references the
+       client, OpenXR or Silk's windowing and input (docs/client.md > How it fits). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Sojourn.Session</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- the agent API (Kestrel) and console logging -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="4.152.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- voice chat's native shim over LL's libwebrtc, built by tools/voice.py into local/ (voice is off without it) -->
+    <None Include="../../local/voice/build/Release/sojourn_voice.dll" Condition="Exists('../../local/voice/build/Release/sojourn_voice.dll')" CopyToOutputDirectory="PreserveNewest" Link="sojourn_voice.dll" />
+    <!-- the assistant's panel: Archivo (OFL-1.1), static instances of the Lookbook's variable font -->
+    <None Include="Assets\Fonts\*" CopyToOutputDirectory="PreserveNewest" Link="Fonts\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sojourn" />
+    <InternalsVisibleTo Include="Sojourn.SessionProbe" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sojourn.Core\Sojourn.Core.csproj" />
+    <ProjectReference Include="..\Sojourn.Render\Sojourn.Render.csproj" />
+  </ItemGroup>
+
+</Project>

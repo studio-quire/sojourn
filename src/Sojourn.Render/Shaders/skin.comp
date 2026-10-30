@@ -1,0 +1,44 @@
+#version 460
+// Skinning pre-pass: poses a skinned mesh's bind-pose vertices with a joint palette and writes them, in region
+// space, into the frame's skinned vertex buffer, where every scene pipeline (G-buffer, shadows, alpha, glow) draws
+// them like any other geometry. Up to four weighted joints per vertex: the system avatar's meshes use two (a joint
+// and its parent, llpolymesh weights), rigged mesh four (LLSkinningUtil). The blend is the viewer's
+// (avatarSkinV.glsl / LLSkinningUtil::getPerVertexSkinMatrix: weighted sum of joint matrices; normals through the
+// blended matrix's upper 3x3, renormalised).
+
+layout(local_size_x = 64) in;
+
+struct SkinVertex { vec3 position; vec3 normal; vec4 tangent; vec2 uv; };
+layout(buffer_reference, scalar) readonly buffer SrcRef { SkinVertex v[]; };
+layout(buffer_reference, scalar) writeonly buffer DstRef { SkinVertex v[]; };
+layout(buffer_reference, scalar) readonly buffer WeightRef { uvec4 w[]; };   // x: four joint indices (u8), y/z: four unorm16 weights
+layout(buffer_reference, scalar) readonly buffer PaletteRef { mat4 m[]; };
+
+layout(push_constant, scalar) uniform SkinPush {
+    SrcRef src;
+    WeightRef weights;
+    PaletteRef palette;
+    DstRef dst;
+    uint count;
+} sp;
+
+void main()
+{
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= sp.count) return;
+    SkinVertex v = sp.src.v[i];
+    uvec4 w = sp.weights.w[i];
+    vec2 w01 = unpackUnorm2x16(w.y);
+    vec2 w23 = unpackUnorm2x16(w.z);
+    mat4 m = sp.palette.m[w.x & 255u] * w01.x;
+    if (w01.y > 0.0) m += sp.palette.m[(w.x >> 8) & 255u] * w01.y;
+    if (w23.x > 0.0) m += sp.palette.m[(w.x >> 16) & 255u] * w23.x;
+    if (w23.y > 0.0) m += sp.palette.m[w.x >> 24] * w23.y;
+    SkinVertex o;
+    o.position = (m * vec4(v.position, 1.0)).xyz;
+    mat3 m3 = mat3(m);
+    o.normal = normalize(m3 * v.normal);
+    o.tangent = vec4(normalize(m3 * v.tangent.xyz), v.tangent.w);
+    o.uv = v.uv;
+    sp.dst.v[i] = o;
+}

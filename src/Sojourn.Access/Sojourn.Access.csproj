@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Sojourn Access: Second Life without sight, keyboard and screen reader first (docs/access.md, docs/access-app.md).
+       Standard Windows controls (WinForms), so NVDA and JAWS read them natively, on the shared session host
+       (Sojourn.Session). Never references the VR client. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- the Windows SDK version for Windows Hello's consent prompt (Hello.cs) -->
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>SojournAccess</AssemblyName>
+    <RootNamespace>Sojourn.Access</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <!-- NVDA's controller client is the x64 build -->
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sojourn.Session\Sojourn.Session.csproj" />
+  </ItemGroup>
+
+</Project>

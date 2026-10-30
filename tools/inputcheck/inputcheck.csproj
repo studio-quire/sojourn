@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Sojourn Access's judge of real input checked without a person (src/Sojourn.Access/InputJudge.cs): simulated
+       sequences of key and mouse messages, hook presses and focus changes (a screen reader's pass-through and the
+       person's own presses count, a program's keys, focus moves and held keys don't); and what Windows says of a
+       posted key's source, in a hidden window of its own; and RealInput there, posted keys judged as the hand's
+       (SOJOURN_TEST_INPUT=keys), with a UI Automation client reading the window from another thread.
+         run it with dotnet run, the project tools/inputcheck (exit code: the number of failed checks);
+         given -raw after the separator it also shows that raw input never sees a key a low-level hook swallows (one injected F24,
+         swallowed by its own hook, so no window gets it). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>   <!-- UIAutomationClient: a screen reader's reads, from another thread -->
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Sojourn.Access\InputJudge.cs" Link="InputJudge.cs" />
+    <Compile Include="..\..\src\Sojourn.Access\RealInput.cs" Link="RealInput.cs" />
+    <Compile Include="..\..\src\Sojourn.Access\KeyHook.cs" Link="KeyHook.cs" />
+  </ItemGroup>
+</Project>

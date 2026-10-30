@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A console host over Sojourn.Session alone (no window, renderer or headset): the proof that the session runs
+       without the VR client (docs/access.md > M0). Run it with tools/probe.py. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Sojourn.SessionProbe</RootNamespace>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sojourn.Session\Sojourn.Session.csproj" />
+  </ItemGroup>
+
+</Project>

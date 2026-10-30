@@ -1,0 +1,7 @@
+claude-agent-sdk>=0.2.169
+faster-whisper>=1.2
+soundcard>=0.4
+numpy
+kokoro-onnx>=0.6
+sherpa-onnx>=2.0
+websockets>=14

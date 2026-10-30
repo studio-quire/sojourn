@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Reads a .gcdump (dotnet-gcdump collect) and says what holds the heap: retained bytes by type over a spanning
+       tree from the roots (as PerfView does), and large arrays by the chain of types holding them.
+       tools/heapwho.py builds and runs it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GcdumpVersion>10.0.750501</GcdumpVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.*" />
+    <!-- the heap graph reader (PerfView's MemoryGraph and GCHeapDump) ships inside dotnet-gcdump -->
+    <Reference Include="dotnet-gcdump">
+      <HintPath>$(USERPROFILE)\.dotnet\tools\.store\dotnet-gcdump\$(GcdumpVersion)\dotnet-gcdump\$(GcdumpVersion)\tools\net8.0\any\dotnet-gcdump.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

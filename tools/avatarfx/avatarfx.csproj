@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Batch B3b's avatars: `check` runs the logic without a grid (the viewer's IK solver, the editing motion a PointAt
+       starts, the default stands' foot IK, lip sync's amplitudes, animesh's 64 m fixup); `send` logs in to the local
+       grid as another person and sends viewer effects (PointAt, beams, a spiral, ResetSkeleton), for tools/avatars.py.
+         dotnet run, the project tools/avatarfx -p:SojournOut=(a client build output dir), then check or send ...
+       (the default SojournOut is the client's bin\Release). Exit code: the number of failed checks. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>CS0618</NoWarn>
+    <SojournOut Condition="'$(SojournOut)' == ''">$(MSBuildThisFileDirectory)..\..\src\Sojourn.Client\bin\Release\net10.0</SojournOut>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Sojourn.Render"><Private>false</Private><HintPath>$(SojournOut)\Sojourn.Render.dll</HintPath></Reference>
+    <Reference Include="Sojourn.Core"><Private>false</Private><HintPath>$(SojournOut)\Sojourn.Core.dll</HintPath></Reference>
+    <Reference Include="LibreMetaverse"><Private>false</Private><HintPath>$(SojournOut)\LibreMetaverse.dll</HintPath></Reference>
+    <Reference Include="LibreMetaverse.Types"><Private>false</Private><HintPath>$(SojournOut)\LibreMetaverse.Types.dll</HintPath></Reference>
+    <Reference Include="LibreMetaverse.Protocol"><Private>false</Private><HintPath>$(SojournOut)\LibreMetaverse.Protocol.dll</HintPath></Reference>
+    <Reference Include="LibreMetaverse.Assets"><Private>false</Private><HintPath>$(SojournOut)\LibreMetaverse.Assets.dll</HintPath></Reference>
+    <Reference Include="LibreMetaverse.StructuredData"><Private>false</Private><HintPath>$(SojournOut)\LibreMetaverse.StructuredData.dll</HintPath></Reference>
+    <Reference Include="LibreMetaverse.Transport"><Private>false</Private><HintPath>$(SojournOut)\LibreMetaverse.Transport.dll</HintPath></Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- LibreMetaverse logs through Microsoft.Extensions.Logging, which the client has from ASP.NET Core's framework -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <AssemblyMetadata Include="SojournOut" Value="$(SojournOut)" />
+  </ItemGroup>
+</Project>

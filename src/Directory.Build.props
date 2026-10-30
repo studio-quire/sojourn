@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <!-- LibreMetaverse 3.2.0 asks for CoreJ2K 2.4.1; NuGet resolves 2.4.1.108, which is the same release. -->
+    <NoWarn>$(NoWarn);NU1603</NoWarn>
+  </PropertyGroup>
+  <!-- SOJOURN_BUILD_ROOT=dir builds into a tree of its own (bin and obj per project under it), so a second session can
+       build and run while another's client holds the usual bin folder's files open. -->
+  <PropertyGroup Condition="'$(SOJOURN_BUILD_ROOT)' != ''">
+    <BaseIntermediateOutputPath>$(SOJOURN_BUILD_ROOT)\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(SOJOURN_BUILD_ROOT)\bin\$(MSBuildProjectName)\</BaseOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;bin\**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,19 @@
+// The session host (Sojourn.Session) under the client's own folders: what it moved out of them keeps its folder's name.
+global using Sojourn.Session;
+global using Sojourn.Session.Access;
+global using Sojourn.Session.Assistant;
+global using Sojourn.Session.Audio;
+global using Sojourn.Session.Bridge;
+global using Sojourn.Session.Building;
+global using Sojourn.Session.Capture;
+global using Sojourn.Session.Control;
+global using Sojourn.Session.Inventory;
+global using Sojourn.Session.Land;
+global using Sojourn.Session.Login;
+global using Sojourn.Session.Map;
+global using Sojourn.Session.Media;
+global using Sojourn.Session.People;
+global using Sojourn.Session.Private;
+global using Sojourn.Session.Release;
+global using Sojourn.Session.Social;
+global using Sojourn.Session.Voice;
