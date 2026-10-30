@@ -418,8 +418,35 @@ Found, and done (Claude Opus 5.5):
 - Seen, for a blind tester: a sighted gamer reached for WASD in walk mode, where A and S are taken (what's ahead, the
   sonar); walk mode itself didn't make sense to a sighted person, as expected.
 
+### A review against screen-reader and Radegast conventions (2026-10-30)
+
+An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
+keyboard references), asked for because the only hands-on tester so far is sighted. Fixed before 0.1.0.529: F1 as a
+window to arrow through, the tab strips out of the Tab order, Control+Backspace deleting a word, Control+Shift+H home,
+minus and equals for a script menu's 11th and 12th buttons, a last "12 m". Already right: no keys NVDA or JAWS
+reserve, histories never in browse mode, answers cut in and arrivals queue, Radegast's main keys kept. Next, in
+order of use:
+- A menu bar (Alt or F10) with each item's key shown, for discovering what exists: set home, landmark here, sit on
+  the ground, fly, away and busy, region info (Radegast's Control+Shift+1); the same key text on context menus.
+- Control+1 to 9 to review the last nine messages (NVDA's own VIP Mud module does this; the bracket keys need AltGr
+  on many layouts); maybe a tiny NVDA app module for the old add-on's NVDA+Page Up and Down.
+- Escape on Notices back to where Control+N came from; the Applications key on a notice: its keys and Put away.
+- Alt+0's ~65 rows: lead with what differs (shared prefixes defeat first-letter navigation), or group them; Left and
+  Right change a value.
+- Alt+4 again opening a second pane, where every other Alt+number re-reads its area: give the pane its own key.
+- JAWS once by hand: UI Automation notifications' queueing there is undocumented, and Control+Up/Down are its
+  paragraph keys (a recalled line may be read twice).
+- A click when push-to-talk opens and closes; an IM arriving while the focus is on "No conversations yet" moves the
+  focus; NVDA+End on the status bar; Control+Page Up/Down still switch tabs natively.
+Added to the questions below: what's read out while Access is in the background (asked first).
+
 ### Questions for a blind tester
 
+- First: while Sojourn Access is in the background, should she hear everything, only IMs and menus, or nothing (a
+  setting either way)? TWBlue keeps reading off by default as too chatty and relies on sounds; Mudlet reads.
+- F6 mutes the read-out here (the old add-on's key), but in Windows F6 moves between panes: keep it only if she used
+  the add-on's key. Enter on a worn item takes it off: is one stray Enter too easy? Alt+2 is Friends in Radegast and
+  Conversations here: does that habit matter?
 - What "edit notecards without going back two versions" means (her list): the Radegast agents couldn't reproduce
   losing versions in 2.54 (save, reopen, relog all kept the latest).
 - For Sojourn Access's first slice (`docs/access-app.md`), once she's tried it or heard it described: is a clock face

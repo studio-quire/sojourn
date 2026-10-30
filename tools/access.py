@@ -1148,8 +1148,8 @@ def keys(run, nonce):
     d = wait_focus(lambda d: d["id"] == "keysText", 5)
     if run.check("F1 opens the keys in a window, the focus in its text", d, label(d) if d else focus_label()):
         lines = value_of("id=keysText").splitlines()
-        run.check("one key a line under headings, all of them", "Alt+1: nearby chat" in lines and "Areas" in lines
-                  and "Control+Shift+H: teleport home" in lines and lines[-1:] == ["F1: this list"], f"{len(lines)} lines, last {lines[-1:]}")
+        run.check("one key a line under headings, all of them", "Alt+1: nearby chat." in lines and "Areas." in lines
+                  and "Control+Shift+H: teleport home." in lines and lines[-1:] == ["F1: this list."], f"{len(lines)} lines, last {lines[-1:]}")
         key("esc")
         back = wait_focus(lambda d: d["id"] == "chatInput", 4)
         run.check("Escape closes it, the focus back in Say", back, label(back) if back else focus_label())
@@ -3419,7 +3419,7 @@ def package_check():
         # ---- F1, //about, Control+D without the assistant, chat
         key("f1")
         d = wait_focus(lambda d: d["id"] == "keysText", 5)
-        check("F1 opens the keys in a window", d and "Alt+1: nearby chat" in value_of("id=keysText").splitlines(), label(d) if d else focus_label())
+        check("F1 opens the keys in a window", d and "Alt+1: nearby chat." in value_of("id=keysText").splitlines(), label(d) if d else focus_label())
         key("esc")
         back_to_chat()
         m = mark()

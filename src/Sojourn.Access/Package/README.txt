@@ -20,7 +20,7 @@ Windows will probably warn you, because the program isn't signed. The warning is
 
 To stop the warning, before unzipping: on the zip file, press Alt+Enter for its properties, check "Unblock" near the bottom of the General tab, press Enter, then unzip. If you've unzipped it already, do the same on SojournAccess.exe.
 
-When you first log in, Windows Firewall may ask whether Sojourn Access may use networks. Sojourn Access only makes outgoing connections, to Second Life, so Allow is fine, and it should work whichever you choose.
+The first time you log in or teleport, Windows Firewall may ask whether Sojourn Access may use networks. Sojourn Access only makes outgoing connections, to Second Life, so Allow is fine, and it should work whichever you choose.
 
 Logging in
 

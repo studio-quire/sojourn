@@ -49,7 +49,7 @@ repo's own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access
   build doesn't include, then what the lists know, and Alt+9's input is named "Ask the assistant (not in this build)".
   `//about` says the version, the commit, the disclaimer and the data folder; F1's list ends by pointing to it.
 - **Checked** by `python tools/access.py package --check [ZIP]` (default the newest zip; about a minute; passed 38 of
-  38 on 0.1.0.510, 2026-10-30, as --bare too; released as v0.1.0.510 on studio-quire/sojourn-access): the zip unpacked in a fresh folder under %TEMP%, run on a hidden desktop of its own
+  37 on 0.1.0.529, 2026-10-30, as --bare too; released as v0.1.0.529 on studio-quire/sojourn-access): the zip unpacked in a fresh folder under %TEMP%, run on a hidden desktop of its own
   through QuireUia as Package Tester (`--local --autologin --reader on --no-voice`, world audio to a file, no mic, the
   data folder `--base` in the check's folder: .NET's GetFolderPath ignores %LOCALAPPDATA%, so the default folder itself
   isn't exercised), with no dotnet on PATH and %TEMP%, %LOCALAPPDATA% and %APPDATA% pointed into the check's folder.

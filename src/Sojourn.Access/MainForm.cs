@@ -525,7 +525,10 @@ public sealed partial class MainForm : Form
         {
             Name = "keysText", AccessibleName = title, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Dock = DockStyle.Fill, BackColor = SystemColors.Window,
-            Text = (walk ? Sojourn.Access.Walk.WalkMode.Help : KeysHelp).ReplaceLineEndings("\r\n").TrimEnd(),
+            // every line ends in a full stop, so a screen reader pauses between them: without, "Alt+1: nearby chat"
+            // and "Alt+2: conversations" ran together, each key sounding like the end of the line before (the user, 2026-10-30)
+            Text = string.Join("\r\n", (walk ? Sojourn.Access.Walk.WalkMode.Help : KeysHelp).ReplaceLineEndings("\n").TrimEnd()
+                .Split('\n').Select(l => l.TrimEnd() is { Length: > 0 } t && !".?!:".Contains(t[^1]) ? t + "." : l.TrimEnd())),
         };
         var close = new Button { Name = "keysClose", Text = "Close", AutoSize = true, DialogResult = DialogResult.Cancel };
         form.CancelButton = close;
