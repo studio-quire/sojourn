@@ -38,7 +38,7 @@ public partial class LauncherView : UserControl
     string? _failed;   // the grid said no: the run is stopped and the reason stays at the foot
     bool _arrived;     // the run got in world, so the client kept the account (and its password if asked)
     DateTime _noteUntil = DateTime.MaxValue;
-    long _forgetArmedAt = -10_000;
+    long _forgetPressedAt = -10_000;
     string? _asked;    // the question last answered from here (its JSON): Continue waits for the next one
 
     public event Action? CloseRequested, MinimiseRequested;
@@ -266,7 +266,7 @@ public partial class LauncherView : UserControl
         var kind = ProviderNow;
         bool keyed = kind != "claude";
         bool kept = keyed && ProviderKeys.Has(kind);
-        bool armed = Environment.TickCount64 - _forgetArmedAt < 4000;
+        bool armed = Environment.TickCount64 - _forgetPressedAt < 4000;
         KeyHint.Text = !keyed ? "API key" : kept ? (armed ? "forget the key?" : "key kept") : $"{ProviderKeys.Name(kind)} key";
         KeyHint.Foreground = (Brush)FindResource(armed && kept ? "Coral" : "Faint");
         ForgetKey.Visibility = kept ? Visibility.Visible : Visibility.Collapsed;
@@ -303,13 +303,13 @@ public partial class LauncherView : UserControl
     {
         var kind = ProviderNow;
         if (!ProviderKeys.Has(kind)) return;
-        if (Environment.TickCount64 - _forgetArmedAt >= 4000)
+        if (Environment.TickCount64 - _forgetPressedAt >= 4000)
         {
-            _forgetArmedAt = Environment.TickCount64;
+            _forgetPressedAt = Environment.TickCount64;
             ShowAssistant();
             return;
         }
-        _forgetArmedAt = -10_000;
+        _forgetPressedAt = -10_000;
         ProviderKeys.Forget(kind);
         ShowAssistant();
         Note($"{ProviderKeys.Name(kind)} key forgotten", null, TimeSpan.FromSeconds(8));
