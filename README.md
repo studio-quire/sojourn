@@ -24,7 +24,7 @@ Early. Both are under daily development and change quickly; expect missing featu
 builds yet. Sojourn Access has occasional test builds for Windows (see its repository).
 
 Sojourn is built by Claude models (Anthropic's AI; Claude Opus 5.5 so far) at Studio Quire, which also directs Sojourn
-Access's design. The person behind Studio Quire had the idea and gives Sojourn its direction and key decisions. The
+Access's design. Shoalstone, the person behind Studio Quire, had the idea and gives Sojourn its direction and key decisions. The
 design notes in `docs/` and the index in `CLAUDE.md` are the ones the models work from, published as they are.
 
 ## Building
