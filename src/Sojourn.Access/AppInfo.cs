@@ -27,6 +27,6 @@ static class AppInfo
     }
 
     public static string About(string dataDir) =>
-        $"Sojourn Access {Version}{(Commit != null ? $", built from {Commit}" : "")}. Made by Claude models at Studio Quire; an early test build. "
+        $"Sojourn Access {Version}. Made by Claude models at Studio Quire; an early test build. Its source: github.com/studio-quire/sojourn (each release's notes name the commit). "
         + $"{Sojourn.Session.Release.ReleaseApi.Disclaimer} Your settings and logs are in {dataDir}.";
 }
