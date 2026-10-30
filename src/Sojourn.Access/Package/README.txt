@@ -46,6 +46,12 @@ Sound
 
 World sounds and the parcel's music start quieter than in other viewers, so they don't drown your screen reader. Alt+0 (settings) changes their levels.
 
+If Sojourn Access says at login that sounds can't play because Windows' media features are missing, your Windows is an N edition, which leaves them out. Add them, then restart Sojourn Access. On Windows 11: Settings, System, Optional features, View features, then Media Feature Pack. On Windows 10: Settings, Apps, Apps and features, Optional features, Add a feature, then Media Feature Pack. Without them everything works but sound: no world sounds, music, voice chat or walk mode's sounds.
+
+If your graphics can't run it
+
+Sojourn Access draws the world out of sight, using your PC's graphics, to tell what's around you: walk mode's warnings and sonar, the faces of objects, and the pictures the assistant describes. On a PC whose graphics can't (a virtual machine, or a very old graphics card or driver), it says so when you use one of those, and everything else works. Updating your graphics driver may help.
+
 Without the assistant
 
 Sojourn Access can work with an AI assistant that describes what's around you and does things for you, but this build doesn't include it. Describing (Control+D) needs the assistant, so here it tells you what Sojourn Access knows from its lists instead. Nothing else needs it.

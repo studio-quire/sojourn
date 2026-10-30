@@ -324,7 +324,10 @@ THIRD_PARTY.md and docs/download.md from `tools/publish/sojourn/`) and `../sojou
 the publish machinery itself.
 Private individuals (the blind tester and her partner, residents met in sessions, issue filers) become roles: in
 docs, code comments, tests and fixtures write roles, not residents' names, so the rules stay few. The run refuses to
-commit on any banned name, handle, email or path, or a gitleaks finding (portable copy in `local/gitleaks`).
+commit on any banned name, handle, email or path, or a gitleaks finding (portable copy in `local/gitleaks`). Push
+only after a run that printed "committed", and after `--check` built it: on 2026-10-29 a chained push sent a
+snapshot that didn't build. gitleaks reads identifiers with Key, Secret or Token beside an assignment as API keys:
+name timers and flags otherwise.
 `local/publish/map.txt` records which private commit each public one came from: a packaged Access build's release
 names the public commit made from the same private HEAD. Pushing is by hand, to a remote named `public` (never
 `origin`, so the nightly backup can't publish).

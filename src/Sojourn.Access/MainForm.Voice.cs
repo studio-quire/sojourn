@@ -103,7 +103,8 @@ public sealed partial class MainForm
     string KeyName => TalkKey switch { Keys.Scroll => "Scroll Lock", Keys.Pause => "Pause", Keys.F12 => "F12", _ => "F4" };
 
     string VoiceOff() => Host?.Voice == null ? "Voice chat isn't running (Sojourn Access was started without it)."
-        : Host.Voice.Voice.Available ? "Voice chat is off: Alt+0 turns it on." : $"Voice chat can't run here: {Host.Voice.Voice.Status}.";
+        : Host.Voice.Voice.Available ? "Voice chat is off: Alt+0 turns it on."
+        : SoundWords.Missing(Host) is { } why ? $"No voice chat. {why}" : $"Voice chat can't run here: {Host.Voice.Voice.Status}.";
 
     /// <summary>Control+Shift+V and `//voice`: who's in voice and who's speaking now, your mic, where you are.</summary>
     void SayVoice()

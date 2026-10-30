@@ -21,11 +21,12 @@
                                    README and licences, zipped to local/dist/SojournAccess-0.1.0.N-win-x64.zip (N the
                                    commit count; uncommitted changes under src/ refused unless --dirty); it keeps its
                                    data in %LOCALAPPDATA%\\Sojourn Access and logs in to Second Life unless run with --local
-  python tools/access.py package --check [ZIP] [--keep]
+  python tools/access.py package --check [ZIP] [--keep] [--bare]
                                    the zip (default the newest in local/dist) unpacked in a fresh folder under %TEMP% and
                                    run as a tester would, on a hidden desktop of its own, as Package Tester on the local
                                    grid: ok/FAIL lines as the test's (docs/access-app.md > Packaging); then everything it
-                                   made removed (--keep leaves the folder)
+                                   made removed (--keep leaves the folder). --bare: as on a PC with no Vulkan driver and
+                                   no Media Foundation (Windows N): Vulkan's drivers hidden, sojourn_voice.dll removed
   python tools/access.py stop      close whatever a broken run left (our app, visitors and QuireUia server, by path)
   python tools/access.py sweep     delete whatever the Access Visitor still owns in Atelier (the grid console)
 
@@ -3221,8 +3222,11 @@ def package_check():
     import grid
     global Q_PORT, EVENTS, APP_PID
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    rest = [a for a in sys.argv[2:] if a not in ("--check", "--keep")]
+    rest = [a for a in sys.argv[2:] if a not in ("--check", "--keep", "--bare")]
     keep = "--keep" in sys.argv[2:]
+    # a PC unlike ours: no Vulkan driver (a VM, Microsoft's basic display adapter) and no Media Foundation (Windows'
+    # N editions), which sojourn_voice.dll imports, so it won't load: removing it fails the same way
+    bare = "--bare" in sys.argv[2:]
     zips = [Path(rest[0]).resolve()] if rest else sorted(DIST.glob("SojournAccess-*.zip"), key=lambda p: p.stat().st_mtime)
     if not zips or not zips[-1].exists():
         print("no zip (python tools/access.py package)")
@@ -3230,7 +3234,7 @@ def package_check():
     zip_path = zips[-1]
     version = re.search(r"SojournAccess-(0\.1\.0\.\d+)", zip_path.name)
     version = version[1] if version else "?"
-    print(f"checking {zip_path.name}")
+    print(f"checking {zip_path.name}" + (" as on a bare PC (no Vulkan driver, no sojourn_voice.dll)" if bare else ""))
 
     others = others_running()
     if others:
@@ -3269,6 +3273,8 @@ def package_check():
         exe = folder / "SojournAccess.exe"
         if not check("the zip holds one folder with SojournAccess.exe", exe.exists(), str(exe.relative_to(work))):
             raise Stop
+        if bare:
+            (folder / "sojourn_voice.dll").unlink()
         before = tree_hashes(folder)
         profile = known_folders()
         profile_before = top_level(profile)
@@ -3284,6 +3290,8 @@ def package_check():
                    SOJOURN_TEST_NO_CLIPBOARD="1",
                    SOJOURN_VOICE_OUT_FILE=str(out / "heard.wav"),   # world audio to a file, never the speakers
                    SOJOURN_VOICE_MIC_FILE="none")         # and no microphone
+        if bare:
+            env["VK_LOADER_DRIVERS_DISABLE"] = "*"      # the Vulkan loader (1.3.234 on) then finds no driver at all
 
         server = launch_hidden_on(CHECK_DESKTOP, [QUIREUIA, "serve", "--port", Q_PORT, "--log", EVENTS])
         if not check("QuireUia's server answers", wait(lambda: u("help", timeout=5), 20), f"pid {server}"):
@@ -3319,6 +3327,8 @@ def package_check():
         f = wait_focus(lambda d: d["id"] == "chatInput", 15)
         check("the focus lands in the Say box", f, label(f) if f else focus_label())
         run.expect("arriving is read out", ["Logged in"], 0, 10)
+        if bare:
+            run.expect("and that sounds can't play", ["Logged in", "Sounds can't play on this PC"], 0, 5)
 
         def network(when):
             socks = sockets_of(app)
@@ -3373,17 +3383,36 @@ def package_check():
         logs = data / "logs"
         def log_text():
             return "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in sorted(logs.glob("*.log")))
-        up = wait(lambda: re.search(r"the view out of sight is up on ([^:]+)", log_text()), 60, 1)
-        check("the renderer out of sight starts", up, up[0] if up else "no such line in the session's log")
-        g0 = gpu_of(app)
-        wait(lambda: False, 5)
-        g1 = gpu_of(app)
-        check("and draws (the GPU working for it)", g1[0] > g0[0] and g1[1] > 50e6,
-              f"{(g1[0] - g0[0]) / 1e4:.0f} ms of GPU engine time in 5 s, {g1[1] / 1e6:.0f} MB of video memory")
-        failed = re.findall(r".*(?:couldn't start|the GPU was lost|stopped:).*", log_text())
-        check("no renderer failures in the log", not failed, "; ".join(failed)[:200] or "none")
+        if bare:
+            down = wait(lambda: re.search(r".*the view out of sight couldn't start.*", log_text()), 60, 1)
+            check("the renderer's absence is logged, not fatal", down and alive(app), down[0][:200] if down else "no such line")
+            up = re.search(r"the view out of sight is up on ([^:]+)", log_text())
+            check("and no renderer came up", not up, up[0] if up else "none")
+            # what a person hears from the keys that lean on the view, with none: walk mode, its sonar, describing
+            # (F3 and S should say why in a person's words: this PC's graphics, not the renderer's state)
+            for k, what, plain in (("f3", "F3 (walk mode)", "graphics can't run"), ("s", "S (the sonar)", "graphics can't run"),
+                                   ("esc", "Escape (walk mode off)", "Walk mode off"), ("ctrl+d", "Control+D", "")):
+                m = mark()
+                key(k)
+                said = wait(lambda: said_since(m), 8)
+                wait(lambda: False, 1.5)
+                text = " | ".join(e.get("text") or "" for e in said_since(m))
+                check(f"{what} answers without the view", said and alive(app) and plain in text, text[:220] or "silence")
+            back_to_chat()
+            dlls = ["nvdaControllerClient.dll"]   # sojourn_voice is gone; openjp2 and shaderc load with a renderer only
+        else:
+            up = wait(lambda: re.search(r"the view out of sight is up on ([^:]+)", log_text()), 60, 1)
+            check("the renderer out of sight starts", up, up[0] if up else "no such line in the session's log")
+            g0 = gpu_of(app)
+            wait(lambda: False, 5)
+            g1 = gpu_of(app)
+            check("and draws (the GPU working for it)", g1[0] > g0[0] and g1[1] > 50e6,
+                  f"{(g1[0] - g0[0]) / 1e4:.0f} ms of GPU engine time in 5 s, {g1[1] / 1e6:.0f} MB of video memory")
+            failed = re.findall(r".*(?:couldn't start|the GPU was lost|stopped:).*", log_text())
+            check("no renderer failures in the log", not failed, "; ".join(failed)[:200] or "none")
+            dlls = SHIPPED_DLLS
         mods = modules_of(app)
-        for dll in SHIPPED_DLLS:
+        for dll in dlls:
             where = next((m for m in mods if Path(m).name.lower() == dll.lower()), None)
             check(f"{dll} loaded from the package's folder", where and Path(where).parent == folder, where or "not loaded")
         foreign = [m for m in mods if str(ROOT).lower() in m.lower()]
@@ -3440,8 +3469,9 @@ def package_check():
               "nothing new or changed named as ours" + (f"; new there, by other programs: {', '.join(Path(p).name for p in new)[:200]}" if new else ""))
         check("its data in the data folder", (data / "logs").exists(), ", ".join(sorted({f.split('/')[0] for f in files_under(data)})))
         heard = out / "heard.wav"
-        check("world audio went to the file, not the speakers", heard.exists() and heard.stat().st_size > 44,
-              f"{heard.stat().st_size / 1e6:.1f} MB" if heard.exists() else "no file")
+        if not bare:
+            check("world audio went to the file, not the speakers", heard.exists() and heard.stat().st_size > 44,
+                  f"{heard.stat().st_size / 1e6:.1f} MB" if heard.exists() else "no file")
 
     if keep:
         print(f"     (kept: {work})")

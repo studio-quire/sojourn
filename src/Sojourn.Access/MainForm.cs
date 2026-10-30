@@ -175,7 +175,9 @@ public sealed partial class MainForm : Form
         _areas.SelectedTab = _chatPage;
         _chatInput.Focus();
         UpdateWhere();
-        if (_ops.Me() is { } me) Reader?.Answer($"Logged in, in {me.Region}. F1 for keys.", keep: false);
+        // no earcons, footsteps or world sounds at all is worth hearing once, before wondering at the silence
+        var noSound = SoundWords.Missing(Host) is { } why ? why + " " : "";
+        if (_ops.Me() is { } me) Reader?.Answer($"Logged in, in {me.Region}. {noSound}F1 for keys.", keep: false);
         if (Reader is { } r) r.Greeting = "Sojourn Access. F1 for keys.";
     }
 
@@ -517,13 +519,19 @@ public sealed partial class MainForm : Form
         }
         _beforeWalk = ActiveControl == _walkPad ? null : ActiveControl;
         _walkPad.Focus();
-        Reader?.Answer("Walk mode. Arrows walk, F1 for its keys.", keep: false);
+        // once a session, if the view's gone for good: its cues (warnings, openings, surfaces, the sonar) won't come
+        var gone = _view != null && ViewWords.Gone(_view) && !_walkToldNoView;
+        if (gone) _walkToldNoView = true;
+        Reader?.Answer("Walk mode. Arrows walk, F1 for its keys."
+                       + (gone ? $" Without warnings or the sonar: {ViewWords.Down(_view)}" : ""), keep: false);
     }
+    bool _walkToldNoView;
 
     /// <summary>`//status music`: the parcel's stream as it is, or null when the parcel has none.</summary>
     string? MusicWords()
     {
-        if (Host?.Audio is not { } audio) return Host?.Session.Online == true ? "Sounds are off in this session (--no-sounds), music too." : null;
+        if (Host?.Audio is not { } audio)
+            return Host?.Session.Online == true ? SoundWords.Missing(Host) ?? "Sounds are off in this session (--no-sounds), music too." : null;
         var m = audio.Music;
         if (m.ParcelUrl.Length == 0) return null;
         if (!Host.Settings.Music) return "This parcel has music; it's turned off (Alt+0, The parcel's music).";

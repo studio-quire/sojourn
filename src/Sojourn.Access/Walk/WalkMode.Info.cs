@@ -47,7 +47,7 @@ public sealed partial class WalkMode
         // starting, or back in a moment after a lost GPU: worth a few seconds' wait
         for (int i = 0; i < 25 && _view is { Running: false, State: "starting" or "restarting" }; i++) await Task.Delay(200);
         if (_view is { Running: true }) return true;
-        Line(_view == null ? "The view out of sight is off (--no-render): nothing to tell what's around." : $"The view out of sight isn't running ({_view.State}).");
+        Line(ViewWords.Down(_view));
         return false;
     }
 

@@ -143,9 +143,9 @@ public sealed partial class MainForm
         _facesOf = p.Id;
         _faces.AccessibleName = $"Faces of {PartName(p)}";
         if (p.Hud) { Fill(_faces, new(), "A HUD's faces aren't drawn here: Enter on the part touches it."); return; }
-        if (_view == null) { Fill(_faces, new(), "Faces need the view out of sight, which is off: Enter on the part touches it."); return; }
+        if (ViewWords.Gone(_view)) { Fill(_faces, new(), $"Faces need the 3D view. {ViewWords.Down(_view)} Enter on the part touches it."); return; }
         Fill(_faces, new(), "Finding its faces.");
-        var set = await _view.FacesAsync(p.Id);
+        var set = await _view!.FacesAsync(p.Id);
         if (version != _facesVersion || IsDisposed) return;
         if (set is not { } faces) { Fill(_faces, new(), "Its faces aren't known yet (not drawn): F5 here looks again."); return; }
         var eye = Eye();

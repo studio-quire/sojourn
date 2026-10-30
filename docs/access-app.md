@@ -787,3 +787,23 @@ Parts and the rest of M2 (before step 19; `python tools/access.py visitor treasu
 19. Alt+F4: "Log out and quit?"; Escape stays ("Still here."), Alt+F4 and Enter quit. `python tools/access.py visitor
     stop`. Ask what felt wrong, slow or chatty; record it in `docs/access.md` > What a blind tester tells us (sighted,
     with NVDA: say so), and take the check off the board.
+
+## Guided test of a release (Second Life, as a tester gets it)
+
+What `package --check` can't reach: the release as downloaded, Windows' own warnings, and the packaged build on Second
+Life. Use the newest release on studio-quire/sojourn-access; the user's own SL account; NVDA speaking. Their password
+and any MFA code are theirs to type: before that step, NVDA's log at its default level (no input logging) and our
+own input logs off.
+1. From github.com/studio-quire/sojourn-access, follow the README as written to Releases and the win-x64 zip. Ask:
+   did the README's directions match the page (Assets heading, the file's name)?
+2. Alt+Enter on the zip, Unblock, unzip (Downloads is fine). Enter on SojournAccess.exe. Ask: any "Windows protected
+   your PC"? (Unblocked, there shouldn't be.) Did the login window's focus land in Username with Second Life chosen?
+3. Log in (their typing). Ask: did Windows Firewall ask, and what was chosen? An MFA code or the Terms, if asked, in
+   their small window? "Logged in, in ..." and the cursor in Say?
+4. `//about`: the release's version and github.com/studio-quire/sojourn? F1 read out?
+5. A short round where people are: Alt+3 (a person read with distance and clock direction), Alt+7 (the first object
+   read without arrowing), Ctrl+D (says once that this build has no assistant, then what the lists know), F3 and S (the
+   sonar), Escape. Music, if the parcel has any: under NVDA at its start level?
+6. Alt+F4, Enter. Windows+R `%LOCALAPPDATA%\Sojourn Access`: the logs there, nothing new beside the program.
+7. Removing it as the README says (the folder and the data folder). Record findings in `docs/access.md`, take the item
+   off the board.

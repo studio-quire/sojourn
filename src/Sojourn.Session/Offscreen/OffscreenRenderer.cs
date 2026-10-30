@@ -82,6 +82,10 @@ public sealed partial class OffscreenRenderer : IDisposable
     /// <summary>Whether a renderer is up (false while starting, after a loss, or once given up).</summary>
     public bool Running => _r != null;
     public string State { get; private set; } = "starting";
+    /// <summary>Given up without ever having come up: most likely a PC whose graphics can't run it (no Vulkan 1.3
+    /// driver: a VM, Microsoft's basic display adapter, an old card).</summary>
+    public bool NeverRan => _gaveUp && !_everUp;
+    volatile bool _everUp;
 
     // what the status op reports (render thread writes, any thread reads)
     long _frames, _idleFrames, _lookFrames, _glanceFrames, _pictures;
@@ -304,6 +308,7 @@ public sealed partial class OffscreenRenderer : IDisposable
             if (_feed == null) _feed = new RegionFeed(_s.World, r);
             else _feed.Switch(r);
             _r = r;
+            _everUp = true;
             _windowAt = Stopwatch.GetTimestamp();
             State = "running";
             _log($"the view out of sight is up on {r.DeviceName}: {IdleHz:0.#} frames a second at {IdleSize} px between pictures");
