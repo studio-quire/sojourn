@@ -22,19 +22,19 @@ namespace Sojourn.Client.Control;
 /// is the right trigger the shutter (unless the ray is on a menu, a board or a key; touching waits meanwhile);
 /// otherwise the trigger is as ever (pictures were taken by accident when it was the shutter whenever the camera was
 /// out: the user, 2026-10-29). Whether a press is the shutter, and the panel it takes, are fixed from the trigger's first
-/// movement, so the press doesn't shake the shot. The panel flashes as it's taken, with the viewer's snapshot sound.
-/// On the desktop, the viewer's Snapshot to Disk key, Ctrl+` (Program.cs), takes the window's view. Main thread.
+/// movement, so the press doesn't shake the shot. The panel flashes as it's taken, with the viewer's snapshot sound,
+/// and once saved the picture shows for a few seconds just above the panel (ShutterReview). On the desktop, the
+/// viewer's Snapshot to Disk key, Ctrl+` (Program.cs), takes the window's view. Main thread.
 /// </summary>
 public sealed class Shutter(AgentSession s, Func<Sojourn.Session.Audio.WorldSounds?> sounds, Action<string> say)
 {
     static readonly UUID SnapshotSound = new("3d09f582-3851-c0e0-f5ba-277ac5c73fb4");   // UISndSnapshot
     const float Deg = MathF.PI / 180;
-    // framing: both hands within 50 degrees of where you look, 15 cm to a metre from the head, no lower than half a
-    // metre under the eyes (a hand held out to point or touch is lower, or alone), at least 15 cm apart; the picture at least 6 degrees a side, at most 90 tall and 105 wide (about what the Quest shows),
+    // framing: the camera out and both hands tracked, at least 15 cm apart; the picture at least 6 degrees a side, at most 120 tall and 140 wide (wider than the Quest shows, zooming out: the user, 2026-10-30),
     // 1:3 to 3:1; its field of view as the panel looks from the eyes' distance behind it, held to 25-70 cm
-    static readonly float InView = MathF.Cos(50 * Deg), MinTan = MathF.Tan(3 * Deg), MaxTanV = MathF.Tan(45 * Deg),
-        MaxTanH = MathF.Tan(52.5f * Deg);
-    const float Below = 0.5f, MinSpan = 0.15f, NearEye = 0.25f, FarEye = 0.7f, PalmOff = 0.04f;
+    static readonly float MinTan = MathF.Tan(3 * Deg), MaxTanV = MathF.Tan(60 * Deg),
+        MaxTanH = MathF.Tan(70 * Deg);
+    const float MinSpan = 0.15f, NearEye = 0.25f, FarEye = 0.7f, PalmOff = 0.04f;
     const float MaxAspect = 3, Pixels = 1920 * 1080;
     const int LongestSide = FrameRenderer.StillTile;   // one tile: no tiling's extra passes for a press
 
@@ -42,6 +42,8 @@ public sealed class Shutter(AgentSession s, Func<Sojourn.Session.Audio.WorldSoun
     /// in its plane, half its width and height in metres, and the picture's half-tangents.</summary>
     readonly record struct Shot(Vector3 Centre, Vector3 Fwd, Vector3 Up, Vector3 Right, float HalfW, float HalfH, float TanH, float TanV);
 
+    const long HoldMs = 600;
+    long _seenAt = -10_000;
     bool _down, _armed = true;
     long _flashAt = -10_000;
     int _taking;
@@ -51,13 +53,30 @@ public sealed class Shutter(AgentSession s, Func<Sojourn.Session.Audio.WorldSoun
 
     volatile bool _out;
     volatile float _ratio;   // W/H, 0 free
+    volatile Sojourn.Session.Assistant.PanelLook? _look;   // the look as Decorate last had it, for the picture's sheet
+
+    /// <summary>The picture just taken, shown a few seconds above the panel (Program puts its layer among the boards).</summary>
+    public readonly ShutterReview Review = new();
+    volatile float _pivot = 0.06f;   // tuned by the user in the headset, 2026-10-30
+
+    /// <summary>The `photo_pivot` setting: metres below the eyes the panel is aimed from.</summary>
+    public float Pivot { get => _pivot; set => _pivot = Math.Clamp(value, 0, 0.5f); }
 
     /// <summary>The camera is out: the right trigger is the shutter. Set by the `camera` setting (any thread).</summary>
     public bool Out
     {
         get => _out;
-        set { if (_out == value) return; _out = value; _armed = false; say(value ? "camera out" : "camera put away"); }
+        set { if (_out == value) return; _out = value; _armed = false; _zoom = 1; say(value ? "camera out" : "camera put away"); }
     }
+
+    // zoom by the right stick while the camera's out, instead of what the stick otherwise does there (up in, down out;
+    // the user, 2026-10-30): 1 is the panel's own view, back to 1 each time the camera comes out
+    const float MinZoom = 0.25f, MaxZoom = 8, ZoomPerView = 0.7f;
+    volatile float _zoom = 1;
+
+    /// <summary>The right stick's sheet while the camera's out, up and down only (sideways still turns you).</summary>
+    public StickSheet? StickZoom => Out ? new StickSheet(this, Scroll: (down, _) =>
+        _zoom = Math.Clamp(_zoom * MathF.Exp(-down * ZoomPerView), MinZoom, MaxZoom), Vertical: true) : null;
 
     /// <summary>The `photo_ratio` setting: free (the hands' shape) or W:H.</summary>
     public string Ratio => _ratio <= 0 ? "free" : RatioText(_ratio);
@@ -105,6 +124,10 @@ public sealed class Shutter(AgentSession s, Func<Sojourn.Session.Audio.WorldSoun
         if (input.RightTrigger < 0.35f) { _armed = true; _down = false; }
         if (!focused) _armed = false;
         var now = Out ? Panel(input, head, headRot) : null;
+        // a hand's tracking dropping out for a moment (out of the headset's cameras) keeps the panel where it was
+        long t = Environment.TickCount64;
+        if (now is not null) _seenAt = t;
+        else if (Out && t - _seenAt < HoldMs) now = _shot;
         // a press is the shutter if the hands framed just before the trigger started down, and takes that panel (the
         // press shifts the right hand, a corner), until let go
         if (input.RightTrigger < 0.1f) (_pressing, _held) = (false, null);
@@ -118,17 +141,15 @@ public sealed class Shutter(AgentSession s, Func<Sojourn.Session.Audio.WorldSoun
     /// together, or the panel turned toward you).</summary>
     Shot? Panel(XrControllers input, Vector3 head, Quaternion headRot)
     {
-        var look = Vector3.Transform(-Vector3.UnitZ, headRot);
         float ratio = _ratio;
         if (input.LeftHandPos is not { } lg || input.RightHandPos is not { } rg || input.LeftHand is not { } lq || input.RightHand is not { } rq) return null;
         // a real rectangle in the room (the user, 2026-10-29: not a shape on the view): its bottom left corner just off
         // the left palm, its top right just off the right palm (OpenXR's grip +X comes out of the left palm and into the
         // right one), where the hands really are; its bottom edge level, its sides rising from there toward the right
-        // hand, so raising that hand makes it taller and bringing it nearer tips the panel back, as a sheet held so would
+        // hand, so raising that hand makes it taller
         Vector3 lp = lg + Vector3.Transform(Vector3.UnitX, lq) * PalmOff, rp = rg - Vector3.Transform(Vector3.UnitX, rq) * PalmOff;
-        Vector3 l = lp - head, r = rp - head;
-        if (l.Length() is < 0.15f or > 1.1f || r.Length() is < 0.15f or > 1.1f || l.Y < -Below || r.Y < -Below) return null;
-        if (Vector3.Dot(Vector3.Normalize(l), look) < InView || Vector3.Dot(Vector3.Normalize(r), look) < InView) return null;
+        // out means out: no rule on where you look or where the hands are (the user, 2026-10-30: it went off when they
+        // looked away from their hands, and at random), only that they're apart enough to hold a picture
         var diag = rp - lp;
         if (diag.Length() < MinSpan) return null;
         var centre = (lp + rp) / 2;
@@ -136,12 +157,14 @@ public sealed class Shutter(AgentSession s, Func<Sojourn.Session.Audio.WorldSoun
         if (right.LengthSquared() < 0.0004f) right = Vector3.Transform(Vector3.UnitX, headRot) with { Y = 0 };
         if (right.LengthSquared() < 1e-6f) return null;
         right = Vector3.Normalize(right);
-        var rise = diag - right * Vector3.Dot(diag, right);
-        var up = rise.LengthSquared() > 1e-6f ? Vector3.Normalize(rise) : Vector3.UnitY;
-        if (Vector3.Dot(up, Vector3.UnitY) < 0) up = -up;
-        var fwd = Vector3.Normalize(Vector3.Cross(up, right));
-        if (Vector3.Dot(fwd, centre - head) < 0) { fwd = -fwd; right = -right; }
-        if (Vector3.Dot(fwd, Vector3.Normalize(centre - head)) < 0.2f) return null;   // edge on to you: not a picture
+        // tilted up or down as it's aimed through its centre from a point below the eyes (the user, 2026-10-30: held
+        // higher it looks up, lower down; from the eyes themselves, hands held comfortably low looked down), its
+        // bottom edge still level
+        var through = centre - (head - Vector3.UnitY * _pivot);
+        var fwd = through - right * Vector3.Dot(through, right);
+        fwd = fwd.LengthSquared() > 1e-6f ? Vector3.Normalize(fwd) : Vector3.Normalize(Vector3.Cross(Vector3.UnitY, right));
+        var up = Vector3.Cross(right, fwd);
+        if (up.Y < 0) { up = -up; right = -right; }
 
         // the hands at opposite corners: the half diagonal's parts along the panel's sides
         var half = diag / 2;
@@ -154,6 +177,9 @@ public sealed class Shutter(AgentSession s, Func<Sojourn.Session.Audio.WorldSoun
         float eye = Math.Clamp(Vector3.Dot(centre - head, fwd), NearEye, FarEye);
         float th = hw / eye, tv = hh / eye;
         float k = MathF.Max(1, MinTan / MathF.Min(th, tv));
+        // the right stick's zoom on top (the user, 2026-10-30), held to the same limits
+        k /= _zoom;
+        k = MathF.Max(k, MinTan / MathF.Min(th, tv));
         k = MathF.Min(k, MathF.Min(MaxTanH / th, MaxTanV / tv));
         return new Shot(centre, fwd, up, right, hw, hh, th * k, tv * k);
     }
@@ -204,6 +230,9 @@ public sealed class Shutter(AgentSession s, Func<Sojourn.Session.Audio.WorldSoun
                 // the person's own press: the op itself, not the dispatcher the assistant's calls go through
                 var r = await snapshot.Run(args, CancellationToken.None);
                 say(r is JsonObject o && o["path"] is { } path ? $"picture: {path}" : $"picture not taken: {r?.ToJsonString()}");
+                if (r is JsonObject saved && saved["path"]?.GetValue<string>() is { } file)
+                    try { Review.Taken(file, f.Centre, f.Up, f.HalfW, f.HalfH, _look ?? Sojourn.Session.Assistant.PanelLook.InUse); }
+                    catch (Exception e) { say("picture not shown: " + e.Message); }
             }
             catch (Exception e) { say("picture not taken: " + e.Message); }
             finally { _taking = 0; }
@@ -215,6 +244,7 @@ public sealed class Shutter(AgentSession s, Func<Sojourn.Session.Audio.WorldSoun
     /// is out and nothing's framed, the preview waits (its targets kept ready, nothing drawn).</summary>
     public OverlayScene? Decorate(OverlayScene? scene, VrPilot pilot, Vector3 head, Quaternion headRot, Sojourn.Session.Assistant.PanelLook look)
     {
+        _look = look;
         if (!Out) return scene;
         if ((_pressing ? _held : _shot) is not { } f) return scene is null ? null : scene with { Preview = CameraPreview.Waiting };
         float w = f.HalfW, h = f.HalfH, arm = MathF.Min(0.05f, 0.35f * MathF.Min(w, h));

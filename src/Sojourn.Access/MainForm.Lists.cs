@@ -43,6 +43,7 @@ public sealed partial class MainForm
         Item("Offer &teleport", p => _ = PersonOpAsync("offerTeleport", p, $"Teleport offered to {p.Name}."));
         Item("&Request teleport", p => _ = PersonOpAsync("requestTeleport", p, $"Asked {p.Name} for a teleport."));
         Item("Always in&cognito with them", p => IncognitoWith(p.Id, p.Name));
+        KeysOn(_personMenu, ("&Describe", "Control+D"));
         MenuOn(_people, _personMenu);
         _people.KeyDown += (_, e) => ListKey(_people, _personMenu, e, RefreshPeople);
         BuildPeoplePage();
@@ -77,6 +78,7 @@ public sealed partial class MainForm
             foreach (ToolStripItem i in _objectMenu.Items)
                 i.Visible = !hud || i.Text is "&Touch" or "&Describe" or "W&here" or "&Parts";
         };
+        KeysOn(_objectMenu, ("&Describe", "Control+D"), ("&Parts", "Tab"));
         MenuOn(_objects, _objectMenu);
         _objects.KeyDown += (_, e) => ListKey(_objects, _objectMenu, e, RefreshObjects);
         BuildParts();
@@ -133,10 +135,11 @@ public sealed partial class MainForm
         _listsAt = Environment.TickCount64;
         if (_areas.SelectedTab == _peoplePage && !_people.Focused) _ = RefreshPeople(false);
         if (_areas.SelectedTab == _peoplePage) RefreshFriendsAndGroups(said: false);
-        if (_areas.SelectedTab == _objectsPage && !_objects.Focused) _ = RefreshObjects(false);
+        if (_areas.SelectedTab == _objectsPage && !_objects.Focused && !_objectsBusy) _ = RefreshObjects(false);
     }
 
     bool _peopleBusy, _objectsBusy;
+    bool? _objectsAgain;   // asked for while a refresh was under way (Show changed, F5): once it ends, again (said if any asked)
 
     /// <summary>Tests: the first fill of People nearby and Objects nearby held back this long (SOJOURN_TEST_LIST_DELAY_MS),
     /// as on a busy Second Life region, where the objects list waits up to 3 s for names: arriving before it fills.</summary>
@@ -170,7 +173,9 @@ public sealed partial class MainForm
 
     async Task RefreshObjects(bool asked)
     {
-        if (_objectsBusy || Host?.Session.Online != true) return;
+        if (Host?.Session.Online != true) return;
+        // (Show changed while a refresh waits up to 3 s for names: a list the person is in never refreshes by itself)
+        if (_objectsBusy) { _objectsAgain = asked || _objectsAgain == true; return; }
         _objectsBusy = true;
         bool first = _objects.Items.Count == 0;
         if (first) Looking(_objects, "Objects nearby", true);
@@ -193,6 +198,7 @@ public sealed partial class MainForm
             _objectsBusy = false;
             if (first) Looking(_objects, "Objects nearby", false);
         }
+        if (_objectsAgain is { } again) { _objectsAgain = null; await RefreshObjects(again); }
     }
 
     /// <summary>The list's items replaced, the one the person was on still focused (by key), or a line saying it's empty.</summary>

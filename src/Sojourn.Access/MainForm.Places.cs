@@ -39,7 +39,7 @@ public sealed partial class MainForm
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 30));
         t.Controls.Add(new Label { Text = "&Landmarks", AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top }, 0, 0);
         t.Controls.Add(_landmarks, 1, 0);
-        t.Controls.Add(new Label { Text = "&History", AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top }, 0, 1);
+        t.Controls.Add(new Label { Text = "Hi&story", AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top }, 0, 1);
         t.Controls.Add(_history, 1, 1);
         t.Controls.Add(new Label { Text = "&Go to region", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
         t.Controls.Add(_goRegion, 1, 2);

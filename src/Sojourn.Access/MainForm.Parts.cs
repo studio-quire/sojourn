@@ -47,6 +47,7 @@ public sealed partial class MainForm
         PartItem("W&here", p => Answer(p.Hud ? $"{PartName(p)} is on your HUD." : $"{PartName(p)} is {_ops.Where(L(p.Pos), full: true)}."));
         PartItem("&Describe", p => _ = DescribeAsync(Of(p)));
         PartItem("&Faces", p => { _faces.Focus(); });
+        KeysOn(_partMenu, ("&Touch", "Enter"), ("&Describe", "Control+D"), ("&Faces", "Tab"));
         MenuOn(_parts, _partMenu);
         _parts.KeyDown += (_, e) => PartKey(e);
         _parts.SelectedIndexChanged += (_, _) => { if (_parts.FocusedItem?.Tag is Linkset.Part p && p.Id != _facesOf) _ = RefreshFacesAsync(p); };
@@ -54,6 +55,7 @@ public sealed partial class MainForm
         _faceMenu = new ContextMenuStrip { Name = "faceMenu", AccessibleName = "Actions" };
         _faceMenu.Items.Add(new ToolStripMenuItem("&Touch", null, (_, _) => { if (_faces.FocusedItem?.Tag is FaceItem f) _ = TouchPartAsync(f.Part, f.Face); }));
         _faceMenu.Items.Add(new ToolStripMenuItem("W&here", null, (_, _) => { if (_faces.FocusedItem?.Tag is FaceItem f) Answer($"{_faces.FocusedItem.Text}: {_ops.Where(L(f.Face.Point), full: true)}."); }));
+        KeysOn(_faceMenu, ("&Touch", "Enter"));
         MenuOn(_faces, _faceMenu);
         _faces.KeyDown += (_, e) =>
         {
@@ -73,7 +75,7 @@ public sealed partial class MainForm
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 30));
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 25));
-        t.Controls.Add(new Label { Text = "S&how", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+        t.Controls.Add(new Label { Text = "Sh&ow", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
         t.Controls.Add(_objectsShow, 1, 0);
         t.Controls.Add(_objects, 0, 1);
         t.SetColumnSpan(_objects, 2);

@@ -61,6 +61,7 @@ public sealed partial class MainForm
         {
             if (v.Muted && !RealInput.Person) { Reader?.Answer(RealInput.Why, keep: false); return true; }
             v.ToggleMute();
+            _earcons?.Mic(open: !v.Muted);
             Reader?.Answer(v.Muted ? "Mic muted." : "Mic live.", keep: false);
             return true;
         }
@@ -68,6 +69,8 @@ public sealed partial class MainForm
         if (!v.Enabled) { Reader?.Answer("Voice chat is off: Alt+0 turns it on.", keep: false); return true; }
         if (v.OffHere) Reader?.Answer("Voice is off here: nobody hears you.", keep: false);
         Host!.Voice!.KeyDown();
+        _micOpen = true;
+        _earcons?.Mic(open: true);
         return true;
     }
 
@@ -82,6 +85,16 @@ public sealed partial class MainForm
     {
         _talkHeld = false;
         Host?.Voice?.KeyUp();
+        MicClosed();
+    }
+
+    bool _micOpen;   // push to talk held open by the talk key
+
+    void MicClosed()
+    {
+        if (!_micOpen) return;
+        _micOpen = false;
+        _earcons?.Mic(open: false);
     }
 
     /// <summary>The window lost the focus: a held talk key lets go (its key up may never come here).</summary>
@@ -89,15 +102,18 @@ public sealed partial class MainForm
     {
         _talkHeld = false;
         Host?.Voice?.Release();
+        MicClosed();
     }
 
     void ToggleVoiceMode()
     {
         if (Voice is not { } v) { Reader?.Answer(VoiceOff(), keep: false); return; }
         var st = Host!.Settings;
+        bool wasLive = v.Mode == VoiceMode.OpenMic && !v.Muted;
         st.VoiceMode = v.Mode == VoiceMode.OpenMic ? VoiceMode.PushToTalk : VoiceMode.OpenMic;
         v.Mode = st.VoiceMode;
         Host.SaveSettings();
+        if (wasLive) _earcons?.Mic(open: false);   // an open mic, live, back to push to talk: closed now
         Reader?.Answer(st.VoiceMode == VoiceMode.OpenMic ? $"Open mic, muted: {KeyName} unmutes." : $"Push to talk: hold {KeyName} to talk.", keep: false);
     }
 

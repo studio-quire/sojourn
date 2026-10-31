@@ -555,6 +555,8 @@ if (headset != null)
         () => shutter.Out, SettingsApi.Switch("photo_camera", on => shutter.Out = on)));
     settingsApi.Add("photo_ratio", new("you", "in the headset, the photo camera's shape: free (the hands' rectangle, the default) or a W:H it keeps (16:9, square, 4:5...), the hands setting its size by their diagonal (not kept between sessions)", "free, square, W:H (1:3 to 3:1)",
         () => shutter.Ratio, v => shutter.SetRatio(v.GetValueKind() == System.Text.Json.JsonValueKind.String ? v.GetValue<string>() : v.ToJsonString())));
+    settingsApi.Add("photo_pivot", new("you", "in the headset, how far below the eyes the photo camera tilts from: it's aimed from there through its centre, so hands held at that height take a level picture", "0-0.5 m",
+        () => shutter.Pivot, SettingsApi.Number("photo_pivot", 0f, 0.5f, "", f => shutter.Pivot = f)));
 }
 // the eyes' depth handed to the headset's compositor for reprojecting (on by default; menu > view > depth reprojection)
 settingsApi.Add("reprojection_depth", new("view", "in the headset, the eyes' depth goes to the compositor so late frames are reprojected by head position too (off by default: no visible difference, and with it the compositor misorders overlapping menus in a patch around the view, so it's held back while any two overlap); off, by rotation only", "on, off",
@@ -978,7 +980,7 @@ void HeadsetFrame(XrSession hs, MirrorTarget target)
     shutter.Shoot(xf.Input, aimFree, hs.Focused);
     var aimed = safety.Aim?.Headset(overlay, xf.Input, vrPilot, aimFree && !shutter.Framing, hs.Focused) ?? overlay;
     if (!uiHidden) overlay = aimed;
-    sheetStick.Frame(uiHidden ? null : SheetStick.Find(reader, vrRayOnPanel, settingsMenu, assistant, social, media, hudBoard, map, vrWorldHand), (float)dt);
+    sheetStick.Frame(uiHidden ? null : SheetStick.Find(reader, vrRayOnPanel, settingsMenu, assistant, social, media, hudBoard, map, vrWorldHand, shutter), (float)dt);
     if (!uiHidden)
     {
         overlay = hudBoard.Decorate(overlay, vrPilot, () => assistant.Panel.Look, panelInEyes);
@@ -1036,7 +1038,8 @@ void HeadsetFrame(XrSession hs, MirrorTarget target)
             var grip = xf.Input.LeftHandPos is { } gp && xf.Input.LeftHand is { } gr ? (gp, gr) : ((System.Numerics.Vector3, System.Numerics.Quaternion)?)null;
             req = req with { Overlay = showing.Headset(req.Overlay, sview, headAt, xf.Eyes[0].Orientation, panelRest, vrPilot.RoomToRegion, hs, grip,
                 renderer.Heads, social.NamesOn, confirming, panelInEyes, (float)dt) };
-            req = req with { Overlay = map.HeadsetScene(req.Overlay, hs, vrPilot.RoomToRegion, panelInEyes) };
+            // (with the camera's picture just taken, a few seconds over the panel it was taken through: Control/ShutterReview.cs)
+            req = req with { Overlay = map.HeadsetScene(req.Overlay, hs, vrPilot.RoomToRegion, panelInEyes, shutter.Review.Layer(headAt, confirming)) };
         }
         if (view is { } vview && !uiHidden) req = req with { Overlay = voiceWiring?.Decorate(req.Overlay, vview.Region, vview.Position, vview.Forward, vrPilot.Watch(xf.Input)) ?? req.Overlay };
         if (handsCheck != null && view is { } hv && handsCheck.Frame(hv, xf.Input, vrPilot, now) is { } hc)

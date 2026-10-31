@@ -194,7 +194,8 @@ public sealed partial class WalkMode
         _brakeUntil = now + 1000;
     }
 
-    void ToggleFly()
+    /// <summary>Home in walk mode, and the menu bar's Fly: flying, or landing.</summary>
+    public void ToggleFly()
     {
         if (S.Client is not { } c || Me() is not { } b) return;
         if (b.Sitting) { Line("Seated: stand first (//stand)."); return; }

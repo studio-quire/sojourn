@@ -18,14 +18,17 @@ namespace Sojourn.Session.Social;
 public sealed class Radar
 {
     const float ChatRange = 20;
-    const double Settle = 8;   // seconds after an arrival before changes are told
+    // after an arrival, changes are told once the region has filled in: at least Settle seconds, then until nobody new
+    // has appeared for Quiet seconds, at most MaxSettle (a fixed 8 s let a crowd still loading in arrive as a flood,
+    // the user at Firestorm Social Island, 2026-10-30)
+    const double Settle = 8, Quiet = 4, MaxSettle = 40;
 
     readonly AgentSession _s;
     readonly SocialSettings _opt;
     readonly Dictionary<UUID, (bool Chat, bool Draw, bool Region, float D)> _was = new();
     readonly HashSet<UUID> _aged = new();
     ulong _region;
-    DateTime _arrived = DateTime.MinValue;
+    DateTime _arrived = DateTime.MinValue, _lastNew = DateTime.MinValue;
     int _reports;
 
     public Radar(AgentSession s, SocialSettings opt)
@@ -74,10 +77,13 @@ public sealed class Radar
         if (!AnyOn) { _was.Clear(); return; }
         var now = Now();
         // an arrival: what's there is taken as it is, and kept so for a few seconds while the region fills in
-        bool arriving = cur.Handle != _region || DateTime.UtcNow - _arrived < TimeSpan.FromSeconds(Settle);
-        if (cur.Handle != _region) { _region = cur.Handle; _arrived = DateTime.UtcNow; }
-        if (_was.Count == 0 && !arriving) arriving = true;   // just turned on
+        var t = DateTime.UtcNow;
+        if (cur.Handle != _region) { _region = cur.Handle; _arrived = _lastNew = t; }
         var next = now.ToDictionary(n => n.Id, n => (n.Chat, n.Draw, n.Region, n.D));
+        double since = (t - _arrived).TotalSeconds;
+        bool arriving = since < Settle || (since < MaxSettle && (t - _lastNew).TotalSeconds < Quiet);
+        if (arriving && next.Keys.Any(id => !_was.ContainsKey(id))) _lastNew = t;
+        if (_was.Count == 0 && !arriving) arriving = true;   // just turned on
         if (!arriving)
         {
             foreach (var (id, n) in next)

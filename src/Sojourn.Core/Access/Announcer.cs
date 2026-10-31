@@ -234,6 +234,31 @@ public sealed class Announcer : IDisposable
         ReadAgain(text);
     }
 
+    /// <summary>The lines that arrived (what <see cref="Say"/> kept; answers to the person's keys left out), newest
+    /// first, at most <paramref name="count"/>.</summary>
+    public List<string> RecentArrivals(int count)
+    {
+        lock (_lock)
+            return Enumerable.Range(0, _history.Count).Select(i => _history[_history.Count - 1 - i])
+                .Where(i => i.Holdable).Take(count).Select(i => i.Text).ToList();
+    }
+
+    /// <summary>The nth newest line that arrived (1 the newest; answers to keys left out) read again, review going on
+    /// from it (NVDA's VIP Mud convention: Control+1 to 9 in Sojourn Access).</summary>
+    public void ArrivedAgo(int n)
+    {
+        string text;
+        lock (_lock)
+        {
+            int at = -1, seen = 0;
+            for (int i = _history.Count - 1; i >= 0 && at < 0; i--)
+                if (_history[i].Holdable && ++seen == n) at = i;
+            if (at < 0) text = seen == 0 ? "Nothing yet." : $"Only {seen} {(seen == 1 ? "message" : "messages")} so far.";
+            else { _cursor = at; text = _history[at].Text; }
+        }
+        ReadAgain(text);
+    }
+
     int _mark = -1;
 
     /// <summary>The line under review (or the newest) marked as where a copy starts (the add-on's mark); what's said.</summary>

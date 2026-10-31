@@ -17,7 +17,8 @@ namespace Sojourn.Access;
 /// tree too.
 ///
 /// A second pane (a blind tester's second inventory window: for moving many items between folders, her fishing catch):
-/// Alt+4 again in the inventory opens it beside the first and moves between the two; each has its own tree, search, Show
+/// Alt+Shift+4 opens it beside the first (Alt+4 goes back to the first, the Applications key and the menu bar's View
+/// too); each has its own tree, search, Show
 /// and marks; Control+M moves what's marked (or selected) into the folder selected in the other pane, the Applications
 /// key's "Copy to the other pane" copies, and cut and paste work across them; Control+W in the second pane closes it.
 /// The trees don't change under the person: their actions refresh the folders they touched (in both panes), F5 everything.
@@ -99,10 +100,10 @@ public sealed partial class MainForm
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        // the mnemonics only on the first pane's labels (Alt+S and Alt+H there; the second's are reached by Tab)
+        // the mnemonics only on the first pane's labels (Alt+S and Alt+O there, Alt+H being Help's; the second's are reached by Tab)
         t.Controls.Add(new Label { Text = title == "" ? "&Search" : "Search", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
         t.Controls.Add(search, 1, 0);
-        t.Controls.Add(new Label { Text = title == "" ? "S&how" : "Show", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 0);
+        t.Controls.Add(new Label { Text = title == "" ? "Sh&ow" : "Show", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 0);
         t.Controls.Add(show, 3, 0);
         t.Controls.Add(tree, 0, 1);
         t.SetColumnSpan(tree, 4);
@@ -142,24 +143,19 @@ public sealed partial class MainForm
         ShowInventory(_pane1, said: false);
     }
 
-    /// <summary>Alt+4 while in the inventory: to the other pane, opening the second the first time (at the top, or
-    /// where it was left).</summary>
-    void OtherPane()
+    /// <summary>Alt+Shift+4 (the inventory's page showing): to the second pane, opening it the first time (at the top,
+    /// or where it was left).</summary>
+    void OpenSecondPane()
     {
-        if (!SecondOpen)
-        {
-            _secondOpen = true;
-            _pane2.Panel.Visible = true;
-            _invLayout.ColumnStyles[0].Width = 50;
-            _invLayout.ColumnStyles[1].Width = 50;
-            if (!_pane2.ShownOnce) { _pane2.ShownOnce = true; ShowInventory(_pane2, said: false); }
-            _pane = _pane2;
-            _pane2.Tree.Focus();
-            Reader?.Answer("Second pane. Alt+4 moves between the panes, Control+M moves what's marked into the folder selected in the other, Control+W closes this one.", keep: false);
-            return;
-        }
-        _pane = Other(_pane.Contains(ActiveControl) ? _pane : Other(_pane));
-        _pane.Tree.Focus();
+        _pane = _pane2;
+        if (SecondOpen) { _pane2.Tree.Focus(); return; }
+        _secondOpen = true;
+        _pane2.Panel.Visible = true;
+        _invLayout.ColumnStyles[0].Width = 50;
+        _invLayout.ColumnStyles[1].Width = 50;
+        if (!_pane2.ShownOnce) { _pane2.ShownOnce = true; ShowInventory(_pane2, said: false); }
+        _pane2.Tree.Focus();
+        Reader?.Answer("Second pane. Alt+4 goes to the first, Alt+Shift+4 back here, Control+M moves what's marked into the folder selected in the other, Control+W closes this one.", keep: false);
     }
 
     void CloseSecondPane()
@@ -482,7 +478,8 @@ public sealed partial class MainForm
         if (handled) e.Handled = e.SuppressKeyPress = true;
     }
 
-    sealed record InvAction(string Text, Action Do);
+    /// <param name="Key">the key that does it too, shown on the menu</param>
+    sealed record InvAction(string Text, Action Do, string? Key = null);
 
     /// <summary>Enter on an item: wear it, open it, or teleport by it.</summary>
     InvAction? DefaultAction(InvPane p, InventoryItem item) => ItemActions(p, new() { item }).TakeWhile(a => a.Text != "-").FirstOrDefault();
@@ -504,8 +501,13 @@ public sealed partial class MainForm
         {
             if (a.Text == "-") { _invMenu.Items.Add(new ToolStripSeparator()); continue; }
             var act = a;
-            _invMenu.Items.Add(new ToolStripMenuItem(a.Text, null, (_, _) => act.Do()));
+            _invMenu.Items.Add(new ToolStripMenuItem(a.Text, null, (_, _) => act.Do()) { ShortcutKeyDisplayString = a.Key });
         }
+        // the other pane, as Alt+4 and Alt+Shift+4 go there (after the menu has closed and given the focus back)
+        _invMenu.Items.Add(new ToolStripSeparator());
+        bool inSecond = p == _pane2;
+        _invMenu.Items.Add(new ToolStripMenuItem(inSecond ? "To the first pane" : SecondOpen ? "To the second pane" : "Open a second pane", null,
+            (_, _) => BeginInvoke(() => RealInput.Ours(() => GoInventory(second: !inSecond)))) { ShortcutKeyDisplayString = inSecond ? "Alt+4" : "Alt+Shift+4" });
         return _invMenu.Items.Count > 0;
     }
 
@@ -534,18 +536,21 @@ public sealed partial class MainForm
         }
         list.Add(new("-", () => { }));
         list.Add(new("&Give to...", () => _ = GiveAsync(p, chosen)));
-        list.Add(new("Cu&t", () => Clip(p, cut: true)));
-        list.Add(new("&Copy", () => Clip(p, cut: false)));
-        if (_invClip.Count > 0) list.Add(new("&Paste", () => _ = PasteAsync(p)));
+        list.Add(new("Cu&t", () => Clip(p, cut: true), "Control+X"));
+        list.Add(new("&Copy", () => Clip(p, cut: false), "Control+C"));
+        if (_invClip.Count > 0) list.Add(new("&Paste", () => _ = PasteAsync(p), "Control+V"));
         if (SecondOpen && FolderAt(Other(p)) is { } there)
         {
-            list.Add(new($"&Move to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: false)));
+            list.Add(new($"&Move to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: false), "Control+M"));
             list.Add(new($"Cop&y to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: true)));
         }
-        if (one) list.Add(new("Re&name", () => Rename(p)));
+        if (one) list.Add(new("Re&name", () => Rename(p), "F2"));
         if (one) list.Add(new("D&etails", () => _ = DetailsAsync(items[0])));
-        list.Add(new("&Delete", () => _ = DeleteAsync(p)));
+        if (one) list.Add(new("Descri&be", () => DescribeKey(me: false), "Control+D"));
+        list.Add(new("&Delete", () => _ = DeleteAsync(p), "Delete"));
         if (Marked(p).Count > 0) list.Add(new("Unmark a&ll", () => { Unmark(p); Reader?.Answer("Nothing marked.", keep: false); }));
+        // what Enter does, the first action, says so (one item chosen: Enter acts on the selected one)
+        if (one && list.Count > 0 && list[0].Text != "-") list[0] = list[0] with { Key = "Enter" };
         return list;
     }
 
@@ -560,17 +565,17 @@ public sealed partial class MainForm
             new("New &folder", () => _ = NewFolderAsync(f)),
             new("New n&otecard", () => _ = NewNotecardAsync(p, f)),   // (Re&name has N)
             new("&Give to...", () => _ = GiveAsync(p, new() { f })),
-            new("Cu&t", () => Clip(p, cut: true)),
-            new("&Copy", () => Clip(p, cut: false)),
+            new("Cu&t", () => Clip(p, cut: true), "Control+X"),
+            new("&Copy", () => Clip(p, cut: false), "Control+C"),
         };
-        if (_invClip.Count > 0) list.Add(new("&Paste", () => _ = PasteAsync(p)));
+        if (_invClip.Count > 0) list.Add(new("&Paste", () => _ = PasteAsync(p), "Control+V"));
         if (SecondOpen && FolderAt(Other(p)) is { } there && there.UUID != f.UUID)
         {
-            list.Add(new($"&Move to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: false)));
+            list.Add(new($"&Move to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: false), "Control+M"));
             list.Add(new($"Cop&y to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: true)));
         }
-        list.Add(new("Re&name", () => Rename(p)));
-        list.Add(new("&Delete", () => _ = DeleteAsync(p)));
+        list.Add(new("Re&name", () => Rename(p), "F2"));
+        list.Add(new("&Delete", () => _ = DeleteAsync(p), "Delete"));
         return list;
     }
 

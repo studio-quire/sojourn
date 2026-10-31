@@ -13,6 +13,14 @@ static class Program
         ApplicationConfiguration.Initialize();
         Application.AddMessageFilter(RealInput.Filter);
         RealInput.Start();
+        // an exception escaping on the window's thread: into the session log and said, the app going on, rather than
+        // WinForms' own dialog, which takes the focus and waits on a button nobody was told about
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) =>
+        {
+            Console.Error.WriteLine($"access: unhandled on the window's thread: {e.Exception}");
+            MainForm.Oops?.Invoke(e.Exception);
+        };
         var app = new AccessApp(opt, args);
         Application.Run(app);
         return 0;

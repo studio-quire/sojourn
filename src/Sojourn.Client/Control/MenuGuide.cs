@@ -29,7 +29,7 @@ public static class MenuGuide
         // --- moving
         S("moving/posture", "Standing or seated. Seated, sit up straight and press Y to set your height."),
         A("moving/eye height", "See from your own height, or from your avatar's eyes."),
-        A("moving/turning", "How the right stick turns you: smoothly, or in quick steps."),
+        S("moving/turning", "How the right stick turns you: smoothly, or in quick steps."),
         A("moving/turn speed", "How fast smooth turning goes."),
         A("moving/snap angle", "How far each quick turn goes."),
         A("moving/moving toward", "The left stick walks you where you look, or where your left hand points."),

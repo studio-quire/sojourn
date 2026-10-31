@@ -237,8 +237,10 @@ public sealed class MapWiring : IDisposable
     }
 
     /// <summary>The boards' and the line's layers onto the headset (every frame, so they go when they're down), their
-    /// frost and the rays' beams into the eyes' overlay.</summary>
-    public OverlayScene? HeadsetScene(OverlayScene? scene, XrSession hs, Func<Vector3, Vector3> roomToRegion, bool inEyes)
+    /// frost and the rays' beams into the eyes' overlay. more: other sheets of the client's placed as the boards are, in
+    /// the same atlas (the camera's picture just taken, Control/ShutterReview).</summary>
+    public OverlayScene? HeadsetScene(OverlayScene? scene, XrSession hs, Func<Vector3, Vector3> roomToRegion, bool inEyes,
+        (string Key, OverlayImage Image, Vector3 Pos, Quaternion Rot, float Width)? more = null)
     {
         var layers = new List<(string, OverlayImage, Vector3, Quaternion, float)>(3);
         var placed = new List<(OverlayImage Image, Vector3[] Corners, bool Held)>(3);
@@ -255,6 +257,7 @@ public sealed class MapWiring : IDisposable
         bool miniHeld = MiniAt == MiniHome.Hand;
         Add(miniHeld ? MiniHeldKey : MiniKey, Mini.Layer(), miniHeld);
         Add(LineKey, Line.Layer(), true);
+        if (more is { } m) Add(m.Key, (m.Image, m.Pos, m.Rot, m.Width), false);
         if (hs.HeldCards.Length == 0) hs.HeldCards = [LineKey, MiniHeldKey];
         hs.SetCards(layers, "map");
         scene = World.Decorate(scene, roomToRegion);

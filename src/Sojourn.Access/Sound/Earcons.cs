@@ -99,13 +99,20 @@ public sealed class Earcons
         "earcon_im" => CueSounds.Cue.EarIm, "earcon_mention" => CueSounds.Cue.EarMention, "earcon_menu" => CueSounds.Cue.EarMenu,
         "earcon_offer" => CueSounds.Cue.EarOffer, "earcon_group" => CueSounds.Cue.EarGroup, "earcon_nearby" => CueSounds.Cue.EarNearby,
         "earcon_objects" => CueSounds.Cue.EarObject, "earcon_friends" => CueSounds.Cue.EarFriendOn, "earcon_radar" => CueSounds.Cue.EarArrive,
-        "earcon_notice" => CueSounds.Cue.EarNotice, "earcon_sent" => CueSounds.Cue.EarSent,
+        "earcon_notice" => CueSounds.Cue.EarNotice, "earcon_sent" => CueSounds.Cue.EarSent, "earcon_mic" => CueSounds.Cue.MicOn,
         "walk_steps_volume" => CueSounds.Cue.StepStone, "walk_walls_volume" => CueSounds.Cue.Wall, "walk_openings_volume" => CueSounds.Cue.Opening,
         "walk_edges_volume" => CueSounds.Cue.Edge, "walk_turns_volume" => CueSounds.Cue.Turn, "walk_sonar_volume" => CueSounds.Cue.PingMid,
         "walk_vehicle_volume" => CueSounds.Cue.Wall, "walk_beacon_volume" => CueSounds.Cue.BeaconAhead, "walk_marks_volume" => CueSounds.Cue.MarkSeat,
         "access_sounds_volume" => CueSounds.Cue.EarIm,
         _ => null,
     };
+
+    /// <summary>Voice chat's mic opening or closing (push to talk, an open mic's mute): a short click, centred.</summary>
+    public void Mic(bool open)
+    {
+        float level = _set.EarconLevel("mic");
+        if (level > 0) _sounds.Play(open ? CueSounds.Cue.MicOn : CueSounds.Cue.MicOff, level, null);
+    }
 
     /// <summary>Plays a setting's sound at its level now (after the person changed it); false when it's off or has none.</summary>
     public bool Preview(string setting)

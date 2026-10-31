@@ -7,9 +7,10 @@ namespace Sojourn.Client.Control;
 /// <summary>
 /// Something the right stick can move while the right ray is on it. Scroll: smooth, by a fraction of its own view
 /// (down: positive further down; right: positive further right), for a sheet that scrolls. Turn: a page (+1 next, -1
-/// back), for a sheet that pages; true if it turned. Key: which sheet it is.
+/// back), for a sheet that pages; true if it turned. Key: which sheet it is. Vertical: it takes only pushes up and
+/// down, a sideways one still turning you (the camera's zoom).
 /// </summary>
-public sealed record StickSheet(object Key, Action<float, float>? Scroll = null, Func<int, bool>? Turn = null);
+public sealed record StickSheet(object Key, Action<float, float>? Scroll = null, Func<int, bool>? Turn = null, bool Vertical = false);
 
 /// <summary>
 /// The right stick on a sheet (the user's idea from the headset, 2026-10-27: pointing at a menu that can scroll, the
@@ -48,7 +49,7 @@ public sealed class SheetStick
         if (middle) { _held = null; _free = true; _flickArmed = true; }
         else if (_held == null)
         {
-            if (_free && _under != null) { _held = _under; _flickArmed = true; }
+            if (_free && _under != null && !(_under.Vertical && MathF.Abs(_stick.X) > MathF.Abs(_stick.Y))) { _held = _under; _flickArmed = true; }
             else _free = false;   // the turn's push, until it's let go
         }
         if (_held != null) c.RightStick = default;
@@ -67,7 +68,7 @@ public sealed class SheetStick
         if (s.Scroll is { } scroll)
         {
             // the larger axis only: a push up that leans a little doesn't wander sideways
-            bool vertical = MathF.Abs(_stick.Y) >= MathF.Abs(_stick.X);
+            bool vertical = s.Vertical || MathF.Abs(_stick.Y) >= MathF.Abs(_stick.X);
             float v = vertical ? _stick.Y : _stick.X;
             float a = MathF.Abs(v);
             if (a > Dead)
@@ -104,7 +105,7 @@ public sealed class SheetStick
     /// the HUD board (both media's), a map (zoomed), the panel or the settings menu, the chat feed, then a page out in the
     /// world. Only what scrolls or pages now: elsewhere the stick does what it always does.</summary>
     public static StickSheet? Find(ReaderView reader, bool onPanel, SettingsMenu menu, AssistantHost assistant, Social.SocialView social,
-        Media.MediaWiring? media, Hud.HudBoard hud, Map.MapWiring map, bool worldHand)
+        Media.MediaWiring? media, Hud.HudBoard hud, Map.MapWiring map, bool worldHand, Shutter? camera = null)
     {
         if (reader.RightOn)
             return reader.Reader.Position.Long ? new StickSheet(reader, Scroll: (down, _) => reader.Reader.ScrollViews(down)) : null;
@@ -117,6 +118,7 @@ public sealed class SheetStick
             return assistant.Paged ? new StickSheet(assistant, Turn: assistant.Turn) : null;
         }
         if (social.OnSheet) return social.Scrollable ? new StickSheet(social, Scroll: (down, _) => social.ScrollViews(down)) : null;
-        return worldHand ? media?.WorldSheet() : null;
+        // the camera out: up and down zoom it, unless the ray is on a page in the world
+        return (worldHand ? media?.WorldSheet() : null) ?? camera?.StickZoom;
     }
 }

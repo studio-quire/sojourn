@@ -41,6 +41,8 @@ public sealed partial class MainForm
         GroupItem("&Wear its tag", g => _ = ActivateGroupAsync(g.Id, g.Name));
         GroupItem("&No group tag", g => _ = ActivateGroupAsync(UUID.Zero, "no group"));
         GroupItem("&Leave", g => _ = LeaveGroupAsync(g));
+        KeysOn(_friendMenu, ("Send &IM", "Enter"), ("&Describe", "Control+D"));
+        KeysOn(_groupMenu, ("Group &chat", "Enter"));
         MenuOn(_friends, _friendMenu);
         MenuOn(_groups, _groupMenu);
         _friends.KeyDown += (_, e) =>

@@ -738,6 +738,11 @@ switchTrack, updateCloudScroll) and `llviewermenu.cpp`.
   (`EnvironmentState` compares the answer's LLSD), so the 10 s refreshes don't read as changes. A region whose
   environment hasn't arrived shows the last one meanwhile (the viewer keeps its region environment until the new one is
   recorded), so a teleport doesn't flash the built-in default.
+- **Before any place's sky** (2026-10-30, the user's calls; Claude Opus 5.5): frames with no region at all (the login,
+  the seconds before arrival: `FrameRenderer.Void.cs`) are a flat neutral grey, sRGB #949494. Between a region
+  appearing and its environment loading, the viewer's own built-in default sky, as in SL (dim, a little teal), and the
+  region's own fades in from it over 5 s. Tried and dropped the same day: a slate void (read teal), our own dawn and
+  late-morning skies, and SL's Midday as the stand-in (its bright fade into the region's sky stood out).
 - **Clouds**: ours scroll by the time of day (exact across sessions; the viewer's accumulate while it runs). Kept
   continuous across changes of what's shown, held while paused (World > Environment > Pause Clouds; the `clouds`
   setting, not kept, as the viewer's), carrying on from there, zero while the rate is exactly zero.
@@ -823,7 +828,7 @@ The client half is `Sojourn.Client/Beacons/` (settings in `beacons-settings.json
 
 ## The interest list's 360 mode
 
-`interest_360` (off by default; `Control/EnvironmentWiring.cs`): LibreMetaverse's InterestListManager posts mode
+`interest_360` (off by default, the user's call after trying it at Firestorm Social Island, 2026-10-30: things behind arrive sooner, but off unless chosen; `Control/EnvironmentWiring.cs`): LibreMetaverse's InterestListManager posts mode
 "360" to each region's InterestList capability (and to regions connected later), as the viewer does for its 360
 snapshots: the region sends everything around the agent rather than what's in front first. Whether that helps in the
 headset (things behind arriving sooner after turning) is for a main-grid session to measure; OpenSim has no such

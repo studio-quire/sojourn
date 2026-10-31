@@ -121,13 +121,17 @@ public sealed partial class MainForm
         _noConversations = new TextBox
         {
             Name = "noConversations", AccessibleName = "Conversations", ReadOnly = true, Multiline = true, Dock = DockStyle.Fill, BackColor = SystemColors.Window,
-            Text = "No conversations yet. An IM from someone opens one here; in People nearby, the Applications key then Send IM starts one.",
+            Text = NoConversationsText,
         };
         _conversationsPage.Controls.Add(_conversations);
         _conversationsPage.Controls.Add(_noConversations);
         _conversations.Visible = false;
         _conversations.SelectedIndexChanged += (_, _) => FocusChanged();
+        // kept while the person is on it when the first conversation opens (hiding it would throw the focus elsewhere)
+        _noConversations.Leave += (_, _) => { if (_conversations.Visible) BeginInvoke(() => { if (!_noConversations.Focused) _noConversations.Visible = false; }); };
     }
+
+    const string NoConversationsText = "No conversations yet. An IM from someone opens one here; in People nearby, the Applications key then Send IM starts one.";
 
     /// <summary>The conversation's tab, made if new: it waits; nothing moves the focus.</summary>
     Conversation Open(string sessionId, string title, bool group, UUID other)
@@ -145,7 +149,18 @@ public sealed partial class MainForm
         // adding a tab keeps the one selected (and the focus wherever it is); the first one becomes the selected tab
         // of a control the person isn't in
         _conversations.TabPages.Add(page);
-        if (!_conversations.Visible) { _conversations.Visible = true; _noConversations.Visible = false; }
+        if (!_conversations.Visible)
+        {
+            _conversations.Visible = true;
+            // the person is reading the "no conversations" line: it stays, and says what came, until they leave it
+            if (_noConversations.Focused)
+            {
+                _noConversations.Dock = DockStyle.Top;
+                _noConversations.Height = 40;
+                _noConversations.Text = $"A conversation opened: {label}. Control+Tab goes to it.";
+            }
+            else _noConversations.Visible = false;
+        }
         return cv;
     }
 
@@ -196,7 +211,13 @@ public sealed partial class MainForm
         _conversations.TabPages.Remove(cv.Page);
         cv.Page.Dispose();
         _ = _ops.DoAsync("TesselIM", "leave", new JsonObject { ["session_id"] = cv.SessionId });
-        if (_conversations.TabCount == 0) { _conversations.Visible = false; _noConversations.Visible = true; }
+        if (_conversations.TabCount == 0)
+        {
+            _conversations.Visible = false;
+            _noConversations.Text = NoConversationsText;
+            _noConversations.Dock = DockStyle.Fill;
+            _noConversations.Visible = true;
+        }
         Reader?.Answer($"Closed {cv.Title}.");
         GoArea(_conversations.TabCount > 0 ? _conversationsPage : _chatPage);
     }

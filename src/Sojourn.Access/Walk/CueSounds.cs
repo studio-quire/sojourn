@@ -25,6 +25,8 @@ public sealed class CueSounds
         // M4 (appended: a cue's id in the bank is its number)
         EarNearby, EarObject, EarIm, EarGroup, EarMention, EarMenu, EarOffer, EarFriendOn, EarFriendOff, EarArrive, EarLeave,
         EarNotice, EarSent, Beacon, BeaconAhead, BeaconReached, MarkSeat, MarkTouch,
+        // push-to-talk's mic opening and closing
+        MicOn, MicOff,
     }
 
     const int Rate = 48000;
@@ -148,6 +150,9 @@ public sealed class CueSounds
             // marks: a seat sinks (two low notes falling), a touchable thing taps
             Cue.MarkSeat => Mix(Len(0.3), At(0, Marimba(262, 0.14, 0.06, 0.4f, bright: false)), At(0.1, Marimba(196, 0.2, 0.08, 0.4f, bright: false))),
             Cue.MarkTouch => Bell(1568, 0.1, 0.03, 0.22f),
+            // the mic: a short click, higher opening than closing (as a radio's key)
+            Cue.MicOn => Mix(Len(0.04), Tone(1760, 0.035, 0.0005, 0.007, 0.28f), Noise(rnd, 0.006, 0.0002, 0.0015, highPass: 3000, amp: 0.2f)),
+            Cue.MicOff => Mix(Len(0.04), Tone(1175, 0.035, 0.0005, 0.007, 0.28f), Noise(rnd, 0.006, 0.0002, 0.0015, highPass: 2000, amp: 0.2f)),
             _ => Tone(440, 0.05, 0.002, 0.02, 0.2f),
         };
     }

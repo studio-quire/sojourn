@@ -31,6 +31,8 @@ public sealed partial class MainForm
     Guid? _replyFor;           // the notice the reply box's text is for
     bool _replyForeign;        // something other than the person's keys put text in the reply box
     PendingConfirm? _cancelledHere;   // the confirmation the person last cancelled here (its op's refusal goes unsaid)
+    ContextMenuStrip _noticeMenu = null!;
+    (Control Control, TabPage Page)? _noticesFrom;   // where Control+N came from: Escape goes back there
 
     /// <param name="Kind">the notification's name (ScriptDialog, ScriptQuestion, LoadWebPage ...); "" for a confirmation</param>
     sealed record Notice(Guid Id, PendingConfirm? Confirm, string Words, string Detail, List<(string Name, string Label)> Buttons, bool TextBox, string? ObjectId, string Kind)
@@ -74,6 +76,8 @@ public sealed partial class MainForm
 
         _notices.SelectedIndexChanged += (_, _) => { if (_filling) return; ShowNotice(); NoteSelection(); };
         _notices.KeyDown += (_, e) => NoticeKey(e);
+        _noticeMenu = new ContextMenuStrip { Name = "noticeMenu", AccessibleName = "Keys" };
+        _notices.MouseUp += (_, e) => { if (e.Button == MouseButtons.Right) ShowNoticeMenu(); };
         _noticeIgnore.Click += (_, _) => PutAway(fromButton: true);
         _noticeReply.TextChanged += (_, _) =>
         {
@@ -234,6 +238,12 @@ public sealed partial class MainForm
     {
         var n = Selected();
         if (n == null) return;
+        if (e.KeyCode == System.Windows.Forms.Keys.Apps || e.KeyData == (System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.F10))
+        {
+            e.Handled = e.SuppressKeyPress = true;
+            ShowNoticeMenu();
+            return;
+        }
         int digit = e.KeyCode is >= System.Windows.Forms.Keys.D0 and <= System.Windows.Forms.Keys.D9 && !e.Control && !e.Alt
             ? (e.KeyCode == System.Windows.Forms.Keys.D0 ? 9 : e.KeyCode - System.Windows.Forms.Keys.D1)
             : e.KeyCode is >= System.Windows.Forms.Keys.NumPad0 and <= System.Windows.Forms.Keys.NumPad9
@@ -252,9 +262,61 @@ public sealed partial class MainForm
         }
     }
 
+    /// <summary>The Applications key on a notice: its keys as a menu, each with the key that presses it, and Put away
+    /// (a confirmation: Confirm and Cancel). An item answers as the person's own press of it, the same as the key.</summary>
+    void ShowNoticeMenu()
+    {
+        if (Selected() is not { } n) return;
+        _noticeMenu.Items.Clear();
+        void Add(string text, string? key, Action act) =>
+            _noticeMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => act()) { ShortcutKeyDisplayString = key });
+        if (n.Confirm != null)
+        {
+            Add("&Confirm", "Enter", () => Press(n, 0, fromButton: true));
+            Add("C&ancel", "Escape", () => Press(n, 1, fromButton: true));
+        }
+        else
+        {
+            for (int i = 0; i < n.Buttons.Count; i++)
+            {
+                int at = i;
+                var k = ButtonKey(i);
+                // no mnemonics: a script's labels are its own words, and its keys are the numbers
+                var item = new ToolStripMenuItem(n.Buttons[i].Label.Replace("&", "&&"), null, (_, _) => Press(n, at, fromButton: true))
+                {
+                    ShortcutKeyDisplayString = k switch { "minus" => "Minus", "equals" => "Equals", _ => k },
+                };
+                _noticeMenu.Items.Add(item);
+            }
+            if (n.TextBox) Add("Reply...", "Enter", () => BeginInvoke(() => RealInput.Ours(() => _noticeReply.Focus())));
+            if (_noticeMenu.Items.Count > 0) _noticeMenu.Items.Add(new ToolStripSeparator());
+            Add("Put away", "Delete", () => PutAway(fromButton: true));
+        }
+        var r = _notices.SelectedItems.Count > 0 ? _notices.SelectedItems[0].Bounds : Rectangle.Empty;
+        _noticeMenu.Show(_notices, new Point(r.Left + 10, r.Bottom));
+    }
+
+    /// <summary>Escape in the notices: back where Control+N came from (the page and the control), else to Say.</summary>
+    void BackFromNotices()
+    {
+        var from = _noticesFrom;
+        _noticesFrom = null;
+        if (from is { Control: { IsDisposed: false } c, Page: var page } && page != _noticesPage)
+        {
+            _areas.SelectedTab = page;
+            // (walk mode isn't gone back into unasked: its keys take the arrows)
+            if (c.CanFocus && c != _walkPad) c.Focus(); else FirstControl(page)?.Focus();
+            FocusChanged();
+            return;
+        }
+        GoArea(_chatPage);
+    }
+
     /// <summary>Ctrl+N: to the notices, the newest selected (the one just heard).</summary>
     void NewestNotice()
     {
+        if (_areas.SelectedTab != _noticesPage && ActiveControl is { } from && _areas.SelectedTab is { } page)
+            _noticesFrom = (from, page);
         PollNotices();
         GoArea(_noticesPage);
         if (_notices.Items.Count > 0) { _notices.Items[0].Selected = true; _notices.Items[0].Focused = true; }

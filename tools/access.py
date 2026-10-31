@@ -140,7 +140,7 @@ ROLES = {"chatInput": {"Edit"}, "chatHistory": {"Edit", "Document"}, "conversati
          "results": {"List", "DataGrid", "Table"}, "friends": {"List", "DataGrid", "Table"}, "groups": {"List", "DataGrid", "Table"},
          "profileText": {"Edit", "Document"}, "keysText": {"Edit", "Document"}}
 
-VK = {"back": 8, "minus": 189, "equals": 187, "tab": 9, "enter": 13, "ctrl": 17, "esc": 27, "space": 32, "del": 46, "oem_open": 219, "oem_close": 221, "f1": 112, "f3": 114, "f4": 115, "f5": 116, "f6": 117, "apps": 93,
+VK = {"back": 8, "minus": 189, "equals": 187, "tab": 9, "enter": 13, "ctrl": 17, "esc": 27, "space": 32, "del": 46, "oem_open": 219, "oem_close": 221, "f1": 112, "f3": 114, "f4": 115, "f5": 116, "f6": 117, "f10": 121, "apps": 93, "alt": 18, "pgup": 33, "pgdn": 34,
       "home": 36, "end": 35, "up": 38, "down": 40, "left": 37, "right": 39,
       **{str(d): 48 + d for d in range(10)}, **{c: ord(c.upper()) for c in "abcdefghijklmnopqrstuvwxyz"}}
 
@@ -905,6 +905,7 @@ def session(run, procs):
         ("people and objects", lambda: lists(run)),
         ("the renderer out of sight", lambda: offscreen(run)),
         ("keys", lambda: keys(run, nonce)),
+        ("the menu bar and the review's new keys", lambda: menu_bar(run, nonce, tester_id)),
         ("settings", lambda: settings(run)),
         ("the quit question", lambda: quit_question(run)),
         ("a script menu", lambda: notice_menu(run, tester_id)),
@@ -1193,23 +1194,34 @@ def settings(run):
     if not d:
         return
     tree_check(run, "settings", must=())
-    item = wait(lambda: find("type=ListItem;name~=Read out nearby chat"), 4)
-    if not run.check("it has 'Read out nearby chat'", item, label(item[0]) if item else "not listed"):
+    item = wait(lambda: find("type=ListItem;name~=Nearby chat read out"), 4)
+    if not run.check("it has 'Nearby chat read out'", item, label(item[0]) if item else "not listed"):
         return
+    # each row leads with what differs: no two rows begin with the same three words (first-letter navigation, the review)
+    rows = list_items("id=settings")
+    starts = {}
+    for r in rows:
+        starts.setdefault(" ".join(r.split(":")[0].split()[:3]).lower(), []).append(r)
+    shared = [v for v in starts.values() if len(v) > 1]
+    run.check("no two settings rows start with the same three words", rows and not shared, "; ".join(" / ".join(v) for v in shared[:4]) or f"{len(rows)} rows")
     key("home")
     for _ in range(40):
-        if "Read out nearby chat" in selection("id=settings"):
+        if "Nearby chat read out" in selection("id=settings"):
             break
         key("down")
         time.sleep(0.15)
-    if not run.check("Down arrow reaches it", "Read out nearby chat" in selection("id=settings"), selection("id=settings")):
+    if not run.check("Down arrow reaches it", "Nearby chat read out" in selection("id=settings"), selection("id=settings")):
         return
     for state in ("off", "on"):
         m = mark()
         key("enter")
-        run.expect(f"Enter on it turns it {state}, saying so", [f"Read out nearby chat: {state}."], m, 5)
-        now = find("type=ListItem;name~=Read out nearby chat")
+        run.expect(f"Enter on it turns it {state}, saying so", [f"Nearby chat read out: {state}."], m, 5)
+        now = find("type=ListItem;name~=Nearby chat read out")
         run.check(f"and the item says {state}", now and now[0]["name"].endswith(f": {state}"), label(now[0]) if now else "gone")
+    for k, state in (("right", "off"), ("left", "on")):
+        m = mark()
+        key(k)
+        run.expect(f"{k.title()} on it changes it too: {state}", [f"Nearby chat read out: {state}."], m, 5)
     # a safeguard against programs on the PC: a caller may set it back to refuse, never lower it to hello (the person
     # does that in Alt+0, by their own key or Windows Hello)
     try:
@@ -1235,18 +1247,18 @@ def settings(run):
     run.check("kept in the session's settings, applied once (later choices are the person's)",
               abs((kept.get("musicVolume") or 0) - 0.15) < 0.001 and marked == 1, detail)
     # stepping a volume: Enter up, Shift+Enter down (down from 0.25 no longer goes by way of 2)
-    item = wait(lambda: find("type=ListItem;name~=Volume of the music"), 4)
+    item = wait(lambda: find("type=ListItem;name~=Music volume"), 4)
     if run.check("Alt+0 has the music's volume", item, label(item[0]) if item else "not listed"):
         key("home")
         for _ in range(60):
-            if "Volume of the music" in selection("id=settings"):
+            if "Music volume" in selection("id=settings"):
                 break
             key("down")
             time.sleep(0.12)
-        for how, want in (("enter", "0.25"), ("shift+enter", "0.15"), ("shift+enter", "0")):
+        for how, want in (("enter", "0.25"), ("shift+enter", "0.15"), ("shift+enter", "0"), ("right", "0.15")):
             m = mark()
             key(how)
-            run.expect(f"{how.title()} on it: {want}", [f"Volume of the music: {want}."], m, 5)
+            run.expect(f"{how.title()} on it: {want}", [f"Music volume: {want}."], m, 5)
         setting("music_volume", 0.15)
 
 
@@ -1372,7 +1384,14 @@ def inv_search(words, expect_first):
             time.sleep(0.5)
     type_text(words, "id=inventorySearch")
     wait(lambda: value_of("id=inventorySearch") == words, 3, 0.2)
-    key("enter", target="id=inventorySearch")
+    # (a search through a big inventory, earlier runs' fixtures piled up in the Trash among them, holds the window's
+    # thread for seconds, and UI Automation gives up on the box meanwhile)
+    for attempt in range(4):
+        try:
+            key("enter", target="id=inventorySearch")
+            break
+        except ToolError:
+            time.sleep(2)
     wait_focus(lambda d: d["id"] == "inventory", 3)
     return wait(lambda: (lambda s: s if expect_first in s else None)(selection("id=inventory")), 5)
 
@@ -2228,7 +2247,7 @@ def huds(run, nonce):
         if not run.check("(Show reached)", wait_focus(lambda d: d["id"] == "objectsShow", 3), focus_label()):
             return
         key("down")
-        u("setfocus id=objects")
+        wait(lambda: u("setfocus id=objects"), 4)   # (the list is refilled and renamed as Show changes)
         listed = wait(lambda: find(f"type=ListItem;name~={name}, on HUD Center, 2 parts"), 8)
         run.check("Show: Your HUDs lists it, where it's worn and its parts", listed, " | ".join(list_items("id=objects")))
         if not listed:
@@ -2246,9 +2265,14 @@ def huds(run, nonce):
             key("enter")
             run.expect("Enter on Play presses it", ["Touched Play"], m, 10)
             run.heard_by_visitor("its script says it was pressed, on its own prim", lambda d: "Access HUD pressed, link 2" in d["msg"], n, 10, "pressed, link 2")
-        u("setfocus id=objectsShow")
-        key("up")
     finally:
+        try:   # Show back to things nearby, whatever stopped the step (the placing step lists them)
+            key("alt+7")
+            time.sleep(0.5)
+            u("setfocus id=objectsShow")
+            key("up")
+        except Exception:
+            pass
         api("TesselAgent", "detach", 30, item_id=item)
         back_to_chat()
 
@@ -2319,8 +2343,9 @@ def placing(run, nonce):
 
 
 def two_panes(run, nonce):
-    """The inventory's second pane (M2, a blind tester's second window): Alt+4 again opens it; there a folder is picked; back in
-    the first (Alt+4), two notecards marked with Space go into it by Control+M; Control+W closes the second pane."""
+    """The inventory's second pane (M2, a blind tester's second window): Alt+Shift+4 opens it (Alt+4 again in the first reads
+    it again, as every Alt+number); there a folder is picked; back in the first (Alt+4), two notecards marked with Space
+    go into it by Control+M; Control+W closes the second pane."""
     root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
     a_name, b_name = f"Access Pane A {nonce}", f"Access Pane B {nonce}"
     a = api("TesselInventory", "createFolder", name=a_name, parent_id=root)["folder_id"]
@@ -2333,8 +2358,13 @@ def two_panes(run, nonce):
     wait_focus(lambda d: d["id"] == "inventory", 4)
     m = mark()
     key("alt+4")
+    run.expect("Alt+4 again in the inventory reads it again", ["Inventory: "], m, 4)
+    time.sleep(0.5)
+    run.check("and opens no second pane", not find("id=inventory2Search"), focus_label())
+    m = mark()
+    key("alt+shift+4")
     d = wait_focus(lambda d: d["id"] == "inventory2", 4)
-    run.check("Alt+4 again in the inventory opens the second pane", d, label(d) if d else focus_label())
+    run.check("Alt+Shift+4 opens the second pane", d, label(d) if d else focus_label())
     run.expect("saying how it works", ["Second pane", "Control+M"], m, 4)
     tree_check(run, "two inventory panes", must=("inventory", "inventorySearch", "inventory2", "inventory2Search", "inventory2Show"))
     key("ctrl+f")
@@ -2347,7 +2377,7 @@ def two_panes(run, nonce):
     run.check("(the second pane on the folder to move into)", wait(lambda: b_name in selection("id=inventory2"), 5), selection("id=inventory2"))
     key("alt+4")
     d = wait_focus(lambda d: d["id"] == "inventory", 4)
-    run.check("Alt+4 moves back to the first pane", d, label(d) if d else focus_label())
+    run.check("Alt+4 goes back to the first pane", d, label(d) if d else focus_label())
     inv_search(f"Access Fish {nonce}", "one")
     m = mark()
     key("space")
@@ -2358,7 +2388,7 @@ def two_panes(run, nonce):
     key("ctrl+m")
     run.expect("Control+M moves them into the folder in the other pane", [f"Moved 2 items into {b_name}"], m, 10)
     run.check("both are in it now", wait(lambda: len(inv_items(b)) == 2, 6), ", ".join(inv_items(b)) or "empty")
-    key("alt+4")
+    key("alt+shift+4")
     wait_focus(lambda d: d["id"] == "inventory2", 4)
     m = mark()
     key("ctrl+w")
@@ -2369,6 +2399,158 @@ def two_panes(run, nonce):
     key("esc", target="id=inventorySearch")
     for name in (a_name, b_name):
         delete_by_search(run, name)
+
+
+def menu_keys(sel):
+    """A menu item's access key and the key shown beside it (UI Automation's AccessKey | AcceleratorKey)."""
+    m = re.search(r"^keys: (.*)$", u(f"get {sel}"), re.M)
+    return m[1] if m else ""
+
+
+def menu_open(name, secs=4):
+    """The menu items in view now named so (a menu is open)."""
+    return wait(lambda: find(f"type=MenuItem;name={name}"), secs)
+
+
+def menu_bar(run, nonce, tester_id):
+    """The review of 2026-10-30 (docs/access.md): the menu bar (Alt, Alt+letter, each item's key shown, items doing
+    what their keys do, a focus-moving one landing), the context menus' keys, Control+1 to 9, Control+Shift+1, Escape
+    from the notices back where Control+N came from, a notice's keys on the Applications key, an IM arriving while the
+    focus is on the "no conversations" line, Control+Page Up and Down as the Control+Tab ring, the status bar."""
+    back_to_chat()
+    # ---- the menu bar
+    # (Alt alone and F10 aren't checked here: WinForms opens the menu bar on them only for the foreground window
+    # (ToolStripManager.ProcessMenuKey), and on a hidden desktop that's never ours, so Windows' own system menu opens
+    # instead; Alt+letter goes by the menu's mnemonics, which don't ask)
+    key("alt+w")
+    item = menu_open("Region info")
+    if run.check("Alt+W opens World", item, focus_label()):
+        keys = {n: menu_keys(f"type=MenuItem;name={n}") for n in ("Region info", "Teleport home", "Away", "Who's in voice")}
+        run.check("its items show their keys (Region info, Control+Shift+1; Teleport home, Control+Shift+H)",
+                  keys["Region info"].endswith("Control+Shift+1") and keys["Teleport home"].endswith("Control+Shift+H")
+                  and keys["Who's in voice"].endswith("Control+Shift+V"), json.dumps(keys))
+        m = mark()
+        key("r")
+        run.expect("R there: region info, as Radegast's", [f"Region {REGION}"], m, 8)
+    back = wait_focus(lambda d: d["id"] == "chatInput", 3)
+    run.check("and the focus is back in Say", back, focus_label())
+    m = mark()
+    key("ctrl+shift+1")
+    run.expect("Control+Shift+1: region info", [f"Region {REGION}"], m, 8)
+    # Away by the menu, through SojournSettings, and back
+    for want, words in (("on", "Away."), ("off", "Not away.")):
+        m = mark()
+        key("alt+w")
+        if menu_open("Away"):
+            key("a")
+            run.expect(f"World > Away: {want}, said", [words], m, 6)
+            run.check(f"(away {want})", wait(lambda: setting("away") == want, 4), str(setting("away")))
+    # a focus-moving item (View > People) lands once the menu has closed
+    key("alt+v")
+    if run.check("Alt+V opens View", menu_open("People"), focus_label()):
+        run.check("View shows the areas' keys (People, Alt+3)", menu_keys("type=MenuItem;name=People").endswith("Alt+3"),
+                  menu_keys("type=MenuItem;name=People"))
+        key("p")
+        d = wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
+        run.check("P there goes to People nearby", d and (d["id"] == "people" or VNAME in d["name"] or "Nobody" in d["name"]), label(d) if d else focus_label())
+    back_to_chat()
+    key("alt+h")
+    if run.check("Alt+H opens Help", menu_open("Keys"), focus_label()):
+        key("k")
+        d = wait_focus(lambda d: d["id"] == "keysText", 4)
+        run.check("K there opens the keys", d, label(d) if d else focus_label())
+        key("esc")
+    back_to_chat()
+
+    # ---- the context menus show their keys: the inventory's Cut, Rename
+    key("alt+4")
+    if wait_focus(lambda d: d["id"] == "inventory", 4):
+        time.sleep(1)
+        key("down")
+        time.sleep(0.3)
+        key("apps")
+        if menu_open("Rename"):
+            run.check("an inventory item's menu shows Cut, Control+X and Rename, F2",
+                      menu_keys("type=MenuItem;name=Cut").endswith("Control+X") and menu_keys("type=MenuItem;name=Rename").endswith("F2"),
+                      f'Cut: {menu_keys("type=MenuItem;name=Cut")}; Rename: {menu_keys("type=MenuItem;name=Rename")}')
+            key("esc")
+        else:
+            run.check("an inventory item's menu opens", False, focus_label())
+    back_to_chat()
+
+    # ---- Control+1 to 9: the last nine messages, 1 the newest
+    m = mark()
+    for word in ("first", "second", "third"):
+        v(f"say recent {word} {nonce}")
+        time.sleep(0.5)
+    if run.expect("(three lines arrive)", [f"recent third {nonce}"], m, 10):
+        time.sleep(1)
+        for k, word in (("ctrl+1", "third"), ("ctrl+3", "first")):
+            m = mark()
+            key(k)
+            run.expect(f"{k.title()}: the {'newest' if k == 'ctrl+1' else 'third newest'} message", [f"recent {word} {nonce}"], m, 4)
+        m = mark()
+        key("ctrl+oem_close")
+        run.expect("Control+] then goes on from there", [f"recent second {nonce}"], m, 4)
+
+    # ---- notices: Escape back where Control+N came from; a notice's keys on the Applications key
+    for area, where, home in (("alt+1", "Say", "chatInput"), ("alt+3", "People nearby", None)):
+        back_to_chat()
+        key(area)
+        start = wait_focus(lambda d: d["id"] == home if home else d["id"] == "people" or d["type"] == "ListItem", 4)
+        m = mark()
+        v(f"fmenu {tester_id}")
+        if not run.expect(f"(a menu announced, in {where})", ["Access Menu"], m, NOTICE_SECS):
+            continue
+        time.sleep(1.5)
+        if open_newest_notice(run, ["Access Menu"]):
+            if where == "Say":
+                key("apps")
+                green = menu_open("Green")
+                if run.check("the Applications key on a notice lists its keys", green, focus_label()):
+                    run.check("each with the key that presses it (Green, 2; Put away, Delete)",
+                              menu_keys("type=MenuItem;name=Green").endswith("2") and menu_keys("type=MenuItem;name=Put away").endswith("Delete"),
+                              f'{menu_keys("type=MenuItem;name=Green")}; {menu_keys("type=MenuItem;name=Put away")}')
+                    key("esc")
+                    time.sleep(0.5)
+            key("esc")
+            d = wait_focus(lambda d: d["id"] == home if home else d["id"] == "people" or (d["type"] == "ListItem" and "metre" in d["name"]), 4)
+            run.check(f"Escape on the notices goes back to {where}, where Control+N came from", d, label(d) if d else focus_label())
+            open_newest_notice(run, ["Access Menu"])
+            key("del")
+            time.sleep(0.5)
+    back_to_chat()
+
+    # ---- an IM arriving while the focus is on "No conversations yet"
+    key("alt+2")
+    d = wait_focus(lambda d: d["id"] == "noConversations", 4)
+    if run.check("(Alt+2 with none open: the no-conversations line)", d, label(d) if d else focus_label()):
+        m = mark()
+        v(f"im {tester_id} while you read {nonce}")
+        run.expect("(the IM announced)", [f"while you read {nonce}"], m, 10)
+        time.sleep(2)
+        f = focused()
+        run.check("the focus stays on that line", f and f["id"] == "noConversations", label(f) if f else "nothing")
+        moved = [e for e in focus_events_since(m) if re.search(r"Message to|conv", e.get("text") or "", re.I)]
+        run.check("no focus event to the new conversation", not moved, "; ".join(e.get("text") or "" for e in moved[:3]) or "none")
+    # ---- Control+Page Down and Up: the same ring as Control+Tab
+    back_to_chat()
+    key("ctrl+pgdn")
+    d = wait_focus(lambda d: d["id"] == "convInput", 4)
+    run.check("Control+Page Down: to the next in the ring, the conversation", d, label(d) if d else focus_label())
+    key("ctrl+pgup")
+    d = wait_focus(lambda d: d["id"] == "chatInput", 4)
+    run.check("Control+Page Up: back to nearby chat", d, label(d) if d else focus_label())
+    key("ctrl+tab")
+    if wait_focus(lambda d: d["id"] == "convInput", 4):
+        key("ctrl+w")
+    back_to_chat()
+
+    # ---- the status bar: what NVDA+End reads (a status bar, its text the location)
+    bar = find("type=StatusBar")
+    where = find("type=Text;name~=Location: ")
+    run.check("a status bar holding the location (NVDA+End)", bar and where and REGION in where[0]["name"],
+              f'{label(bar[0]) if bar else "no status bar"}; {label(where[0]) if where else "no location text"}')
 
 
 def window_title():
@@ -2429,6 +2611,7 @@ def voice_keys(run):
             return {"error": str(e)}
     st = wait(lambda: (lambda s: s if "connected" in str(s.get("status", "")).lower() else None)(status()), 40, 1)
     run.check("(voice connected)", st, json.dumps(status())[:200])
+    t0 = time.time()
     u("keydown focus | 115")
     time.sleep(1)
     held = status()
@@ -2437,6 +2620,8 @@ def voice_keys(run):
     let_go = status()
     run.check("F4 held opens the mic; let go, it closes", held.get("mic_live") and not let_go.get("mic_live"),
               f"held: {json.dumps(held)[:160]}; let go: {json.dumps(let_go)[:160]}")
+    clicks = [c["cue"] for c in cues_since(t0, "MicOn", "MicOff")]
+    run.check("a click as the mic opens and another as it closes", clicks == ["MicOn", "MicOff"], ", ".join(clicks) or "none")
     m = mark()
     key("shift+f4")
     run.expect("Shift+F4 switches to an open mic, muted", ["Open mic, muted"], m, 4)
@@ -2614,11 +2799,11 @@ def sound_map(run, tester_id):
         setting("earcon_nearby", "off")
 
     key("alt+0")
-    if wait_focus(lambda d: d["name"] == "Settings" or d["type"] == "ListItem", 4) and select_in("id=settings", "Sound for an IM"):
+    if wait_focus(lambda d: d["name"] == "Settings" or d["type"] == "ListItem", 4) and select_in("id=settings", "IM sound"):
         t0 = time.time()
         m = mark()
         key("enter")
-        run.expect("Alt+0: Enter on the IM's sound turns it up, saying so", ["Sound for an IM: loud."], m, 5)
+        run.expect("Alt+0: Enter on the IM's sound turns it up, saying so", ["IM sound: loud."], m, 5)
         c = cue_after(t0, ("EarIm",), 3)
         run.check("and plays it at the new level", c and abs(c["level"] - 0.7) < 0.01, json.dumps(c))
         for _ in range(4):   # full, off, quiet, medium: back where it was
@@ -2627,6 +2812,19 @@ def sound_map(run, tester_id):
         run.check("and round again to medium", setting("earcon_im") == "medium", setting("earcon_im"))
     else:
         run.check("Alt+0 lists the IM's sound", False, selection("id=settings"))
+    # the mic's click (push to talk, docs/access-app.md > Voice chat): on by default, its row plays it
+    run.check("the mic's click is on by default (medium)", setting("earcon_mic") == "medium", setting("earcon_mic"))
+    if select_in("id=settings", "Mic opening and closing"):
+        t0 = time.time()
+        key("enter")
+        c = cue_after(t0, ("MicOn",), 3)
+        run.check("Alt+0: the mic's row plays its click at the new level", c and abs(c["level"] - 0.7) < 0.01, json.dumps(c))
+        for _ in range(4):
+            key("enter")
+            time.sleep(0.6)
+        run.check("and round again to medium", setting("earcon_mic") == "medium", setting("earcon_mic"))
+    else:
+        run.check("Alt+0 lists the mic's click", False, selection("id=settings"))
     back_to_chat()
 
     # ---- the marks and a beacon walked to by hand
@@ -3033,7 +3231,7 @@ def walk_mode(run):
         run.expect("and says walk mode is on", ["Walk mode", "F1"], m, 5)
         key("f1")
         d = wait_focus(lambda d: d["id"] == "keysText", 5)
-        run.check("F1 there opens walk mode's keys in a window", d and "Up and Down arrows: walk forward and back" in value_of("id=keysText").splitlines(),
+        run.check("F1 there opens walk mode's keys in a window", d and "Up and Down arrows: walk forward and back" in [l.rstrip(".") for l in value_of("id=keysText").splitlines()],
                   label(d) if d else focus_label())
         key("esc")
         d = wait_focus(lambda d: d["id"] == "walkPad", 5)

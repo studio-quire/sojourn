@@ -1144,14 +1144,18 @@ unintuitive is made intuitive first, and only then explained, behind a small tog
   2026-10-29: the user found the arm crowded and Sojourn is assistant first). Out, the hands hold the picture as a
   panel between them (the user's design, 2026-10-29), a real rectangle in the room: its bottom left corner 4 cm off
   the left palm, its top right 4 cm off the right palm (the grips' +X), its bottom edge level, its sides rising toward
-  the right hand, so raising that hand makes it taller and bringing it nearer tips it back. On the way there it turned
+  the right hand, so raising that hand makes it taller; it tilts up or down as aimed through its centre from
+  `photo_pivot` below the eyes (6 cm, tuned by the user where they hold it; held higher it looks up; the user's pick,
+  2026-10-30; before that it stood upright always). On the way there it turned
   with the controllers' aim, then the fingers', then stood upright on the view: none matched the hands. Any shape (1:3 to 3:1).
   The picture is taken from the panel's centre along its facing, the avatar's arms as they are (holding the camera up in
   a mirror, as the preview shows them; the user, 2026-10-29). Its field of
   view is what the panel spans from the eyes' distance behind it (25-70 cm), as if looking through it: hands spread or
-  held closer, wider. At least 6 degrees a side, at most 90 tall, 105 wide; about 2 megapixels (1920x1080 at 16:9,
-  the longest side 2048), as the panel stands. Framing means both hands within 50 degrees of where you look, 15 cm
-  to 1.1 m out, no lower than 0.5 m under the eyes, at least 15 cm apart. Only then is
+  held closer, wider; then the right stick zooms it while the camera's out (up in, down out, 0.25x to 8x, back to 1 each
+  time it comes out; sideways still turns; the user, 2026-10-30). At least 6 degrees a side, at most 120 tall, 140 wide; about 2 megapixels (1920x1080 at 16:9,
+  the longest side 2048), as the panel stands. Framing means only the camera out and both hands tracked at least 15 cm
+  apart (a hand's tracking dropping out holds the last panel 0.6 s); rules on where you look and where the hands were
+  made it go off when looking away and at random (the user, 2026-10-30). Only then is
   the panel drawn (thin edges, brighter corners, and on it a live preview of the picture, as a phone's screen:
   rendered only while framing, `docs/rendering.md` > The camera's preview) and the right trigger the shutter
   (not on the panel, a board, a key or a page; touching waits, as while aiming); otherwise the trigger is as ever
@@ -1159,7 +1163,14 @@ unintuitive is made intuitive first, and only then explained, behind a small tog
   shutter, and the panel it takes, are fixed when the trigger first moves (0.1), so the press doesn't shake the shot.
   `photo_ratio` (free by default, or W:H: 16:9, square, 4:5...; the assistant sets it when asked; neither kept between
   sessions) keeps a shape, its diagonal the hands'. SojournCapture snapshot with `aim` (the person's own press on the
-  op), the panel flashing, the viewer's snapshot sound, into Pictures\Sojourn. X hides the panel's outline and
+  op), the panel flashing, the viewer's snapshot sound, into Pictures\Sojourn. Once saved, the picture shows for 3 s
+  as a phone's camera shows what it took (the user's ask, 2026-10-30; `Control/ShutterReview.cs`): on a sheet in the
+  panel's look (a little glass round it, no spark, no keys, so it takes no ray or trigger) just above the panel it was
+  taken through, where the eyes are as the shutter goes; left there in the room, so lowering the hands to look at it
+  doesn't take it away, turned to face you, half the panel's size (its longest side 9-20 cm); a new picture takes its
+  place. The saved file is decoded and scaled once off the frame thread (640 px its longest side); a quad layer among
+  the client's boards with its frost in the eyes (`MapWiring.HeadsetScene`'s `more`); hidden, its seconds still
+  running, while a confirmation waits or the interface is hidden. Headset only. X hides the panel's outline and
   preview but not the camera. On the desktop the viewer's Snapshot to Disk key, Ctrl+`, takes the
   window's view (`CaptureApi.ShutterAsync`). Why a camera rather than a button: every controller button already has
   a job, and a held-out camera with the trigger as its shutter is the usual VR way; no chord, no trigger word.

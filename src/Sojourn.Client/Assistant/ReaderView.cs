@@ -189,13 +189,14 @@ public sealed class ReaderView
         _down = _moving = false;
     }
 
-    /// <summary>Where it rests while it follows: 1.2 m out where the head faces, its bottom edge 2 degrees above the
-    /// panel's top (18 below the eyes), its top no higher than 12 above: the panel and the reader are separate layers,
-    /// and a reader reaching down behind the panel was drawn over it (2026-10-27).</summary>
+    /// <summary>Where it rests while it follows: 1.2 m out where the head faces, its bottom edge 4 degrees above the
+    /// panel's top (18 below the eyes), however tall it is: the panel and the reader are separate layers, and a reader
+    /// reaching down behind the panel was drawn over it (2026-10-27; a cap on its top brought a tall one down over the
+    /// panel again, 2026-10-30).</summary>
     static (Vector3, Quaternion) Rest(Vector3 anchor, float yaw, PanelPlacement.Mode mode, Vector2 size)
     {
         float half = MathF.Atan(size.Y / 2 / Distance);
-        float pitch = MathF.Min(-16 * MathF.PI / 180 + half, 12 * MathF.PI / 180 - half);
+        float pitch = -14 * MathF.PI / 180 + half;
         return PanelPlacement.Toward(anchor, yaw, pitch, Distance);
     }
 

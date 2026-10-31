@@ -219,7 +219,7 @@ there by its own name. The treasure chest test: the visitor's `treasure` fixture
 script, a named latch, an unnamed foot), found and its lid touched by keys and by `//touch treasure chest`.
 **Placing by words**: Rez where you say... and Move... ("a metre to my left", "2 m ahead and half a metre up", "at two
 o'clock, 3 metres", "here", "by 20 cm up"), resting on the surface under the spot (a table, by the collision model).
-**The second pane**: Alt+4 again; Ctrl+M moves what's marked into the folder selected in the other pane (copy on the
+**The second pane**: Alt+Shift+4 (Alt+4 again until 2026-10-30); Ctrl+M moves what's marked into the folder selected in the other pane (copy on the
 Applications key), each pane its own search, Show and marks. **What I'm wearing** without a model: Ctrl+Shift+W or
 `//outfit`, by name, grouped (clothing, attachments and where, HUDs, body), her "**Wearing:" label first. Reshaped:
 the faces need the renderer out of sight (with `--no-render`, or on a HUD, parts are touched whole), and a HUD drawn as
@@ -424,20 +424,18 @@ An independent review (Claude Opus 5.5, reading the code beside Radegast's sourc
 keyboard references), asked for because the only hands-on tester so far is sighted. Fixed before 0.1.0.529: F1 as a
 window to arrow through, the tab strips out of the Tab order, Control+Backspace deleting a word, Control+Shift+H home,
 minus and equals for a script menu's 11th and 12th buttons, a last "12 m". Already right: no keys NVDA or JAWS
-reserve, histories never in browse mode, answers cut in and arrivals queue, Radegast's main keys kept. Next, in
-order of use:
-- A menu bar (Alt or F10) with each item's key shown, for discovering what exists: set home, landmark here, sit on
-  the ground, fly, away and busy, region info (Radegast's Control+Shift+1); the same key text on context menus.
-- Control+1 to 9 to review the last nine messages (NVDA's own VIP Mud module does this; the bracket keys need AltGr
-  on many layouts); maybe a tiny NVDA app module for the old add-on's NVDA+Page Up and Down.
-- Escape on Notices back to where Control+N came from; the Applications key on a notice: its keys and Put away.
-- Alt+0's ~65 rows: lead with what differs (shared prefixes defeat first-letter navigation), or group them; Left and
-  Right change a value.
-- Alt+4 again opening a second pane, where every other Alt+number re-reads its area: give the pane its own key.
+reserve, histories never in browse mode, answers cut in and arrivals queue, Radegast's main keys kept. Done after
+0.1.0.531 (Claude Opus 5.5; `docs/access-app.md` > The menu bar, Keys): a menu bar (Alt or F10; World, View, Read-out,
+Help) with every item's key shown, set home, landmark here, sit or stand, fly, Away and Do not disturb among them, and
+the keys on the context menus too; Control+Shift+1 region info; Control+1 to 9 the last nine messages; Escape from
+Notices back where Control+N came from, and a notice's keys on its Applications key; Alt+0's rows leading with what
+they're about, Left and Right stepping them; Alt+Shift+4 the second pane, Alt+4 again reading the inventory again; a
+click as push-to-talk opens and closes; the no-conversations line keeping the focus when an IM arrives; Control+Page Up
+and Down as the Control+Tab ring; the status bar checked as a StatusBar holding the location. What only a real screen
+reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+End) is in the guided test. Left:
+- Maybe a tiny NVDA app module for the old add-on's NVDA+Page Up and Down.
 - JAWS once by hand: UI Automation notifications' queueing there is undocumented, and Control+Up/Down are its
   paragraph keys (a recalled line may be read twice).
-- A click when push-to-talk opens and closes; an IM arriving while the focus is on "No conversations yet" moves the
-  focus; NVDA+End on the status bar; Control+Page Up/Down still switch tabs natively.
 Added to the questions below: what's read out while Access is in the background (asked first).
 
 ### Questions for a blind tester
@@ -449,6 +447,7 @@ Added to the questions below: what's read out while Access is in the background 
   Conversations here: does that habit matter?
 - What "edit notecards without going back two versions" means (her list): the Radegast agents couldn't reproduce
   losing versions in 2.54 (save, reopen, relog all kept the latest).
+- Naming her in Radegast issues and PRs: yes, by her SL name, as someone who asked for chat read-outs (her answer through Tessel, 2026-10-30). Sojourn's own public repo still names no private individuals.
 - For Sojourn Access's first slice (`docs/access-app.md`), once she's tried it or heard it described: is a clock face
   ("two o'clock") right for where people and things are, or left/right and ahead, or degrees? Should a conversation's
   lines drop its name while she's in it (as now) or always say it? Are the notices' keys read in the right order and
@@ -502,7 +501,7 @@ Added to the questions below: what's read out while Access is in the background 
   anything we haven't modelled (a part that only works when touched on one face, a hidden part)?
 - For placing by words: what does she say when she places something ("a metre to my left", "in front of me", "on the
   table")? Is resting it on whatever's under the spot right, or should it stay at the height said?
-- For the second pane: Alt+4 again to open and move between the panes, Control+M to move what's marked: does that sit
+- For the second pane: Alt+Shift+4 to open it and go there, Alt+4 back to the first, Control+M to move what's marked: does that sit
   well next to how she moves her fishing catch today, or would she rather a separate window as she asked?
 - For what she's wearing (Ctrl+Shift+W): is the order right (clothing, attachments, HUDs, body), and does she still
   want her "**Wearing:" HUD labels once this exists, or would a line for the outfit folder worn be better?

@@ -48,6 +48,7 @@ public sealed partial class MainForm : Form
         Size = new Size(900, 640);
         StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true;
+        Oops = SaidOops;
 
         BuildChat();
         BuildConversations();
@@ -59,11 +60,13 @@ public sealed partial class MainForm : Form
         BuildNotices();
         BuildAssistant();
         BuildSettings();
+        BuildMenu();
         _areas.TabPages.AddRange(new[] { _chatPage, _conversationsPage, _peoplePage, _inventoryPage, _searchPage, _placesPage, _objectsPage, _noticesPage, _assistantPage, _settingsPage });
         _statusStrip.Items.Add(_where);
         Controls.Add(_areas);
         Controls.Add(_walkPad);
         Controls.Add(_statusStrip);
+        Controls.Add(_menu);   // (docked first, so at the very top)
 
         _areas.SelectedIndexChanged += (_, _) => { FocusChanged(); AreaShown(); };
         // in walk mode the person isn't in the conversation they came from: its lines say whose IM they are again
@@ -277,6 +280,17 @@ public sealed partial class MainForm : Form
     volatile string? _focusedSource;   // "nearby", a conversation's session id, or null: what the person is in
     readonly HashSet<string> _toldSessions = new();
 
+    /// <summary>Program's word of an exception that escaped on the window's thread (logged there): said once a minute.</summary>
+    public static Action<Exception>? Oops;
+    long _oopsAt = long.MinValue / 2;
+
+    void SaidOops(Exception e)
+    {
+        if (Environment.TickCount64 - _oopsAt < 60_000) return;
+        _oopsAt = Environment.TickCount64;
+        Reader?.Answer($"Something went wrong in Sojourn Access ({e.GetType().Name}); it's in the log. Carrying on.", keep: false);
+    }
+
     /// <summary>The answer to the person's own key or command: cuts in.</summary>
     public void Answer(string text)
     {
@@ -443,7 +457,9 @@ public sealed partial class MainForm : Form
         Alt+8: notices
         Alt+9: the assistant
         Alt+0: settings
-        Control+Tab: the next conversation, with Shift the one before
+        Alt+Shift+4: the inventory's second pane
+        Alt or F10: the menu bar
+        Control+Tab or Control+Page Down: the next conversation, with Shift or Page Up the one before
         Control+W: close a conversation
         Tab and Shift+Tab: between the history and where you type
 
@@ -458,6 +474,8 @@ public sealed partial class MainForm : Form
         Control+N: the newest notice
         On a notice, 1 to 9, 0, minus and equals: press its keys
         On a notice, Delete: put it away
+        On a notice, the Applications key: its keys in a menu
+        Escape: back where Control+N came from
 
         Lists
         Applications key: a person's or object's actions; a profile from any list of people
@@ -468,6 +486,7 @@ public sealed partial class MainForm : Form
         Shift+F6: mute this conversation
         Control+left bracket and Control+right bracket: back and forward through what was read
         With Shift: the oldest and newest
+        Control+1 to Control+9: the last nine messages, 1 the newest
         Control+R: repeat
         Control+Shift+M: mark a line
         Control+Shift+C: copy from the mark to the line you're on
@@ -483,6 +502,7 @@ public sealed partial class MainForm : Form
         Going places
         Control+G: teleport to the SLurl on the clipboard
         Control+Shift+H: teleport home
+        Control+Shift+1: region info
         F3: walk mode (F1 there for its keys)
 
         Inventory
@@ -492,8 +512,8 @@ public sealed partial class MainForm : Form
         Delete: delete
         F2: rename
         Control+F: search
-        Alt+4 again: a second pane
-        Control+M: move what's marked into the folder selected there
+        Alt+Shift+4: a second pane, Alt+4 back to the first
+        Control+M: move what's marked into the folder selected in the other pane
 
         Objects
         Tab: the selected one's parts, then a part's faces
@@ -549,7 +569,8 @@ public sealed partial class MainForm : Form
             case Keys.Alt | Keys.D1: GoArea(_chatPage); return true;
             case Keys.Alt | Keys.D2: GoArea(_conversationsPage); return true;
             case Keys.Alt | Keys.D3: GoArea(_peoplePage); return true;
-            case Keys.Alt | Keys.D4: if (InInventory && _pane.Tree.Focused) OtherPane(); else GoArea(_inventoryPage); return true;
+            case Keys.Alt | Keys.D4: GoInventory(second: false); return true;
+            case Keys.Alt | Keys.Shift | Keys.D4: GoInventory(second: true); return true;
             case Keys.Alt | Keys.D5: GoArea(_searchPage); return true;
             case Keys.Alt | Keys.D6: GoArea(_placesPage); return true;
             case Keys.Alt | Keys.D7: GoArea(_objectsPage); return true;
@@ -558,6 +579,10 @@ public sealed partial class MainForm : Form
             case Keys.Alt | Keys.D0: GoArea(_settingsPage); return true;
             case Keys.Control | Keys.Tab: Ring(+1); return true;
             case Keys.Control | Keys.Shift | Keys.Tab: Ring(-1); return true;
+            // the same ring (a tab control would switch only the strip it's in, and not from everywhere)
+            case Keys.Control | Keys.PageDown: Ring(+1); return true;
+            case Keys.Control | Keys.PageUp: Ring(-1); return true;
+            case Keys.Control | Keys.Shift | Keys.D1: _ = _cmd?.RunAsync("//siminfo"); return true;   // Radegast's region info
             case Keys.Control | Keys.W: if (InInventory && _pane == _pane2) CloseSecondPane(); else CloseConversation(); return true;
             case Keys.Control | Keys.N: NewestNotice(); return true;
             case Keys.Control | Keys.G: TeleportClipboard(); return true;
@@ -581,6 +606,16 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.Shift | Keys.I: ToggleIncognito(); return true;
             case Keys.Control | Keys.Shift | Keys.V: SayVoice(); return true;
             case Keys.Escape when _walkPad.Focused: ToggleWalk(); return true;
+            // on the notices, back where Control+N came from (the list's Escape on a confirmation cancels it)
+            case Keys.Escape when _areas.SelectedTab == _noticesPage && ActiveControl != _noticeReply
+                                  && !(_notices.Focused && Selected()?.Confirm != null):
+                BackFromNotices(); return true;
+        }
+        // Control+1 to 9: the last nine messages that arrived, 1 the newest (NVDA's VIP Mud convention)
+        if ((keyData & Keys.Modifiers) == Keys.Control && (keyData & Keys.KeyCode) is >= Keys.D1 and <= Keys.D9)
+        {
+            Reader?.ArrivedAgo((keyData & Keys.KeyCode) - Keys.D0);
+            return true;
         }
         return base.ProcessCmdKey(ref msg, keyData);
     }

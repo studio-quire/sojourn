@@ -253,6 +253,11 @@ public sealed class ObjectViews
         o["pos"] = Json.Arr(pos);
         o["rot"] = Json.Arr(w.RegionRotation(p));
         o["scale"] = Json.Arr(p.Scale);
+        // the motion its last update carried, when there is any: zero while it visibly moves means it's moved by
+        // script in jumps (llSetPos and the like), which every viewer draws as steps
+        if (p.Velocity != Vector3.Zero) o["vel"] = Json.Arr(p.Velocity);
+        if (p.Acceleration != Vector3.Zero) o["acc"] = Json.Arr(p.Acceleration);
+        if (p.AngularVelocity != Vector3.Zero) o["omega"] = Json.Arr(p.AngularVelocity);
         if (p.PrimData.PCode == PCode.Prim) o["shape"] = ShapeName(p);
         if (p.PrimData.PCode == PCode.Prim) o["material"] = p.PrimData.Material.ToString().ToLowerInvariant();
         if (p.Flexible is { } fx && ((byte)p.PrimData.PathCurve & 0xf0) == 0x80)

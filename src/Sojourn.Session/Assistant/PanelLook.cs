@@ -26,7 +26,8 @@ namespace Sojourn.Session.Assistant;
 public sealed record PanelLook
 {
     // the default, glass: clear white glass, lightly frosted, white light at its corners and a bright rim, a glow of
-    // its own as it's clear, deep teal ink (the user's tuning in the headset, 2026-10-28: like Liquid Glass, not tinted)
+    // its own as it's clear (the user's tuning in the headset, 2026-10-28: like Liquid Glass, not tinted), neutral grey ink
+    // (it was deep teal; the user, 2026-10-30: no teal tint in the text)
     public string Preset { get; init; } = "glass";
     public string Material { get; init; } = "glass";
     public string Tint { get; init; } = "#f5f8fa";
@@ -41,9 +42,9 @@ public sealed record PanelLook
     public float Frost { get; init; } = 0.3f;
     /// <summary>The light caught along the edge, 0 to 1.</summary>
     public float Rim { get; init; } = 1;
-    public string Ink { get; init; } = "#2f474c";
-    public string Dim { get; init; } = "#465e63";
-    public string Faint { get; init; } = "#7a8f93";
+    public string Ink { get; init; } = "#30363d";
+    public string Dim { get; init; } = "#4d545c";
+    public string Faint { get; init; } = "#7f868e";
     /// <summary>The light in the glass: the confirm key, an "on" switch, the listening orb.</summary>
     public string Accent { get; init; } = "#7dbcee";   // light blue (the user, 2026-10-30), as the launcher's accent
     public string OnAccent { get; init; } = "#2b3f52";

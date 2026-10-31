@@ -482,8 +482,8 @@ The avatar's position is the region's. The camera mustn't wait on it or follow i
   room, its turning turns it, the eyes are the sit animation's put on this frame's seat pose (the renderer gives them in
   the avatar's own frame, `SelfSeatedEyesLocal`), and only a jump that last frame's motion doesn't explain (over a
   metre) is a cut, so a fast vehicle doesn't cut every frame. The desktop's camera rides the same.
-  `SOJOURN_PRIM_MOTION=0` turns it off for comparing; `SOJOURN_PRIM_LOG=1` prints each update a moving prim gets
-  and where it was drawn then. Measured in the simulator (a keyframed ride on the local grid, a square loop with
+  `SOJOURN_PRIM_MOTION=0` turns it off for comparing. An object's last update's motion shows as `vel`, `acc`,
+  `omega` in TesselObjects' descriptions (zero while it visibly moves: moved by script in jumps, steps in every viewer). Measured in the simulator (a keyframed ride on the local grid, a square loop with
   diagonal turning legs, ~60 s seated): the view's acceleration median 5.8, p95 27 m/s^2, and its turning rate's change
   frame to frame p95 15 deg/s; with the 0.18 s blend it was p95 71 m/s^2 and 86 deg/s. Replaying the logged updates
   offline, snapping as the viewer does gives p95 145 m/s^2. What's left is mostly the ride's own corners (keyframes

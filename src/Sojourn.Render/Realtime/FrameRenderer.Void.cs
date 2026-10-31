@@ -7,16 +7,17 @@ namespace Sojourn.Render.Realtime;
 
 /// <summary>
 /// A frame with no region to draw but something over it: the login screen and its sheets (Sojourn.Client/Login), the
-/// pointer's beam in the headset before the world is there. Each eye cleared to a quiet slate and the overlay drawn
+/// pointer's beam in the headset before the world is there. Each eye cleared to a plain grey and the overlay drawn
 /// over it as it would be over the world (sheets with their frost, beams, dots), so the person sees what they press.
 /// Without an overlay a frame with no region stays the small dark clear it always was (<see cref="Clear"/>).
 /// Written by Claude Opus 5.5, 2026-10-28, for batch R's login.
 /// </summary>
 public sealed partial class FrameRenderer
 {
-    /// <summary>The void's colour (gamma-encoded): a dusk slate, dark enough to rest the eyes in a headset, light
-    /// enough that a glass sheet's frost has something to show.</summary>
-    static readonly ClearColorValue VoidColor = new(0.085f, 0.105f, 0.135f, 1f);
+    /// <summary>The void's colour: a neutral light-to-medium grey, sRGB #949494 (the user's call, 2026-10-30, after a
+    /// slate that read teal and two skies). The output image is UNORM holding gamma-encoded bytes, copied bit for bit
+    /// into the headset's sRGB swapchain, so these values are the sRGB the eye sees.</summary>
+    static readonly ClearColorValue VoidColor = new(148f / 255f, 148f / 255f, 148f / 255f, 1f);
 
     FrameStats Void(FrameRequest req, FrameResources fr, int slot, IFrameTarget target, double waitMs, long t0)
     {

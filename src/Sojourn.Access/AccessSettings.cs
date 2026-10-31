@@ -97,6 +97,7 @@ public sealed class AccessSettings
         ("radar", "off", "someone arriving or leaving, when those are read out (Control+Shift+A), from where they are"),
         ("notice", "off", "other notices: group notices, payments, the region's messages"),
         ("sent", "off", "your own line sent, nearby or in a conversation"),
+        ("mic", "medium", "the mic opening and closing in voice chat (the talk key held and let go, an open mic unmuted and muted)"),
     };
     public static readonly string[] EarconLevels = { "off", "quiet", "medium", "loud", "full" };
 

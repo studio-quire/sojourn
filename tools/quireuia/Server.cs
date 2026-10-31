@@ -435,6 +435,7 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
         var c = e.Current;
         sb.Append("help: ").Append(c.HelpText).Append('\n');
         sb.Append("localized type: ").Append(c.LocalizedControlType).Append('\n');
+        sb.Append("keys: ").Append(c.AccessKey).Append(" | ").Append(c.AcceleratorKey).Append('\n');
         sb.Append("patterns: ").Append(string.Join(", ", e.GetSupportedPatterns().Select(p => p.ProgrammaticName.Replace("PatternIdentifiers.Pattern", "")))).Append('\n');
         if (e.TryGetCurrentPattern(ValuePattern.Pattern, out var vp))
             sb.Append("value: ").Append(((ValuePattern)vp).Current.Value).Append('\n');

@@ -5,76 +5,80 @@ using Sojourn.Session.Assistant;
 namespace Sojourn.Access;
 
 /// <summary>Settings (Alt+0): the ones that matter here, from SojournSettings (the same the assistant changes), each a
-/// list item "Read out nearby chat: on"; Enter or Space moves it to its next value, said back (a sound's row plays it
+/// list item "Nearby chat read out: on"; Enter, Space or Right moves it to its next value, Shift with them or Left to
+/// the one before, said back (a sound's row plays it
 /// at its new level, so each can be learned; a volume given as a number steps through a few levels).</summary>
 public sealed partial class MainForm
 {
     TabPage _settingsPage = null!;
     ListView _settingsList = null!;
 
+    // each row leads with what it's about, so first-letter navigation finds it and the useful word comes first ("Sound
+    // for ..." on eleven rows, "Walk mode, ..." on twenty, hid both)
     static readonly (string Name, string Label)[] Shown =
     {
-        ("screen_reader", "Read out through the screen reader"),
-        ("announce_nearby", "Read out nearby chat"),
-        ("announce_objects", "Read out what objects say"),
-        ("announce_ims", "Read out IMs"),
-        ("announce_group", "Read out group chat"),
-        ("announce_notices", "Read out notices"),
-        ("announce_replies", "Read out the assistant"),
-        ("announce_music", "Read out music titles"),
-        ("access_mute_all", "Read-out muted (F6)"),
+        ("screen_reader", "Screen reader read-out"),
+        ("announce_nearby", "Nearby chat read out"),
+        ("announce_objects", "Objects' chat read out"),
+        ("announce_ims", "IMs read out"),
+        ("announce_group", "Group chat read out"),
+        ("announce_notices", "Notices read out"),
+        ("announce_replies", "The assistant's replies read out"),
+        ("announce_music", "Music titles read out"),
+        ("access_mute_all", "Mute all read-out (F6)"),
         ("access_timestamps", "Times in the histories"),
         ("access_answers_without_key", "Answers without a physical key"),
-        ("earcon_im", "Sound for an IM"),
-        ("earcon_mention", "Sound for a mention of you or a keyword"),
-        ("earcon_menu", "Sound for a script menu or question"),
-        ("earcon_offer", "Sound for an offer"),
-        ("earcon_group", "Sound for group chat"),
-        ("earcon_nearby", "Sound for nearby chat, from whoever spoke"),
-        ("earcon_objects", "Sound for objects' chat, from the object"),
-        ("earcon_friends", "Sound for friends online and offline"),
-        ("earcon_radar", "Sound for arrivals and departures, from the person"),
-        ("earcon_notice", "Sound for other notices"),
-        ("earcon_sent", "Sound for your own line sent"),
-        ("access_sounds_volume", "Volume of Sojourn Access's own sounds"),
-        ("sounds_volume", "Volume of the world's sounds"),
-        ("music", "The parcel's music"),
-        ("music_volume", "Volume of the music"),
-        ("volume", "Volume of everything"),
-        ("radar_chat_range", "Arrivals and departures, chat range"),
-        ("radar_draw_distance", "Arrivals and departures, draw distance"),
-        ("radar_region", "Arrivals and departures, the region"),
-        ("walk_steps", "Walk mode, footsteps"),
-        ("walk_steps_volume", "Walk mode, footsteps' volume"),
-        ("walk_walls", "Walk mode, warning before a bump"),
-        ("walk_walls_volume", "Walk mode, bump warning's volume"),
-        ("walk_openings", "Walk mode, openings and doors passed"),
-        ("walk_openings_volume", "Walk mode, openings' volume"),
-        ("walk_edges", "Walk mode, a drop or water ahead"),
-        ("walk_edges_volume", "Walk mode, drops' volume"),
-        ("walk_turns", "Walk mode, where you face after turning"),
-        ("walk_turns_volume", "Walk mode, turning's volume"),
-        ("walk_sonar", "Walk mode, the sonar sweep"),
-        ("walk_sonar_volume", "Walk mode, the sonar's volume"),
-        ("walk_beacon", "Walk mode, the beacon on where you're heading"),
-        ("walk_beacon_volume", "Walk mode, the beacon's volume"),
-        ("walk_marks", "Walk mode, doors, seats and touchable things (O)"),
-        ("walk_marks_volume", "Walk mode, doors, seats and touchable things' volume"),
-        ("walk_follow", "Following someone, their stops and turns"),
-        ("walk_vehicle", "Driving, what's ahead and the speed"),
-        ("walk_vehicle_volume", "Driving, its sounds' volume"),
-        ("walk_turn_step", "Walk mode, degrees a tap turns"),
-        ("walk_turn_rate", "Walk mode, degrees a second held"),
-        ("walk_teleport_fallback", "A walk with no way around teleports"),
+        ("earcon_im", "IM sound"),
+        ("earcon_mention", "Mention sound (your name or a keyword)"),
+        ("earcon_menu", "Menu sound (a script menu or question)"),
+        ("earcon_offer", "Offer sound"),
+        ("earcon_group", "Group chat sound"),
+        ("earcon_nearby", "Nearby chat sound, from whoever spoke"),
+        ("earcon_objects", "Objects' chat sound, from the object"),
+        ("earcon_friends", "Friends online and offline sound"),
+        ("earcon_radar", "Arrivals and departures sound, from the person"),
+        ("earcon_notice", "Other notices sound"),
+        ("earcon_sent", "Your own line sent, sound"),
+        ("earcon_mic", "Mic opening and closing, sound"),
+        ("access_sounds_volume", "Sojourn Access's own sounds, volume"),
+        ("sounds_volume", "World's sounds, volume"),
+        ("music", "Parcel's music"),
+        ("music_volume", "Music volume"),
+        ("volume", "Overall volume"),
+        ("radar_chat_range", "Chat range arrivals and departures"),
+        ("radar_draw_distance", "Draw distance arrivals and departures"),
+        ("radar_region", "Region arrivals and departures"),
+        ("walk_steps", "Footsteps (walk mode)"),
+        ("walk_steps_volume", "Footsteps' volume"),
+        ("walk_walls", "Bump warning (walk mode)"),
+        ("walk_walls_volume", "Bump warning's volume"),
+        ("walk_openings", "Openings and doors passed (walk mode)"),
+        ("walk_openings_volume", "Openings' volume"),
+        ("walk_edges", "Drops and water ahead (walk mode)"),
+        ("walk_edges_volume", "Drops' volume"),
+        ("walk_turns", "Turns: where you face after one (walk mode)"),
+        ("walk_turns_volume", "Turns' volume"),
+        ("walk_sonar", "Sonar sweep (walk mode, S)"),
+        ("walk_sonar_volume", "Sonar's volume"),
+        ("walk_beacon", "Beacon on where you're heading"),
+        ("walk_beacon_volume", "Beacon's volume"),
+        ("walk_marks", "Marks: doors, seats and touchable things (walk mode, O)"),
+        ("walk_marks_volume", "Marks' volume"),
+        ("walk_follow", "Following someone: their stops and turns"),
+        ("walk_vehicle", "Driving: what's ahead and the speed"),
+        ("walk_vehicle_volume", "Driving sounds' volume"),
+        ("walk_turn_step", "Degrees a tap of Left or Right turns (walk mode)"),
+        ("walk_turn_rate", "Degrees a second Left or Right held turns (walk mode)"),
+        ("walk_teleport_fallback", "Teleport when a walk finds no way around"),
         ("incognito", "Incognito (Control+Shift+I)"),
-        ("incognito_sees", "Incognito: the assistant sees"),
-        ("incognito_while_im", "Incognito while you're in an IM"),
-        ("incognito_here", "Incognito always on this parcel"),
+        ("incognito_sees", "Assistant sees during incognito"),
+        ("incognito_while_im", "While you're in an IM, incognito"),
+        ("incognito_here", "This parcel always incognito"),
         ("voice_chat", "Voice chat"),
-        ("voice_mode", "Voice: push to talk or open mic"),
-        ("voice_volume", "Voice: how loud residents are"),
-        ("access_talk_key", "Voice: the talk key"),
-        ("access_voice_speakers", "Voice: say who starts speaking"),
+        ("voice_mode", "Push to talk or open mic"),
+        ("voice_volume", "Residents' voices, volume"),
+        ("access_talk_key", "Talk key"),
+        ("access_voice_speakers", "Who starts speaking in voice, said"),
     };
 
     void BuildSettings()
@@ -85,11 +89,11 @@ public sealed partial class MainForm
         {
             var item = _settingsList.SelectedItems.Count > 0 ? _settingsList.SelectedItems[0] : _settingsList.FocusedItem;
             if (item?.Tag is string own && own.StartsWith('@') && ProviderKey(own, e)) return;
-            if (e.KeyCode is not (Keys.Enter or Keys.Space) || e.Control || e.Alt || item?.Tag is not string name) return;
+            if (e.KeyCode is not (Keys.Enter or Keys.Space or Keys.Left or Keys.Right) || e.Control || e.Alt || item?.Tag is not string name) return;
             e.Handled = e.SuppressKeyPress = true;
             // incognito's off, and letting it see mid-spell, are the person's own key here, judged as it's handled
             if (IncognitoRow(name) || AnswersRow(name)) return;
-            _ = NextValueAsync(name, e.Shift ? -1 : 1);
+            _ = NextValueAsync(name, e.Shift || e.KeyCode == Keys.Left ? -1 : 1);
         };
         _settingsPage.Controls.Add(_settingsList);
     }
@@ -149,19 +153,19 @@ public sealed partial class MainForm
         var status = h.Assistant.ProviderStatus is { } p && p["kind"]?.GetValue<string>() == kind ? p["short"]?.GetValue<string>() : null;
         var items = new List<(string, string, object)>
         {
-            ($"Assistant provider: {ProviderLabels[Math.Max(0, Array.IndexOf(Sojourn.Session.Control.VrSettings.Providers, kind))]}"
+            ($"Provider for the assistant: {ProviderLabels[Math.Max(0, Array.IndexOf(Sojourn.Session.Control.VrSettings.Providers, kind))]}"
              + (status != null ? $", {status}" : ""), "@provider", "@provider"),
         };
         if (kind != "claude")
-            items.Add(($"Assistant key: {(Sojourn.Session.Assistant.ProviderKeys.Has(kind) ? "kept (Enter to put in another, Delete to forget it)" : "none (Enter to put it in)")}",
+            items.Add(($"Key for the assistant: {(Sojourn.Session.Assistant.ProviderKeys.Has(kind) ? "kept (Enter to put in another, Delete to forget it)" : "none (Enter to put it in)")}",
                 "@key", "@key"));
         if (kind == "openrouter")
         {
-            items.Add(($"Assistant model on OpenRouter: {ModelName(st.OpenRouterModel)} (Enter for the next, Control+Enter to type one)", "@model", "@model"));
-            items.Add(($"OpenRouter, no data collection: {(st.OpenRouterDenyDataCollection ? "on, only providers that don't store or train on what's sent" : "off, any provider")}",
+            items.Add(($"Model on OpenRouter: {ModelName(st.OpenRouterModel)} (Enter for the next, Control+Enter to type one)", "@model", "@model"));
+            items.Add(($"No data collection on OpenRouter: {(st.OpenRouterDenyDataCollection ? "on, only providers that don't store or train on what's sent" : "off, any provider")}",
                 "@data", "@data"));
         }
-        items.Add(($"Assistant auto mode: {(st.AssistantAutoMode ? "on" : "off, no shell, web or helpers")}", "@auto", "@auto"));
+        items.Add(($"Auto mode for the assistant: {(st.AssistantAutoMode ? "on" : "off, no shell, web or helpers")}", "@auto", "@auto"));
         return items;
     }
 
@@ -177,7 +181,9 @@ public sealed partial class MainForm
         if (Host is not { } h) return false;
         var st = h.Settings;
         var kind = st.AssistantProvider;
-        bool enter = e.KeyCode is (Keys.Enter or Keys.Space) && !e.Alt;
+        // Left and Right step the rows that step (not the key's, which asks for one)
+        bool enter = (e.KeyCode is Keys.Enter or Keys.Space || e.KeyCode is Keys.Left or Keys.Right && row != "@key" && !e.Control) && !e.Alt;
+        bool back = e.Shift || e.KeyCode == Keys.Left;
         bool delete = e.KeyCode == Keys.Delete && row == "@key";
         if (!enter && !delete) return false;
         e.Handled = e.SuppressKeyPress = true;
@@ -187,8 +193,8 @@ public sealed partial class MainForm
         {
             var all = Sojourn.Session.Control.VrSettings.Providers;
             int at = Array.IndexOf(all, kind);
-            st.AssistantProvider = all[((at < 0 ? 0 : at) + (e.Shift ? -1 : 1) + all.Length) % all.Length];
-            said = $"Assistant provider: {ProviderLabels[Array.IndexOf(all, st.AssistantProvider)]}."
+            st.AssistantProvider = all[((at < 0 ? 0 : at) + (back ? -1 : 1) + all.Length) % all.Length];
+            said = $"Provider for the assistant: {ProviderLabels[Array.IndexOf(all, st.AssistantProvider)]}."
                    + (st.AssistantProvider != "claude" && !Sojourn.Session.Assistant.ProviderKeys.Has(st.AssistantProvider) ? " No key yet: the next row puts it in." : "");
         }
         else if (delete)
@@ -232,9 +238,9 @@ public sealed partial class MainForm
             else
             {
                 int at = Array.IndexOf(models, st.OpenRouterModel);
-                st.OpenRouterModel = models[((at < 0 ? 0 : at) + (e.Shift ? -1 : 1) + models.Length) % models.Length];
+                st.OpenRouterModel = models[((at < 0 ? 0 : at) + (back ? -1 : 1) + models.Length) % models.Length];
             }
-            said = $"Assistant model on OpenRouter: {ModelName(st.OpenRouterModel)}.";
+            said = $"Model on OpenRouter: {ModelName(st.OpenRouterModel)}.";
         }
         h.SaveSettings();
         h.Assistant.PrefsChanged();
