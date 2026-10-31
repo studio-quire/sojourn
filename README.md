@@ -29,6 +29,14 @@ design notes in `docs/` and the index in `CLAUDE.md` are the ones the models wor
 
 ## Building
 
+The easy way: ask your own Claude (Claude Code or a similar agent) to clone this repository and follow
+[BUILDING.md](BUILDING.md). It's written for the agent: it installs what's missing (asking you first), runs
+`tools/setup.py`, which fetches and builds everything, and helps you through the first start. Your Second Life password,
+the grid's terms and your AI provider's key stay with you.
+
+By hand: `python tools/setup.py --check` says what's missing, and `python tools/setup.py` builds everything (BUILDING.md
+explains both). The rest of this section is the plain build without the optional parts.
+
 Windows 10 or 11, x64. You need:
 
 - the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0);
@@ -57,22 +65,24 @@ commands: `docs/access-app.md`.
 
 ### Optional parts with their own build steps
 
-These are left out of a plain build; each app runs without them.
+These are left out of a plain build; each app runs without them. `tools/setup.py` does all of them.
 
-- **Voice chat and world audio** (`src/Sojourn.Voice.Native`): a C++ shim over Linden Lab's build of libwebrtc. Fetch
-  libwebrtc into `local/webrtc/` and run `python tools/voice.py build` (Visual Studio 2022 Build Tools, CMake);
+- **Voice chat and world audio** (`src/Sojourn.Voice.Native`): a C++ shim over Linden Lab's build of libwebrtc,
+  fetched and built by `python tools/voice.py fetch` and `build` (Visual Studio 2022 Build Tools, CMake);
   `docs/voice.md` > Building. Without `sojourn_voice.dll` there is no voice and no world sound.
 - **Web pages and video on surfaces** (VR client only; `src/Sojourn.Media.Native`): helpers over CEF and libVLC,
   fetched at pinned versions and built by `python tools/media.py fetch` and `build`; `docs/media.md`.
 - **NVDA's controller client** for Sojourn Access: `python tools/screenreader.py setup` puts it in `local/nvda`;
   without it, Access speaks through UI Automation only.
 - **The assistant** (`assistant/`): a Python sidecar on the Claude Agent SDK, with local speech recognition (Whisper or
-  Parakeet) and optional spoken replies; `python tools/assistant.py setup`, and a Claude account of your own.
-  `docs/assistant.md`.
+  Parakeet) and optional spoken replies; `python tools/assistant.py setup`, and an Anthropic or OpenRouter key of your
+  own. `docs/assistant.md`.
 
-Some scripts in `tools/` assume the studio's machine: the .NET SDK at `%LOCALAPPDATA%\dotnet-sdk`, and a local OpenSim
-grid (`tools/grid.py`, ports 9700-9709) set up from another of the studio's projects that isn't published. The apps
-themselves log in to Second Life or any OpenSim grid you give them.
+Many of the test scripts in `tools/` assume the studio's machine: a local OpenSim grid (`tools/grid.py`, ports
+9700-9709) set up from another of the studio's projects that isn't published, and some the .NET SDK at
+`%LOCALAPPDATA%\dotnet-sdk`. The build scripts (`setup.py`, `client.py`, `launcher.py`, `access.py`, `voice.py`,
+`media.py`, `assistant.py`) find the tools wherever they're installed. The apps themselves log in to Second Life or any
+OpenSim grid you give them.
 
 ## Documentation
 

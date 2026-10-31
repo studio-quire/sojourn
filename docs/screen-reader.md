@@ -34,7 +34,8 @@ screen reader's API, NVDA first, not a built-in voice; the stream's song title t
   arrives goes into the reader's own queue in the order it came, never cutting the line before it off; the reader's
   own stop key (Ctrl) silences it as everywhere. Answers to the person's keys cut in, as a screen reader does on a key.
   A confirmation cuts in at once ("Pay L$50 to Mira Lane. Your balance after: L$1,250. Enter confirms, Escape
-  cancels."), and on NVDA 2024.1+ the interrupted line resumes after it.
+  cancels."), and on NVDA 2024.1+ the interrupted line resumes after it. One that names only the start of a list
+  ("... and 40 more") adds "Control R reads the whole list."; Ctrl+R then says it with every name, whole, however long.
 - **Held behind a confirmation**: while one waits, nothing others or the assistant wrote is read (the panel's rule:
   nothing caller-written beside a confirmation); it all follows, in order, once it's answered.
 - **Follows the feed**: lines come from the chat feed (`Social/SocialFeed.cs`), so mutes, blocks, the viewer's
@@ -54,13 +55,12 @@ Only while it reads out; otherwise every key is as it was.
 | Ctrl+N, Ctrl+Shift+N | the waiting notices, newest first (the one just heard), then older / back: read whole, "1 of 2. Notices Harp: choose a piece. 1, More >. 2, Stop. ... Delete puts it away." An alert whose only key is OK has no number keys, only Delete |
 | 1-9, 0, minus, equals | on a picked notice (two minutes after the last key on it): press its buttons in the form's order. Real keys only. A script menu's next page (More >) is picked and read by itself |
 | Delete / Escape | on a picked notice: put it away unanswered (as the feed's ×) / done with notices (the number keys go back to the panel's choices) |
-| Ctrl+R | say it again: the confirmation, the picked notice, or the newest line |
+| Ctrl+R | say it again: the confirmation (with every name in a list it cut short), the picked notice, or the newest line |
 | Ctrl+[ / Ctrl+] | back / forward through what was read (the last 200 lines, this session, in memory) |
 | F1 | the keys |
 
 Notices answered here are the person's own, as their press on the feed: not gated (the gate guards the assistant's
-answers). Sojourn Access, the separate accessible app (the user, 2026-10-27), will bind its own keyboard model over the
-same actions.
+answers). Sojourn Access binds its own keyboard model over the same actions (`docs/access-app.md` > Keys).
 
 ## Incognito
 
@@ -93,9 +93,9 @@ log at its "input/output" level, add-ons such as speech history), which is the p
 
 `python tools/screenreader.py test` (local grid, desktop, ~4 minutes, one test client): a client with read-out on and
 `tools/uia_listen.ps1`, a UI Automation client listening for notification events as Narrator does, checking each line
-heard. NVDA isn't installed here and the test doesn't install it (it would speak aloud and hook the keyboard), so the
-NVDA path is checked only as far as loading the DLL and its "not running"; its first real use is a person's.
-Passed 2026-10-27 (45 checks): every kind's wording and order, links, a repeated object line once, the confirmation
+heard. It doesn't start NVDA (it would speak aloud and hook the keyboard), so the NVDA path is checked only as far as
+loading the DLL and its "not running"; NVDA itself has been heard only in people's runs of Sojourn Access
+(`docs/access.md`). Its 45 checks (passed 2026-10-27): every kind's wording and order, links, a repeated object line once, the confirmation
 cutting in with lines held behind it, Escape and Enter, Ctrl+N newest first and back, a menu's two pages by number keys,
 Delete, Ctrl+R, Ctrl+[, F1, replies and choices, two song titles, incognito (its line gone from the history after),
 off, a kind switched off.

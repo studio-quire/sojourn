@@ -2,7 +2,8 @@
 
 The client owns the microphone for voice chat. While the talk button is held it hands the person's own mic, already
 echo-cancelled and denoised, to the assistant instead of to residents (GET /mic: the utterance once the button is up,
-with 300 ms from before the press and 250 ms after the release), and it plays the assistant's spoken replies in its
+with 300 ms from before the press and 250 ms after the release; kept a couple of minutes, so a press made while
+the sidecar starts is heard once it's ready), and it plays the assistant's spoken replies in its
 own mix (POST /play), so they're cancelled out of the mic and never reach a voice channel. Without voice (--no-voice,
 or no engine) the sidecar records and plays on its own, as before.
 """
@@ -24,9 +25,11 @@ class ClientAudio:
         except ApiError:
             return {}
 
-    def utterance(self, wait=3.0):
-        """The last utterance as 16 kHz mono float32 (empty if none came)."""
-        r = self.api._req(f"/mic?wait={wait}", timeout=wait + 10) or {}
+    def utterance(self, wait=3.0, down=None, up=None):
+        """An utterance as 16 kHz mono float32 (empty if none came): the press whose talk events were logged at down and
+        up (however long ago, within a couple of minutes), or without them the last one."""
+        press = f"&down={down}&up={up}" if down is not None and up is not None else ""
+        r = self.api._req(f"/mic?wait={wait}{press}", timeout=wait + 10) or {}
         raw = base64.b64decode(r.get("pcm") or "")
         return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768
 

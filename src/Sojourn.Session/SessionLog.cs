@@ -8,11 +8,18 @@ namespace Sojourn.Session;
 /// newest ten are kept. Native code writing to stdout (the OpenXR runtime) bypasses it.
 /// While <see cref="Paused"/> (private mode: Private/PrivateWiring.cs) nothing is written, to the console or the file:
 /// what the client logs can name people, places and what was said.
+/// The file marks whose words its lines carry, so that a log sent to the studio can leave out other people's exactly
+/// (LogShare.cs, docs/access-app.md > Sending a log): it starts with a <c>~log</c> line naming its format, and what's
+/// said and read out and the names learned are records of their own, <c>HH:mm:ss ~tag {json}</c> (<see cref="Record"/>,
+/// LogWords.cs), never plain lines; the console shows chat as before (<see cref="ToConsole"/>).
 /// </summary>
 public static class SessionLog
 {
     /// <summary>True while the console and the file take nothing.</summary>
     public static Func<bool>? Paused { get; set; }
+
+    /// <summary>The file's format, in its first line: 2, the records whose words they carry.</summary>
+    public const int Format = 2;
 
     static TextWriter? _console, _file;
 
@@ -21,6 +28,22 @@ public static class SessionLog
     {
         try { (_console ?? Console.Out).WriteLine(line); } catch (Exception) { }
         try { _file?.WriteLine(line); } catch (Exception) { }
+    }
+
+    /// <summary>A record in the file alone (not the console): <c>HH:mm:ss ~tag {json}</c>, on one line. Nothing while
+    /// <see cref="Paused"/>.</summary>
+    public static void Record(string tag, System.Text.Json.Nodes.JsonObject o)
+    {
+        if (_file is null || Paused?.Invoke() == true) return;
+        try { _file.WriteLine($"{DateTime.Now:HH:mm:ss} ~{tag} {o.ToJsonString(LogShare.Json)}"); } catch (Exception) { }
+    }
+
+    /// <summary>A line on the console alone (chat as it comes: the file has it as a record). Nothing while
+    /// <see cref="Paused"/>.</summary>
+    public static void ToConsole(string line)
+    {
+        if (Paused?.Invoke() == true) return;
+        try { (_console ?? Console.Out).WriteLine(line); } catch (Exception) { }
     }
 
     public static string? Start(string baseDir)
@@ -34,6 +57,7 @@ public static class SessionLog
             var path = Path.Combine(dir, $"session-{DateTime.Now:yyyyMMdd-HHmmss}.log");
             var file = new StreamWriter(new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read), new UTF8Encoding(false)) { AutoFlush = true };
             var sync = TextWriter.Synchronized(file);
+            sync.WriteLine($"{DateTime.Now:HH:mm:ss} ~log {{\"v\":{Format}}}");
             (_console, _file) = (Console.Out, sync);
             Console.SetOut(new Tee(Console.Out, sync));
             Console.SetError(new Tee(Console.Error, sync));

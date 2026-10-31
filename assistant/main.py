@@ -10,6 +10,10 @@ With --dev (the client started in dev mode, docs/dev-mode.md) there's no Claude 
 says to the session driving the client, and reads its replies out.
 It says hello every few seconds (the panel knows it's up; the answer carries the client's mode too) and exits when the
 client is gone.
+Hearing loads in the background, only the model the person chose: the first hello comes within seconds, saying hearing
+isn't ready (the client says so while the button is held), and a press made before it's ready, even before this
+process reads events, is heard once it is (the client's mic keeps each press's words, asked for by its talk events'
+times; Voice/AssistantMic.cs).
 """
 import argparse
 import asyncio
@@ -102,10 +106,40 @@ async def main():
     else:
         from ears import Ears
         from voice import Speaker
-        ears = await asyncio.to_thread(Ears, a.vr, a.whisper, 4, log, api, "whisper", words)
+        ears = await asyncio.to_thread(Ears, a.vr, a.whisper, 4, log, api, words)   # the mic only: no model yet
         speaker = Speaker(log)
     if ears.client:
         speaker.sink = ears.client.sink   # replies play in voice chat's mix: cancelled from the mic, never sent
+    hello_now = asyncio.Event()
+
+    def hearing_pref(which):
+        """The person's hearing setting changed (or came with a hello): load and switch in the background."""
+        if which and which != ears.hearing and not getattr(ears, "_switching", False):
+            ears._switching = True
+
+            async def switch():
+                try:
+                    await asyncio.to_thread(ears.set_hearing, which)
+                    log(f"hearing with {ears.hearing}")
+                except Exception as e:
+                    log(f"hearing didn't load: {e!r}")
+                    if ears.hearing is None:
+                        ears.notice = "Hearing didn't load (the assistant's log says why); requests can be typed."
+                finally:
+                    ears._switching = False
+                    hello_now.set()   # the client hears at once that hearing is ready
+            asyncio.create_task(switch())
+
+    first = {}
+    try:   # the person's choices, the hearing they chose first of all, so it loads while everything else starts
+        first = api.cmd("SojournAssistant", "hello", 5, mic=ears.mic_name, notice=ears.notice,
+                        hearing_ready=not ears.available)
+        if a.dev and first.get("dev") is not True:
+            log("dev mode: the client isn't in dev mode; exiting")
+            os._exit(1)
+    except ApiError:
+        pass
+    hearing_pref((first.get("prefs") or {}).get("hearing") or "parakeet")   # the client's default
     relay = None
     if a.dev:
         from devrelay import DevRelay
@@ -118,11 +152,8 @@ async def main():
         kit = Toolkit(api, log)
         kit.vr = a.vr
         brain = Brain(api, kit, a.vr, a.mode, log, speaker)
-    try:  # the person's choices before the sessions start, so their first instructions carry them
-        r = api.cmd("SojournAssistant", "hello", 5, mic=ears.mic_name, notice=ears.notice)
-        if a.dev and r.get("dev") is not True:
-            log("dev mode: the client isn't in dev mode; exiting")
-            os._exit(1)
+    if first:  # the person's choices before the sessions start, so their first instructions carry them
+        r = first
         brain.prefs = r.get("prefs") or {}
         brain.app = r.get("app")
         if kit:
@@ -134,9 +165,6 @@ async def main():
         if brain.prefs.get("speak"):
             speaker.warm()
         words.memory = brain.memory
-        await asyncio.to_thread(ears.set_hearing, brain.prefs.get("hearing"))
-    except ApiError:
-        pass
     if kit:   # the person's provider, checked before any session starts (none start without one that works)
         brain.provider.app = brain.app
         await asyncio.to_thread(brain.provider.configure, brain.prefs)
@@ -159,7 +187,8 @@ async def main():
     def hello_args():
         """The mic, and what the panel should say once when something's missing: no mic, or no provider that works."""
         notice = ears.notice or (None if not kit or brain.provider.ready else brain.provider.how())
-        return {"mic": ears.mic_name, "notice": notice, **({"provider": brain.provider.status()} if kit else {})}
+        return {"mic": ears.mic_name, "notice": notice, "hearing_ready": not ears.available or ears.ready.is_set(),
+                **({"provider": brain.provider.status()} if kit else {})}
     if kit:
         kit.words = words   # the context line's names (brain.context)
     from private import Private
@@ -172,6 +201,7 @@ async def main():
     async def hello():
         nonlocal gone_since
         while True:
+            hello_now.clear()
             try:
                 r = await asyncio.to_thread(api.cmd, "SojournAssistant", "hello", 5, **hello_args())
                 if a.dev and r.get("dev") is not True:
@@ -192,34 +222,27 @@ async def main():
                 if time.time() - gone_since > 20:
                     log("the client is gone; exiting")
                     os._exit(0)
-            await asyncio.sleep(4)
-
-    def hearing_pref(which):
-        """The person's hearing setting changed (or came with a hello): load and switch in the background."""
-        if which and which != ears.hearing and not getattr(ears, "_switching", False):
-            ears._switching = True
-
-            async def switch():
-                try:
-                    await asyncio.to_thread(ears.set_hearing, which)
-                    log(f"hearing with {ears.hearing}")
-                finally:
-                    ears._switching = False
-            asyncio.create_task(switch())
+            try:
+                await asyncio.wait_for(hello_now.wait(), 4)
+            except asyncio.TimeoutError:
+                pass
 
     asyncio.create_task(hello())
     asyncio.create_task(words.keep_fresh())
     log("ready")
     talk_blind = False
+    held_since = None   # when the press being held went down (its talk_down or dictate_down event's time)
 
     def blind_now(d=None):
         """Incognito, the assistant not let see: by the client's mark on this event, at talk_down, or the last status."""
         return bool((d or {}).get("blind")) or talk_blind or (private.on and not private.sees)
 
-    async def hear(target, first_target, dictation=False, blind=False):
-        text, dur, by = await asyncio.to_thread(ears.stop, blind)
+    async def hear(target, first_target, dictation=False, blind=False, down=None, up=None):
+        waited = not ears.ready.is_set()
+        text, dur, by = await asyncio.to_thread(ears.stop, blind, down, up)
         took = time.time() - ears.stopped_at
-        log(f"heard {dur:.1f}s of audio in {took:.2f}s ({by})")
+        late = f", said {time.time() - up:.0f}s before" if up and time.time() - up > took + 1 else ""
+        log(f"heard {dur:.1f}s of audio in {took:.2f}s ({by}){late}{', kept until hearing was ready' if waited else ''}")
         if not text:
             api.panel(hearing=False, status="didn't catch that" if dur >= 0.25 else None)
             return
@@ -255,27 +278,23 @@ async def main():
                 continue
             d = e.get("data") or {}
             what = d.get("what")
-            if what == "talk_down":
+            if what in ("talk_down", "dictate_down"):
+                # dictation: what's said while the key is held becomes a draft for the person to send (private.py);
+                # talk becoming dictation keeps the mic open, so the press began at the talk_down
                 speaker.stop()
                 talk_blind = bool(d.get("blind"))
                 words.refresh_soon()
+                held_since = held_since if what == "dictate_down" and held_since else e.get("t")
                 if ears.available:
-                    ears.start(blind_now(d))
-            elif what == "talk_up":
+                    ears.start(blind_now(d), at=held_since)
+            elif what in ("talk_up", "dictate_up"):
+                down, held_since = held_since, None
                 if ears.available:
-                    asyncio.create_task(hear(d.get("target"), d.get("first_target"), blind=blind_now(d)))
-                else:
+                    asyncio.create_task(hear(None if what == "dictate_up" else d.get("target"),
+                                             None if what == "dictate_up" else d.get("first_target"),
+                                             dictation=what == "dictate_up", blind=blind_now(d), down=down, up=e.get("t")))
+                elif what == "talk_up":
                     api.panel(hearing=False)
-            elif what in ("dictate_down", "dictate_up"):
-                # dictation: what's said while the key is held becomes a draft for the person to send (private.py)
-                if what == "dictate_down":
-                    speaker.stop()
-                    talk_blind = bool(d.get("blind"))
-                    words.refresh_soon()
-                    if ears.available:
-                        ears.start(blind_now(d))
-                elif ears.available:
-                    asyncio.create_task(hear(None, None, dictation=True, blind=blind_now(d)))
             elif what == "private":
                 asyncio.create_task(private.sync())   # a nudge: the client's status decides
             elif what == "typed" and d.get("text"):

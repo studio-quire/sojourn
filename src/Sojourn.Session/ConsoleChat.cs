@@ -71,26 +71,31 @@ public sealed class ConsoleChat
             if (_session?.Mutes.IsMuted(e.SourceID, e.FromName, e.OwnerID) == true) return;   // blocked (TesselAgent mute)
             var how = e.Type switch { ChatType.Shout => " shouts", ChatType.Whisper => " whispers", _ => "" };
             var msg = e.Message.StartsWith("/me ") ? $"{e.FromName}{e.Message[3..]}" : $"{e.FromName}{how}: {e.Message}";
-            Print(msg, e.SourceType == ChatSourceType.Object ? ConsoleColor.DarkGreen : ConsoleColor.White);
+            Print(msg, e.SourceType == ChatSourceType.Object ? ConsoleColor.DarkGreen : ConsoleColor.White, chat: true);
         };
         c.Self.IM += (_, e) =>
         {
             if (_session?.Mutes is { } mutes && (mutes.IsMuted(e.IM.FromAgentID, e.IM.FromAgentName)
                 || e.IM.Dialog == InstantMessageDialog.MessageFromObject && mutes.IsMuted(e.IM.IMSessionID))) return;
             if (e.IM.Dialog is InstantMessageDialog.MessageFromAgent or InstantMessageDialog.MessageFromObject && !string.IsNullOrEmpty(e.IM.Message))
-                Print($"IM {e.IM.FromAgentName}: {e.IM.Message}", ConsoleColor.Cyan);
+                Print($"IM {e.IM.FromAgentName}: {e.IM.Message}", ConsoleColor.Cyan, chat: true);
         };
     }
 
     static readonly object Gate = new();
 
-    static void Print(string text, ConsoleColor color)
+    /// <summary>chat: someone's words, on the console only; the session log has them as records of whose words they are
+    /// (SessionLog.Record, LogWords.cs), so a log sent to the studio can leave them out.</summary>
+    static void Print(string text, ConsoleColor color, bool chat = false)
     {
         lock (Gate)
         {
             var old = Console.ForegroundColor;
             Console.ForegroundColor = color;
-            Console.WriteLine($"{DateTime.Now:HH:mm} {text}");
+            // a line said over several lines keeps them indented under its time, so the log reads as one message
+            var line = $"{DateTime.Now:HH:mm:ss} {text.Replace("\r", "").Replace("\n", "\n         ")}";
+            if (chat) SessionLog.ToConsole(line);
+            else Console.WriteLine(line);
             Console.ForegroundColor = old;
         }
     }

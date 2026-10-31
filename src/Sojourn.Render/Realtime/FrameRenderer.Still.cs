@@ -52,8 +52,9 @@ public sealed record StillPicture(byte[] Rgba, int Width, int Height);
 public sealed record StillResult(IReadOnlyList<StillPicture> Pictures, int Pending, double SettledSeconds, double RenderMs, int Tiles);
 
 /// <summary>A request for pictures. <see cref="Views"/> runs on the render thread with the person's frame about to be
-/// drawn (their camera, region and hidden avatars), so cameras placed relative to the person follow where they are at
-/// the shot; null or empty fails the job.</summary>
+/// drawn (their camera, region and hidden avatars), when the job is taken, again while it settles and at the shot, so
+/// cameras placed relative to the person follow where they are; null or empty fails the job, and later calls must give
+/// as many views (the last call's are the pictures).</summary>
 public sealed class StillJob
 {
     public required Func<FrameRequest, IReadOnlyList<StillView>?> Views { get; init; }
@@ -97,6 +98,11 @@ public sealed partial class FrameRenderer
         return job;
     }
 
+    /// <summary>Where an avatar is drawn in a region as others see it (render thread: a still's
+    /// <see cref="StillJob.Views"/>); null if it isn't there.</summary>
+    public (Vector3 Pos, Quaternion Rot, bool Seated)? AvatarPlaced(ulong region, UUID id) =>
+        _world.Region(region) is { } scene ? _world.Avatars.Placed(scene, id) : null;
+
     /// <summary>At the start of a frame (render thread, the world this thread's): the still in progress settles for
     /// one more frame or is drawn. Returns its milliseconds, kept out of the frame's own.</summary>
     double StepStills(FrameRequest req, RegionScene region)
@@ -125,6 +131,7 @@ public sealed partial class FrameRenderer
                 // every third frame, one of the views built without drawing: what it shows is asked for and counted
                 if (_stillFrames++ % 3 == 0)
                 {
+                    list = Replace(job, req, list);
                     int i = (int)(_stillBuilt++ % list.Count);
                     _stillPending![i] = WithStill(() => PlanStill(req, region, list[i], out _, out _, out _, out _).Pending);
                     int sum = _stillPending.Sum(p => Math.Max(0, p));
@@ -132,6 +139,7 @@ public sealed partial class FrameRenderer
                 }
                 return Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
             }
+            list = Replace(job, req, list);
             var pictures = new List<StillPicture>(list.Count);
             int pending = 0, tiles = 0;
             long tr = Stopwatch.GetTimestamp();
@@ -166,6 +174,19 @@ public sealed partial class FrameRenderer
         && (_stillPending!.All(p => p == 0) || Stopwatch.GetElapsedTime(_stillImproved).TotalSeconds > 2);
 
     void EndStill() => (_still, _stillViews, _stillPending) = (null, null, null);
+
+    /// <summary>The job's cameras placed again for this frame: settling takes seconds, and a camera around the person
+    /// placed when the job was taken was left where they had been, facing where they had faced (2026-10-31, selfies in
+    /// the headset missing the avatar). Kept as they were if placing fails or changes how many there are.</summary>
+    IReadOnlyList<StillView> Replace(StillJob job, FrameRequest req, IReadOnlyList<StillView> list)
+    {
+        try
+        {
+            if (job.Views(req) is { } views && views.Count == list.Count) return _stillViews = views;
+        }
+        catch (Exception) { }
+        return list;
+    }
 
     /// <summary>Run a still's part with the person's per-frame state put back after it.</summary>
     T WithStill<T>(Func<T> part)

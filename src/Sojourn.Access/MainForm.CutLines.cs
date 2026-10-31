@@ -1,4 +1,5 @@
 using Sojourn.Core.Access;
+using Sojourn.Session;
 using Sojourn.Session.Social;
 
 namespace Sojourn.Access;
@@ -12,7 +13,7 @@ namespace Sojourn.Access;
 /// </summary>
 public sealed partial class MainForm
 {
-    sealed record Spoken(string Text, AnnounceKind Kind, long At, long Ends);
+    sealed record Spoken(string Text, AnnounceKind Kind, long At, long Ends, LineFrom From);
 
     readonly List<Spoken> _spoken = new();
     readonly List<Spoken> _cut = new();
@@ -34,7 +35,7 @@ public sealed partial class MainForm
             // the reader's queue: it starts once what's before it has been said
             long starts = Math.Max(now, _spokenEnds);
             _spokenEnds = starts + Speaking(text);
-            _spoken.Add(new Spoken(text, kind, now, _spokenEnds));
+            _spoken.Add(new Spoken(text, kind, now, _spokenEnds, LogWords.FromOf(e)));
         }
     }
 
@@ -49,6 +50,7 @@ public sealed partial class MainForm
         long now = Environment.TickCount64, typed = RealInput.LastTypedAt;
         string? again = null;
         AnnounceKind kind = AnnounceKind.Nearby;
+        LineFrom from = LineFrom.People;
         lock (_spokenLock)
         {
             if (_spoken.Count == 0 && _cut.Count == 0) return;
@@ -65,8 +67,9 @@ public sealed partial class MainForm
             if (_cut.Count == 0 || now - RealInput.LastKeyAt < KeysRest) return;
             again = string.Join(" ", _cut.Select(s => Ended(s.Text.TrimEnd())));
             kind = _cut[0].Kind;
+            from = _cut.Select(s => s.From).Aggregate(LineSources.Join);
             _cut.Clear();
         }
-        Reader?.Say(kind, again, keep: false);
+        Reader?.Say(kind, again, keep: false, from);
     }
 }

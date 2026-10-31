@@ -71,6 +71,7 @@ public sealed class Commands
                 case "touch": if (Touch != null) await Touch(string.Join(" ", rest)); return true;
                 case "outfit": if (Outfit != null) await Outfit(); return true;
                 case "voice": if (Voice != null) await Voice(string.Join(" ", rest)); return true;
+                case "sendlog": SendLog?.Invoke(); return true;
                 default: _say($"No command {verb}. //help lists them."); return false;
             }
         }
@@ -121,6 +122,7 @@ public sealed class Commands
         ("outfit", "//outfit", "what you're wearing, by name from the worn list: clothing, attachments and where, HUDs, body parts"),
         ("voice", "//voice | //voice answer | //voice decline", "who's in voice and speaking, your mic; or answer or decline a call ringing"),
         ("about", "//about", "which version of Sojourn Access this is, and where your settings and logs are"),
+        ("sendlog", "//sendlog", "send a session's log to Studio Quire, with a note on what happened; other people's words are left out"),
         ("help", "//help [word]", "the commands"),
     };
 
@@ -194,19 +196,13 @@ public sealed class Commands
 
         if (tp)
         {
-            OwnTeleport = true;
-            try
-            {
-                var r = await _ops.DoAsync("LLAgent", "requestTeleport", new JsonObject
-                {
-                    ["regionname"] = me.Region, ["x"] = (double)target.X, ["y"] = (double)target.Y, ["z"] = (double)Math.Max(target.Z, me.Pos.Z), ["skip_confirmation"] = true, ["timeout"] = 20,
-                });
-                _say(PersonOps.Error(r) is { } e ? $"Teleport didn't work: {e}" : $"Teleported to {what}.");
-                return PersonOps.Error(r) is null;
-            }
-            finally { OwnTeleportDone(); }
+            var (ok, line) = await TeleportNearAsync(target, what);
+            _say(line);
+            return ok;
         }
-        return await WalkAsync(target, what, stop);
+        var hint = kind is "person" or "object" ? $"//go tp {kind} {string.Join(" ", a.Skip(1))}"
+            : string.Create(CultureInfo.InvariantCulture, $"//go tp xyz {target.X:0},{target.Y:0}");
+        return await WalkAsync(target, what, stop, hint);
     }
 
     CancellationTokenSource? _walk;
@@ -224,20 +220,36 @@ public sealed class Commands
     /// the avatar really is; a host with no renderer hears its own position only now and then), saying how far, then
     /// how close it got once it has stopped. With the collision model, around what's in the way: a path of waypoints
     /// (PathPlanner), each walked by the region's autopilot in turn, each new stretch said; a stretch that sticks is
-    /// marked and the rest planned again (twice), and with no way at all it teleports there where the region allows
-    /// (walk_teleport_fallback). Completes when the walk ends: true when it got there (or within 2.5 m).</summary>
-    public Task<bool> WalkAsync(Vector3 target, string what, double stop = 1)
+    /// marked and the rest planned again (twice). A goal out of reach where this floor meets it (on a stage, inside a
+    /// bar) is walked as near as the way goes, said. Seated, it stands first. With no way at all it says so, and
+    /// teleports there once where that can work (walk_teleport_fallback; NoWayAsync), else names the command that
+    /// would (<paramref name="tpHint"/>). Completes when the walk ends: true when it got there (or within 2.5 m, or as
+    /// near as the way goes).</summary>
+    public Task<bool> WalkAsync(Vector3 target, string what, double stop = 1, string? tpHint = null)
     {
         if (_ops.Me() is null || _ops.Client is null) return Task.FromResult(false);
         StopFollowing(quiet: true);
         _walk?.Cancel();
         var walk = _walk = new CancellationTokenSource();
         var heading = _heading = new Walk.WalkMode.Target(what, () => new System.Numerics.Vector3(target.X, target.Y, target.Z), false);
+        tpHint ??= string.Create(CultureInfo.InvariantCulture, $"//go tp xyz {target.X:0},{target.Y:0}");
         return Task.Run(async () =>
         {
-            try { return await RouteAsync(target, what, stop, walk.Token); }
+            try { return await RouteAsync(target, what, stop, tpHint, walk.Token); }
             finally { if (_heading == heading) _heading = null; }
         });
+    }
+
+    /// <summary>Seated (a chair, a pose ball, a dance): stood up first, as walking needs ("Standing up to walk.").</summary>
+    async Task<bool> StandFirstAsync(CancellationToken ct)
+    {
+        if (_ops.Client is not { } c || c.Self.SittingOn == 0) return true;
+        _say("Standing up to walk.");
+        await _ops.DoAsync("LLAgent", "requestStand");
+        for (int i = 0; i < 30 && c.Self.SittingOn != 0 && !ct.IsCancellationRequested; i++) await Task.Delay(100, CancellationToken.None);
+        if (c.Self.SittingOn != 0) { if (!ct.IsCancellationRequested) _say("Couldn't stand up, so not walking."); return false; }
+        await Task.Delay(600, CancellationToken.None);   // (the region places the avatar beside the seat)
+        return !ct.IsCancellationRequested;
     }
 
     volatile Walk.WalkMode.Target? _heading;
@@ -246,29 +258,35 @@ public sealed class Commands
     /// <summary>Walk mode, for //beacon.</summary>
     public Walk.WalkMode? WalkMode { get; set; }
 
-    async Task<bool> RouteAsync(Vector3 target, string what, double stop, CancellationToken ct)
+    async Task<bool> RouteAsync(Vector3 target, string what, double stop, string tpHint, CancellationToken ct)
     {
+        if (!await StandFirstAsync(ct)) return false;
         if (_ops.Me() is not { } me || _ops.Client is not { } c) return false;
         double near = Math.Max(stop, 1.2);
         var flat = new Vector2(target.X - me.Pos.X, target.Y - me.Pos.Y).Length();
-        var legs = await PlanAsync(me.Pos, target, ct);
+        var route = await PlanAsync(me.Pos, target, ct);
         if (ct.IsCancellationRequested) return false;
-        if (legs is { Count: 0 }) return await NoWayAsync(target, what);
-        if (legs == null)
+        if (route is { Legs.Count: 0 }) return await NoWayAsync(target, what, tpHint);
+        if (route is not { } r)
         {
             if (_ops.Global(target) is not { } g) return false;
             c.Self.AutoPilot(g.X, g.Y, g.Z);
             _say(string.Create(CultureInfo.InvariantCulture, $"Walking {Bearings.Metres(flat)} to {what}."));
             return await WatchWalkAsync(target, near, ct);
         }
-        _say(string.Create(CultureInfo.InvariantCulture,
-            $"Walking {Bearings.Metres(Length(me.Pos, legs))} to {what}, around something in the way: {legs.Count} stretches."));
+        var legs = r.Legs;
+        // a goal out of reach (up on a stage, inside a bar): its stand-in, the nearest spot the way goes to
+        Vector3 End() => r.Moved ? new Vector3(legs[^1].X, legs[^1].Y, target.Z) : target;
+        string Short() => r.Moved ? $"; {what} is out of reach, so as near as the way goes, {Bearings.Metres(Flat(End(), target))} short" : "";
+        _say(legs.Count == 1
+            ? $"Walking {Bearings.Metres(Length(me.Pos, legs))} toward {what}{Short()}."
+            : $"Walking {Bearings.Metres(Length(me.Pos, legs))} to {what}, around something in the way: {legs.Count} stretches{Short()}.");
         int replans = 0;
         for (int i = 0; i < legs.Count; i++)
         {
             if (ct.IsCancellationRequested || _ops.Me() is not { } here) return false;
             bool last = i == legs.Count - 1;
-            var leg = last ? target : new Vector3(legs[i].X, legs[i].Y, target.Z);
+            var leg = last ? End() : new Vector3(legs[i].X, legs[i].Y, target.Z);
             if (i > 0)
             {
                 var d = new Vector2(leg.X - here.Pos.X, leg.Y - here.Pos.Y);
@@ -276,23 +294,33 @@ public sealed class Commands
             }
             if (_ops.Global(leg) is not { } g) return false;
             c.Self.AutoPilot(g.X, g.Y, g.Z);
-            var got = await LegAsync(leg, last ? near : 0.5, ct);
+            var got = await LegAsync(leg, last ? (r.Moved ? 0.6 : near) : 0.5, ct);
             if (got == Leg.Cancelled) return false;
-            if (got == Leg.Reached) { if (last) return await WatchWalkAsync(target, near, ct); continue; }
+            if (got == Leg.Reached)
+            {
+                if (!last) continue;
+                return r.Moved ? await WatchWalkAsync(leg, 0.8, ct, (target, what)) : await WatchWalkAsync(target, near, ct);
+            }
             // stuck on the way: something the model hadn't (a thin post, a doorway the region won't fit): marked, planned again
             c.Self.AutoPilotCancel();
             if (_ops.Me() is not { } stuck || Planner == null) return false;
             var dir = Vector2.Normalize(new Vector2(leg.X - stuck.Pos.X, leg.Y - stuck.Pos.Y));
             Planner.Block(new System.Numerics.Vector2(stuck.Pos.X + dir.X * 0.7f, stuck.Pos.Y + dir.Y * 0.7f), 0.6f, TimeSpan.FromMinutes(2));
-            if (++replans > 2) return await NoWayAsync(target, what);
+            if (++replans > 2) return await NoWayAsync(target, what, tpHint);
             var again = await PlanAsync(stuck.Pos, target, ct);
-            if (again is { Count: 0 }) return await NoWayAsync(target, what);
-            legs = again ?? new List<System.Numerics.Vector2> { new(target.X, target.Y) };
+            if (again is { Legs.Count: 0 }) return await NoWayAsync(target, what, tpHint);
+            r = again ?? new Route(new List<System.Numerics.Vector2> { new(target.X, target.Y) }, false);
+            legs = r.Legs;
             _say($"Something's in the way; going round: {legs.Count} {(legs.Count == 1 ? "stretch" : "stretches")}.");
             i = -1;
         }
         return false;
     }
+
+    static float Flat(Vector3 a, Vector3 b) => new Vector2(a.X - b.X, a.Y - b.Y).Length();
+
+    /// <summary>A planned way: its waypoints (the last the goal, or its stand-in when the goal was out of reach).</summary>
+    readonly record struct Route(List<System.Numerics.Vector2> Legs, bool Moved);
 
     static float Length(Vector3 from, List<System.Numerics.Vector2> legs)
     {
@@ -302,9 +330,9 @@ public sealed class Commands
         return len;
     }
 
-    /// <summary>The waypoints around what's in the way; null: straight (no collision model, or nothing in the way);
-    /// empty: no way at all.</summary>
-    async Task<List<System.Numerics.Vector2>?> PlanAsync(Vector3 from, Vector3 to, CancellationToken ct)
+    /// <summary>The way around what's in the way; null: straight (no collision model, or nothing in the way); no legs:
+    /// no way at all.</summary>
+    async Task<Route?> PlanAsync(Vector3 from, Vector3 to, CancellationToken ct)
     {
         if (Planner is not { } planner) return null;
         var a = new System.Numerics.Vector2(from.X, from.Y);
@@ -312,10 +340,10 @@ public sealed class Commands
         if (System.Numerics.Vector2.Distance(a, b) < 2) return null;
         try
         {
-            var plan = await planner.PlanAsync(a, FeetZ?.Invoke() ?? from.Z - 0.95f, b, null, ct);
-            Walk.WalkMode.Log($"go {a} -> {b}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct ? "direct" : string.Join(" ", plan.Waypoints))}");
-            if (plan == null) return planner.CanAsk ? new() : null;
-            return plan.Direct ? null : plan.Waypoints;
+            var plan = await planner.PlanAsync(a, FeetZ?.Invoke() ?? from.Z - 0.95f, b, null, ct, to.Z);
+            Walk.WalkMode.Log($"go {a} -> {b}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct && !plan.GoalMoved ? "direct" : string.Join(" ", plan.Waypoints) + (plan.GoalMoved ? " (goal moved)" : ""))}");
+            if (plan == null) return planner.CanAsk ? new Route(new(), false) : null;
+            return plan.Direct && !plan.GoalMoved ? null : new Route(plan.Waypoints, plan.GoalMoved);
         }
         catch (OperationCanceledException) { return null; }
     }
@@ -342,31 +370,85 @@ public sealed class Commands
         return Leg.Cancelled;
     }
 
-    async Task<bool> NoWayAsync(Vector3 target, string what)
+    /// <summary>No way to walk there: said once, plainly. With walk_teleport_fallback on it teleports there instead, but
+    /// only where that can land beside it (not where the region or the parcel sends teleports to a hub or landing point,
+    /// which in Second Life is most clubs and shops), and only once: a teleport that landed elsewhere (or failed) isn't
+    /// tried again for the same spot for a few minutes. Otherwise the line names the command that would try
+    /// (<paramref name="tpHint"/>). Public: the assistant's walks (MainForm.RouteAsync) come here too.</summary>
+    public async Task<bool> NoWayAsync(Vector3 target, string what, string? tpHint)
     {
         _ops.Client?.Self.AutoPilotCancel();
-        if (!TeleportFallback() || _ops.Me() is not { } me)
+        var offer = tpHint != null ? $" {tpHint} would teleport you there." : "";
+        if (!TeleportFallback() || _ops.Me() is null)
         {
-            _say($"No way around found to {what}.");
+            _say($"No way to walk to {what} found.{offer}");
             return false;
         }
-        _say($"No way around found to {what}: teleporting there.");
+        if (TeleportWontLand(target) is { } why)
+        {
+            _say($"No way to walk to {what} found, and a teleport wouldn't land there: {why}.");
+            return false;
+        }
+        _say($"No way to walk to {what} found: teleporting there.");
+        var (ok, line) = await TeleportNearAsync(target, what);
+        _say(line);
+        return ok;
+    }
+
+    (Vector3 At, long When, string Why)? _missed;
+
+    /// <summary>Why a teleport to a spot in this region wouldn't land there, or null: the region's telehub, the parcel's
+    /// landing point (its owner excepted, as the region does), or one there just now that didn't.</summary>
+    string? TeleportWontLand(Vector3 at) =>
+        _missed is { } m && Environment.TickCount64 - m.When < 5 * 60_000 && Flat(m.At, at) < 4 ? $"one just now didn't ({m.Why})" : SentElsewhere(at);
+
+    /// <summary>Where the region or the parcel sends a teleport to that spot instead, in words, or null.</summary>
+    string? SentElsewhere(Vector3 at)
+    {
+        if (_ops.Client is not { } c || c.Network.CurrentSim is not { } sim) return null;
+        if ((sim.Flags & RegionFlags.AllowDirectTeleport) == 0) return "this region sends teleports to its telehub";
+        int local = 0;
+        try { local = c.Parcels.GetParcelLocalID(sim, at); } catch { }
+        if (local != 0 && sim.Parcels.TryGetValue(local, out var parcel) && parcel.Landing != LandingType.Direct && parcel.OwnerID != c.Self.AgentID)
+            return "the parcel there sends teleports to its landing point";
+        return null;
+    }
+
+    /// <summary>A teleport to a spot in this region (`//go tp`, the walk's fallback), and the line for how it went: where
+    /// it really landed, since a landing point or telehub takes it elsewhere and the grid calls that a success. A miss
+    /// is remembered (TeleportWontLand).</summary>
+    async Task<(bool Ok, string Line)> TeleportNearAsync(Vector3 target, string what)
+    {
+        if (_ops.Me() is not { } me) return (false, "Not in a region yet.");
         OwnTeleport = true;
+        JsonObject r;
         try
         {
-            var r = await _ops.DoAsync("LLAgent", "requestTeleport", new JsonObject
+            r = await _ops.DoAsync("LLAgent", "requestTeleport", new JsonObject
             {
                 ["regionname"] = me.Region, ["x"] = (double)target.X, ["y"] = (double)target.Y, ["z"] = (double)Math.Max(target.Z, me.Pos.Z),
                 ["skip_confirmation"] = true, ["timeout"] = 20,
             });
-            _say(PersonOps.Error(r) is { } e ? $"Teleport didn't work: {e}" : $"Teleported to {what}.");
-            return PersonOps.Error(r) is null;
         }
         finally { OwnTeleportDone(); }
+        if (PersonOps.Error(r) is { } e)
+        {
+            _missed = (target, Environment.TickCount64, "it didn't work");
+            return (false, $"Teleport didn't work: {e}");
+        }
+        await Task.Delay(1000);   // (the region's word on where it put the avatar)
+        if (_ops.Me() is { } now && Flat(now.Pos, target) is var off && off > 3)
+        {
+            var landing = SentElsewhere(target) is { } why ? $" ({why})" : "";
+            _missed = (target, Environment.TickCount64, "it landed elsewhere");
+            return (false, $"The teleport landed you away from {what}{landing}: {what} is {_ops.Where(target) ?? Bearings.Metres(off)}.");
+        }
+        return (true, $"Teleported to {what}.");
     }
 
-    /// <summary>Waits for the walk to end (stopped near the target, stalled, or a minute), then says Radegast's line.</summary>
-    async Task<bool> WatchWalkAsync(Vector3 target, double near, CancellationToken ct)
+    /// <summary>Waits for the walk to end (stopped near the target, stalled, or a minute), then says Radegast's line;
+    /// walking to a stand-in for a goal out of reach (<paramref name="outOfReach"/>), how near that is to it.</summary>
+    async Task<bool> WatchWalkAsync(Vector3 target, double near, CancellationToken ct, (Vector3 At, string What)? outOfReach = null)
     {
         long start = Environment.TickCount64, stillSince = start;
         bool moved = false;
@@ -384,6 +466,11 @@ public sealed class Commands
             bool arrived = off <= near && still > 700, stalled = still > (moved ? 2000 : 4000), late = now - start > 60_000;
             if (!arrived && !stalled && !late) continue;
             if (!arrived) c.Self.AutoPilotCancel();
+            if (outOfReach is { } o && off < 2.5)
+            {
+                _say($"Finished walking, as near to {o.What} as the way goes: {o.What} is {_ops.Where(o.At) ?? Bearings.Metres(Flat(me.Pos, o.At))}.");
+                return true;
+            }
             _say(string.Create(CultureInfo.InvariantCulture,
                 $"Finished walking, {(off < 3 ? (off < 1 ? "under a metre" : Bearings.MetresTenths(off)) : Bearings.Metres(off))} from the destination{(arrived || off < 2.5 ? "" : " (something was in the way)")}."));
             return arrived || off < 2.5;
@@ -755,6 +842,15 @@ public sealed class Commands
     /// <summary>`//about`: the version and where the data lives (AppInfo).</summary>
     public Func<string>? About { get; set; }
 
+    /// <summary>Said like the rest, for words that quote someone (a parcel's description, a route notecard's note): the
+    /// session log marks them so, and a log sent to the studio leaves them out.</summary>
+    public Action<string>? Quote { get; set; }
+
+    void Quoted(string text) => (Quote ?? _say)(text);
+
+    /// <summary>`//sendlog`: the window for sending a session's log to the studio (SendLog.cs).</summary>
+    public Action? SendLog { get; set; }
+
     /// <summary>`//describe`'s words, to the app's describing (MainForm.Describe.cs).</summary>
     public Func<string, Task>? Describe { get; set; }
 
@@ -829,7 +925,7 @@ public sealed class Commands
             {
                 if (stop.IsCancellationRequested) { _routeAt = (name, lines, i); _say($"Route stopped before step {step + 1} of {steps}. //route resume goes on."); return; }
                 var line = lines[i];
-                if (!IsCommand(line)) { _say($"Note: {line}"); continue; }
+                if (!IsCommand(line)) { Quoted($"Note: {line}"); continue; }
                 step++;
                 if (line.TrimStart()[2..].TrimStart().StartsWith("route", StringComparison.OrdinalIgnoreCase)) continue;
                 _say($"Step {step} of {steps}.");
@@ -908,7 +1004,9 @@ public sealed class Commands
             var desc = string.IsNullOrWhiteSpace(p.Desc) ? "" : $": {p.Desc.Trim()}";
             return $"{(p.LocalID == here ? "Here, " : "")}{name}, {p.Area} square metres{who}{desc}.";
         });
-        _say($"{parcels.Count} {(parcels.Count == 1 ? "parcel" : "parcels")}. " + string.Join(" ", lines));
+        // the parcels' descriptions are their owners' words: the session log marks the line as quoting someone
+        Action<string> say = parcels.Any(p => !string.IsNullOrWhiteSpace(p.Desc)) ? Quoted : _say;
+        say($"{parcels.Count} {(parcels.Count == 1 ? "parcel" : "parcels")}. " + string.Join(" ", lines));
     }
 
     async Task ScriptInfoAsync()
@@ -947,8 +1045,8 @@ public sealed class Commands
         if (All("region"))
         {
             var sim = c.Network.CurrentSim;
-            var maturity = sim?.Access.ToString() ?? "";
-            parts.Add($"Region {me.Region}{(maturity.Length > 0 && maturity != "Unknown" ? $", {maturity.ToLowerInvariant()}" : "")}.");
+            var maturity = sim == null ? "" : Sojourn.Session.Map.Where.Rating(sim.Access);
+            parts.Add($"Region {me.Region}{(maturity is { Length: > 0 } and not "unknown" ? $", {maturity}" : "")}.");
         }
         if (All("parcel"))
         {

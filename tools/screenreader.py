@@ -1,4 +1,4 @@
-"""Sojourn and the person's own screen reader (docs/accessibility.md > A1; python tools/screenreader.py ...).
+"""Sojourn and the person's own screen reader (docs/screen-reader.md; python tools/screenreader.py ...).
 
   python tools/screenreader.py setup   NVDA's controller client (nvdaControllerClient.dll, NV Access, LGPL-2.1) into
                                        local/nvda/: the x64 DLL, its licence and readme, from NV Access's release zip

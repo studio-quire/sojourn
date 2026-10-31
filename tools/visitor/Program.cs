@@ -24,6 +24,8 @@
 //                                                         Blue; says "picked X"), a text box ("typed X"), a request
 //                                                         to animate it ("permission N") or the notecard
 //   fmenu12 UUID                                          a script menu of twelve (One ... Ten, Next, Back)
+//   fdance UUID                                           a dance machine's menu (Waltz, Tango): each pick says
+//                                                         "danced X" and sends the menu again
 //   heard [N] | events [N] [since S]                      the last N chat lines heard / other things received (script
 //                                                         dialogs, permission questions, IMs and offers), as JSON lines
 //                                                         with a running number "n"; "since S" keeps those after n=S
@@ -31,6 +33,9 @@
 //   qreply yes|no                                         answer the newest permission question
 //   face DEGREES | goto X Y Z                             turn to a heading (0 east, 90 north) / walk to a spot
 //   tp REGION X Y Z | fly on|off                        teleport (waits for the arrival) / fly or land
+//   sofa [NAME] X Y Z                                     a seat (default "Access Sofa") that renames itself NAME for
+//                                                         two while sat on or after a touch, back on standing or the
+//                                                         next touch ("NAME renamed to N")
 //   cart [NAME] X Y Z                                     a cart to drive seated (default "Walk Cart"): takes the sitter's
 //                                                         movement keys, moves on forward and back, turns on left and right
 //   kart [NAME] X Y Z                                     a physical car vehicle (default "Walk Kart") for seated crossings
@@ -215,10 +220,12 @@ static class Program
             case "treasure": return await Treasure(rest);
             case "fixture": return await Fixture(rest);
             case "facebox": return await Facebox(rest);
+            case "sofa": return await Sofa(rest);
             case "cart": return await Cart(rest);
             case "kart": return await Kart(rest);
             case "fmenu": return Tell("menu", rest);
             case "fmenu12": return Tell("menu12", rest);
+            case "fdance": return Tell("dance", rest);
             case "ftext": return Tell("text", rest);
             case "fperm": return Tell("perm", rest);
             case "fgive": return Tell("give", rest);
@@ -447,15 +454,18 @@ static class Program
         // it sends that avatar a script menu, a text box, a request to animate them or its notecard, and says what came back.
         integer chMenu;
         integer chText;
+        integer chDance;
         default
         {
             state_entry()
             {
                 chMenu = -70000 - (integer)llFrand(100000.0);
                 chText = chMenu - 1;
+                chDance = chMenu - 2;
                 llListen(7, "", llGetOwner(), "");
                 llListen(chMenu, "", NULL_KEY, "");
                 llListen(chText, "", NULL_KEY, "");
+                llListen(chDance, "", NULL_KEY, "");
                 llSay(0, "Access fixture ready");
             }
             on_rez(integer p) { llResetScript(); }
@@ -463,11 +473,14 @@ static class Program
             {
                 if (c == chMenu) { llSay(0, "picked " + msg); return; }
                 if (c == chText) { llSay(0, "typed " + msg); return; }
+                // a dance machine's way: each pick answered, and the menu sent again for the next
+                if (c == chDance) { llSay(0, "danced " + msg); llDialog(id, "Access Dance: pick a dance.", ["Waltz", "Tango"], chDance); return; }
                 list w = llParseString2List(msg, [" "], []);
                 string cmd = llList2String(w, 0);
                 key who = (key)llList2String(w, 1);
                 if (cmd == "menu") llDialog(who, "Access Menu: pick one.", ["Red", "Green", "Blue"], chMenu);
                 else if (cmd == "menu12") llDialog(who, "Access Long Menu: pick one.", ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Next", "Back"], chMenu);
+                else if (cmd == "dance") llDialog(who, "Access Dance: pick a dance.", ["Waltz", "Tango"], chDance);
                 else if (cmd == "text") llTextBox(who, "Access Box: type a word.", chText);
                 else if (cmd == "perm") llRequestPermissions(who, PERMISSION_TRIGGER_ANIMATION);
                 else if (cmd == "give") llGiveInventory(who, "Access Card");
@@ -570,6 +583,37 @@ static class Program
                     return $"kart {name} local {box.LocalID} id {box.ID}";
         }
         return $"ERR kart {name} (local {box.LocalID}) rezzed but its script didn't say it was ready";
+    }
+
+    /// <summary>A self-naming seat, as a blind tester met one (2026-10-31: a sofa that renamed itself as people sat,
+    /// and Access's objects list kept the old name): a box with a sit target whose script renames it NAME + " for two"
+    /// while someone sits on it or after a touch, and back to NAME when they stand or on the next touch, saying "NAME
+    /// renamed to N" each time.</summary>
+    static async Task<string> Sofa(string rest)
+    {
+        if (NameAndPos(rest, "Access Sofa") is not var (name, pos)) return "ERR sofa [NAME] X Y Z";
+        var sim = client.Network.CurrentSim;
+        var box = await RezBox(pos, new Vector3(1.6f, 0.7f, 0.5f));
+        if (box == null) return "ERR no object came back";
+        client.Objects.SetName(sim, box.LocalID, name);
+        var script = await UploadScript("Access sofa",
+            "string baseName; integer taken; "
+            + "rename(integer v) { taken = v; if (taken) llSetObjectName(baseName + \" for two\"); else llSetObjectName(baseName); "
+            + "llSay(0, baseName + \" renamed to \" + llGetObjectName()); } "
+            + "default { state_entry() { baseName = llGetObjectName(); llSitTarget(<0, 0, 0.6>, ZERO_ROTATION); llSay(0, baseName + \" ready\"); } "
+            + "touch_start(integer n) { rename(!taken); } "
+            + "changed(integer c) { if (c & CHANGED_LINK) rename(llAvatarOnSitTarget() != NULL_KEY); } }");
+        int mark = counter;
+        client.Inventory.CopyScriptToTask(box.LocalID, script, true);
+        client.Objects.DeselectObject(sim, box.LocalID);
+        for (int i = 0; i < 40; i++)
+        {
+            await Task.Delay(250);
+            lock (heard)
+                if (heard.Any(l => l.Contains(name + " ready") && int.Parse(Regex.Match(l, "\"n\":(\\d+)").Groups[1].Value) > mark))
+                    return $"sofa {name} local {box.LocalID} id {box.ID}";
+        }
+        return $"ERR sofa {name} (local {box.LocalID}) rezzed but its script didn't say it was ready";
     }
 
     static async Task<string> Facebox(string rest)

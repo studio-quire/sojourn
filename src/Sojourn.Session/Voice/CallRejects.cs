@@ -9,7 +9,8 @@ namespace Sojourn.Session.Voice;
 /// Which voice calls are turned away before they ring, as the viewers decide in LLIMMgr::inviteToSession (read
 /// 2026-10-29, the official viewer and Firestorm's FIRE-6522):
 /// - from someone whose voice the person muted (a voice mute or a block), one-to-one and ad-hoc calls (not a group's);
-/// - group calls, when the person turns them away (VoiceCallsRejectGroup, both viewers);
+/// - group calls, when the person turns them away (VoiceCallsRejectGroup, both viewers), or one group's, by a switch of
+///   its own (Agents/Rejects.cs; beyond both viewers, the user's call 2026-10-31);
 /// - from anyone but friends while "only friends and groups can IM or call me" is on (B2's `friends_only_ims`, the
 ///   viewer's VoiceCallsFriendsOnly). Group calls are let through here: the setting's words say groups may call, and B2
 ///   keeps group chat too. The viewer's code turns away a group call a non-friend starts; that's the one difference;
@@ -40,13 +41,14 @@ public sealed class CallRejects
         return parts.Length >= 2 && parts[1].Equals("linden", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Why this call is turned away (a key: voice_muted, group_calls, friends_only, conference_calls,
-    /// p2p_calls, do_not_disturb), or null to let it ring. The viewer's order.</summary>
+    /// <summary>Why this call is turned away (a key: voice_muted, group_calls, group_calls_from, friends_only,
+    /// conference_calls, p2p_calls, do_not_disturb), or null to let it ring. The viewer's order.</summary>
     public string? Why(IncomingCall call)
     {
         if (_s.Client is not { } c) return null;
         if (!IsLinden(call.Name) && call.Kind != "group" && _s.Mutes.VoiceMuted(call.From)) return "voice_muted";
         if (Group && call.Kind == "group") return "group_calls";
+        if (call.Kind == "group" && _s.Rejects.CallsTurnedAway(call.Session)) return "group_calls_from";
         if (_s.Rejects.FriendsOnly && call.Kind != "group" && !c.Friends.FriendList.ContainsKey(call.From)) return "friends_only";
         if (Conference && call.Kind == "conference") return "conference_calls";
         if (P2P && call.P2P) return "p2p_calls";
@@ -76,6 +78,14 @@ public sealed class CallRejects
             substitutions: new JsonObject { ["NAME"] = name });
     }
 
+    /// <summary>The groups whose calls are turned away one by one: [{group_id, name}].</summary>
+    public JsonArray GroupsTurnedAway() => new(_s.Rejects.CallsTurnedAwayGroups().Select(g => (JsonNode)new JsonObject
+    {
+        ["group_id"] = g.Id.ToString(),
+        ["name"] = _s.State.Groups.TryGetValue(g.Id, out var grp) ? grp.Name : g.Name,
+        ["member"] = _s.State.Groups.ContainsKey(g.Id),
+    }).ToArray());
+
     public JsonObject Status()
     {
         var turned = new JsonObject();
@@ -83,6 +93,7 @@ public sealed class CallRejects
         return new JsonObject
         {
             ["reject_p2p_calls"] = P2P, ["reject_group_calls"] = Group, ["reject_conference_calls"] = Conference,
+            ["groups_turned_away"] = GroupsTurnedAway(),
             ["friends_only"] = _s.Rejects.FriendsOnly, ["do_not_disturb"] = _s.Presence.DoNotDisturb, ["turned_away"] = turned,
         };
     }

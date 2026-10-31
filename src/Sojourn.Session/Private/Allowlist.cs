@@ -12,7 +12,7 @@ namespace Sojourn.Session.Private;
 /// or only the person's own things (settings, their outfits, their panel). Anything that reads what's said, who is
 /// around, where they are, or a picture of the view is left out, and so is anything that would act on a place or a
 /// person the assistant would have to know by name (teleports, giving, paying). Things nearby are named only by the
-/// spell's handles (the pointer's, the situation's). docs/assistant.md > Private mode has the reasoning per group.
+/// spell's handles (the pointer's, the situation's). docs/assistant-incognito.md > The gate has the reasoning per group.
 /// </summary>
 public static class Allowlist
 {

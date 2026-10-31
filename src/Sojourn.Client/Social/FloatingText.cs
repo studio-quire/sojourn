@@ -189,10 +189,9 @@ public sealed class FloatingText
             for (int i = 0; i < lines.Count; i++)
             {
                 if (lines[i].Length == 0) continue;
-                var f = Painter.FontFor(font, lines[i]);
                 float x = (w - Measure(font, lines[i])) / 2, y = Pad + lineH * i + TextSize;
-                c.DrawText(lines[i], x, y, SKTextAlign.Left, f, edge);
-                c.DrawText(lines[i], x, y, SKTextAlign.Left, f, fill);
+                FallbackText.Draw(c, lines[i], x, y, font, edge);
+                FallbackText.Draw(c, lines[i], x, y, font, fill);
             }
             return h;
         });

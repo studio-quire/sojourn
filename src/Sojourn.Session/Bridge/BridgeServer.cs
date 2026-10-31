@@ -17,7 +17,8 @@ namespace Sojourn.Session.Bridge;
 ///   GET /status, POST /cmd {pump, data, reply?, timeout?}, POST /listen {pump}, POST /event {kind, data},
 ///   GET /events?since=&amp;wait=, POST /rpc {method, params}
 /// and for the assistant's sidecar, when voice chat's audio engine is up (Voice/AssistantMic.cs):
-///   GET /mic/info, GET /mic?wait= (the last utterance, 16 kHz mono int16 as base64, taken once),
+///   GET /mic/info, GET /mic?wait=&amp;down=&amp;up= (the utterance of the press whose talk events were logged at `down`
+///   and `up`, or without them the last one; 16 kHz mono int16 as base64, taken once),
 ///   GET /mic/live?from= (the utterance being collected, from sample `from` on, for a streaming recogniser; not taken),
 ///   POST /play {rate, pcm} (mono int16 base64, played locally), POST /play/clear, GET /play (ms still queued)
 /// </summary>
@@ -25,7 +26,9 @@ namespace Sojourn.Session.Bridge;
 public interface IClientAudio
 {
     JsonObject Info();
-    Task<JsonObject?> TakeUtteranceAsync(TimeSpan wait, CancellationToken ct);
+    /// <summary>The utterance of the press that went down at <paramref name="down"/> and up at <paramref name="up"/>
+    /// (Unix seconds, its talk events' times), or without them the newest; null if none comes within the wait.</summary>
+    Task<JsonObject?> TakeUtteranceAsync(TimeSpan wait, double? down, double? up, CancellationToken ct);
     /// <summary>The utterance so far from sample <paramref name="from"/>: {pcm, total, collecting} (collecting false
     /// once it's finished, which TakeUtteranceAsync then hands over as usual).</summary>
     JsonObject Live(int from);
@@ -139,10 +142,10 @@ public sealed class BridgeServer : IAsyncDisposable
 
         app.MapGet("/mic/info", () => JsonResult(Audio?.Info() ?? new JsonObject { ["available"] = false }));
 
-        app.MapGet("/mic", async (double? wait, CancellationToken ct) =>
+        app.MapGet("/mic", async (double? wait, double? down, double? up, CancellationToken ct) =>
         {
             if (Audio is not { } audio) return JsonResult(Json.Error("no client mic"), 404);
-            var u = await audio.TakeUtteranceAsync(TimeSpan.FromSeconds(Math.Clamp(wait ?? 0, 0, 10)), ct);
+            var u = await audio.TakeUtteranceAsync(TimeSpan.FromSeconds(Math.Clamp(wait ?? 0, 0, 10)), down, up, ct);
             return u != null ? JsonResult(u) : JsonResult(new JsonObject { ["ms"] = 0 });
         });
 

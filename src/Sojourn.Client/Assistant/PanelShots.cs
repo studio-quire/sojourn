@@ -99,6 +99,10 @@ public static class PanelShots
         Shot("reader-notecard", Read(notecard, scale));
         notecard.Look = PanelLook.PresetNamed("smoke");
         Shot("reader-notecard-smoke", Read(notecard, scale));
+        // a confirmation's list key: its list whole
+        var listed = new Reader();
+        listed.Show(ReaderDoc.Listing(TrashConfirm()), atEnd: false);
+        Shot("reader-confirm-list", Read(listed, scale));
 
         Views(dir, scale);
         GlowSheet(dir, bg, after: true);
@@ -361,6 +365,7 @@ public static class PanelShots
         View("point", S("5c-point"), PanelPlacement.Mode.Panel);
         View("choices", S("5-choices"), PanelPlacement.Mode.Panel);
         View("confirm", S("6-confirm"), PanelPlacement.Mode.Confirm);
+        View("confirm-list", S("6c-confirm-list"), PanelPlacement.Mode.Confirm);
         View("settings", Panel.DrawMenu(new PanelLook(), Tabs, 0, MovingRows, null, -1, 2.4f, 1), PanelPlacement.Mode.Menu);
         View("reply-working", Replying().First(x => x.Name == "4h-reply-working").Panel.Draw(2.4f), PanelPlacement.Mode.Panel);
 
@@ -391,12 +396,13 @@ public static class PanelShots
         UiSize.Scale = 1;
     }
 
-    const string Hint = "hold the right grip and speak";
+    const string Hint = "hold or tap the right grip and speak";
 
     static IEnumerable<(string Name, Action<PanelState> State)> States()
     {
         yield return ("1-idle", s => { s.Hint = Hint; });
         yield return ("2-listening", s => { s.Hint = Hint; s.Listening = true; s.Pointing = "Fountain"; });
+        yield return ("2b-listening-latched", s => { s.Hint = Hint; s.Listening = true; s.Latched = true; });
         yield return ("3-working", s =>
         {
             s.Hint = Hint; s.Heard = "put on the grey wool coat"; s.Working = true; s.Model = "haiku 5.5";
@@ -469,6 +475,20 @@ public static class PanelShots
             s.Hint = Hint; s.Heard = "tip the pianist 50";
             s.Confirm = new PendingConfirm { Title = "Pay L$50 to Mira Lane", Detail = "Your balance after: L$1,250." };
         });
+        yield return ("6c-confirm-list", s => { s.Hint = Hint; s.Heard = "clear out the old freebies"; s.Confirm = TrashConfirm(); });
+    }
+
+    /// <summary>A tidy's one move to Trash, of more than the confirmation names (Confirmations.Listed).</summary>
+    static PendingConfirm TrashConfirm()
+    {
+        var names = new[] { "Freebie Hat", "Old Boots", "Starter Shirt", "Box (no copy)", "Welcome Pack", "Dance HUD v1", "Sand Texture",
+            "Party Hat 2019", "Sunglasses", "Leather Jacket", "Rose Bouquet", "Camp Chair", "Beach Towel", "Lantern (copy)" }
+            .Concat(Enumerable.Range(1, 32).Select(i => $"Landmark {i}")).Select(n => $"\"{n}\"").ToList();
+        return new PendingConfirm
+        {
+            Title = $"Move to Trash: {string.Join(", ", names.Take(6))} and {names.Count - 6} more", Detail = "",
+            Lists = new[] { new ConfirmList($"{names.Count} items", names) },
+        };
     }
 
     static readonly string[] Tabs = { "moving", "assistant", "voice" };
@@ -558,7 +578,7 @@ public static class PanelShots
 
     static readonly string[] HelpLines =
     {
-        "hold the right grip and speak to the assistant",
+        "hold the right grip and speak to the assistant, or tap it to talk hands-free and tap again to send",
         "X hides everything and brings it back, held: every menu back in front · Y recentres · this menu: the left menu button",
         "drag any menu anywhere · drop it on its outline to have it follow",
         "seated: sit up straight, then press Y to set your height",

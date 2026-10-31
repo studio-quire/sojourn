@@ -167,6 +167,15 @@ def build(kit: Toolkit, with_escalate: bool, with_help: bool = True, only=None):
         os.remove(path)
         return {"content": [{"type": "image", "data": base64.b64encode(kit.last_look).decode(), "mimeType": "image/png"}]}
 
+    async def show_picture(picture, title=None):
+        """A saved picture on a big card in front of them (in the room, where they face), one at a time: the next takes
+        the same card. True, or why not (the picture is saved either way)."""
+        try:
+            await kit.call("SojournShow", "show", id=kit.show_id("picture"), at="room", title=title or "", blocks=[{"image": picture}])
+            return True
+        except ApiError as e:
+            return f"not shown: {e}"
+
     @tool("capture", "Save pictures and short videos of the person's view as files they can open later (their Pictures "
           "and Videos folders, in Sojourn, on this computer), when they ask: a snapshot, the picture you just looked at, a recording (to show "
           "a friend, or to catch a flicker or glitch they see). action: picture (of: view, the default, takes one now at full "
@@ -177,10 +186,13 @@ def build(kit: Toolkit, with_escalate: bool, with_help: bool = True, only=None):
           "(\"3840x2160\", up to 7680x4320), camera (selfie, front, behind, shoulder, above, left or right of them, with "
           "distance; the view itself never moves), hide_avatars, format jpg. panorama: a 360 (quality preview|medium|high|"
           "max). to_inventory: the last picture (or path) into their inventory's Photo Album (an upload: L$ on Second Life, "
-          "which they confirm). postcard: it emailed (to, subject, message: their words, which they confirm). Returns the "
+          "which they confirm). postcard: it emailed (to, subject, message: their words, which they confirm). show: true "
+          "(picture, panorama) puts it in front of them on a big card once saved, to see it at once (\"take a selfie and "
+          "show me\"); any saved picture later with show's {image: \"last\"} or its file name. Returns the "
           "file's path: tell the person the folder and the file's name, not the whole path.",
           {"type": "object", "properties": {
               "action": {"type": "string", "enum": ["picture", "video", "stop", "status", "panorama", "to_inventory", "postcard"]},
+              "show": {"type": "boolean"},
               "of": {"type": "string", "enum": ["view", "last_look"]}, "seconds": {"type": "number"},
               "fps": {"type": "integer"}, "name": {"type": "string"}, "size": {"type": "string"},
               "camera": {"type": "string"}, "distance": {"type": "number"}, "hide_avatars": {"type": "boolean"},
@@ -189,23 +201,30 @@ def build(kit: Toolkit, with_escalate: bool, with_help: bool = True, only=None):
     async def capture(args):
         act = args["action"]
         name = {"name": args["name"]} if args.get("name") else {}
+
+        async def saved(r):
+            """The op's result, and with show the picture on a card in front of them."""
+            if args.get("show") and r.get("path"):
+                r = {**r, "shown": await show_picture(r["path"], args.get("name"))}
+            return text(r)
+
         try:
             if act == "picture":
                 if args.get("of") == "last_look":
                     if not kit.last_look:
                         return error("no picture to save yet: look first, or take one of the view now")
                     kit.did("saving that picture")
-                    return text(await kit.call("SojournCapture", "snapshot", 30, png=base64.b64encode(kit.last_look).decode(), **name))
+                    return await saved(await kit.call("SojournCapture", "snapshot", 30, png=base64.b64encode(kit.last_look).decode(), **name))
                 kit.did("taking a picture")
                 still = {k: args[k] for k in ("size", "hide_avatars", "format") if args.get(k) not in (None, "")}
                 if args.get("camera"):
                     still["camera"] = args["camera"]
                     still.update({"distance": args["distance"]} if args.get("distance") else {})
-                return text(await kit.call("SojournCapture", "snapshot", 90 if still else 30, **name, **still))
+                return await saved(await kit.call("SojournCapture", "snapshot", 90 if still else 30, **name, **still))
             if act == "panorama":
                 kit.did("taking a 360")
-                return text(await kit.call("SojournCapture", "panorama", 90, **name,
-                                           **{k: args[k] for k in ("quality", "camera", "hide_avatars") if args.get(k) not in (None, "")}))
+                return await saved(await kit.call("SojournCapture", "panorama", 90, **name,
+                                                  **{k: args[k] for k in ("quality", "camera", "hide_avatars") if args.get(k) not in (None, "")}))
             if act == "to_inventory":
                 kit.did("putting the picture in your inventory")
                 return text(await kit.call("SojournCapture", "toInventory", GATED_TIMEOUT, **{k: args[k] for k in ("path", "name", "size") if args.get(k)}))
@@ -844,7 +863,9 @@ def build(kit: Toolkit, with_escalate: bool, with_help: bool = True, only=None):
           "title: a few words. text: a label's words, alone. blocks: {text, style?: body|title|big|dim}, "
           "{list: [text | {text, detail?, done?}], numbered?} (done makes a checklist), {table: [[cells]], header?}, "
           "{timer: seconds} (sent again, it keeps running), {stopwatch: true}, {progress, of?, label?}, {chart: [values "
-          "| [label, value]], kind?: bars|line, unit?}, {image: \"view\" | texture id}, {toward: id, name or [x,y,z], "
+          "| [label, value]], kind?: bars|line, unit?}, {image: \"view\" | texture id} (a strip), {image: \"last\" | a file name "
+          "in Pictures\\Sojourn} (a picture saved there, as big as a card goes, to judge it: put it at room, in front of "
+          "them; capture's show does this in one step), {toward: id, name or [x,y,z], "
           "label?} (an arrow and the distance), {map: [ids or names of what to mark, or [x,y,z] or {at, label}]} (the client knows where they are). for: seconds until it goes "
           "by itself.",
           {"type": "object", "required": [], "properties": {

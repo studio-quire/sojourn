@@ -13,28 +13,28 @@ Anything that logs in to SL's servers counts as a Third-Party Viewer, chat clien
 - **Only "a Developer who distributes Third-Party Viewers to others"**: 1.c-g (disclosures, install/uninstall, ToS presentation, version display), 4.b (privacy policy), 5 (branding).
 - **Viewer Directory** (section 6): voluntary, "not a requirement for connecting to Second Life".
 
-The studio builds Sojourn for the user's own use on the user's own account, so we read ourselves as developers who don't distribute. That's our reading, not LL's. If Sojourn ever goes to anyone else, the distributor rules apply, and so do the LGPL source obligations (below).
+Until 2026-10-29 Sojourn was for the user's own use on their own account, and we read ourselves as developers who don't distribute. Since then the source is public (github.com/studio-quire/sojourn), Sojourn Access builds have gone to a tester (2026-10-30), and a release of both apps is planned, so we treat the distributor rules as ours (the user agreed, 2026-10-31: Sojourn was always meant to go public), with the LGPL source obligations (below). What's done and left: "If it's ever distributed", below.
 
-## Before the first main-grid login
+## At login
 
-1. **Present the ToS ourselves; don't auto-accept.** Done. LibreMetaverse's `LoginParams` defaults `AgreeToTos` and `ReadCritical` to true, silently accepting on the person's behalf. Like the official viewer (`lllogininstance.cpp`), Sojourn sends both false. A `tos`/`critical` refusal raises `AgentSession.TermsRequested`; the console prints the message (plus https://lindenlab.com/tos), and the person types `/accept` or `/decline`. Only then does login retry with that flag set, for that one login. The agent API sees only a `terms required` event and the status; it has no way to answer. The same goes for MFA codes (`/mfa 123456` in the console). Basis: policy 1.f, formally in the distributor block, but an old account will very likely get a ToS prompt, and the person whose account it is should see it. Once there's an in-headset panel, the question belongs there too, still answered by the person's own hand, not the assistant. The whole path is unexercised: OpenSim doesn't ask.
-2. **Channel and version.** We already comply; just keep it that way (details below).
-3. **Credentials never reach the assistant.** 2.e: usernames and passwords must not go "anywhere except to Linden Lab servers", and may only be kept on the user's own system. A Claude session runs on Anthropic's servers, so the password, MFA token and `mfa_hash` must never enter its context, tool results, logs it reads, or anything sent to the API. Login stays outside the agent API. The bridge binds to 127.0.0.1 (`BridgeServer.cs:35`, `Config.Bind`); keep it that way.
+1. **Present the ToS ourselves; don't auto-accept.** LibreMetaverse's `LoginParams` defaults `AgreeToTos` and `ReadCritical` to true, silently accepting on the person's behalf. Like the official viewer (`lllogininstance.cpp`), Sojourn sends both false. A `tos`/`critical` refusal raises `AgentSession.TermsRequested`, and the person answers: on the login sheet (headset or window), at the launcher (`docs/launcher.md` > The grid's questions at the desk), in Access's login form, or in the console (`/accept`, `/decline`). Only then does login retry with that flag set, for that one login. MFA codes go the same way. The agent API sees only a `terms required` event and the status; it has no way to answer. Basis: policy 1.f (formally in the distributor block, but the person whose account it is should see the terms). Exercised so far only by tests: OpenSim doesn't ask.
+2. **Channel and version**: below.
+3. **Credentials never reach the assistant.** 2.e: usernames and passwords must not go "anywhere except to Linden Lab servers", and may only be kept on the user's own system. A Claude session runs on Anthropic's servers, so the password, MFA token and `mfa_hash` must never enter its context, tool results, logs it reads, or anything sent to the API. Login stays outside the agent API. The bridge binds to 127.0.0.1 (`BridgeServer.cs`, `Config.Bind`); keep it that way.
 4. **Don't flag the account as a scripted agent.** It's a human account (see "Bots" below).
-5. Nice to have, arguable whether required: the viewer-stats report (see "Ported viewer code").
+5. Arguable whether required: the viewer-stats report (see "Ported viewer code").
 
 ## Channel and version
 
 - The two are separate login fields, `channel` and `version`. The official viewer sends `channel` = "Second Life Release" (or Beta, Project...) and `version` = a bare 4-part number like `7.1.11.12345` (`lllogininstance.cpp`). LibreMetaverse's doc comment ("Second Life Release n.n.n.n" in the version) is out of date. It passes both straight through. If either is empty it substitutes `channel` = "LibreMetaverse" (`Settings.UserAgent`) and `version` = "?.?.?", with a warning. `Author`/`UserAgent` aren't sent.
 - The wiki's rules: the channel is a unique base name for the viewer, optionally with a variant (e.g. "My Viewer", "My Viewer Beta"), ASCII. It must not contain "Second Life", which is reserved for LL. The version is `major.minor.patch.build`. Policy 1.b/2.c.ii: each version needs a unique "viewer identifier" (name + variant + number), not reused from LL or another TPV, and spoofing one is prohibited. That rules out pretending to be Firestorm or the official viewer to dodge a block. 5.b: the name can't use any part of an LL mark ("Second", "Life", "SL", "Linden"), nor take the form "____ Life".
-- **What we send:** `channel` = "Sojourn", `version` = "0.1.0.0". These are set in `src/Sojourn.Session/SessionHost.cs` (the `HostConfig` initialiser, for every app on it), with the same defaults at `src/Sojourn.Core/Config/Config.cs:81-82` (`HostConfig.Channel`/`Version`). They're passed in at `AgentSession.cs:315` via `DefaultLoginParams(..., Host.Channel, Host.Version)`. Both comply. No listed TPV is called Sojourn (directory checked 2026-10-20). Bump the version whenever builds differ meaningfully, so each build stays uniquely identifiable; a git-derived build number would do it. A variant like "Sojourn Dev" for local-grid builds is optional.
+- **What we send:** `channel` = "Sojourn", `version` = "0.1.0.0". These are set in `src/Sojourn.Session/SessionHost.cs` (the `HostConfig` initialiser, for every app on it), with the same defaults in `src/Sojourn.Core/Config/Config.cs` (`HostConfig.Channel`/`Version`), and passed to `DefaultLoginParams(..., Host.Channel, Host.Version)` in `AgentSession.cs`. A packaged Sojourn Access build sends its own number, 0.1.0.N with N the repo's commit count (`src/Sojourn.Access/AppInfo.cs`). Both comply. No listed TPV is called Sojourn (directory checked 2026-10-20). Each distributed build must stay uniquely identifiable: the VR client's package should stamp its version as Access's does. A variant like "Sojourn Dev" for local-grid builds is optional.
 - The other fields LibreMetaverse sends: `platform` "win", `platform_version`, `mac` and `id0`, both a hash of the MAC. The viewer also sends a hashed MAC, and 2.c.i forbids masking IP/MAC, so leave these alone. Don't zero them and don't route through a proxy to hide the IP.
-- 1.g (version on the login screen and in an About window) is distributor-only, but costs nothing: put "Sojourn 0.1.0.0" in the window title or the panel. The agent API's `SojournRelease about` (`Session/Release/ReleaseApi.cs`) gives the name, channel, version, the disclaimer and the licence note, for the assistant and a later About sheet.
+- 1.g (version on the login screen and in an About window): the VR client's login sheet shows the channel and version, Access's login form its version and `//about`; the agent API's `SojournRelease about` (`Session/Release/ReleaseApi.cs`) gives the name, channel, version, the disclaimer and the licence note, for the assistant and an About sheet the VR client doesn't have yet.
 
 ## Prohibited features (apply to us now)
 
 - No getting around permissions, no altering creator/owner metadata, no bypassing privacy options the official viewer offers (2.a). The same goes for the assistant's tools: nothing the agent API exposes should reveal more than the viewer would.
-- **Export** (2.b): any export feature the official viewer lacks must first check that the creator of "each and every" component is the user, including "full permissions" content. Today Sojourn has no export (uploads only, `UploadOps`). Screenshots (F12, render captures) are ordinary viewer snapshots. The local asset/bake caches are normal viewer caching; keep them as caches, not as a way to export.
+- **Export** (2.b): any export feature the official viewer lacks must first check that the creator of "each and every" component is the user, including "full permissions" content. Sojourn's one export is build backups, which follow Firestorm's creator checks (`docs/building.md` > Backups). Screenshots (F12, render captures) are ordinary viewer snapshots. The local asset/bake caches are normal viewer caching; keep them as caches, not as a way to export.
 - 2.c-d, 2.f: no DoS or griefing, no hiding data in assets (LSL data excepted), no "unreasonable or disproportionately large load". 1.a: stick to the viewer's protocol, and publicly document any departure from it. LibreMetaverse is the viewer protocol; we have no known departures.
 - 2.i/2.j: never show other users' system, software or network details. Don't put the user's own system info in messages to others unless the user chooses to. So the assistant shouldn't volunteer "I'm running Sojourn on..." in chat.
 - 2.k, verbatim (checked 2026-10-27): "You must not provide any feature that alters the shared experience of the virtual world in any way not provided by or accessible to users of the latest released Linden Lab viewer." Added Feb 2012; the motivating case was Emerald's extra attachment points, which looked right to Emerald users and wrong to everyone else. LL's only gloss is Oz Linden's forum comment (2012-02-29, reproduced at modemworld.me, "TPVP changes – Oz provides further explanation"): a shared-experience change "modifies the definition of the elements that make up the virtual world, or how they behave, in such a way that users on other viewers don't experience the same virtual reality", and the rule "does not affect changes to rendering, user interface, or the controls a viewer offers for interacting with the world" (he added that this doesn't modify the policy). So the test is fragmentation: does someone on LL's viewer see a different world? Local-only embodiment is fine. Tracking shown through what every viewer already renders (LookAt, PointAt, animations, scripted attachments) is fine, even if the official viewer wouldn't send those exact values. A Sojourn-only channel that shows our pose to Sojourn users while LL-viewer users see something else is the Emerald case. Detail: `docs/shared-tracking.md`.
@@ -53,6 +53,9 @@ The assistant bears on these last two, since nearby chat, IMs, names and rendere
 - Don't relay conversations anywhere else: no streams, no posts, no shared memory across projects.
 - Never surface other residents' personal info.
 
+A session's log that a tester sends us from Sojourn Access (`docs/access-app.md` > Sending a log) is filtered on
+the tester's PC first: nothing other people said or wrote goes, and their names and keys become stand-ins ("person 2").
+
 ## Bots, scripted agents, and the assistant
 
 - TPV Policy 9.g: a bot is "a software program that performs specific tasks automatically with little or no human direction". 4.a.iii: if your TPV is a bot, it must follow the bot policy.
@@ -60,12 +63,12 @@ The assistant bears on these last two, since nearby chat, IMs, names and rendere
 - How that bears on our stance:
   - The TPV definition turns on "little or no human direction", and the registration duty on "primarily operating as" one. An account worn by a present human who directs the assistant is primarily a human account, so no flag. That matches the project decision not to carry Tessel's scripted-agent setup.
   - **The real tension:** the Scripted Agent *definition* is broad. "Any script or program that automates access" through viewer interfaces arguably describes the assistant's tool calls taken on their own, even with the human there. The policy only *imposes* anything (registration) on accounts operating primarily that way, but nothing published addresses a human-directed AI operating a human's viewer (unverified; nothing found). If LL ever wants certainty, a support ticket asking about it is the way to get an answer. That's the user's call, not a must.
-- What keeps us on the human side of the line: the assistant acts on the person's direction while they're logged in and present. Don't leave it running the account autonomously while the user is away: no auto-replying to IMs as the user, no idle errands. Messages to other people go out as the user directs (ToS 6.1(ii): no impersonation or misrepresenting affiliation). The confirmations Phase 3 already plans (L$, deletes, gives, permissions) fit here. Long multi-step jobs ("tidy my inventory") are fine as delegated tasks while the user is there. Watch out for anything that turns into unattended, recurring automation.
+- What keeps us on the human side of the line: the assistant acts on the person's direction while they're logged in and present. Don't leave it running the account autonomously while the user is away: no auto-replying to IMs as the user, no idle errands. Messages to other people go out as the user directs (ToS 6.1(ii): no impersonation or misrepresenting affiliation). The confirmations (L$, deletes, gives, permissions) fit here. Long multi-step jobs ("tidy my inventory") are fine as delegated tasks while the user is there. Watch out for anything that turns into unattended, recurring automation.
 
 ### How the assistant keeps to this (`docs/assistant.md`)
 
-- Credentials: login, the ToS and MFA stay in the console; the agent API has no op that touches them. Since
-  2026-10-25 the Claude sessions have Claude Code's own tools (files, shell, web) in auto mode (user's decision,
+- Credentials: login, the ToS and MFA stay with the person's own controls (above); the agent API has no op that
+  touches them. The Claude sessions have Claude Code's own tools (files, shell, web) in auto mode (user's decision,
   `docs/assistant.md` > What it may do): deny rules keep the file tools off the password file, MFA state, test
   logins and other programs' credentials, a hook refuses shell commands that name them, and auto mode's hard rules
   forbid reading or using any credential, or logging in, by any route. With a shell on Windows the last two are the
@@ -87,7 +90,7 @@ The assistant bears on these last two, since nearby chat, IMs, names and rendere
 - Dev mode (`docs/dev-mode.md`): a Claude Code session the user started stands in for the assistant, in bypass mode.
   The same lines hold, kept by `docs/driving.md` and the studio's rules instead of a harness: it acts on the
   person's requests while they're there (a human-directed account, as above) and stops when they're done; the login,
-  ToS and MFA stay in the client's console; it never reads the password or MFA files (2.e); the confirmations are the
+  ToS and MFA stay the person's; it never reads the password or MFA files (2.e); the confirmations are the
   person's press as always. Other people's chat it reads is for the person's request, not kept or passed on.
 
 ## Responsibility
@@ -100,18 +103,23 @@ The assistant bears on these last two, since nearby chat, IMs, names and rendere
 
 `Sojourn.Render` contains ports of viewer code (e.g. `Geometry/VolumeFace.cs`, "Copyright (C) 2010, Linden Research, Inc. LGPL 2.1") and ships viewer assets (avatar_lad, pixiesmall.j2c), all LGPL 2.1.
 - 3.b.iii: a TPV that is *distributed* and uses viewer source must make that source available, as LGPL 2.1 requires. Private use triggers nothing.
-- 2.h: "For Third-Party Viewers based on our source code, Developers must not omit our viewer statistics packet". Whether partly ported rendering code makes Sojourn "based on" viewer source is arguable. Today's viewer sends its stats as an HTTP POST to the region's `ViewerStats` capability (`llviewerstats.cpp`), not the old UDP packet. Sending a minimal, honest report is a cheap, conservative step; consider it before or soon after the first main-grid login.
+- 2.h: "For Third-Party Viewers based on our source code, Developers must not omit our viewer statistics packet". Whether partly ported rendering code makes Sojourn "based on" viewer source is arguable. Today's viewer sends its stats as an HTTP POST to the region's `ViewerStats` capability (`llviewerstats.cpp`), not the old UDP packet. Not sent yet; sending a minimal, honest report is the cheap, conservative step, planned for the release (`docs/viewer-gaps.md` > Releasing it, with what the report holds and the call on leaving out the MAC address and serial).
 
 ## If it's ever distributed
 
-- Disclosures on the download page:
-  - the name and the disclaimer "This software is not provided or supported by Linden Lab, the makers of Second Life."
-  - support info, or a statement that there's none
-  - surprising or unexpected functionality (an AI operating the client probably counts)
-  - non-General content
-  - a link to a privacy policy
-- Install only at the user's direction, with consent for auto-update; clean uninstall.
-- ToS presentation, version display, About window with accurate source info.
+What the distributor rules ask, and where we stand (checked 2026-10-31; the open items are tracked in
+`docs/viewer-gaps.md` > Releasing it):
+- Disclosures on the download page: the name and the disclaimer "This software is not provided or supported by Linden
+  Lab, the makers of Second Life."; support info, or a statement that there's none; surprising or unexpected
+  functionality (an AI operating the client counts); non-General content; a link to a privacy policy. Drafted as the
+  public repo's `docs/download.md` (from `tools/publish/sojourn/docs/download.md`) and Access's own copy in its
+  repository; the wording and the privacy policy are the user's call.
+- Install only at the user's direction, with consent for auto-update; clean uninstall. Access's package runs from its
+  folder; Sojourn's package and updater are still to come.
+- ToS presentation (done, above), version display (done, above), an About window with accurate source info (Access has
+  `//about`; the VR client has the API's, no sheet yet).
 - No Eye-in-Hand logo; follow LL's Trademark Guidelines.
-- LGPL source published.
-- Directory listing is optional: self-certification, a public contact channel, a public source repo and commit notices, accounts in good standing, and an application filed as an issue on LL's TPV GitHub repo.
+- LGPL source published: the repo is public.
+- The viewer statistics report (2.h, above): not yet.
+- Directory listing is optional: self-certification, a public contact channel, a public source repo and commit notices,
+  accounts in good standing, and an application filed as an issue on LL's TPV GitHub repo.

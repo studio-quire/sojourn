@@ -90,8 +90,16 @@ public sealed class Pointer
         Interlocked.Exchange(ref _lookingAt, now);
     }
 
-    /// <summary>For the assistant: what's pointed at, else (looking: true) what's in the middle of the view.</summary>
-    public JsonObject? TargetJson() => Current?.ToJson() ?? Looking?.ToJson(looking: true);
+    /// <summary>A thing the person opened a card about (Things/ThingCard), or asked the assistant about from it: "that"
+    /// while the pointer is on nothing else. Set and cleared by whoever pinned it.</summary>
+    public PointerTarget? Pinned { get => _pinned; set => _pinned = value; }
+    volatile PointerTarget? _pinned;
+
+    /// <summary>What "that" means now: what's pointed at, else what's pinned.</summary>
+    public PointerTarget? Meant => Current ?? _pinned;
+
+    /// <summary>For the assistant: what's pointed at or pinned, else (looking: true) what's in the middle of the view.</summary>
+    public JsonObject? TargetJson() => Meant?.ToJson() ?? Looking?.ToJson(looking: true);
 
     /// <summary>This frame's hit as the renderer gave it (with where on the surface), and the ray it came from.</summary>
     public PickHit? CurrentHit { get; private set; }

@@ -1,12 +1,13 @@
 """Push-to-talk speech in: the microphone while the talk button is held, then a local recogniser on the CPU (never the
 GPU: in the headset it costs frames, and the contention brought the view's jitter back). The person's `hearing` setting
 picks it (docs/assistant.md > Hearing):
-- whisper (the default): faster-whisper small.en, int8, prompted with the names around the person, then hearing.py's
-  name pass;
-- parakeet: NVIDIA's Parakeet TDT 0.6B v2, int8, in sherpa-onnx (local/assistant/parakeet, fetched by setup), then the
-  name pass;
+- parakeet (the client's default): NVIDIA's Parakeet TDT 0.6B v2, int8, in sherpa-onnx (local/assistant/parakeet,
+  fetched by setup), then hearing.py's name pass;
+- whisper: faster-whisper small.en, int8, prompted with the names around the person, then the name pass;
 - soniox: Soniox's cloud service, the person's opt-in with their own key (cloud.py), streamed while the button is held,
   Whisper standing in when it's missing, down or slow.
+Only the chosen model loads (Whisper only for whisper, soniox, or Parakeet failing), in the background (main.py): the
+mic works at once, and what's said meanwhile is heard once the model is ready (`ready`).
 
 The microphone: the client's, when voice chat's engine is up (clientaudio.py: one capture for both, echo-cancelled,
 and the client keeps it from residents while the button is held). Otherwise SOJOURN_MIC (a part of a device name) if
@@ -54,7 +55,8 @@ def _norm(s):
 
 
 class Ears:
-    def __init__(self, vr, model="small.en", threads=4, log=print, api=None, hearing="whisper", words=None):
+    def __init__(self, vr, model="small.en", threads=4, log=print, api=None, words=None):
+        """The microphone only: set_hearing loads a recogniser (slow; main.py runs it in the background)."""
         self.log = log
         self.words = words          # hearing.Words: the names around the person (None: no prompt, no name pass)
         self.threads = threads
@@ -62,6 +64,7 @@ class Ears:
         self.whisper = None
         self.parakeet = None
         self.hearing = None
+        self.ready = threading.Event()   # set once a recogniser is up (or none could load): until then transcribe waits
         self.client = None
         if api is not None and not os.environ.get("SOJOURN_MIC_FILE"):
             from clientaudio import ClientAudio
@@ -82,7 +85,6 @@ class Ears:
         self.stopped_at = 0.0
         self.pick_mic()
         self.lock = threading.Lock()
-        self.set_hearing(hearing)
         self.log(f"mic: {self.mic_name or 'none'}")
 
     # --- which recogniser --------------------------------------------------------------------------------------------
@@ -106,6 +108,15 @@ class Ears:
         """whisper, parakeet or soniox (the person's setting). The first time, a local model loads here (a few seconds;
         the other one keeps hearing meanwhile if it's up). Parakeet missing: Whisper, with a notice. Soniox streams
         while the button is held, with Whisper standing by (no key, down or slow: Whisper hears it)."""
+        try:
+            self._set_hearing(which)
+        finally:
+            self.ready.set()   # up, or nothing loads: either way nothing more to wait for
+        if self.words and getattr(self, "_everyday", None) is None:   # the name pass's, before the first words come
+            import hearing
+            self._everyday = hearing.everyday(self._whisper_tokenizer())
+
+    def _set_hearing(self, which):
         which = which if which in ("whisper", "parakeet", "soniox") else "whisper"
         if which == self.hearing:
             return
@@ -128,7 +139,7 @@ class Ears:
             self.log(f"{which} didn't load: {e!r}")
             if which == "parakeet":
                 self.notice = "Parakeet didn't load; hearing with Whisper."
-                return self.set_hearing("whisper") if self.hearing is None else None
+                return self._set_hearing("whisper") if self.hearing is None else None
             raise
         self.hearing = which
         if self.notice and ("Parakeet" in self.notice or "Soniox" in self.notice):
@@ -172,9 +183,10 @@ class Ears:
     def available(self):
         return self.mic is not None or self.file is not None or self.client is not None
 
-    def start(self, blind=False):
-        """The talk button went down: record until stop() (or take()). With Soniox chosen and its key there, the audio
-        streams to it from now on (cloud.Stream), the names around the person as its context."""
+    def start(self, blind=False, at=None):
+        """The talk button went down (at: its event's time): record until stop() (or take()). With Soniox chosen and its
+        key there, the audio streams to it from now on (cloud.Stream), the names around the person as its context; not
+        for a press read late (said while the sidecar started): the client's mic kept it, and the local model hears it."""
         if not self.available or self._thread or getattr(self, "_client_held", False):
             return
         self.stream = None
@@ -187,7 +199,7 @@ class Ears:
             self.started_at = time.time()
             self._thread = threading.Thread(target=self._file_loop if self.file else self._mic_loop, daemon=True)
             self._thread.start()
-        if self.hearing == "soniox":
+        if self.hearing == "soniox" and (at is None or time.time() - at < 1.0):
             import cloud
             if cloud.available():
                 self.stream = cloud.Stream(self.live, self.words.ranked(blind) if self.words else [], self.log)
@@ -236,23 +248,25 @@ class Ears:
             self._thread.join(timeout=2)
             self._thread = None
 
-    def take(self):
-        """After release(): the whole utterance (16 kHz float32), from the client's engine or our own recording."""
+    def take(self, down=None, up=None):
+        """After release(): the whole utterance (16 kHz float32), from the client's engine (the press whose talk events
+        were logged at down and up) or our own recording."""
         if self.client:
-            return self.client.utterance(wait=3.0)
+            return self.client.utterance(wait=3.0, down=down, up=up)
         return np.concatenate(self._chunks) if self._chunks else np.zeros(0, dtype=np.float32)
 
-    def stop(self, blind=False):
+    def stop(self, blind=False, down=None, up=None):
         """The talk button came up: what was said ("" for nothing), the audio's length in seconds, and what heard it
-        (soniox, or the local model: whisper, parakeet, or whisper standing in for soniox)."""
+        (soniox, or the local model: whisper, parakeet, or whisper standing in for soniox). down and up: the press's
+        talk events' times, so the client's mic hands over that press's words, however late this runs."""
         held = getattr(self, "_client_held", False) or self._thread is not None
-        if not held:
+        if not held and not (self.client and down is not None):
             return "", 0.0, self.hearing
         self.release()
         stream, self.stream = getattr(self, "stream", None), None
         if stream:
             stream.sent_all.wait(1.0)   # its last audio read before the client hands the utterance over
-        audio = self.take()
+        audio = self.take(down, up)
         if len(audio) < RATE * 0.25:
             return "", len(audio) / RATE, self.hearing
         if stream:
@@ -275,8 +289,11 @@ class Ears:
 
     def transcribe(self, audio, blind=False):
         """What was said. blind: an incognito spell the assistant isn't let see, so only what the person wears and the
-        general vocabulary help (hearing.Words.ranked)."""
+        general vocabulary help (hearing.Words.ranked). Waits for the recogniser if it's still loading."""
+        self.ready.wait()
         with self.lock:
+            if self.hearing is None:   # nothing loaded (logged where it failed)
+                return ""
             return self._recognise(self.hearing, audio, blind)
 
     def _recognise(self, which, audio, blind=False):
@@ -311,6 +328,20 @@ class Ears:
         if not text or not self.words:
             return text
         import hearing
-        if getattr(self, "_everyday", None) is None and self.whisper is not None:
-            self._everyday = hearing.everyday(self.whisper.hf_tokenizer)
-        return hearing.fix_names(text, self.words.ranked(blind), is_everyday=getattr(self, "_everyday", None))
+        if getattr(self, "_everyday", None) is None:
+            self._everyday = hearing.everyday(self._whisper_tokenizer())
+        return hearing.fix_names(text, self.words.ranked(blind), is_everyday=self._everyday)
+
+    def _whisper_tokenizer(self):
+        """Whisper's vocabulary for the everyday-word test: the loaded model's, or with Parakeet hearing, just its
+        tokenizer.json from the downloaded model (Whisper needn't load for it). None if it isn't on this PC."""
+        if self.whisper is not None:
+            return self.whisper.hf_tokenizer
+        try:
+            import tokenizers
+            from faster_whisper.utils import download_model
+            f = Path(download_model(self.whisper_name, local_files_only=True)) / "tokenizer.json"
+            return tokenizers.Tokenizer.from_file(str(f)) if f.exists() else None
+        except Exception as e:
+            self.log(f"whisper's vocabulary isn't here ({type(e).__name__}): the name pass knows fewer everyday words")
+            return None

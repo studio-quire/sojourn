@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using LibreMetaverse;
 using Sojourn.Core;
+using Sojourn.Core.Access;
 using Sojourn.Core.Agents;
 
 namespace Sojourn.Access;
@@ -128,7 +129,9 @@ public sealed partial class MainForm
         if (s.Of != "view") { Answer(none.Length > 0 ? none.Trim() : "Describing needs the assistant."); return; }
         var r = await _ops.ReadAsync("SojournDescribe", "look", new JsonObject { ["subject"] = s.Key, ["pictures"] = false });
         if (PersonOps.Error(r) is { } e) { Answer(none + e); return; }
-        Answer(none + "What the lists know: " + Facts(r["subject"] as JsonObject ?? new()));
+        var facts = r["subject"] as JsonObject ?? new();
+        // a parcel's description is its owner's words (the session log leaves them out of a log sent to the studio)
+        Answer(none + "What the lists know: " + Facts(facts), facts.Str("parcel_description") is { Length: > 0 } ? LineFrom.People : LineFrom.App);
     }
 
     static string Facts(JsonObject f)

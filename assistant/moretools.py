@@ -337,7 +337,8 @@ def build_more(kit):
     @tool("group_chat", "Their groups' chat. action: list (each group's chat, on or off, snoozed); info (group: who's in its "
           "chat, the moderators, whether they moderate); snooze (group; minutes, 15 by default, 0 ends it: its lines wait "
           "until then); on, off (receive the group's chat, or leave it and stay out); moderate (group, who, text: false "
-          "stops that member's text in the chat for everyone, true allows it again; they confirm). group: its name or id.",
+          "stops that member's text in the chat for everyone, true allows it again; they confirm). group: its name or id. "
+          "Turning away a group's voice calls is voice's group_calls.",
           schema(["action"], action=["list", "info", "snooze", "on", "off", "moderate"], group=str, minutes=float,
                  who=str, text=bool))
     async def group_chat(args):
@@ -381,11 +382,13 @@ def build_more(kit):
           "microphone off toward everyone; turning it back on is their own button); call (who: one to one); call_group "
           "(group: its name); conference (who: several names, comma-separated); hangup; decline (a call ringing; answering "
           "is their own press); calls (the switches that turn calls away before they ring, and how many they did); "
+          "group_calls (group, turn_away: true turns away that one group's calls before they ring, false lets them ring "
+          "again; without group, the groups turned away; every group's at once is the reject_group_calls setting); "
           "moderate (who, mute: true or false: for everyone, as a moderator of the parcel, estate or call; they confirm); "
           "moderate_all (mute: everyone else).",
           schema(["action"], action=["status", "mute", "unmute", "volume", "mute_mic", "call", "call_group", "conference",
-                                     "hangup", "decline", "calls", "moderate", "moderate_all"], who=str, group=str,
-                 volume=float, mute=bool))
+                                     "hangup", "decline", "calls", "group_calls", "moderate", "moderate_all"], who=str,
+                 group=str, volume=float, mute=bool, turn_away=bool))
     async def voice(args):
         act = args["action"]
         try:
@@ -401,6 +404,14 @@ def build_more(kit):
                 mute = args.get("mute", True)
                 kit.did("asking you to confirm muting everyone" if mute else "asking you to confirm letting everyone speak")
                 return text(await call("SojournVoice", "moderateAll", GATED_TIMEOUT, mute=bool(mute)))
+            if act == "group_calls":
+                if not args.get("group"):
+                    return text(await call("SojournVoice", "groupCalls"))
+                gid, _ = await group_id(args["group"])
+                if args.get("turn_away") is None:
+                    return text(await call("SojournVoice", "groupCalls", group=gid))
+                kit.did("turning away the group's calls" if args["turn_away"] else "letting the group's calls ring")
+                return text(await call("SojournVoice", "groupCalls", group=gid, turn_away=bool(args["turn_away"])))
             if act == "call_group":
                 gid, gname = await group_id(args.get("group") or args.get("who") or "")
                 kit.did(f"calling {gname or 'the group'}")

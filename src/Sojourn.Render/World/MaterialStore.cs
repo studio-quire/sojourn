@@ -77,49 +77,108 @@ public sealed class MaterialStore
         {
             _legacyQueue.Enqueue((id, region));
             if (Interlocked.Exchange(ref _flushScheduled, 1) == 0)
-                _ = Task.Run(async () => { await Task.Delay(100).ConfigureAwait(false); await FlushLegacy().ConfigureAwait(false); });
+                _ = Task.Run(async () => { await Task.Delay(100).ConfigureAwait(false); FlushLegacy(); });
         }
         waiting = true;
         return null;
     }
 
-    async Task FlushLegacy()
+    /// <summary>A region's legacy asks, paced as the viewer paces them (RegionSource.MaterialsPacing: by default 50 ids
+    /// an ask, one ask a second). Unpaced, every 100 ms flush was an ask, and SL answered most of a busy place's with its
+    /// rate limit (2026-10-31). Held weakly by region, so a region left behind isn't kept.</summary>
+    sealed class Pump
+    {
+        public readonly List<UUID> Waiting = new();
+        public bool Running;
+        public int Slow = 1;   // the pace's divisor, doubled by each rate-limit reply (to 16), halved by each answer
+    }
+    readonly System.Runtime.CompilerServices.ConditionalWeakTable<RegionSource, Pump> _pumps = new();
+    const int SlowestPace = 16;
+
+    void FlushLegacy()
     {
         Interlocked.Exchange(ref _flushScheduled, 0);
         var batch = new List<(UUID Id, RegionSource Region)>();
         while (_legacyQueue.TryDequeue(out var e)) batch.Add(e);
         foreach (var group in batch.GroupBy(b => b.Region))
         {
-            var ids = group.Select(g => g.Id).ToList();
+            var pump = _pumps.GetValue(group.Key, _ => new Pump());
+            bool start;
+            lock (pump)
+            {
+                pump.Waiting.AddRange(group.Select(g => g.Id));
+                start = !pump.Running;
+                pump.Running = true;
+            }
+            var region = group.Key;
+            if (start) _ = Task.Run(() => RunPump(region, pump));
+        }
+    }
+
+    async Task RunPump(RegionSource region, Pump pump)
+    {
+        while (true)
+        {
+            var (perAsk, perSecond) = RegionSource.MaterialsPacing(region.LiveSimulator());
+            List<UUID> ids;
+            lock (pump)
+            {
+                if (pump.Waiting.Count == 0) { pump.Running = false; return; }
+                int n = Math.Min(perAsk, pump.Waiting.Count);
+                ids = pump.Waiting.GetRange(0, n);
+                pump.Waiting.RemoveRange(0, n);
+            }
+            MaterialsReply reply;
             try
             {
-                int got = 0;
-                if (group.Key.FetchLegacyMaterials != null)
-                {
-                    var mats = await group.Key.FetchLegacyMaterials(ids, CancellationToken.None).ConfigureAwait(false);
-                    foreach (var m in mats) { _legacy[m.ID] = m; _failures.TryRemove(m.ID, out _); got++; }
-                }
-                // asked for and not among the answers: none. But an empty answer is how a failure looks here
-                // (LibreMetaverse logs the grid's rate limit, "cap invocation rate", and returns nothing; a region
-                // without its simulator gives nothing too), so then they're asked again, a few times, before they
-                // count as none. Taken as none at once, an id lost to the rate limit in one region stayed none in every
-                // region for the session (the grid de-duplicates materials, so a plain "alpha mode: none" is likely one id
-                // in many places): suspected for House of Legends' blended ground over its mist (2026-10-28).
-                foreach (var id in ids)
-                {
-                    if (_legacy.ContainsKey(id)) continue;
-                    if (got == 0 && _failures.GetValueOrDefault(id) < EmptyAnswersBeforeNone) Failed(id);
-                    else _legacy.TryAdd(id, null);
-                }
-                Interlocked.Increment(ref _version);
+                reply = region.FetchLegacyMaterials != null
+                    ? await region.FetchLegacyMaterials(ids, CancellationToken.None).ConfigureAwait(false)
+                    : MaterialsReply.NotAnswered;
             }
             catch (Exception e)
             {
                 Log?.Invoke($"materials: {e.Message}");
-                foreach (var id in ids) Failed(id);
+                reply = MaterialsReply.NotAnswered;
             }
-            foreach (var id in ids) _legacyPending.TryRemove(id, out _);
+            if (reply.Limited)
+            {
+                // still pending, first in line again, and the region asked more slowly: nothing is lost to the limit
+                int was, slow;
+                lock (pump)
+                {
+                    pump.Waiting.InsertRange(0, ids);
+                    was = pump.Slow;
+                    slow = pump.Slow = Math.Min(pump.Slow * 2, SlowestPace);
+                }
+                if (slow != was) Log?.Invoke($"materials: {region.Name} is rate limiting RenderMaterials; an ask every {slow / perSecond:0.#} s");
+            }
+            else
+            {
+                lock (pump) pump.Slow = Math.Max(1, pump.Slow / 2);
+                Settle(ids, reply);
+            }
+            int pace;
+            lock (pump) pace = pump.Slow;
+            await Task.Delay(TimeSpan.FromSeconds(pace / perSecond)).ConfigureAwait(false);
         }
+    }
+
+    void Settle(List<UUID> ids, MaterialsReply reply)
+    {
+        foreach (var m in reply.Materials) { _legacy[m.ID] = m; _failures.TryRemove(m.ID, out _); }
+        // an answer's missing ids are none (as the viewer takes them); no answer (no capability yet, a region without
+        // its simulator, a network error) is asked again, a few times, before they count as none. Taken as none at
+        // once, an id lost in one region stayed none in every region for the session (the grid de-duplicates
+        // materials, so a plain "alpha mode: none" is likely one id in many places): suspected for House of Legends'
+        // blended ground over its mist (2026-10-28).
+        foreach (var id in ids)
+        {
+            if (_legacy.ContainsKey(id)) continue;
+            if (!reply.Answered && _failures.GetValueOrDefault(id) < EmptyAnswersBeforeNone) Failed(id);
+            else _legacy.TryAdd(id, null);
+        }
+        Interlocked.Increment(ref _version);
+        foreach (var id in ids) _legacyPending.TryRemove(id, out _);
     }
 
     /// <summary>A material asset is an LLSD map {version "1.1", type "GLTF 2.0", data: the GLTF JSON} in any LLSD

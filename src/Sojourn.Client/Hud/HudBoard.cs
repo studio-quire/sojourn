@@ -342,13 +342,16 @@ public sealed class HudBoard
                 OverlayGlyphKind.Hud, _tokenLit ? 0.6f : 0));
             any = true;
         }
-        foreach (var (aim, from) in new[] { (_right, _rightFrom), (_left, _leftFrom) })
+        foreach (var (aim, from, hand) in new[] { (_right, _rightFrom, 1), (_left, _leftFrom, 0) })
         {
             if (aim.Spot == Spot.None || from is not { } o) continue;
             var a = pilot.RoomToRegion(o);
             var b = pilot.RoomToRegion(aim.Point);
             beams.Add(new OverlayBeam(a + Vector3.Normalize(b - a) * 0.04f, b, 0.003f, Cue with { W = 0.55f }));
-            if (aim.Hit is { } hit && _view.Touchable(hit)) dots.Add(new OverlayDot(b, Math.Clamp(0.006f * aim.T, 0.008f, 0.05f), Cue));
+            float r = Math.Clamp(0.006f * aim.T, 0.008f, 0.05f);
+            if (aim.Hit is { } hit && _view.Touchable(hit)) dots.Add(new OverlayDot(b, r, Cue));
+            // a still hold on a HUD face's page: the ring toward up close
+            if (_mediaHand == hand && _view.Media?.Filling(hand) is { } f) Sojourn.Client.Media.MediaInput.Fill(beams, b, a, r * 2.6f, f);
             any = true;
         }
         if (preview && Shown)

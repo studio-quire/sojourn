@@ -6,8 +6,8 @@ using Sojourn.Core.Agents;
 namespace Sojourn.Session.Private;
 
 /// <summary>
-/// The general picture of what's going on, for private mode (SojournPrivate situation; docs/assistant.md > Private
-/// mode): counts and states the client works out itself, never a model's summary of anything, and never a name, a
+/// The general picture of what's going on, for private mode (SojournPrivate situation; docs/assistant-incognito.md >
+/// The situation): counts and states the client works out itself, never a model's summary of anything, and never a name, a
 /// word anyone said, or where. Conversations and the pointer's target come as handles of the spell, so "tell her
 /// I'll be back" and "sit on that" work without the assistant learning who or what. It reads the session's event log
 /// itself (the client's own read, not /events) to count chat and IMs.

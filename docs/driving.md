@@ -2,8 +2,7 @@
 
 Read this when the user asks you to drive, run or test Sojourn in dev mode (often from the headset), or to be
 Sojourn's assistant yourself: you start the client with --dev, hear what they say or type through it, act (agent API,
-logs, code, rebuilds), answer on its panel, and record what they find. (The studio skill drive-sojourn until
-2026-10-28.)
+logs, code, rebuilds), answer on its panel, and record what they find.
 
 Sojourn (`projects/sojourn`) is the studio's VR-first Second Life client. Started with `--dev` it has no assistant of
 its own: you are it. The user talks (right grip in the headset, T on the desktop) or types (Enter); the client
@@ -11,7 +10,8 @@ transcribes and hands it to you; your replies go on its panel, spoken if they ha
 `projects/sojourn/docs/dev-mode.md`. Commands run from `projects/sojourn`.
 
 1. **Know what needs checking.** Read Sojourn's `CLAUDE.md`, the user's items in its `board.json` (`waiting`: the test
-   checklists), and the newest `docs/session-*.md` (findings from their last session and what was done about them).
+   checklists) and `docs/sittings.md` (what earlier sittings left open, the account's state, older checks for when
+   there's time).
 2. **Start it.** `python tools/dev.py start --vr --logs` in the headset over Link, or without `--vr` on the desktop,
    `--sim` for Meta's XR Simulator (no headset needed). The local grid (started if down) as Sojourn Pilot by default;
    `--main` for Second Life itself (the user's account: the first time, ask its name and add `--account "First Last"`;
@@ -32,7 +32,8 @@ transcribes and hands it to you; your replies go on its panel, spoken if they ha
    (one eye, undistorted) without taking focus: layer order, cuts and tearing show there.
    Keep these and everything else in the foreground short: while a command runs, the user's words can't reach you,
    and long checks (simulator runs, smoke tests) belong to background agents or the user's own look.
-   Answer with `dev.py say "..."`: they're in a headset reading a small panel or hearing it, so a sentence or two,
+   Answer every line, even with a word: until `say` comes, the panel shows the request with working dots. Answer with
+   `dev.py say "..."`: they're in a headset reading a small panel or hearing it, so a sentence or two,
    plain words, no markdown, paths or code unless asked. `dev.py working "..."` shows progress during anything long;
    `dev.py ask "Question?" "Choice" "Choice"`, `dev.py point "Point at the mirror"` and `dev.py confirm "Who did you
    mean?" "best guess"` (a name you can't match: they check it on the keyboard, your guess already typed) come back on
@@ -43,10 +44,13 @@ transcribes and hands it to you; your replies go on its panel, spoken if they ha
    checks only, each to its own output dir, and leave nothing running: test clients and the XR Simulator on the same
    GPU brought the view's jitter back (2026-10-27). Before a rebuild, check no agent's half-finished edit is in the
    tree (ask them), since it ships with the build.
-6. **Record.** Keep their findings in a `docs/session-YYYY-MM-DD.md` (what they saw, where, and what you did or
-   found), take finished checks off the board and add new ones, commit as the project's CLAUDE.md says. Whatever they
-   say they've tried or already tried before comes off `docs/headset-checks.md` there and then, not at the end: items
-   stayed on it after being seen, and they were offered the same checks three times (2026-10-28).
+6. **Record, in place.** No notes of the sitting itself: change the state as things happen. A fix or a verdict goes
+   into the feature doc it belongs to (how it behaves now, the user's call dated); something left for them to see
+   goes on the board; what's found and still open (in their words where only they can see it), and the account's or
+   a place's state, into `docs/sittings.md`, coming out again once fixed or decided. Whatever they say they've tried,
+   now or before, comes off the board and `docs/sittings.md` there and then, not at the end (items left on once seen
+   were offered to them three times). Feature docs are published: places are fine there, residents' names aren't.
+   Commit as the project's CLAUDE.md says.
 7. **End.** `dev.py stop` when they're done, and stop the monitor (TaskStop).
 
 Lines:

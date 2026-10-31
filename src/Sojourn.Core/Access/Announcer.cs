@@ -7,6 +7,39 @@ namespace Sojourn.Core.Access;
 public enum AnnounceKind { Nearby, Objects, Ims, Group, Notices, Replies, Music }
 
 /// <summary>
+/// Whose words a line read out carries, for the session log (<see cref="Announcer.Heard"/>): a log sent to the studio
+/// leaves out anything that may be other people's words (Sojourn.Session/LogShare.cs). App: the app's own words, which
+/// may name people; Me: the person's own; People: may quote someone else (chat, IMs, a person's offer or notice, a
+/// profile, a listing's description), never sent; Objects: what objects said; Assistant: the assistant's replies.
+/// </summary>
+public enum LineFrom { App, Me, People, Objects, Assistant }
+
+public static class LineSources
+{
+    /// <summary>The more guarded of two, for lines said together.</summary>
+    public static LineFrom Join(LineFrom a, LineFrom b) => a == LineFrom.People || b == LineFrom.People ? LineFrom.People
+        : a == b ? a : a == LineFrom.Objects || b == LineFrom.Objects ? LineFrom.Objects
+        : a == LineFrom.Assistant || b == LineFrom.Assistant ? LineFrom.Assistant : LineFrom.App;
+
+    /// <summary>Whose words a notice's line carries, by its notification name: objects' (script menus, their gifts,
+    /// pages, places and questions), the app's or the grid's own (friends online, payments, radar, teleport trouble,
+    /// joining a group found by search), or else a person's: an offer's or notice's message, a group's invitation, an
+    /// estate's message box, and any name not listed here.</summary>
+    public static LineFrom OfNotice(string? name) => name switch
+    {
+        "ScriptDialog" or "ScriptDialogGroup" or "ObjectGiveItem" or "OwnObjectGiveItem" or "LoadWebPage" or "ScriptQuestion"
+            or "ScriptQuestionExperience" or "ObjectMessage" or "GotoURL" or "PlaceOffered" => LineFrom.Objects,
+        null or "FriendOnlineOffline" or "FriendshipAccepted" or "FriendshipDeclined" or "InventoryAccepted" or "InventoryDeclined"
+            or "UserGiveItem" or "InvOfferAutoAcceptUser" or "InvOfferAutoAcceptObject" or "PaymentReceived" or "PaymentSent"
+            or "PaymentFailure" or "DisplayNameUpdate" or "IMNotShownNotFriend" or "RadarReport" or "WayOut" or "TeleportStalled"
+            or "CouldNotTeleportReason" or "CollisionAlert" or "AntiSpamBlocked" or "DoNotDisturbHeld" or "LookAround"
+            or "SetDisplayNameSuccess" or "VoiceCallAutoRejected" or "TeleportViaSLAPP" or "GroupLeaveConfirmMember"
+            or "JoinGroupCanAfford" or "JoinGroupNoCost" or "JoinGroupCannotAfford" => LineFrom.App,
+        _ => LineFrom.People,
+    };
+}
+
+/// <summary>
 /// The person's choices about their screen reader (kept with the app's settings): whether Sojourn speaks through it at
 /// all (auto: while one runs, so a blind person never has to find a switch they can't see first; on; off) and what's
 /// read out. All on by default.
@@ -54,6 +87,7 @@ public sealed class AnnounceSettings
 ///   NVDA 2024.1+, the interrupted line resumes after. The reader's own key (Ctrl) silences it, as everywhere.
 /// - Held while a confirmation waits (<see cref="Hold"/>): nothing others or the assistant wrote is read beside it, as
 ///   the panel shows nothing beside it; it all follows once it's answered.
+/// - The session log records each line as it's spoken, with whose words it carries (<see cref="Heard"/>, <see cref="LineFrom"/>).
 /// - Incognito: what's read is what the screen shows the person; nothing is kept. Lines are never logged, the review
 ///   history keeps a spell's lines only while it lasts, and <see cref="Quiet"/> (the headset, where the PC's monitor
 ///   blanks too) keeps the PC's reader silent for the spell.
@@ -77,7 +111,12 @@ public sealed class Announcer : IDisposable
     int _cursor = -1;   // the line last read back in the history (-1: not reading back)
     long _spoken;
 
-    sealed record Item(string Text, bool Holdable, bool Interrupt, bool Urgent, int Spell, long At);
+    sealed record Item(string Text, bool Holdable, bool Interrupt, bool Urgent, int Spell, long At, LineFrom From, bool Again = false);
+
+    /// <summary>A line just spoken (on the announcer's thread): its words, whose words they are, how it came ("arrival",
+    /// "answer", "urgent", "again" for one read back) and what spoke it. For the session log; never called for a line
+    /// of an incognito spell.</summary>
+    public Action<string, LineFrom, string, string>? Heard { get; set; }
 
     /// <summary>Keep the PC's reader silent now (the app's rule: the headset during incognito).</summary>
     public Func<bool> Quiet { get; set; } = () => false;
@@ -115,29 +154,37 @@ public sealed class Announcer : IDisposable
     // --- what the app says ------------------------------------------------------------------------------------------
 
     /// <summary>Something that arrived, of this kind: read in turn if the person wants that kind. keep: joins the review
-    /// history (not for a line said again).</summary>
-    public void Say(AnnounceKind kind, string text, bool keep = true)
+    /// history (not for a line said again). from: whose words it carries; by default, as guarded as its kind allows
+    /// (chat, IMs and notices: other people's).</summary>
+    public void Say(AnnounceKind kind, string text, bool keep = true, LineFrom? from = null)
     {
         if (!_st.Wants(kind)) return;
         // a greeter or a game saying the same line again and again is heard once a while
         if (kind is AnnounceKind.Objects && Repeated(text)) return;
-        Add(text, holdable: true, interrupt: false, urgent: false, keep);
+        Add(text, holdable: true, interrupt: false, urgent: false, keep, from ?? kind switch
+        {
+            AnnounceKind.Objects => LineFrom.Objects,
+            AnnounceKind.Replies => LineFrom.Assistant,
+            AnnounceKind.Music => LineFrom.App,
+            _ => LineFrom.People,
+        });
     }
 
     /// <summary>The answer to the person's own key or action: cuts in. keep: joins the review history (not for saying
     /// again what's already there, or the keys' help). With <see cref="WholeAnswers"/>, a long one is read whole, a few
-    /// sentences at a time in turn (each its own line in the review history), instead of cut short.</summary>
-    public void Answer(string text, bool keep = true)
+    /// sentences at a time in turn (each its own line in the review history), instead of cut short. from: whose words
+    /// it carries (the app's own unless said); whole: read whole even without WholeAnswers (a confirmation's list asked for).</summary>
+    public void Answer(string text, bool keep = true, LineFrom from = LineFrom.App, bool whole = false)
     {
-        if (!WholeAnswers || text.Length <= MaxLine)
+        if (!(WholeAnswers || whole) || text.Length <= MaxLine)
         {
-            Add(text, holdable: false, interrupt: true, urgent: false, keep);
+            Add(text, holdable: false, interrupt: true, urgent: false, keep, from);
             return;
         }
         bool first = true;
         foreach (var piece in Pieces(text))
         {
-            Add(piece, holdable: false, interrupt: first, urgent: false, keep);
+            Add(piece, holdable: false, interrupt: first, urgent: false, keep, from);
             first = false;
         }
     }
@@ -179,14 +226,14 @@ public sealed class Announcer : IDisposable
 
     /// <summary>Something that waits for the person (a confirmation): cuts in, the interrupted line resuming after
     /// where the reader can.</summary>
-    public void Urgent(string text) => Add(text, holdable: false, interrupt: false, urgent: true);
+    public void Urgent(string text, LineFrom from = LineFrom.App) => Add(text, holdable: false, interrupt: false, urgent: true, from: from);
 
-    void Add(string text, bool holdable, bool interrupt, bool urgent, bool keep = true)
+    void Add(string text, bool holdable, bool interrupt, bool urgent, bool keep = true, LineFrom from = LineFrom.App)
     {
         if (!Active || Quiet()) return;
         text = Speakable(text);
         if (text.Length == 0) return;
-        var item = new Item(text, holdable, interrupt, urgent, _private is { On: true } p ? Math.Max(1, p.Spell) : 0, Environment.TickCount64);
+        var item = new Item(text, holdable, interrupt, urgent, _private is { On: true } p ? Math.Max(1, p.Spell) : 0, Environment.TickCount64, from);
         lock (_lock)
         {
             if (holdable) _queue.Add(item); else _now.Enqueue(item);
@@ -218,20 +265,22 @@ public sealed class Announcer : IDisposable
     public void Repeat()
     {
         string? text;
-        lock (_lock) { _cursor = -1; text = _history.LastOrDefault()?.Text; }
-        Answer(text ?? "Nothing yet.", keep: false);
+        Item? last;
+        lock (_lock) { _cursor = -1; last = _history.LastOrDefault(); }
+        Answer(last?.Text ?? "Nothing yet.", keep: false, last?.From ?? LineFrom.App);
     }
 
     /// <summary>The oldest line kept, read again (the old NVDA add-on's top of the history).</summary>
     public void Oldest()
     {
         string text;
+        Item? of = null;
         lock (_lock)
         {
             if (_history.Count == 0) text = "Nothing yet.";
-            else { _cursor = 0; text = _history[0].Text; }
+            else { _cursor = 0; of = _history[0]; text = of.Text; }
         }
-        ReadAgain(text);
+        ReadAgain(text, of);
     }
 
     /// <summary>The lines that arrived (what <see cref="Say"/> kept; answers to the person's keys left out), newest
@@ -248,15 +297,16 @@ public sealed class Announcer : IDisposable
     public void ArrivedAgo(int n)
     {
         string text;
+        Item? of = null;
         lock (_lock)
         {
             int at = -1, seen = 0;
             for (int i = _history.Count - 1; i >= 0 && at < 0; i--)
                 if (_history[i].Holdable && ++seen == n) at = i;
             if (at < 0) text = seen == 0 ? "Nothing yet." : $"Only {seen} {(seen == 1 ? "message" : "messages")} so far.";
-            else { _cursor = at; text = _history[at].Text; }
+            else { _cursor = at; of = _history[at]; text = of.Text; }
         }
-        ReadAgain(text);
+        ReadAgain(text, of);
     }
 
     int _mark = -1;
@@ -285,31 +335,33 @@ public sealed class Announcer : IDisposable
         }
     }
 
-    void ReadAgain(string text)
+    /// <summary>A line read back: of, the history's line it reads (its words' source and spell go with it).</summary>
+    void ReadAgain(string text, Item? of)
     {
         if (!Active || Quiet()) return;
-        lock (_lock) _now.Enqueue(new Item(text, false, true, false, 0, Environment.TickCount64));
+        lock (_lock) _now.Enqueue(new Item(text, false, true, false, of?.Spell ?? 0, Environment.TickCount64, of?.From ?? LineFrom.App, Again: true));
         _wake.Set();
     }
 
     void Review(int dir)
     {
         string text;
+        Item? of = null;
         lock (_lock)
         {
             if (_history.Count == 0) text = "Nothing yet.";
-            else if (_cursor < 0 && dir > 0) text = "No newer. " + _history[^1].Text;
+            else if (_cursor < 0 && dir > 0) text = "No newer. " + (of = _history[^1]).Text;
             else
             {
                 // the first step back reads the newest; then one at a time
                 int next = _cursor < 0 ? _history.Count - 1 : _cursor + dir;
-                if (next < 0) { text = "No older. " + _history[0].Text; _cursor = 0; }
-                else if (next >= _history.Count) { text = "No newer. " + _history[^1].Text; _cursor = -1; }
-                else { _cursor = next; text = _history[next].Text; }
+                if (next < 0) { text = "No older. " + (of = _history[0]).Text; _cursor = 0; }
+                else if (next >= _history.Count) { text = "No newer. " + (of = _history[^1]).Text; _cursor = -1; }
+                else { _cursor = next; text = (of = _history[next]).Text; }
             }
         }
         // read without joining the history itself
-        ReadAgain(text);
+        ReadAgain(text, of);
     }
 
     /// <summary>Incognito ended: nothing of it stays, here either.</summary>
@@ -391,6 +443,9 @@ public sealed class Announcer : IDisposable
                     {
                         Interlocked.Increment(ref _spoken);
                         if (voice == _nvda) _nvda!.Braille(item.Text.Length > 300 ? item.Text[..300] : item.Text);
+                        if (item.Spell == 0 && _private is not { On: true })
+                            Heard?.Invoke(item.Text, item.From, item.Again ? "again" : item.Urgent ? "urgent" : item.Holdable ? "arrival" : "answer",
+                                voice?.Name ?? "");
                     }
                 }
                 catch (Exception e) { _log($"screen reader: {voice?.Name} failed ({e.GetType().Name})"); }

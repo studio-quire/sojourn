@@ -302,11 +302,10 @@ public static class MapPainter
     /// <summary>Light text with a soft dark halo, readable on any tile.</summary>
     static void Halo(SKCanvas c, string text, float x, float y, SKFont font, SKColor color)
     {
-        var f = Painter.FontFor(font, text);
         using (var shadow = new SKPaint { Color = SKColors.Black.WithAlpha(150), IsAntialias = true, MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 1.6f) })
-            c.DrawText(text, x, y, SKTextAlign.Left, f, shadow);
+            FallbackText.Draw(c, text, x, y, font, shadow);
         using var p = new SKPaint { Color = color, IsAntialias = true };
-        c.DrawText(text, x, y, SKTextAlign.Left, f, p);
+        FallbackText.Draw(c, text, x, y, font, p);
     }
 
     static void Dot(SKCanvas c, float x, float y, float r)

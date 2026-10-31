@@ -1,11 +1,11 @@
 # The map, where you are, and how things are running (SojournMap)
 
 Written by Claude Opus 5.5, 2026-10-29 (batch B8 of `docs/viewer-gaps.md` > Closing the rest). Agent-facing. The world
-map and the mini-map (two boards since the user's dev-mode sitting of 2026-10-29: one board zooming between them lost
-the world map's place whenever the line reopened it), the location line at the left wrist (the viewer's location bar,
-with its lag meter), and statistics at a glance; each as the official viewer does it (its source read: `llworldmap.cpp`, `llworldmapview.cpp`,
-`llworldmipmap.cpp`, `llnetmap.cpp`, `lllocationinputctrl.cpp`, `llviewerparcelmgr.cpp`, `llfloaterlagmeter.cpp`), with
-`SojournMap` for the assistant (`client_api`, `api_help`). The rest of B8 (beacons and Highlight Transparent; the rest of
+map and the mini-map (two boards, the user's call on 2026-10-29: one board zooming between them lost the world map's
+place whenever the line reopened it), the location line at the left wrist (the viewer's location bar, with its lag
+meter), and statistics at a glance; each as the official viewer does it (its source read: `llworldmap.cpp`,
+`llworldmapview.cpp`, `llworldmipmap.cpp`, `llnetmap.cpp`, `lllocationinputctrl.cpp`, `llviewerparcelmgr.cpp`,
+`llfloaterlagmeter.cpp`), with `SojournMap` for the assistant. The rest of B8 (beacons and Highlight Transparent; the rest of
 snapshots) is in `docs/rendering.md` and `docs/assistant.md` > Pictures and videos.
 
 Code: `Client/Map/` (`MapWiring.cs` the glue, settings and where the mini-map is, `MapBoard.cs` either map,
@@ -37,7 +37,8 @@ rating a letter in a recess (G, M, A).
   from out on its own. With the pointer off (A), boards take no ray, so it shows but isn't pressed, as the HUD token.
 - **Desktop**: top left; a click on it (a hand on the mouse, `RealInput`) opens or closes the mini-map under it.
 - Settings (`SojournSettings`, saved in `map-settings.json` beside the VR settings): `location_line` (on), `lag_meter`
-  (on). Both on by default: in the headset the line only shows when you look at your wrist.
+  (on). Both on by default: in the headset the line only shows when you look at your wrist. In the menu, one row:
+  location line off, on, + lag. The maps need no row (the line opens the mini-map, its globe the world map).
 
 ## Statistics at a glance
 
@@ -64,13 +65,13 @@ turns with you by default; not here). Each keeps its own view; the layers (land 
   - **On the hand**: stacked over the location line in its plane (its bottom 6 mm above the line's top), at the line's
     scale (the panel's angular size at 0.45 m, ~0.55 mm a logical px at UI size 1), a fixed 380 x 306 px (a 250 px map;
     ~21 x 17 cm), about a typical line's width; while it's on the hand the line is drawn at least 380 wide, its meter
-    then at the right end (`MapLayout.Hand`; the user, 2026-10-29: first as wide as the line, but following the line
-    from parcel to parcel felt wrong). While it's
-    open it stays over the hand whatever the look or the palm, until closed (the user, 2026-10-29: a very loose rule
-    still felt like a bug when it went). Both face the eyes whatever the hand's turn (placed above the wrist in the
-    room's up, never the hand's). With the line switched off it shows where the line would be. Held like the line (`XrSession.HeldCards`, key "map mini held"):
-    its layer over the hands' layer, out of the menus' order and the hands' cut. The right ray presses, drags the map
-    and picks on it, and the right stick zooms it (below); its margins don't drag it (it goes where the hand goes). Its last picture is kept while it's out
+    then at the right end (`MapLayout.Hand`; the user, 2026-10-29: a width following the line from parcel to parcel
+    felt wrong). While it's open it stays over the hand whatever the look or the palm, until closed (the user,
+    2026-10-29: even a very loose rule felt like a bug when it went). Both face the eyes whatever the hand's turn
+    (placed above the wrist in the room's up, never the hand's). With the line switched off it shows where the line
+    would be. Held like the line (`XrSession.HeldCards`, key "map mini held"): its layer over the hands' layer, out of
+    the menus' order and the hands' cut. The right ray presses, drags the map and picks on it, and the right stick
+    zooms it (below); its margins don't drag it (it goes where the hand goes). Its last picture is kept while it's out
     of sight, so it's there the moment the wrist comes up, redrawn then.
   - **Out on its own**: a board like the world map ("map mini", in the menus' order and the hands' cut), 1 m away, 32
     degrees right of where you face with its middle 2 below the eyes (clear of the world map, ~44 degrees wide and
@@ -90,7 +91,7 @@ turns with you by default; not here). Each keeps its own view; the layers (land 
   memory; a missing tile (no region) is water for 10 minutes. OpenSim serves every level.
 - **What's on them** (`WorldMap`): regions' names and edges from MapBlocks (16-region squares around what's in view,
   each at most every 5 minutes; names drawn from 96 px a region, as the viewer); land for sale, events and telehubs
-  grid-wide (B5's `LandMap.ItemsAsync`, on opening and every 5 minutes while up); people counted per region in view at
+  grid-wide (`LandMap.ItemsAsync`, docs/land.md; on opening and every 5 minutes while up); people counted per region in view at
   most once a minute each (the viewer's `AGENTS_UPDATE_TIMER`, while 8 m a pixel or closer); close up (2 m a pixel or
   closer) everyone around by their coarse positions instead; friends who let you see them on the map (FindAgent every
   30 s, ringed and named); you as an arrow the way you face, the 20 m and 100 m rings. Land for sale (a tag) and events
@@ -126,17 +127,10 @@ turns with you by default; not here). Each keeps its own view; the layers (land 
   `{world {...}, mini {..., where: off | hand | free}}` (what each shows, what's picked; on the desktop where the line and
   each map are drawn, and their scales).
 - `friends {wait_s=3}`: online friends, and where those who let you see them on the map are.
-The map's items are `SojournLand mapItems`; teleports are the go tool's.
 
-## For batch T and M
-
-- T: `where`, `stats` (with a prompt line: "is it me or the region?", "where am I", "can I fly here" are `where`/`stats`),
-  `show`/`hide`/`state` ("show me Bay City on the map": `show {region, pick: true}`, then the person presses Go; "show me
-  the map around me": `show {}`, the mini-map on their wrist, seen palm up), `friends`. Incognito: `stats` names
-  nothing and could go on the blind allowlist; `where`, `show`, `state` name the place (with "let it see" they're reads
-  like any other); `friends` names people (not blind).
-- M: rows for `location_line` and `lag_meter` (view section); the maps need none (the line opens the mini-map, its globe
-  the world map). A controller binding for the map isn't needed.
+The map's items are `SojournLand mapItems`; teleports are the go tool's. The assistant reaches these through its `map`
+tool (`assistant/moretools.py`: where, stats, show, hide, friends, track); in blind incognito only `stats` (it names
+nothing), `show` around them (no region or place) and `hide` (`Session/Private/Allowlist.cs`).
 
 ## Testing
 
@@ -160,18 +154,10 @@ general without a parcel) in each look, tiles from the local grid (`SOJOURN_MAP_
 
 ## Checks only Second Life or the headset can do
 
-1. Headset: look at your left wrist: the line shows above it (parcel, region, rating, icons, three bars); point at it
-   (A for the pointer) and pull the trigger: the mini-map opens over the line, on the hand, following you; it goes and
-   comes back with the line as you lower and raise the wrist; it's as wide as the line; held out with the palm turned
-   away it stays, low in a corner of view, going only when the palm faces straight away or you look well off it;
-   pressing the line again closes it.
-2. On the mini-map: + and − zoom, the right stick up and down zooms (without turning you), drag the map, pick a spot (the band with Go); its out key puts it to your right as a
-   board of its own; drag it somewhere; its back key (or pressing the line) puts it on the hand again.
-3. The globe opens the world map in front: + and − zoom smoothly through the levels (tiles sharpen as they arrive), drag
-   the map, pick a spot, drag the board by its top strip, × puts it away; the globe again brings it back as it was (the
-   place, the zoom, the spot and its Go).
-4. On SL: a no-fly or damage region (a combat sim) shows its icons and your health; a sandbox shows none.
-5. On SL: zoomed out, crowds counted in regions; a friend who lets you see them on the map ringed and named; land for
-   sale (the tag key) and events (the star) where they are.
-6. Pick a spot in another region and press Go: you arrive there.
-7. Busy place: the bars drop when frames do, the region's when it lags; "is it me or the region?" to the assistant.
+The line, the mini-map (on the hand and out on its own) and the world map were tried in the headset on 2026-10-29,
+and the rules above came from that. Still to see on Second Life:
+1. A no-fly or damage region (a combat sim) shows its icons and your health; a sandbox shows none.
+2. Zoomed out, crowds counted in regions; a friend who lets you see them on the map ringed and named; land for sale
+   (the tag key) and events (the star) where they are.
+3. Pick a spot in another region and press Go: you arrive there.
+4. Busy place: the bars drop when frames do, the region's when it lags; "is it me or the region?" to the assistant.

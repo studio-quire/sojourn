@@ -14,7 +14,7 @@ namespace Sojourn.Client.Assistant;
 /// (<see cref="PanelPlacement"/>). The right ray and trigger: on the text, a drag scrolls it (it runs on a little when
 /// let go); on the title strip, a drag moves it; × closes it. The ray stops at it. Desktop: it takes the panel's place
 /// at the top right while it's open (Program's DesktopAssistant), the mouse dragging or wheeling it. Hidden while a
-/// confirmation waits.
+/// confirmation waits, unless it holds that confirmation's list (its list key).
 /// </summary>
 public sealed class ReaderView
 {
@@ -27,11 +27,14 @@ public sealed class ReaderView
     {
         Reader = reader;
         _look = look;
+        Placement = new("reader", (anchor, yaw, mode, size) => Rest(anchor, yaw, size, reader.Doc?.Kind == ReaderKind.Listing));
         reader.OpenChanged += open => { if (open) _place = true; };
+        // a confirmation's list rests above the confirmation, which sits higher than the panel
+        reader.ListingClosed += _ => _place = true;
     }
 
     /// <summary>Where its layer floats: following, or where the person put it.</summary>
-    public readonly PanelPlacement Placement = new("reader", Rest);
+    public readonly PanelPlacement Placement;
     bool _place, _shownBefore;
     Vector3 _pos;
     Quaternion _rot = Quaternion.Identity;
@@ -192,11 +195,11 @@ public sealed class ReaderView
     /// <summary>Where it rests while it follows: 1.2 m out where the head faces, its bottom edge 4 degrees above the
     /// panel's top (18 below the eyes), however tall it is: the panel and the reader are separate layers, and a reader
     /// reaching down behind the panel was drawn over it (2026-10-27; a cap on its top brought a tall one down over the
-    /// panel again, 2026-10-30).</summary>
-    static (Vector3, Quaternion) Rest(Vector3 anchor, float yaw, PanelPlacement.Mode mode, Vector2 size)
+    /// panel again, 2026-10-30). A confirmation's list: 4 degrees above the confirmation's top (10 below the eyes).</summary>
+    static (Vector3, Quaternion) Rest(Vector3 anchor, float yaw, Vector2 size, bool listing)
     {
         float half = MathF.Atan(size.Y / 2 / Distance);
-        float pitch = -14 * MathF.PI / 180 + half;
+        float pitch = (listing ? -6 : -14) * MathF.PI / 180 + half;
         return PanelPlacement.Toward(anchor, yaw, pitch, Distance);
     }
 
@@ -261,6 +264,16 @@ public static class ReaderWiring
         var view = new ReaderView(new Reader(), () => assistant.Panel.LookFor(InkSheet.Reader));
         session.Api.Register(new ReaderApi(session, view.Reader, assistant.RepliesDoc));
         assistant.RepliesRequested += () => view.Reader.Show(assistant.RepliesDoc(), atEnd: true);
+        // a confirmation's list key: its list shown while the confirmation waits on (beside it in the headset, in its
+        // place on the desktop), gone once it's answered; closed, the confirmation's keys arm afresh, and reading
+        // starts its two minutes again
+        assistant.ListRequested += pc =>
+        {
+            pc.Kept();
+            view.Reader.Show(ReaderDoc.Listing(pc), atEnd: false);
+            _ = pc.Answer.Task.ContinueWith(_ => view.Reader.CloseListing(pc), TaskScheduler.Default);
+        };
+        view.Reader.ListingClosed += f => { if (f is PendingConfirm pc) { pc.Kept(); pc.MarkMoved(); } };
         view.Replies = (() => assistant.Panel.RepliesVersion, assistant.RepliesDoc);
         social.ReadNotecard = n => _ = Task.Run(async () =>
         {

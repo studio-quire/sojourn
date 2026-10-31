@@ -1,5 +1,6 @@
 using SkiaSharp;
 using Sojourn.Core.Agents;
+using Sojourn.Session.Assistant;
 using static Sojourn.Session.Assistant.Panel;
 
 namespace Sojourn.Session.Social;
@@ -81,10 +82,10 @@ public static class Links
                 if (next <= Room()) { cur.Add(word); curW = next; continue; }
                 if (cur.Count > 0) { lines.Add(cur); cur = new List<Word>(); curW = 0; }
                 var rest = word.Text;
-                while (Measure(font, rest) > Room() && rest.Length > 1)
+                while (Measure(font, rest) > Room() && FallbackText.Before(rest, rest.Length) > 0)
                 {
-                    int n = rest.Length - 1;
-                    while (n > 1 && Measure(font, rest[..n]) > Room()) n--;
+                    int n = FallbackText.Before(rest, rest.Length);
+                    while (FallbackText.Before(rest, n) > 0 && Measure(font, rest[..n]) > Room()) n = FallbackText.Before(rest, n);
                     lines.Add(new List<Word> { new(rest[..n], word.Link) });
                     rest = rest[n..];
                 }
@@ -123,7 +124,7 @@ public static class Links
             if (c != null)
             {
                 using var p = new SKPaint { Color = w.Link >= 0 ? accent : ink, IsAntialias = true };
-                c.DrawText(w.Text, x, y, SKTextAlign.Left, Painter.FontFor(font, w.Text), p);
+                FallbackText.Draw(c, w.Text, x, y, font, p);
                 if (w.Link >= 0)
                 {
                     // the underline runs through the space to the next word of the same link

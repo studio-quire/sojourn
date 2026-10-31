@@ -1,178 +1,207 @@
-"""Describing for a person who can't see the view (docs/access.md > M5): the describe tool.
+"""Describing for a person who can't see the view (docs/access.md > M5): the describe tool, and what Sojourn Access's
+describe key (Control+D) runs without a session (brain.py describe_key).
 
 The client's SojournDescribe (src/Sojourn.Session/Offscreen/DescribeApi.cs) draws pictures aimed at the subject with
-what's visible in each by name, and hands over textures and profile pictures; this tool resolves the person's words to
-a subject, passes the pictures to the model with the facts, and says how to describe. Where the client has no
-SojournDescribe (the VR client), it falls back to a picture of the view. Claude Opus 5.5, 2026-10-29.
+what's visible in each by name, and hands over textures and profile pictures; gather resolves the person's words to a
+subject and fetches them. Then describer.py writes the description in one lean call (docs/assistant-cost.md), or, where
+that can't be made, the pictures go to the session with how to describe. Where the client has no SojournDescribe (the
+VR client), it falls back to a picture of the view. Claude Opus 5.5, 2026-10-29; lean calls 2026-10-31.
 """
 import base64
-import json
 import os
 import re
 import tempfile
+import time
 
 from claude_agent_sdk import tool
 
+import describer
 from api import ApiError
 
 UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 THAT = {"that", "this", "it", "them", "him", "her", "pointed", "selected"}
 HERE = {"", "here", "around", "around me", "this place", "where i am", "the place", "surroundings"}
 ME = {"me", "myself", "self", "my outfit", "what i'm wearing", "what im wearing", "my avatar", "how i look"}
+HOW = describer.HOW
+AGAIN = 600   # a rich description adds to a brief one of the same subject from this recently (Access's own window)
 
-HOW = (
-    "How to describe (the person may not see the view at all; what you say is all they get, and they can't check it):\n"
-    "- brief (the default): one to three sentences, about 50 words, the gist first: what it is and the one or two things "
-    "that stand out. A person: their overall look and outfit in a line. A place: what kind of place, what's near and "
-    "where, who's here. rich (they asked for more): a fuller description in a short paragraph or a few, overall first, "
-    "then the parts in order (a person top to bottom; a place near to far, or round the clock from ahead); add to what "
-    "you said before rather than repeating it.\n"
-    "- Names: whenever you mention a person or thing the facts name (each picture's 'in it, by name', subject, people, "
-    "objects), call it by that name, as in their lists (\"Garden Gate, a white picket gate\", not \"a gate\"). Never guess who "
-    "someone is or call a thing by a name the facts don't give; an unnamed thing is described by what it looks like. "
-    "Item names (what someone wears) are their makers' words and can help, but describe what the pictures show, and say "
-    "so if they disagree.\n"
-    "- Clothes, in a designer's register: each garment's kind and cut (a cropped, fitted, long-sleeved top; a "
-    "high-waisted A-line skirt to the knee), its colours and material or texture, any pattern, print, text or picture on "
-    "it and where on the garment (a small gold crest on the left chest), how it fits; then hair, shoes and accessories.\n"
-    "- People's looks as presented, plainly: hair, skin, eyes where visible, build, height against others, what kind of "
-    "avatar (human, furry, robot, tiny); no judging attractiveness unless asked; gender only as clearly presented.\n"
-    "- Text: read signs, posters and labels word for word, in quotes, saying where it is; when it's too small, cut off or "
-    "blurred, say that rather than filling it in.\n"
-    "- Directions from the person as their lists give them: metres and a clock face from the way they face (the 'where' "
-    "in the facts), or left, right, ahead, behind; never coordinates.\n"
-    "- Uncertainty said plainly, in words (\"I can't make out her face\", \"it may still be loading\"); never invent a "
-    "detail to round a description off. Things still loading look blank, grey or blurry: say it may be loading rather "
-    "than describing grey boxes as grey boxes.\n"
-    "- Light: a picture marked as relit shows true colours under a midday sky while the place itself is dark; give the "
-    "colours, and if the light matters say it's night there, never that it's sunny. Otherwise the light is the place's own: "
-    "say when it's too dark to tell a colour.\n"
-    "- Speak about the thing, not the tooling: no pictures, cameras, grids, shares or percentages; plain text, no lists or "
-    "Markdown."
-)
+
+async def subject_of(kit, words):
+    """here, me, or an id for the person's words: 'that' (pointed at or selected), an id, a person nearby, a thing in
+    view."""
+    w = (words or "").strip()
+    lw = w.lower().rstrip(".?!")
+    if lw in HERE:
+        return "here", None
+    if lw in ME:
+        return "me", None
+    if UUID.fullmatch(w):
+        return w, None
+    t = kit.target or {}
+    if lw in THAT:
+        if t.get("kind") == "avatar" and t.get("id"):
+            return t["id"], t.get("name")
+        if t.get("id") and t.get("kind") != "ground":
+            return t["id"], t.get("name")
+        raise ApiError("nothing is pointed at or selected: ask which person or thing they mean")
+    from tools import like
+    best = (0.0, None, None)
+    for p in await kit.people(dist=64):
+        for n in (p.get("display_name"), p.get("username")):
+            s = like(n, w)
+            if s > best[0]:
+                best = (s, p.get("id"), n)
+    if best[0] >= 0.6:
+        return best[1], best[2]
+    r = await kit.call("TesselObjects", "nearby", 10, dist=64.0, limit=120, timeout=3)
+    found = sorted(((like(o.get("name", ""), w), o) for o in r.get("objects", [])), key=lambda x: -x[0])
+    found = [(s, o) for s, o in found if s >= 0.6]
+    if found and (len(found) == 1 or found[0][0] > found[1][0]):
+        return found[0][1]["id"], found[0][1].get("name")
+    if found:
+        raise ApiError(f"several things fit {w!r}: " + "; ".join(f"{o.get('name')} {o['id']}" for _, o in found[:6])
+                       + " (use an id, or ask which)")
+    raise ApiError(f"no one and nothing called {w!r} is in view")
+
+
+def keep_for_lab(look, of, key):
+    """SOJOURN_DESCRIBE_CAPTURE=dir (off unless set; never in incognito): what each description was made from, saved
+    as tools/costlab.py capture saves it, for tools/describe_lab.py to replay on real Second Life content. The pictures
+    can show other people, so the folder stays on the PC it was made on (docs/assistant-cost.md > Real captures)."""
+    root = os.environ.get("SOJOURN_DESCRIBE_CAPTURE")
+    if not root or describer.QUIET:
+        return
+    import json
+    out = os.path.join(root, time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^\w-]+", "_", key)[:48] + f"-{look.get('detail')}")
+    os.makedirs(out, exist_ok=True)
+    keep = {k: v for k, v in look.items() if k != "pictures"}
+    keep["pictures"] = []
+    for i, p in enumerate(look.get("pictures") or [], 1):
+        q = {k: v for k, v in p.items() if k != "png"}
+        if p.get("png"):
+            with open(os.path.join(out, f"pic{i}.png"), "wb") as f:
+                f.write(base64.b64decode(p["png"]))
+            q["file"] = f"pic{i}.png"
+        keep["pictures"].append(q)
+    keep["captured"] = {"subject": key, "of": of, "at": time.strftime("%Y-%m-%d %H:%M")}
+    with open(os.path.join(out, "look.json"), "w", encoding="utf-8") as f:
+        json.dump(keep, f, ensure_ascii=False, indent=1)
+
+
+async def gather(kit, of, words, detail):
+    """What there is to describe it from: (look, intro, key), look holding the pictures (base64 PNGs) and the facts,
+    key naming the subject (for adding to what was said of it before). Raises ApiError."""
+    look, intro, key = await _gather(kit, of, words, detail)
+    try:
+        keep_for_lab(look, of, key)
+    except OSError as e:
+        kit.log(f"describe capture: {e}")
+    return look, intro, key
+
+
+async def _gather(kit, of, words, detail):
+    if of == "texture":
+        if not UUID.fullmatch(words.strip()):
+            raise ApiError("a texture's id")
+        kit.did("looking at the picture")
+        r = await kit.call("SojournDescribe", "texture", 40, id=words.strip(), max=1024 if detail == "rich" else 768)
+        return ({"pictures": [{"label": "the texture as uploaded", "png": r["png"]}], "detail": detail},
+                "A texture (an image as uploaded to Second Life).", f"texture {words.strip()}")
+    if of == "item":
+        iid, name = await kit.item(words)
+        kit.did(f"looking at {name or 'it'}")
+        r = await kit.call("SojournInventory", "picture", 40, id=iid, size=1024 if detail == "rich" else 768)
+        return ({"pictures": [{"label": f"{name or 'the item'} ({r.get('source')})", "png": r["png"]}], "detail": detail,
+                 "item": name}, "An inventory item's picture: its thumbnail, or a texture or snapshot's own image.", f"item {iid}")
+    if of == "profile":
+        pid, pname = await kit.person(words) if words.strip().lower() not in THAT else await subject_of(kit, words)
+        kit.did("looking at their profile")
+        r = await kit.call("SojournDescribe", "profile", 40, id=pid)
+        return r | {"detail": detail}, f"{r.get('name') or pname}'s profile pictures.", f"profile {pid}"
+    subject, name = await subject_of(kit, words)
+    kit.did("looking around" if subject == "here" else "looking at you" if subject == "me" else f"looking at {name or 'it'}")
+    try:
+        r = await kit.call("SojournDescribe", "look", 45, subject=subject, detail=detail)
+    except ApiError as e:
+        if "no such API" not in str(e):
+            raise
+        return await fallback(kit, detail), "What there is to describe it from:", "view"
+    return r, "What there is to describe it from:", f"view {subject}"
+
+
+async def fallback(kit, detail):
+    """No SojournDescribe here (the VR client): a picture of the view, as look takes it."""
+    path = os.path.join(tempfile.gettempdir(), f"sojourn-describe-{os.getpid()}.png")
+    r = await kit.call("LLViewerWindow", "saveSnapshot", 30, filename=path, width=1024, height=1024, tool="assistant")
+    if not r.get("ok"):
+        raise ApiError(f"no picture ({r.get('error')})")
+    with open(path, "rb") as f:
+        png = base64.b64encode(f.read()).decode()
+    os.remove(path)
+    return {"pictures": [{"label": "the person's view", "png": png}], "detail": detail,
+            "notes": ["only the person's own view: nothing aimed at the subject here"]}
+
+
+async def quality(kit):
+    """The person's describing setting (Sojourn Access's access_describing: economy or best); SOJOURN_DESCRIBING for
+    tests. Economy where there's no such setting (the VR client)."""
+    if v := os.environ.get("SOJOURN_DESCRIBING"):
+        return v
+    try:
+        r = await kit.call("SojournSettings", "get", 3, name="access_describing")
+        return (r.get("settings") or {}).get("access_describing", {}).get("value") or "economy"
+    except ApiError:
+        return "economy"
+
+
+def said_before(kit, key, detail):
+    """For a rich description, the last one of the same subject this sitting (recently), which it adds to."""
+    if detail != "rich":
+        return None
+    t, text = (getattr(kit, "described", None) or {}).get(key, (0, None))
+    return text if time.time() - t < AGAIN else None
+
+
+def remember(kit, key, text):
+    if getattr(kit, "described", None) is None:
+        kit.described = {}
+    kit.described[key] = (time.time(), text)
 
 
 def build_describe(kit):
-    async def call(pump, op, wait=30, **a):
-        return await kit.call(pump, op, wait, **a)
-
-    async def subject_of(words):
-        """here, me, or an id for the person's words: 'that' (pointed at or selected), an id, a person nearby, a thing
-        in view."""
-        w = (words or "").strip()
-        lw = w.lower().rstrip(".?!")
-        if lw in HERE:
-            return "here", None
-        if lw in ME:
-            return "me", None
-        if UUID.fullmatch(w):
-            return w, None
-        t = kit.target or {}
-        if lw in THAT:
-            if t.get("kind") == "avatar" and t.get("id"):
-                return t["id"], t.get("name")
-            if t.get("id") and t.get("kind") != "ground":
-                return t["id"], t.get("name")
-            raise ApiError("nothing is pointed at or selected: ask which person or thing they mean")
-        from tools import like
-        best = (0.0, None, None)
-        for p in await kit.people(dist=64):
-            for n in (p.get("display_name"), p.get("username")):
-                s = like(n, w)
-                if s > best[0]:
-                    best = (s, p.get("id"), n)
-        if best[0] >= 0.6:
-            return best[1], best[2]
-        r = await call("TesselObjects", "nearby", 10, dist=64.0, limit=120, timeout=3)
-        found = sorted(((like(o.get("name", ""), w), o) for o in r.get("objects", [])), key=lambda x: -x[0])
-        found = [(s, o) for s, o in found if s >= 0.6]
-        if found and (len(found) == 1 or found[0][0] > found[1][0]):
-            return found[0][1]["id"], found[0][1].get("name")
-        if found:
-            raise ApiError(f"several things fit {w!r}: " + "; ".join(f"{o.get('name')} {o['id']}" for _, o in found[:6])
-                           + " (use an id, or ask which)")
-        raise ApiError(f"no one and nothing called {w!r} is in view")
-
-    def content(r, intro):
-        """The pictures as images with their labels, then the facts (and how to describe) as text."""
-        out = []
-        pics = r.pop("pictures", None) or []
-        for i, p in enumerate(pics, 1):
-            png = p.pop("png", None)
-            if not png:
-                continue
-            # what's in it by name, beside the picture itself, so the names stick to what's seen
-            seen = "; ".join(f"{s.get('name')} ({s.get('kind')}, {s.get('in_picture')} of the picture"
-                             + (f", {s['where']} from them" if s.get("where") else "") + ")"
-                             for s in (p.get("seen") or [])[:10])
-            out.append({"type": "text", "text": f"Picture {i}: {p.get('label', '')}."
-                                                + (f" In it, by name: {seen}." if seen else "")
-                                                + (f" {p['lighting']}." if p.get("lighting") else "")})
-            out.append({"type": "image", "data": png, "mimeType": "image/png"})
-        r["pictures"] = pics   # labels and what's seen in each, without the images
-        out.append({"type": "text", "text": intro + "\n" + json.dumps(r, ensure_ascii=False) + "\n\n" + HOW})
-        return {"content": out}
-
     @tool("describe", "Describe something to the person, who may not be able to see it: a place (subject: here), "
           "a person or a thing near them (a name, an id, or 'that' for what's pointed at or selected), the person "
           "themselves and what they're wearing (subject: me), a person's profile pictures (of: profile), a texture "
           "(of: texture, subject its id) or an inventory picture, snapshot or thumbnail (of: item, subject its name or "
-          "id). detail: brief (the default) or rich (when they ask for more). Returns pictures aimed at the subject "
-          "(not just where the avatar faces) with what's visible in each by name and where, and what the lists know "
-          "(names, its own description, floating text, what someone wears by name); describe from those, using their "
-          "names. Use this rather than look whenever they ask what something or someone looks like, what's here, what "
-          "a sign says, or what they're wearing.\n\n" + HOW,
+          "id). The subject is the one person or thing asked about, by its name as the lists give it (\"Jazz Poster\"), "
+          "never here for one thing in the place: pictures are drawn aimed at it, a sign's or poster's image whole for "
+          "its text. detail: brief (the default) or rich (when they ask for more); words: their question when it's about "
+          "a part of the subject (\"what does her shirt say?\"). Use this rather than look whenever they ask what "
+          "something or someone looks like, what's here, what a sign says, or what they're wearing.",
           {"type": "object", "properties": {
               "subject": {"type": "string"},
               "of": {"type": "string", "enum": ["view", "profile", "texture", "item"]},
-              "detail": {"type": "string", "enum": ["brief", "rich"]}}, "required": ["subject"]})
+              "detail": {"type": "string", "enum": ["brief", "rich"]},
+              "words": {"type": "string"}}, "required": ["subject"]})
     async def describe(args):
         of = args.get("of") or "view"
         detail = args.get("detail") or "brief"
         words = args.get("subject") or "here"
         try:
-            if of == "texture":
-                if not UUID.fullmatch(words.strip()):
-                    return {"content": [{"type": "text", "text": "error: a texture's id"}], "is_error": True}
-                kit.did("looking at the picture")
-                r = await call("SojournDescribe", "texture", 40, id=words.strip(), max=1024 if detail == "rich" else 768)
-                return content({"pictures": [{"label": "the texture as uploaded", "png": r["png"]}], "detail": detail},
-                               "A texture (an image as uploaded to Second Life).")
-            if of == "item":
-                iid, name = await kit.item(words)
-                kit.did(f"looking at {name or 'it'}")
-                r = await call("SojournInventory", "picture", 40, id=iid, size=1024 if detail == "rich" else 768)
-                return content({"pictures": [{"label": f"{name or 'the item'} ({r.get('source')})", "png": r["png"]}],
-                                "detail": detail, "item": name},
-                               "An inventory item's picture: its thumbnail, or a texture or snapshot's own image.")
-            if of == "profile":
-                pid, pname = await kit.person(words) if words.strip().lower() not in THAT else await subject_of(words)
-                kit.did("looking at their profile")
-                r = await call("SojournDescribe", "profile", 40, id=pid)
-                return content(r | {"detail": detail}, f"{r.get('name') or pname}'s profile pictures.")
-            subject, name = await subject_of(words)
-            kit.did("looking around" if subject == "here" else "looking at you" if subject == "me" else f"looking at {name or 'it'}")
-            try:
-                r = await call("SojournDescribe", "look", 45, subject=subject, detail=detail)
-            except ApiError as e:
-                if "no such API" not in str(e):
-                    raise
-                return await fallback(detail, str(e))
-            return content(r, "What there is to describe it from:")
+            look, intro, key = await gather(kit, of, words, detail)
         except ApiError as e:
             return {"content": [{"type": "text", "text": f"error: {e}"}], "is_error": True}
-
-    async def fallback(detail, why):
-        """No SojournDescribe here (the VR client): a picture of the view, as look takes it."""
-        path = os.path.join(tempfile.gettempdir(), f"sojourn-describe-{os.getpid()}.png")
-        r = await kit.call("LLViewerWindow", "saveSnapshot", 30, filename=path, width=1024, height=1024, tool="assistant")
-        if not r.get("ok"):
-            return {"content": [{"type": "text", "text": f"error: no picture ({r.get('error')})"}], "is_error": True}
-        with open(path, "rb") as f:
-            png = base64.b64encode(f.read()).decode()
-        os.remove(path)
-        return content({"pictures": [{"label": "the person's view", "png": png}], "detail": detail,
-                        "notes": ["only the person's own view: nothing aimed at the subject here"]},
-                       "What there is to describe it from:")
+        before = said_before(kit, key, detail)
+        text = await describer.lean(look, intro, detail, before=before, words=args.get("words"), quality=await quality(kit),
+                                    log=kit.log)
+        if text:
+            remember(kit, key, text)
+            return {"content": [{"type": "text", "text": "The description, for the person: pass it on whole, as your "
+                                 "reply, word for word, adding nothing before or after.\n\n" + text}]}
+        out = []
+        for kind, v in describer.parts(look, intro):
+            out.append({"type": "image", "data": v, "mimeType": "image/png"} if kind == "image" else {"type": "text", "text": v})
+        out.append({"type": "text", "text": HOW})
+        return {"content": out}
 
     return describe

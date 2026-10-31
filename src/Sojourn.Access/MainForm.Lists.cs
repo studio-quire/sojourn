@@ -43,7 +43,7 @@ public sealed partial class MainForm
         void Item(string text, Action<PersonOps.Person> act) =>
             menu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (list.FocusedItem?.Tag is PersonOps.Person p) act(p); }));
         Item("Send &IM", p => StartIm(p.Id, p.Name));
-        Item("&Walk to", p => _ = _cmd.WalkAsync(p.Pos, p.Name, 1.5));
+        Item("&Walk to", p => _ = _cmd.WalkAsync(p.Pos, p.Name, 1.5, $"//go tp person {p.Name}"));
         Item("&Face", p => _ = _cmd.FacePointAsync(p.Pos, p.Name));
         Item("W&here", p => Answer($"{p.Name} is {_ops.Where(p.Pos, full: true)}."));
         Item("&Describe", p => _ = DescribeAsync(Of(p)));
@@ -78,21 +78,23 @@ public sealed partial class MainForm
             _objectMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_objects.FocusedItem?.Tag is PersonOps.Thing t) act(t); }));
         Item("&Touch", t => _ = ThingOpAsync("requestTouch", t, $"Touched {t.Name}."));
         Item("&Sit", t => _ = ThingOpAsync("requestSit", t, $"Sitting on {t.Name}."));
-        Item("&Walk to", t => _ = _cmd.WalkAsync(t.Pos, t.Name, 1.5));
+        Item("&Walk to", t => _ = _cmd.WalkAsync(t.Pos, t.Name, 1.5, $"//go tp object {t.Name}"));
         Item("&Beacon", t => _walk?.BeaconOn(t.Name, t.Id));
         Item("&Face", t => _ = _cmd.FacePointAsync(t.Pos, t.Name));
         Item("&Describe", t => _ = DescribeAsync(Of(t)));
         Item("W&here", t => Answer(t.Hud ? $"{t.Name} is worn {t.Text}." : $"{t.Name} is {_ops.Where(t.Pos, full: true)}.{(string.IsNullOrWhiteSpace(t.Text) ? "" : $" Its sign says: {t.Text}")}"));
         Item("&Parts", _ => _parts.Focus());
         Item("&Move...", t => _ = MoveByWordsAsync(t));
+        // F5's refresh, here too so it can be found (the blind tester found no way to refresh, 2026-10-31)
+        _objectMenu.Items.Add(new ToolStripMenuItem("&Refresh", null, (_, _) => _ = RefreshObjects(true)));
         // a HUD is touched, described and its parts listed; the rest is for things in the world
         _objectMenu.Opening += (_, _) =>
         {
             bool hud = _objects.FocusedItem?.Tag is PersonOps.Thing { Hud: true };
             foreach (ToolStripItem i in _objectMenu.Items)
-                i.Visible = !hud || i.Text is "&Touch" or "&Describe" or "W&here" or "&Parts";
+                i.Visible = !hud || i.Text is "&Touch" or "&Describe" or "W&here" or "&Parts" or "&Refresh";
         };
-        KeysOn(_objectMenu, ("&Describe", "Control+D"), ("&Parts", "Tab"));
+        KeysOn(_objectMenu, ("&Describe", "Control+D"), ("&Parts", "Tab"), ("&Refresh", "F5"));
         MenuOn(_objects, _objectMenu);
         _objects.KeyDown += (_, e) => ListKey(_objects, _objectMenu, e, RefreshObjects);
         BuildParts();
@@ -217,7 +219,9 @@ public sealed partial class MainForm
         try
         {
             bool huds = ShowingHuds;
-            var things = huds ? await HudsAsync() : await _ops.ObjectsAsync(30, 60);
+            // scripted things' names asked again (F5 all of them, else those over 5 s old): a script renaming its
+            // object reaches only those who have it selected, so a list holding names for minutes missed renames
+            var things = huds ? await HudsAsync() : await _ops.ObjectsAsync(30, 60, renew: asked ? 0 : 5);
             await ListDelay(_objects);
             Fill(_objects, things.Select(t => (Text: t.Hud ? $"{t.Name}, {t.Text}" : $"{t.Name}, {_ops.Where(t.Pos)}{(t.Sit ? ", can sit" : t.Touch ? ", touchable" : "")}",
                 Key: t.Id.ToString(), Tag: (object)t)).ToList(), huds ? "No HUDs worn." : "Nothing nearby.");
@@ -225,7 +229,9 @@ public sealed partial class MainForm
             if (asked) Reader?.Answer(things.Count == 0 ? (huds ? "No HUDs worn." : "Nothing nearby.")
                 : huds ? (things.Count == 1 ? "1 HUD." : $"{things.Count} HUDs.") : $"{things.Count} objects.", keep: false);
             // the parts below follow the object selected, unless the person is in them
-            if (_objects.FocusedItem?.Tag is PersonOps.Thing sel && sel.Id != _partsOf && !_parts.Focused && !_faces.Focused) _ = RefreshPartsAsync(sel);
+            // (or the same one renamed: "Parts of" its new name)
+            if (_objects.FocusedItem?.Tag is PersonOps.Thing sel && (sel.Id != _partsOf || _parts.AccessibleName != $"Parts of {sel.Name}")
+                && !_parts.Focused && !_faces.Focused) _ = RefreshPartsAsync(sel);
             else if (things.Count == 0 && !_parts.Focused && !_faces.Focused) { _partsOf = UUID.Zero; Fill(_parts, new(), "No object selected."); Fill(_faces, new(), "No part selected."); }
         }
         finally

@@ -24,9 +24,11 @@ public sealed class AssistantApi : LeapApi
     public AssistantApi(AgentSession s, AssistantHost host) : base(s)
     {
         _host = host;
-        Op("hello", "{mic?, notice?, provider?} -> {vr, hint, mode, effort, prefs, dev}: the sidecar is up (send every few seconds)", a =>
+        Op("hello", "{mic?, notice?, provider?, hearing_ready?} -> {vr, hint, mode, effort, prefs, dev}: the sidecar is up (send every few seconds); "
+            + "hearing_ready false while its recogniser loads", a =>
         {
-            _host.SidecarHello(a.Str("mic"), a.Has("notice") ? a.Str("notice") : null, a["provider"] as JsonObject is { } p ? (JsonObject)p.DeepClone() : null);
+            _host.SidecarHello(a.Str("mic"), a.Has("notice") ? a.Str("notice") : null, a["provider"] as JsonObject is { } p ? (JsonObject)p.DeepClone() : null,
+                a.Bool("hearing_ready", true));
             return new JsonObject
             {
                 ["vr"] = _host.InHeadset, ["hint"] = _host.Hint, ["mode"] = AssistantHost.ModelName(_host.Model),
@@ -184,7 +186,13 @@ public sealed class AssistantApi : LeapApi
             if (a.ContainsKey("result")) s.Result = a.Str("result");
             if (a.ContainsKey("prompt")) s.Prompt = a.Str("prompt");
             if (a.ContainsKey("listening")) s.Listening = a.Bool("listening", false);
-            if (a.ContainsKey("hearing")) s.Hearing = a.Bool("hearing", false);
+            if (a.ContainsKey("hearing"))
+            {
+                s.Hearing = a.Bool("hearing", false);
+                // hearing done: a dictation that heard nothing gives the panel back at once rather than after its 20 s
+                // wait (the user: after dictating nothing, the assistant's messages should come back)
+                if (!s.Hearing && s.Dictation == PanelDictation.Hearing) s.Dictation = PanelDictation.None;
+            }
             if (a.ContainsKey("working")) s.Working = a.Bool("working", false);
             if (a.ContainsKey("model")) s.Model = a.Str("model");
             if (a.ContainsKey("point")) s.PointAsk = a.Str("point") is { Length: > 0 } ask ? (ask.Length > 300 ? ask[..300] : ask) : null;

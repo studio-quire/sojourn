@@ -125,9 +125,13 @@ public sealed partial class MainForm : Form
             Clipboard = () => (string?)Invoke(() => { try { return System.Windows.Forms.Clipboard.ContainsText() ? System.Windows.Forms.Clipboard.GetText() : null; } catch { return null; } }),
         };
         _walk = new Sojourn.Access.Walk.WalkMode(host, _ops, _set, rays, line => Reader?.Answer(line)) { StopOthers = () => _cmd.StopAll() };
+        // a seated crossing (a train, a car) is a line in nearby chat's history, as a walked one is (Announce)
+        _walk.Crossed += AppendChat;   // (walk mode ticks on the window's thread)
         _cmd.FeetZ = () => _walk.Me()?.Feet;
         _cmd.Describe = words => (Task)Invoke(() => DescribeWordsAsync(words));
         _cmd.About = () => AppInfo.About(_opt.BaseDir);
+        _cmd.Quote = text => Answer(text, LineFrom.People);
+        _cmd.SendLog = () => BeginInvoke(() => RealInput.Ours(SendLog));
         _cmd.Touch = words => (Task)Invoke(() => TouchWordsAsync(words));
         _cmd.Outfit = () => (Task)Invoke(() => OutfitListAsync());
         _cmd.Music = MusicWords;
@@ -157,6 +161,7 @@ public sealed partial class MainForm : Form
         host.ScreenReader.MusicMuted = () => _set.MuteAll;
         host.ScreenReader.ReadMine = () => _set.ReadMine;
         host.ScreenReader.Actions.ConfirmKeys = "Enter confirms, Escape cancels.";
+        host.ScreenReader.Actions.ConfirmListKey = "Control N, then Tab: the whole list.";
         host.Feed.Joined += e => BeginInvoke(() => Joined(e));
         StartEvents();
         _tick.Start();
@@ -293,9 +298,13 @@ public sealed partial class MainForm : Form
     }
 
     /// <summary>The answer to the person's own key or command: cuts in.</summary>
-    public void Answer(string text)
+    public void Answer(string text) => Answer(text, LineFrom.App);
+
+    /// <summary>An answer carrying words whose they are, for the session log: LineFrom.People for one that quotes
+    /// someone (a listing's description, a group's charter, a notecard's line).</summary>
+    public void Answer(string text, LineFrom from)
     {
-        Reader?.Answer(text);
+        Reader?.Answer(text, from: from);
         if (InvokeRequired) BeginInvoke(() => AppendChat(text));
         else AppendChat(text);
     }
@@ -303,7 +312,7 @@ public sealed partial class MainForm : Form
     /// <summary>Something that happened by itself (an arrival): in turn, like what arrives.</summary>
     void Announce(string text)
     {
-        Reader?.Say(AnnounceKind.Notices, text);
+        Reader?.Say(AnnounceKind.Notices, text, from: LineFrom.App);
         AppendChat(text);
     }
 
@@ -334,7 +343,7 @@ public sealed partial class MainForm : Form
         if (e.Kind == FeedKind.Notice)
         {
             var said = Sentences(line);
-            NoticeSaid(said);
+            NoticeSaid(said, LogWords.FromOf(e));
             return said;
         }
         var shaped = ShapeLine(e, line);
@@ -358,15 +367,15 @@ public sealed partial class MainForm : Form
 
     // --- a notice cut off --------------------------------------------------------------------------------------------
 
-    (string Text, long At)? _noticeSaid;
+    (string Text, long At, LineFrom From)? _noticeSaid;
     bool _noticeCut;
     nint _focusWas;
     long _focusMovedAt;
 
     /// <summary>A notice just handed to the reader (the announcer's thread).</summary>
-    void NoticeSaid(string line)
+    void NoticeSaid(string line, LineFrom from)
     {
-        lock (_noticeLock) { _noticeSaid = (line, Environment.TickCount64); _noticeCut = false; }
+        lock (_noticeLock) { _noticeSaid = (line, Environment.TickCount64, from); _noticeCut = false; }
     }
 
     readonly object _noticeLock = new();
@@ -381,9 +390,11 @@ public sealed partial class MainForm : Form
         var focus = GetFocus();
         if (focus != _focusWas) { _focusWas = focus; _focusMovedAt = now; }
         string? again = null;
+        var from = LineFrom.People;
         lock (_noticeLock)
         {
             if (_noticeSaid is not { } n) return;
+            from = n.From;
             // Control or Shift alone is the screen reader's own key to stop or pause speech: silenced on purpose, not lost
             if (RealInput.SilencedAt > n.At) { _noticeSaid = null; return; }
             // about as long as a quick screen reader voice takes over it, at least a second and at most three
@@ -395,7 +406,7 @@ public sealed partial class MainForm : Form
             _noticeSaid = null;
             if (!_notices.Focused) again = n.Text;
         }
-        if (again != null) Reader?.Say(AnnounceKind.Notices, again, keep: false);
+        if (again != null) Reader?.Say(AnnounceKind.Notices, again, keep: false, from);
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern nint GetFocus();
@@ -471,7 +482,7 @@ public sealed partial class MainForm : Form
         Control+Tab or Control+Page Down: the next conversation (IMs and group chats), with Shift or Page Up the one before
         Control+W: close a conversation
         Tab and Shift+Tab: between the history and where you type
-        In nearby chat, Tab from Say: the people nearby, then the history
+        In nearby chat, Tab from Say: the history, then the people nearby
 
         Chat
         Enter: say
@@ -483,7 +494,7 @@ public sealed partial class MainForm : Form
         Notices
         Control+N: the newest notice
         On a notice, 1 to 9, 0, minus and equals: press its keys
-        On a notice, Delete: put it away
+        On a notice, Delete: ignore it, unanswered (a script menu's Ignore)
         On a notice, the Applications key: its keys in a menu
         Escape: back where Control+N came from
 
@@ -631,30 +642,27 @@ public sealed partial class MainForm : Form
     }
 
     /// <summary>The assistant's walks (LLAgent startAutoPilot, the session's own autopilot) around what's in the way: the
-    /// path's corners as waypoints (Motion.Router); with no way at all, a teleport there where the region allows
-    /// (walk_teleport_fallback), said.</summary>
+    /// path's corners as waypoints (Motion.Router), a goal out of reach walked as near as the way goes; with no way at
+    /// all, as a //go: said, and a teleport there once where that can land (Commands.NoWayAsync).</summary>
     async Task<IReadOnlyList<LibreMetaverse.Vector3>?> RouteAsync(Sojourn.Access.Walk.PathPlanner planner, LibreMetaverse.Vector3 from, LibreMetaverse.Vector3 to)
     {
         var a = new System.Numerics.Vector2(from.X, from.Y);
         var b = new System.Numerics.Vector2(to.X, to.Y);
         if (System.Numerics.Vector2.Distance(a, b) < 2) return null;
-        var plan = await planner.PlanAsync(a, _walk?.Me()?.Feet ?? from.Z - 0.95f, b);
-        Sojourn.Access.Walk.WalkMode.Log($"route {a} -> {b}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct ? "direct" : string.Join(" ", plan.Waypoints))}");
+        var plan = await planner.PlanAsync(a, _walk?.Me()?.Feet ?? from.Z - 0.95f, b, null, default, to.Z);
+        Sojourn.Access.Walk.WalkMode.Log($"route {a} -> {b}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct && !plan.GoalMoved ? "direct" : string.Join(" ", plan.Waypoints) + (plan.GoalMoved ? " (goal moved)" : ""))}");
         if (plan == null)
         {
-            if (!planner.CanAsk || !_set.WalkTeleportFallback || _ops.Me() is not { } me) return null;
-            Reader?.Answer("No way around found: teleporting there.");
-            var r = await _ops.DoAsync("LLAgent", "requestTeleport", new JsonObject
-            {
-                ["regionname"] = me.Region, ["x"] = (double)to.X, ["y"] = (double)to.Y, ["z"] = (double)Math.Max(to.Z, me.Pos.Z),
-                ["skip_confirmation"] = true, ["timeout"] = 20,
-            });
-            if (PersonOps.Error(r) is { } e) Reader?.Answer($"Teleport didn't work: {e}");
-            return new[] { to };
+            if (!planner.CanAsk) return null;
+            if (_ops.Client is { } cl) Host?.Session.Motion.StopAutoPilot(cl, false);
+            var at = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{to.X:0}, {to.Y:0}");
+            await _cmd.NoWayAsync(to, at, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"//go tp xyz {to.X:0},{to.Y:0}"));
+            return Array.Empty<LibreMetaverse.Vector3>();
         }
-        if (plan.Direct) return null;
+        if (plan.Direct && !plan.GoalMoved) return null;
         var legs = plan.Waypoints.Select(w => new LibreMetaverse.Vector3(w.X, w.Y, to.Z)).ToList();
         if (!plan.GoalMoved) legs[^1] = to;
+        else if (legs.Count == 1) legs.Add(legs[0]);   // (the autopilot takes a route of two or more; one leg is its target)
         return legs;
     }
 

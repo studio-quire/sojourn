@@ -51,13 +51,29 @@ def event(data):
     return post("/event", {"kind": "sojourn", "data": data})
 
 
+def venv_python():
+    """The Python to make the venv from when uv isn't there: Python 3.12 (what the venv and Access's package use; the
+    hearing and voice packages' wheels lag new Pythons) through the py launcher, else this one if it's 3.11-3.13."""
+    import shutil
+    if shutil.which("py") and subprocess.run(["py", "-3.12", "-c", ""], capture_output=True).returncode == 0:
+        return ["py", "-3.12"]
+    if (3, 11) <= sys.version_info[:2] <= (3, 13):
+        return [sys.executable]
+    return None
+
+
 def setup():
+    import shutil
+    uv = shutil.which("uv")   # uv fetches a Python 3.12 of its own if the PC has none
     if not PY.exists():
-        uv = subprocess.run(["uv", "venv", str(VENV), "--python", "3.12"]).returncode == 0
-        if not uv:
-            subprocess.check_call([sys.executable, "-m", "venv", str(VENV)])
+        if not (uv and subprocess.run([uv, "venv", str(VENV), "--python", "3.12"]).returncode == 0):
+            base = venv_python()
+            if base is None:
+                sys.exit("the assistant's venv needs Python 3.12 (or 3.11-3.13), or uv: `winget install astral-sh.uv` "
+                         "or `winget install Python.Python.3.12`, then run this again")
+            subprocess.check_call([*base, "-m", "venv", str(VENV)])
     req = ROOT / "assistant" / "requirements.txt"
-    if subprocess.run(["uv", "pip", "install", "--python", str(PY), "-r", str(req)]).returncode != 0:
+    if not (uv and subprocess.run([uv, "pip", "install", "--python", str(PY), "-r", str(req)]).returncode == 0):
         subprocess.check_call([str(PY), "-m", "pip", "install", "-r", str(req)])
     # Kokoro's voice model (Apache-2.0) for spoken replies: ~120 MB into local/assistant/kokoro
     kdir = ROOT / "local" / "assistant" / "kokoro"
@@ -95,10 +111,13 @@ def check():
             "print('parakeet:', 'there' if (ears.PARAKEET / 'encoder.int8.onnx').exists() else 'missing (setup fetches it)', '| sherpa-onnx', sherpa_onnx.__version__)\n"
             "print('soniox key:', 'kept' if cloud.available() else 'none (hearing: soniox needs one: tools/assistant.py key --soniox)')")
     subprocess.run([str(PY), "-c", code], cwd=ROOT)
-    subprocess.run(["claude", "--version"])
+    import shutil
+    if shutil.which("claude"):   # otherwise the Agent SDK's own copy runs (provider.cli(), below)
+        subprocess.run(["claude", "--version"])
     code = ("import sys, json; sys.path.insert(0, 'assistant'); import provider\n"
             "p = provider.Provider(log=lambda s: None); p.configure({'provider': 'claude'})\n"
-            "print('claude account:', 'signed in' if p.ready else 'not signed in', '| claude code:', provider.cli())\n"
+            "print('claude account:', ('signed in' if p.ready else 'not signed in') if provider.CLAUDE_OFFERED\n"
+            "      else 'not offered in this build (a key, OpenRouter or the relay)', '| claude code:', provider.cli())\n"
             "print('keys kept:', ', '.join(k for k in provider.KEY_KINDS if provider.has_key(k)) or 'none', 'in', provider.keys_dir())")
     subprocess.run([str(PY), "-c", code], cwd=ROOT)
     print("which provider is used is the launcher's setting (Access: Alt+0); "

@@ -452,8 +452,7 @@ A blind resident who uses Radegast with a screen reader and touch-types:
 ## What screen-reader users reported
 
 Read in full: cinderblocks/radegast (107 issues, 55 PRs, 33 discussions), radegastdev/radegast (74 issues, 2012-17),
-and 240 of the ~509 issues of the old JIRA (jira.openmetaverse.org RAD-n, via the Wayback Machine). Raw copies in the
-research session's scratchpad (`radegast-research/issues/`).
+and 240 of the ~509 issues of the old JIRA (jira.openmetaverse.org RAD-n, via the Wayback Machine).
 
 **Who.** Most current reports come from a few screen-reader users (JAWS, sometimes its virtual cursor) who test
 builds themselves. The recurring theme is calling in sighted help for what the viewer can't do for them: their group

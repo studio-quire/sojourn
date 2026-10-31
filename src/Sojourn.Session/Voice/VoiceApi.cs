@@ -58,8 +58,23 @@ public sealed class VoiceApi : LeapApi
             Running();
             return await _mod.MuteAllAsync(a.Bool("mute", true), ct);
         });
-        Op("calls", "{} -> {reject_p2p_calls, reject_group_calls, reject_conference_calls, friends_only, do_not_disturb, turned_away}: "
+        Op("calls", "{} -> {reject_p2p_calls, reject_group_calls, reject_conference_calls, groups_turned_away, friends_only, do_not_disturb, turned_away}: "
             + "the switches that turn calls away before they ring (settings), and how many each turned away this session", _ => _rejects.Status());
+        Op("groupCalls", "{group? (id or name), turn_away?: bool} -> one group's {group_id, name, turned_away}, or every group "
+            + "whose calls are turned away: one group's voice calls turned away before they ring (declined without a word), "
+            + "or let ring again; kept per account. reject_group_calls (a setting) turns away every group's", a =>
+        {
+            if (!a.Has("group") && !a.Has("group_id")) return new JsonObject { ["groups_turned_away"] = _rejects.GroupsTurnedAway(), ["reject_group_calls"] = _rejects.Group };
+            // one already on the list can be let ring again after the person has left the group
+            var listed = a.Uuid("group_id") ?? a.Uuid("group");
+            var g = listed is { } id && S.Rejects.CallsTurnedAway(id) ? id : S.GroupChat.Group(a);
+            if (a.Bool("turn_away") is { } turnAway) S.Rejects.SetCallsTurnedAway(g, turnAway);
+            return new JsonObject
+            {
+                ["group_id"] = g.ToString(), ["name"] = S.State.Groups.TryGetValue(g, out var grp) ? grp.Name : g.ToString(),
+                ["turned_away"] = S.Rejects.CallsTurnedAway(g), ["all_group_calls_turned_away"] = _rejects.Group,
+            };
+        });
         if (localGrid)
             Op("testCall", "{channel, name} -> {}: tests on a local grid: join a non-spatial channel as if a call had been set up", a =>
             {

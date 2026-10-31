@@ -79,6 +79,7 @@ public sealed class Look
         });
         c.Network.SimChanged += (_, _) => _s.Guard("look", () =>
         {
+            _regionAt = DateTime.UtcNow;
             // CSB: the region keeps the appearance across a crossing/teleport; resend the same bakes so a region that
             // lacks them asks for a rebake. SSB: nothing (as the viewer).
             if (!ServerBaking(c) && SentAt is not null) Schedule(c, TimeSpan.FromSeconds(3), reupload: false, "new region");
@@ -503,22 +504,27 @@ public sealed class Look
         return c.Inventory.Store?.TryGetValue<InventoryFolder>(cof, out var f) == true ? f.Version : -1;
     }
 
+    DateTime _regionAt = DateTime.UtcNow;
+
     /// <summary>Second Life doesn't keep attachments across logins: the viewer rezzes the outfit's attachment links.</summary>
     async Task RezOutfitAttachmentsAsync(GridClient c, CancellationToken ct)
     {
         await Task.Delay(TimeSpan.FromSeconds(5), ct);
         var worn = await ReadWornAsync(c, ct);
         // what's attached is only known from the avatar as the current region has it: without it (between regions,
-        // or not arrived yet) every worn object would look missing and be attached again
+        // or not arrived yet) every worn object would look missing and be attached again. A region just arrived in
+        // (a teleport home straight after logging in, while a big inventory still loads) has the avatar before its
+        // attachments, so it's judged only once the region has been current a while: an object attached again while
+        // it's still worn drops off and comes back.
         World.RegionWorld? w = null;
         Avatar? me = null;
-        for (int i = 0; i < 30 && me is null; i++)
+        for (int i = 0; i < 300 && (me is null || DateTime.UtcNow - _regionAt < TimeSpan.FromSeconds(10)); i++)
         {
             if (i > 0) await Task.Delay(TimeSpan.FromSeconds(1), ct);
             w = _s.Region;
             me = w?.AvatarById(c.Self.AgentID);
         }
-        if (w is null || me is null) return;
+        if (w is null || me is null || DateTime.UtcNow - _regionAt < TimeSpan.FromSeconds(10)) return;
         var attached = w.Prims.Values.Where(p => p.ParentID == me.LocalID).Select(AgentInventory.AttachItemId).ToHashSet();
         var missing = worn.Where(x => x.AssetType == AssetType.Object && !attached.Contains(x.ItemId)).Select(x => x.Item).ToList();
         if (missing.Count > 0) c.Appearance.AddAttachments(missing, removeExistingFirst: false, replace: false);

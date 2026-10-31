@@ -197,26 +197,38 @@ public sealed class Stills
         }
     }
 
-    /// <summary>A camera's place for this frame (render thread): around the person's avatar as it stands now.</summary>
+    /// <summary>A camera's place for this frame (render thread): around the person's avatar where this still draws it
+    /// (as others see it: in the headset the region's avatar, not the body under the head), as it is now.</summary>
     (Vec3 Pos, Vec3 Fwd, Vec3 Up) Place(Cam cam, FrameRequest req)
     {
         if (cam is Fixed fx) return (fx.At, Vec3.Normalize(fx.LookAt - fx.At), Vec3.UnitZ);
         var around = (Around)cam;
         // the avatar's head (its centre and 0.7 m, as the touch picker takes the eye), facing its body's way
-        Vec3 head = req.Position, facing = new(req.Forward.X, req.Forward.Y, 0);
+        Vec3 centre = req.Position - new Vec3(0, 0, 0.7f), facing = req.Forward;
         if (_s.Client is { } c)
         {
-            var p = c.Self.SimPosition;
-            head = new Vec3(p.X, p.Y, p.Z + 0.7f);
-            var body = c.Self.SimRotation;
-            var x = Vec3.Transform(Vec3.UnitX, new System.Numerics.Quaternion(body.X, body.Y, body.Z, body.W));
-            if (new Vec3(x.X, x.Y, 0).LengthSquared() > 1e-4f) facing = new Vec3(x.X, x.Y, 0);
+            System.Numerics.Quaternion body;
+            if (_renderer.AvatarPlaced(req.RegionHandle, c.Self.AgentID) is { } drawn) (centre, body) = (drawn.Pos, drawn.Rot);
+            else
+            {
+                var (p, q) = (c.Self.SimPosition, c.Self.SimRotation);
+                (centre, body) = (new Vec3(p.X, p.Y, p.Z), new System.Numerics.Quaternion(q.X, q.Y, q.Z, q.W));
+            }
+            var x = Vec3.Transform(Vec3.UnitX, body);
+            if (new Vec3(x.X, x.Y, 0).LengthSquared() > 1e-4f) facing = x;
         }
+        return AroundHead(around.Preset, around.Distance, centre + new Vec3(0, 0, 0.7f), facing);
+    }
+
+    /// <summary>A preset's camera around a head facing a way (only its level part counts): where, looking which way,
+    /// and the picture's up.</summary>
+    public static (Vec3 Pos, Vec3 Fwd, Vec3 Up) AroundHead(string preset, float d, Vec3 head, Vec3 facing)
+    {
+        facing = new Vec3(facing.X, facing.Y, 0);
         facing = facing.LengthSquared() > 1e-6f ? Vec3.Normalize(facing) : Vec3.UnitX;
         var right = Vec3.Cross(facing, Vec3.UnitZ);
-        float d = around.Distance;
         Vec3 at, look, up = Vec3.UnitZ;
-        switch (around.Preset)
+        switch (preset)
         {
             case "front" or "selfie": at = head + facing * d + new Vec3(0, 0, 0.1f); look = head; break;
             case "behind": at = head - facing * d + new Vec3(0, 0, 0.3f); look = head; break;

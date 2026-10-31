@@ -4,8 +4,9 @@ using Sojourn.Core.Agents;
 namespace Sojourn.Core.Access;
 
 /// <summary>A confirmation waiting for the person, as the app's gate has it: the client's own words, and from when a
-/// press may answer it (Assistant/Panel.cs PendingConfirm in the VR client).</summary>
-public sealed record ConfirmView(object Token, string Title, string Detail, Func<long, bool> ArmedAt);
+/// press may answer it (Assistant/Panel.cs PendingConfirm in the VR client). Whole: every name in the lists its title
+/// or detail cuts short at "and N more", in words, or null.</summary>
+public sealed record ConfirmView(object Token, string Title, string Detail, Func<long, bool> ArmedAt, string? Whole = null);
 
 public interface IConfirmGate
 {
@@ -32,6 +33,8 @@ public sealed class ReaderActions
     public IConfirmGate? Gate { get; set; }
     /// <summary>Said after a confirmation's words: the app's keys for it ("Enter confirms, Escape cancels.").</summary>
     public string ConfirmKeys { get; set; } = "";
+    /// <summary>Said before those keys when it names only the start of a list: where the app has the whole list.</summary>
+    public string ConfirmListKey { get; set; } = "";
     /// <summary>Said after a picked notice's keys: how to put it away in the app's keys.</summary>
     public string PutAwayKey { get; set; } = "";
     /// <summary>The app's name for the key that presses a notice's button i (0-based), or null past its last key.</summary>
@@ -58,7 +61,12 @@ public sealed class ReaderActions
         if (c != null) _a.Urgent(ConfirmWords(c));
     }
 
-    string ConfirmWords(ConfirmView c) => $"{c.Title.TrimEnd('.', ' ')}. {(c.Detail.Length > 0 ? c.Detail.TrimEnd() + " " : "")}{ConfirmKeys}";
+    string ConfirmWords(ConfirmView c) =>
+        $"{c.Title.TrimEnd('.', ' ')}. {(c.Detail.Length > 0 ? c.Detail.TrimEnd() + " " : "")}{(c.Whole != null && ConfirmListKey.Length > 0 ? ConfirmListKey + " " : "")}{ConfirmKeys}";
+
+    /// <summary>Said again on the person's ask: its lists whole after its title.</summary>
+    string ConfirmWordsWhole(ConfirmView c) => c.Whole == null ? ConfirmWords(c)
+        : $"{c.Title.TrimEnd('.', ' ')}. All of them: {c.Whole} {(c.Detail.Length > 0 ? c.Detail.TrimEnd() + " " : "")}{ConfirmKeys}";
 
     public bool ConfirmWaiting => Gate?.Waiting != null;
 
@@ -124,7 +132,7 @@ public sealed class ReaderActions
     {
         _picked = id;
         _pickedAt = Environment.TickCount64;
-        _a.Answer(prefix + NoticeWords(n), keep);
+        _a.Answer(prefix + NoticeWords(n), keep, LineSources.OfNotice(n.Str("name")));
     }
 
     string NoticeWords(JsonObject n)
@@ -181,10 +189,11 @@ public sealed class ReaderActions
         return true;
     }
 
-    /// <summary>The thing in hand again: the confirmation, the picked notice, or the newest line.</summary>
+    /// <summary>The thing in hand again: the confirmation (with every name its lists cut short), the picked notice, or
+    /// the newest line.</summary>
     public void Repeat()
     {
-        if (Gate?.Waiting is { } c) _a.Answer(ConfirmWords(c), keep: false);
+        if (Gate?.Waiting is { } c) _a.Answer(ConfirmWordsWhole(c), keep: false, whole: c.Whole != null);
         else if (Picked && _picked is { } id && _s.Notify.Get(id) is { } n) Pick(id, n, "", keep: false);
         else _a.Repeat();
     }

@@ -11,11 +11,24 @@ namespace Sojourn.Session.Assistant;
 /// <summary>One thing in the reader: a reply (what was asked, small and dim, then the answer), or a run of text.</summary>
 public sealed record ReaderPart(string? Asked, string Text);
 
-/// <summary>What the reader holds: the session's replies, a notecard, or long text the assistant put there (it carries
-/// the assistant's spark; a notecard is someone else's words and doesn't).</summary>
-public sealed record ReaderDoc(ReaderKind Kind, string Title, IReadOnlyList<ReaderPart> Parts);
+/// <summary>What the reader holds: the session's replies, a notecard, long text the assistant put there (it carries
+/// the assistant's spark; a notecard is someone else's words and doesn't), or all of what a waiting confirmation names
+/// (the client's own words; For: that confirmation).</summary>
+public sealed record ReaderDoc(ReaderKind Kind, string Title, IReadOnlyList<ReaderPart> Parts, object? For = null)
+{
+    /// <summary>A confirmation's list key: its lists whole, each under its count ("46 items"), or, with none, its title
+    /// and detail uncut.</summary>
+    public static ReaderDoc Listing(PendingConfirm pc)
+    {
+        if (pc.Lists.Count == 0)
+            return new(ReaderKind.Listing, "", new[] { new ReaderPart(null, pc.Title), new ReaderPart(null, pc.Detail) }.Where(p => p.Text.Length > 0).ToList(), pc);
+        if (pc.Lists.Count == 1)
+            return new(ReaderKind.Listing, pc.Lists[0].Title, new[] { new ReaderPart(null, string.Join('\n', pc.Lists[0].Names)) }, pc);
+        return new(ReaderKind.Listing, "", pc.Lists.Select(l => new ReaderPart(l.Title, string.Join('\n', l.Names))).ToList(), pc);
+    }
+}
 
-public enum ReaderKind { Replies, Notecard, Text }
+public enum ReaderKind { Replies, Notecard, Text, Listing }
 
 /// <summary>
 /// The reader (the session of 2026-10-27: no way to read a notecard in the headset, replies gone before they were read,
@@ -53,6 +66,8 @@ public sealed class Reader
     readonly object _lock = new();
     ReaderDoc? _doc;
     float _scroll;
+    // what a confirmation's list was opened over (hidden behind the confirmation): back when the list closes
+    (ReaderDoc Doc, float Scroll)? _under;
     bool _toEnd;
     long _version = 1;
     PanelLook _look = new();
@@ -67,20 +82,34 @@ public sealed class Reader
     /// <summary>Raised when it opens (the headset places it in front of the person) or closes.</summary>
     public event Action<bool>? OpenChanged;
 
+    /// <summary>Raised when a confirmation's list leaves the reader (closed, or something else opened): its For.</summary>
+    public event Action<object>? ListingClosed;
+
     public void Show(ReaderDoc doc, bool atEnd)
     {
         bool was;
+        object? listing;
         lock (_lock)
         {
             was = _doc != null;
+            listing = _doc is { Kind: ReaderKind.Listing } old && !ReferenceEquals(old.For, doc.For) ? old.For : null;
+            if (doc.Kind == ReaderKind.Listing) { if (_doc is { Kind: not ReaderKind.Listing } under) _under = (under, _scroll); }
+            else _under = null;
             _doc = doc;
             _layout = null;
             _scroll = 0;
             _toEnd = atEnd;
             _version++;
         }
+        if (listing != null) ListingClosed?.Invoke(listing);
         if (!was) OpenChanged?.Invoke(true);
     }
+
+    /// <summary>The list of this confirmation is what it holds.</summary>
+    public bool Lists(object? confirm) { lock (_lock) return confirm != null && _doc is { Kind: ReaderKind.Listing } d && ReferenceEquals(d.For, confirm); }
+
+    /// <summary>The confirmation was answered: its list, if open, goes (what it was opened over comes back).</summary>
+    public void CloseListing(object confirm) { if (Lists(confirm)) Close(); }
 
     /// <summary>New replies while it holds them: the list grows under the person, staying at the end if they were there.</summary>
     public void Refresh(ReaderDoc doc)
@@ -98,15 +127,22 @@ public sealed class Reader
 
     public void Close()
     {
-        bool was;
+        bool was, still;
+        object? listing;
         lock (_lock)
         {
             was = _doc != null;
-            _doc = null;
+            listing = _doc is { Kind: ReaderKind.Listing } d ? d.For : null;
+            // a confirmation's list closed: back to what was open under it
+            if (listing != null && _under is { } u) { _doc = u.Doc; _scroll = u.Scroll; }
+            else _doc = null;
+            _under = null;
+            still = _doc != null;
             _layout = null;
             _version++;
         }
-        if (was) OpenChanged?.Invoke(false);
+        if (listing != null) ListingClosed?.Invoke(listing);
+        if (was && !still) OpenChanged?.Invoke(false);
     }
 
     /// <summary>Scrolls by logical pixels (positive: further down the text).</summary>
@@ -258,7 +294,7 @@ public sealed class Reader
             {
                 float y = top + l.Y;
                 if (y + Line < Header || y > height) continue;
-                if (l.Words != null) Social.Links.Draw(c, l.Words, Pad, y + 18, body, k.Text, k.Accent);
+                if (l.Words != null) Social.Links.Draw(c, l.Words, Pad, y + 18, body, k.Text, k.Link);
                 else draw.Text(l.Text, Pad, y + (l.Asked ? 14 : 18), l.Asked ? asked : body, l.Asked ? k.Dim : k.Text);
             }
             using (var div = new SKPaint { Color = A(k.Text, 0.1f), IsAntialias = true, StrokeWidth = 1 })

@@ -26,6 +26,8 @@ public sealed class Confirmations
     // names things had before an op renamed them this session, so a confirmation can't pass off one thing as another
     readonly ConcurrentDictionary<UUID, string> _wasNamed = new();
     public static readonly TimeSpan Timeout = TimeSpan.FromMinutes(2);
+    // the lists a confirmation being described names only the start of (Listed), gathered for its list key
+    static readonly AsyncLocal<List<ConfirmList>?> Gathered = new();
 
     public Confirmations(AgentSession session, Panel panel, bool uploadsCost)
     {
@@ -244,13 +246,22 @@ public sealed class Confirmations
         await _one.WaitAsync();
         try
         {
+            var lists = new List<ConfirmList>();
+            Gathered.Value = lists;
             var (title, detail) = describe != null ? await describe(pump, op, a) : await DescribeAsync(kind, pump, op, a);
             if (note is { Length: > 0 }) detail = Join(detail, note);
-            var pending = new PendingConfirm { Title = title, Detail = detail, For = a };
+            var pending = new PendingConfirm { Title = title, Detail = detail, For = a, Lists = lists };
             _panel.Update(s => s.Confirm = pending);
             bool yes;
-            try { yes = await pending.Answer.Task.WaitAsync(Timeout); }
-            catch (TimeoutException) { yes = false; }
+            // two minutes from when it came up, or from the person last opening or closing its list (reading it)
+            while (true)
+            {
+                var left = Timeout - TimeSpan.FromMilliseconds(Environment.TickCount64 - pending.KeptAt);
+                if (left <= TimeSpan.Zero) { yes = false; break; }
+                try { yes = await pending.Answer.Task.WaitAsync(left); break; }
+                catch (TimeoutException) { }
+            }
+            pending.Answer.TrySetResult(false);   // refused by the clock: its list, if open, closes with it
             _panel.Update(s =>
             {
                 if (s.Confirm == pending) s.Confirm = null;
@@ -446,8 +457,18 @@ public sealed class Confirmations
 
     string ItemName(UUID? id) => id is { } i && _s.Inventory.Node(i) is { } n ? $"\"{n.Name}\"{Renamed(i, n.Name)}" : "an item";
 
-    string ItemNames(List<UUID> ids) =>
-        ids.Count == 0 ? "nothing" : string.Join(", ", ids.Take(6).Select(i => ItemName(i))) + (ids.Count > 6 ? $" and {ids.Count - 6} more" : "");
+    string ItemNames(List<UUID> ids) => Listed(ids.Select(i => ItemName(i)).ToList(), 6, "items");
+
+    /// <summary>Names as a confirmation shows them: the first few, then "and N more". A list cut short is kept whole
+    /// for the confirmation's list key (the reader) and screen readers, as "N {what}". For the descriptions other parts
+    /// of the client add (<see cref="Cases"/>) too.</summary>
+    public static string Listed(IReadOnlyList<string> names, int shown, string what)
+    {
+        if (names.Count == 0) return "nothing";
+        if (names.Count <= shown) return string.Join(", ", names);
+        Gathered.Value?.Add(new ConfirmList($"{names.Count} {what}", names.ToList()));
+        return string.Join(", ", names.Take(shown)) + $" and {names.Count - shown} more";
+    }
 
     string GroupName(UUID? id) => id is { } g && _s.State.Groups.TryGetValue(g, out var grp) ? $"the group \"{grp.Name}\"" : "a group";
 
@@ -493,7 +514,35 @@ public sealed class Confirmations
         if (ids.Count == 0) return "a new object";
         var names = new List<string>();
         foreach (var id in ids.Take(5)) names.Add(await NameAsync(id));
-        return string.Join(", ", names) + (ids.Count > 5 ? $" and {ids.Count - 5} more" : "");
+        if (ids.Count > 5) names.AddRange(await RestNamesAsync(ids.Skip(5).ToList()));
+        return Listed(names, 5, "objects");
+    }
+
+    /// <summary>The names past the first few of a list of objects, for its list key: asked afresh in one go rather than
+    /// one by one, then as NameAsync gives them.</summary>
+    async Task<List<string>> RestNamesAsync(List<UUID> ids)
+    {
+        var region = _s.Region;
+        var here = ids.Where(id => region?.PrimById(id) != null).ToList();
+        if (here.Count > 0)
+            try
+            {
+                await _s.Api.CallAsync("TesselObjects", new JsonObject { ["op"] = "get", ["ids"] = new JsonArray(here.Select(i => (JsonNode)i.ToString()).ToArray()), ["fresh"] = true, ["timeout"] = 4 },
+                    true, TimeSpan.FromSeconds(6), default);
+            }
+            catch { }
+        var names = new List<string>();
+        foreach (var id in ids)
+        {
+            if (region?.PrimById(id) is { } prim)
+            {
+                string name = prim.Properties?.Name is { Length: > 0 } pn ? pn : "an object";
+                int parts = 1 + region.Prims.Values.Count(p => p.ParentID == prim.LocalID);
+                names.Add($"\"{name}\"{Renamed(id, name)}" + (parts > 1 ? $" ({parts} parts)" : ""));
+            }
+            else names.Add(await NameAsync(id));
+        }
+        return names;
     }
 
     async Task<string> OwnersAsync(JsonObject a)

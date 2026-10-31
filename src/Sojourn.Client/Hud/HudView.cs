@@ -48,6 +48,8 @@ public sealed class HudView
         void Held(int hand, PickHit? hit, Vector3 dir);
         void Up(int hand, PickHit? hit);
         void Cancel(int hand);
+        /// <summary>How far that hand's still hold is toward bringing the page up close (0-1), while it is one.</summary>
+        float? Filling(int hand);
         /// <summary>Media a press would act on is under this hit (the board's cue).</summary>
         bool On(PickHit? hit);
     }

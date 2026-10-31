@@ -13,7 +13,19 @@ public sealed class PendingConfirm
     /// <summary>The arguments of the op that raised it (the same object the caller passed), so a caller can tell its own
     /// confirmation from another waiting (Sojourn Access's ConfirmedAsync).</summary>
     public object? For { get; init; }
+    /// <summary>Lists the title or detail names only the first few of ("and 40 more"), whole, for its list key (the
+    /// reader) and screen readers.</summary>
+    public IReadOnlyList<ConfirmList> Lists { get; init; } = [];
     public TaskCompletionSource<bool> Answer { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    long _keptAt = Environment.TickCount64;
+    /// <summary>When the person last opened or closed its list (or it came up): the two minutes it waits run from here.</summary>
+    public long KeptAt => Interlocked.Read(ref _keptAt);
+    public void Kept() => Interlocked.Exchange(ref _keptAt, Environment.TickCount64);
+
+    /// <summary>Its lists in words for a screen reader: "46 items: "Hat", "Boots", ...".</summary>
+    public string? ListsSpoken() => Lists.Count == 0 ? null
+        : string.Join(" ", Lists.Select(l => $"{l.Title}: {string.Join(", ", l.Names)}."));
 
     /// <summary>The confirm key takes a press that starts this long after the confirmation is first on screen (and
     /// after it last moved): a double click, a press meant for whatever was there before, or a panel gliding into view
@@ -33,12 +45,17 @@ public sealed class PendingConfirm
     public bool ArmedAt(long tick) => ShownAt >= 0 && tick - ShownAt >= ArmMs;
 }
 
+/// <summary>A list a confirmation shows only the start of: what it is ("46 items") and every name, as the confirmation
+/// names them.</summary>
+public sealed record ConfirmList(string Title, IReadOnlyList<string> Names);
+
 /// <summary>What the panel shows. Changed only through <see cref="Panel.Update"/>.</summary>
 public sealed class PanelState
 {
     public string? Heard;           // the request, as heard or typed
     public string? Typing;          // a request being typed on the desktop (null: not typing)
     public bool Listening, Hearing, Working;
+    public bool HearingStarting;    // listening while the sidecar's hearing still loads: said small in the capsule
     public string? Model;           // the model working on the request ("haiku 5.5"), shown faintly while working
     public string? Status;          // what it's doing now
     public string? Result;          // what it says back
@@ -57,10 +74,11 @@ public sealed class PanelState
     public bool PrivateSees;        // ...and the person lets the assistant see (the mark's lenses open)
     public PanelDictation Dictation; // words for other people being dictated (Private/Dictation.cs)
     public PanelDraft? Draft;       // dictated words waiting for the person to send or cancel
+    public bool Latched;            // listening with no button held: a tap opened the mic, the next tap sends
 }
 
 /// <summary>Something on the panel the pointer can press.</summary>
-public enum KeyKind { Choice, Confirm, Cancel, Hide, Menu, Tab, Help, Keyboard, Page, Replies, Draft }
+public enum KeyKind { Choice, Confirm, Cancel, Hide, Menu, Tab, Help, Keyboard, Page, Replies, Draft, List }
 public readonly record struct PanelKey(KeyKind Kind, int Index, SKRect Rect);
 
 /// <summary>
@@ -303,14 +321,14 @@ public sealed partial class Panel
                 Heard = _s.Heard, Typing = _s.Typing, Listening = _s.Listening, Hearing = _s.Hearing, Working = _s.Working, Model = _s.Model,
                 Status = _s.Status, Result = _s.Result, Prompt = _s.Prompt, Choices = _s.Choices.ToList(), Confirm = _s.Confirm,
                 Notice = _s.Notice, Pointing = _s.Pointing, Hint = _s.Hint, Jobs = _s.Jobs, KeyboardKey = _s.KeyboardKey, PointAsk = _s.PointAsk, PointHow = _s.PointHow,
-                TypeAsk = _s.TypeAsk,
+                TypeAsk = _s.TypeAsk, HearingStarting = _s.HearingStarting,
             };
             hover = _hover;
             version = _version;
             look = _look;
             help = _help;
             page = _page;
-            (s.Private, s.PrivateSees, s.Dictation, s.Draft) = (_s.Private, _s.PrivateSees, _s.Dictation, _s.Draft);
+            (s.Private, s.PrivateSees, s.Dictation, s.Draft, s.Latched) = (_s.Private, _s.PrivateSees, _s.Dictation, _s.Draft, _s.Latched);
             history = _replies.Count > 0;
             fit = _fit;
             (prev, earlier) = Before(_s);
@@ -414,21 +432,30 @@ public sealed partial class Panel
 
     const float PillH = 52;
 
+    const string HearingStartsNote = "hearing is starting…";
+
+    /// <summary>Where what the pointer is on starts: after the orb, or after the note that hearing is still starting.</summary>
+    static float PointingAt(Ink k, PanelState s) => s.HearingStarting ? 60 + Measure(Font(k.Regular, 15), HearingStartsNote) + 14 : 64;
+
     static float ListeningWidth(Ink k, PanelState s)
     {
-        if (s.Pointing is not { Length: > 0 } p) return 64;
-        return Math.Min(CardWidth, 64 + 22 + Measure(Font(k.Regular, 15), p) + 22);
+        float x = PointingAt(k, s);
+        if (s.Pointing is not { Length: > 0 } p) return s.HearingStarting ? x + 8 : 64;
+        return Math.Min(CardWidth, x + 22 + Measure(Font(k.Regular, 15), p) + 22);
     }
 
     static float LayoutListening(Painter draw, PanelState s, int phase, float height)
     {
         draw.Body(height);
         draw.Orb(32, PillH / 2, phase);
+        if (s.Latched) draw.OrbLatched(32, PillH / 2);
+        var f = Font(draw.K.Regular, 15);
+        if (s.HearingStarting) draw.Text(HearingStartsNote, 60, PillH / 2 + 5.4f, f, draw.K.Dim);
         if (s.Pointing is { Length: > 0 } p)
         {
-            draw.TargetDot(64 + 8, PillH / 2);
-            var f = Font(draw.K.Regular, 15);
-            draw.Text(Ellipsize(p, f, draw.W - 64 - 22 - 20 - (s.Private ? 36 : 0)), 64 + 22, PillH / 2 + 5.4f, f, draw.K.Text);
+            float x = PointingAt(draw.K, s);
+            draw.TargetDot(x + 8, PillH / 2);
+            draw.Text(Ellipsize(p, f, draw.W - x - 22 - 20 - (s.Private ? 36 : 0)), x + 22, PillH / 2 + 5.4f, f, draw.K.Text);
         }
         if (s.Private) PrivateMark(draw, draw.W - 30, PillH / 2, s.PrivateSees);
         return PillH;
@@ -542,6 +569,15 @@ public sealed partial class Panel
         return lines;
     }
 
+    /// <summary>Lines kept to max, the last ending "..." if any were left out.</summary>
+    static List<string> Cut(List<string> lines, SKFont f, float width, int max)
+    {
+        if (lines.Count <= max) return lines;
+        lines = lines.Take(max).ToList();
+        lines[^1] = Ellipsize(lines[^1] + " ...", f, width, force: true);
+        return lines;
+    }
+
     static float LayoutCard(Painter draw, PanelState s, int hover, int phase, bool armed, List<PanelKey> keys, float height, int page, bool history = false,
         float fit = 1, string? prev = null, string? earlier = null)
     {
@@ -608,6 +644,7 @@ public sealed partial class Panel
         {
             // talking again over the last answer: the orb where the request will go, and what "that" is
             draw.Orb(Pad + 10, y + 16, phase);
+            if (s.Latched) draw.OrbLatched(Pad + 10, y + 16);
             if (s.Pointing is { Length: > 0 } p)
             {
                 draw.TargetDot(Pad + 40, y + 16);
@@ -653,7 +690,13 @@ public sealed partial class Panel
         }
         else if (busy)
         {
-            draw.Dots(Pad + 4, y + 11, phase);
+            // talking while the last request is still worked on: the orb in the dots' place, so being heard always shows
+            if (s.Listening)
+            {
+                draw.Orb(Pad + 10, y + 11, phase);
+                if (s.Latched) draw.OrbLatched(Pad + 10, y + 11);
+            }
+            else draw.Dots(Pad + 4, y + 11, phase);
             if (s.Heard is { Length: > 0 } heard)
             {
                 var f = Font(k.Regular, 16.5f);
@@ -768,8 +811,19 @@ public sealed partial class Panel
             var titleF = Font(k.Semi, 20);
             var detailF = Font(k.Regular, 15);
             if (y > 30) y += 2;
-            foreach (var l in Wrap(confirm.Title, titleF, inner, 4)) { draw.Text(l, Pad, y + 20, titleF, k.Text); y += 27; }
-            var dl = Wrap(confirm.Detail, detailF, inner, 10);
+            var tl = Wrap(confirm.Title, titleF, inner, int.MaxValue);
+            var dl = confirm.Detail.Length > 0 ? Wrap(confirm.Detail, detailF, inner, int.MaxValue) : new List<string>();
+            // its list key: all of what it names, in the reader (a list named only to "and N more", or words cut here);
+            // it opens the list and answers nothing
+            if (confirm.Lists.Count > 0 || tl.Count > 4 || dl.Count > 10)
+            {
+                var list = new SKRect(W - 12 - 36, 10, W - 12, 46);
+                draw.GlyphKey(list, Painter.Glyph.List, hover == keys.Count);
+                keys.Add(new PanelKey(KeyKind.List, 0, list));
+                tl = WrapUnderKeys(confirm.Title, titleF, list.Left - 6 - Pad, inner);
+            }
+            foreach (var l in Cut(tl, titleF, inner, 4)) { draw.Text(l, Pad, y + 20, titleF, k.Text); y += 27; }
+            dl = Cut(dl, detailF, inner, 10);
             // the detail carries amounts and names: full ink
             if (dl.Count > 0) { y += 4; foreach (var l in dl) { draw.Text(l, Pad, y + 15, detailF, k.Text); y += 21; } }
             y += 18;

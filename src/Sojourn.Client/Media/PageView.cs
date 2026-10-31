@@ -76,6 +76,8 @@ public sealed class PageView
         var now = _m.Locked(() => _m.ItemsUnlocked.FirstOrDefault(i => i.Zoomed && i.Playing));
         if (_item != null && _item != now && _item.Player is { } old) { old.Surface.WantView = false; old.Surface.WantPixels = false; }
         if (now == null && _item != null) { _gestures[0]?.Cancel(); _gestures[1]?.Cancel(); }
+        // a trigger still held from what brought it up (a still hold, a press on an auto-zoom face) waits for a release
+        if (now != null && now != _item) _armed[0] = _armed[1] = false;
         _item = now;
         if (now?.Player is { } p)
         {
@@ -158,11 +160,12 @@ public sealed class PageView
     }
 
     /// <summary>The glass, the strip's keys and the title, at logical size w x h (the page goes in below the strip).</summary>
-    void DrawChrome(SKCanvas canvas, PanelLook look, float w, float h, K lit, bool body)
+    void DrawChrome(SKCanvas canvas, PanelLook look, float w, float h, K lit, bool body, bool faded = true)
     {
         var ink = Ink.For(look);
         var draw = new Painter(canvas, ink, w);
-        if (body)
+        if (body && !faded) draw.Body(h);
+        else if (body)
             using (var fade = new SKPaint { Color = SKColors.White.WithAlpha(150) })
             {
                 canvas.SaveLayer(fade);
@@ -228,8 +231,8 @@ public sealed class PageView
     public void HeadsetFrame(XrControllers input, Vector3 head, Quaternion headRot, VrPilot pilot, (Vector3 Pos, Quaternion Rot, Vector2 Size)? panel,
         bool blocked, bool hidden, bool focused, float dt)
     {
-        _gestures[0] ??= new MediaInput.Gesture(_m);
-        _gestures[1] ??= new MediaInput.Gesture(_m);
+        _gestures[0] ??= new MediaInput.Gesture(_m, opens: false);
+        _gestures[1] ??= new MediaInput.Gesture(_m, opens: false);
         Track(headset: true);
         (_rightFrom, _leftFrom) = (input.RightAimPos, input.LeftAimPos);
         bool wasOn = RightOnBoard || LeftOnBoard;
@@ -377,10 +380,10 @@ public sealed class PageView
             float w = LogicalW, h = LogicalH;
             var (pixels, pw, ph, _) = Rasterise(Raster, w, new List<PanelKey>(), (canvas, height) =>
             {
-                if (canvas != null) DrawChrome(canvas, look, w, h, lit, body: true);
+                if (canvas != null) DrawChrome(canvas, look, w, h, lit, body: true, faded: false);
                 return h;
             });
-            _chrome = c = (look, lit, title, p.State, p.CanBack, p.CanForward, Aspect, nkeys, new OverlayImage(pixels, pw, ph, Interlocked.Increment(ref _version)));
+            _chrome = c = (look, lit, title, p.State, p.CanBack, p.CanForward, Aspect, nkeys, new OverlayImage(pixels, pw, ph, Interlocked.Increment(ref _version), look.Frost, look.TintOpacity));
         }
         float mpp = Mpp;
         var up = Vector3.Transform(Vector3.UnitY, _rot);

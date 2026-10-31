@@ -7,8 +7,8 @@ and script info, an object's group and deeding, default and bulk permissions, sa
 separately, pathfinding, and backups of what the person made themselves. Each from the official viewer's source
 (develop) or Firestorm's (master), named below; an op on `SojournBuild` or a key on `TesselBuild modify` (so `build`
 specs take it per part); and, for what deletes, gives away, deeds, changes permissions or spends, a confirmation the
-person presses. No menu rows or settings: the person asks the assistant. A face's media settings are B10's
-(`SojournMedia settings`, `configure`, `remove_media`), not repeated here.
+person presses. No menu rows or settings: the person asks the assistant. A face's media settings are media's
+(`SojournMedia settings`, `configure`, `remove_media`: docs/media.md), not repeated here.
 
 Code: `Core/Agents/MaterialOps.cs`, `BuildUndo.cs`, `ScriptChores.cs`, `ObjectInfo.cs`, `Ownership.cs`,
 `Pathfinding.cs`, `Backups.cs`, `AgentSession.Building.cs`; `BuildOps.cs` (the new modify keys, the projector,
@@ -148,19 +148,15 @@ Delete: `removeScripts`, `saveBack`, an undo that deletes a creation. Give: `dee
 `deed` (its stable rules), `group` and `bulkPerms` with what would fail refused first (`Confirmations.Refusals`). Materials, projectors,
 recompiles, resets, running, take separately and pathfinding aren't gated (the viewer doesn't ask either).
 
-## For batch T and M
+## The assistant's side
 
-- T (the assistant is the main builder): the build tool's prompt lines for `pbr`, `normal`, `specular`, `projector`
-  (and that `build` parts take them); an `undo` tool (`history`, `undo`, `redo`: "undo that" after a build should be
-  one call); a `scripts` tool (`scripts`, `recompile`, `resetScripts`, `runScripts`, `removeScripts`); `landImpact` and
-  `scriptInfo` in the object info the assistant already gives; `materials` for "what's on that face"; `uploadMaterial`
-  beside upload; `group`/`deed`, `defaultPerms`/`setDefaultPerms`, `bulkPerms`; `canExport`/`backup`/`backups`/`restore`;
-  pathfinding's five. Incognito: none of SojournBuild is on the allowlist (refused while blind, the safe default), and
-  all should stay so: every op names objects by id and reads or changes the world; `history` and `backups` list the
-  person's own builds by name. Seeing, they run as usual (none writes outside the world but `backup`, into the
-  person's own folder; T may want it refused while incognito, as nothing from a spell is kept).
-- M (menus): none needed for the assistant. If the person builds by hand later (B9), a Default Permissions sheet,
-  undo/redo keys and a backups list are the rows that would want direct controls.
+The assistant is the main builder. Its `undo` and `scripts` tools (`assistant/moretools.py`) cover undo, redo and
+history, and the script chores; `inspect` adds land impact and script info; the materials, projector and the rest
+reach it through `TesselBuild modify` and `client_api` (its description and `prompt-job.md` name them). None of
+SojournBuild is on incognito's blind allowlist: every op names objects by id and reads or changes the world. With "let
+it see" they run as usual, except that a `backup` is named as an incognito one, which the assistant's file tools never
+read (`Session/Private/Allowlist.cs`, `harness.py`). If the person builds by hand later, a Default Permissions sheet,
+undo/redo keys and a backups list are the rows that would want direct controls.
 
 ## Testing
 

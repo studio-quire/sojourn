@@ -241,14 +241,22 @@ def build(kit, with_escalate, with_help=False):
             return error(str(e))
 
     @tool("capture", "Save a picture or a short video of the person's view for them (in their Pictures or Videos folder, "
-          "named incognito; you never see it). action: picture, video (seconds 1-120), stop.",
+          "named incognito; you never see it). action: picture, video (seconds 1-120), stop. show: true (picture) puts it "
+          "in front of them on a big card once saved, for them to see (\"take a picture and show me\"); you still don't.",
           {"type": "object", "properties": {"action": {"type": "string", "enum": ["picture", "video", "stop"]},
-                                            "seconds": {"type": "number"}}, "required": ["action"]})
+                                            "seconds": {"type": "number"}, "show": {"type": "boolean"}}, "required": ["action"]})
     async def capture(args):
         try:
             if args["action"] == "picture":
                 kit.did("taking a picture")
                 await kit.call("SojournCapture", "snapshot", 30)
+                if args.get("show"):
+                    try:
+                        await kit.call("SojournShow", "show", id=kit.show_id("picture"), at="room", title="",
+                                       blocks=[{"image": "last"}])
+                    except ApiError:
+                        return text("saved, but it couldn't be shown")
+                    return text("saved, and in front of them")
             elif args["action"] == "video":
                 s = float(args.get("seconds") or 15)
                 kit.did(f"recording {s:g} s")
@@ -272,7 +280,8 @@ def build(kit, with_escalate, with_help=False):
           "(cards have a close key). The same id again changes it; remove: true takes it away (id \"all\": everything). "
           "at: view, wrist, room, or a thing or person handle (a label over it). title, text (a label's words), blocks (up "
           "to 6): {text, style?}, {list: [text | {text, done?}], numbered?}, {table: [[cells]], header?}, {timer: "
-          "seconds}, {stopwatch: true}, {progress, of?, label?}. for: seconds until it goes by itself.",
+          "seconds}, {stopwatch: true}, {progress, of?, label?}, {image: \"last\"} (the last picture saved, big, for them "
+          "to see; you never do: at room puts it in front of them). for: seconds until it goes by itself.",
           {"type": "object", "properties": {"id": {"type": "string"}, "at": {"type": "string"}, "title": {"type": "string"},
                                             "text": {"type": "string"}, "blocks": {"description": "a list of blocks"},
                                             "for": {"type": "number"}, "remove": {"type": "boolean"}}})

@@ -238,9 +238,9 @@ public sealed class MapWiring : IDisposable
 
     /// <summary>The boards' and the line's layers onto the headset (every frame, so they go when they're down), their
     /// frost and the rays' beams into the eyes' overlay. more: other sheets of the client's placed as the boards are, in
-    /// the same atlas (the camera's picture just taken, Control/ShutterReview).</summary>
+    /// the same atlas (the camera's picture just taken, Control/ShutterReview; a thing's card, Things/ThingCard).</summary>
     public OverlayScene? HeadsetScene(OverlayScene? scene, XrSession hs, Func<Vector3, Vector3> roomToRegion, bool inEyes,
-        (string Key, OverlayImage Image, Vector3 Pos, Quaternion Rot, float Width)? more = null)
+        params (string Key, OverlayImage Image, Vector3 Pos, Quaternion Rot, float Width)?[] more)
     {
         var layers = new List<(string, OverlayImage, Vector3, Quaternion, float)>(3);
         var placed = new List<(OverlayImage Image, Vector3[] Corners, bool Held)>(3);
@@ -257,7 +257,7 @@ public sealed class MapWiring : IDisposable
         bool miniHeld = MiniAt == MiniHome.Hand;
         Add(miniHeld ? MiniHeldKey : MiniKey, Mini.Layer(), miniHeld);
         Add(LineKey, Line.Layer(), true);
-        if (more is { } m) Add(m.Key, (m.Image, m.Pos, m.Rot, m.Width), false);
+        foreach (var x in more) if (x is { } m) Add(m.Key, (m.Image, m.Pos, m.Rot, m.Width), false);
         if (hs.HeldCards.Length == 0) hs.HeldCards = [LineKey, MiniHeldKey];
         hs.SetCards(layers, "map");
         scene = World.Decorate(scene, roomToRegion);
@@ -280,8 +280,8 @@ public sealed class MapWiring : IDisposable
     // --- the desktop ----------------------------------------------------------------------------------------------------
 
     /// <summary>The desktop's line, mini-map (under the line) and world map (beside the mini-map, or under the line) over
-    /// the view, top left. ui: the desktop's UI scale.</summary>
-    public OverlayScene? Desktop(OverlayScene? scene, float ui, bool hidden)
+    /// the view, top left. ui: the desktop's UI scale. more: other flat sheets in the same atlas (a thing's card).</summary>
+    public OverlayScene? Desktop(OverlayScene? scene, float ui, bool hidden, params (OverlayImage Image, Vector2 At)?[] more)
     {
         Drain();
         var look = _look();
@@ -296,6 +296,7 @@ public sealed class MapWiring : IDisposable
         if (line is { } l) flat.Add(l);
         if (mini is { } mm) flat.Add(mm);
         if (world is { } w) flat.Add(w);
+        foreach (var x in more) if (x is { } m) flat.Add(m);
         if (flat.Count == 0) return scene;
         var (atlas, uvs) = Atlas(flat.Select(f => f.Image).ToList());
         var cards = flat.Select((f, i) => new OverlayCard(uvs[i]) { Screen = f.At, Frost = f.Image.Frost, Edge = f.Image.Edge }).ToList();

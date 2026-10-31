@@ -53,8 +53,13 @@ public sealed record TimerBlock(double Seconds, bool Up, double Started) : Block
 }
 public sealed record ProgressBlock(double Value, double Max, string? Label) : Block { public override string Kind => "progress"; }
 public sealed record ChartBlock(IReadOnlyList<(string? Label, double Value)> Points, bool Line, string? Unit) : Block { public override string Kind => "chart"; }
-/// <summary>"view" (what the person sees, taken when it's sent) or a texture's id.</summary>
-public sealed record ImageBlock(string Source) : Block { public override string Kind => "image"; }
+/// <summary>"view" (what the person sees, taken when it's sent), a texture's id, or a picture Sojourn saved (Source its
+/// full path in Pictures\Sojourn, Width and Height its own size: <see cref="Pictures"/>), drawn big.</summary>
+public sealed record ImageBlock(string Source, int Width = 0, int Height = 0) : Block
+{
+    public override string Kind => "image";
+    public bool IsPicture => Width > 0 && Height > 0;
+}
 public sealed record TowardBlock(Target To, string? Label) : Block
 {
     public override string Kind => "toward";
@@ -83,6 +88,9 @@ public static class Caps
     public const int LabelChars = 40;
     /// <summary>Logical pixels (the panel's): cards with the person, and out in the world.</summary>
     public const float CardWidth = 300, WideCardWidth = 360, WorldWidth = 260;
+    /// <summary>A card holding a saved picture: big enough to judge it (about 39 degrees wide in view, 31 in the
+    /// room).</summary>
+    public const float PictureCardWidth = 560;
 }
 
 public static class ElementParse
@@ -101,8 +109,9 @@ public static class ElementParse
     }
 
     /// <summary>A new spec, or the given fields over an old one (an update). here: the region the person is in
-    /// (positions given as x,y,z are in it); now: the store's clock.</summary>
-    public static ElementSpec Parse(JsonObject a, ElementSpec? old, ulong here, double now)
+    /// (positions given as x,y,z are in it); now: the store's clock; picture: an image block's source that isn't the
+    /// view or a texture, as a saved picture (null: none are shown).</summary>
+    public static ElementSpec Parse(JsonObject a, ElementSpec? old, ulong here, double now, Func<string, ImageBlock>? picture = null)
     {
         var id = Id(a);
         var at = a.ContainsKey("at") ? ParseAnchor(a["at"], here) : old?.At ?? throw Err("at: view, wrist, room, an object's or avatar's id, or [x,y,z] in this region");
@@ -117,14 +126,14 @@ public static class ElementParse
         {
             var list = new List<Block>();
             foreach (var n in arr)
-                list.Add(n is JsonObject o ? ParseBlock(o, here, now) : n is JsonValue v && v.TryGetValue<string>(out var s)
+                list.Add(n is JsonObject o ? ParseBlock(o, here, now, picture) : n is JsonValue v && v.TryGetValue<string>(out var s)
                     ? Text(s, TextStyle.Body) : throw Err("blocks: each an object like {\"text\": \"...\"}"));
             // a timer sent again as it was (the rest of the element changing) keeps running rather than starting over
             for (int i = 0; i < list.Count && old != null; i++)
                 if (list[i] is TimerBlock t && old.Blocks.OfType<TimerBlock>().FirstOrDefault(o => o.Seconds == t.Seconds && o.Up == t.Up) is { } same)
                     list[i] = same;
                 else if (list[i] is ImageBlock { Source: not "view" } im && old.Blocks.OfType<ImageBlock>().FirstOrDefault(o => o.Source == im.Source) is { } had)
-                    list[i] = had;   // the texture already fetched
+                    list[i] = had;   // the texture or picture already fetched
             blocks = list;
         }
         else if (a.ContainsKey("blocks")) throw Err("blocks: a list, like [{\"text\": \"...\"}]");
@@ -188,7 +197,7 @@ public static class ElementParse
         return new TextBlock(t, style);
     }
 
-    static Block ParseBlock(JsonObject o, ulong here, double now)
+    static Block ParseBlock(JsonObject o, ulong here, double now, Func<string, ImageBlock>? picture)
     {
         if (o.ContainsKey("text"))
         {
@@ -253,9 +262,11 @@ public static class ElementParse
         }
         if (o.ContainsKey("image"))
         {
-            var src = o.Str("image")?.Trim().ToLowerInvariant() ?? "";
-            if (src != "view" && !(UUID.TryParse(src, out var tid) && tid != UUID.Zero)) throw Err("image: \"view\" (what they see now) or a texture's id");
-            return new ImageBlock(src);
+            var src = o.Str("image")?.Trim() ?? "";
+            if (src.ToLowerInvariant() is "view" or "the view") return new ImageBlock("view");
+            if (UUID.TryParse(src, out var tid) && tid != UUID.Zero) return new ImageBlock(tid.ToString());
+            if (src.Length > 0 && picture != null) return picture(src);
+            throw Err("image: \"view\" (what they see now), \"last\" (the last picture saved), a picture's file name in Pictures\\Sojourn, or a texture's id");
         }
         if (o.ContainsKey("toward"))
             return new TowardBlock(ParseTarget(o["toward"], here, "toward"), o.Str("label") is { } l ? Clip(l) : null);

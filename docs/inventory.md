@@ -22,9 +22,17 @@ for), then the Library, as the viewer's background fetch does. `LoadSubtreeAsync
 over FetchInventoryDescendents2 / FetchLibDescendents2, 10 folders a request and 4 requests at once, a folder that
 doesn't answer retried once; one walk per root at a time, shared by callers, running on when a caller stops waiting.
 `CollectAsync` (LLInventory `collectDescendantsIf`) walks the store after it and says `partial` when folders didn't
-answer; `SojournEnvironment mine` waits at most 5 s and says `partial` while the Library is still arriving. Before
-2026-10-29 folders came one a request, one at a time, and the Library (~490 folders, ~2100 items on SL) took far
-longer than the API's 15 s, so `mine` and `use {name}` never answered on first use.
+answer; `SojournEnvironment mine` waits at most 5 s and says `partial` while the Library is still arriving. The
+batching matters: the Library is ~490 folders and ~2,100 items on SL, and fetched a folder at a time it took far longer
+than the API's 15 s.
+
+On Second Life the outfit's objects are attached once it has loaded (`Look.RezOutfitAttachmentsAsync`): only those the
+avatar doesn't wear, as the current region has it, and only once that region has been current 10 s. Right after a
+teleport the avatar arrives before its attachments, and a worn object attached again drops off and comes back; before
+the wait, a teleport home in the first minute or so after logging in (while a big inventory loads) could do that (a
+blind tester's skirt dropped off and came back on a teleport home, 2026-10-31: the only way of ours we found).
+Nothing of ours touches attachments on a teleport or crossing otherwise: LibreMetaverse 3.2.0's own outfit resend
+after each region change (RezMultipleAttachmentsFromInv with FirstDetachAll) is off with its `SendAppearance`.
 
 ## Thumbnails and favourites (InventoryMeta)
 
@@ -35,8 +43,8 @@ category/<id>/children?depth=50`, `item/<id>`, `category/<id>`) into a cache, an
 viewer's `update_inventory_item`/`update_inventory_category` do.
 - `meta {id}`: thumbnail id and favourite flag.
 - `picture {id, size=256}`: what an item looks like, as the viewer's gallery shows it: its thumbnail, else a texture's
-  (or snapshot's) own image; a PNG (base64) decoded by the renderer's OpenJPEG. For batch T: a tool that turns `png`
-  into an image for the assistant, as `hud` does (through `client_api` it comes back as text).
+  (or snapshot's) own image; a PNG (base64) decoded by the renderer's OpenJPEG. The assistant's `item` tool turns it
+  into an image (through `client_api` it would come back as text).
 - `thumbnail {id, texture_id | item_id | path | view: true | remove: true}`: the viewer's Change Thumbnail. A square
   texture of 64-256 px is set as it is (an item's needs copy and transfer, as the viewer asks); anything else is
   cropped to its middle square, scaled to at most 256, J2C-encoded and uploaded through `InventoryThumbnailUpload`
@@ -46,6 +54,14 @@ viewer's `update_inventory_item`/`update_inventory_category` do.
   subtree at a time; one the service finds too big, HTTP 403, split by its folders, four at a time), then kept by our
   own changes; with each favourite's path and thumbnail. `favorite {id, on}`.
 - OpenSim (our grid) has no InventoryAPIv3 or InventoryThumbnailUpload: those ops say so; textures' own pictures work.
+
+## Moving and tidying (the user, 2026-10-31)
+
+Plain moves between folders don't ask: a move is easy to undo, and gating each one would mean a press per item while
+the assistant tidies. Moves into Trash (and deleting) wait for the person's press, as deleting (`docs/assistant.md` >
+Confirmations). While tidying, the assistant gathers everything bound for Trash into one `TesselInventory move {ids,
+folder_id}`, so the person answers one question for the lot (the user preferred batching to a switch that lets Trash
+moves through unasked). The confirmation names six and "N more".
 
 ## Protected folders (InventoryOps)
 
@@ -122,8 +138,8 @@ OC/LM half, pairing with the collar as it does) must be worn: whether Sojourn of
 like movelock's push resistance. Without it, collars can't reach the AO (non-zero channels never reach a viewer).
 
 Not ported: Firestorm's AO floater as such (the assistant is the interface; the menu's you > AO has the AO, its set
-by a stepper, stands, the collars' switches and the folder's lock, batch M 2026-10-29), reordering steps by hand (`add` appends; the order is the links' descriptions, editable with
-`TesselInventory update desc`), editing groups and tracks (read and played, not made), the ZHAO-II import that copies
+by a stepper, stands, the collars' switches and the folder's lock), reordering steps by hand (`add` appends; the order
+is the links' descriptions, editable with `TesselInventory update desc`), editing groups and tracks (read and played, not made), the ZHAO-II import that copies
 a notecard set into `#Firestorm/#AO` (played in place instead), Firestorm's moving of foreign items out of `#AO` to
 Lost and Found (left where they are, ignored), remembering each state's position across logins
 (`FSCurrentAOState`; the current set is remembered), and mouselook: `AoDriver.Mouselook` is the hook for the desktop's
@@ -148,14 +164,13 @@ counts as the agent API animating me, so in the headset the arms follow it under
 - Thumbnails that aren't square are cropped rather than refused.
 - Sits not overridden unless the set says so; objects other than seats aren't yielded to beyond their priority.
 
-## For batch T and M
+## The assistant's side
 
-- T (the assistant's tools, prompt and incognito's allowlist): an `ao` tool (`status`, `on`, `select`, `next`,
-  `folder`, `set`, `add`, `remove`), a `pose` tool (`poseStand`, `poseStandOff`, `poses`), a picture tool over
-  `SojournInventory picture` returning an image, `favorites`/`favorite` and `thumbnail` (`view: true` for "use what I'm
-  looking at"), `protect`/`unprotect`; incognito: the AO's and pose stand's ops are about the person's own avatar
-  (likely allowed blind), `picture` shows inventory (blind: no).
-- M (menus): rows for the AO on/off and the set (the `ao`, `ao_stands` settings exist), the pose stand.
+Its `ao` tool (`assistant/moretools.py`) covers status, on and off, stands, sets, next and previous, play, and the pose
+stand; editing sets and picking another folder go through `client_api`. Its `item` tool covers pictures, favourites
+and thumbnails (`from: view` for "use what I'm looking at"); protected folders are `client_api`. In blind incognito the
+AO's and the pose stand's ops are allowed (the person's own avatar, as outfits are; the folder is picked only outside a
+spell); pictures of inventory aren't (`Session/Private/Allowlist.cs`).
 
 ## Testing
 

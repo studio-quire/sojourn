@@ -78,7 +78,9 @@ Alt+F4 in the main window. It asks "Log out and quit?": Enter quits, Escape stay
 
 Where your settings live
 
-Your settings, logs and Second Life's cache are kept in a folder of your own: Sojourn Access, inside your AppData Local folder. To open it, press Windows+R, type %LOCALAPPDATA%\Sojourn Access and press Enter. The logs of your last ten sessions are there; they include chat, and they stay on this computer.
+Your settings, logs and Second Life's cache are kept in a folder of your own: Sojourn Access, inside your AppData Local folder. To open it, press Windows+R, type %LOCALAPPDATA%\Sojourn Access and press Enter. The logs of your last ten sessions are there; they include chat, and they stay on this computer unless you send one.
+
+Sending a log: if something went wrong, Help, then Send a log to Studio Quire (or type //sendlog) sends one session's log with a note from you on what happened, for the people making Sojourn Access to read. It needs a token from Studio Quire. What's sent leaves out everything other people said or wrote, and their names become person 1, person 2 and so on; Review what's sent shows it first. Studio Quire keeps it for 30 days.
 
 Sojourn Access has no analytics, tracking or crash reports of its own. It connects only where any viewer does: to Second Life, and to the music stream a parcel plays[assistant]; and, once you switch the assistant on, to Anthropic or OpenRouter, or Studio Quire's relay[/assistant].
 

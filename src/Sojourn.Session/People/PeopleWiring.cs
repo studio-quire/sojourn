@@ -271,6 +271,15 @@ public sealed class PeopleWiring : IDisposable
                     return away;
                 }, Busy(rj) || api.IsOn("reject_p2p_calls") || api.IsOn("reject_group_calls") || api.IsOn("reject_conference_calls") ? "some" : ""),
             };
+            // one group's calls turned away (Voice/CallRejects.cs asks), when there's voice and groups to list
+            if (api.Has("reject_group_calls") && !_s.State.Groups.IsEmpty)
+            {
+                int quieted = _s.State.Groups.Keys.Count(rj.CallsTurnedAway);
+                rows.Add(MenuRow.Group("turn away calls from", () => _s.State.Groups.Values
+                    .OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase)
+                    .Select(g => (MenuRow.Switch(g.Name, rj.CallsTurnedAway(g.ID)), (Action<int>)(_ => rj.SetCallsTurnedAway(g.ID, !rj.CallsTurnedAway(g.ID)))))
+                    .ToList(), api.IsOn("reject_group_calls") ? "all" : quieted > 0 ? $"{quieted}" : ""));
+            }
             return rows;
         };
         api.Add("do_not_disturb", new("you", "Do Not Disturb: IMs and offers are kept but not shown, each person who IMs gets the "
@@ -383,7 +392,7 @@ public sealed class PeopleWiring : IDisposable
     /// or, on the desktop, the PC had input while Sojourn's window was in front. Gone for away_after: away; back: not.</summary>
     void Away(GridClient c)
     {
-        bool active = _a.Talking || _a.Typing || _dictation?.Held == true;
+        bool active = (_a.Talking && !_a.Latched) || _a.Typing || _dictation?.Held == true;   // (a mic tapped open and forgotten isn't presence)
         if (_s.State.CameraOverride is { } cam)
         {
             var dir = cam.Focus - cam.Pos;

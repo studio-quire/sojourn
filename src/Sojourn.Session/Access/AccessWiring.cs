@@ -49,6 +49,7 @@ public sealed class AccessWiring : IDisposable
             // nothing others or the assistant wrote beside a confirmation (the panel's rule): it follows once answered
             Hold = () => assistant.Confirmations.Pending,
             Greeting = greeting ?? "Sojourn. F1 for keys.",
+            Heard = LogWords.Heard,
         };
         Actions = new ReaderActions(s, Announcer, n => NoticeText(n))
         {
@@ -93,7 +94,7 @@ public sealed class AccessWiring : IDisposable
 
     sealed class PanelGate(AssistantHost a) : IConfirmGate
     {
-        public ConfirmView? Waiting => a.Panel.Read(p => p.Confirm) is { } pc ? new ConfirmView(pc, pc.Title, pc.Detail, pc.ArmedAt) : null;
+        public ConfirmView? Waiting => a.Panel.Read(p => p.Confirm) is { } pc ? new ConfirmView(pc, pc.Title, pc.Detail, pc.ArmedAt, pc.ListsSpoken()) : null;
         public void Answer(object token, bool yes) => a.Confirmations.Answer((PendingConfirm)token, yes);
     }
 
@@ -147,12 +148,12 @@ public sealed class AccessWiring : IDisposable
                 bool keys = e.NoticeId != Guid.Empty && _s.Notify.Get(e.NoticeId) is { } n && ReaderActions.Buttons(n).Count > 0;
                 var line = Join(e.Name, e.Text);
                 if (keys && !_keysHinted && St.Notices) { line += " Control N to answer."; _keysHinted = true; }
-                if (Shaped(e, line) is { } notice) Announcer.Say(AnnounceKind.Notices, notice);
+                if (Shaped(e, line) is { } notice) Announcer.Say(AnnounceKind.Notices, notice, from: LogWords.FromOf(e));
                 continue;
             }
             var kind = e.Style == FeedStyle.Object ? AnnounceKind.Objects
                 : e.Kind == FeedKind.Nearby ? AnnounceKind.Nearby : e.Kind == FeedKind.Group ? AnnounceKind.Group : AnnounceKind.Ims;
-            if (Shaped(e, Line(e)) is { } said) Announcer.Say(kind, said);
+            if (Shaped(e, Line(e)) is { } said) Announcer.Say(kind, said, from: LogWords.FromOf(e));
         }
     }
 
@@ -209,7 +210,8 @@ public sealed class AccessWiring : IDisposable
         _notice = notice;
         // dictated words waiting for the person: their own words, read back so they can check before sending
         if (draft is { } d && d.Seq != _draft)
-            Announcer.Answer($"Draft to {(d.To == DraftTo.Nearby ? "nearby" : d.Name ?? "the conversation")}: {d.Text}. Enter sends, Escape cancels.");
+            Announcer.Answer($"Draft to {(d.To == DraftTo.Nearby ? "nearby" : d.Name ?? "the conversation")}: {d.Text}. Enter sends, Escape cancels.",
+                from: LineFrom.Me);
         _draft = draft?.Seq ?? -1;
     }
 

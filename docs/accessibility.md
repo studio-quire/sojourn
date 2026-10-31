@@ -1,25 +1,27 @@
 # Without sight: an audio-first Sojourn
 
-Written by Claude Opus 5.5, 2026-10-27. Agent-facing. The research; the plan is now `docs/access.md`. Why: the user's decision
-"Usable without sight too" (CLAUDE.md), after Tessel met a blind resident who uses
-Radegast with NVDA, and wished for a full viewer with Radegast's accessibility. Nobody from the studio contacts her about
-Sojourn (Tessel was asked to tell her, with no promises, and to ask her for requests: those come back through Tessel and
-belong in "What a blind tester tells us" below).
+Written by Claude Opus 5.5, 2026-10-27. Agent-facing. The research behind Sojourn Access; the plan is
+`docs/access.md`. Why: the user's decision "Usable without sight" (CLAUDE.md),
+after Tessel met a blind resident who uses
+Radegast with NVDA, and wished for a full viewer with Radegast's accessibility. Contact with her goes through Tessel,
+and what she asks for goes in access.md > What a blind tester tells us.
 
-**Decided (the user, 2026-10-27):** the accessible viewer is a separate app in the same codebase (working name Sojourn Access): its own app project beside the VR client with its own accessible window and keyboard model, sharing Core, the assistant, hearing, audio and the renderer (out of sight, for descriptions and the collision model). Not a fork and not a mode of the VR build; separate from the sighted desktop UI still to be workshopped. Shared pieces (screen-reader output, ops) go in shared code so both apps get them. Batches below that assumed a desktop mode of the VR client (A2's window) mean this app.
+**Decided (the user, 2026-10-27):** the accessible viewer is a separate app in the same codebase, Sojourn Access, not
+a fork or a mode of the VR build (CLAUDE.md > Decisions). Shared pieces (screen-reader output, ops) go in shared code
+so both apps get them.
 
-**How sure this is.** Part 2 (what Sojourn has and lacks) is checked against the code at the time of writing, file
-named. Part 1 comes from two research agents' reports (2026-10-27): Radegast from its source code, the rest from the
-sources linked. Each item is marked **[FH]** first-hand from a blind or low-vision person, **[M]** measured in a
-study, **[O]** an organisation's or vendor's own report, **[S]** a proposal. Pages the agents couldn't open (AppleVis
-and audiogames.net threads, SL forum threads behind Cloudflare, the old radegast.org wiki) are worth reading in a
-browser.
+**How sure this is.** Part 2 (what Sojourn had and lacked) was checked against the code on 2026-10-27, file named,
+and where each gap went on 2026-10-31. Part 1 comes from two research agents' reports (2026-10-27): Radegast from its
+source code, the rest from the sources linked. Each item is marked **[FH]** first-hand from a blind or low-vision
+person, **[M]** measured in a study, **[O]** an organisation's or vendor's own report, **[S]** a proposal. Pages the
+agents couldn't open (AppleVis and audiogames.net threads, SL forum threads behind Cloudflare, the old radegast.org
+wiki) are worth reading in a browser.
 
 ## 1. What blind SL residents use and need
 
 ### Radegast (verified: its source at github.com/cinderblocks/radegast `4f5dd45`, 2026-10-26, and radegast.life)
 
-Paths below are in that repo. A research agent read them on 2026-10-27; a clone was left in that session's scratchpad.
+Paths below are in that repo, read by a research agent on 2026-10-27.
 - Two clients. **Legacy** (WinForms, .NET Framework 4.8, Windows, release 2.54 of 2026-07-14) is what blind residents
   use. **Veles** (an Avalonia 12 rewrite on .NET 10, no release yet) has much more UIA work in it. Founded by Latif
   Khalifa (2009-14); maintained by Cinder Roxley (Sjofn LLC), who says in the issues they can't test with a screen
@@ -203,24 +205,32 @@ it already has a way out (the held menu button, Ctrl+Shift+H: stand and go home)
 - **Hearing tuned to SL names** (`docs/assistant.md` > Hearing): the names around the person feed the name pass after
   Parakeet (now the default) or Whisper.
 
-### Gaps, concretely
+### Gaps found then, and where they went
 
-| Gap | Where in the code | Matters for a blind person |
-|---|---|---|
-| ~~No screen-reader output at all~~: since A1 what arrives is read out through the person's reader (`docs/screen-reader.md`). Still pixels: the panel, feed and menus can't be browsed by the reader (no UIA tree), only heard as they change | `Program.cs`, `Assistant/Panel*.cs`, `Social/` | browsing what's on screen: A2 / Sojourn Access |
-| The console beside the window prints nearby chat and IMs and takes typed chat (`ConsoleChat.cs`): probably the one part NVDA can read today (it reads new console text), worth knowing as a stopgap; unchecked with NVDA | `ConsoleChat.cs` | a stopgap, not a design |
-| ~~Chat, IMs, notices are never spoken~~: A1 reads them, the replies and song titles through the reader | `Access/`, `Core/Access/` | done |
-| A new reply cuts off the one being spoken (`Speaker.say` stops the last): fine for replies, wrong for a queue of announcements; fixed speed 1.05, no rate setting | `assistant/voice.py` | screen-reader users listen at 2-3x |
-| ~~Confirmations and notices only by the mouse~~: A1's keys (Enter/Escape, Ctrl+N and number keys) with the `RealKeys` guard, while a screen reader reads out | `Access/ReaderKeys.cs` | done |
-| The typed request line is drawn, not an edit control: no echo of typed characters, no review of what's typed | `AssistantHost` typing, `Panel` | typing to the assistant blind |
-| `nearby` returns distance only, no bearing (it drops `pos` for objects and people) | `assistant/tools.py` `nearby` | "the bar is 4 m at your 2 o'clock" is the form people need |
-| No follow (autopilot has a point target, not a moving one), no route: autopilot walks a straight line and gives up when stuck (`Motion.cs` patience). The headset's local collision model (`VrPilot.Collide.cs`, `PhysicsShapes.cs`) exists but nothing plans a path on it | `Core/Agents/Motion.cs`, `Control/VrPilot.Collide.cs` | walking into walls is the classic failure |
-| No earcons or beacons: no sound for a person arriving or leaving, no beacon on a target, no "sonar" for walls and openings, nothing marking doors or seats | `Audio/Cues.cs` has only the viewer's UI sounds | finding your way and knowing who's near |
-| No announcements of arrivals/departures (radar alerts) | viewer-gaps "Radar alerts" | safety and social awareness |
-| The 3D view must render for picks, `look` and the collision model (picks hit the drawn LOD's triangles); there's no low-cost mode for someone who doesn't need the picture | `Render/`, `FrameRenderer.Pick` | a blind user's PC may be modest; rendering at a low rate and size would still serve the assistant |
-| Incognito is "blind" by default (the assistant sees no specifics): for a blind person that removes their eyes. "Let it see" exists; the default should follow the person. Also the word "blind" there will read oddly in an accessibility setting | `Private/`, `docs/assistant.md` > Incognito | a naming and default question |
-| The assistant needs a Claude account (`docs/assistant.md` > Claude; the board's release question). Without it, nothing above but keys and the console works | `assistant/brain.py` | a free alternative (Radegast) exists |
-| HUDs and media: the assistant can picture and press them (`docs/hud.md`, `docs/media.md`): better than Radegast, which has neither | | a strength to keep |
+Written about the VR client on 2026-10-27; Sojourn Access now covers most of them for a blind person.
+- **Screen-reader output**: none then. A1 reads what arrives through the person's own reader
+  (`docs/screen-reader.md`), and confirmations and notices are answered by keys (`Access/ReaderKeys.cs`). The VR
+  client's panel, feed and menus are still pixels with no UI Automation tree: browsing them is Access's job.
+- **The console beside the window** prints nearby chat and IMs and takes typed chat (`ConsoleChat.cs`): probably
+  readable by NVDA as a stopgap; unchecked.
+- **Spoken replies** (`assistant/voice.py`): a new reply cuts off the one being spoken, at a fixed speed (1.05, no
+  rate setting), where screen-reader users listen at 2-3x. Still so; Access reads replies through the person's reader.
+- **The typed request line is drawn**, not an edit control: no echo, no review. Still so in the VR client; Access's is
+  a real edit control.
+- **`nearby` gives distance only, no bearing** (`assistant/tools.py`), where "the bar is 4 m at your 2 o'clock" is
+  the form people need. Still so for the assistant's tool; Access's lists give bearings.
+- **No follow, no routes**: autopilot walks a straight line and gives up when stuck, and nothing plans a path on the
+  collision model. Access has paths, follow and walk mode (access.md > M3).
+- **No earcons, beacons or sonar**, no arrival or departure announcements: Access's M4 and M1.
+- **The 3D view must render** for picks, `look` and the collision model, with no low-cost mode for someone who
+  doesn't need the picture: Access's renderer out of sight (M0b), unseen when nothing looks, and a collision model
+  that needs no GPU.
+- **Incognito is "blind" by default** (the assistant sees no specifics), which for a blind person removes their eyes;
+  "let it see" exists. The default, and the word "blind" in an accessibility setting, are still open questions.
+- **The assistant needed a Claude account.** Now it takes an Anthropic key, OpenRouter or the studio relay too
+  (`docs/assistant.md`), and Access works fully without any.
+- **HUDs and media**: the assistant can picture and press them (`docs/hud.md`, `docs/media.md`), which Radegast
+  can't: a strength to keep.
 
 ## 3. The plan
 

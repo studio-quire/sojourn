@@ -10,7 +10,7 @@ using LMediaEntry = LibreMetaverse.MediaEntry;
 
 namespace Sojourn.Session.Media;
 
-/// <summary>What plays by itself (docs/media.md > Defaults): the person's own (their objects, HUDs and land), everything
+/// <summary>What plays by itself (docs/media.md > What plays, and whose): the person's own (their objects, HUDs and land), everything
 /// that asks to (the viewer's), or nothing until started.</summary>
 public enum MediaAutoPlay { Mine, On, Off }
 

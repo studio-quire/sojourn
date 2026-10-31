@@ -36,7 +36,7 @@ list). A sound newly blocked stops at once if it's playing (`WorldSounds.Silence
 lately with its object, owner and how (Firestorm's Sound Explorer), so "block that noise" has something to go on.
 
 Particles: `particles` (setting) off draws none (the viewer's Rendering Types > Particles); a blocked owner's or object's
-never draw (the viewer's rule: Sojourn didn't keep it before). `SojournSafety particles` lists who's emitting nearby and
+never draw (the viewer's rule). `SojournSafety particles` lists who's emitting nearby and
 how many particles the last view drew; `blockParticleOwner {id}` blocks the owner of a source, as the viewer's Block
 particle owner does, which blocks them entirely (chat, IMs, offers, menus, sounds); to hide one emitter, derender it.
 
@@ -51,9 +51,9 @@ friendship offers, objects' IMs) by the sending resident, script menus and quest
 preloads by object and by owner. The person's own objects don't count. Off by default in Firestorm.
 
 Here the same rules (`Safety.Antispam.cs`, checks at the mute checks in `AgentSession.Events.cs` and in world audio),
-off by default as there (the user, 2026-10-27), with one difference: menus count by their owner too, so a linkset of prims sending one each counts together (Firestorm's per-object key misses that). llLoadURL
-offers count as menus and are now dropped for blocked objects and owners, as the viewer's process_load_url does (they
-weren't). The notice is AntiSpamBlocked on the feed. `SojournSafety spam` lists the blocks, `unspam {id | all}` lifts
+off by default as there (the user, 2026-10-27), with one difference: menus count by their owner too, so a linkset of
+prims sending one each counts together (Firestorm's per-object key misses that). llLoadURL offers count as menus, and
+are dropped for blocked objects and owners, as the viewer's process_load_url does. The notice is AntiSpamBlocked on the feed. `SojournSafety spam` lists the blocks, `unspam {id | all}` lifts
 them; the `antispam` setting switches it.
 
 ## Keep me in place
@@ -68,18 +68,19 @@ once the shove ends. In the headset the room isn't carried by motion the person 
 (`VrPilot.HoldRoom` at the rig's carries, `docs/vr.md` > The rig): the view stays where it was and is the place; the
 rig's own walk to the head brings the avatar back from near, and from over 8 m, once the shove is over, it's
 teleported to the view (`MoveLock.HeadsetTick`, `ViewPlace`; the rig's walk looks like the person's own moving, so the
-desktop's resting-place anchor can't serve here). On the desktop it's walked back by
-the viewer's autopilot, or teleported back within the region (twice failing, or from over 30 m; at most every 5 s; where the region refuses direct teleports, where it ended up becomes the place).
-It undoes a push rather than resisting it as a script would; a moving floor counts as being moved too.
+desktop's resting-place anchor can't serve here; a far throw, over 4 m between updates, is still a shove: only a jump
+without speed counts as a teleport). On the desktop it's walked back by the viewer's autopilot, or teleported back
+within the region (twice failing, or from over 30 m; at most every 5 s; where the region refuses direct teleports,
+where it ended up becomes the place). It undoes a push rather than resisting it as a script would; a moving floor counts as being moved too.
 
 ## The comfort vignette
 
-Neither viewer has one. `Control/Comfort.cs` (`comfort_vignette`: off by default, forced or all; `vignette_strength`; comfort aids are options and the defaults
-suit experienced VR players, the user, 2026-10-27):
+Neither viewer has one. `Control/Comfort.cs` (`comfort_vignette`: off by default, forced or all;
+`vignette_strength`; comfort aids are options and the defaults suit experienced VR players, the user, 2026-10-27):
 while the view moves without the person's body moving, its edges darken toward the middle. Forced: the room carried by
 what they didn't do (a push, a moving floor, a seat or vehicle carrying and turning them, the agent API walking them);
-all: the stick's walk and smooth turns too. Snap turns, cuts of the view (teleports, putting you back) and recentring are jumps, not motion. Stronger with speed
-(0.25-2.5 m/s) and turning (8-60 deg/s), in over 0.12 s and out over 0.35; at strength 1 and full motion the clear
+all: the stick's walk and smooth turns too. Snap turns, cuts of the view (teleports, putting you back) and recentring
+are jumps, not motion. Stronger with speed (0.25-2.5 m/s) and turning (8-60 deg/s), in over 0.12 s and out over 0.35; at strength 1 and full motion the clear
 middle closes to 30 degrees. It's an OpenXR quad layer locked to the head (in the view space), under every other layer
 so the menus stay clear, one picture made once and resized with the strength; the PC's mirror window shows it too. The
 console says when it comes and goes.
@@ -90,7 +91,7 @@ The viewer in mouselook (`llagentcamera.cpp` changeCameraToMouselook, `llagent.c
 `llviewerinput.cpp` script_trigger_lbutton): AGENT_CONTROL_MOUSELOOK in every AgentUpdate, the agent's frame pitched
 with the camera (so llGetRot and llGetCameraRot point where you aim), a click sent as CONTROL_ML_LBUTTON to a script
 that took it, and no touching.
-The headset is always first person, but until now never told the region so. `Control/VrPilot.Aim.cs` (`aim`: auto, on,
+The headset is always first person, but tells the region so only while aiming. `Control/VrPilot.Aim.cs` (`aim`: auto, on,
 off; `aim_with`: head or hand): auto aims while a script holds the mouselook button (CONTROL_ML_LBUTTON: guns, combat
 HUDs, shooting games); on aims always (for scripts that only look at AGENT_MOUSELOOK; touching waits meanwhile, as in
 mouselook). Aiming: the mouselook flag goes to the region, the body and head turn to the aim with its pitch (the head's
@@ -102,21 +103,23 @@ mouselook zoom) aren't done.
 
 ## The way out
 
-The left menu button held 0.8 s, or Ctrl+Shift+H (`Control/WayOut.cs`, older than B1): releases controls a script
-took, stands you up, and sends the viewer's Teleport Home (TeleportLandmarkRequest with no landmark). What came of it
-is read from the protocol (`Core/Agents/TeleportWatch.cs`, Claude Opus 5.5, 2026-10-28), not LibreMetaverse's
-GoHomeAsync, which never heard a refusal (one comes without a TeleportStart, and it drops those) and refused to start
-while an earlier teleport still looked under way: on the main grid that night it said "the region didn't send us
-home" twice. Now: home reached, done; the grid refuses (its reason in plain words, Second Life's keys such as no_host
-put into words: `TeleportWatch.Plain`) or doesn't answer in 15 s (45 once started), then the person hears why and goes
-to the latest places in their teleport history in other regions instead, up to three ("Couldn't go home: ... Going to
-X instead"); the grid sent them home and the region there never answered (the night's case: no ACK to the
-UseCircuitCode for 60 s), then after 30 s the session logs in again, where the grid has put them, and says so
-(`TeleportStalled`). A second press while one is on its way says "Still on the way home". `CircuitGuard` makes that
-last case rare: LibreMetaverse sent the new region's UseCircuitCode once, so one lost datagram stranded a teleport;
-it's now resent every 1.5 s until acknowledged (`docs/client.md` > Gotchas). Checked on the local grid (an account
-with no home, a home in a far region, that region taken down, its circuit's datagrams lost for 1.5 s and for 45 s:
-`SOJOURN_CIRCUIT_LOSS`): each as above.
+The left menu button held 0.8 s, or Ctrl+Shift+H (`Control/WayOut.cs`): releases controls a script took, stands you
+up, and sends the viewer's Teleport Home (TeleportLandmarkRequest with no landmark). What came of it is read from the
+protocol (`Core/Agents/TeleportWatch.cs`), not LibreMetaverse's GoHomeAsync, which never hears a refusal (one comes
+without a TeleportStart, and it drops those) and refuses to start while an earlier teleport still looks under way.
+- Home reached: done.
+- The grid refuses (its reason in plain words, Second Life's keys such as no_host put into words:
+  `TeleportWatch.Plain`) or doesn't answer in 15 s (45 once started): the person hears why and goes to the latest
+  places in their teleport history in other regions instead, up to three ("Couldn't go home: ... Going to X
+  instead").
+- The grid sent them home and the region there never answered (no ACK to the UseCircuitCode for 60 s, seen on the
+  main grid): after 30 s the session logs in again, where the grid has put them, and says so (`TeleportStalled`).
+  `CircuitGuard` makes this rare by resending the new region's UseCircuitCode every 1.5 s until acknowledged
+  (LibreMetaverse sends it once, so one lost datagram stranded a teleport; `docs/client.md` > Gotchas).
+- A second press while one is on its way says "Still on the way home".
+
+Each case is checked on the local grid (an account with no home, a home in a far region, that region taken down, its
+circuit's datagrams lost for 1.5 s and for 45 s: `SOJOURN_CIRCUIT_LOSS`).
 
 ## Release keys
 
@@ -140,37 +143,33 @@ particles, antispam; release (while a script holds controls) and "N hidden: show
 derendered). Every one is also SojournSettings (section safety) for the assistant. Hiding a particular thing is by
 asking ("hide that", "block that noise", "who's making these particles?"): the pointer gives the assistant its id.
 
-## Incognito
+## The assistant and incognito
 
-None of SojournSafety's ops are on incognito's allowlist yet (batch T classifies new ops), so while it's blind they're
-refused: the safe default. What's added during a spell is never written down (a permanent derender lasts until the
-next teleport), and the lists (hidden, sounds, spam, bumps) show a spell's entries only while it lasts and sees, and
-drop its names afterwards.
+The assistant's `keep_away` tool (`assistant/moretools.py`) covers hide, unhide, hidden, sounds, block_sound,
+particles, block_particles, release_keys and bumps; blocking people is the people tool's. In blind incognito only
+derender, rerender and blocking a particle owner by a handle (never a name or id), and releasing keys, are allowed
+(`Session/Private/Allowlist.cs`). What's added during a spell is never written down (a permanent derender lasts until
+the next teleport), and the lists (hidden, sounds, spam, bumps) show a spell's entries only while it lasts and sees,
+and drop its names afterwards.
 
 ## Testing (tools/safety.py)
 
 `python tools/safety.py fixture | test | headset`: the Safety Rig in Atelier at 74-80, 36-44 (owned by Sojourn Friend; the
 tester is Sojourn Safety on :9765, :9766 in the simulator): the Spammer (twelve linked prims that flood on command on
 channel 7), the Lamp (a looped sound and particles while told "lamp on") and the Seat (takes the forward key and the
-mouselook button, dances you, says what it hears; "ride" carries it round a 4 m square). Sounds play at volume 0.
+mouselook button, dances you, says what it hears; "ride" carries it round a 4 m square: llSetKeyframedMotion without
+KFM_DATA reads its list as vector, rotation, time, and OpenSim stops the script on anything else). Sounds play at
+volume 0.
 
-Results (2026-10-27, local grid, both runs whole and passing): desktop: derender (gone from the world and the
-particle sources; back on rerender; back after a teleport; kept in the file for good and off it again), antispam (chat
-10 of 15, the 80-line message held, IMs from twelve prims 10 of 12, menus 10 of 12, sounds 60 of 70, one notice each),
-particles off and a blocked owner's (to 0, back on unblock), the lamp's loop listed as playing, blocked, stopped,
-unblocked, keep me in place (a hard push teleported back, a small one walked back), the seat's controls listed, the
-dance blacklisted and stopped, release keys letting go of both. Simulator: keep me in place (pushed 31 m, the view held,
-no vignette, teleported back to the view), a push without it bringing the vignette up (0.87), aiming on the seat
-(mouselook reached the region, the right trigger's down and up reached the script), the seat's ride carrying the avatar
-round its square with the vignette at 0.97 (none with it off), not aiming once standing. Held at full
-(`SOJOURN_VIGNETTE=1`), the mirror window's shot shows the edges darkened.
-
-Fixed while checking: the seat's ride (llSetKeyframedMotion without KFM_DATA reads its list as vector, rotation, time;
-OpenSim stopped the script on it, which is what failed the seat's steps after); keep me in place in the headset
-measured from the rig's resting place, which the rig's own walk to the head kept moving (now the view is the place,
-`ViewPlace`), and a far throw (over 4 m between updates) was carried like a teleport (now only a jump without speed is).
-The test's own teleports were refused as "teleport started" right after pushes in the headset; the headset run no
-longer teleports, and the desktop's retry.
+`test` (desktop) covers derender (gone from the world and the particle sources; back on rerender and after a
+teleport; kept in the file for good and off it again), antispam (chat, a long message, IMs and menus from twelve prims,
+sounds, one notice each), particles off and a blocked owner's, the lamp's loop listed, blocked and unblocked, keep me in
+place (a hard push teleported back, a small one walked back), the seat's controls listed, its dance blacklisted, and
+release keys. `headset` (the XR Simulator) covers keep me in place (the view held, teleported back to it), the vignette
+coming up for a push and for the seat's ride (and not with it off), aiming on the seat (mouselook and the right
+trigger reaching the script), and not aiming once standing; `SOJOURN_VIGNETTE=1` holds the vignette at full for shots.
+Both passed 2026-10-27. The headset run doesn't teleport: on OpenSim, local teleports right after pushes are sometimes
+refused as "teleport started" (below).
 
 ## Not done
 
@@ -178,6 +177,5 @@ longer teleports, and the desktop's retry.
 - Firestorm's per-setting antispam limits and its global queue; bumps on the local grid (OpenSim sends none).
 - Aiming: Firestorm's target markers and mouselook zoom; a gun worn as an attachment checked (the Seat stands in).
 - The menu's release row appears when the menu next redraws after a script takes controls.
-- Local teleports right after a hard push sometimes report "teleport started" and fail on OpenSim (seen from the test,
-  cause not traced); keep me in place's teleport back retries after 5 s.
-- incognito's allowlist entries and the assistant's own tools for these (batch T).
+- Local teleports right after a hard push sometimes report "teleport started" and fail on OpenSim (cause not traced);
+  keep me in place's teleport back retries after 5 s.

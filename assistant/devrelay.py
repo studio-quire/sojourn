@@ -70,7 +70,7 @@ class DevRelay:
             pass
         # the panel as for any request: what was heard, working on it, until the session says otherwise
         self.api.panel(heard=text, status=None if self.watched() else "no session is watching yet",
-                       result=None, working=True, choices=[], prompt=None, model=None)
+                       result=None, working=True, hearing=False, choices=[], prompt=None, model=None)
         if not self.send("request", text=text, target=target, source=source):
             self.api.panel(working=False, status="couldn't pass that on")
 

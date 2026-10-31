@@ -11,7 +11,8 @@ namespace Sojourn.Session.Voice;
 ///
 /// Buttons. Push-to-talk (the default): hold the left grip in the headset, B or the middle mouse button on the
 /// desktop. Open mic: the right stick's click in the headset, B on the desktop, toggles the mute; it starts muted.
-/// Holding the assistant's button (right grip, T) keeps the mic from residents either way.
+/// Holding the assistant's button (right grip, T), or its mic latched open by a tap, keeps the mic from residents either
+/// way; push-to-talk pressed while it's latched sends the assistant what it heard and hands the mic to voice.
 /// </summary>
 public sealed class VoiceWiring
 {
@@ -19,7 +20,8 @@ public sealed class VoiceWiring
     /// <summary>The assistant's mic and spoken replies through the same engine.</summary>
     public readonly AssistantMic? Mic;
     readonly Func<bool> _typing;
-    bool _keyHeld, _mouseHeld, _gripHeld, _stickBefore, _gate;
+    bool _keyHeld, _mouseHeld, _gripHeld, _stickBefore, _gate, _pttBefore;
+    Assistant.AssistantHost? _assistant;
     string? _ringing;
 
     readonly AgentSession _session;
@@ -131,7 +133,8 @@ public sealed class VoiceWiring
     {
         api.Add("reject_p2p_calls", new("voice", "turn away one-to-one voice calls before they ring (Firestorm's), declined without a word",
             "on, off", () => System.Text.Json.Nodes.JsonValue.Create(Rejects.P2P ? "on" : "off"), Control.SettingsApi.Switch("reject_p2p_calls", Rejects.SetP2P)));
-        api.Add("reject_group_calls", new("voice", "turn away group voice calls before they ring (both viewers'), declined without a word",
+        api.Add("reject_group_calls", new("voice", "turn away every group's voice calls before they ring (both viewers'), declined without a word; "
+            + "one group's alone: SojournVoice groupCalls",
             "on, off", () => System.Text.Json.Nodes.JsonValue.Create(Rejects.Group ? "on" : "off"), Control.SettingsApi.Switch("reject_group_calls", Rejects.SetGroup)));
         api.Add("reject_conference_calls", new("voice", "turn away ad-hoc conference calls before they ring (Firestorm's), declined without a word",
             "on, off", () => System.Text.Json.Nodes.JsonValue.Create(Rejects.Conference ? "on" : "off"), Control.SettingsApi.Switch("reject_conference_calls", Rejects.SetConference)));
@@ -149,6 +152,8 @@ public sealed class VoiceWiring
     public void Settle(Control.ISettingsMenu? menu, Assistant.AssistantHost assistant)
     {
         if (menu != null) menu.Voice = Voice;
+        _assistant = assistant;
+        if (Mic is { } mic) assistant.CutMic = mic.Cut;
         _look = () => assistant.Panel.Look;
         GateModeration(assistant.Confirmations);
         // a ringing call: two keys on the assistant's panel, answered by the person's own press
@@ -201,7 +206,16 @@ public sealed class VoiceWiring
         Sync();
     }
 
-    void Sync() => Voice.PushToTalk(Voice.Mode == VoiceMode.PushToTalk && (_keyHeld || _mouseHeld || _gripHeld));
+    void Sync()
+    {
+        bool held = Voice.Mode == VoiceMode.PushToTalk && (_keyHeld || _mouseHeld || _gripHeld);
+        // pressed while the assistant's mic is latched open (a tap: AssistantHost.TalkPress): the person means to talk
+        // to people now, so the request goes as heard so far, cut here without the release's tail so their first words
+        // don't run on into it, and the gate passes to voice a frame on
+        if (held && !_pttBefore && _assistant?.Latched == true) { _assistant.TalkUp(); Mic?.Cut(false); }
+        _pttBefore = held;
+        Voice.PushToTalk(held);
+    }
 
     /// <summary>The window lost focus: let go of everything held.</summary>
     public void Release()

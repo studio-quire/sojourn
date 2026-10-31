@@ -100,11 +100,13 @@ public sealed class PersonOps(AgentSession s)
     }
 
     /// <summary>Objects around (root objects, not attachments), nearest first; query: words in the name, description
-    /// or floating text.</summary>
-    public async Task<List<Thing>> ObjectsAsync(double within = 30, int limit = 60, string? query = null)
+    /// or floating text. renew: scripted ones' names older than this many seconds asked again (0: all of them), as a
+    /// script may have renamed its object (a self-naming sofa).</summary>
+    public async Task<List<Thing>> ObjectsAsync(double within = 30, int limit = 60, string? query = null, double? renew = null)
     {
         var args = new JsonObject { ["dist"] = within, ["limit"] = limit, ["timeout"] = 3 };
         if (!string.IsNullOrWhiteSpace(query)) args["query"] = query.Trim();
+        if (renew is { } secs) args["renew"] = secs;
         var r = await ReadAsync("TesselObjects", "nearby", args);
         var list = new List<Thing>();
         foreach (var o in (r["objects"] as JsonArray ?? new()).OfType<JsonObject>())

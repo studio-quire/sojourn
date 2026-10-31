@@ -6,8 +6,9 @@ calls, and the assistant's push-to-talk kept out of all of it.
 
 ## Where it stands
 
-Built through the plan's step 8 and tested on the local grid (2026-10-25). Not yet tried: the main grid (a sandbox,
-a real P2P call) and the headset (echo from the Quest's speakers, latency, how panning feels). Both are on the board.
+Built and tested on the local grid (Testing, below). On Second Life in the headset, nearby voice works both ways
+(before 2026-10-28). Calls, moderation and the rest only SL can show are listed under Not done; the headset's are in
+`docs/sittings.md`.
 
 ## Decisions
 
@@ -18,12 +19,16 @@ a real P2P call) and the headset (echo from the Quest's speakers, latency, how p
   and whenever it's chosen (user, 2026-10-25).
 - **Buttons** (user's suggestion, 2026-10-25): push-to-talk on the left grip in the headset; open mic's mute on the
   right stick's click; on the desktop B (or the middle mouse button, the SL viewer's push-to-talk) for both. The
-  assistant keeps the right grip / T; while it's held the mic never reaches residents.
-- **Policy** (user, 2026-10-25, from the plan): other residents' voices never go to the assistant, Claude, Whisper or
-  disk, and there's no recording; the assistant may mute the mic, leave calls, decline a ringing call and set a
-  person's volume or mute them in your own hearing, but never unmute the mic or answer a call (those are the person's
-  own press); its spoken replies play to you only, never into a voice channel. Captions of others' voice: not built.
-  Moderating others (2026-10-29) happens only after the person's own press on the confirmation.
+  assistant keeps the right grip / T; while it's held, or tapped open hands-free, the mic never reaches residents.
+  Push-to-talk pressed while the assistant's mic is tapped open sends the assistant what it heard and the mic is
+  voice's from the next frame (the person means to talk to people now; open mic's mute doesn't end it).
+- **The left grip is hold only** (user, 2026-10-31): no quick tap to leave the mic open, as the assistant's grip has,
+  because a mic left open to people is a different matter for privacy than one left open to the assistant.
+- **Policy** (user, 2026-10-25): other residents' voices never go to the assistant, Claude, Whisper or disk, and
+  there's no recording; the assistant may mute the mic, leave calls, decline a ringing call and set a person's volume
+  or mute them in your own hearing, but never unmute the mic or answer a call (those are the person's own press); its
+  spoken replies play to you only, never into a voice channel. Captions of others' voice: not built. Moderating
+  others happens only after the person's own press on the confirmation.
 
 ## Using it
 
@@ -31,28 +36,30 @@ a real P2P call) and the headset (echo from the Quest's speakers, latency, how p
 |---|---|---|
 | talk (push-to-talk) | hold B or the middle mouse button | hold the left grip |
 | mute / unmute (open mic) | B | the right stick's click |
-| talk to the assistant (never heard by residents) | hold T | hold the right grip |
+| talk to the assistant (never heard by residents) | hold T, or tap it (tap again to send) | hold the right grip, or tap it (tap again to send) |
 | answer or decline a call | the panel's keys (click, or 1 / 2) | the panel's keys (point, trigger) |
 | settings | Esc > voice | the left menu button > voice |
 
 - The settings menu's **voice** section: voice chat on or off (with the status line under it: "nearby voice:
   connected, 2 others", "voice is off on this parcel", "call with ..."), talking: hold to talk / open mic, mic on (open
-  mic), volume (1 is the viewer's own level: its AudioLevelVoice, 0.5, scales the server's mix as AudioLevelSFX does
-  world sounds, so voices and the world keep the viewer's balance; until 2026-10-26 voice played at the full mix, 6 dB
-  louder against the world than in the viewer). Saved in `local/client/vr-settings.json` (`voiceEnabled`,
-  `voiceMode`, `voiceVolume`). The devices are in the sound section (below).
+  mic), volume, hear from (below). Volume 1 is the viewer's own level: its AudioLevelVoice, 0.5, scales the server's mix
+  as AudioLevelSFX does world sounds, so voices and the world keep the viewer's balance. Saved in
+  `local/client/vr-settings.json` (`voiceEnabled`, `voiceMode`, `voiceVolume`). The devices are in the sound section
+  (Devices, below); the call switches under you > turn away and you > turn away calls from (below). Moderation needs no row: the assistant does it on
+  request, confirmed.
 - **Over the world**: a small light dot over each resident who's speaking (bigger when louder), and your mic: a
   microphone on a small disc in the assistant panel's look (`VoiceWiring.Decorate`, drawn by `Realtime/Overlay.cs` as an
   `OverlayGlyph`, the glyph a distance field in `overlay.frag`), like a watch face 4 cm off the back of your left wrist
   in the headset, at the bottom middle of the window on the desktop (about 38 px across at 1080 lines, where the
-  viewer's speak button sits, clear of the chat feed and the panel). Live (your mic goes out to residents): the disc lit
-  in the look's accent, the mic in its label colour, and a ring around it that follows your voice's level (your mic's,
-  after the echo canceller, as the viewer's updateOwnVolume: `sv_mic_level`; the server's report for you came rarely
-  or never, so the ring used to sit still). Muted (open mic's mute, or a moderator's): the body's glass with a slashed mic in full ink. Off
-  (push-to-talk not held, the assistant's button held): the glass fainter, the mic dim. No voice here (the region or
-  parcel has voice off, and no call is up: `VoiceClient.OffHere`): fainter still, a slashed mic that never lights, push-to-talk
-  held or not (Claude Opus 5.5, 2026-10-27: at Calas Galadhon it lit for push-to-talk as if voice worked). Voice
-  turned off in the settings: nothing.
+  viewer's speak button sits, clear of the chat feed and the panel). Its states:
+  - Live (your mic goes out to residents): the disc lit in the look's accent, the mic in its label colour, and a ring
+    that follows your voice's level (your mic's after the echo canceller, as the viewer's updateOwnVolume:
+    `sv_mic_level`; the server's report for your own voice comes rarely or never).
+  - Muted (open mic's mute, or a moderator's): the body's glass with a slashed mic in full ink.
+  - Off (push-to-talk not held, the assistant's button held): the glass fainter, the mic dim.
+  - No voice here (the region or parcel has voice off, and no call is up: `VoiceClient.OffHere`): fainter still, a
+    slashed mic that never lights, push-to-talk held or not.
+  - Voice turned off in the settings: nothing.
 - **Calls**: a ringing call puts "<name> is calling" (a group's: "<name> is calling <group>"; an ad-hoc conference's:
   "<name> is calling you into a conference") with "answer" and "decline" on the assistant's panel (it shows even when
   the panel is put away); answering is your press. In a call you're out of nearby voice; hanging up (or the other side
@@ -62,21 +69,31 @@ a real P2P call) and the headset (echo from the Quest's speakers, latency, how p
   the others; open mic starts muted in it, as in the viewer's ad-hoc and group calls.
 - **Calls turned away before they ring** (`Voice/CallRejects.cs`, LLIMMgr::inviteToSession in both viewers): from
   someone whose voice you muted (a voice mute or a block; one-to-one and conference calls, not a group's); group
-  calls (`reject_group_calls`, both viewers); a non-friend's one-to-one and conference calls while B2's
-  `friends_only_ims` ("only friends and groups can IM or call me") is on; conference calls
-  (`reject_conference_calls`) and one-to-one calls (`reject_p2p_calls`), Firestorm's; every call in Do Not Disturb.
-  All declined silently ("decline p2p voice" / "decline invitation"), as the viewers do, except Do Not Disturb: a
-  one-to-one caller gets the person's DND sentence (as send_do_not_disturb_message) and the feed a quiet "You turned
-  down X's call" (the viewer's you_auto_rejected_call). The switches are per account, beside B2's in people.json, all
-  off by default; `SojournVoice calls` reads them with how many each turned away. One difference from the official
-  viewer, on purpose: with friends only on, a group call a non-friend starts still rings (the setting's words say
-  groups may call, and B2 lets group chat through); the viewer's code turns it away.
-- **Voice mutes** live on the account's block list since 2026-10-29: SL's mute list with the viewer's flags
-  (`Core/Agents/MuteList.cs` now carries them: a voice mute is the viewer's Mute Voice, flags 0xD, which leaves their
-  chat alone; a full block mutes their voice too, as LLMuteList::isMuted(id, flagVoiceChat)). So they hold across
-  machines and viewers, and a voice mute set in Firestorm arrives here. The ones kept on this machine before
-  (`peerVoiceMutes` in vr-settings.json) move to the list at the first login; per-person volumes stay per machine, as
-  the viewer keeps them. The list's changes reach the voice server at once (`m` for those in voice).
+  calls (`reject_group_calls`, both viewers), or one group's (below); a non-friend's one-to-one and conference calls while `friends_only_ims`
+  ("only friends and groups can IM or call me", docs/people.md) is on; conference calls (`reject_conference_calls`) and
+  one-to-one calls (`reject_p2p_calls`), Firestorm's; every call in Do Not Disturb. All declined silently ("decline
+  p2p voice" / "decline invitation"), as the viewers do, except Do Not Disturb: a one-to-one caller gets the person's
+  DND sentence (as send_do_not_disturb_message) and the feed a quiet "You turned down X's call" (the viewer's
+  you_auto_rejected_call). The switches are per account, in people.json, all off by default; menu: you > turn away >
+  one-to-one, group and conference calls. `SojournVoice calls` reads them with how many each turned away. One
+  difference from the official viewer, on purpose: with friends only on, a group call a non-friend starts still rings
+  (the setting's words say groups may call, and group chat gets through); the viewer's code turns it away. Kept by the
+  user's call (2026-10-31): a group is joined only by accepting, and a group whose calls annoy can be turned away on
+  its own.
+- **One group's calls turned away** (beyond both viewers, which only have the all-groups switch; the user's call,
+  2026-10-31): a group on the person's list has its calls declined silently, counted as `group_calls_from`, while other
+  groups' still ring. Kept per account in people.json (`reject_group_calls_from`, `{group id: its name}`, in
+  `Core/Agents/Rejects.cs`), the name so the list still reads after the person leaves the group (such a one can still
+  be taken off by id). Menu: you > turn away calls from (shown with voice and at least one group): a switch per group,
+  on = turned away; its row shows how many, or "all" while `reject_group_calls` is on. API: `SojournVoice groupCalls
+  {group?, turn_away?}` (a name or id; without `group`, the list); `calls` lists them as `groups_turned_away`. The
+  assistant: its voice tool's `group_calls` action.
+- **Voice mutes** live on the account's block list: SL's mute list with the viewer's flags (`Core/Agents/MuteList.cs`:
+  a voice mute is the viewer's Mute Voice, flags 0xD, which leaves their chat alone; a full block mutes their voice
+  too, as LLMuteList::isMuted(id, flagVoiceChat)). So they hold across machines and viewers, and a voice mute set in
+  Firestorm arrives here. Older ones kept on this machine (`peerVoiceMutes` in vr-settings.json) move to the list at
+  the first login; per-person volumes stay per machine, as the viewer keeps them. The list's changes reach the voice
+  server at once (`m` for those in voice).
 - **Moderation** (`Voice/VoiceModeration.cs`, the official viewer's): nearby, through the region's
   SpatialVoiceModerationRequest (the 2026 WebRTC moderation, LLNearbyVoiceModeration): `{operand: mute|unmute,
   agent_id}` for one person, through the region they're in, or `mute_all|unmute_all` for everyone on the region's
@@ -86,32 +103,31 @@ a real P2P call) and the headset (echo from the Quest's speakers, latency, how p
   and "session update" (moderated_mode.voice, then each member who doesn't match yet, as forceVoiceModeratedMode), for
   the call's moderators. Each acts on other people, so it waits for the person's press (a "permissions" case through
   `Confirmations.Cases` from VoiceWiring, naming who and where; the name is pinned to an id), and what they couldn't do
-  is refused before they're asked (`Confirmations.Refusals`). Being muted by a moderator was already shown (the mic
-  token's slashed mic) and holds push-to-talk off.
-- **Where you hear from** (`voice_hear_from`, the viewer's VoiceEarLocation): camera (the default: on the desktop the
-  camera, in the headset the head), avatar (the avatar's head and its rotation) or mixed (the avatar's place, the
-  camera's or head's direction). Kept per machine in `voice-media-settings.json` beside vr-settings.json
-  (`LocalPrefs.cs`).
+  is refused before they're asked (`Confirmations.Refusals`). Being muted by a moderator shows as the slashed mic and
+  holds push-to-talk off.
+- **Where you hear from** (`voice_hear_from`, the viewer's VoiceEarLocation; menu: voice > hear from): camera (the
+  default: on the desktop the camera, in the headset the head), avatar (the avatar's head and its rotation) or mixed
+  (the avatar's place, the camera's or head's direction). Kept per machine in `voice-media-settings.json` beside
+  vr-settings.json (`LocalPrefs.cs`).
 - **The assistant** sees `SojournVoice` on the agent API: `status` (who's here, who's speaking, the call, a ringing
   call and its kind, `i_moderate`, `hear_from`), `mute`, `peerMute {id, mute}` (on the block list, above),
   `peerVolume {id, volume}`, `call {id}`, `callGroup {id}`, `conference {ids, name?}`, `hangup`, `decline`,
-  `moderate {id or name, mute}` and `moderateAll {mute}` (both confirmed), `calls` (the switches and counts). No
+  `moderate {id or name, mute}` and `moderateAll {mute}` (both confirmed), `calls` (the switches and counts),
+  `groupCalls {group?, turn_away?}` (one group's calls turned away, above). No
   unmute, no answer. Per-person volumes are kept between sessions (`peerVolumes` in vr-settings.json, as the viewer
   keeps its per-speaker volumes on the machine) and reach the server as each person joins; `status` shows a person's
   `volume` when it isn't 1 and `muted_by_me`. Settings (SojournSettings, section voice): `reject_p2p_calls`,
   `reject_group_calls`, `reject_conference_calls`, `voice_hear_from`.
-- **Menu rows** (batch M, 2026-10-29): voice > hear from (head, the viewer's camera in the headset; avatar; mixed);
-  you > turn away > one-to-one, group and conference calls, three switches beside B2's. Moderation needs no row: the assistant does it on request, confirmed.
 - Options: `--no-voice`, `--voice-mode ptt|open` (a settings override, like the headset's), `--voice-unmuted` (tests).
-- **Devices** (2026-10-26): Settings menu > sound > speakers and microphone (automatic, or any device Windows has,
-  cycling with − / +; shown by the part of the name that tells it apart), chosen apart for the desktop and the
-  headset (`speakers`, `microphone`, `headsetSpeakers`, `headsetMicrophone` in vr-settings.json); `SojournSettings`
-  speakers / microphone (auto, or a device by part of its name; an unclear name is refused with the list),
-  `SojournAudio devices` lists them. Automatic is the Oculus pair ("Oculus Virtual Audio Device") in the headset and
-  the system's defaults on the desktop (on this PC the default output is the Realtek's, checked 2026-10-26). A change
-  reopens the devices at once (the echo canceller carries on); a chosen device that isn't connected (unplugged, Link
-  off) falls back to automatic, logged. `SOJOURN_VOICE_MIC` / `SOJOURN_VOICE_SPEAKER` still override (tests). The
-  engine and devices are shared with world audio (`Audio/AudioEngine.cs`): whichever starts first opens them.
+- **Devices**: Settings menu > sound > speakers and microphone (automatic, or any device Windows has, cycling with
+  − / +; shown by the part of the name that tells it apart), chosen apart for the desktop and the headset (`speakers`,
+  `microphone`, `headsetSpeakers`, `headsetMicrophone` in vr-settings.json); `SojournSettings` speakers / microphone
+  (auto, or a device by part of its name; an unclear name is refused with the list), `SojournAudio devices` lists them.
+  Automatic is the Oculus pair ("Oculus Virtual Audio Device") in the headset and the system's defaults on the desktop
+  (on this PC the default output is the Realtek's, checked 2026-10-26). A change reopens the devices at once (the echo
+  canceller carries on); a chosen device that isn't connected (unplugged, Link off) falls back to automatic, logged.
+  `SOJOURN_VOICE_MIC` / `SOJOURN_VOICE_SPEAKER` still override (tests). The engine and devices are shared with world
+  audio (`Audio/AudioEngine.cs`): whichever starts first opens them.
 
 ## How it fits together
 
@@ -137,15 +153,16 @@ The VR client binds the buttons to its keys, mouse and controllers in `src/Sojou
   (16 kHz, 300 ms pre-roll) -> gain (0 when muted or while the assistant's gate is open, with a ramp) -> libwebrtc's
   transport -> Opus to the server. Render thread: libwebrtc's mixed decoded voice (stereo, as the server panned it) +
   local sounds (`sv_play`: the assistant's replies) + world audio (`world.cpp`: the world's sounds and the music,
-  `docs/audio.md`) -> output volume -> APM's reverse stream and the device. libwebrtc's
-  voice engine has no APM of its own (the factory is built without one), so nothing processes twice. No managed code
-  runs on the audio threads: native events are queued, the tap is pulled.
+  `docs/audio.md`) -> output volume -> APM's reverse stream and the device. libwebrtc's voice engine has no APM of its
+  own (the factory is built without one), so nothing processes twice. No managed code runs on the audio threads:
+  native events are queued, the tap is pulled.
 - **Mute**: the shim ramps the gain to zero (120 ms push-to-talk release, 300 ms open-mic mute), then the C# side
   disables the send track on the primary connection, as the viewer does. Capture keeps running all session, so the
   echo canceller never cold-starts.
 - **The assistant's mic**: while its button is held (`AssistantMic.Gate`), the tap collects; residents get zeros. On
   release the gate stays open 250 ms (the tail), then the utterance (with the 300 ms before the press) waits for the
-  sidecar's GET /mic (taken once, within 10 s). The sidecar's own `soundcard` capture remains only without voice, and
+  sidecar's GET /mic?down=&up= (up to two minutes, eight at most), which takes that press's utterance once, by its
+  talk events' times; without the times, the newest within 10 s. The sidecar's own `soundcard` capture remains only without voice, and
   for `SOJOURN_MIC_FILE` tests. The tail adds ~0.33 s before Whisper starts.
 - **The assistant's spoken replies**: `voice.py`'s Speaker.sink posts half-second pieces to POST /play (about 1 s
   queued, cut off at once on stop), so they're in the device mix and the echo canceller's reference. The Windows-voice
@@ -228,15 +245,16 @@ restarts the grid). OpenSim 0.9.3.1's Janus service names the stock AudioBridge 
 - `roundtrip`: Voice Friend plays speech as its mic, Voice Pilot records what it hears: the words (Whisper),
   file-to-file latency (110-120 ms through the local mixer), the L-R balance flipping as Friend moves to Pilot's
   other side.
-- `scenarios [neighbours crossing parcel off retry gate echo call]`: hearing across a border through a neighbour,
-  the mic following you into the next region through one connection only, a parcel's own channel, no voice on a
-  voice-off parcel, the mixer restarting mid-call, the assistant's gate (residents hear -134 dBFS while it's held,
-  the assistant gets the words), a synthetic echo path cancelled (Friend hears its own echo at -43 dBFS without AEC,
-  -99 with it), calls (the ringing panel's answer key; both in one non-spatial channel 120 m apart; hangup), and
-  switches (2026-10-29: invitations from Friend through each call switch, B2's friends only and Do Not Disturb by
-  `testInvite`, which runs the same screening as a real invitation; Friend's voice muted as a voice-only block list
-  entry and unmuted; hearing from the avatar seen in the poses sent; moderation refused before asking, since OpenSim
-  has no SpatialVoiceModerationRequest; what OpenSim makes of "start conference" printed).
+- `scenarios [neighbours crossing parcel off retry gate echo call switches]`: hearing across a border through a
+  neighbour (says "warn" rather than failing if a neighbour is lost), the mic following you into the next region
+  through one connection only, a parcel's own channel, no voice on a voice-off parcel, the mixer restarting mid-call,
+  the assistant's gate (residents hear -134 dBFS while it's held, the assistant gets the words), a synthetic echo path
+  cancelled (Friend hears its own echo at -43 dBFS without AEC, -99 with it), calls (the ringing panel's answer key;
+  both in one non-spatial channel 120 m apart; hangup), and switches (invitations from Friend through each call
+  switch, friends only and Do Not Disturb by `testInvite`, which runs the same screening as a real invitation;
+  Friend's voice muted as a voice-only block list entry and unmuted; hearing from the avatar seen in the poses sent;
+  moderation refused before asking, since OpenSim has no SpatialVoiceModerationRequest; what OpenSim makes of "start
+  conference" printed).
 - They use their own accounts, Voice Pilot and Voice Friend (`tools/grid.py account Voice Pilot|Friend
   sojourn-local`, API ports 9730 / 9731, state in `local/voice/pilot|friend`), so another session's Sojourn Pilot
   isn't kicked. While another session's edits break the main tree's build, test from a worktree:
@@ -267,22 +285,18 @@ restarts the grid). OpenSim 0.9.3.1's Janus service names the stock AudioBridge 
 - OpenSim 0.9.3.1 starts a P2P call ("start p2p voice": 200 and a session start reply to the caller only) but answers
   "call" with 400 and never rings the callee; its multiagent provisioning reads `channel_id` where the viewer sends
   `channel`. Real calls are for the main grid.
-- (Fixed 2026-10-26) About one login in five or ten, a neighbour was lost: LibreMetaverse's EnableSimulator and
-  EstablishAgentCommunication handlers raced (docs/client.md > Gotchas). `scenarios neighbours` still says "warn"
-  rather than failing if it ever recurs.
 - libwebrtc needs WSAStartup (the shim calls it); without it every socket fails and nothing connects.
 - Git Bash's `timeout` wrapper can hang on a native test program that has exited; run `sv_loopback.exe` from Python
   (tools/voice.py does).
 
 ## Not done
 
-- Tried on the main grid: estate voice in a sandbox, a P2P call both ways, a group call (board).
-- The headset: echo with the Quest's open speakers (`voice.py chirp`), latency, how the server's panning feels with
-  head turns (board).
-- Built 2026-10-29 (batch B10) but only Second Life can show them working: a conference ringing others and connecting,
-  nearby moderation as an estate manager or parcel owner (a person muted for everyone, mute all holding for someone
-  who arrives), a group call's moderation, a voice mute made here showing in Firestorm's block list (and one made
-  there arriving here), a declined call reaching the caller (and the DND sentence). On the board.
+- On Second Life: a one-to-one call each way, a group call, a voice carrying across a border; in the headset, echo
+  with the Quest's open speakers (`voice.py chirp`), latency, how the server's panning feels with head turns
+  (`docs/sittings.md`).
+- Built, but only Second Life can show them working: a conference ringing others and connecting, nearby moderation as
+  an estate manager or parcel owner (a person muted for everyone, mute all holding for someone who arrives), a group
+  call's moderation, a voice mute made here showing in Firestorm's block list (and one made there arriving here), a
+  declined call reaching the caller (and the DND sentence). On the board.
 - Names for people not in view (`status` names only avatars the client has). Firestorm's "hear media and sounds from"
-  (world sounds follow the head or camera, as before).
-- (World sounds and the parcel's music now play through the same mix: `docs/audio.md`.)
+  (world sounds follow the head or camera).

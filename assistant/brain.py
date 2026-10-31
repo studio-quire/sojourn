@@ -38,6 +38,8 @@ from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKCli
 from claude_agent_sdk.types import StreamEvent
 
 import build as buildmod
+import describe as describemod
+import describer
 import harness
 import home as homemod
 import paths
@@ -49,11 +51,17 @@ from api import ApiError
 
 HERE = Path(__file__).resolve().parent
 IDLE_RESET = 15 * 60
+# Sojourn Access's describe key (Control+D) names its subject in the request it sends (MainForm.Describe.cs): a key
+# press made into words by the app, not words of the person's matched here
+DESCRIBE_KEY = re.compile(r"\[describe key: subject=([^,\]]+), of=(\w+), detail=(\w+)\]")
 # context, in tokens: the models' window, and where a session hands off to a fresh one (a request session after its
 # request, a job after its next tool call); past HARD_AT a request session is told mid-turn too
 CONTEXT_WINDOW = 1_000_000
 HANDOFF_AT = int(os.environ.get("SOJOURN_HANDOFF_AT") or 800_000)
 HARD_AT = max(HANDOFF_AT, int(os.environ.get("SOJOURN_HANDOFF_HARD_AT") or 900_000))
+# Haiku 5.5 costs five times as much per token once a prompt passes 100K: a session nearing that starts fresh after the
+# request it's on (docs/assistant-cost.md); a fresh one is ~50K, most of it read from the cache
+HAIKU_FRESH_AT = int(os.environ.get("SOJOURN_HAIKU_FRESH_AT") or 90_000)
 
 
 def handoff_at():
@@ -184,6 +192,16 @@ class Session:
         self.handoff_task = None  # the handoff after a request: the next request waits for it
         self.up_effort = None     # the effort its connection was made with (effort can change since: the setting)
 
+    def cache_env(self):
+        """How long the API keeps this session's prompt cached. A request session of Haiku or Sonnet: an hour, so a
+        request after a pause of 5 to 60 minutes, or a fresh session after the idle reset (its instructions and tools
+        are the same), reads its 50K-token prefix rather than writing it again; writing costs twice the input price
+        instead of 1.25 times, so it pays once a pause like that happens about once an hour (docs/assistant-cost.md).
+        Opus, mostly the planner and seldom used, and jobs, never idle for long: Claude Code's 5 minutes."""
+        if self.turns is not None and self.name in ("haiku", "sonnet"):
+            return {"CLAUDE_CODE_PROMPT_CACHE_TTL": "1h"}
+        return {}
+
     def stale(self):
         """Connected at an effort the setting has since changed (not during its handoff turn, which needs its
         conversation)."""
@@ -225,7 +243,7 @@ class Session:
             model=self.model,
             # Claude Code's own tools (files, shell, web, subagents) under auto mode and harness.py's deny rules
             allowed_tools=names + more,
-            disallowed_tools=self.disallowed,
+            disallowed_tools=self.disallowed + harness.UNUSED_TOOLS,
             # incognito, blind: no files, shell, web or helpers at all; seeing: reading and the web, nothing that writes
             # auto mode off: of those, only harness.MANUAL_TOOLS
             tools=own_tools,
@@ -239,7 +257,7 @@ class Session:
             cwd=str(incognito_dir()) if sees else workdir(),
             cli_path=providermod.cli(),
             # the person's provider (provider.py): for a key, the loopback proxy and its token, never the key
-            env={**harness.env(), **prov.env()},
+            env={**harness.env(), **({} if prov.single else harness.SMALL_MODEL), **prov.env(), **self.cache_env()},
             extra_args={"no-session-persistence": None, "effort": effort},
             include_partial_messages=True,     # for the time to the model's first token
             # a picture of the view or a big file read comes back as one message; the SDK's 1 MB default killed the
@@ -820,6 +838,10 @@ class Brain:
             if self.speaker and self.prefs.get("speak"):
                 self.speaker.say(reply)
             return
+        describer.QUIET = bool(self.private)
+        key = DESCRIBE_KEY.search(request)
+        if key and self.ready.is_set() and await self.describe_key(request, key, timing):
+            return
         first = last = self.sessions[self.first()]
         mode = self.mode
         api.panel(heard=request, status="thinking", result=None, working=True, hearing=False, choices=[], prompt=None,
@@ -897,6 +919,8 @@ class Brain:
         for s in {first, last}:
             if s.client and s.context >= handoff_at() and not s.handing_off and not private:
                 s.handoff_task = asyncio.create_task(self.handoff(s))   # the next request to it waits for this
+            elif s.client and "haiku" in s.model and s.context >= HAIKU_FRESH_AT and not s.handing_off:
+                asyncio.create_task(self.fresh(s))
         self.refresh_efforts()   # an effort changed during the request
         self.seq += 1
         exchange = {"seq": self.seq, "t": time.time(), "request": request, "reply": reply or "Done.", "by": last.name}
@@ -925,6 +949,64 @@ class Brain:
                 f.write(json.dumps(rec) + "\n")
         except OSError:
             pass
+
+    async def fresh(self, s):
+        """A Haiku session past HAIKU_FRESH_AT starts again (its instructions and tools still cached), the sitting's
+        recent exchanges and the memory index going in with its next request, as after any restart."""
+        self.log(f"{s.name} session at {s.context} tokens: starting it fresh (Haiku's price steps up past 100K)")
+        await s.close()
+        s.lost_upto = self.seq
+        if s.name in self.wanted():
+            await self._bring_up(s)
+
+    async def describe_key(self, request, key, timing):
+        """Sojourn Access's describe key, without a session: the subject's pictures and facts (describe.gather) to one
+        lean call (describer.py), the description as the reply. The exchange is recorded like any other, so whichever
+        model takes the next request knows what was said. False (nothing done) where it can't run this way: no direct
+        call on this provider, a blind incognito spell, a subject that didn't resolve, the call failing; the request
+        then goes to the session as before, which says what's wrong."""
+        if not describer.available() or (self.private and not self.private.get("sees")):
+            return False
+        api = self.api
+        subject, of, detail = key.group(1).strip(), key.group(2), key.group(3)
+        quality = await describemod.quality(self.kit)
+        model = describer.MODELS.get(quality, describer.MODELS["economy"])[0]
+        api.panel(heard=request, status="describing", result=None, working=True, hearing=False, choices=[], prompt=None,
+                  model=label(model))
+        t0 = timing.get("speech_end") or timing.get("typed")
+        try:
+            look, intro, what = await describemod.gather(self.kit, of, subject, detail)
+        except ApiError:
+            return False
+        reply = await describer.lean(look, intro, detail, before=describemod.said_before(self.kit, what, detail),
+                                     quality=quality, log=self.log)
+        if not reply:
+            return False
+        describemod.remember(self.kit, what, reply)
+        api.panel(result=reply, working=False, status=None)
+        if self.speaker and self.prefs.get("speak"):
+            self.speaker.say(reply)
+        private = bool(self.private)
+        self.seq += 1
+        exchange = {"seq": self.seq, "t": time.time(), "request": request, "reply": reply, "by": "describer"}
+        if private:
+            self.recent_private = (self.recent_private + [exchange])[-8:]
+            return True
+        self.recent = (self.recent + [exchange])[-8:]
+        last = describer.LAST
+        rec = {"t": round(time.time(), 1), "source": timing.get("source"), "mode": "describer", "model": last.get("model"),
+               "tools": ["describe"], "to_reply_s": round(time.time() - t0, 2) if t0 else None,
+               "model_s": last.get("s"), "usage": last.get("usage")}
+        self.log(f"timing {rec}")
+        if os.environ.get("SOJOURN_LOG_REPLIES") == "1":  # tests only
+            self.log(f"replied (describer) to {request!r}: {reply!r}")
+        try:
+            self.timings.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.timings, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec) + "\n")
+        except OSError:
+            pass
+        return True
 
     async def submit(self, request, target, timing):
         """A new request: an answer to a pending choice, a stop, or the next job (interrupting one in progress)."""
@@ -989,6 +1071,7 @@ class Brain:
             self.private_after = (max(1, round(spent)), time.time())
         self.recent_private = []
         self.kit.last_look = None   # a picture of the view from before
+        self.kit.described = {}     # nor what was described before (a spell's descriptions aren't kept, nor added to after)
         if not self.started:   # warm() brings them up as they should be
             return
         self.ready.clear()

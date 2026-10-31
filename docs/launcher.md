@@ -1,8 +1,8 @@
 # The launcher
 
 How a person starts Sojourn: `src/Sojourn.Launcher`, built as **Sojourn.exe** (WPF); the VR client it starts is
-`src/Sojourn.Client`, built as **SojournVR.exe** (the user's call, 2026-10-29: the launcher is what people start). Built by
-Claude Opus 5.5, 2026-10-29. Agent-facing.
+`src/Sojourn.Client`, built as **SojournVR.exe** (the user's call, 2026-10-29: the launcher is what people start). Written
+by Claude Opus 5.5, 2026-10-29 and 30. Agent-facing.
 
 ## What it does
 
@@ -18,9 +18,12 @@ Claude Opus 5.5, 2026-10-29. Agent-facing.
   settings that match none show "yours" and are left alone until a preset is picked; a first start with no settings
   file writes balanced, the 1536 shadow cap `client.py vr` uses); and the assistant, chosen **only here** for the VR
   client (the user, 2026-10-29; the headset's menu shows the model choices for whatever is chosen):
-  - the provider (`assistantProvider`: claude, anthropic, openrouter, as `assistant/provider.py` has them);
-  - the **key box**: paste an Anthropic or OpenRouter key (Ctrl+V, or Enter after typing): its shape says which, it's
-    kept by `ProviderKeys` (DPAPI, linked here) and that provider chosen, the box cleared. Kept only from the person's
+  - the provider (`assistantProvider`, as `assistant/provider.py` has them): claude (a Claude plan, offered only in runs
+    from the repo, `ProviderKeys.ClaudeOffered`: released builds have no Claude-account sign-in, the user, 2026-10-30),
+    anthropic, openrouter, and relay (Studio Quire's, shown only once chosen or its token is kept);
+  - the **key box**: paste an Anthropic or OpenRouter key or a relay token (Ctrl+V, or Enter after typing): its shape
+    says which, it's kept by `ProviderKeys` (DPAPI, linked here) and that provider chosen, the box cleared; a kept
+    key greys the box out as a remembered password does. Kept only from the person's
     own press (> The person's own press), and only if everything in the box came from their own keys or mouse; never
     shown back (the box's hint says "key kept"), never logged; × twice forgets it;
   - with OpenRouter, the **model** box: any id typed, or one from the list behind the ▾ (Claude Haiku · Sonnet · Opus,
@@ -79,8 +82,8 @@ or a UI Automation call must never count on its own.
   WPF handles it); `RealPress.Now()` answers for the one being handled (under a second old, not inside a message
   another thread sent). Anything else through the queue (dispatcher callbacks, timers, UI Automation's work) isn't a
   press.
-- Windows' word first: what `GetCurrentInputMessageSource` calls hardware counts. Asked inside WPF's handling, it said
-  unavailable for the person's real keys (the 2026-10-30 guided test: nothing real ever passed), so for anything else
+- Windows' word first: what `GetCurrentInputMessageSource` calls hardware counts. Asked inside WPF's handling, it says
+  unavailable even for the person's real keys (with it alone, no real press ever passed, 2026-10-30), so for anything else
   low-level hooks (`HandHooks`, Access's KeyHook pattern) note the hand's presses: the keyboard's while the launcher is
   the active app, the mouse's also while the pointer is over its window (so the click that brings it to the front is
   seen letting go), on their own thread, put in front of other hooks every 2 s; only presses Windows didn't mark
@@ -133,20 +136,19 @@ key set into the key box by UI Automation or typed by posted characters and Ente
 click posted on Continue, Continue invoked), then with `SOJOURN_TEST_INPUT=1` a code and the ToS answered at the
 launcher and the client in world, the code in no log. SendInput can't be checked there (it reaches only the desktop
 the person's input goes to). `tools/inputcheck` alone runs PressJudge's sequences (points, keys, characters).
-Checked 2026-10-29 on the local grid in desktop mode: a new account with remember on (logged in, kept with its
-password), the saved account again without typing, stop from the launcher (5 s, logged out), a wrong password (the
-reason at the foot, the run stopped), and a faked lost GPU (`SOJOURN_FAKE_DEVICE_LOST=6`: the restarted run followed
-into the world). Checked 2026-10-30 by the user on Second Life (guided, desktop): a new account, Launch, "on the
-desktop", stop (out in a third of a second); and with real hands, after the hooks: Ctrl+V of a key kept (the trace:
-keys judged Hardware at the filter), and two clicks on × forgetting it. Before the hooks, every real press was refused
-(GetCurrentInputMessageSource said unavailable inside WPF's handling). Decided then (Claude Opus 5.5): a program copying
-the person's press can at most act twice on that same press, which every launcher action tolerates; no extra guard on
-focus moves (it would refuse Alt+Tab then a quick paste). Not checked: the headset (`--vr`) from the launcher, MFA and
-ToS on Second Life itself (the user's account asked for neither), a provider picked here reaching the assistant in a
-full run. `shots` also draws OpenRouter with Claude's three (`settings-openrouter-claude`), a tag
-(`settings-openrouter`) and the list on its own (`settings-openrouter-list`; a popup isn't part of the view). Open for release: a Claude plan works only if
-Claude Code on the PC is signed in (`claude`, then `/login`); the launcher needs a sign-in for it (Claude Code's
-browser sign-in, started from the launcher) and to say when it isn't signed in (the user, 2026-10-30).
+`SOJOURN_FAKE_DEVICE_LOST=6` fakes a lost GPU, to see the restarted run followed. `shots` also draws OpenRouter with
+Claude's three (`settings-openrouter-claude`), a tag (`settings-openrouter`) and the list on its own
+(`settings-openrouter-list`; a popup isn't part of the view).
+
+Checked: on the local grid (2026-10-29: new and saved accounts, stop, a wrong password, a lost GPU), and by the user on
+Second Life on the desktop (2026-10-30: a new account, Launch, stop, and with real hands a pasted key kept and forgotten),
+and Launch into the headset on Second Life (2026-10-31; `-- --dev --bridge-port 9720` passes dev mode through, so a
+sitting's watch follows). Not yet: MFA and the ToS at the launcher on Second Life (the account has no MFA and the terms come only
+when LL changes them; the user dropped it from the board, 2026-10-31: see it if it comes up), and a provider picked here
+reaching the assistant in a full run.
+
+Decided (Claude Opus 5.5, 2026-10-30): a program copying the person's press can at most act twice on that same press,
+which every launcher action tolerates; no extra guard on focus moves (it would refuse Alt+Tab then a quick paste).
 
 ## Look
 

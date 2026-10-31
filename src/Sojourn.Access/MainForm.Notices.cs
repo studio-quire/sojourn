@@ -8,9 +8,9 @@ namespace Sojourn.Access;
 /// <summary>
 /// Notices: offers, script menus, permission requests, invitations and llTextBox questions waiting for the person,
 /// newest first, and a confirmation the assistant needs at the top. Each is a list item in words; its keys are real
-/// buttons ("1: Red") and, on the list, the number keys press them (as A1's keys in the VR client) and Delete puts it
-/// away. Nothing is answered without the person's own key (RealInput: a hardware press made after the selected notice
-/// last changed by anything but them; with `access_answers_without_key` on hello, Windows Hello instead), and an
+/// buttons ("1: Red") and, on the list, the number keys press them (as A1's keys in the VR client) and Delete ignores
+/// it (the official viewer's Ignore: gone unanswered). Nothing is answered without the person's own key (RealInput: a
+/// hardware press made after the selected notice last changed by anything but them; with `access_answers_without_key` on hello, Windows Hello instead), and an
 /// llTextBox reply sends only text the person's own keys typed, to the notice it was typed for. None of it takes the
 /// focus: an arrival is said, and Ctrl+N goes there.
 /// </summary>
@@ -33,6 +33,7 @@ public sealed partial class MainForm
     PendingConfirm? _cancelledHere;   // the confirmation the person last cancelled here (its op's refusal goes unsaid)
     ContextMenuStrip _noticeMenu = null!;
     (Control Control, TabPage Page)? _noticesFrom;   // where Control+N came from: Escape goes back there
+    bool _saidLeft;            // the next refill's "N waiting." is said already (an Ignore says what's left)
 
     /// <param name="Kind">the notification's name (ScriptDialog, ScriptQuestion, LoadWebPage ...); "" for a confirmation</param>
     sealed record Notice(Guid Id, PendingConfirm? Confirm, string Words, string Detail, List<(string Name, string Label)> Buttons, bool TextBox, string? ObjectId, string Kind)
@@ -51,7 +52,7 @@ public sealed partial class MainForm
         _noticeButtons = new FlowLayoutPanel { Name = "noticeButtons", AccessibleName = "Keys", AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
         _replyLabel = new Label { Text = "Reply", AutoSize = true, Anchor = AnchorStyles.Left, Visible = false };
         _noticeReply = new LineBox { Name = "noticeReply", AccessibleName = "Reply", Dock = DockStyle.Fill, Visible = false, MaxLength = 511 };
-        _noticeIgnore = new Button { Name = "noticeIgnore", Text = "Put away", AutoSize = true, Enabled = false };
+        _noticeIgnore = new Button { Name = "noticeIgnore", Text = "Delete: Ignore", AutoSize = true, Enabled = false };
 
         var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4 };
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -78,7 +79,7 @@ public sealed partial class MainForm
         _notices.KeyDown += (_, e) => NoticeKey(e);
         _noticeMenu = new ContextMenuStrip { Name = "noticeMenu", AccessibleName = "Keys" };
         _notices.MouseUp += (_, e) => { if (e.Button == MouseButtons.Right) ShowNoticeMenu(); };
-        _noticeIgnore.Click += (_, _) => PutAway(fromButton: true);
+        _noticeIgnore.Click += (_, _) => Ignore(fromButton: true);
         _noticeReply.TextChanged += (_, _) =>
         {
             // empty is safe whoever made it; anything else is typed or pasted by the person's keys, or it's foreign
@@ -191,27 +192,33 @@ public sealed partial class MainForm
                 });
         }
         // (none left: the list's own line, "No notices waiting.", is what the screen reader reads)
-        else if (before != null && _notices.Items[before.Id == Guid.Empty ? "confirm" : before.Id.ToString()] == null && inList && waiting.Count > 0)
+        else if (before != null && _notices.Items[before.Id == Guid.Empty ? "confirm" : before.Id.ToString()] == null && inList && waiting.Count > 0
+                 && !_saidLeft)
             Reader?.Answer($"{waiting.Count} waiting.", keep: false);
+        _saidLeft = false;
         ShowNotice();
         _noticesPage.Text = waiting.Count > 0 ? $"Notices ({waiting.Count})" : "Notices";
     }
 
-    /// <summary>Its keys after its words, numbered as the number keys press them (as A1 reads a notice).</summary>
+    /// <summary>Its keys after its words, numbered as the number keys press them (as A1 reads a notice), Delete last.</summary>
     static string KeyWords(Notice n)
     {
-        if (n.Confirm != null) return " Enter confirms, Escape cancels.";
-        var keys = string.Join(", ", n.Buttons.Select((b, i) => ButtonKey(i) is { } k ? $"{k} {b.Label}" : b.Label));
+        if (n.Confirm != null) return n.Confirm.Lists.Count > 0 ? " Tab: the whole list. Enter confirms, Escape cancels." : " Enter confirms, Escape cancels.";
+        var keys = string.Join(", ", n.Buttons.Select((b, i) => ButtonKey(i) is { } k ? $"{k} {b.Label}" : b.Label).Append("Delete Ignore"));
         var end = n.Words.Length > 0 && n.Words[^1] is '.' or '?' or '!' ? "" : ".";
-        return end + (keys.Length > 0 ? $" Keys: {keys}." : "") + (n.TextBox ? " Enter to reply." : "");
+        return end + $" Keys: {keys}." + (n.TextBox ? " Enter to reply." : "");
     }
+
+    /// <summary>A confirmation's lists whole (its words name only the first few, "and 40 more"), under the words.</summary>
+    static string WholeLists(PendingConfirm pc) =>
+        string.Concat(pc.Lists.Select(l => $"\r\n\r\n{l.Title}:\r\n{string.Join("\r\n", l.Names)}"));
 
     void ShowNotice()
     {
         var n = Selected();
         // a reply belongs to the notice it was typed for: another shown, the box starts empty
         if (n?.Id != _replyFor) { _replyFor = n?.Id; _noticeReply.Clear(); }
-        _noticeText.Text = n == null ? "" : n.Confirm != null ? n.Words : $"{n.Words}\r\n\r\n{n.Detail}";
+        _noticeText.Text = n == null ? "" : n.Confirm != null ? n.Words + WholeLists(n.Confirm) : $"{n.Words}\r\n\r\n{n.Detail}";
         _noticeButtons.SuspendLayout();
         foreach (Control c in _noticeButtons.Controls.Cast<Control>().ToList()) { _noticeButtons.Controls.Remove(c); c.Dispose(); }
         if (n != null)
@@ -252,7 +259,7 @@ public sealed partial class MainForm
             : e.KeyCode is System.Windows.Forms.Keys.OemMinus or System.Windows.Forms.Keys.Subtract && !e.Control && !e.Alt ? 10
             : e.KeyCode == System.Windows.Forms.Keys.Oemplus && !e.Control && !e.Alt && !e.Shift ? 11 : -1;
         if (digit >= 0 && n.Confirm == null) { e.Handled = e.SuppressKeyPress = true; Press(n, digit, fromButton: false); }
-        else if (e.KeyCode == System.Windows.Forms.Keys.Delete && n.Confirm == null) { e.Handled = true; PutAway(fromButton: false); }
+        else if (e.KeyCode == System.Windows.Forms.Keys.Delete && n.Confirm == null) { e.Handled = true; Ignore(fromButton: false); }
         else if (e.KeyCode == System.Windows.Forms.Keys.Enter && n.Confirm != null) { e.Handled = e.SuppressKeyPress = true; Press(n, 0, false); }
         else if (e.KeyCode == System.Windows.Forms.Keys.Escape && n.Confirm != null) { e.Handled = e.SuppressKeyPress = true; Press(n, 1, false); }
         else if (e.KeyCode == System.Windows.Forms.Keys.Enter)
@@ -262,7 +269,7 @@ public sealed partial class MainForm
         }
     }
 
-    /// <summary>The Applications key on a notice: its keys as a menu, each with the key that presses it, and Put away
+    /// <summary>The Applications key on a notice: its keys as a menu, each with the key that presses it, and Ignore
     /// (a confirmation: Confirm and Cancel). An item answers as the person's own press of it, the same as the key.</summary>
     void ShowNoticeMenu()
     {
@@ -290,7 +297,7 @@ public sealed partial class MainForm
             }
             if (n.TextBox) Add("Reply...", "Enter", () => BeginInvoke(() => RealInput.Ours(() => _noticeReply.Focus())));
             if (_noticeMenu.Items.Count > 0) _noticeMenu.Items.Add(new ToolStripSeparator());
-            Add("Put away", "Delete", () => PutAway(fromButton: true));
+            Add("Ignore", "Delete", () => Ignore(fromButton: true));
         }
         var r = _notices.SelectedItems.Count > 0 ? _notices.SelectedItems[0].Bounds : Rectangle.Empty;
         _noticeMenu.Show(_notices, new Point(r.Left + 10, r.Bottom));
@@ -389,24 +396,53 @@ public sealed partial class MainForm
         Reader?.Answer(err == null ? $"{label}, done." : $"{label} didn't go through: {err}");
     }
 
-    void PutAway(bool fromButton)
+    /// <summary>Delete, the Ignore button or menu item: the official viewer's Ignore, the notice gone unanswered (a
+    /// script menu's object hears nothing; an offer stays unanswered). Said, with the next one or none left.</summary>
+    void Ignore(bool fromButton)
     {
         if (Selected() is not { Confirm: null } n) return;
-        // putting away only says no: the person's input, or anything with hello on
+        // ignoring only says no: the person's input, or anything with hello on
         if (!RealInput.Person && !_set.ConfirmByHello) { Reader?.Answer(RealInput.Why, keep: false); return; }
         Host!.Session.Notify.Dismiss(n.Id);
-        Reader?.Answer("Put away.");
-        AfterAnswer(fromButton);
+        // (said after the list has moved to the next, so the move doesn't cut it off)
+        AfterAnswer(fromButton, quiet: true);
+        var left = Waiting().Count;
+        Reader?.Answer($"Ignored{Of(n)}. {(left == 0 ? "No notices waiting." : left == 1 ? "1 waiting." : $"{left} waiting.")}", keep: false);
     }
 
-    /// <summary>After an answer the notice goes: the focus stays in the notices, on the list (not lost with the button).</summary>
-    void AfterAnswer(bool fromButton)
+    /// <summary>What a notice is, short, after "Ignored": " Dance Ball's menu", else ": " and its first words.</summary>
+    static string Of(Notice n)
     {
+        var who = n.Words.Split(':', 2)[0].Trim();
+        var words = n.Words.TrimEnd('.');
+        return n.Menu ? $" {who}'s menu" : n.TextBox ? $" {who}'s question" : ": " + (words.Length > 60 ? words[..60].TrimEnd() + "..." : words);
+    }
+
+    /// <summary>After an answer the notice goes: the focus stays in the notices, on the list (not lost with the button),
+    /// on the one that took its place (the next older), else the last; a menu its object sends again is chosen instead
+    /// (PollNotices). Quiet: the change of item isn't said apart (the answer said what's left).</summary>
+    void AfterAnswer(bool fromButton, bool quiet = false)
+    {
+        int at = _notices.SelectedIndices.Count > 0 ? _notices.SelectedIndices[0] : 0;
+        _saidLeft = quiet;
         _noticesVersion = -1;
         _shownKeys = null;
         RealInput.Ours(() =>
         {
+            var answered = _answeredMenu;
             PollNotices();
+            // (a page the menu sent next was picked there: _answeredMenu taken)
+            bool nextPage = answered != null && _answeredMenu == null;
+            if (!nextPage && _notices.Items.Count > 0 && Selected() is not null)
+            {
+                var item = _notices.Items[Math.Min(at, _notices.Items.Count - 1)];
+                if (!item.Selected)
+                {
+                    item.Selected = true;
+                    ReaderList.MakeCurrent(item);
+                    NoteSelection();
+                }
+            }
             if (fromButton || !_notices.Focused) _notices.Focus();
         });
     }

@@ -1698,6 +1698,21 @@ public sealed unsafe class XrSession : IFrameTarget, IDisposable
         if (_running) _xr.RequestExitSession(_session);
     }
 
+    /// <summary>The process is ending after a lost GPU (or to start again): give the session back to the runtime at once,
+    /// without touching the device (destroying a session destroys its swapchains and spaces with it). Left to the
+    /// process's exit, Meta's runtime noticed the old session's end ~11 s later, when the restarted run's session was
+    /// already showing, and took that one out of view for good (2026-10-31; DeviceLoss.LetGo). Main thread, the render
+    /// thread drained or given up on; best effort.</summary>
+    public void LetGo()
+    {
+        if (_ender != null)
+        {
+            lock (_endLock) { _endStop = true; _endThen = null; Monitor.PulseAll(_endLock); }
+            _ender.Join(1000);
+        }
+        _xr.DestroySession(_session);
+    }
+
     public void Dispose()
     {
         Sojourn.Session.Assistant.GlassLight.Layers = false;

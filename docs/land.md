@@ -1,12 +1,13 @@
 # Land and region (SojournLand)
 
-Written by Claude Opus 5.5, 2026-10-28 (batch B5 of `docs/viewer-gaps.md` > Closing the rest). Agent-facing. About Land
-with its access and ban lists and sale settings; buying, selling, passes, abandoning, deeding, reclaiming, dividing,
-joining and terraforming; land holdings, group contributions, the world map's items and land for sale in search; the
-region's info and the estate's covenant; and the estate's tools for its owner and managers. Each as the official
-viewer does it (its source read for each, named below), an op on `SojournLand` (`client_api`, `api_help`) and, for
+Written by Claude Opus 5.5, 2026-10-28 (batch B5 of `docs/viewer-gaps.md` > Closing the rest). Agent-facing. Each
+feature as the official viewer does it (its source read for each, named below), an op on `SojournLand` and, for
 everything that spends, gives land away, ejects or bans, deletes or changes who may do what, a confirmation the
-person presses. No menu rows or settings: the person asks the assistant.
+person presses. No menu rows or settings: the person asks the assistant, whose `land` tool (`assistant/moretools.py`)
+covers about, region, covenant, access and the lists, eject, freeze, passes, buying, land for sale, About Land's
+settings, lag and returns, the region's switches, terraforming and holdings; selling, dividing, joining, deeding and
+the estate's lists go through `client_api`. None of it is on incognito's blind allowlist
+(`Session/Private/Allowlist.cs`); with "let it see" it runs as usual, gated as always.
 
 Code: `Core/Agents/ParcelOps.cs` (About Land, the lists, the parcel by place), `ParcelOps.Deals.cs` (sell, buy, pass,
 abandon, deed, reclaim, divide, join), `ParcelOps.Terraform.cs`, `EstateOps.cs` (region, covenant, estate),
@@ -108,8 +109,8 @@ From `llviewerparcelmgr.cpp`, `llfloaterbuyland.cpp`, `llfloatersellland.cpp`:
   `group`, that group's land (DFQ_GROUP_OWNED, as its Land & L$ tab).
 - `mapItems {type, region?, limit}`: MapItemRequest, as llworldmap.cpp asks: land for sale (general and adult), events
   by rating, telehubs grid-wide; people a region at a time (this one by default). Nearest first, each in its region
-  (named from the grid's region list, asked by handle where not known) with a `go_to`. Batch B8's map board reads
-  `LandMap.ItemsAsync`.
+  (named from the grid's region list, asked by handle where not known) with a `go_to`. The map board reads
+  `LandMap.ItemsAsync` (docs/map.md).
 - `SojournSearch land {type?: mainland|estate|auction, max_price?, min_area?, sort?}`: the legacy search's Land Sales
   tab (DirLandQuery, cheapest per m² first by default; the reply has no query id, so one at a time), each filled in by
   ParcelInfoRequest with its region and `go_to`, as places are.
@@ -151,21 +152,6 @@ outlined on the ground meanwhile.
 - Not asked: reading anything, `stopSelling`, unfreezing, a terraform brush stroke at a point (small, and the person
   watches the land move), `restart {cancel}`.
 
-## For batch T
-
-All of SojournLand and `SojournSearch land` are new to `client_api`, with nothing in `assistant/tools.py` or the
-prompts yet, and none on incognito's allowlist (so refused while incognito is blind, the safe default). Worth a look:
-- Dedicated tools or prompt lines for what people ask often: "what is this place / who owns this land" (`parcel`),
-  "ban this person from my land" (`ban`, with `TesselAgent parcelEject` for someone here now), "who's allowed in"
-  (`access`), "buy a pass" (`buyPass` with no `at` after being turned away), "find land for sale" (`SojournSearch land`
-  or `mapItems land_for_sale`), "what does the covenant say" (`covenant`, long: the reader), "what's lagging the
-  region" (`topScripts`, `topColliders`, `returnObjects`, `regionDebug`), terraforming by voice (`terraform`'s `at`
-  from the pointer's last point on the ground, size and seconds from "a bit" or "a lot").
-- Incognito's classification: every SojournLand op names the place, its owner or people around, so none belongs on
-  the blind allowlist; with "let it see", the reads (`parcel`, `access`, `objects`, `region`, `covenant`, `estate`,
-  `holdings`, `mapItems`, `topScripts`, `topColliders`, `SojournSearch land`) are like any other place's reads; the
-  rest act in the world, gated as always, and whether they run in a spell is T's call with the other acting ops.
-
 ## Testing
 
 `python tools/land.py [--dll DIR] [--only region,estate,top,message,debug,restart,access,freeze,deals,pass,terraform,search,home]`:
@@ -173,21 +159,17 @@ two clients in Atelier Northeast, Estate Keeper (the Atelier estate's owner and 
 grid's usual password the first time) and Sojourn Friend, both with SOJOURN_TEST_INPUT=1 so posted clicks answer
 their confirmations (found as `tools/people.py` finds them). What it changes it changes back.
 
-Checked 2026-10-29 (the local OpenSim grid, desktop): region and covenant for both; the estate's lists refused to a visitor;
-estate allowed and managers added and removed (one cancelled first); top scripts and colliders (empty here); a region
-message; scripts off and on; a restart cancelled at its confirmation; a ban for an hour and its removal, the allowed
-list and back; freeze and free; the parcel halved, the east half sold to Friend for L$0, bought, renamed by Friend,
-reclaimed, sold and bought again, abandoned back to the estate, a pass sold and bought (Friend on the list until it
-runs out), the halves joined and the name and options put back; a raise and a lower by as much at a point (21.74 m,
-22.19, 21.74); a visitor's terraform refused; flattening a whole parcel asked (cancelled); the map's people and land
-for sale; Friend sent home. The confirmations' shots show the land outlined in yellow posts. Empty on OpenSim, so
-unchecked: holdings (it answers no PlacesQuery for owned land), land search, top lists with anything in them, the
-covenant's text (no covenant here), deeding (no group on these accounts).
+It covers the region and covenant reads, the estate's lists (refused to a visitor; added and removed), top lists, a
+region message, scripts off and on, a restart cancelled at its confirmation, a ban for an hour and its removal, the
+allowed list, freeze, the parcel halved, sold, bought, renamed, reclaimed, abandoned and joined again, a pass sold and
+bought, terraforming at a point (and a visitor's refused, a whole parcel's asked), the map's people and land for sale,
+and sending home; all passed 2026-10-29. OpenSim can't check holdings (it answers no PlacesQuery for owned land), land
+search, top lists with anything in them, a covenant's text, or deeding (no group on these accounts).
 
-What the local grid taught (fixed): LibreMetaverse raises ParcelAccessListReply only with
+Gotchas the local grid showed (handled in the code): LibreMetaverse raises ParcelAccessListReply only with
 `Settings.Parcel.AlwaysRequestAcl` (which asks every parcel's lists unbidden), so the packet is read directly;
 OpenSim leaves ParcelPropertiesRequestByID unanswered, so a pinned parcel is asked for by a point inside it (from its
-last bitmap); OpenSim has the EstateAccess capability but names a manager's id `agent_id`; it applies estate list
+last bitmap); OpenSim has the EstateAccess capability but names a manager's id `agent_id`, and applies estate list
 changes after a delay, so they're read back for up to 11 s; LibreMetaverse's estateupdateinfo reads the estate id and
 sun hour as raw bytes of what are strings (the id is the region's, from RegionInfo, instead); a float put in a
 JsonArray reads back as nothing through `Json.AsDouble`, so points are doubles.
@@ -200,12 +182,12 @@ JsonArray reads back as nothing through `Json.AsDouble`, so points are doubles.
 - The buy floater's website preflight (mainland tier upgrades, buying L$ for the price): Linden Lab's web, with the
   person's payment details; the user's call with the Marketplace and L$ (viewer-gaps > Waiting on the user's decision).
 - Claiming public land (ParcelClaim), auctions.
-- A pass offered on its own when you hit a pass-restricted line (the viewer's BuyPass notice): the ban lines are drawn
-  (B3a); the offer would go on the feed as a notice with a key; for the social layer.
+- A pass offered on its own when you hit a pass-restricted line (the viewer's BuyPass notice): the ban lines are drawn;
+  the offer would go on the feed as a notice with a key.
 
 ## Checks only Second Life can do
 
-For the person, in a later session; nothing here spends money unless they press for it:
+For the person; nothing here spends money unless they press for it:
 1. Stand on any parcel and ask "whose land is this, what are its rules?": the owner's name, area, options and, if any,
    the covenant read out. The yellow posts outline the parcel for a few seconds.
 2. "What does this estate's covenant say?" in an estate region (not mainland): the text arrives.

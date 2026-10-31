@@ -50,7 +50,7 @@ public sealed class ReaderKeys(Announcer announcer, ReaderActions actions)
     public static string? KeyName(int i) => i switch { < 9 => $"{i + 1}", 9 => "0", 10 => "minus", 11 => "equals", _ => null };
 
     const string Help = "Sojourn keys. Control N: the next notice waiting, with Shift the one before. On a notice, its number keys answer it, "
-        + "Delete puts it away, Escape is done. Enter confirms what the assistant asks you to confirm, Escape cancels. Control R: say it again. "
+        + "Delete puts it away, Escape is done. Enter confirms what the assistant asks you to confirm, Escape cancels. Control R: say it again (a confirmation with every name in its list). "
         + "Control left and right bracket: back and forward through what was read. The assistant: hold T and speak, or Enter to type, Enter to send. "
         + "Control Shift H: stand up and go home.";
 

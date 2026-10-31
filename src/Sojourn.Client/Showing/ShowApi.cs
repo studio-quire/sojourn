@@ -22,7 +22,8 @@ public sealed class ShowApi : LeapApi
         Op("show", "{id, at?, title?, blocks?: [...], text?, for?} -> the element: shows it, or changes the one with that id (fields given replace "
             + "its own). at: view | wrist | room | an object's or avatar's id | [x,y,z] in this region. Blocks: {text, style?: body|title|big|dim}, "
             + "{list: [text | {text, detail?, done?}], numbered?}, {table: [[cells]], header?}, {timer: seconds}, {stopwatch: true}, "
-            + "{progress, of?, label?}, {chart: [values | [label, value]], kind?: bars|line, unit?}, {image: view | texture id}, "
+            + "{progress, of?, label?}, {chart: [values | [label, value]], kind?: bars|line, unit?}, {image: view | texture id | last | a picture's file name in Pictures\\Sojourn (big; at room puts it in front of them; "
+            + "incognito: blind only last, pictures taken in a spell only during it)}, "
             + "{toward: id | [x,y,z], label?}, {map: [id | [x,y,z] | {at, label}]}. for: seconds until it goes by itself", a => _shown.Show(a));
         Op("remove", "{id | all: true}: takes it away", a => _shown.Remove(a));
         Op("list", "-> {shown: [{id, at, title, blocks, age_s, ...}]}: what's on screen", _ => _shown.List());

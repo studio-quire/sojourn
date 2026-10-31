@@ -113,7 +113,7 @@ public static class BuildWiring
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
                     var list = await s.ScriptChores.RemovalAsync(a, cts.Token);
                     var objects = list.Select(x => x.Prim.ID).Distinct().Count();
-                    var names = string.Join(", ", list.Select(x => $"\"{x.Item.Name}\"").Distinct().Take(6)) + (list.Count > 6 ? $" and {list.Count - 6} more" : "");
+                    var names = Confirmations.Listed(list.Select(x => $"\"{x.Item.Name}\"").Distinct().ToList(), 6, "script names");
                     return ($"Remove {list.Count} script{(list.Count == 1 ? "" : "s")} from {Objects(s, a)}",
                         list.Count == 0 ? "There are none: this will do nothing." : $"{names}, in {objects} prim{(objects == 1 ? "" : "s")}. They're deleted from the objects.");
                 }
@@ -186,8 +186,7 @@ public static class BuildWiring
         return words.Count == 0 ? "only move" : string.Join(", ", words);
     }
 
-    static string Names(List<Primitive> roots) =>
-        string.Join(", ", roots.Take(5).Select(r => $"\"{r.Properties?.Name ?? "an object"}\"")) + (roots.Count > 5 ? $" and {roots.Count - 5} more" : "");
+    static string Names(List<Primitive> roots) => Confirmations.Listed(roots.Select(r => $"\"{r.Properties?.Name ?? "an object"}\"").ToList(), 5, "objects");
 
     /// <summary>The objects named, as the region calls them now (the confirmation shows what's there).</summary>
     static string Objects(AgentSession s, JsonObject a)
@@ -197,10 +196,10 @@ public static class BuildWiring
         if (s.Region is not { } w || ids.Count == 0) return "the objects";
         var roots = ids.Select(id => w.PrimById(id)).OfType<Primitive>().Select(p => s.Objects.RootOf(w, p)).DistinctBy(p => p.LocalID).ToList();
         if (roots.Count == 0) return "objects that aren't here";
-        return string.Join(", ", roots.Take(5).Select(r =>
+        return Confirmations.Listed(roots.Select(r =>
         {
             var parts = s.Objects.Linkset(w, r).Count;
             return $"\"{r.Properties?.Name ?? "an object"}\"" + (parts > 1 ? $" ({parts} parts)" : "");
-        })) + (roots.Count > 5 ? $" and {roots.Count - 5} more" : "");
+        }).ToList(), 5, "objects");
     }
 }

@@ -239,6 +239,22 @@ public sealed partial class Avatars
         return true;
     }
 
+    /// <summary>Where an avatar is drawn as others see it (render thread, after the frame's motion step): its centre
+    /// in the scene's region frame, as AddAvatars takes it before the own body is put under the headset's head, and its
+    /// rotation; null if the scene hasn't it or its seat. A still's camera around the person goes by this, so it frames
+    /// the avatar the still draws.</summary>
+    public (Vector3 Pos, Quaternion Rot, bool Seated)? Placed(RegionScene scene, UUID id)
+    {
+        foreach (var av in scene.Source.Avatars.Values)
+        {
+            if (av.ID != id) continue;
+            if (!Placement(scene, av, out var pos, out var rot, out bool seated)) return null;
+            if (!seated) pos = _world.Motion.Position(av.ID, scene.Source.Handle, pos, V(av.Velocity), scene.RegionSize);
+            return (pos, rot, seated);
+        }
+        return null;
+    }
+
     /// <summary>A seated avatar's root (pelvis) from its seat's region pose: its position and rotation relative to the
     /// seat, with its hover. The headset's seated view works it out the same way (VrPilot).</summary>
     public static (Vector3 Pos, Quaternion Rot) SeatedOn(Vector3 seatPos, Quaternion seatRot, Avatar av)

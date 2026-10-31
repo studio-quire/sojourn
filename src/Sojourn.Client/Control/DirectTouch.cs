@@ -23,7 +23,8 @@ public enum DirectAct { None, Touch, Sit }
 /// does what the viewer's left click does. An object whose click action is sit seats you on it; anything that
 /// takes touches is touched (ObjectGrab when the trigger goes down, ObjectGrabUpdate while it's held and the point
 /// moves across it, ObjectDeGrab when it comes up), where the ray lands on its surface; other click actions (pay, buy,
-/// open, media) do nothing here. Every press is also the left mouse button for scripts (LBUTTON control flags), and
+/// open, media) do nothing here (in the headset a still hold brings up the thing's card, which has them: Headset's
+/// gesture below, Things/ThingCard). Every press is also the left mouse button for scripts (LBUTTON control flags), and
 /// when a script has taken that button the press is only that, as in the viewer. While a confirmation is on screen or
 /// the settings menu is open nothing happens: this press can't answer, open or close anything. The person's own touch
 /// doesn't go through the confirmation gate (that guards the assistant's). One departure from the viewer: seated, a
@@ -215,8 +216,38 @@ public sealed class DirectTouch
     }
 
     // --- the headset ---------------------------------------------------------------------------------------------
+    // A press on a thing waits to see what it is, as a press on a page does (Media/MediaInput.Gesture; the user's ask,
+    // 2026-10-31: a still hold brings up what can be done with the thing, the viewer's right click). Let go before it
+    // has moved or been held still to OpenMs, it's a click where it went down (the touch, sit and left button all sent
+    // then); moved past MoveDeg, the press goes in where it began and follows the ray (a drag, as before); held still
+    // past HoldMs a ring fills round the dot, and still at OpenMs the card comes up (LongPress) and the press sends
+    // nothing. A script that has taken the left button gets the press at once, as ever, and nothing holds. What it
+    // costs: a touch-and-hold script sees a still press only once it moves or is let go.
 
+    enum Gesture { None, Pending, Hold, Live, Opened }
+    Gesture _g;
+    PickHit _downHit;
+    Vector3 _downOrigin, _downDir;
+    long _downAt;
+    const float MoveDeg = 1.6f;
+    const int HoldMs = 450, OpenMs = 900;
     bool _armed = true;
+
+    /// <summary>A still hold on a thing lasted long enough: the card of what can be done with it (Things/ThingCard),
+    /// with the hit, and the ray it came along, where the press went down.</summary>
+    public Action<PickHit, Vector3, Vector3>? LongPress { get; set; }
+
+    /// <summary>A still hold has begun on a thing (the ring starts): its card may start finding out about it.</summary>
+    public Action<PickHit>? Holding { get; set; }
+
+    /// <summary>How far a still hold is toward the card (0-1, for the ring), while one is.</summary>
+    public float? Filling => _g == Gesture.Hold ? Math.Clamp((Environment.TickCount64 - _downAt - HoldMs) / (float)(OpenMs - HoldMs), 0, 1) : null;
+
+    void Cancel()
+    {
+        if (_down) Release(0, default, default);
+        _g = Gesture.None;
+    }
 
     /// <summary>The pointing hand's ray and trigger this frame (in the left hand's fields: HandPointer.World); adds the
     /// cue to the overlay (the hand's beam is the pointer's own). panel: the assistant's layer where it floats (the ray
@@ -224,10 +255,10 @@ public sealed class DirectTouch
     public OverlayScene? Headset(OverlayScene? scene, XrControllers input, VrPilot pilot, (Vector3 Pos, Quaternion Rot, Vector2 Size)? panel,
         bool blocked, bool focused)
     {
-        if (!focused) { _armed = false; if (_down) Release(0, default, default); return scene; }
+        if (!focused) { _armed = false; Cancel(); return scene; }
         if (input.LeftAim is not { } q || input.LeftAimPos is not { } at || pilot.Region == 0 || _s.Client is not { } c)
         {
-            if (_down) Release(0, default, default);
+            Cancel();
             return scene;
         }
         var dirXr = Vector3.Transform(-Vector3.UnitZ, q);
@@ -240,14 +271,68 @@ public sealed class DirectTouch
         if (trigger < 0.35f) _armed = true;
         PickHit? hit = onPanel ? null : _r.Pick(region, origin, dir, Reach, c.Self.LocalID);
         var act = blocked ? DirectAct.None : Classify(hit);
-        if (!_down && trigger > 0.6f && _armed)
+        // something came up mid-press (a confirmation, the menu, aiming): a press still deciding sends nothing
+        if (blocked && _g is Gesture.Pending or Gesture.Hold) _g = Gesture.None;
+        if (_g == Gesture.None && trigger > 0.6f && _armed)
         {
             _armed = false;
-            if (!blocked && !onPanel) Press(hit, origin, dir, mouselook: false);
+            if (!blocked && !onPanel) Begin(hit, origin, dir);
         }
-        else if (_down && trigger < 0.35f) Release(region, origin, dir);
-        else if (_down) Hold(region, origin, dir);
+        else if (_g != Gesture.None && trigger < 0.35f) End(region, origin, dir);
+        else if (_g != Gesture.None) Continue(region, origin, dir);
         return Cue(scene, origin, dir, hit, act, trigger, blocked || onPanel);
+    }
+
+    void Begin(PickHit? hit, Vector3 origin, Vector3 dir)
+    {
+        if (LongPress == null || ButtonTaken(false) || hit is not { Kind: PickKind.Object } h)
+        {
+            Press(hit, origin, dir, mouselook: false);
+            _g = Gesture.Live;
+            return;
+        }
+        (_g, _downHit, _downOrigin, _downDir, _downAt) = (Gesture.Pending, h, origin, Vector3.Normalize(dir), Environment.TickCount64);
+    }
+
+    void Continue(ulong region, Vector3 origin, Vector3 dir)
+    {
+        switch (_g)
+        {
+            case Gesture.Live:
+                Hold(region, origin, dir);
+                return;
+            case Gesture.Pending or Gesture.Hold:
+            {
+                float deg = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.Normalize(dir), _downDir), -1, 1)) * 180 / MathF.PI;
+                long held = Environment.TickCount64 - _downAt;
+                if (deg > MoveDeg)
+                {
+                    // moved: the press goes in where it began, then follows the ray
+                    Press(_downHit, _downOrigin, _downDir, mouselook: false);
+                    _g = Gesture.Live;
+                    Hold(region, origin, dir);
+                }
+                else if (held >= OpenMs)
+                {
+                    _g = Gesture.Opened;
+                    LongPress?.Invoke(_downHit, _downOrigin, _downDir);
+                }
+                else if (_g == Gesture.Pending && held >= HoldMs)
+                {
+                    _g = Gesture.Hold;
+                    Holding?.Invoke(_downHit);
+                }
+                return;
+            }
+        }
+    }
+
+    void End(ulong region, Vector3 origin, Vector3 dir)
+    {
+        // let go before it moved or opened: a click where it went down
+        if (_g is Gesture.Pending or Gesture.Hold) Press(_downHit, _downOrigin, _downDir, mouselook: false);
+        if (_down) Release(region, origin, dir);
+        _g = Gesture.None;
     }
 
     static bool OnPlane(Vector3 from, Vector3 dir, (Vector3 Pos, Quaternion Rot, Vector2 Size) pl)
@@ -269,14 +354,17 @@ public sealed class DirectTouch
     OverlayScene? Cue(OverlayScene? scene, Vector3 origin, Vector3 dir, PickHit? hit, DirectAct act, float trigger, bool quiet)
     {
         bool holding = _grab != null;
-        if (quiet || (act == DirectAct.None && !holding)) return scene;
+        var fill = Filling;
+        if (quiet || (act == DirectAct.None && !holding && fill == null)) return scene;
         float d = hit?.Distance ?? 3;
         var end = origin + dir * d;
         var beams = new List<OverlayBeam>(scene?.Beams ?? []);
         var dots = new List<OverlayDot>(scene?.Dots ?? []);
-        float r = Math.Clamp(0.006f * d, 0.008f, 0.18f);
+        float r = PointerDot.Radius(d, 0.006f);
         if (act == DirectAct.Touch || holding) dots.Add(new OverlayDot(end, holding ? r * 1.35f : r, Ink));
         else if (act == DirectAct.Sit) Ring(beams, end, origin, r * 1.7f, r * 0.35f);
+        // a still hold on its way to the card: the page's ring (it opens when the ring closes)
+        if (fill is { } f) Sojourn.Client.Media.MediaInput.Fill(beams, end, origin, r * 2.6f, f);
         return (scene ?? new OverlayScene()) with { Beams = beams, Dots = dots };
     }
 
@@ -318,7 +406,7 @@ public sealed class DirectTouch
         if (hit is not { } h || (act == DirectAct.None && _grab == null)) return scene;
         var dots = new List<OverlayDot>(scene?.Dots ?? []);
         var beams = new List<OverlayBeam>(scene?.Beams ?? []);
-        float r = Math.Clamp(0.009f * h.Distance, 0.01f, 0.3f);
+        float r = PointerDot.Radius(h.Distance, 0.009f);
         if (act == DirectAct.Sit) Ring(beams, h.Point, origin, r * 1.6f, r * 0.3f);
         else dots.Add(new OverlayDot(h.Point, _grab != null ? r * 1.35f : r, Ink));
         return (scene ?? new OverlayScene()) with { Beams = beams, Dots = dots };

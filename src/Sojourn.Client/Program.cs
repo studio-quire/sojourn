@@ -186,6 +186,12 @@ if (opt.Login)
             var again = DeviceLoss.Relaunch(args, null);
             again.Environment[DeviceLoss.AfterVar] = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
             System.Diagnostics.Process.Start(again);
+            if (headset != null) DeviceLoss.LetGo(() =>
+            {
+                try { pipe.Drain(); } catch (Exception) { }
+                headset?.LetGo();
+                xr?.Dispose();
+            }, log);
             return DeviceLoss.ExitCode;
         }
     }
@@ -309,6 +315,11 @@ var hudView = new Sojourn.Client.Hud.HudView(session, renderer, direct);
 var hudBoard = new Sojourn.Client.Hud.HudBoard(hudView, () => assistant.Panel.Look, m => log.LogInformation("{Msg}", m));
 // the map board and the location line at the wrist, SojournMap (Map/MapWiring.cs, docs/map.md)
 var map = Sojourn.Client.Map.MapWiring.Start(session, () => assistant.Panel.LookFor(InkSheet.Cards), vrSettingsPath, log);
+// a thing's card: what can be done with it, from a still hold of the pointer's trigger on it or a right click (Things/ThingCard.cs)
+var things = new Sojourn.Client.Things.ThingCard(session, assistant, () => assistant.Panel.LookFor(InkSheet.Cards), m => log.LogInformation("{Msg}", m));
+direct.LongPress = (hit, _, _) => things.Show(hit, vrPilot.Region, direct.Classify(hit) == DirectAct.Touch);
+direct.Holding = things.Prefetch;
+(long At, Vector2 Px, PickHit? Hit, ulong Region)? deskRightDown = null;   // a right click in the world opens the card
 session.Api.Register(new Sojourn.Session.Control.AvatarsApi(session, renderer.AvatarLimits));
 // the sky in use and the person's own, parcel lines, the interest list (Control/EnvironmentWiring.cs)
 var environment = Sojourn.Client.Control.EnvironmentWiring.Start(session, renderer, vrSettings,
@@ -364,6 +375,7 @@ chat.SetModel = name =>
 // the person's own screen reader (Access/; shared part in Sojourn.Core/Access): what arrives read out through it, keys for what waits
 sessionHost.StartScreenReader(window.Native?.Win32?.Hwnd ?? 0, () => headset != null, Sojourn.Client.Access.ReaderKeys.KeyName);
 var screenReader = sessionHost.ScreenReader;
+screenReader.Actions.ConfirmListKey = "Control R reads the whole list.";   // (ReaderActions.Repeat)
 var readerKeys = new Sojourn.Client.Access.ReaderKeys(screenReader.Announcer, screenReader.Actions);
 
 // --- input ------------------------------------------------------------------------------------------------------
@@ -377,8 +389,9 @@ bool deskOnPanel = false, deskOnFeed = false;
 // and a hand on the mouse (RealInput): the assistant can run programs here, and a posted click mustn't touch for it
 // the settings menu open and in sight (open, it stays open while the interface is hidden)
 bool MenuShown() => settingsMenu.Open && !settingsMenu.Hidden;
-bool DeskWorldClick() => !MenuShown() && !assistant.Confirmations.Pending && !deskOnPanel && !deskOnFeed && panelKeyUnderMouse < 0 && showing.Shown.HoverClose == null
-    && !privateUi.DesktopOver && !map.DesktopOver(DeskPx()) && RealInput.LeftButton();
+bool DeskWorldClick() => DeskInWorld() && RealInput.LeftButton();
+bool DeskInWorld() => !MenuShown() && !assistant.Confirmations.Pending && !deskOnPanel && !deskOnFeed && panelKeyUnderMouse < 0 && showing.Shown.HoverClose == null
+    && !privateUi.DesktopOver && !map.DesktopOver(DeskPx()) && !things.DesktopOver(DeskPx());
 Vector2 mouseAt = mouse?.Position ?? default;
 // the mouse in the eye image's pixels (the desktop overlay's), from the window's
 Vector2 DeskPx() => window.Size.X > 0 && window.Size.Y > 0 ? mouseAt * new Vector2((float)window.FramebufferSize.X / window.Size.X, (float)window.FramebufferSize.Y / window.Size.Y) : mouseAt;
@@ -392,12 +405,14 @@ void SetSteering(bool on)
     if (mouse != null) lastMouse = mouse.Position;
 }
 bool escHeld = false;
+bool vrTalkGrip = false;   // the headset's right grip is down (HeadsetAssistant), so T's release or focus doesn't end its talk
 // Esc on the desktop, once typing (to the assistant or in a page), the screen reader's keys and a dictated draft have
 // had theirs: the mouse comes free, and what waits or is open goes, one a press, the nearest first; only when nothing
 // takes it does the settings menu open. With the interface hidden (Tab), it comes back with the menu open.
 void DeskEscape()
 {
     SetSteering(false);
+    if (reader.Reader.Lists(assistant.Panel.Read(p => p.Confirm))) { reader.Reader.Close(); return; }   // its list, then it
     if (assistant.Confirmations.Pending) { assistant.DeclineConfirm(); return; }
     if (!settingsMenu.Hidden)
     {
@@ -413,7 +428,7 @@ void DeskEscape()
 if (kb != null)
 {
     kb.KeyChar += (_, ch) => { if (login.TakesKeys) { login.Char(ch); return; } if (assistant.Typing) assistant.Type(ch); else if (headset == null) media?.Char(ch); };
-    kb.KeyUp += (_, key, _) => { if (key == Key.Escape) escHeld = false; readerKeys.KeyUp(key); privateUi.KeyUp(key); if (headset == null && media?.Key(key, false, kb) == true) return; if (key == Key.T) assistant.TalkUp(); };
+    kb.KeyUp += (_, key, _) => { if (key == Key.Escape) escHeld = false; readerKeys.KeyUp(key); privateUi.KeyUp(key); if (headset == null && media?.Key(key, false, kb) == true) return; if (key == Key.T && !vrTalkGrip) assistant.TalkRelease(); };
     kb.KeyDown += (_, key, _) =>
     {
         // Esc does one thing a press: a held one's repeats don't go on to the next layer (DeskEscape)
@@ -446,7 +461,7 @@ if (kb != null)
             case Key.T when (kb.IsKeyPressed(Key.ControlLeft) || kb.IsKeyPressed(Key.ControlRight)) && (kb.IsKeyPressed(Key.AltLeft) || kb.IsKeyPressed(Key.AltRight)):
                 beacons.ToggleTransparent();
                 return;
-            case Key.T: if (!session.Private.On || Sojourn.Session.Private.RealKeys.Down(0x54)) assistant.TalkDown(); return;
+            case Key.T: if (!session.Private.On || Sojourn.Session.Private.RealKeys.Down(0x54)) assistant.TalkPress(); return;
             case Key.Tab: settingsMenu.ToggleHidden(); return;
             // the viewer's Snapshot to Disk
             case Key.GraveAccent when kb.IsKeyPressed(Key.ControlLeft) || kb.IsKeyPressed(Key.ControlRight):
@@ -490,6 +505,10 @@ if (mouse != null)
     mouse.MouseDown += (_, b) =>
     {
         if (headset == null && b == MouseButton.Left && login.Active) { login.MouseDown(RealInput.LeftButton()); return; }
+        // a thing's card first: a click on it is its, one elsewhere puts it away and goes on
+        if (headset == null && b == MouseButton.Left && RealInput.LeftButton() && things.DesktopDown(DeskPx())) return;
+        if (headset == null && b == MouseButton.Right && DeskInWorld())
+            deskRightDown = (Environment.TickCount64, mouse.Position, assistant.Pointer.CurrentHit, assistant.Pointer.Ray.Region);
         if (headset == null && b == MouseButton.Left && !MenuShown() && !assistant.Confirmations.Pending && RealInput.LeftButton() && map.DesktopDown(DeskPx())) return;   // the location line, the map board (a hand on the mouse)
         if (headset == null) privateUi.MouseDown(b);
         if (headset == null && b == MouseButton.Right && pilot.Mode == CameraMode.ThirdPerson) SetSteering(true);
@@ -506,6 +525,12 @@ if (mouse != null)
     {
         if (headset == null && b == MouseButton.Left && login.Active) { login.MouseUp(); return; }
         if (b == MouseButton.Right && pilot.Mode == CameraMode.ThirdPerson) SetSteering(false);
+        // a right click (not a drag that steers) on a thing: its card at the click, as the viewer's right click
+        if (headset == null && b == MouseButton.Right && deskRightDown is { } rd && Environment.TickCount64 - rd.At < 400
+            && Vector2.Distance(rd.Px, mouse.Position) < 6 && rd.Hit is { Kind: PickKind.Object } rh && DeskInWorld())
+            things.DesktopShow(rh, rd.Region, direct.Classify(rh) == DirectAct.Touch, DeskPx());
+        if (b == MouseButton.Right) deskRightDown = null;
+        if (headset == null && b == MouseButton.Left) things.DesktopUp(DeskPx());
         if (headset == null && b == MouseButton.Left)
         {
             if (MenuShown()) settingsMenu.PressUp(panelKeyUnderMouse); else { reader.DeskUp(); assistant.PressUp(panelKeyUnderMouse); showing.PressUp(); social.PressUp(); }
@@ -520,9 +545,9 @@ if (mouse != null)
         else if (headset != null || media?.Wheel(w.Y) != true) pilot.Zoom(w.Y);
     };
     // the pointer follows the cursor as the window hears of it (messages, not a poll of the system cursor)
-    mouse.MouseMove += (_, p) => { mouseAt = p; if (headset == null) map.DesktopMove(DeskPx()); };
+    mouse.MouseMove += (_, p) => { mouseAt = p; if (headset == null) { map.DesktopMove(DeskPx()); things.DesktopMove(DeskPx()); } };
 }
-window.FocusChanged += f => { focused = f; if (!f) { pilot.Release(); SetSteering(false); assistant.TalkUp(); } };
+window.FocusChanged += f => { focused = f; if (!f) { pilot.Release(); SetSteering(false); if (!vrTalkGrip) assistant.TalkLost(); } };
 voiceWiring?.Bind(kb, mouse);
 window.FocusChanged += f => { if (!f) voiceWiring?.Release(); };
 window.FocusChanged += readerKeys.Focused;   // a key held when the window comes to the front doesn't answer (Access/ReaderKeys.cs)
@@ -678,10 +703,30 @@ long renderedAt = 0;   // the render thread's last desktop frame (Stopwatch tick
 var rendered = new System.Collections.Concurrent.ConcurrentQueue<(FrameStats Stats, double At, double Dt, double Before, double After, double Waited, double WakeLead)>();
 var quitAt = opt.Minutes is { } min ? TimeSpan.FromMinutes(min) : (TimeSpan?)null;
 // the frame loop (not indented under the try: other sessions edit it); a lost GPU ends it and DeviceLoss starts
-// Sojourn again where the person was
+// Sojourn again where the person was: from here, or from DeviceLoss's watch when the loop is held where a failure
+// can't reach it (inside Meta's xrWaitFrame after a driver reset)
+Task<int> RestartAfterLoss(Exception e) => DeviceLoss.Restart(e, log, opt, args, session, async () =>
+{
+    sidecar?.Dispose();
+    DevMode.Withdraw(devFile);
+    media?.Dispose();
+    worldAudio?.Dispose();
+    voiceWiring?.Voice.Dispose();
+    MetaAsw.End();
+    if (bridge != null) await bridge.DisposeAsync();   // its port is the next run's
+}, letGo: headset == null ? null : () =>
+{
+    // the headset's session ends before this process does, so the next run's isn't taken out with it (DeviceLoss.cs)
+    try { pipe.Drain(TimeSpan.FromSeconds(1)); } catch (Exception) { }   // (a held render thread isn't waited for)
+    try { renderer.WaitIdle(); } catch (Exception) { }
+    headset?.LetGo();
+    xr?.Dispose();
+});
+DeviceLoss.Guard(pipe, RestartAfterLoss, log);
 try {
 while (!window.IsClosing && !chat.QuitRequested && !(bench?.Done ?? false) && !login.Leaving)
 {
+    DeviceLoss.Beat();   // the loop turns (DeviceLoss's watch)
     pipe.TakeWorld();   // the last frame's scene is built: the world is this thread's until the next post
     TakeRendered();
     long loopStart = Stopwatch.GetTimestamp();
@@ -721,6 +766,7 @@ while (!window.IsClosing && !chat.QuitRequested && !(bench?.Done ?? false) && !l
             presenter.Blank = false;   // the window is the view now
             continue;
         }
+        DeviceLoss.Watch(headset.State);   // a run restarted after a loss, kept out of view: once more (DeviceLoss.cs)
         if (!headset.Running)
         {
             pipe.Post(renderer.Tick);
@@ -793,7 +839,8 @@ while (!window.IsClosing && !chat.QuitRequested && !(bench?.Done ?? false) && !l
         req = req with { ShowNames = social.NamesOn || showing.Shown.WantsHeads || gaze.WantsHeads, Overlay = social.Desktop(req.Overlay, renderer, scam, fov, ew, eh, Math.Clamp(eh / 820f, 0.8f, 1.6f),
             assistant.Pointer.Current, confirming, (float)dt) };
         req = req with { Overlay = showing.Desktop(req.Overlay, scam, fov, ew, eh, Math.Clamp(eh / 820f, 0.8f, 1.6f), renderer.Heads, social.NamesOn, confirming) };
-        req = req with { Overlay = map.Desktop(req.Overlay, Math.Clamp(eh / 820f, 0.8f, 1.6f), confirming) };
+        req = req with { Overlay = map.Desktop(req.Overlay, Math.Clamp(eh / 820f, 0.8f, 1.6f), confirming,
+            things.Desktop(Math.Clamp(eh / 820f, 0.8f, 1.6f), ew, eh, confirming, cut: false)) };
     }
     if (pose is { } vcam && !deskHidden) req = req with { Overlay = voiceWiring?.Decorate(req.Overlay, vcam.Region, vcam.Position, vcam.Forward, null, fov, eh) ?? req.Overlay };
     // (incognito's token, media's cues and the world touch's cue still follow the mouse while hidden, drawing nothing)
@@ -852,17 +899,9 @@ while (!window.IsClosing && !chat.QuitRequested && !(bench?.Done ?? false) && !l
 }
 } catch (Exception e) when (DeviceLoss.Is(e))
 {
-    return await DeviceLoss.Restart(e, log, opt, args, session, async () =>
-    {
-        sidecar?.Dispose();
-        DevMode.Withdraw(devFile);
-        media?.Dispose();
-        worldAudio?.Dispose();
-        voiceWiring?.Voice.Dispose();
-        MetaAsw.End();
-        if (bridge != null) await bridge.DisposeAsync();   // its port is the next run's
-    });
+    return await RestartAfterLoss(e);
 }
+DeviceLoss.Unguard();
 
 // --- shutdown -----------------------------------------------------------------------------------------------------
 // The person is out at once: the render thread drained, the headset's session ends and the window goes, then the slow
@@ -966,7 +1005,10 @@ void HeadsetFrame(XrSession hs, MirrorTarget target)
     privateUi.HeadsetFrame(xf.Input, vrPilot, uiBlocked, hs.Focused);
     bell.Frame(xf.Input, vrPilot, uiBlocked, hs.Focused);
     shutter.Frame(xf.Input, vrPilot, (xf.Eyes[0].Position + xf.Eyes[1].Position) * 0.5f, xf.Eyes[0].Orientation, uiBlocked, hs.Focused);
-    reader.Headset(xf.Input, (xf.Eyes[0].Position + xf.Eyes[1].Position) * 0.5f, xf.Eyes[0].Orientation, vrPanelPlane, assistant.Confirmations.Pending || uiHidden, hs.Focused, hs, (float)dt);
+    // (a confirmation's own list shows above it, whatever else is hidden)
+    reader.Headset(xf.Input, (xf.Eyes[0].Position + xf.Eyes[1].Position) * 0.5f, xf.Eyes[0].Orientation, vrPanelPlane,
+        !reader.Reader.Lists(assistant.Panel.Read(p => p.Confirm)) && (assistant.Confirmations.Pending || uiHidden), hs.Focused, hs, (float)dt);
+    things.Headset(boardInput, vrPilot, (xf.Eyes[0].Position + xf.Eyes[1].Position) * 0.5f, vrPanelPlane, hands.On, assistant.Confirmations.Pending || uiHidden, hs.Focused, hs.ViewCut);
     var overlay = HeadsetAssistant(hs, xf, (float)dt);
     // the world's own touch and sit: the pointer's hand, while it points out there freely (HeadsetAssistant decides)
     var worldInput = hands.World(xf.Input, vrWorldHand);
@@ -976,7 +1018,7 @@ void HeadsetFrame(XrSession hs, MirrorTarget target)
     overlay = direct.Headset(overlay, worldInput, vrPilot, vrPanelPlane, uiBlocked || leftOnMedia || vrPilot.Aiming || shutter.Framing, hs.Focused);
     // (hidden, the pointer isn't live, so the trigger is the shot's even with the pointer on; the crosshair isn't drawn)
     bool aimFree = !hudBlocked && !(assistant.PointAsked && !uiHidden) && (vrWorldHand || !hands.On || uiHidden) && !leftOnMedia
-        && !(hudBoard.RightOnBoard || map.RightOn || media?.RightOnBoard == true || standKey.RightOn || bell.RightOn || reader.RightOn || privateUi.RightOn || shutter.RightOn);
+        && !(hudBoard.RightOnBoard || map.RightOn || media?.RightOnBoard == true || standKey.RightOn || bell.RightOn || reader.RightOn || privateUi.RightOn || shutter.RightOn || things.RightOn);
     shutter.Shoot(xf.Input, aimFree, hs.Focused);
     var aimed = safety.Aim?.Headset(overlay, xf.Input, vrPilot, aimFree && !shutter.Framing, hs.Focused) ?? overlay;
     if (!uiHidden) overlay = aimed;
@@ -990,6 +1032,7 @@ void HeadsetFrame(XrSession hs, MirrorTarget target)
         overlay = bell.Decorate(overlay, vrPilot, () => assistant.Panel.Look);
         overlay = shutter.Decorate(overlay, vrPilot, (xf.Eyes[0].Position + xf.Eyes[1].Position) * 0.5f, xf.Eyes[0].Orientation, assistant.Panel.Look);
         overlay = reader.Decorate(overlay, vrPilot.RoomToRegion, panelInEyes);
+        overlay = things.Decorate(overlay, vrPilot.RoomToRegion);
     }
     // (pointing to teleport keeps its arc while hidden: it shows only while the left trigger is held for it, and a
     // teleport needs its spot seen)
@@ -1039,7 +1082,7 @@ void HeadsetFrame(XrSession hs, MirrorTarget target)
             req = req with { Overlay = showing.Headset(req.Overlay, sview, headAt, xf.Eyes[0].Orientation, panelRest, vrPilot.RoomToRegion, hs, grip,
                 renderer.Heads, social.NamesOn, confirming, panelInEyes, (float)dt) };
             // (with the camera's picture just taken, a few seconds over the panel it was taken through: Control/ShutterReview.cs)
-            req = req with { Overlay = map.HeadsetScene(req.Overlay, hs, vrPilot.RoomToRegion, panelInEyes, shutter.Review.Layer(headAt, confirming)) };
+            req = req with { Overlay = map.HeadsetScene(req.Overlay, hs, vrPilot.RoomToRegion, panelInEyes, shutter.Review.Layer(headAt, confirming), things.Layer()) };
         }
         if (view is { } vview && !uiHidden) req = req with { Overlay = voiceWiring?.Decorate(req.Overlay, vview.Region, vview.Position, vview.Forward, vrPilot.Watch(xf.Input)) ?? req.Overlay };
         if (handsCheck != null && view is { } hv && handsCheck.Frame(hv, xf.Input, vrPilot, now) is { } hc)
@@ -1169,8 +1212,10 @@ OverlayScene? DesktopAssistant(CameraPose? pose, int ew, int eh)
     var panel = assistant.Frame(scale);
     if (assistant.Panel.Read(p => p.Confirm != null)) settingsMenu.Close();
     bool menu = MenuShown();
-    // the reader, while it's open, in the panel's place (a confirmation takes it back; hidden with the interface)
-    var readerShown = !menu && !settingsMenu.Hidden && !assistant.Panel.Read(p => p.Confirm != null) ? reader.DeskFrame(scale) : null;
+    // the reader, while it's open, in the panel's place (a confirmation takes it back, but for its own list; hidden with
+    // the interface)
+    var confirmWaits = assistant.Panel.Read(p => p.Confirm);
+    var readerShown = reader.Reader.Lists(confirmWaits) || !menu && !settingsMenu.Hidden && confirmWaits == null ? reader.DeskFrame(scale) : null;
     var shown = menu ? settingsMenu.Frame(scale, (eh - 48) / scale) : readerShown ?? panel;
     panelKeyUnderMouse = -1;
     if (pose is not { } cam || mouse == null || window.Size.X <= 0 || window.Size.Y <= 0) { assistant.Pointer.Clear(); return null; }
@@ -1254,8 +1299,13 @@ OverlayScene? HeadsetAssistant(XrSession hs, XrFrame xf, float dt)
     if ((!hands.On || uiHidden) && vrPilot.Region != 0)
         assistant.Pointer.Look(renderer, vrPilot.Region, vrPilot.RoomToRegion((xf.Eyes[0].Position + xf.Eyes[1].Position) * 0.5f),
             vrPilot.RoomDirToRegion(System.Numerics.Vector3.Transform(-System.Numerics.Vector3.UnitZ, xf.Eyes[0].Orientation)));
-    if (input.RightGrip > 0.6f) assistant.TalkDown();
-    else if (input.RightGrip < 0.35f && assistant.Talking && !(kb?.IsKeyPressed(Key.T) ?? false)) assistant.TalkUp();
+    // the right grip: held, push-to-talk; a quick tap leaves the mic open until the next tap (AssistantHost.TalkPress).
+    // Out of the person's sight (the headset off, the system menu) a latched mic sends what it has, as a hold would.
+    bool talkGrip = input.RightGrip > 0.6f || (vrTalkGrip && input.RightGrip >= 0.35f);
+    if (talkGrip && !vrTalkGrip) assistant.TalkPress();
+    else if (!talkGrip && vrTalkGrip && !(kb?.IsKeyPressed(Key.T) ?? false)) assistant.TalkRelease();
+    vrTalkGrip = talkGrip;
+    if (!hs.Focused && assistant.Latched) assistant.TalkUp();
 
     // at the person's size (UiSize): the same raster pixels a degree, and as many more lines a page as it's smaller
     assistant.Panel.Fit = UiSize.Fit;
@@ -1363,7 +1413,7 @@ OverlayScene? HeadsetAssistant(XrSession hs, XrFrame xf, float dt)
     // then the cards shown with the person in view: the ray stops at them (a drag on one puts it somewhere)
     float cardT = float.MaxValue;
     if (!menu && !confirming && showing.CardRay(aimP, dirXr) is { } ct && ct < panelT && ct < feedT) { cardT = ct; panelT = feedT = float.MaxValue; key = -1; }
-    bool onBoard = hudBoard.RightOnBoard || map.RightOn || media?.RightOnBoard == true || standKey.RightOn || bell.RightOn || reader.RightOn || privateUi.RightOn || shutter.RightOn;
+    bool onBoard = hudBoard.RightOnBoard || map.RightOn || media?.RightOnBoard == true || standKey.RightOn || bell.RightOn || reader.RightOn || privateUi.RightOn || shutter.RightOn || things.RightOn;
     if (onBoard) { panelT = feedT = cardT = float.MaxValue; key = -1; }   // the HUD board (or its token) or the page board has the ray
     vrRayOnPanel = panelT < float.MaxValue;
     bool onFeed = feedT < float.MaxValue, onCard = cardT < float.MaxValue;
@@ -1434,7 +1484,7 @@ OverlayScene? HeadsetAssistant(XrSession hs, XrFrame xf, float dt)
     // dragging: a faint outline of its resting place, brighter when dropping it there would make it follow again
     beams.AddRange(place.Outline(vrPilot.RoomToRegion));
     var dots = target is { } hit
-        ? new[] { new OverlayDot(end, Math.Clamp(0.008f * hit.Distance, 0.012f, 0.25f), new System.Numerics.Vector4(0.95f, 0.97f, 0.98f, 0.9f)) }   // white, as the boards' (the user: yellow looked odd)
+        ? new[] { new OverlayDot(end, Sojourn.Client.Control.PointerDot.Radius(hit.Distance, 0.008f), new System.Numerics.Vector4(0.95f, 0.97f, 0.98f, 0.9f)) }   // white, as the boards' (the user: yellow looked odd)
         : vrRayOnPanel || onFeed || onCard   // on a menu: a small dot where it lands (held with the beam, over the sheet)
             ? new[] { new OverlayDot(end, Math.Clamp(0.006f * (vrRayOnPanel ? panelT : onFeed ? feedT : cardT), 0.006f, 0.02f), PanelLook.InUse.Light(0.9f)) }
             : Array.Empty<OverlayDot>();

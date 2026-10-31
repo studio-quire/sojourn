@@ -7,11 +7,12 @@
   "workers_dev": false,
   "preview_urls": false,
   "routes": [{ "pattern": "relay.studioquire.org", "custom_domain": true }],
-  "durable_objects": { "bindings": [{ "name": "METER", "class_name": "Meter" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Meter"] }],
+  "durable_objects": { "bindings": [{ "name": "METER", "class_name": "Meter" }, { "name": "LOGBOOK", "class_name": "Logbook" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Meter"] }, { "tag": "v2", "new_sqlite_classes": ["Logbook"] }],
   // nothing about requests kept beyond Cloudflare's own request counts: no Workers Logs, no traces, no logpush
   "observability": { "enabled": false },
   "logpush": false
   // secrets (wrangler secret put, by tools/relay.py): ANTHROPIC_KEY, the studio's key for its "Sojourn relay"
-  // workspace; TOKENS, {"<sha-256 of a token, hex>": {"name": "...", "cap": <dollars a month>}}
+  // workspace; TOKENS, {"<sha-256 of a token, hex>": {"name": "...", "cap": <dollars a month>}}; ADMIN, the sha-256 (hex)
+  // of the studio's admin secret, for reading the logs testers send (tools/relay.py logs)
 }

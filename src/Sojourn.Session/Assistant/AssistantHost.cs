@@ -37,7 +37,7 @@ public sealed class AssistantHost
     public bool Typing => Panel.Read(s => s.Typing != null);
 
     public string PointHow => InHeadset ? "Point, then pull the trigger" : "Click on it";
-    public string Hint => InHeadset ? "hold the right grip and speak" : "hold T and speak, Enter to type · Esc: settings";
+    public string Hint => InHeadset ? "hold or tap the right grip and speak" : "speak: hold or tap T · Enter: type · Esc: settings";
 
     public AssistantHost(AgentSession session, bool uploadsCost)
     {
@@ -52,8 +52,8 @@ public sealed class AssistantHost
     Func<bool>? _sidecarRunning;
     double _sidecarStartedAt;
 
-    /// <summary>The sidecar was launched: until its first hello (it loads hearing first, ~20 s) it's starting, not
-    /// missing, while its process lives and for up to two minutes.</summary>
+    /// <summary>The sidecar was launched: until its first hello (a few seconds) it's starting, not missing, while its
+    /// process lives and for up to two minutes.</summary>
     public void SidecarLaunched(Func<bool> running)
     {
         _sidecarStartedAt = _clock.Elapsed.TotalSeconds;
@@ -64,6 +64,15 @@ public sealed class AssistantHost
 
     // a request made while it starts is kept in the event log and reaches it once it's ready
     const string Starting = "The assistant is starting… it will answer once it's ready.";
+    // ...and words said while its hearing loads (a few seconds after it starts) are kept by the client's mic
+    // (Voice/AssistantMic.cs) and heard once it's ready
+    const string HearingStarts = "Hearing is starting… what you said is heard once it's ready.";
+
+    bool _hearingReady;
+
+    /// <summary>A press now would wait for hearing: the sidecar is starting, or up with a mic and still loading its
+    /// recogniser (its hello says).</summary>
+    bool HearingStarting => SidecarAlive ? _mic != null && !_hearingReady : SidecarStarting;
 
     /// <summary>Dev mode (docs/dev-mode.md): the sidecar's secret, handed to it at start, which it shows to pass on what
     /// the person said (SojournAssistant dev); null outside dev mode.</summary>
@@ -210,16 +219,19 @@ public sealed class AssistantHost
 
     /// <summary>The sidecar checked in (its mic, or why there's none; its provider's state). A notice brings the panel
     /// up once, when it's new (no mic, no provider that works, a key refused).</summary>
-    public void SidecarHello(string? mic, string? notice, JsonObject? provider = null)
+    public void SidecarHello(string? mic, string? notice, JsonObject? provider = null, bool hearingReady = true)
     {
         _lastHello = _clock.Elapsed.TotalSeconds;
         _mic = mic;
+        _hearingReady = hearingReady;
         bool fresh = notice != null && notice != _shownNotice;
         _shownNotice = notice;
         Panel.Update(p =>
         {
             p.Notice = notice;
             if (p.Status == Starting) p.Status = null;
+            if (hearingReady && p.Status == HearingStarts) p.Status = null;
+            if (hearingReady) p.HearingStarting = false;
         }, show: fresh);
         if (provider != null && provider.ToJsonString() != ProviderStatus?.ToJsonString())
         {
@@ -319,7 +331,8 @@ public sealed class AssistantHost
         if (Talking) return;
         Talking = true;
         _talkTarget = TargetJson();
-        Panel.Update(p => { p.Listening = true; p.Hint = Hint; });
+        bool starting = HearingStarting;
+        Panel.Update(p => { p.Listening = true; p.Hint = Hint; p.HearingStarting = starting; });
         Send(new JsonObject { ["what"] = "talk_down", ["target"] = _talkTarget?.DeepClone() });
     }
 
@@ -329,7 +342,8 @@ public sealed class AssistantHost
     {
         if (!Talking) return;
         Talking = false;
-        Panel.Update(p => p.Listening = false, show: false, news: false);
+        Unlatch();
+        Panel.Update(p => { p.Listening = false; p.HearingStarting = false; }, show: false, news: false);
     }
 
     /// <summary>A dictated draft's key (Panel.DraftKey), and whether a hand pressed it (not a posted click).</summary>
@@ -339,16 +353,88 @@ public sealed class AssistantHost
     {
         if (!Talking) return;
         Talking = false;
+        Unlatch();
         var target = TargetJson() ?? _talkTarget?.DeepClone();
-        bool alive = SidecarAlive, starting = !alive && SidecarStarting;
+        bool alive = SidecarAlive, starting = !alive && SidecarStarting, hearingStarts = HearingStarting;
         Panel.Update(p =>
         {
             p.Listening = false;
-            p.Hearing = alive && _mic != null;
-            if (starting) p.Status = Starting;
+            p.HearingStarting = false;
+            p.Hearing = (alive && _mic != null) || hearingStarts;   // held for hearing to load, then heard
+            if (hearingStarts) p.Status = HearingStarts;
+            else if (starting) p.Status = Starting;
             else if (!alive) p.Notice = "The assistant isn't running (python tools/assistant.py check).";
         });
         Send(new JsonObject { ["what"] = "talk_up", ["target"] = target, ["first_target"] = _talkTarget?.DeepClone() });
+    }
+
+    // --- the talk button: held, push-to-talk; tapped, the mic stays open until the next tap ------------------------
+    // The user's ask (2026-10-31): a quick tap of the right grip (T on the desktop) to talk hands-free. The mic opens on
+    // every press, as a hold always did; only a release within TapSeconds leaves it open (latched). The next press
+    // unlatches it and its release sends, so a tap ends it and a hold just carries on until let go.
+
+    public const double TapSeconds = 0.3;
+    double _pressedAt;
+    bool _latched, _ending;
+
+    /// <summary>The mic is open with no button held: tapped open, waiting for the tap that sends.</summary>
+    public bool Latched => _latched;
+
+    /// <summary>The talk button went down.</summary>
+    public void TalkPress()
+    {
+        if (_latched)
+        {
+            _latched = false;
+            _ending = true;
+            Panel.Update(p => p.Latched = false, show: false, news: false);
+            return;
+        }
+        if (Talking) return;
+        _pressedAt = _clock.Elapsed.TotalSeconds;
+        _ending = false;
+        TalkDown();
+    }
+
+    /// <summary>The talk button came up: a quick tap that opened the mic leaves it open; anything else sends.</summary>
+    public void TalkRelease()
+    {
+        if (!Talking || _latched) { _ending = false; return; }
+        if (!_ending && _clock.Elapsed.TotalSeconds - _pressedAt < TapSeconds)
+        {
+            _latched = true;
+            Panel.Update(p => p.Latched = true, show: false, news: false);
+            return;
+        }
+        TalkUp();
+    }
+
+    /// <summary>The talk button's state was lost (the window lost focus, so its release won't come): a hold sends, a
+    /// latched mic stays open.</summary>
+    public void TalkLost()
+    {
+        if (!_latched) TalkUp();
+    }
+
+    /// <summary>Another use of the mic takes over (dictation): a latched talk goes as heard so far, since it holds a
+    /// request, cut off where dictation's own words begin (the gate stays open across the switch); one just begun by a
+    /// press is dropped unheard, as both grips together always did (the sidecar hears it all as the dictation).</summary>
+    public void YieldTalk()
+    {
+        if (_latched || _ending) { TalkUp(); CutMic?.Invoke(true); }
+        else DropTalk();
+    }
+
+    /// <summary>Ends the assistant mic's utterance in this frame, the gate staying open if true (Voice/AssistantMic.Cut;
+    /// set by VoiceWiring).</summary>
+    public Action<bool>? CutMic { get; set; }
+
+    void Unlatch()
+    {
+        _ending = false;
+        if (!_latched) return;
+        _latched = false;
+        Panel.Update(p => p.Latched = false, show: false, news: false);
     }
 
     // --- typing (desktop, or the mirror window's keyboard; in the headset, its keyboard) --------------------------------
@@ -358,6 +444,9 @@ public sealed class AssistantHost
 
     /// <summary>The panel's stack key: the session's replies, in the reader.</summary>
     public event Action? RepliesRequested;
+
+    /// <summary>A confirmation's list key: all it names, in the reader (it answers nothing; the confirmation waits on).</summary>
+    public event Action<PendingConfirm>? ListRequested;
 
     /// <summary>The session's replies as the reader holds them.</summary>
     public ReaderDoc RepliesDoc() =>
@@ -489,6 +578,9 @@ public sealed class AssistantHost
             case KeyKind.Replies:
                 RepliesRequested?.Invoke();
                 break;
+            case KeyKind.List:
+                if (r.Confirm is { } lc && lc == d.Confirm) ListRequested?.Invoke(lc);
+                break;
             case KeyKind.Draft when r.Confirm is null:
                 DraftPressed?.Invoke(k.Index, d.Real);
                 break;
@@ -546,7 +638,7 @@ public sealed class AssistantHost
     public (OverlayImage Image, Panel.Raster Raster)? Frame(float scale)
     {
         while (_onMain.TryDequeue(out var a)) a();
-        var pointing = Pointer.Current?.Label;
+        var pointing = Pointer.Meant?.Label;
         if (pointing != _pointing)
         {
             _pointing = pointing;

@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DOTNET = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
+from buildenv import DOTNET   # noqa: E402  (the .NET SDK wherever it's installed)
 PROJECT = ROOT / "src" / "Sojourn.Client" / "Sojourn.Client.csproj"
 DLL = ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0" / "SojournVR.dll"
 XR_LAYERS = ROOT / "local" / "openxr-sdk" / "x64" / "bin" / "api_layers"

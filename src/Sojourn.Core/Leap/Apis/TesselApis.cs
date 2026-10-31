@@ -204,7 +204,8 @@ public sealed class TesselObjects : SessionApi
 
     public TesselObjects(AgentSession s) : base(s)
     {
-        Op("nearby", "{dist=20, limit=40, fetch=true, timeout=4, attachments=false, query?} -> {objects}", NearbyAsync);
+        Op("nearby", "{dist=20, limit=40, fetch=true, timeout=4, attachments=false, query?, renew? (seconds: scripted objects' names "
+            + "older than this asked again, as a script may have renamed them; 0 all of them)} -> {objects}", NearbyAsync);
         Op("get", "{ids, fetch=true, children=false, full=false, fresh=false (ask again even if known), timeout} -> {objects, missing?}; full adds "
             + "faces: {all: colour, alpha, texture, shiny, glow, fullbright, bump, repeats, tex_offset, tex_rotation, texgen; and each face "
             + "that differs, by number}, shape_asset: {sculpt_map, stitching, invert, mirror} or {mesh}, texture_anim if one runs", GetAsync);
@@ -241,10 +242,26 @@ public sealed class TesselObjects : SessionApi
             .OrderBy(x => x.d)
             .Take(query is null ? limit : Math.Max(limit, 200))
             .ToList();
+        // renew: scripted objects' names older than this many seconds asked again and waited for (a script renames its
+        // object, and the region tells only those who have it selected); 0 renews every scripted one (a list's F5)
+        double? renew = a["renew"] is null ? null : a.Num("renew", 0);
         var timedOut = false;
         if (fetch && cands.Count > 0)
             foreach (var g in cands.GroupBy(x => x.w))
-                timedOut |= !await S.Objects.FetchAsync(g.Key, g.Select(x => x.p).ToList(), timeout, ct, sim: g.Key.Simulators.FirstOrDefault(s => ReferenceEquals(s.Client, C)));
+            {
+                var sim = g.Key.Simulators.FirstOrDefault(s => ReferenceEquals(s.Client, C));
+                var again = new List<Primitive>();
+                if (renew is { } secs)
+                {
+                    var scripted = S.Objects.ScriptedRoots(g.Key);
+                    var before = DateTime.UtcNow - TimeSpan.FromSeconds(secs);
+                    again = g.Where(x => scripted.Contains(x.p.LocalID) && ObjectViews.FetchedAt(g.Key, x.p) is var at && at != DateTime.MinValue && at <= before)
+                        .Select(x => x.p).ToList();
+                }
+                var rest = g.Select(x => x.p).Except(again).ToList();
+                var done = await Task.WhenAll(S.Objects.FetchAsync(g.Key, rest, timeout, ct, sim: sim), S.Objects.RenewAsync(g.Key, again, timeout, ct, sim));
+                timedOut |= !done.All(x => x);
+            }
         var objs = new JsonArray();
         var missing = new JsonArray();
         foreach (var (pw, p, _) in cands)
@@ -303,15 +320,8 @@ public sealed class TesselObjects : SessionApi
             var toFetch = prims.ToList();
             if (children) foreach (var p in prims.Where(p => p.ParentID == 0)) toFetch.AddRange(S.Objects.Linkset(w, p).Skip(1));
             if (full) await S.Objects.FetchFullAsync(w, prims.Select(p => S.Objects.RootOf(w, p)).Distinct().ToList(), timeout, ct);
-            if (a.Bool("fresh", false))
-            {
-                // ask again even if what we have is recent (a script may have just renamed it), and wait for the answer
-                var asked = DateTime.UtcNow;
-                await S.Objects.FetchAsync(w, toFetch, TimeSpan.Zero, ct, force: true);
-                var end = DateTime.UtcNow + timeout;
-                while (DateTime.UtcNow < end && !toFetch.All(p => !w.PropsMeta.TryGetValue(p.ID, out var m) || m.FetchedAt >= asked))
-                    await Task.Delay(100, ct);
-            }
+            // fresh: asked again even if what we have is recent (a script may have just renamed it)
+            if (a.Bool("fresh", false)) await S.Objects.RenewAsync(w, toFetch, timeout, ct);
             else await S.Objects.FetchAsync(w, toFetch, timeout, ct);
         }
     }

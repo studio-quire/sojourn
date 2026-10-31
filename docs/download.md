@@ -13,7 +13,8 @@ with Second Life means agreeing to Linden Lab's Terms of Service and Third Party
 
 ## Builds
 
-- **Sojourn** (the VR viewer): no public builds yet. Build it from this repository (README.md).
+- **Sojourn** (the VR viewer): no public builds yet. Build it from this repository: ask your own Claude to follow
+  BUILDING.md, or see README.md.
 - **Sojourn Access**: early test builds for Windows 10 and 11 (x64), published as releases at
   https://github.com/studio-quire/sojourn-access/releases. Each release names the commit of this repository it was
   built from.
@@ -40,8 +41,10 @@ https://github.com/studio-quire/sojourn-access/issues. Issues are read, but ther
 
 ## Privacy
 
-Studio Quire collects nothing. Neither app has analytics, tracking or crash reports, and neither sends anything to
-Studio Quire.
+Studio Quire collects nothing on its own. Neither app has analytics, tracking or crash reports. The only things that
+reach Studio Quire are ones you choose: requests through the studio relay, if the studio gave you a token for it
+(below), and in Sojourn Access a session's log, if you send one (Help > Send a log; other people's words are left out
+before it leaves your computer).
 
 **Without the assistant**, the apps connect only where any Second Life viewer does:
 - Linden Lab's servers: login, the regions you visit, their asset and texture services, the map, search and voice chat.
@@ -54,18 +57,26 @@ Studio Quire.
 Data stays on your computer: settings, chat and IM logs, caches, and in Sojourn your saved login (protected by Windows
 for your user account; Sojourn Access doesn't save passwords). You delete it by deleting the data folder.
 
-**With the assistant**, what it needs to answer each request is sent to Anthropic, the maker of Claude, under your own
-Claude account and Anthropic's terms and privacy policy: your request (typed, or transcribed from your speech on your
+**With the assistant**, what it needs to answer each request is sent to the AI provider you chose in the launcher (in
+Sojourn Access, Alt+0), under that provider's terms and privacy policy:
+- your own Anthropic API key: to Anthropic, the maker of Claude;
+- your own OpenRouter key: to OpenRouter and the model's provider it routes to. "No data collection" is on by default:
+  OpenRouter then uses only providers that say they don't keep or train on prompts;
+- the studio relay, for people Studio Quire covers: to Anthropic on Studio Quire's key, through Studio Quire's relay,
+  which reads only how much each request cost (to keep to your monthly allowance) and stores nothing of what's said.
+
+What's sent: your request (typed, or transcribed from your speech on your
 own computer), what it looks up to answer (for example names of people and things around you, recent chat when your
 request is about it, pictures of your view when it needs to see), and the notes it keeps about your preferences.
-Anthropic's tools may search the web for it. Other people's chat goes to it only when your request is about that chat;
+Its tools may search the web for it. Other people's chat goes to it only when your request is about that chat;
 the assistant keeps no transcripts, and its notes hold what you tell it, not what others said. In incognito, nothing
 from the spell is kept, and by default the assistant sees only a general picture.
 
 Optional services you choose yourself: cloud speech recognition (Soniox, with your own key) sends your recorded voice
 there while you hold the talk button; it's off unless you turn it on.
 
-Linden Lab may ask a viewer's makers to update or delete data received from Second Life; since we hold none, there is
-nothing to delete on our side.
+Linden Lab may ask a viewer's makers to update or delete data received from Second Life. The only such data we hold is
+in logs people chose to send from Sojourn Access (kept 30 days, other people's words already left out); we delete one
+on request.
 
 This policy describes the current code. If it changes, this page changes with it, in this repository's history.

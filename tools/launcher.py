@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DOTNET = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
+from buildenv import DOTNET   # noqa: E402  (the .NET SDK wherever it's installed)
 PROJECT = ROOT / "src" / "Sojourn.Launcher" / "Sojourn.Launcher.csproj"
 DLL = ROOT / "src" / "Sojourn.Launcher" / "bin" / "Release" / "net10.0-windows" / "Sojourn.dll"
 QUIREUIA = ROOT / "local" / "bin" / "QuireUia" / "QuireUia.exe"

@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using LibreMetaverse;
 using Sojourn.Core;
+using Sojourn.Core.Access;
 
 namespace Sojourn.Access;
 
@@ -186,7 +187,8 @@ public sealed partial class MainForm
                 break;
             default:
                 if (f.GoTo != null && RegionPlace(f.GoTo) is { } p) list.Add(new("&Teleport", () => _ = _cmd.GoToAsync(p)));
-                list.Add(new("&About", () => Answer(f.About.Length > 0 ? f.About : $"Nothing more said about {f.Name}.")));
+                list.Add(new("&About", () => Answer(f.About.Length > 0 ? f.About : $"Nothing more said about {f.Name}.",
+                    f.About.Length > 0 ? LineFrom.People : LineFrom.App)));
                 break;
         }
         return list;
@@ -207,7 +209,8 @@ public sealed partial class MainForm
         var open = r["open_enrollment"]?.GetValue<bool>() == true ? $"anyone may join, {fee}" : "by invitation";
         var mine = r["member"]?.GetValue<bool>() == true ? " You're a member." : "";
         var charter = r.Str("charter") is { Length: > 0 } ch ? $" Charter: {ch.Trim()}" : "";
-        Answer($"{r.Str("name") ?? name}: {(members == 1 ? "1 member" : $"{members} members")}, {open}.{mine}{charter}");
+        Answer($"{r.Str("name") ?? name}: {(members == 1 ? "1 member" : $"{members} members")}, {open}.{mine}{charter}",
+            charter.Length > 0 ? LineFrom.People : LineFrom.App);
     }
 
     async Task JoinGroupAsync(UUID id, string name)

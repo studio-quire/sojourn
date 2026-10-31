@@ -26,6 +26,8 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+import buildenv
+
 ROOT = Path(__file__).resolve().parents[1]
 MEDIA = ROOT / "local" / "media"
 CEF = MEDIA / "cef"
@@ -33,8 +35,6 @@ VLC = MEDIA / "vlc"
 BUILD = MEDIA / "build"
 RUNTIME = MEDIA / "runtime"
 SRC = ROOT / "src" / "Sojourn.Media.Native"
-VS = Path(r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools")
-CMAKE = VS / "Common7" / "IDE" / "CommonExtensions" / "Microsoft" / "CMake" / "CMake" / "bin" / "cmake.exe"
 BELOW_NORMAL = 0x00004000
 
 # Pinned versions: update both the name and the hash together (CEF's index: cef-builds.spotifycdn.com/index.json,
@@ -48,8 +48,10 @@ VLC_SHA256 = "a0b7ec02b50adf6417eed014fb8df50af39690505a4225b85b3dc2ed17d14843"
 def download(url, dest):
     print(f"fetching {url}")
     req = urllib.request.Request(url, headers={"User-Agent": "Sojourn-media-fetch"})
-    with urllib.request.urlopen(req, timeout=60) as r, open(dest, "wb") as f:
+    part = dest.with_name(dest.name + ".part")   # so a broken download is never taken for a whole one
+    with urllib.request.urlopen(req, timeout=60) as r, open(part, "wb") as f:
         shutil.copyfileobj(r, f, 1 << 20)
+    part.replace(dest)
 
 
 def digest(path, algo):
@@ -68,11 +70,14 @@ def fetch():
         if not arc.exists():
             download("https://cef-builds.spotifycdn.com/" + CEF_NAME.replace("+", "%2B") + ".tar.bz2", arc)
         if digest(arc, "sha1") != CEF_SHA1:
-            print("CEF archive's hash doesn't match: not unpacked", file=sys.stderr)
+            arc.unlink()
+            print("CEF archive's hash doesn't match: deleted, not unpacked (fetch again)", file=sys.stderr)
             return 1
         tmp = MEDIA / "cef-x"
+        shutil.rmtree(tmp, ignore_errors=True)   # a broken earlier unpack
         with tarfile.open(arc) as t:
             t.extractall(tmp, filter="data")
+        shutil.rmtree(CEF, ignore_errors=True)   # an incomplete earlier one
         shutil.move(str(tmp / CEF_NAME), str(CEF))
         shutil.rmtree(tmp, ignore_errors=True)
         arc.unlink()
@@ -81,11 +86,14 @@ def fetch():
         if not arc.exists():
             download(f"https://get.videolan.org/vlc/{VLC_VERSION}/win64/vlc-{VLC_VERSION}-win64.zip", arc)
         if digest(arc, "sha256") != VLC_SHA256:
-            print("libVLC archive's hash doesn't match: not unpacked", file=sys.stderr)
+            arc.unlink()
+            print("libVLC archive's hash doesn't match: deleted, not unpacked (fetch again)", file=sys.stderr)
             return 1
         tmp = MEDIA / "vlc-x"
+        shutil.rmtree(tmp, ignore_errors=True)
         with zipfile.ZipFile(arc) as z:
             z.extractall(tmp)
+        shutil.rmtree(VLC, ignore_errors=True)
         shutil.move(str(tmp / f"vlc-{VLC_VERSION}"), str(VLC))
         shutil.rmtree(tmp, ignore_errors=True)
         arc.unlink()
@@ -142,10 +150,10 @@ def build(force=False):
         return 1
     if not force and not stale():
         return 0
-    cmake = str(CMAKE) if CMAKE.exists() else "cmake"
+    cmake = buildenv.cmake() or "cmake"
     BUILD.mkdir(parents=True, exist_ok=True)
     if not (BUILD / "CMakeCache.txt").exists():
-        r = subprocess.run([cmake, "-S", str(SRC), "-B", str(BUILD), "-G", "Visual Studio 17 2022", "-A", "x64",
+        r = subprocess.run([cmake, "-S", str(SRC), "-B", str(BUILD), "-G", buildenv.CMAKE_GENERATOR, "-A", "x64",
                             f"-DCEF_ROOT={CEF.as_posix()}"], creationflags=BELOW_NORMAL)
         if r.returncode:
             return r.returncode

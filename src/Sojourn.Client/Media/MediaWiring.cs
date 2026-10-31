@@ -331,9 +331,10 @@ public sealed class MediaWiring : IDisposable, Sojourn.Client.Hud.HudView.IMedia
             return Input.LeftOnMedia || View.LeftOnBoard;
         });
 
-    // HUD faces on the headset's HUD board (HudView.IMedia): a double tap brings the page up close, as in the world
+    // HUD faces on the headset's HUD board (HudView.IMedia): a double tap or a still hold brings the page up close, as in the world
     bool Sojourn.Client.Hud.HudView.IMedia.Down(int hand, PickHit hit, Vector3 dir) => Guard("hud media", false, () => Input.HudDown(hand, hit, dir));
-    void Sojourn.Client.Hud.HudView.IMedia.Held(int hand, PickHit? hit, Vector3 dir) => Guard("hud media", () => Input.HudHeld(hand, hit, dir));
+    void Sojourn.Client.Hud.HudView.IMedia.Held(int hand, PickHit? hit, Vector3 dir) => Guard("hud media", () => { if (Input.HudHeld(hand, hit, dir) is { } i) View.Open(i); });
+    float? Sojourn.Client.Hud.HudView.IMedia.Filling(int hand) => Input.HudFilling(hand);
     void Sojourn.Client.Hud.HudView.IMedia.Up(int hand, PickHit? hit) => Guard("hud media", () => { if (Input.HudUp(hand, hit) is { } i) View.Open(i); });
     void Sojourn.Client.Hud.HudView.IMedia.Cancel(int hand) => Guard("hud media", () => Input.HudCancel(hand));
     bool Sojourn.Client.Hud.HudView.IMedia.On(PickHit? hit) => Guard("hud media", false, () => Input.HudOn(hit));

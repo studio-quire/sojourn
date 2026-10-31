@@ -22,7 +22,7 @@ public readonly record struct BlockLive(int Seconds = 0, bool Done = false, int 
 public static class ElementPainter
 {
     const float Pad = 16, Gap = 10, HeaderH = 40, LabelH = 34;
-    const float ImageH = 180, MapMax = 220;
+    const float ImageH = 180, MapMax = 220, PictureMaxH = 440;
 
     public sealed record Drawn(byte[] Rgba, int Width, int Height, float Scale, SKRect? Close, float Frost, float Edge)
     {
@@ -40,7 +40,8 @@ public static class ElementPainter
         }
         // as wide as what it holds wants (a timer stays small, a table takes what its columns need), within the caps
         bool wide = e.Blocks.Any(b => b is ImageBlock or MapBlock || b is TableBlock { Rows: [{ Length: >= 3 }, ..] } || b is ChartBlock { Line: true });
-        float max = e.At.InWorld ? Caps.WorldWidth : wide ? Caps.WideCardWidth : Caps.CardWidth;
+        bool picture = e.Blocks.Any(b => b is ImageBlock { IsPicture: true });
+        float max = e.At.InWorld ? Caps.WorldWidth : picture ? Caps.PictureCardWidth : wide ? Caps.WideCardWidth : Caps.CardWidth;
         float want = e.Title is { } title ? 18 + Measure(Font(k.Semi, 16), title) + 44 - Pad : 0;
         foreach (var b in e.Blocks) want = MathF.Max(want, Natural(b, k));
         // with the person, wider at a smaller size (UiSize.Wide): more on each line, about the same space
@@ -66,6 +67,8 @@ public static class ElementPainter
         ChartBlock { Line: true } => 9999,
         ChartBlock => 260,
         TowardBlock t => 64 + Math.Max(Measure(Font(k.Semi, 24), "000 m"), t.Label is { } l ? Measure(Font(k.Regular, 14.5f), l) : 0),
+        // a saved picture: as wide as it is at its tallest (an upright one makes a narrower card)
+        ImageBlock { IsPicture: true } im => PictureMaxH * im.Width / im.Height,
         _ => 9999,
     };
 
@@ -140,7 +143,7 @@ public static class ElementPainter
         TimerBlock t => Timer(draw, t, live, x0, y),
         ProgressBlock p => Progress(draw, p, x0, x1, y),
         ChartBlock c => c.Line ? Line(draw, c, x0, x1, y) : Bars(draw, c, x0, x1, y),
-        ImageBlock im => Image(draw, images(im), x0, x1, y),
+        ImageBlock im => Image(draw, im, images(im), x0, x1, y),
         TowardBlock t => Toward(draw, t, live, x0, x1, y),
         MapBlock m => Map(draw, m, live, x0, x1, y),
         _ => 0,
@@ -421,25 +424,35 @@ public static class ElementPainter
         return H;
     }
 
-    static float Image(Painter draw, SKImage? img, float x0, float x1, float y)
+    static float Image(Painter draw, ImageBlock b, SKImage? img, float x0, float x1, float y)
     {
-        if (!draw.Drawing) return ImageH;
-        var box = new SKRect(x0, y, x1, y + ImageH);
+        // a saved picture takes the card's width at its own shape (known from its header before it's decoded), up to a
+        // height; the view and textures a fixed strip
+        float H = b.IsPicture ? MathF.Min(PictureMaxH, (x1 - x0) * b.Height / b.Width) : ImageH;
+        if (!draw.Drawing) return H;
+        var box = new SKRect(x0, y, x1, y + H);
         var c = draw.Canvas!;
         if (img == null)
         {
-            draw.Recess(box, 10);
-            draw.Dots(box.MidX - 9, box.MidY, 0);
-            return ImageH;
+            var wait = b.IsPicture ? Fit(box, b.Width, b.Height) : box;
+            draw.Recess(wait, 10);
+            draw.Dots(wait.MidX - 9, wait.MidY, 0);
+            return H;
         }
-        float s = MathF.Min(box.Width / img.Width, box.Height / img.Height);
-        float w = img.Width * s, h = img.Height * s;
-        var at = new SKRect(box.MidX - w / 2, box.MidY - h / 2, box.MidX + w / 2, box.MidY + h / 2);
+        var at = Fit(box, img.Width, img.Height);
         c.Save();
-        c.ClipRoundRect(new SKRoundRect(at, 10), antialias: true);
+        c.ClipRoundRect(new SKRoundRect(at, b.IsPicture ? 6 : 10), antialias: true);
         c.DrawImage(img, at, new SKSamplingOptions(SKCubicResampler.Mitchell));
         c.Restore();
-        return ImageH;
+        return H;
+    }
+
+    /// <summary>A w x h picture as large as fits in box, centred.</summary>
+    static SKRect Fit(SKRect box, float w, float h)
+    {
+        float s = MathF.Min(box.Width / w, box.Height / h);
+        (w, h) = (w * s, h * s);
+        return new SKRect(box.MidX - w / 2, box.MidY - h / 2, box.MidX + w / 2, box.MidY + h / 2);
     }
 
     // --- where things are --------------------------------------------------------------------------------------------

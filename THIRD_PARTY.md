@@ -45,6 +45,7 @@ contributors, Apache License 2.0, https://github.com/KhronosGroup/OpenXR-SDK. Te
 | Silk.NET.Shaderc.Native (shaderc) | Apache 2.0 |
 | Ultz.Native.GLFW (GLFW, through Silk.NET) | zlib |
 | SkiaSharp (4.152.0) | MIT |
+| SkiaSharp.HarfBuzz (4.152.0), HarfBuzzSharp (14.2.1; HarfBuzz itself under the Old MIT licence) | MIT |
 | NVorbis (0.10.5) | MIT |
 | OggVorbisEncoder (1.2.2) | MIT |
 | Microsoft.Diagnostics.Tracing.TraceEvent (3.1, `tools/heapwho`, `tools/alloctrace` only) | MIT |

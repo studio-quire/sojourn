@@ -256,8 +256,17 @@ public sealed class PeopleOps
             if (name.Length == 0) Pseudonyms(d).Remove(id.ToString());
             else Pseudonyms(d)[id.ToString()] = name;
         });
+        if (name.Length > 0) PseudonymSet?.Invoke(id, name);
         return new JsonObject { ["id"] = id.ToString(), ["pseudonym"] = name.Length > 0 ? name : null };
     }
+
+    /// <summary>A pseudonym given (for the session log's names, as <see cref="World.NameCache.Learned"/>).</summary>
+    public event Action<UUID, string>? PseudonymSet;
+
+    /// <summary>Every pseudonym kept for this account: id, name.</summary>
+    public List<(UUID Id, string Name)> AllPseudonyms() => Store.Read(d => Pseudonyms(d)
+        .Select(kv => (UUID.TryParse(kv.Key, out var id) ? id : UUID.Zero, kv.Value?.ToString() ?? ""))
+        .Where(p => p.Item1 != UUID.Zero && p.Item2.Length > 0).ToList());
 
     // ---------- pay price buttons ----------
 

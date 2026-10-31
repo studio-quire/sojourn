@@ -89,6 +89,7 @@ public sealed partial class MainForm
         Top("&Help",
             Later("&Keys", "F1", () => ShowKeys(walk: false)),
             Item("&Slash commands", "//help", () => _ = _cmd.RunAsync("//help")),
+            Later("Send a &log to Studio Quire", "//sendlog", SendLog),
             Item("&About Sojourn Access", "//about", () => _ = _cmd.RunAsync("//about")));
 
         MainMenuStrip = _menu;

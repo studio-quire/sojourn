@@ -48,6 +48,7 @@ public sealed class Dictation : IDictation
     public void Down()
     {
         if (Held) return;
+        _a.YieldTalk();   // the mic is dictation's: a latched request goes as heard so far, a talk just begun is dropped
         Held = true;
         _a.Panel.Update(p => p.Dictation = PanelDictation.Held);
         Tell(new JsonObject { ["what"] = "dictate_down" });
@@ -64,7 +65,8 @@ public sealed class Dictation : IDictation
 
     /// <summary>The headset's grips: both at once dictate. Whichever went first already started its own thing (talking
     /// to the assistant, or voice's push-to-talk): the assistant's talk is dropped without a talk_up, so nothing heard
-    /// reaches it, and voice's grip is let go. Until each grip is let go, neither does its own thing again.</summary>
+    /// reaches it (one latched open by a tap is sent first, as heard until then: Down), and voice's grip is let go.
+    /// Until each grip is let go, neither does its own thing again.</summary>
     public XrControllers Headset(XrControllers c)
     {
         bool l = c.LeftGrip > 0.6f || (_l && c.LeftGrip >= 0.35f);
@@ -72,7 +74,6 @@ public sealed class Dictation : IDictation
         (_l, _r) = (l, r);
         if (!Held && l && r)
         {
-            _a.DropTalk();
             Down();
             _swallowL = _swallowR = true;
         }

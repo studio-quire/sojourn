@@ -41,7 +41,7 @@ public sealed class WorldRegionSource : IDisposable
                 world.Simulator is { } sim ? await RegionSource.FetchExtEnvironment(sim.Client, sim, ct, parcel).ConfigureAwait(false) : null,
             AgentParcel = () => world.Simulator is { } sim ? RegionSource.AgentParcelIn(sim.Client, sim) : 0,
             FetchLegacyMaterials = async (ids, ct) =>
-                world.Simulator is { } sim ? await sim.Client.Objects.RequestMaterialsAsync(sim, ids, ct).ConfigureAwait(false) : [],
+                world.Simulator is { } sim ? await RegionSource.FetchMaterials(sim.Client, sim, ids, ct).ConfigureAwait(false) : MaterialsReply.NotAnswered,
         };
     }
 

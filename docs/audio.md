@@ -6,8 +6,8 @@ Voice chat is `docs/voice.md`; both play through the same engine.
 
 ## Where it stands
 
-Built and tested on the local grid (2026-10-25, `tools/audio.py test` passes). Not yet heard by the user, in the headset
-or on Second Life itself: that's on the board's main-grid item.
+Built and tested on the local grid (`tools/audio.py test`). On Second Life in the headset, a live-music stream played,
+showed its song in menu > sound and faded as the user left (2026-10-28). What's left to hear there is under Not done.
 
 ## What plays, and the viewer's rules it follows
 
@@ -46,15 +46,17 @@ From the viewer's source (`llaudioengine.cpp`, `llaudiosourcevo.cpp`, `LLViewerO
   Shoutcast v1 ("ICY 200 OK", which .NET's HttpClient refuses, so it's our own HTTP/1.0 client), Shoutcast v2 and
   Icecast; MP3, AAC (ADTS, HE-AAC included) and Ogg Vorbis (chained streams: a new decoder per track); .pls and .m3u
   playlists and redirects; the ICY title (StreamTitle) as the song playing; reconnecting 2 s growing to 30 s while
-  wanted. 1.5 s buffered before it plays, and again after running dry. With a screen reader reading out, the title is
-  read through it when the stream starts playing and whenever it changes ("Now playing: ..."; `docs/screen-reader.md`).
+  wanted. 1.5 s buffered before it plays, and again after running dry. Any TLS certificate is accepted, as the viewers'
+  stream players do: SL streams often sit behind a shared host's certificate naming another host, and nothing is sent
+  but the GET (`MusicStream.cs`). With a screen reader reading out, the title is read through it when the stream starts
+  playing and whenever it changes ("Now playing: ..."; `docs/screen-reader.md`).
 
 ## Using it
 
 - Settings menu > **sound**: volume (everything you hear: world sounds, music, voice, spoken replies), sounds, music
-  (on/off; its note says the song or the state), music volume. Sounds and music are shares of the viewer's own levels
-  (100% = its defaults, 0.5 and 0.3). Saved in `vr-settings.json` (`audioVolume`, `soundsVolume`, `musicVolume`,
-  `music`).
+  (on/off; its note says the song or the state), music volume, and the speakers (and voice's microphone: docs/voice.md >
+  Devices). Sounds and music are shares of the viewer's own levels (100% = its defaults, 0.5 and 0.3). Saved in
+  `vr-settings.json` (`audioVolume`, `soundsVolume`, `musicVolume`, `music`).
 - The agent API: SojournSettings `volume`, `sounds_volume`, `music`, `music_volume` (the assistant's settings tool).
   `SojournAudio status`: what's playing (sound, object, owner, distance), the music (parcel URL, state, title,
   format), the mixer's numbers; `SojournAudio sources`: every source tracked, muted or waiting too.
@@ -90,6 +92,7 @@ Sojourn.Session/Audio (C#)                                       sojourn_voice.d
   placed in the world is mixed to mono; centred ones (UI, HUDs) play as they are.
 - **CPU**: the mix runs on the WASAPI render thread (MMCSS); assets decode once, off every hot thread; the stream
   decodes on its own thread paced by the network. Nothing managed runs on the audio thread.
+- Media audio (media on a prim, parcel media) is media's (docs/media.md), mixed here too (world.cpp sv_media_*).
 
 ## Testing
 
@@ -121,17 +124,15 @@ the main tree's build, `local/audio/wt-sync.sh` builds HEAD plus audio's files i
 - OpenSim's footstep asset is quiet (-42 dBFS average): footsteps at the viewer's gain are around -80 dBFS. Faithful,
   but worth a listen on SL.
 - Under water (the camera below the region's water height, 20 m at Atelier's south) the rolloff is 5: sounds drop off
-  fast. The test's first spot was in the sea.
+  fast, so test spots must be on land.
 - llSetParcelMusicURL works only for an object owned by the parcel's owner.
 
 ## Not done
 
-- Heard in the headset and on Second Life (board): how placing feels with real head motion, the balance against
-  voice (now the viewer's: voice at 1 is half the server's mix, as AudioLevelVoice; docs/voice.md), real club streams
-  (Shoutcast v2, AAC+).
-- The speakers (and voice's microphone) are a setting in the sound section (docs/voice.md > Devices).
+- In the headset on Second Life (`docs/sittings.md`): how placing feels with real head motion, objects' sounds
+  turning with the head, the balance against voice (the viewer's: voice at 1 is half the server's mix, as
+  AudioLevelVoice; docs/voice.md), other club streams (Shoutcast v2, AAC+).
 - Departures kept for now: no Doppler (OpenAL's factor 1 in the viewer; noisy object velocities would wobble the pitch),
   no wind noise, footsteps' material only land or wood, channels assigned all at once rather than one per frame.
-- Media audio (media on a prim, parcel media) is media's (docs/media.md): its streams in this mix (world.cpp sv_media_*).
 - Opus and HLS streams; the viewer's "ask before playing" music mode; switches for gesture and collision sounds
   (always on, the viewer's defaults); sounds from regions above your maturity aren't filtered.

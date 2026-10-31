@@ -2,14 +2,14 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:local="clr-namespace:Sojourn.Launcher">
 
-    <!-- Sojourn's glass, light blue (the user, 2026-10-30): clear glass for everything, a light blue accent for the controls
+    <!-- Sojourn's glass, blue (the user, 2026-10-30; the accent a mid blue since 10-31, the viewer's links' colour): clear glass for everything, a blue accent for the controls
          that act (toggles, Launch), slate ink, and behind the glass only a very light blue; no other colours. -->
     <Color x:Key="InkColor">#2B3F52</Color>
-    <Color x:Key="AccentColor">#7DBCEE</Color>
+    <Color x:Key="AccentColor">#468AB9</Color>
     <SolidColorBrush x:Key="Ink" Color="#2B3F52"/>
     <SolidColorBrush x:Key="Dim" Color="#46596B"/>
     <SolidColorBrush x:Key="Faint" Color="#7A8A99"/>
-    <SolidColorBrush x:Key="Accent" Color="#7DBCEE"/>
+    <SolidColorBrush x:Key="Accent" Color="#468AB9"/>
     <SolidColorBrush x:Key="Coral" Color="#B85A52"/>
     <FontFamily x:Key="Ui">Segoe UI Variable Text, Segoe UI</FontFamily>
     <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
@@ -44,7 +44,7 @@
                             <Setter TargetName="Hint" Property="Visibility" Value="Visible"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Well" Property="BorderBrush" Value="#B37DBCEE"/>
+                            <Setter TargetName="Well" Property="BorderBrush" Value="#B3468AB9"/>
                             <Setter TargetName="Well" Property="Background" Value="#D9FFFFFF"/>
                         </Trigger>
                         <Trigger Property="local:Mark.Wrong" Value="True">
@@ -71,7 +71,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Well" Property="BorderBrush" Value="#B37DBCEE"/>
+                            <Setter TargetName="Well" Property="BorderBrush" Value="#B3468AB9"/>
                             <Setter TargetName="Well" Property="Background" Value="#D9FFFFFF"/>
                         </Trigger>
                         <Trigger Property="local:Mark.Wrong" Value="True">
@@ -118,7 +118,7 @@
                             <Setter Property="Foreground" Value="{StaticResource Ink}"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Pill" Property="BorderBrush" Value="#997DBCEE"/>
+                            <Setter TargetName="Pill" Property="BorderBrush" Value="#99468AB9"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Cursor" Value="Arrow"/>

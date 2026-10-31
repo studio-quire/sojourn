@@ -55,7 +55,7 @@ ROUTINES = {
     "beam": f"wait 4; press x 0.2; panel {' '.join(map(str, PANEL))}; press a 0.2; rhand {along(0.5)} 1; raim 0 -20; wait 1.5; shot beam-front; "
             f"raim 8 -35; wait 1; shot beam-front2; press a 0.2; wait 1",
     # the pointer over the chat feed (low on the left; lines said meanwhile fill it) and then the panel, for comparing:
-    # the beam and its dot should show over both (session-2026-10-27b.md item 67)
+    # the beam and its dot should show over both (the user once lost them over the feed and the reader)
     "feed": "wait 10; press a 0.2; rhand 0.05 -0.35 -0.25 1; "
             "raim 30 -8; wait 1.2; shot feed-a; raim 40 -12; wait 1.2; shot feed-b; raim 50 -5; wait 1.2; shot feed-c; "
             "raim 38 -20; wait 1.2; shot feed-d; raim 0 -25; wait 1.2; shot feed-panel; press a 0.2; wait 1",

@@ -1,12 +1,15 @@
 """A tap on everything Claude Code sends to the model: a loopback HTTP proxy in front of the Anthropic API that keeps
 each request's body (the system prompt, the messages, tool results, the auto mode classifier's transcripts) and
 passes it on unchanged, streaming the answer back. For private mode's leak test (tools/private_leak.py): set
-ANTHROPIC_BASE_URL=http://127.0.0.1:PORT in the environment the claude processes start from.
+ANTHROPIC_BASE_URL=http://127.0.0.1:PORT in the environment the claude processes start from. For the cost lab
+(tools/costlab.py) it sits behind the sidecar's provider proxy instead (SOJOURN_PROVIDER_UPSTREAM=http://127.0.0.1:PORT),
+SOJOURN_TAP_UPSTREAM naming the host it passes to (relay.studioquire.org there).
 
   python tools/model_tap.py PORT OUT_DIR        run until killed
 
 OUT_DIR gets NNNNN.json (a request's body, decompressed, after a `// METHOD path` line), NNNNN.out.txt (what came
-back: text, tool calls by name, the stop reason) and status.json ({started, finished, inflight, last}: how many
+back: text, thinking and tool calls by name, the stop reason), NNNNN.usage.json (the response's model and usage:
+input, cache read and write, output tokens) and status.json ({started, finished, inflight, last}: how many
 requests, and when the last one ended, so a test can tell when the model has gone quiet). Headers are passed on but
 never written (they carry the account's token).
 """
@@ -61,6 +64,8 @@ class Reply:
         self.buf = b""
         self.parts = []
         self.stop = None
+        self.model = None
+        self.usage = {}     # message_start's usage, then message_delta's on top (output_tokens final there)
 
     def feed(self, chunk):
         self.buf += chunk
@@ -73,16 +78,32 @@ class Reply:
             except ValueError:
                 continue
             t = ev.get("type")
-            if t == "content_block_start" and (ev.get("content_block") or {}).get("type") == "tool_use":
+            if t == "message_start":
+                msg = ev.get("message") or {}
+                self.model = msg.get("model")
+                self.usage = dict(msg.get("usage") or {})
+            elif t == "content_block_start" and (ev.get("content_block") or {}).get("type") == "thinking":
+                self.parts.append("\n[thinking] ")
+            elif t == "content_block_start" and (ev.get("content_block") or {}).get("type") == "tool_use":
                 self.parts.append(f"\n[tool {ev['content_block'].get('name')}] ")
             elif t == "content_block_delta":
                 d = ev.get("delta") or {}
                 self.parts.append(d.get("text") or d.get("partial_json") or "")
             elif t == "message_delta":
                 self.stop = (ev.get("delta") or {}).get("stop_reason")
+                self.usage.update({k: v for k, v in (ev.get("usage") or {}).items() if v is not None})
 
     def text(self):
         return "".join(self.parts) + f"\n[stop {self.stop}]\n"
+
+    def feed_whole(self, body):
+        """A response that wasn't streamed: its usage."""
+        try:
+            msg = json.loads(body)
+        except ValueError:
+            return
+        if isinstance(msg, dict):
+            self.model, self.usage, self.stop = msg.get("model"), dict(msg.get("usage") or {}), msg.get("stop_reason")
 
 
 def make_handler(out: Path, counter: Counter):
@@ -147,6 +168,7 @@ def make_handler(out: Path, counter: Counter):
             self.send_header("Transfer-Encoding", "chunked")
             self.end_headers()
             reply = Reply() if not r.getheader("Content-Encoding") else None
+            whole = [] if "json" in (r.getheader("Content-Type") or "") else None
             try:
                 while True:
                     chunk = r.read1(65536)
@@ -154,6 +176,8 @@ def make_handler(out: Path, counter: Counter):
                         break
                     if reply:
                         reply.feed(chunk)
+                    if whole is not None:
+                        whole.append(chunk)
                     self.wfile.write(b"%x\r\n%s\r\n" % (len(chunk), chunk))
                     self.wfile.flush()
                 self.wfile.write(b"0\r\n\r\n")
@@ -163,7 +187,13 @@ def make_handler(out: Path, counter: Counter):
             finally:
                 conn.close()
                 if reply:
+                    if whole:
+                        reply.feed_whole(b"".join(whole))
                     (out / f"{n:05d}.out.txt").write_text(f"HTTP {r.status}\n" + reply.text(), encoding="utf-8")
+                    if reply.usage:
+                        (out / f"{n:05d}.usage.json").write_text(json.dumps({"model": reply.model, "usage": reply.usage,
+                                                                              "stop": reply.stop, "at": time.time()}),
+                                                                  encoding="utf-8")
 
         do_GET = do_POST = do_PUT = do_DELETE = do_PATCH = _forward
 

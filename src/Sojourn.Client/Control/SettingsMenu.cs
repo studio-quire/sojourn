@@ -726,7 +726,7 @@ public sealed class SettingsMenu : ISettingsMenu
     // behind the help key: the controls that nothing on screen shows
     static readonly string[] HeadsetHelp =
     {
-        "hold the right grip and speak to the assistant",
+        "hold the right grip and speak to the assistant, or tap it to talk hands-free and tap again to send",
         "A: a quick press turns the pointer on or off, held it shows while held · the right trigger touches, sits and presses",
         "X hides everything and brings it back, held: every menu back in front · Y recentres · this menu: the left menu button",
         "the right stick up jumps · pointing at something that scrolls, it scrolls it",
@@ -739,7 +739,7 @@ public sealed class SettingsMenu : ISettingsMenu
 
     static readonly string[] DesktopHelp =
     {
-        "hold T and speak to the assistant, or press Enter to type",
+        "hold T and speak to the assistant (or tap it, speak, and tap again to send), or press Enter to type",
         "Esc closes whatever is open, then opens this (and goes back out of it)",
         "Tab hides everything and brings it back · F8 changes the model",
         "voice: hold B or the middle mouse button to talk · open mic: B mutes",

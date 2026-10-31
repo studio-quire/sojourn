@@ -112,6 +112,12 @@ def protected():
 # A first design the user means to revisit (docs/assistant.md > Auto mode off).
 MANUAL_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write"]
 
+# Claude Code's tools for work it does elsewhere (code review, notebooks, git worktrees, agent teams, skills, claude.ai's
+# design projects): never this assistant's, and their definitions were ~11K tokens of every model call
+# (docs/assistant-cost.md). Agent (its helpers), Monitor and TaskStop (background scripts) stay.
+UNUSED_TOOLS = ["DesignSync", "EnterWorktree", "ExitWorktree", "NotebookEdit", "ReportFindings", "Skill", "ListAgents",
+                "SendMessage"]
+
 
 def settings(home: Path, work: Path, auto=True):
     # Read rules hold for every tool that reads (Read, Grep, Glob) and Edit rules for every one that writes
@@ -321,6 +327,12 @@ def env():
             "CLAUDE_CODE_DISABLE_ADVISOR_TOOL": "1",  # no hidden consult with a bigger model (seconds, unseen)
             "ENABLE_TOOL_SEARCH": "false",            # our tools load up front, not after a search turn
             "DISABLE_AUTO_COMPACT": "1"}              # and autoCompactEnabled false: a session hands off by itself
+
+
+# Claude Code's background calls (a new session's title) on Haiku whatever the session's model: an Opus session's title
+# alone cost as much as a whole Haiku request (docs/assistant-cost.md). Not with another maker's model on OpenRouter,
+# where the proxy would make this id that model (provider.py rewrite) instead of Claude Haiku.
+SMALL_MODEL = {"ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku-5-5"}
 
 
 SETTINGS_FILE = LOCAL / "assistant" / "settings.json"

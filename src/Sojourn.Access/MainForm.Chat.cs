@@ -42,8 +42,9 @@ public sealed partial class MainForm
     };
 
     /// <summary>A page holding a history over its input line, with a label for each (the labels' mnemonics move to them):
-    /// the history is one Shift+Tab back from the input, as in Radegast. `beside`, to their right, is the Tab after the
-    /// input (nearby chat's People nearby: Say, Tab to the people, Tab again to the history, as Radegast goes round).</summary>
+    /// Tab and Shift+Tab go between the input and the history. `beside`, to their right, comes after the history (nearby
+    /// chat's People nearby: Say, Tab to the history, Tab again to the people, Tab back to Say; the blind tester's order,
+    /// 2026-10-31, where Radegast goes Say, people, history).</summary>
     static TableLayoutPanel HistoryOverInput(string inputLabel, TextBox input, string historyLabel, TextBox history, Control? beside = null)
     {
         var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = beside == null ? 2 : 3, RowCount = 2 };
@@ -64,10 +65,10 @@ public sealed partial class MainForm
         t.Controls.Add(history, 1, 0);
         t.Controls.Add(il, 0, 1);
         t.Controls.Add(input, 1, 1);
-        hl.TabIndex = 0;
-        history.TabIndex = 1;
-        il.TabIndex = 2;
-        input.TabIndex = 3;
+        il.TabIndex = 0;
+        input.TabIndex = 1;
+        hl.TabIndex = 2;
+        history.TabIndex = 3;
         return t;
     }
 

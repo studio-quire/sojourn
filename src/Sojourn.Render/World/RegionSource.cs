@@ -22,6 +22,15 @@ public interface IAssetSource
 /// <summary>The region's height grid ([y*Width+x], metres).</summary>
 public sealed record TerrainHeights(float[] Data, int Width);
 
+/// <summary>A RenderMaterials ask's outcome: the materials the region answered with (Answered: those it didn't name
+/// don't exist), or no answer (no capability yet, a network error: asked again after a wait), or the grid's rate
+/// limit (asked again, the region's asks slowed).</summary>
+public readonly record struct MaterialsReply(IReadOnlyList<LegacyMaterial> Materials, bool Answered, bool Limited)
+{
+    public static readonly MaterialsReply NotAnswered = new([], false, false);
+    public static readonly MaterialsReply RateLimited = new([], false, true);
+}
+
 /// <summary>
 /// One region as the renderer sees it: its objects and avatars (LibreMetaverse types, shared and read concurrently),
 /// its height grid, a live Simulator for metadata (terrain textures and heights, water height, GLTF overrides),
@@ -69,8 +78,9 @@ public sealed class RegionSource
     /// LibreMetaverse drops). Defaults to <see cref="RenderMaterialTracker.Shared"/>.</summary>
     public Func<uint, UUID[]?>? RenderMaterials { get; init; }
     public UUID[]? RenderMaterialIds(uint localId) => RenderMaterials != null ? RenderMaterials(localId) : RenderMaterialTracker.Shared.Get(Handle, localId);
-    /// <summary>Fetches legacy (LLMaterial) material definitions by id through the region's RenderMaterials cap.</summary>
-    public Func<IReadOnlyCollection<UUID>, CancellationToken, Task<IEnumerable<LegacyMaterial>>>? FetchLegacyMaterials { get; init; }
+    /// <summary>Fetches legacy (LLMaterial) material definitions by id through the region's RenderMaterials cap
+    /// (<see cref="FetchMaterials"/>), paced by MaterialStore as the viewer paces them.</summary>
+    public Func<IReadOnlyCollection<UUID>, CancellationToken, Task<MaterialsReply>>? FetchLegacyMaterials { get; init; }
     /// <summary>Manual reflection probe params by prim local id (ExtraParams 0x90, see ReflectionProbeTracker); null: none known.</summary>
     public Func<uint, ReflectionProbeParams?>? ReflectionProbes { get; init; }
 
@@ -88,9 +98,63 @@ public sealed class RegionSource
         FetchEnvironment = ct => FetchExtEnvironment(client, sim, ct),
         FetchParcelEnvironment = (parcel, ct) => FetchExtEnvironment(client, sim, ct, parcel),
         AgentParcel = () => AgentParcelIn(client, sim),
-        FetchLegacyMaterials = (ids, ct) => client.Objects.RequestMaterialsAsync(sim, ids, ct),
+        FetchLegacyMaterials = (ids, ct) => FetchMaterials(client, sim, ids, ct),
         ReflectionProbes = probes?.For(sim.Handle),
     };
+
+    /// <summary>POST ids to the region's RenderMaterials cap (LLMaterialMgr::processGetQueue: a zipped LLSD array of
+    /// ids, the answer zipped the same way). Our own rather than LibreMetaverse's RequestMaterialsAsync, which logs the
+    /// grid's rate-limit reply ("cap invocation rate ...", not LLSD) as a parse failure and returns nothing, so the
+    /// store couldn't tell "slow down" from "these don't exist" (2026-10-31: 282 such replies in one sitting).</summary>
+    public static async Task<MaterialsReply> FetchMaterials(GridClient client, Simulator sim, IReadOnlyCollection<UUID> ids, CancellationToken ct)
+    {
+        var cap = sim.Caps?.CapabilityURI("RenderMaterials");
+        if (cap == null || ids.Count == 0) return MaterialsReply.NotAnswered;
+        var array = new OSDArray();
+        foreach (var id in ids) array.Add(id);
+        var request = new OSDMap { ["Zipped"] = Helpers.ZCompressOSD(array) };
+        try
+        {
+            var (resp, data) = await client.HttpCapsClient.PostAsync(cap, OSDFormat.Xml, request, ct).ConfigureAwait(false);
+            int status = resp != null ? (int)resp.StatusCode : 0;
+            if (status is 429 or 503 || IsRateLimit(data)) return MaterialsReply.RateLimited;
+            if (data == null || data.Length == 0 || status >= 400) return MaterialsReply.NotAnswered;
+            if (OSDParser.Deserialize(data) is not OSDMap map || !map.ContainsKey("Zipped")) return MaterialsReply.NotAnswered;
+            var list = new List<LegacyMaterial>();
+            if (Helpers.ZDecompressOSD(map["Zipped"].AsBinary()) is OSDArray mats)
+                foreach (var e in mats)
+                    if (e is OSDMap m) list.Add(new LegacyMaterial(m));
+            return new MaterialsReply(list, true, false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception) { return MaterialsReply.NotAnswered; }
+    }
+
+    static bool IsRateLimit(byte[]? data)
+    {
+        if (data is not { Length: > 0 }) return false;
+        var head = System.Text.Encoding.ASCII.GetString(data, 0, Math.Min(data.Length, 64)).TrimStart();
+        return head.StartsWith("cap invocation rate", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>How the viewer paces RenderMaterials asks to a region (LLViewerRegion::getMaxMaterialsPerTransaction,
+    /// resetMaterialsCapThrottle): the simulator's MaxMaterialsPerTransaction ids an ask (50 if it doesn't say) and
+    /// RenderMaterialsCapability asks a second (1 if it doesn't say, or says 0).</summary>
+    public static (int PerAsk, double PerSecond) MaterialsPacing(Simulator? sim)
+    {
+        int perAsk = 50;
+        double perSecond = 1;
+        try
+        {
+            if (sim?.Features is { } f)
+            {
+                if (f.Get("MaxMaterialsPerTransaction") is { Type: OSDType.Integer } n && n.AsInteger() > 0) perAsk = n.AsInteger();
+                if (f.Get("RenderMaterialsCapability") is { Type: OSDType.Real or OSDType.Integer } r && r.AsReal() > 0) perSecond = r.AsReal();
+            }
+        }
+        catch (Exception) { }
+        return (perAsk, perSecond);
+    }
 
     /// <summary>GET the region's ExtEnvironment capability (EEP settings), or a parcel's (its local id), or null if it
     /// can't be had right now.</summary>

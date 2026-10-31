@@ -119,7 +119,7 @@ public sealed class SocialFeed
                 if (at >= 0) { _entries[at] = _entries[at] with { Life = Math.Max(_entries[at].Life, now - _entries[at].At + 120) }; continue; }
                 var (who, what, _) = NoticeLine(n);
                 _entries.Add(new FeedEntry(++_seq, FeedKind.Notice, null, null, Id(n["payload"] as JsonObject ?? new JsonObject(), "from_id"), who, what,
-                    FeedStyle.Say, false, now, 120) { NoticeId = id });
+                    FeedStyle.Say, false, now, 120) { NoticeId = id, NoticeName = S(n, "name") });
             }
             _version++;
         }

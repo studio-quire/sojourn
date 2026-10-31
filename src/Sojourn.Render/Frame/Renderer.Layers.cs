@@ -3,7 +3,7 @@ using Silk.NET.Vulkan;
 
 namespace Sojourn.Render.Frame;
 
-// See-through surfaces (the user's approvals of 2026-10-27; docs/rendering.md > See-through layers). Two settings:
+// See-through surfaces (the user's approvals of 2026-10-27; docs/rendering.md > See-through surfaces). Two settings:
 // - A cap on the blended layers a pixel shades. Before the blended faces are drawn, alpha_count.frag draws them nearest
 //   first against the opaque depth, without colour, keeping per pixel a budget spent by what the layers it meets hide,
 //   and the farthest of their depths (layers.glsl). alpha.frag then drops a fragment behind every counted layer once

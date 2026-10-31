@@ -1,12 +1,9 @@
 # People and me (SojournPeople)
 
 Written by Claude Opus 5.5, 2026-10-27 and 2026-10-28 (batch B2 of `docs/viewer-gaps.md` > Closing the rest).
-Agent-facing. Friends' rights and removal, contact sets, Away and Do Not Disturb with the person's own autoresponse,
-typing, hover height, experiences, teleport history and favourites, pay price buttons, places offered on the feed; and
-(2026-10-28) "only friends and groups can IM me", the reject switches, inventory kept by itself, a group's chat
-snoozed, off or moderated, money received and spent, the display name and profile notes. Each as the official viewer
-or Firestorm does it (their source read for each, named below), an op on `SojournPeople` for the assistant
-(`client_api`; its tool descriptions mention them), and a direct control where a person needs one.
+Agent-facing. Each feature as the official viewer or Firestorm does it (their source read for each, named below), an
+op on `SojournPeople` for the assistant (`client_api`; its tool descriptions mention them), and a direct control where
+a person needs one.
 
 Code: `Core/Agents/PeopleOps.cs` (friends, contact sets, pay prices, favourites), `Presence.cs` (away, DND, autoresponse,
 typing, hover height), `Places.cs` (SLurls, offers, map destinations, teleport history), `ExperienceOps.cs`,
@@ -23,19 +20,18 @@ quiet, the new notices' lines, no typing dots from those kept away), `Audio/Cues
 
 Through `Confirmations.Cases` (a kind and a description per op, for any part of the client to add its own):
 - **delete**: `removeFriend`, `removeFavorite` (to Trash), `clearTeleportHistory`, `contactSet {remove}`; `setNotes`
-  replacing (or clearing) notes that say something else, the old text's start shown (2026-10-29: the person's words
-  would be gone; notes where there were none, an append or the same text don't ask).
+  replacing (or clearing) notes that say something else, the old text's start shown (the person's words would be gone;
+  notes where there were none, an append or the same text don't ask).
 - **permissions**: `friendRights` when it changes anything (reading them doesn't ask); the description shows each right
   as it is and as it'll be, and granting edit rights carries the viewer's GrantModifyRights warning. `setExperience
-  allow`.
-- **words** (new kind): `setResponse` with text, or turning the away reply on. The confirmation shows the exact words.
-  This is how the autoresponse stays the person's own (the TPV policy row: no auto-reply but what they set): the
-  assistant writes down what they said it should say, and they press confirm on that text.
-- **words**, more: `setResponse` for the reject switches' sentences (kind teleports, friendships); `setDisplayName` (the
-  exact name, or the username for a reset). Only one that could go is asked: one the grid's week wouldn't allow, too
-  long, or on a grid without display names fails at once, from what's known since login.
-- **permissions**, more: `moderateGroupChat` (a member's text stopped or allowed for everyone; asked only when the
-  person could: their group, its chat on, and not known to lack the power).
+  allow`. `moderateGroupChat` (a member's text stopped or allowed for everyone; asked only when the person could:
+  their group, its chat on, and not known to lack the power).
+- **words** (a kind of its own): `setResponse` with text, or turning the away reply on; `setResponse` for the reject
+  switches' sentences (kind teleports, friendships); `setDisplayName` (the exact name, or the username for a reset).
+  The confirmation shows the exact words. This is how the autoresponse stays the person's own (the TPV policy: no
+  auto-reply but what they set): the assistant writes down what they said it should say, and they press confirm on
+  that text. Only a display name that could go is asked: one the grid's week wouldn't allow, too long, or on a grid
+  without display names fails at once, from what's known since login.
 - Not asked: the switches themselves, snoozing or turning off a group's chat (the person's own reception), new notes or
   a line appended (`setNotes` gives back what was there in `was`).
 - **pay** to an object (`Confirmations.PayCheck`): its pay prices are asked first (RequestPayPrice, as the pay floater);
@@ -53,8 +49,8 @@ Through `Confirmations.Cases` (a kind and a description per op, for any part of 
 - **Contact sets** (Firestorm's lggcontactsets): named sets with a colour, any avatar a member (friends or not),
   pseudonyms (names the person calls someone, shown to them only); kept on this computer per account. `contactSets`,
   `contactSet {name, color, rename, remove}`, `contactSetAdd/Remove {name, to | ids}`, `pseudonym {to, name}`.
-  `PeopleOps.SetColor(id)` and `Pseudonym(id)` are there for name tags and the feed to use (batch B4's friend colours);
-  nothing draws them yet.
+  `PeopleOps.SetColor(id)` and `Pseudonym(id)` feed the name tags' ring and names, the hover tips and the radar
+  (docs/social.md).
 
 ## Away and Do Not Disturb
 
@@ -117,9 +113,9 @@ no experience capabilities, and each op says so.
   - a script's llMapDestination (ScriptTeleportRequest; the viewer opens the map with a beacon and a Teleport button),
     unless the object is blocked;
   - SLurls (secondlife:///app/teleport|region|worldmap, secondlife://Region/x/y/z, maps.secondlife.com and slurl.com) on
-    the feed and in the reader, drawn as links since batch B4 (2026-10-28, docs/social.md): a press on one offers its
-    place, as the viewer's click; opening a block or a notecard offers nothing by itself. Not on arrival: greeters and
-    boards post SLurls all day;
+    the feed and in the reader, drawn as links (docs/social.md): a press on one offers its place, as the viewer's
+    click; opening a block or a notecard offers nothing by itself. Not on arrival: greeters and boards post SLurls all
+    day;
   - the assistant: `offerPlace {slurl | region, pos}`; `parseSlurls {text}`.
 - Not done: landmarks embedded in notecards aren't offered (the reader shows the text).
 
@@ -133,7 +129,8 @@ Disturb (`PeopleTake`); other listeners ask `PeopleHide`, which has no side effe
   `IMNotShownNotFriend` notice a conversation (the viewer writes a line into the conversation saying how to see it);
   their teleport offers and requests are dropped silently; a conference a non-friend starts is left (ongoing ones carry
   on). Group chat and offers of friendship or inventory aren't touched. In Do Not Disturb their IMs still get the DND
-  sentence, as in the viewer (its DND branch comes first). Its voice-call half since 2026-10-29 (B10: a non-friend's one-to-one and conference calls turned away before they ring, groups' still ring; docs/voice.md > Calls turned away).
+  sentence, as in the viewer (its DND branch comes first). Its voice-call half: a non-friend's one-to-one and
+  conference calls are turned away before they ring, groups' still ring (docs/voice.md > Calls turned away).
 - `reject_teleports` off | all | not_friends (Firestorm's FSRejectTeleportOffersMode with
   FSDontRejectTeleportOffersFromFriends): teleport offers and requests dropped and answered with a sentence;
   `reject_friendships` (FSRejectFriendshipRequestsMode): friendship offers the same. The sentences are Firestorm's with
@@ -159,9 +156,9 @@ Disturb (`PeopleTake`); other listeners ask `PeopleHide`, which has no side effe
   Turned on, it comes back when the session next reaches the person.
 - **Moderation** (LLIMSpeakerMgr::toggleAllowTextChat): `moderateGroupChat {group, to, text: false|true}` POSTs the
   ChatSessionRequest capability's "mute update" with mute_info.text; the person must moderate the chat (its member
-  list's is_moderator, else their roles' moderate-chat power); the chat is joined first if needed. Voice moderation: docs/voice.md (B10). `groupChat {group}`
+  list's is_moderator, else their roles' moderate-chat power); the chat is joined first if needed. `groupChat {group}`
   lists the members with moderator and text_stopped, `groupChat` alone every group's chat_on and snooze. Voice
-  moderation is B10's.
+  moderation: docs/voice.md.
 
 ## Money (Money)
 
@@ -170,7 +167,7 @@ The official viewer's process_money_balance_reply(_extended): each transaction o
 after the other side's name is known; on the feed as `PaymentReceived` (who, "paid you L$N ..."), `PaymentSent`,
 `PaymentFailure`. `money_notices` all (both viewers' default) | received | spent | off. `SojournPeople money` is
 Firestorm's money tracker, both ways, for the session: received, spent, totals, payers summed. In memory only; what
-came during incognito shows only while that spell sees, and is gone after. World audio's money sounds are older
+came during incognito shows only while that spell sees, and is gone after. World audio's money sounds are separate
 (`Audio/Cues.cs`).
 
 ## Display name and notes (NamesAndNotes)
@@ -194,29 +191,29 @@ the buttons with ask_choice.
 ## The menu
 
 Section "you": do not disturb, away (noted "by itself" when automatic), away after, hover height, show typing, only
-friends IM me, turn away teleports (off, all, not friends'), turn away friendships, turn away group invites. Settings on
+friends IM me, turn away teleports (off, all, not friends'), turn away friendships, turn away group invites; voice's
+call switches beside them, and *turn away calls from*, a switch per group (docs/voice.md). Settings on
 `SojournSettings` (section you): `do_not_disturb`, `away`, `away_after`, `hover_height`, `typing_indicator`,
 `typing_animation`, `friends_only_ims`, `reject_teleports`, `reject_friendships`, `reject_group_invites`,
-`auto_accept_inventory`, `money_notices` (the last two on the API only). The autoresponse words aren't settings (they'd skip the confirmation): `SojournPeople status` reads
-them.
+`auto_accept_inventory`, `money_notices` (the last two on the API only). The autoresponse words aren't settings
+(they'd skip the confirmation): `SojournPeople status` reads them.
 
 ## Testing
 
 `python tools/people.py [--dll DIR]` on the local grid: Sojourn People (:9861, SOJOURN_TEST_INPUT=1) and Sojourn Peer
-(:9862), base dirs in `local/people/`. `python tools/people2.py [--dll DIR]`, the same clients, the 2026-10-28 part:
-friends only, the reject switches and their words, inventory kept by itself, a group ("Sojourn People Test", People's
-own) joined, snoozed, off and moderated, display names read and a change refused before asking, notes, the money
-tracker's shape. It needs groups and profiles on the local grid (set up 2026-10-28): Multitude's SQLite groups store
-for OpenSim's Groups V2 (`python projects/multitude/grid/groups.py deploy local/grid/bin`), and the standalone profile
-service on SQLite (`local/grid/bin/config/Sojourn.Profiles.ini`); ChatSessionRequest there is the WebRTC voice
-module's, so moderation's "mute update" answers 400. Last run 2026-10-28: all pass but moderation's send, which this grid answers 400; the confirmation and the moderator check before it pass.
-OpenSim keeps an offer nobody answered as a half friendship, sends it again at every login, and refuses an offer the
-other way with "already your friend" (people2's turned-away offer left one until those are declined); people.py
-accepts a waiting offer, or has Peer offer, so leftovers from any run don't stop it (2026-10-29).
+(:9862), base dirs in `local/people/`. `python tools/people2.py [--dll DIR]`, the same clients: friends only, the
+reject switches and their words, inventory kept by itself, a group ("Sojourn People Test", People's own) joined,
+snoozed, off and moderated, display names read and a change refused before asking, notes, the money tracker's shape.
+It needs groups and profiles on the local grid: Multitude's SQLite groups store for OpenSim's Groups V2 (`python
+projects/multitude/grid/groups.py deploy local/grid/bin`), and the standalone profile service on SQLite
+(`local/grid/bin/config/Sojourn.Profiles.ini`). ChatSessionRequest there is the WebRTC voice module's, so moderation's
+"mute update" answers 400: the confirmation and the moderator check before it are tested, the send isn't. Because
+OpenSim keeps an unanswered friendship offer (above), people.py accepts a waiting offer, or has Peer offer, so
+leftovers from any run don't stop it.
 
 ## Checks only Second Life can do
 
-From 2026-10-28's part (the local grid has no display names, no L$, and its group chat server isn't SL's):
+The local grid has no display names, no L$, and its group chat server isn't SL's:
 1. Display name: `displayName` shows the right next_change; a change asks with the exact name, lands, and the "Hi X!"
    notice comes; a second change the same week is refused at once, without asking; a reset (the username) is allowed.
 2. Money: pay someone (or a tip jar) and get paid: "You paid X L$N." and "X paid you L$N." on the feed, a gift's words

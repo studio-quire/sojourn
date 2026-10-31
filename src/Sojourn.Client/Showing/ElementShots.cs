@@ -75,6 +75,17 @@ public static class ElementShots
             Shot(dir, $"shown-{name}", spec, live, look, bg, scale, null);
         var image = Spec("""{"id":"view","at":"view","title":"What you saw","blocks":[{"image":"view"}]}""");
         Shot(dir, "shown-image", image, Array.Empty<BlockLive>(), look, bg, scale, picture);
+        // a saved picture (a selfie just taken): wide, then upright, then still being read
+        if (bg != null)
+        {
+            using var full = SKImage.FromBitmap(bg);
+            int ph = bg.Height * 3 / 4, pw = ph * 9 / 16;
+            using var upright = full.Subset(new SKRectI(bg.Width / 2 - pw / 2, bg.Height / 8, bg.Width / 2 + pw / 2, bg.Height / 8 + ph));
+            var saved = Spec("""{"id":"picture","at":"room","title":"Selfie","blocks":[{"text":"-"}]}""");
+            Shot(dir, "shown-picture", saved with { Blocks = new Block[] { new ImageBlock("selfie.png", bg.Width, bg.Height) } }, Array.Empty<BlockLive>(), look, bg, scale, full);
+            Shot(dir, "shown-picture-upright", saved with { Title = null, Blocks = new Block[] { new ImageBlock("upright.png", pw, ph) } }, Array.Empty<BlockLive>(), look, bg, scale, upright);
+            Shot(dir, "shown-picture-reading", saved with { Blocks = new Block[] { new ImageBlock("selfie.png", 1920, 1080) } }, Array.Empty<BlockLive>(), look, bg, scale, null);
+        }
         foreach (var preset in PanelLook.Presets.Skip(1))
             foreach (var (name, spec, live) in Samples().Where(s => s.Name is "timer" or "checklist" or "label" or "bars"))
                 Shot(dir, $"shown-{preset.Preset}-{name}", spec, live, preset, bg, scale, null);

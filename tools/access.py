@@ -76,7 +76,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 # ---- what to adjust -------------------------------------------------------------------------------------------------
 
-DOTNET = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
+from buildenv import DOTNET   # noqa: E402  (the .NET SDK wherever it's installed)
 APP_PROJECT = ROOT / "src" / "Sojourn.Access" / "Sojourn.Access.csproj"
 APP_BIN = ROOT / "src" / "Sojourn.Access" / "bin" / "Release" / "net10.0-windows10.0.22621.0"
 APP_EXE = APP_BIN / "SojournAccess.exe"
@@ -194,7 +194,7 @@ PY_EMBED_URL = f"https://www.python.org/ftp/python/{PY_EMBED}/python-{PY_EMBED}-
 PY_EMBED_SHA256 = "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3"   # python.org's MD5 matched too
 PY_EMBED_ZIP = DIST / "python-embed" / f"python-{PY_EMBED}-embed-amd64.zip"
 VENV_PY = ROOT / "local" / "assistant-venv" / "Scripts" / "python.exe"
-BUNDLED_DISTS = ["claude-agent-sdk"]   # with their dependencies; no hearing or local voice (typed requests, describing)
+BUNDLED_DISTS = ["claude-agent-sdk", "anthropic"]   # with their dependencies (anthropic: describing's lean calls); no hearing or local voice
 
 
 def git(*args):
@@ -384,7 +384,7 @@ print(json.dumps(out))
     # its Claude Code is the package's own
     import tempfile
     probe = ("import sys, os; sys.path.insert(0, sys.argv[1]); "
-             "import main, brain, tools, moretools, describe, jobs, build, private, privatetools, harness, home, provider, paths, voice, hearing; "
+             "import main, brain, tools, moretools, describe, describer, anthropic, jobs, build, private, privatetools, harness, home, provider, paths, voice, hearing; "
              "print(provider.cli()); print(paths.LOCAL)")
     with tempfile.TemporaryDirectory(prefix="sojourn-bundle-") as data:
         env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("PYTHON", "SOJOURN_", "VIRTUAL_ENV"))}
@@ -878,7 +878,7 @@ def visitor_command(args):
     if not args:
         return 0
     verb, rest = args[0], args[1:]
-    if verb in ("fmenu", "ftext", "fperm", "fgive", "offer", "friend") and not rest:
+    if verb in ("fmenu", "fmenu12", "fdance", "ftext", "fperm", "fgive", "offer", "friend") and not rest:
         rest = [tester_id_lookup()]
     elif verb in ("im", "tplure") and not (rest and UUID_RE.match(rest[0])):
         rest = [tester_id_lookup()] + rest
@@ -1100,6 +1100,7 @@ def session(run, procs):
         ("settings", lambda: settings(run)),
         ("the quit question", lambda: quit_question(run)),
         ("a script menu", lambda: notice_menu(run, tester_id)),
+        ("a dance machine's menu, ignored", lambda: notice_dance(run, tester_id)),
         ("a text box", lambda: notice_text(run, tester_id, nonce)),
         ("a permission question", lambda: notice_perm(run, tester_id)),
         ("inventory", lambda: inventory(run, nonce)),
@@ -1198,18 +1199,17 @@ def tab_order(run):
         if d["id"] == "chatInput":
             break
     order = " -> ".join(label(d) for d in stops)
-    # the history is one Shift+Tab back from Say, as in Radegast (the guided test, 2026-10-29)
-    run.check("the Nearby chat history is the stop before Say", len(stops) > 2 and stops[-2]["id"] == "chatHistory",
+    # the blind tester's order (2026-10-31): Say, the history, People nearby, back to Say
+    run.check("People nearby is the stop before Say", len(stops) > 2 and (stops[-2]["id"] == "chatPeople" or stops[-2]["type"] == "ListItem"),
               label(stops[-2]) if len(stops) > 2 else "focus didn't move")
     run.check("Tab goes round and back to Say, no dead ends", stuck is None and stops[-1]["id"] == "chatInput",
               order if stuck is None else f"stuck at {label(stuck)}: {order}")
     # the tab strips aren't stops (Alt+number and Control+Tab switch them): Tab and Shift+Tab go between history and Say
     strips = [label(d) for d in stops if d["id"] in ("areas", "conversations") or d["type"] in ("Tab", "TabItem")]
     run.check("no tab strip among the Tab stops", not strips, "; ".join(strips) or order)
-    # Radegast's order: from the chat input to the nearby people list, then on round to the history
-    run.check("Tab from Say goes to People nearby", len(stops) > 1 and (stops[1]["id"] == "chatPeople" or stops[1]["type"] == "ListItem"),
+    run.check("Tab from Say goes to the history", len(stops) > 1 and stops[1]["id"] == "chatHistory",
               label(stops[1]) if len(stops) > 1 else "focus didn't move")
-    run.check("and Tab again to the history", len(stops) > 2 and stops[2]["id"] == "chatHistory",
+    run.check("and Tab again to People nearby", len(stops) > 2 and (stops[2]["id"] == "chatPeople" or stops[2]["type"] == "ListItem"),
               label(stops[2]) if len(stops) > 2 else "focus didn't move")
     nameless = [label(d) for d in stops if not d["name"].strip()]
     run.check("every Tab stop has a name", not nameless, "; ".join(nameless) or f"{len(stops) - 1} stops")
@@ -1378,7 +1378,58 @@ def arrived_in_list(run, area, since, is_item, settle=2.5):
               f'{lastm.get("role")}: {lastm.get("text")}' if lastm else "no focus event")
 
 
+SOFA = "Access Sofa"
+
+
+def renamed_object(run, made):
+    """A self-naming object (a blind tester's sofa renamed itself as people sat and stood, 2026-10-31, and the list
+    kept its first name for minutes): the visitor's sofa renames itself on a touch. In the list she's in it stays as
+    it was until F5, which shows the new name on the item she's on; while she's elsewhere (its parts) the list follows
+    the next rename by itself."""
+    ids = re.search(r"id ([0-9a-f-]{36})", made or "")
+    if not run.check("(the visitor's self-naming sofa is out)", ids, made):
+        return
+    if not run.check("(the sofa selected in the list)", select_in("id=objects", SOFA + ","), selected_text("id=objects")):
+        return
+    n = visitor_n()
+    key("apps")
+    if menu_open("Touch"):
+        key("t")
+    run.heard_by_visitor("Touch from the list renames it (its script)", lambda d: d["msg"] == f"{SOFA} renamed to {SOFA} for two", n, 10)
+    time.sleep(9)   # past the 5 s after which a scripted thing's name is asked again, and the 3 s refresh
+    sel = lambda: selected_text("id=objects")
+    run.check("while she's in the list, it doesn't change under her", sel().startswith(SOFA + ","), sel())
+    m = mark()
+    key("f5")
+    run.expect("F5 there says how many", ["objects"], m, 6)
+    now = wait(lambda: sel().startswith(SOFA + " for two,") and sel(), 6)
+    run.check("F5 shows the new name on the item she's on", now, now or sel())
+    left = wait(lambda: last_item_read(m).startswith(SOFA + " for two,") and last_item_read(m), 3)
+    run.check("and the screen reader is left on it", left, left or last_item_read(m) or "no item read")
+    key("tab")
+    d = wait_focus(lambda d: d["id"] == "parts" or d["type"] == "ListItem" and SOFA in d["name"], 4)
+    run.check("Tab into its parts, under its new name", d and SOFA + " for two" in d["name"], label(d) if d else focus_label())
+    n = visitor_n()
+    key("enter")
+    run.heard_by_visitor("Enter on its part touches it: renamed back", lambda d: d["msg"] == f"{SOFA} renamed to {SOFA}", n, 10)
+    back = wait(lambda: sel().startswith(SOFA + ",") and sel(), 15, 0.5)
+    run.check("while she's in its parts, the list above follows the rename", back, back or sel())
+    m = mark()
+    key("shift+tab")
+    got = wait(lambda: last_item_read(m).startswith(SOFA) and last_item_read(m), 4)
+    run.check("Shift+Tab back on it, read by the name it has now", got and got.startswith(SOFA + ","), got or last_item_read(m) or "no item read")
+
+
+def last_item_read(since):
+    """The list item UI Automation's last focus event since then was about ("" if none)."""
+    uia = [e.get("text") or "" for e in focus_events_since(since) if e.get("src") == "uia"]
+    m = re.match(r'list item "((?:[^"\\]|\\.)*)"', uia[-1]) if uia else None
+    return json.loads(f'"{m[1]}"') if m else ""
+
+
 def lists(run):
+    x, y, z, _ = tester_where()
+    sofa = v(f"sofa {x - 3:.1f} {y - 2:.1f} {z - 0.4:.1f}", timeout=60)
     m = mark()
     key("alt+3")
     d = wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
@@ -1410,6 +1461,10 @@ def lists(run):
     run.check("the fixture box is in the objects list", obj, label(obj[0]) if obj else "not listed")
     arrived_in_list(run, "Objects nearby", m, lambda n: "metres" in n or "under a metre" in n)
     tree_check(run, "objects nearby", must=("objects",))
+    try:
+        renamed_object(run, sofa)
+    finally:
+        v(f"derez {SOFA}", timeout=15)
     key("alt+1")
     d = wait_focus(lambda d: d["id"] == "chatInput", 4)
     run.check("Alt+1 back to the Say box", d, label(d) if d else focus_label())
@@ -1430,14 +1485,14 @@ def listed(who):
 
 
 def people_beside_chat(run):
-    """People nearby a Tab from Say, as Radegast keeps its nearby list beside chat (a blind tester looked for it there,
-    2026-10-30): the item read on arriving, with the distance; the actions on the Applications key; Control+D; the
+    """People nearby beside chat, as Radegast keeps its nearby list (a blind tester looked for it there, 2026-10-30;
+    since 2026-10-31 after the history in her Tab order, so Shift+Tab from Say): the item read on arriving, with the distance; the actions on the Applications key; Control+D; the
     list unchanged while she's in it and current when she comes back; then Alt+2, Radegast's Friends key."""
     back_to_chat()
     m = mark()
-    key("tab")
+    key("shift+tab")
     d = wait_focus(lambda d: d["id"] == "chatPeople" or d["type"] == "ListItem", 4)
-    run.check("Tab from Say lands in People nearby", d, label(d) if d else focus_label())
+    run.check("Shift+Tab from Say lands in People nearby", d, label(d) if d else focus_label())
     name = wait(lambda: listed(VNAME), 10)
     arrived_in_list(run, "People beside chat", m, lambda n: VNAME in n)
 
@@ -1468,11 +1523,11 @@ def people_beside_chat(run):
     time.sleep(4)
     still = listed(VNAME)
     run.check("while she's in it, the list doesn't change under her", still == before, f"{before} -> {still}")
-    key("shift+tab")
-    d = wait_focus(lambda d: d["id"] == "chatInput", 3)
-    run.check("Shift+Tab from it back to Say", d, label(d) if d else focus_label())
-    time.sleep(4)
     key("tab")
+    d = wait_focus(lambda d: d["id"] == "chatInput", 3)
+    run.check("Tab from it back to Say", d, label(d) if d else focus_label())
+    time.sleep(4)
+    key("shift+tab")
     wait_focus(lambda d: d["id"] == "chatPeople" or d["type"] == "ListItem", 4)
     now = listed(VNAME)
     if distance_right("coming back to it from Say, the distance is current", now):
@@ -1674,6 +1729,76 @@ def notice_menu(run, tester_id):
         if open_newest_notice(run, ["Access Menu"]):
             key("del")
             time.sleep(0.5)
+
+
+def notice_dance(run, tester_id):
+    """A dance machine's menu (the blind tester's, 2026-10-31: it stayed in Notices after she answered, and she found no
+    way to close it): answered by 1, the object hears it and sends its menu again (as dance machines do), which is
+    picked by itself; its keys end with Delete Ignore, and the Applications menu has Ignore (Delete); Delete ignores it
+    (the official viewer's Ignore: the object hears nothing), said with what's left, the focus on the next notice in
+    the list, then on none."""
+    back_to_chat()
+    time.sleep(1)
+    # (another object's menu would do; the fixture's own next menu replaces its last, as in the viewer)
+    m = mark()
+    v(f"offer {tester_id}")
+    run.expect("(an offer to leave waiting under the dance machine's menu)", ["Access Card"], m, NOTICE_SECS)
+    time.sleep(1)
+    m = mark()
+    v(f"fdance {tester_id}")
+    if not run.expect("a dance machine's menu announced", ["Access Dance"], m, NOTICE_SECS) or not open_newest_notice(run, ["Access Dance"]):
+        return
+    sel = selection("id=notices")
+    run.check("its keys end with Delete Ignore", "1 Waltz, 2 Tango, 3 Block, Delete Ignore." in sel, sel)
+    run.check("the Ignore button says its key", find("type=Button;name=Delete: Ignore"), json.dumps([d["name"] for d in find("type=Button")]))
+    n = visitor_n()
+    first = notice_ids("Access Dance")
+    key("1")
+    run.heard_by_visitor("1 answers Waltz", lambda d: d["msg"] == "danced Waltz", n, 10, "danced Waltz")
+    again = wait(lambda: (lambda s, ids: s if "Access Dance" in s and len(ids) == 1 and ids[0] not in first else None)(
+        selection("id=notices"), notice_ids("Access Dance")), NOTICE_SECS)
+    run.check("the answered menu left the list, and the one sent again is picked by itself", again,
+              f"{again or selection('id=notices')} (dance menus waiting: {notice_ids('Access Dance')}, first {first})")
+    key("apps")
+    if run.check("its Applications menu has Ignore", menu_open("Ignore"), focus_label()):
+        run.check("with Delete beside it", menu_keys("type=MenuItem;name=Ignore").endswith("Delete"), menu_keys("type=MenuItem;name=Ignore"))
+        key("esc")
+        time.sleep(0.5)
+    n = visitor_n()
+    m = mark()
+    key("del")
+    got = run.expect("Delete ignores it, saying so and what's left", ["Ignored Access Fixture's menu.", "waiting."], m, 5)
+    time.sleep(1)
+    sel = selection("id=notices")
+    f = focused()
+    run.check("gone from the list, the focus on it still, on the next notice (the offer left under it)",
+              not notice_ids("Access Dance") and "Access Card" in sel and f and (f["id"] == "notices" or f["type"] == "ListItem"),
+              f"{sel}; focus {label(f) if f else 'none'}")
+    time.sleep(2)
+    heard = [l for l in v(f"heard 20 since {n}").splitlines() if "danced" in l]
+    run.check("the object hears nothing of an ignored menu", not heard, heard[0] if heard else "nothing")
+    # the rest ignored too, until none is left
+    m = mark()
+    for _ in range(8):
+        if "No notices waiting" in selection("id=notices"):
+            break
+        key("del")
+        time.sleep(0.7)
+    last = [e.get("text") or "" for e in said_since(m) if (e.get("text") or "").startswith("Ignored")]
+    run.check("ignoring the last says none is left", last and last[-1].endswith("No notices waiting."), last[-1] if last else "nothing said")
+    run.check("and the list says so", "No notices waiting" in selection("id=notices"), selection("id=notices"))
+
+
+def history_tail(chars=2000):
+    """The end of nearby chat's history (its own lines and the app's: answers, arrivals, crossings)."""
+    return value_of("id=chatHistory")[-chars:]
+
+
+def notice_ids(words=""):
+    """The ids of the script menus waiting (the agent API's LLNotifications), newest first; with words, only those
+    whose message has them."""
+    got = api("LLNotifications", "listChannelNotifications", channel="Visible").get("notifications") or []
+    return [n["id"] for n in reversed(got) if n.get("name", "").startswith("ScriptDialog") and words in (n.get("message") or "")]
 
 
 def quit_question(run):
@@ -2882,9 +3007,9 @@ def menu_bar(run, nonce, tester_id):
                 key("apps")
                 green = menu_open("Green")
                 if run.check("the Applications key on a notice lists its keys", green, focus_label()):
-                    run.check("each with the key that presses it (Green, 2; Put away, Delete)",
-                              menu_keys("type=MenuItem;name=Green").endswith("2") and menu_keys("type=MenuItem;name=Put away").endswith("Delete"),
-                              f'{menu_keys("type=MenuItem;name=Green")}; {menu_keys("type=MenuItem;name=Put away")}')
+                    run.check("each with the key that presses it (Green, 2; Ignore, Delete)",
+                              menu_keys("type=MenuItem;name=Green").endswith("2") and menu_keys("type=MenuItem;name=Ignore").endswith("Delete"),
+                              f'{menu_keys("type=MenuItem;name=Green")}; {menu_keys("type=MenuItem;name=Ignore")}')
                     key("esc")
                     time.sleep(0.5)
             key("esc")
@@ -3029,6 +3154,8 @@ def teleport(run):
     m = mark()
     say_in_app(TP_COMMAND)
     run.expect(f"{TP_COMMAND} arrives, saying where", ["Arrived"], m, 40)
+    tail = history_tail()
+    run.check("the arrival is a line in nearby chat's history too", re.search(r"Arrived in Atelier, at \d+, \d+, \d+\.\s*$", tail), tail[-200:])
     x, y, z, _ = tester_where()
     off = math.dist((x, y), TP_TO[:2])
     run.check("the tester is there", off < 3, f"at {x:.1f}, {y:.1f}: {off:.1f} m from {TP_TO[:2]}")
@@ -3422,15 +3549,17 @@ def walk_paths(run, bx, by, g):
     pen = (bx + 8, by + 6)
     m = mark()
     say_in_app(f"//go xyz {pen[0]},{pen[1]}")
-    run.expect("//go into the closed pen: no way, so it teleports", ["No way around found", "teleporting"], m, 15)
+    run.expect("//go into the closed pen: no way, so it teleports", ["No way to walk to", "teleporting there"], m, 15)
     run.expect("and arrives", ["Teleported to"], m, 25)
     time.sleep(1.5)
     x, y, z = walk_pos()
     run.check("inside the pen", abs(x - pen[0]) < 1.4 and abs(y - pen[1]) < 1.4, f"at {x:.1f}, {y:.1f}")
 
+    walk_club(run, bx, by, g)
+
     # following the visitor: it comes to the course, walks off north past the corridor's west side and stops
     start = (bx - 3, by - 6)
-    got = v(f"tp {COURSE_REGION} {start[0]} {start[1]} {g + 1.5}", timeout=40)
+    got = visitor_tp(start[0], start[1], g + 1.5)
     if not run.check("the visitor comes to the course", got.startswith("arrived"), got):
         return
     time.sleep(2)
@@ -3456,6 +3585,103 @@ def walk_paths(run, bx, by, g):
     except Exception as e:
         print(f"     (the visitor's teleport back: {e})")
     run.expect("the visitor teleporting away is said, and the follow ends", ["gone", "stopped following"], m, 15)
+
+
+def visitor_tp(x, y, z, region=None):
+    """The visitor teleported within a region, tried again once (a same-region teleport on the local grid failed once
+    with no reason given)."""
+    for tries in range(2):
+        try:
+            return v(f"tp {region or COURSE_REGION} {x:.1f} {y:.1f} {z:.1f}", timeout=40)
+        except ToolError as e:
+            print(f"     (the visitor's teleport: {e})")
+            time.sleep(3)
+    return "ERR the teleport failed twice"
+
+
+CLUB = (204, 28)   # the club's south-west corner in COURSE_REGION, west of the course
+
+
+def walk_club(run, bx, by, g):
+    """Going to a person indoors (the blind tester at a jazz club, 2026-10-31: going to her partner kept trying to
+    teleport her and never worked). A club built on one floor slab over whatever ground is there, its top 0.3 m over
+    the highest of it (a building on uneven ground: the old planner took the floor for walls where the ground fell away
+    under it): walls with a door, tables, a bar, a stage 0.8 m up with three 0.2 m steps, and a plinth 1 m up with none.
+    The tester sits on a sofa by the door; //go person to the visitor in the middle of the stage, 3.5 m from its edge
+    (the old planner found no free spot within 3 m, so no way, so a teleport): stands up first, walks up the steps, ends
+    beside the visitor on the stage. Then the visitor on the plinth: walked as near as the way goes, said so."""
+    cx, cy = CLUB
+    xs, ys = [cx + i for i in range(0, 15, 2)], [cy + j for j in range(0, 13, 2)]
+    hs = api("TesselAgent", "ground", points=[[x, y] for y in ys for x in xs])["heights"]
+    if not run.check("(ground under the club)", hs and all(h is not None for h in hs), json.dumps(hs)):
+        return
+    lo_g, hi_g = min(hs), max(hs)
+    F = hi_g + 0.3
+    print(f"     (the club's ground from {lo_g:.1f} to {hi_g:.1f} m; its floor at {F:.1f})")
+    go_tp(run, "(the tester to where the club goes)", cx + 7, cy + 3, hi_g + 1.5)
+    base = lo_g - 0.3
+    parts = [
+        dict(name="Club Floor", material="wood", pos=[cx + 7, cy + 6, (base + F) / 2], scale=[14, 12, F - base]),
+        dict(pos=[cx + 0.1, cy + 6, F + 1.4], scale=[0.2, 12, 2.8]),
+        dict(pos=[cx + 13.9, cy + 6, F + 1.4], scale=[0.2, 12, 2.8]),
+        dict(pos=[cx + 7, cy + 11.9, F + 1.4], scale=[14, 0.2, 2.8]),
+        dict(pos=[cx + 1, cy + 0.1, F + 1.4], scale=[2, 0.2, 2.8]),            # the south wall, a door 2-3.4 m along
+        dict(pos=[cx + 8.7, cy + 0.1, F + 1.4], scale=[10.6, 0.2, 2.8]),
+        dict(name="Club Stage", pos=[cx + 8.5, cy + 9.15, F + 0.4], scale=[7, 5.3, 0.8]),
+        dict(name="Stage Step", pos=[cx + 8, cy + 6.3, F + 0.3], scale=[1.6, 0.4, 0.6]),
+        dict(name="Stage Step", pos=[cx + 8, cy + 5.9, F + 0.2], scale=[1.6, 0.4, 0.4]),
+        dict(name="Stage Step", pos=[cx + 8, cy + 5.5, F + 0.1], scale=[1.6, 0.4, 0.2]),
+        dict(name="Club Bar", pos=[cx + 13, cy + 3.5, F + 0.55], scale=[0.8, 4, 1.1]),
+        dict(name="Club Table", shape="cylinder", pos=[cx + 6, cy + 3.5, F + 0.375], scale=[0.8, 0.8, 0.75]),
+        dict(name="Club Table", shape="cylinder", pos=[cx + 10, cy + 3.5, F + 0.375], scale=[0.8, 0.8, 0.75]),
+        dict(name="Club Plinth", pos=[cx + 2.2, cy + 7.75, F + 0.5], scale=[2.4, 2.5, 1.0]),
+    ]
+    made = 0
+    for p in parts:
+        p.setdefault("shape", "box")
+        made += bool(api("TesselBuild", "create", timeout=20, **p).get("id"))
+    if not run.check("the club is built", made == len(parts), f"{made} of {len(parts)} prims"):
+        return
+    stage = (cx + 8.5, cy + 10)
+    got = visitor_tp(stage[0], stage[1], F + 2)
+    sofa = v(f"sofa Club Sofa {cx + 3} {cy + 2.5} {F + 0.25}", timeout=60)
+    if not run.check("the visitor on the stage, its sofa by the door", got.startswith("arrived") and sofa.startswith("sofa"), f"{got}; {sofa}"):
+        return
+    go_tp(run, "(the tester by the door)", cx + 3, cy + 1.4, F + 1)
+    wait(lambda: api("SojournCollision", "collide", **{"from": [cx + 8, cy + 4, F + 0.5], "dir": [0, 1, 0], "max": 4}).get("hit"), 20, 1)
+    m = mark()
+    say_in_app("//sit Club Sofa")
+    sat = run.expect("(sitting on the sofa)", ["Sitting on Club Sofa"], m, 10)
+    time.sleep(1.5)
+    m = mark()
+    say_in_app(f"//go person {VISITOR[0]}")
+    if sat:
+        run.expect("//go seated stands up first", ["Standing up to walk"], m, 8)
+    run.expect("then walks to the visitor on the stage", ["Walking", VNAME], m, 15)
+    done = run.expect("and finishes there", ["Finished walking"], m, 60)
+    time.sleep(2)
+    x, y, z = walk_pos()
+    vx, vy, vz = visitor_where()
+    tps = [e.get("text") for e in said_since(m) if "eleport" in (e.get("text") or "")]
+    run.check("no teleport tried", not tps, "; ".join(tps) or "none")
+    run.check("up the steps onto the stage, beside the visitor", done and z > F + 1.4 and math.dist((x, y), (vx, vy)) < 2.6,
+              f"at {x:.1f}, {y:.1f}, its middle {z - F:+.1f} m over the floor; the visitor {math.dist((x, y), (vx, vy)):.1f} m away "
+              f"({(done or {}).get('text', 'not finished')})")
+
+    # the plinth has no steps: as near as the way goes
+    got = visitor_tp(cx + 2.2, cy + 7.75, F + 2.2)
+    time.sleep(2)
+    go_tp(run, "(the tester back by the tables)", cx + 8, cy + 2, F + 1)
+    m = mark()
+    say_in_app(f"//go person {VISITOR[0]}")
+    run.expect("//go to the visitor up on the plinth says it's out of reach, walking as near as the way goes",
+               ["out of reach", "as near as the way goes"], m, 15)
+    done = run.expect("and finishes, saying where the visitor is from there", ["Finished walking, as near to", VNAME], m, 60)
+    time.sleep(2)
+    x, y, z = walk_pos()
+    vx, vy, vz = visitor_where()
+    run.check("at the plinth's foot, on the floor", done and z < F + 1.3 and math.dist((x, y), (vx, vy)) < 3,
+              f"at {x:.1f}, {y:.1f}, its middle {z - F:+.1f} m over the floor; the visitor {math.dist((x, y), (vx, vy)):.1f} m away")
 
 
 def walk_vehicle(run, bx, by, g):
@@ -3572,6 +3798,10 @@ def walk_crossing(run):
     run.check("and whether the seat held is said", held or left,
               (held or left or {}).get("text", "neither said") + f" (at {x:.1f}, {yy:.1f})")
     print(f"     (seated crossing: {'held' if held else 'the seat let go' if left else 'unknown'})")
+    # (the blind tester's ask, 2026-10-31: crossings on a train were said but not in the history, as her region script's are)
+    tail = history_tail()
+    lines = [l for l in tail.splitlines() if l.startswith("Now in Atelier East")]
+    run.check("the crossing is a line in nearby chat's history, once", len(lines) == 1, " | ".join(lines) or tail[-200:])
     key("esc")
     wait_focus(lambda d: d["id"] == "chatInput", 5)
     say_in_app("//stand")
@@ -4367,6 +4597,55 @@ def relay_steps(run, name):
     finally:
         reg[name]["cap"] = cap
         relaymod.push_tokens(reg)
+    back_to_chat()
+    send_log_steps(run, relaymod)
+
+
+def send_log_steps(run, relaymod):
+    """Help > Send a log (docs/access-app.md > Sending a log), on the live relay with the check's token: the window's
+    controls in order, the focus in its note; Review shows the filtered text with her own line; Send gets it to the
+    relay with the note and says so, the focus back in Say; then the check deletes it. Whose words are left out is
+    tools/logcheck's (a synthetic log), since this run has no one else in it."""
+    nonce = uuid.uuid4().hex[:6]
+    secret = relaymod.admin_secret()
+    say_in_app(f"my own line {nonce}")
+    time.sleep(1.5)
+    say_in_app("//sendlog")
+    d = wait_focus(lambda d: d["id"] == "sendLogNote", 5)
+    if not run.check("//sendlog opens the window, the focus in What happened", d, label(d) if d else focus_label()):
+        back_to_chat()
+        return
+    order = []
+    for _ in range(5):
+        key("tab")
+        time.sleep(0.3)
+        order.append((focused() or {}).get("id"))
+    run.check("Tab goes Session, What's sent, Send, Review, Cancel",
+              order == ["sendLogSession", "sendLogWhat", "sendLogSend", "sendLogReview", "sendLogCancel"], str(order))
+    run.check("the session list starts at this session", (value_of("id=sendLogSession") or "").startswith("This session"),
+              value_of("id=sendLogSession"))
+    key("alt+w")
+    wait_focus(lambda d: d["id"] == "sendLogNote", 3)
+    type_text(f"a check's note {nonce}", "id=sendLogNote")
+    key("alt+r")
+    d = wait_focus(lambda d: d["id"] == "sendLogTextBox", 5)
+    if run.check("Review shows what's sent in a read-only text", d, label(d) if d else focus_label()):
+        text = value_of("id=sendLogTextBox") or ""
+        run.check("it has her own line", f"my own line {nonce}" in text, f"{len(text)} characters")
+        run.check("and what was read out", "read out (" in text, "")
+        key("esc")
+        back = wait_focus(lambda d: d["id"] == "sendLogReview", 3)
+        run.check("Escape closes it, back on Review", back, label(back) if back else focus_label())
+    m = mark()
+    key("alt+n")
+    run.expect("Send sends it and says so", ["Log sent"], m, 20)
+    back = wait_focus(lambda d: d["id"] == "chatInput", 5)
+    run.check("the window closes, the focus back in Say", back, label(back) if back else focus_label())
+    s, listed, _ = relaymod.admin_call("GET", "/relay/admin/logs", secret)
+    got = [l for l in (listed.get("logs", []) if isinstance(listed, dict) else []) if nonce in (l.get("note") or "")]
+    if run.check("the relay has it, with the note", s == 200 and got, f"{s}, {len(got)} found"):
+        for l in got:
+            relaymod.admin_call("DELETE", f"/relay/admin/logs/{l['id']}", secret)
     back_to_chat()
 
 

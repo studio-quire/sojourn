@@ -1,5 +1,6 @@
 """Sojourn's voice: build the native shim and test it.
 
+  python tools/voice.py fetch            LL's libwebrtc (pinned, checked against its SHA-256) into local/webrtc
   python tools/voice.py build            build src/Sojourn.Voice.Native into local/voice/build/Release (if stale; --force)
   python tools/voice.py devices          the audio endpoints the shim sees
   python tools/voice.py chirp [--desktop]  the headset's echo path (in the headset, Link on): a sweep played to
@@ -22,18 +23,24 @@
                                          call (Pilot calls Friend 100 m away, Friend answers with its panel's
                                          key, they hear each other in the call, Pilot hangs up, back to nearby)
 
-The shim links LL's prebuilt libwebrtc m144 in local/webrtc (docs/voice.md says where it comes from).
+The shim links LL's prebuilt libwebrtc m144 in local/webrtc (`fetch` puts it there; docs/voice.md > Building), built
+with Visual Studio 2022's C++ tools and CMake as tools/buildenv.py finds them.
 """
 import base64
+import hashlib
 import json
 import math
 import os
+import shutil
 import struct
 import subprocess
 import sys
+import tarfile
 import time
 import urllib.request
 from pathlib import Path
+
+import buildenv
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "Sojourn.Voice.Native"
@@ -42,9 +49,12 @@ BUILD = OUT / "build"
 DLL = BUILD / "Release" / "sojourn_voice.dll"   # the client's csproj copies it from here
 LOOPBACK = BUILD / "Release" / "sv_loopback.exe"
 WEBRTC = ROOT / "local" / "webrtc"
-VS = Path(r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools")
-CMAKE = VS / "Common7" / "IDE" / "CommonExtensions" / "Microsoft" / "CMake" / "CMake" / "bin" / "cmake.exe"
 BELOW_NORMAL = 0x00004000
+# LL's build of libwebrtc (secondlife/3p-webrtc-build): update the release, asset and hash together (the release's API
+# answer lists each asset's sha256)
+WEBRTC_RELEASE = "m144.7559.06.20"
+WEBRTC_ASSET = "webrtc-m144.7559.06.20.36004322351-windows64-36004322351.tar.zst"
+WEBRTC_SHA256 = "b7d9a8d51cf0000b759f96f3379b212424d879502159bbe361b8856619183f38"
 
 
 STAMP = BUILD / "built.stamp"
@@ -60,13 +70,13 @@ def stale():
 def build(force=False):
     if not force and not stale():
         return 0
-    if not (WEBRTC / "lib" / "release" / "webrtc.lib").exists():
-        print(f"no libwebrtc in {WEBRTC}: see docs/voice.md > Building", file=sys.stderr)
+    if not webrtc_present():
+        print(f"no libwebrtc in {WEBRTC}: python tools/voice.py fetch", file=sys.stderr)
         return 1
-    cmake = str(CMAKE) if CMAKE.exists() else "cmake"
+    cmake = buildenv.cmake() or "cmake"
     BUILD.mkdir(parents=True, exist_ok=True)
     if not (BUILD / "CMakeCache.txt").exists():
-        r = subprocess.run([cmake, "-S", str(SRC), "-B", str(BUILD), "-G", "Visual Studio 17 2022", "-A", "x64"],
+        r = subprocess.run([cmake, "-S", str(SRC), "-B", str(BUILD), "-G", buildenv.CMAKE_GENERATOR, "-A", "x64"],
                            creationflags=BELOW_NORMAL)
         if r.returncode:
             return r.returncode
@@ -77,6 +87,80 @@ def build(force=False):
     STAMP.write_text(time.strftime("%Y-%m-%d %H:%M:%S"))
     print(f"built {DLL} ({DLL.stat().st_size // 1024} KB)")
     return 0
+
+
+def webrtc_present():
+    return (WEBRTC / "lib" / "release" / "webrtc.lib").exists() and (WEBRTC / "include").is_dir()
+
+
+def fetch():
+    """LL's libwebrtc into local/webrtc (~80 MB downloaded, ~800 MB unpacked). Run again after a failure, it starts
+    the unpacking over; a whole download is kept until it's unpacked."""
+    if webrtc_present():
+        print(f"libwebrtc already in {WEBRTC}")
+        return 0
+    dl = ROOT / "local" / "webrtc-dl"
+    dl.mkdir(parents=True, exist_ok=True)
+    arc = dl / WEBRTC_ASSET
+    if not arc.exists():
+        url = f"https://github.com/secondlife/3p-webrtc-build/releases/download/{WEBRTC_RELEASE}/{WEBRTC_ASSET}"
+        print(f"fetching {url}")
+        part = arc.with_name(arc.name + ".part")
+        req = urllib.request.Request(url, headers={"User-Agent": "Sojourn-voice-fetch"})
+        with urllib.request.urlopen(req, timeout=60) as r, open(part, "wb") as f:
+            shutil.copyfileobj(r, f, 1 << 20)
+        part.replace(arc)
+    h = hashlib.sha256()
+    with open(arc, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    if h.hexdigest() != WEBRTC_SHA256:
+        arc.unlink()
+        print("the libwebrtc archive's hash doesn't match (deleted): run fetch again; if it keeps failing, the release "
+              "changed upstream", file=sys.stderr)
+        return 1
+    tmp = ROOT / "local" / "webrtc-x"
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    if rc := unpack_zst(arc, tmp):
+        return rc
+    # include/, lib/ and LICENSES/ at the archive's top (or under one folder)
+    top = tmp if (tmp / "include").is_dir() else next((d for d in tmp.iterdir() if (d / "include").is_dir()), None)
+    if top is None:
+        print(f"no include/ in the unpacked archive ({tmp})", file=sys.stderr)
+        return 1
+    shutil.rmtree(WEBRTC, ignore_errors=True)   # an earlier, incomplete one
+    shutil.move(str(top), str(WEBRTC))
+    shutil.rmtree(tmp, ignore_errors=True)
+    shutil.rmtree(dl, ignore_errors=True)
+    print(f"libwebrtc {WEBRTC_RELEASE} in {WEBRTC}")
+    return 0
+
+
+def unpack_zst(arc, dest):
+    """A .tar.zst unpacked into dest: by Python's own zstd (3.14+), else the zstandard package, else Windows' tar.exe
+    (Windows 11's reads zstd; Windows 10's may not). Git's GNU tar is never used: it can't read Windows paths."""
+    try:
+        with tarfile.open(arc, "r:zst") as t:
+            t.extractall(dest, filter="data")
+        return 0
+    except (tarfile.CompressionError, tarfile.ReadError):
+        pass
+    try:
+        import zstandard
+        with open(arc, "rb") as f, zstandard.ZstdDecompressor().stream_reader(f) as z, \
+                tarfile.open(fileobj=z, mode="r|") as t:
+            t.extractall(dest, filter="data")
+        return 0
+    except ImportError:
+        pass
+    tar = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "tar.exe"
+    if tar.exists() and subprocess.run([str(tar), "-xf", str(arc), "-C", str(dest)],
+                                       creationflags=BELOW_NORMAL).returncode == 0:
+        return 0
+    print("couldn't unpack the .tar.zst: run this with Python 3.14 or newer, or `pip install zstandard` for the Python "
+          "running it", file=sys.stderr)
+    return 1
 
 
 # --- WAV helpers (16-bit PCM) ---
@@ -269,7 +353,7 @@ def loopback():
     return 0 if ok else 1
 
 
-DOTNET = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
+DOTNET = buildenv.DOTNET
 # SOJOURN_CLIENT_ROOT=dir: a worktree whose build to test (another session's half-done edits can break the main
 # tree's build mid-test; local/voice/wt-sync.sh keeps one at HEAD plus voice's working files)
 CLIENT_ROOT = Path(os.environ.get("SOJOURN_CLIENT_ROOT") or ROOT)
@@ -860,6 +944,8 @@ def devices():
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     cmd = sys.argv[1] if len(sys.argv) > 1 else "loopback"
+    if cmd == "fetch":
+        sys.exit(fetch())
     if cmd == "build":
         sys.exit(build(force="--force" in sys.argv))
     if cmd == "devices":

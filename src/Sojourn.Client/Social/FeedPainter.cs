@@ -402,7 +402,7 @@ public static class FeedPainter
                 if (draw.Drawing)
                 {
                     if (i == 0 && lead.Length > 0) draw.Text(lead, x0, yy + 15.5f, nameF, nameC);
-                    foreach (var (box, link) in Links.Draw(draw.Canvas, linked[i], lx, yy + 15.5f, textF, textC, k.Accent, lit))
+                    foreach (var (box, link) in Links.Draw(draw.Canvas, linked[i], lx, yy + 15.5f, textF, textC, k.Link, lit))
                         keys?.Add((box, new FeedKey(FeedKeyKind.Link, e.NoticeId, parsed.Places[link].Slurl, e.Seq)));
                 }
                 yy += Line;
@@ -438,10 +438,10 @@ public static class FeedPainter
                 if (Measure(font, next) <= room()) { cur = next; continue; }
                 if (cur.Length > 0) { lines.Add(cur); cur = word; }
                 else cur = word;
-                while (Measure(font, cur) > room() && cur.Length > 1)
+                while (Measure(font, cur) > room() && FallbackText.Before(cur, cur.Length) > 0)
                 {
-                    int n = cur.Length - 1;
-                    while (n > 1 && Measure(font, cur[..n]) > room()) n--;
+                    int n = FallbackText.Before(cur, cur.Length);
+                    while (FallbackText.Before(cur, n) > 0 && Measure(font, cur[..n]) > room()) n = FallbackText.Before(cur, n);
                     lines.Add(cur[..n]);
                     cur = cur[n..];
                 }

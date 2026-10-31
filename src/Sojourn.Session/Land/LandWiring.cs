@@ -143,8 +143,7 @@ public sealed class LandWiring : IDisposable
     {
         var ids = await _s.Parcels.PeopleAsync(a, ct);
         if (_s.Client is { } c) await _s.Names.ResolveAsync(c, ids, TimeSpan.FromSeconds(4), ct);
-        var names = ids.Take(6).Select(id => _s.Names.Complete(id, $"someone ({id.ToString()[..8]})")).ToList();
-        return string.Join(", ", names) + (ids.Count > 6 ? $" and {ids.Count - 6} more" : "");
+        return Confirmations.Listed(ids.Select(id => _s.Names.Complete(id, $"someone ({id.ToString()[..8]})")).ToList(), 6, "people");
     }
 
     /// <summary>The parcel the op will act on, asked afresh, pinned into its arguments and outlined on the ground.</summary>
@@ -349,9 +348,9 @@ public sealed class LandWiring : IDisposable
             {
                 var ids = a.UuidList("ids");
                 if (a.Uuid("id") is { } one) ids.Add(one);
-                var named = ids.Distinct().Take(5).Select(id => _s.Estate.LastTop.TryGetValue(id, out var t) ? $"\"{t.Name}\" ({t.Owner})" : "an object").ToList();
-                return ($"Return {ids.Distinct().Count()} object{(ids.Distinct().Count() == 1 ? "" : "s")} to their owners",
-                    string.Join(", ", named) + (ids.Distinct().Count() > 5 ? " and more" : "") + ". Taken out of the region, into their owners' inventories.");
+                var named = ids.Distinct().Select(id => _s.Estate.LastTop.TryGetValue(id, out var t) ? $"\"{t.Name}\" ({t.Owner})" : "an object").ToList();
+                return ($"Return {named.Count} object{(named.Count == 1 ? "" : "s")} to their owners",
+                    Confirmations.Listed(named, 5, "objects") + ". Taken out of the region, into their owners' inventories.");
             }
             case "bakeTerrain":
                 return ($"Bake the terrain of {_s.Client?.Network.CurrentSim?.Name ?? "this region"}", "The land as it is now becomes what reverting returns to; the old baked land is gone.");

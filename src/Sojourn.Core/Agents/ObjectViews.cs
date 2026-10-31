@@ -362,6 +362,34 @@ public sealed class ObjectViews
         return prims.All(p => Fresh(w, p, false));
     }
 
+    /// <summary>Asks again for the prims' properties even if recent ones are known (a script may have renamed it: the
+    /// region sends a rename only to those who have the object selected) and waits until each has answered, or is
+    /// gone, or the timeout passes. Returns true if all answered.</summary>
+    public async Task<bool> RenewAsync(RegionWorld w, IReadOnlyList<Primitive> prims, TimeSpan timeout, CancellationToken ct, Simulator? sim = null)
+    {
+        if (prims.Count == 0) return true;
+        var asked = DateTime.UtcNow;
+        await FetchAsync(w, prims, TimeSpan.Zero, ct, force: true, sim: sim);
+        bool Answered(Primitive p) => !w.Prims.ContainsKey(p.LocalID) || w.PropsMeta.TryGetValue(p.ID, out var m) && m.FetchedAt >= asked;
+        var end = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < end && !ct.IsCancellationRequested && !prims.All(Answered)) await Task.Delay(100, ct);
+        return prims.All(Answered);
+    }
+
+    /// <summary>When the prim's properties last came (MinValue if never).</summary>
+    public static DateTime FetchedAt(RegionWorld w, Primitive p) =>
+        p.Properties is { } props && props.ObjectID == p.ID && w.PropsMeta.TryGetValue(p.ID, out var m) ? m.FetchedAt : DateTime.MinValue;
+
+    /// <summary>The local ids of the roots whose linkset holds a script (only a script renames an object by itself:
+    /// llSetObjectName, or a child's PRIM_NAME on the root), from the region's scripted flags in one pass.</summary>
+    public HashSet<uint> ScriptedRoots(RegionWorld w)
+    {
+        var roots = new HashSet<uint>();
+        foreach (var p in w.Prims.Values)
+            if ((_s.State.PrimFlagsOf(p) & PrimFlags.Scripted) != 0) roots.Add(p.ParentID != 0 && !w.Avatars.ContainsKey(p.ParentID) ? p.ParentID : p.LocalID);
+        return roots;
+    }
+
     /// <summary>Full properties (creator, dates, touch/sit names): briefly selects the roots, like the edit tool.</summary>
     public async Task<bool> FetchFullAsync(RegionWorld w, IReadOnlyList<Primitive> roots, TimeSpan timeout, CancellationToken ct)
     {

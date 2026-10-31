@@ -25,7 +25,7 @@ public sealed class AlwaysPlace
 }
 
 /// <summary>
-/// Private mode coming on by itself (docs/assistant.md > Private mode): with someone the person keeps it with (within
+/// Private mode coming on by itself (docs/assistant-incognito.md > In the person's hands): with someone the person keeps it with (within
 /// chat range, a one-to-one IM with them in the last 10 minutes, or their IM open on the feed), at a place they keep it
 /// at (the parcel), and, if they chose, while an IM is open on the feed. A spell this started ends by itself once none
 /// of that holds any more; one the person or the assistant started stays until the person ends it. When the person

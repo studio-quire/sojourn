@@ -173,7 +173,7 @@ public sealed partial class MainForm
             (bool Speaking, long SaidAt) was = _speakers.TryGetValue(p.Id, out var s) ? s : (false, long.MinValue / 2);
             if (p.Speaking && !was.Speaking && now - was.SaidAt > 10_000 && !_set.MuteAll)
             {
-                Reader?.Say(Sojourn.Core.Access.AnnounceKind.Nearby, $"{Host!.Session.Names.DisplayName(p.Id) ?? "Someone"} speaking.", keep: false);
+                Reader?.Say(Sojourn.Core.Access.AnnounceKind.Nearby, $"{Host!.Session.Names.DisplayName(p.Id) ?? "Someone"} speaking.", keep: false, Sojourn.Core.Access.LineFrom.App);
                 _speakers[p.Id] = (true, now);
             }
             else _speakers[p.Id] = (p.Speaking, was.SaidAt);

@@ -37,7 +37,7 @@ Read from secondlife/viewer (develop, 2026-10-25):
 - **The desktop**: as the viewer: over the whole view; a left click on a HUD is the HUD's (touch, drag while held,
   release), not the world's; the pointer's "that" is the HUD prim under the mouse; Alt+Shift+H. Hidden while a
   confirmation waits (nothing an object made sits beside it).
-- **The headset: a board.** (Claude Opus 5.5, 2026-10-25.) A screen doesn't exist in a headset, and a head-locked HUD is
+- **The headset: a board** (Claude Opus 5.5, 2026-10-25). A screen doesn't exist in a headset, and a head-locked HUD is
   uncomfortable and always in the way; most HUDs are used now and then (change an outfit layer, an animation, a
   setting) and some are glanced at (meters). So the HUDs live on a board the person calls up:
   - Called up from a **token at the left wrist** (a small disc with a screen glyph, 4.5 cm along the forearm from voice's
@@ -49,7 +49,7 @@ Read from secondlife/viewer (develop, 2026-10-25):
   - **Placed** in front of you when called, 1.25 m away, 60 degrees wide (most of a monitor's view, so HUD buttons keep
     about the angular size they have on a screen, ~0.7 degrees for a small one), its middle 2 degrees above the eyes so
     its bottom edge clears the panel resting 18 degrees below them. It follows the head as every menu does (the user,
-    2026-10-28; `docs/assistant.md` > The panel > Where it sits): still while you look around it, carried along once
+    2026-10-28; `docs/assistant-panel.md` > Where it sits): still while you look around it, carried along once
     you turn past 40 degrees (it's 60 wide: a glance at a HUD in its corner doesn't move it) or step away. The right
     trigger on an empty part of it drags it somewhere, facing you; dropped on the outline of its resting place it
     follows again. Where it was put is kept, between sessions too (`menuPlaces.hudBoard` in vr-settings.json): called
@@ -76,8 +76,8 @@ Read from secondlife/viewer (develop, 2026-10-25):
 - **Media on HUD faces** (2026-10-26): drawn as on any face (media's lookup finds HUD prims; the person's own HUDs' media
   plays by itself). The desktop's click on a HUD face with media is its page's (click, hover, drag, wheel), not the
   HUD's touch (`MediaWiring.Desktop` takes the HUD hit before the world's). On the board either hand's press on such a
-  face goes to the page as media's gestures do in the world (tap clicks, drag scrolls, a still hold presses and drags,
-  a double tap brings it up close: `HudView.IMedia`, `MediaInput.Hud*`).
+  face goes to the page as media's gestures do in the world (tap clicks, drag scrolls, a hold that then moves presses
+  and drags, a hold kept still or a double tap brings it up close: `HudView.IMedia`, `MediaInput.Hud*`).
 - **HUD particles**: not drawn, as in the viewer by default (its RenderHUDParticles is a debug setting, off); a HUD
   point has no frame in the world, so a HUD's particle source never emits there either.
 - **The assistant** (`SojournHud`, the `hud` tool): `list` (what the region says is worn on HUD points, and whether it's
@@ -114,18 +114,15 @@ Read from secondlife/viewer (develop, 2026-10-25):
 - `--panel-shots DIR` writes `hud-board-*.png`: the board's glass and × in each look over the background, with
   `DIR/hud.png` (a `look {transparent: true}` picture) laid in its screen.
 
-Checked 2026-10-25 (local grid): desktop clicks on each button and the pad reported the right link, face 4, ST
-matching where the click was, HUD-space position and normal (-1, 0, 0); a drag across the pad sent 12 updates and
-ended off it with face -1; `press` by picture point, part id and name, and `requestTouch` on a part, all landed;
-Haiku answered "press the green button on my HUD" (two hud calls, acting at 2.2 s), "touch the top right corner of
-the wooden pad" (ST 0.99, 0.99) and "press that" with the mouse on a HUD button. In the simulator the routine above
-brought the board up from the token, pressed the red button, dragged across the pad (27 updates), moved the board and
-put it away.
+What the tests check, beyond the cases above: the right link, face, ST, HUD-space position and normal (-1, 0, 0) for a
+press; a drag ending off the prim with face -1; `press` by picture point, part id and name, and `requestTouch`, landing;
+the assistant pressing a button it was asked for by description, or "that" under the mouse.
 
 ## Not done
 
 - HUD particles (the viewer's are off by default too), editing HUDs (the viewer's zoom while a HUD is selected), the
   viewer's HUD hover highlight.
 - The board's size isn't a setting (drag it nearer to make it bigger).
-- Real HUDs at scale (a mesh body's many-button HUD, an AO, a combat meter) and the board and token in the headset:
-  on the board.
+- In the headset on Second Life, the board was readable and easy to press, and the assistant pressed an AO HUD's
+  buttons (2026-10-28, 2026-10-29). Still to see: a HUD with a web page on it, text on HUDs, a mesh body's many-button
+  HUD (`docs/sittings.md`).

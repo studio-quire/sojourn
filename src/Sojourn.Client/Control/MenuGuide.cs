@@ -81,6 +81,8 @@ public static class MenuGuide
         A("you/turn away/one-to-one calls", "Turn away voice calls from one person."),
         A("you/turn away/group calls", "Turn away voice calls to your groups."),
         A("you/turn away/conference calls", "Turn away voice calls with several people."),
+        A("you/turn away calls from/", "Turn away one group's voice calls and let the others ring."),
+        A("you/turn away calls from/*", "On: this group's voice calls are turned away before they ring."),
         A("you/camera", "Takes out a camera. The right trigger takes a picture of what's in its frame."),
         A("you/AO/", "Your animation overrider: your own stands, walks and sits."),
         A("you/AO/AO", "Plays your own stands, walks, sits and the rest instead of the usual ones."),

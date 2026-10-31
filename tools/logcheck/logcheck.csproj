@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The filter for logs sent to the studio (src/Sojourn.Session/LogShare.cs) checked against synthetic logs: other
+       people's words and names never in what's sent, what should stay staying, and logs it can't filter refused.
+         dotnet run, the project tools/logcheck (exit code: the number of failed checks); given a log's path after the
+         separator, it prints that log as it would be sent instead (to read by eye; never commit one). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Sojourn.Session\LogShare.cs" Link="LogShare.cs" />
+  </ItemGroup>
+</Project>

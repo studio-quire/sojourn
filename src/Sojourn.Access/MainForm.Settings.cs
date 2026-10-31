@@ -24,6 +24,7 @@ public sealed partial class MainForm
         ("announce_group", "Group chat read out"),
         ("announce_notices", "Notices read out"),
         ("announce_replies", "The assistant's replies read out"),
+        ("access_describing", "Describing model (economy or best)"),
         ("announce_music", "Music titles read out"),
         ("access_read_mine", "My own lines read back"),
         ("access_mute_all", "Mute all read-out (F6)"),

@@ -40,15 +40,19 @@ public sealed class Shown : IShowing
         public bool Unseen;       // anchored on something not around (gone, another region)
         public double TopAt = -1; // when the linkset's height was last worked out
         public float Top;         // a thing's top above its position (metres)
+        public bool Sealed;       // holds a picture from an incognito spell: goes when the spell ends or its seeing changes
     }
 
     readonly List<Element> _elements = new();   // in the order they were first shown
     long _version;
+    DateTime _stretch = DateTime.UtcNow;         // when incognito last came on, went off or changed its seeing
 
     public Shown(AgentSession session, Func<PanelLook> look)
     {
         _s = session;
         _look = look;
+        _s.Private.Changed += (_, _, _) => SpellChanged();
+        _s.Private.SeesChanged += _ => SpellChanged();
     }
 
     /// <summary>Changes whenever an element is added, changed or removed.</summary>
@@ -67,11 +71,18 @@ public sealed class Shown : IShowing
     public JsonObject Show(JsonObject a)
     {
         var id = ElementParse.Id(a);
+        double now = Now;
+        // parsed outside the lock: a picture lists its folder and reads its header, and the frame waits on the lock
+        ElementSpec? old;
+        DateTime stretch;
+        lock (_lock) (old, stretch) = (_elements.FirstOrDefault(e => e.Spec.Id == id)?.Spec, _stretch);
+        var parsed = ElementParse.Parse(a, old, Here, now, Picture);
         lock (_lock)
         {
-            double now = Now;
+            // incognito changed meanwhile: what was allowed then may not be now
+            if (_stretch != stretch) throw new LeapError("incognito changed just then: show it again");
             var have = _elements.FirstOrDefault(e => e.Spec.Id == id);
-            var spec = Named(ElementParse.Parse(a, have?.Spec, Here, now));
+            var spec = Named(parsed);
             if (have != null)
             {
                 have.Spec = spec;
@@ -81,6 +92,8 @@ public sealed class Shown : IShowing
                 have.TopAt = -1;
             }
             else _elements.Add(have = new Element(spec, now));
+            // the view taken during a spell, or a picture taken in one, isn't kept past it (nor shown to the next kind)
+            have.Sealed |= spec.Blocks.OfType<ImageBlock>().Any(b => b.IsPicture ? Pictures.Unseen(b.Source) : b.Source == "view" && _s.Private.On);
             foreach (var b in spec.Blocks.OfType<ImageBlock>()) WantImage(b);
             Interlocked.Increment(ref _version);
             return Describe(have);
@@ -157,6 +170,44 @@ public sealed class Shown : IShowing
 
     // --- pictures in image blocks -------------------------------------------------------------------------------------
 
+    /// <summary>A saved picture for an image block, if it may be shown now. Incognito's rule is that the assistant never
+    /// sees pictures taken in a spell, and a shown card can be seen (a look with the menus), so: blind, only the last
+    /// picture (any: it can't look at all, and naming files would let it probe for them); letting it see, those taken in
+    /// incognito only from since it could see; out of a spell, none taken in one. Cards holding them go when the spell
+    /// ends or its seeing changes (<see cref="SpellChanged"/>).</summary>
+    ImageBlock Picture(string words)
+    {
+        var p = _s.Private;
+        bool last = Pictures.IsLast(words);
+        if (p.IsBlind && !last) throw new LeapError("while incognito, only the last picture taken: {\"image\": \"last\"}");
+        var path = Pictures.Resolve(words);
+        if (!p.IsBlind && Pictures.Unseen(path))
+        {
+            if (!p.On)
+                throw new LeapError($"{Path.GetFileName(path)} was taken in incognito: those show only during incognito, so you never see them; the person can open it from Pictures\\Sojourn");
+            DateTime since;
+            lock (_lock) since = _stretch;
+            var t = File.GetLastWriteTimeUtc(path);
+            if (t < since || t > DateTime.UtcNow.AddMinutes(1))
+                throw new LeapError($"{Path.GetFileName(path)} was taken in incognito before you could see; it isn't shown while you can");
+        }
+        var (w, h) = Pictures.SizeOf(path);
+        return new ImageBlock(path, w, h);
+    }
+
+    /// <summary>Incognito came on, went off, or changed whether the assistant sees: what holds a picture from the spell
+    /// goes, so it's neither kept nor seen by the next kind.</summary>
+    void SpellChanged()
+    {
+        int gone;
+        lock (_lock)
+        {
+            _stretch = DateTime.UtcNow;
+            gone = _elements.RemoveAll(e => e.Sealed);
+        }
+        if (gone > 0) Interlocked.Increment(ref _version);
+    }
+
     readonly ConditionalWeakTable<ImageBlock, SKImage> _images = new();
     readonly ConditionalWeakTable<ImageBlock, object> _asked = new();
     readonly List<ImageBlock> _viewWanted = new();
@@ -167,6 +218,15 @@ public sealed class Shown : IShowing
         if (_asked.TryGetValue(b, out _)) return;
         _asked.Add(b, new object());
         if (b.Source == "view") { lock (_viewWanted) _viewWanted.Add(b); return; }
+        if (b.IsPicture)
+        {
+            _ = Task.Run(() =>
+            {
+                try { if (Pictures.Decode(b.Source) is { } img) Ready(b, img); }
+                catch { }
+            });
+            return;
+        }
         if (!UUID.TryParse(b.Source, out var id) || _s.Client is not { } c) return;
         _ = Task.Run(async () =>
         {

@@ -1,6 +1,7 @@
 // Studio Quire's relay: Anthropic's Messages API for the holders of a personal token, on the studio's key, each
 // token's spending counted from the responses' usage and capped by the month. No request or response content is kept
-// or logged: a request is read only to pass it on, and of a response only its usage numbers are looked at.
+// or logged: a request is read only to pass it on, and of a response only its usage numbers are looked at. Apart from
+// that, a token's holder can send a session's log from Sojourn Access (filtered there), kept 30 days for the studio.
 // README.md beside this says what it answers and how tokens and caps are set (tools/relay.py).
 // Written by Claude Opus 5.5, 2026-10-30.
 import { DurableObject } from "cloudflare:workers";
@@ -30,7 +31,22 @@ const ROUTES = [
   ["POST", /^\/v1\/messages\/count_tokens$/, "free"],
   ["GET", /^\/v1\/models(\/[\w.\-]+)?$/, "free"],
   ["GET", /^\/relay\/usage$/, "usage"],
+  ["POST", /^\/relay\/log$/, "log"],
+  // the studio's own, by the admin secret (tools/relay.py logs)
+  ["GET", /^\/relay\/admin\/logs$/, "admin"],
+  ["GET", /^\/relay\/admin\/logs\/([\w\-]+)$/, "admin"],
+  ["DELETE", /^\/relay\/admin\/logs\/([\w\-]+)$/, "admin"],
 ];
+
+// a log sent from Sojourn Access (Help > Send a log; already filtered there: other people's words left out): gzipped
+// JSON {log, note, app, session, ...}, kept per token for LOG_DAYS days, then deleted
+const LOG_MAX = 1_500_000;        // bytes as sent (gzipped)
+const LOG_UNPACKED = 24_000_000;  // bytes unpacked
+const LOG_NOTE = 4000;            // characters of the person's note
+const LOG_DAYS = 30;
+const LOGS_A_DAY = 10;            // per token, in any 24 hours
+const LOGS_KEPT = 30;             // per token: the oldest go beyond this
+const DAY = 86_400_000;
 
 export default {
   async fetch(req, env, ctx) {
@@ -41,6 +57,7 @@ export default {
     }
     const route = ROUTES.find(([m, re]) => m === req.method && re.test(url.pathname));
     if (!route) return error(404, "not_found_error", "The relay doesn't answer that.");
+    if (route[2] === "admin") return admin(req, env, url.pathname.match(route[1])[1]);
     if (!env.ANTHROPIC_KEY || !env.TOKENS) return error(503, "api_error", "The relay isn't set up yet.");
 
     const given = req.headers.get("x-api-key") || (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
@@ -56,6 +73,7 @@ export default {
       return json(200, { month, spent_usd: u.micro / 1e6, cap_usd: cap / 1e6, left_usd: Math.max(0, cap - u.micro) / 1e6,
                          requests: u.requests, resets: nextMonth() });
     }
+    if (route[2] === "log") return takeLog(req, env, hash);
     if (route[2] === "messages" && await meter.spent(month) >= cap) return capped();
 
     const headers = new Headers({ "x-api-key": env.ANTHROPIC_KEY, "user-agent": "sojourn-relay" });
@@ -126,6 +144,135 @@ export class Meter extends DurableObject {
 
 function zero() {
   return { micro: 0, requests: 0, input: 0, output: 0, cache_read: 0, cache_write: 0, searches: 0 };
+}
+
+// ---- logs sent from Sojourn Access: one Durable Object per token, its SQLite table of them ---------------------------
+
+async function takeLog(req, env, hash) {
+  const declared = Number(req.headers.get("content-length") || 0);
+  if (declared > LOG_MAX) return error(413, "request_too_large", "That log is too big to send.");
+  const body = new Uint8Array(await req.arrayBuffer());
+  if (body.byteLength > LOG_MAX) return error(413, "request_too_large", "That log is too big to send.");
+  if (body.byteLength < 18 || body[0] !== 0x1f || body[1] !== 0x8b) return error(400, "invalid_request_error", "A log is sent gzipped.");
+  let doc;
+  try {
+    doc = JSON.parse(await gunzip(body, LOG_UNPACKED));
+  } catch (e) {
+    return e && e.tooBig ? error(413, "request_too_large", "That log is too big to send.")
+      : error(400, "invalid_request_error", "That log couldn't be read.");
+  }
+  if (!doc || typeof doc !== "object" || typeof doc.log !== "string" || !doc.log.length) {
+    return error(400, "invalid_request_error", "That log has no log in it.");
+  }
+  const note = typeof doc.note === "string" ? doc.note : "";
+  if (note.length > LOG_NOTE) return error(400, "invalid_request_error", `A note can be ${LOG_NOTE} characters at most.`);
+  const short = (v) => typeof v === "string" ? v.slice(0, 200) : "";
+  const meta = { app: short(doc.app), session: short(doc.session), note: note.slice(0, 200), lines: doc.log.split("\n").length };
+  const book = env.LOGBOOK.get(env.LOGBOOK.idFromName(hash));
+  const kept = await book.add(meta, body.buffer);
+  if (kept.error) return error(429, "rate_limit_error", `${LOGS_A_DAY} logs a day can be sent. Try again tomorrow.`);
+  return json(200, { id: kept.id, kept_until: new Date(kept.until).toISOString().slice(0, 10) });
+}
+
+/** The text of gzipped bytes, refusing (an error with tooBig) past max bytes unpacked. */
+async function gunzip(bytes, max) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  const reader = stream.getReader();
+  const parts = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      try { await reader.cancel(); } catch {}
+      throw Object.assign(new Error("too big"), { tooBig: true });
+    }
+    parts.push(value);
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const p of parts) { all.set(p, at); at += p.byteLength; }
+  return new TextDecoder("utf-8", { fatal: true }).decode(all);
+}
+
+/** The studio's view of the logs (tools/relay.py logs): `Authorization: Bearer <admin secret>`, whose SHA-256 is the
+ *  ADMIN secret. GET /relay/admin/logs lists every token's, GET .../ID is one log's gzipped JSON, DELETE .../ID removes it. */
+async function admin(req, env, id) {
+  if (!env.ADMIN) return error(503, "api_error", "The relay's admin isn't set up.");
+  const given = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!given || await sha256(given) !== env.ADMIN) return error(401, "authentication_error", "Not the relay's admin.");
+  const all = Object.entries(env.TOKENS ? tokens(env) : {});
+  if (!id) {
+    const logs = [];
+    for (const [hash, t] of all) {
+      for (const l of await env.LOGBOOK.get(env.LOGBOOK.idFromName(hash)).list()) logs.push({ token: t.name, ...l });
+    }
+    logs.sort((a, b) => b.at - a.at);
+    return json(200, { logs });
+  }
+  for (const [hash] of all) {
+    const book = env.LOGBOOK.get(env.LOGBOOK.idFromName(hash));
+    if (req.method === "DELETE") {
+      if (await book.remove(id)) return json(200, { deleted: id });
+      continue;
+    }
+    const body = await book.get(id);
+    if (body) return new Response(body, { headers: { "content-type": "application/gzip" } });
+  }
+  return error(404, "not_found_error", "No log with that id.");
+}
+
+export class Logbook extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.sql = ctx.storage.sql;
+    this.sql.exec("CREATE TABLE IF NOT EXISTS logs (id TEXT PRIMARY KEY, at INTEGER NOT NULL, meta TEXT NOT NULL, body BLOB NOT NULL)");
+  }
+
+  async add(meta, body) {
+    const now = Date.now();
+    this.expire(now);
+    const today = this.sql.exec("SELECT COUNT(*) AS n FROM logs WHERE at > ?", now - DAY).one().n;
+    if (today >= LOGS_A_DAY) return { error: "too_many" };
+    const rand = [...crypto.getRandomValues(new Uint8Array(3))].map(b => b.toString(16).padStart(2, "0")).join("");
+    const id = new Date(now).toISOString().replace(/[-:]/g, "").slice(0, 15) + "-" + rand;
+    this.sql.exec("INSERT INTO logs (id, at, meta, body) VALUES (?, ?, ?, ?)", id, now, JSON.stringify(meta), body);
+    this.sql.exec("DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY at DESC LIMIT ?)", LOGS_KEPT);
+    await this.schedule();
+    return { id, until: now + LOG_DAYS * DAY };
+  }
+
+  list() {
+    this.expire(Date.now());
+    return this.sql.exec("SELECT id, at, meta, length(body) AS size FROM logs ORDER BY at DESC").toArray()
+      .map(r => ({ id: r.id, at: r.at, size: r.size, ...JSON.parse(r.meta) }));
+  }
+
+  get(id) {
+    this.expire(Date.now());
+    const rows = this.sql.exec("SELECT body FROM logs WHERE id = ?", id).toArray();
+    return rows.length ? rows[0].body : null;
+  }
+
+  remove(id) {
+    return this.sql.exec("DELETE FROM logs WHERE id = ?", id).rowsWritten > 0;
+  }
+
+  expire(now) {
+    this.sql.exec("DELETE FROM logs WHERE at <= ?", now - LOG_DAYS * DAY);
+  }
+
+  /** An alarm when the oldest log's time is up, so a log goes after LOG_DAYS whether or not anything asks again. */
+  async schedule() {
+    const oldest = this.sql.exec("SELECT MIN(at) AS at FROM logs").one().at;
+    if (oldest) await this.ctx.storage.setAlarm(oldest + LOG_DAYS * DAY + 60_000);
+  }
+
+  async alarm() {
+    this.expire(Date.now());
+    await this.schedule();
+  }
 }
 
 // ---- a response's usage: the JSON body's, or a stream's message_start and message_delta events -----------------------

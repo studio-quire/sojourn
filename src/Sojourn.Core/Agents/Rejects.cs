@@ -66,6 +66,41 @@ public sealed class Rejects
         Changed?.Invoke();
     }
 
+    // ---------- groups whose voice calls are turned away, one by one (the session's Voice/CallRejects.cs asks) ----------
+    // Beyond both viewers, which only turn away every group's calls: a group whose calls are a nuisance can be quieted
+    // without the rest (the user's call, 2026-10-31). Kept per account as {group id: its name}, the name so the list
+    // still reads after the person leaves the group.
+
+    const string CallGroupsKey = "reject_group_calls_from";
+
+    public bool CallsTurnedAway(UUID group) => Store.Read(d => d[CallGroupsKey] is JsonObject o && o.ContainsKey(group.ToString()));
+
+    /// <summary>Every group whose calls are turned away, with the name it had when it was added.</summary>
+    public List<(UUID Id, string Name)> CallsTurnedAwayGroups() => Store.Read(d => d[CallGroupsKey] is JsonObject o
+        ? o.Select(kv => (Id: UUID.TryParse(kv.Key, out var id) ? id : UUID.Zero, Name: kv.Value is JsonValue v && v.TryGetValue<string>(out var n) ? n : kv.Key))
+            .Where(g => g.Id != UUID.Zero).ToList()
+        : new List<(UUID, string)>());
+
+    public void SetCallsTurnedAway(UUID group, bool turnAway)
+    {
+        var name = _s.State.Groups.TryGetValue(group, out var g) ? g.Name : null;
+        Store.Change(d =>
+        {
+            var o = d[CallGroupsKey] as JsonObject;
+            if (turnAway)
+            {
+                if (o == null) d[CallGroupsKey] = o = new JsonObject();
+                o[group.ToString()] = name ?? (o[group.ToString()] is JsonValue v && v.TryGetValue<string>(out var was) ? was : group.ToString());
+            }
+            else if (o != null)
+            {
+                o.Remove(group.ToString());
+                if (o.Count == 0) d.Remove(CallGroupsKey);
+            }
+        });
+        Changed?.Invoke();
+    }
+
     /// <summary>The words a reject mode answers with (kind teleports or friendships); empty: back to the standard sentence.
     /// Only through the confirmation gate (SojournPeople setResponse).</summary>
     public void SetResponse(string kind, string text) => Store.Set(kind + "_response", text.Length > 0 ? text : null);

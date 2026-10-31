@@ -215,6 +215,7 @@ public sealed class SessionHost : IAsyncDisposable
     {
         Feed = feed;
         Privacy = PrivateWiring.Start(Session, Assistant, feed, Log);
+        LogWords.Start(Session, feed);
     }
 
     /// <summary>People and me (People/): friends' confirmations, away and Do Not Disturb, typing, hover height.

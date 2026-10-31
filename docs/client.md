@@ -43,7 +43,7 @@ Options (`src/Sojourn.Client/ClientOptions.cs`):
 | `--shot-every S` | a PNG of every eye every S seconds into `local/client/shots/` (to check without looking); F12 takes one |
 | `--minutes M` | quit after M minutes |
 | `--bridge-port P` | the agent API (9720) |
-| `--validate` | Vulkan validation layers (if installed; not on this machine), and OpenXR's core validation |
+| `--validate` | Vulkan's validation layer (`local/vulkan-validation`) and OpenXR's core validation (`local/openxr-sdk`), through `tools/client.py` |
 | `--vr`, `--xr-scale`, `--hz`, `--xr-wait`, `--quest-eyes`; `--seated`, `--standing`, `--snap`, `--smooth-turn`, `--turn-speed`, `--hand-relative`, `--no-body` | the headset and its settings: `docs/vr.md` |
 | `--no-assistant` | don't start the assistant's Python side (`docs/assistant.md`) |
 | `--dev` | dev mode: no Claude of its own, the Claude Code session that started it is the assistant (`tools/dev.py`, `docs/dev-mode.md`) |
@@ -77,6 +77,8 @@ captures the mouse), hold the right mouse button to steer with the mouse in thir
 A left click in the world (not on the panel, a key or a card's ×) touches or sits as the viewer's does, and the
 headset's left trigger (`docs/vr.md` > Controls); in first person it's the mouselook button for scripts only, as in the
 viewer. It needs a hand on the mouse: clicks posted by programs don't touch (`Assistant/RealInput.cs`).
+A right click on a thing (a quick one: held or dragged, it steers) brings up its card of what can be done with it, at
+the click, as the headset's still hold does (`docs/vr.md` > A thing's card); a click off it puts it away.
 HUDs are drawn over the view as the viewer draws them; a click on one is the HUD's (touch, drag), the mouse on one is
 "that", Alt+Shift+H hides them (`docs/hud.md`).
 Media (`docs/media.md`): a click on a page in the world clicks it (the wheel scrolls it, typing goes to a field it has
@@ -100,16 +102,16 @@ Incognito (`docs/assistant.md` > Incognito): P turns it on and off (off by a han
 on, a token with its mark (a hat and glasses) sits left of the mic token at the bottom middle, and a click on it ends
 it. Hold Y and speak to dictate words for people: a draft on the panel, Enter sends it, Esc cancels.
 
-Local chat is in the console beside the window: what's said nearby and IMs are printed; a typed line is said on
-channel 0 (`/shout ...`, `/whisper ...`, `/quit`). A stand-in until there's an in-world panel.
+The console beside the window prints what's said nearby and IMs; a typed line is said on channel 0 (`/shout ...`,
+`/whisper ...`, `/quit`). In the world, chat shows on the feed and the assistant speaks for you (`docs/social.md`).
 
 ## The agent API
 
 `http://127.0.0.1:9720/`, loopback only: Tessel's bridge HTTP API (`/status`, `/cmd {pump, data}`, `/listen`,
 `/event`, `/events?since=&wait=`, `/rpc`) over Multitude's LEAP emulation, so `sl.py`-style tools and phase 3's
 assistant drive this session (`src/Sojourn.Session/Bridge/BridgeServer.cs`; what each op does:
-`projects/multitude/docs/api.md`). Checked: `TesselAgent move` walks and flies the avatar with the camera following,
-`LLChatBar sendChat` speaks. While an API move or autopilot runs and no key is held, the keys leave the controls
+`projects/multitude/docs/api.md`): `TesselAgent move` walks and flies the avatar, `LLChatBar sendChat` speaks, and so
+on. While an API move or autopilot runs and no key is held, the keys leave the controls
 alone and the camera follows the body. Snapshot ops (`LLViewerWindow saveSnapshot`) save the next frame as the person
 sees it (`Assistant/LiveSnapshots.cs`; never a moved camera). `LLAgent requestTeleport` with `skip_confirmation`
 teleports at once, as the viewer's does, and waits for the arrival.
@@ -153,23 +155,20 @@ may do).
   `RenderService` and the render wall; `VulkanContext` takes a `VulkanSetup` (window surface, swapchain, multiview
   feature, or an `IVulkanCreator` that makes the instance and device: the OpenXR runtime); `Renderer.Record` takes a
   list of eyes.
-- `Sojourn.Session` (Claude Opus 5.5, 2026-10-29; Sojourn Access's M0, `docs/access.md`): one person's session for any
-  app of ours, with no window, headset or drawn menus. It references Core and Render, never the client, OpenXR or Silk's
-  windowing and input. `SessionHost.cs` starts it in steps (logs and the session log, the registry and agent, the
-  saved settings, the agent API, the assistant's host and sidecar, voice, world audio, incognito, people, land, the
-  social wiring, capture and reports, the screen reader, SojournSettings); `StartAllAsync` runs them all for an app
-  with no views of its own. What an app supplies comes in at the steps: whether it's in a headset, its settings menu
-  (`Control/ISettingsMenu.cs`: each part's `Settle(menu?, api)` fills a section; null for none), its views' hooks
-  (bringing notices back onto its feed, `Private/IDictation`, `Assistant/IShowing`, `Assistant/ISeenView` for
-  pictures with menus), its window's handle for the screen reader's UI Automation voice, and a renderer if it has one
-  (land's outlines, bigger pictures; snapshots served by its frame loop). `RegionFeed.cs` gives a renderer the
-  world's regions as they come and go (keeping one the view is still in), for the VR client and the renderer out of
-  sight alike; `Offscreen/` is that renderer, for an app that shows no view (Sojourn Access: pictures for the assistant,
-  touches on faces, the collision model's rays as `SojournView`; `docs/access.md` > M0b), started by
-  `SessionHost.StartOffscreen`. Folders keep the client's names; namespaces
-  are `Sojourn.Session.*` (the client imports them all in `GlobalUsings.cs`). A bare `Session` in `Sojourn.*` code now
-  names that namespace, so OpenXR's is aliased in `Xr/`. `tools/probe.py` runs `src/Sojourn.SessionProbe`, a console
-  host on the library alone: two log in, answer SojournSettings through their agent APIs and hear each other's chat.
+- `Sojourn.Session` (2026-10-29, for Sojourn Access: `docs/access.md`): one person's session for any app of ours, with
+  no window, headset or drawn menus; it references Core and Render, never the client, OpenXR or Silk's windowing and
+  input. `SessionHost.cs` starts it in steps (logs, the registry and agent, saved settings, the agent API, the
+  assistant's host and sidecar, voice, world audio, incognito, people, land, the social wiring, capture and reports, the
+  screen reader, SojournSettings); `StartAllAsync` runs them all for an app with no views of its own. What an app
+  supplies comes in at the steps: whether it's in a headset, its settings menu (`Control/ISettingsMenu.cs`: each part's
+  `Settle(menu?, api)` fills a section), its views' hooks (`Private/IDictation`, `Assistant/IShowing`,
+  `Assistant/ISeenView`, notices back onto its feed), its window's handle for the screen reader, and a renderer if it
+  has one. `RegionFeed.cs` gives a renderer the world's regions as they come and go; `Offscreen/` is the renderer for
+  an app that shows no view (Access: pictures for the assistant, touches on faces, the collision model's rays;
+  `SessionHost.StartOffscreen`). Folders keep the client's names; namespaces are `Sojourn.Session.*` (the client
+  imports them all in `GlobalUsings.cs`), so a bare `Session` in `Sojourn.*` code names that namespace and OpenXR's is
+  aliased in `Xr/`. `tools/probe.py` runs `src/Sojourn.SessionProbe`, a console host on the library alone: two log in,
+  answer SojournSettings through their agent APIs and hear each other's chat.
 - `Sojourn.Client`: `Program.cs` (window loop on the main thread; `HeadsetFrame` in the headset; the session host's
   steps in their order between the window's, headset's and menus' own), `Window/Presenter.cs` (swapchain as a frame
   target), `Window/MirrorTarget.cs` (headset plus window), `Control/Pilot.cs` (keys and mouse to AgentUpdate, the
@@ -219,24 +218,23 @@ In the headset a frame is split instead (`docs/vr.md` > The rig > Overlap): reco
 its scene submitted once the last frame has ended, then a second command buffer writes the swapchain images; its
 present is the frame-end thread's.
 
-Eyes render one after the other through one shared set of render targets (each eye's output is copied out before
-the next starts). VK_KHR_multiview proper (layered targets, `gl_ViewIndex` in the shaders) is still to do; the
-frame's structure doesn't change for it (`docs/performance.md`).
+Two eyes of one size render through a stereo target set: the forward and alpha passes draw both at once
+(VK_KHR_multiview), the G-buffer, lighting and post an eye at a time (`docs/rendering.md` > Two eyes).
 
-Persistent scene state: textures, meshes, prim geometry, probes and region scenes were already kept across renders
-in Multitude; on top, each object keeps its resolved faces and instance matrices between frames
-(`RegionScene.FaceCache`, also while some of its assets are on their way), so a frame's CPU work is culling, LOD and
-appending draws. A world object drawn in its own region's frame keeps its faces' instances and materials on the GPU
-too (`Frame/PersistentTable.cs`: written when first drawn, when it moves or its faces change, copied in at the start
-of the frame's commands; draws and instances name a slot with bit 30 set, `INSTANCE()`/`MATERIAL()` in
-`common.glsl`), so its draws are all a frame adds for it; attachments, rigged and animated-texture faces, neighbours'
-objects (drawn moved by the regions' offset) and impostor captures still write theirs into the frame. An object whose
-faces need resolving again is handed to the face resolvers and drawn as it was meanwhile (for at most two frames: a
-retired texture slot is reused three on), a new one once they're done, near new ones at once. Objects are placed when the region reports a change, not every frame (`RegionScene.Index.cs`): the
-region source queues the local ids of objects added, updated, moved or removed, each frame applies them (re-placing a
-linkset's children with their root), world objects sit in 16 m columns culled whole before their objects, lights,
-projectors and attachments (by wearer) are lists of their own, and the probe scan and particle tracking follow the
-same reports. A few objects a frame are rechecked against the region's dictionary in case a report was missed.
+Persistent scene state: textures, meshes, prim geometry, probes and region scenes are kept across frames (as in
+Multitude), and each object keeps its resolved faces and instance matrices (`RegionScene.FaceCache`, also while some of
+its assets are on their way), so a frame's CPU work is culling, LOD and appending draws. A world object drawn in its own
+region's frame keeps its faces' instances and materials on the GPU too (`Frame/PersistentTable.cs`: written when first
+drawn, moved or changed, copied in at the start of the frame's commands; draws and instances name a slot with bit 30
+set, `INSTANCE()`/`MATERIAL()` in `common.glsl`); attachments, rigged and animated-texture faces, neighbours' objects
+(drawn moved by the regions' offset) and impostor captures still write theirs into the frame. An object whose faces need
+resolving again is handed to the face resolvers and drawn as it was meanwhile (for at most two frames: a retired
+texture slot is reused three on); a new one once they're done, near new ones at once. Objects are placed when the
+region reports a change, not every frame (`RegionScene.Index.cs`): the region source queues the local ids of objects
+added, updated, moved or removed, each frame applies them (re-placing a linkset's children with their root), world
+objects sit in 16 m columns culled whole, lights, projectors and attachments (by wearer) are lists of their own, and the
+probe scan and particle tracking follow the same reports. A few objects a frame are rechecked against the region's
+dictionary in case a report was missed.
 
 Movement: avatars are drawn at a smoothed copy of their position, dead-reckoned from the last update with its
 velocity to the moment the frame is shown (`World/MotionSmoother.cs`, Stopwatch time; in the headset the predicted
@@ -280,8 +278,8 @@ LibreMetaverse's queue, and the process's memory.
 Materials (`World/MaterialStore.cs`): a face knows whether its material is on its way or isn't coming (none, or the
 fetch failed: retried after 30 s), so a missing one no longer counts as loading forever.
 
-Video memory and loading speed are held by the load governor (`docs/performance.md` > The load governor and video
-memory): textures shrink and evict to stay under the process's budget, and loading slows while frames run long.
+Video memory and loading speed are held by the load governor (`docs/performance.md` > The load governor): textures
+shrink and evict to stay under the process's budget, and loading slows while frames run long.
 
 ## Logging in
 
@@ -292,8 +290,8 @@ Claude Opus 5.5, 2026-10-28 (batch R, `src/Sojourn.Client/Login/`). Two ways in:
   start and hands them over as a lost GPU's restart does (`--login --login-resume`, the remember choice with it), and
   reads the run's state from `SOJOURN_STATE_FILE` (`LaunchState.cs`).
 - **The login screen** (`--login`; the options above are ignored): before any session, assistant, voice or agent API
-  exists, the window and the headset show the void (`Render/Realtime/FrameRenderer.Void.cs`: a slate clear with the
-  overlay drawn over it, so sheets keep their frost and the rays show) and the login sheet, in the panel's look,
+  exists, the window and the headset show the void (`Render/Realtime/FrameRenderer.Void.cs`: a flat neutral grey with
+  the overlay drawn over it, so sheets keep their frost and the rays show) and the login sheet, in the panel's look,
   centred on the desktop, in the settings menu's place in the headset (`PanelPlacement`, following the head, dragged
   by its body). Saved accounts to pick (the last used selected), + for a new one (username as on the website, first
   last or the one name; password; grid: Second Life, Beta, or other by login URI, its name asked from
@@ -334,25 +332,43 @@ first login answer as a grid asking that would (once a process, without asking t
 
 ## When the GPU is lost
 
-Claude Opus 5.5, 2026-10-27 (`DeviceLoss.cs`), after a session ended in `vkWaitForFences failed: ErrorDeviceLost`
-(Windows resetting the display driver after the GPU paged video memory for seconds). A device loss anywhere in the
-frame loop ends it: the console says so, the client logs out (6 s at most), stops the assistant, voice, world sound,
-media helpers and the agent API (its port is the next run's), and starts the same program again with the same
-arguments, working directory, console and environment, `--start` replaced by the region and position the person was
-at (`uri:Region&x&y&z`; the place stays out of the log while incognito), then exits with code 75. The new run reads
-`restarted.json` in the base dir and, once in world, says on the assistant's panel that it restarted after the
-graphics card was reset. Three losses within ten minutes (counted in `SOJOURN_RESTARTS`) and it stops restarting and
-says so. A login asking for MFA again would ask on the login sheet and in the console (the saved MFA hash normally
-spares that). A run from the login screen logs the same account in again without the form: the hash goes to the
-next run in a DPAPI-protected file in the saved logins' folder (`resume.dat`), read and deleted at its start, ignored
-after two minutes; the next run gets `--login-resume`.
-Why not rebuild the device in the process: the GPU state is spread through the world's caches (textures, geometry,
-face caches holding texture slots, avatars, impostors, probes, media surfaces, the overlay) and the OpenXR session is
-bound to the device; a new process rebuilds all of it by construction and the disk cache brings the place back fast.
-`SOJOURN_FAKE_DEVICE_LOST=S` throws the same exception S seconds after the first region is drawn (not passed on to
-the restarted run), for testing without resetting the PC's driver.
-The renderer out of sight (Session's `Offscreen/`, Sojourn Access) restarts within its process instead: nothing outside
-it holds its GPU state, so it's dropped and made again with the regions fed afresh, and the app goes on.
+2026-10-27, `DeviceLoss.cs`. The GPU's driver resets under long heavy load (the studio's `docs/gpu-resets.md`), which
+the client sees as `ErrorDeviceLost`. A device loss anywhere in the frame loop ends it:
+- The console says so; the client logs out (6 s at most), stops the assistant, voice, world sound, media helpers and the
+  agent API, and starts the same program again with the same arguments, working directory, console and environment,
+  `--start` replaced by where the person was (`uri:Region&x&y&z`; kept out of the log while incognito), then exits with
+  code 75. The new run reads `restarted.json` in the base dir and, once in world, says on the assistant's panel that it
+  restarted after the graphics card was reset. Three losses within ten minutes (`SOJOURN_RESTARTS`) and it stops
+  restarting and says so.
+- The loss can't always reach the frame loop: a render-thread failure is thrown on the main thread only at its next
+  hand-over (`FramePipe`), and after a reset Meta's runtime has held the main thread in `xrWaitFrame` for 28 s before
+  failing it (twice on 2026-10-31, the headset frozen meanwhile). So a watch thread (`DeviceLoss.Guard`, 2026-10-31)
+  runs the same restart from outside the loop, on definite signals only:
+  1. the render thread failed with a lost device (`VK_ERROR_DEVICE_LOST`, or the runtime's `ErrorRuntimeFailure`,
+     `ErrorSessionLost`, `ErrorInstanceLost`) and the loop hasn't come for it within 2 s;
+  2. it failed with anything else, the loop hasn't come for it within 2 s, and the System log has a display driver
+     reset (nvlddmkm 153 or Display 4101) from the last two minutes;
+  3. the loop hasn't turned for 10 s and the System log has a driver reset from 30 s before it stopped on.
+
+  A slow frame, a load hitch, a debugger pause or the headset taken off logs no driver reset, so a timer alone never
+  restarts. The watch logs the render thread's failure when the loop doesn't come for it (the reason was lost before).
+  Only the main frame loop is watched, not the login screen's.
+- A run from the login screen logs the same account in again without the form: the password hash goes to the next run
+  in a DPAPI-protected `resume.dat` in the saved logins' folder, read and deleted at its start, ignored after two
+  minutes (`--login-resume`). The saved MFA hash normally spares a second MFA question.
+- In the headset, once the next run is started, the old one destroys its OpenXR session and instance (`XrSession.LetGo`,
+  5 s at most) and the new one waits for it to exit (2026-10-31): left to the exit, Meta's runtime noticed the dead
+  session ~11 s later and moved the new run to Synchronized for good (the headset black). As a fallback, a restarted run
+  put in Synchronized within two minutes of first showing and left there 10 s starts again once more (`DeviceLoss.Watch`;
+  it counts toward the three).
+- Why a new process rather than a new device: the GPU state is spread through the world's caches (textures, geometry,
+  face caches holding texture slots, avatars, impostors, probes, media surfaces, the overlay) and the OpenXR session is
+  bound to the device; a new process rebuilds all of it by construction and the disk cache brings the place back fast.
+  The renderer out of sight (Session's `Offscreen/`, Sojourn Access) restarts within its process instead: nothing
+  outside it holds its GPU state.
+- `SOJOURN_FAKE_DEVICE_LOST=S` throws the same exception S seconds after the first region is drawn (not passed on to the
+  restarted run), for testing without resetting the driver; with `SOJOURN_FAKE_HELD=1` too, the failure reaches the
+  frame loop a minute late, as when `xrWaitFrame` held it, so the watch's restart (rule 1) can be seen.
 
 ## The local grid
 
@@ -367,7 +383,7 @@ priority, .NET 8 runtime), makes accounts, sends console commands and swaps scen
 - `dense`: the same plus 20 copies of it (`save oar` / `load oar --merge --displacement`), about 2400 prims over the
   four regions, so a view holds 1400-2000 instances and 3-6k draws.
 - A second copy, `local/perf-grid` (ports 9740-9743 and 9749, `SOJOURN_GRID=perf-grid`), holds the synthetic forest
-  (`tools/forest.py`, 27.8k objects and 8.9k textures; `docs/performance.md` > Busy places), so performance work can
+  (`tools/forest.py`, 27.8k objects and 8.9k textures; `docs/performance.md` > How to measure), so performance work can
   restart and swap scenes without disturbing the usual grid.
 
 Ports in use: grid 9700-9703 and 9709, agent API 9720, voice tests' clients 9730-9731, audio's test client 9732 and
@@ -385,10 +401,9 @@ lab 8300-8899; Tessel 9063, 9070, 9020, 9080.
 - Neighbouring regions: LibreMetaverse 3.2.0 raises each event-queue event on a task of its own, so a neighbour's
   EnableSimulator and EstablishAgentCommunication (sent together) were handled at once; when each missed the other's
   Simulator, both connected: two circuits for one region, OpenSim sent DisableSimulator to both, and the neighbour was
-  gone for the session (2 logins in 20 with a login probe, 2026-10-26). `Agents/ChildCapsGuard.cs` unregisters both
-  handlers (by reflection on their method names: recheck on a LibreMetaverse upgrade; it logs a warning if they're
-  gone) and connects each neighbour once under a lock, setting its seed when the circuit is up; 0 in 30 after, and the
-  voice scenarios' neighbours and crossing pass.
+  gone for the session (2 logins in 20). `Agents/ChildCapsGuard.cs` unregisters both handlers (by reflection on their
+  method names: recheck on a LibreMetaverse upgrade; it logs a warning if they're gone) and connects each neighbour
+  once under a lock, setting its seed when the circuit is up.
 - New circuits: LibreMetaverse 3.2.0 sends a region's UseCircuitCode once and resends nothing until the region's
   handshake, so one lost datagram left a teleport's arrival waiting 60 s and never arriving (the main grid's way out,
   2026-10-28). `Agents/CircuitGuard.cs` sends it again every 1.5 s until acknowledged (by reflection on its private
@@ -417,15 +432,12 @@ lab 8300-8899; Tessel 9063, 9070, 9020, 9080.
   under that id; anything else updates its own object as LibreMetaverse would, never the agent, and the console says
   so once per region and id (`self update guard: ...`). It also notes the last update that moved the agent (the arrival
   reply above). `SOJOURN_SELF_GUARD=0` for comparing; `SOJOURN_SELF_ID_COLLIDE=FIRST-LAST` gives terse updates for
-  those ids from any region but the current one the agent's id, so the case can be made on the local grid. Checked
-  that way (2026-10-28, a physical prim falling 120 m in Atelier North, the agent in Atelier 18 m away): with the
-  guard off the agent's position followed the prim down, 230 m off, and the view cut over to it; with it on, one `self update
-  guard` line, the agent never moved, and the only cuts were the teleports'.
+  those ids from any region but the current one the agent's id, so the case can be made on the local grid (a falling
+  prim in a neighbour: without the guard the agent and the view followed it down).
 - Region crossings: LibreMetaverse 3.2.0 undoes a crossing whose arrival reply comes before it listens (30 s later it
   moves the agent back into the old region) and leaves the new circuit without its handshake flag, which stops every
   AgentUpdate. `Agents/CrossingGuard.cs` finishes the crossing and restores the flag (by reflection on its private
-  members: recheck them on a LibreMetaverse upgrade; the guard logs "crossing into ..." when it acts). Tested on the
-  local grid in all four directions and both corner diagonals with a second account.
+  members: recheck them on a LibreMetaverse upgrade; the guard logs "crossing into ..." when it acts).
 - Crossing at speed: the new region's first full update for the agent says it stands still at the handover point
   (OpenSim gives the avatar its momentum back a physics step after CompleteAgentMovement), and LibreMetaverse writes
   the CrossedRegion position into Client.Self after its Network.Connect returns, which first waits for a UseCircuitCode

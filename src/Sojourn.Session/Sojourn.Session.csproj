@@ -19,6 +19,8 @@
 
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="4.152.0" />
+    <!-- shaping for text in fallback faces: emoji sequences (ZWJ, skin tones, keycaps), combining marks (Assistant/FallbackText.cs) -->
+    <PackageReference Include="SkiaSharp.HarfBuzz" Version="4.152.0" />
   </ItemGroup>
 
   <ItemGroup>

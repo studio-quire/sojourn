@@ -297,6 +297,14 @@ public sealed class AdaptiveInk
         return $"#{M(p.Red, q.Red):x2}{M(p.Green, q.Green):x2}{M(p.Blue, q.Blue):x2}";
     }
 
+    /// <summary>Links as words on a light sheet: the accent no lighter than L* 55, so a pale accent (glass's light blue)
+    /// still reads as text (the user, 2026-10-31: links hard to read on the feed). Dark sheets keep the accent.</summary>
+    public static string LinkOnLight(string accent)
+    {
+        var c = Lab.Of(accent);
+        return c.L <= 55 ? accent : Lab.Hex(55, c.A, c.B);
+    }
+
     /// <summary>CIELAB (D65) to and from sRGB hex, enough to turn a colour's lightness over.</summary>
     static class Lab
     {

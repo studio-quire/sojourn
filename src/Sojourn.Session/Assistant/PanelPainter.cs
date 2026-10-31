@@ -31,7 +31,11 @@ public sealed partial class Panel
             Metal = l.Material == "metal";
             Glass = !Pearl && !Metal;
             Light = Text.Red + Text.Green + Text.Blue < 3 * 128;
+            Link = Light ? SKColor.Parse(AdaptiveInk.LinkOnLight(l.Accent)) : Accent;
         }
+
+        /// <summary>Links in text (SLurls on the feed and in the reader).</summary>
+        public readonly SKColor Link;
 
         // one parse per look: the panel redraws often, the look rarely changes
         static Ink? _last;
@@ -76,7 +80,8 @@ public sealed partial class Panel
 
     internal static SKFont Font(SKTypeface face, float size) => new(face, size) { Edging = SKFontEdging.Antialias, Subpixel = true, Hinting = SKFontHinting.Slight };
 
-    internal static float Measure(SKFont font, string s) => Painter.FontFor(font, s).MeasureText(s);
+    /// <summary>Text's width, with fallback faces for what the look's face lacks (FallbackText).</summary>
+    internal static float Measure(SKFont font, string s) => FallbackText.Measure(font, s);
 
     /// <summary>Greedy word wrap into at most <paramref name="maxLines"/> lines, the last ellipsised if cut.</summary>
     internal static List<string> Wrap(string text, SKFont font, float width, int maxLines)
@@ -92,10 +97,11 @@ public sealed partial class Panel
                 if (Measure(font, next) <= width) { cur = next; continue; }
                 if (cur.Length > 0) lines.Add(cur);
                 cur = word;
-                while (Measure(font, cur) > width && cur.Length > 1)
+                // a word too long for a line, cut between characters (never inside a surrogate pair or an emoji)
+                while (Measure(font, cur) > width && FallbackText.Before(cur, cur.Length) > 0)
                 {
-                    int n = cur.Length - 1;
-                    while (n > 1 && Measure(font, cur[..n]) > width) n--;
+                    int n = FallbackText.Before(cur, cur.Length);
+                    while (FallbackText.Before(cur, n) > 0 && Measure(font, cur[..n]) > width) n = FallbackText.Before(cur, n);
                     lines.Add(cur[..n]);
                     cur = cur[n..];
                 }
@@ -114,7 +120,7 @@ public sealed partial class Panel
     {
         if (!force && Measure(font, text) <= width) return text;
         var t = text.TrimEnd('.', ' ');
-        while (t.Length > 0 && Measure(font, t + "...") > width) t = t[..^1];
+        while (t.Length > 0 && Measure(font, t + "...") > width) t = t[..FallbackText.Before(t, t.Length)];
         return t.TrimEnd() + "...";
     }
 
@@ -134,20 +140,6 @@ public sealed partial class Panel
         public float W => width;
         public bool Drawing => c != null;
         public SKCanvas? Canvas => c;
-
-        /// <summary>Archivo and the system faces cover Latin; other scripts (names, chat) fall back to a face that has them.</summary>
-        public static SKFont FontFor(SKFont font, string text)
-        {
-            if (font.ContainsGlyphs(text)) return font;
-            foreach (var rune in text.EnumerateRunes())
-            {
-                if (font.ContainsGlyph(rune.Value)) continue;
-                var fb = SKFontManager.Default.MatchCharacter(rune.Value);
-                if (fb != null) return new SKFont(fb, font.Size) { Edging = font.Edging, Subpixel = font.Subpixel, Hinting = font.Hinting };
-                break;
-            }
-            return font;
-        }
 
         float Radius(float h) => Math.Min(k.Look.Radius, h / 2);
 
@@ -401,14 +393,14 @@ public sealed partial class Panel
             Text(label, tx, ty, f, k.OnAccent);
         }
 
-        public enum Glyph { Close, Help, Mic, Back, Forward, Reload, Play, Pause, Keyboard, ClearAll, Stack }
+        public enum Glyph { Close, Help, Mic, Back, Forward, Reload, Play, Pause, Keyboard, ClearAll, Stack, List }
 
         /// <summary>A small round key with a glyph: close, help, the microphone. Quiet until pointed at.</summary>
         public void GlyphKey(SKRect r, Glyph g, bool lit, bool on = false)
         {
             if (c == null) return;
             if (lit || on) KeyFace(r, r.Height / 2, lit, on && !lit ? 1.4f : 1);
-            var ink = lit || on ? k.Text : k.Dim;
+            var ink = k.Text;   // as dark as the text, lit or not (the user, 2026-10-31: the dim glyphs read too faintly)
             using var p = new SKPaint { Color = ink, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.7f, StrokeCap = SKStrokeCap.Round };
             float cx = r.MidX, cy = r.MidY, s = r.Height * 0.18f;
             switch (g)
@@ -494,6 +486,18 @@ public sealed partial class Panel
                     c.DrawLine(cx - w * 0.56f, cy - h - s * 0.45f, cx + w * 0.56f, cy - h - s * 0.45f, p);
                     break;
                 }
+                case Glyph.List:
+                {
+                    // a bulleted list: all of what a confirmation names
+                    using var dot = new SKPaint { Color = ink, IsAntialias = true };
+                    for (int i = -1; i <= 1; i++)
+                    {
+                        float ly = cy + i * s * 0.75f;
+                        c.DrawCircle(cx - s * 0.95f, ly, s * 0.16f, dot);
+                        c.DrawLine(cx - s * 0.45f, ly, cx + s * 1.05f, ly, p);
+                    }
+                    break;
+                }
             }
         }
 
@@ -530,6 +534,14 @@ public sealed partial class Panel
                 Shader = SKShader.CreateRadialGradient(new SKPoint(cx - 2, cy - 3), 10, new[] { Mix(k.Accent, SKColors.White, 0.45f), k.Accent }, SKShaderTileMode.Clamp),
             };
             c.DrawCircle(cx, cy, 7.5f + 1.2f * t, core);
+        }
+
+        /// <summary>The orb's mic latched open (a tap, not a hold): a steady ring around it, still while the orb breathes.</summary>
+        public void OrbLatched(float cx, float cy)
+        {
+            if (c == null) return;
+            using var p = new SKPaint { Color = A(k.Accent, 0.95f), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.8f };
+            c.DrawCircle(cx, cy, 15.5f, p);
         }
 
         /// <summary>Working: three dots brightening in turn (phase 0-15).</summary>
@@ -694,7 +706,7 @@ public sealed partial class Panel
         {
             if (c == null || text.Length == 0) return;
             using var p = new SKPaint { Color = color, IsAntialias = true };
-            c.DrawText(text, x, y, SKTextAlign.Left, FontFor(font, text), p);
+            FallbackText.Draw(c, text, x, y, font, p);
         }
 
         public void TextRight(string text, float right, float y, SKFont font, SKColor color) => Text(text, right - Measure(font, text), y, font, color);

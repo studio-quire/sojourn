@@ -1,9 +1,10 @@
 """Who the assistant's Claude Code sessions run on: the person's own provider, chosen in settings > assistant
 (Sojourn Access: Alt+0). docs/assistant.md > Switching it on.
 
-- claude: the Claude subscription Claude Code is signed in to on this PC (as it always was). Only from the repo: a
-  packaged build offers no Claude-account sign-in (Anthropic's Agent SDK terms, the project's decision of 2026-10-30),
-  so there "claude" means none chosen yet (state "none"), and the client puts a key or token kept in its place.
+- claude: the Claude subscription Claude Code is signed in to on this PC (as it always was). Only from our own repo:
+  packaged and public builds offer no Claude-account sign-in (Anthropic's Agent SDK terms, the project's decision of
+  2026-10-30; CLAUDE_OFFERED), so there "claude" means none chosen yet (state "none"), and the client puts a key or
+  token kept in its place.
 - anthropic: the person's Anthropic API key.
 - openrouter: the person's OpenRouter key, and a model there: "claude" (Anthropic's models through OpenRouter, the
   same three roles and modes) or any OpenRouter model id, which then takes every request itself.
@@ -57,6 +58,9 @@ import paths
 ROOT = Path(__file__).resolve().parents[1]
 KINDS = ("claude", "anthropic", "openrouter", "relay")
 KEY_KINDS = ("anthropic", "openrouter", "relay")
+# the Claude account is offered only in runs from our own repo, as ProviderKeys.ClaudeOffered: a packaged build has
+# SOJOURN_LOCAL, and the public snapshot sets this False (tools/publish/rules.py)
+CLAUDE_OFFERED = False
 ANTHROPIC = "https://api.anthropic.com"
 OPENROUTER = "https://openrouter.ai/api"
 RELAY = "https://relay.studioquire.org"
@@ -444,8 +448,9 @@ class Provider:
     def _claude(self):
         if self.proxy:
             self.proxy.route = None
-        if paths.PACKAGED:
-            # no Claude-account sign-in in a packaged build: "claude" is the setting's old default, none chosen yet
+        if not CLAUDE_OFFERED:
+            # no Claude-account sign-in in a packaged or public build: "claude" is the setting's old default, none
+            # chosen yet
             return self._not("none", "")
         exe = cli()
         if not exe:
@@ -613,11 +618,11 @@ class Provider:
             return {}   # the subscription (main.py takes ANTHROPIC_* out of the sidecar's environment at start)
         # (an API key outranks a signed-in subscription in Claude Code, so nothing else needs clearing)
         e = {"ANTHROPIC_BASE_URL": self.proxy.url, "ANTHROPIC_API_KEY": self.proxy.token}
+        # none of Claude Code's own traffic (usage telemetry, error reports, update checks), in builds from source too:
+        # docs/download.md promises no analytics, and the requests go only through the provider chosen
+        e.update({"DISABLE_TELEMETRY": "1", "DISABLE_ERROR_REPORTING": "1", "DISABLE_AUTOUPDATER": "1"})
         if paths.PACKAGED:   # Claude Code's own files in the app's data folder, not the person's profile
             e["CLAUDE_CONFIG_DIR"] = str(paths.packaged_claude())
-            # and none of its own traffic (usage telemetry, error reports, update checks): the README promises no
-            # analytics, and the requests go only through the provider chosen
-            e.update({"DISABLE_TELEMETRY": "1", "DISABLE_ERROR_REPORTING": "1", "DISABLE_AUTOUPDATER": "1"})
             # its cache (MCP logs holding the tools' calls, error logs) follows LOCALAPPDATA, not CLAUDE_CONFIG_DIR: kept
             # in the data folder too, so removing that folder removes everything (checked by `package --check --relay`)
             e["LOCALAPPDATA"] = str(paths.packaged_claude() / "local")

@@ -17,7 +17,8 @@ namespace Sojourn.Client.Media;
 /// the world's touch (Control/DirectTouch): media that isn't playing starts on a press (local, always allowed); a page
 /// the person may interact with takes the press as a click where it lands, a video toggles pausing; a face they may not
 /// interact with is touched as any other. In the headset the press follows phone norms: a tap clicks, a drag scrolls (the
-/// page follows the ray), a hold presses and drags (selecting, sliders), a double tap shows it up close (PageView). On the
+/// page follows the ray), a hold that then moves presses and drags (selecting, sliders), a hold kept still (a ring fills)
+/// or a double tap shows it up close (PageView; up close a hold presses at once, as before). On the
 /// desktop the mouse is the page's: hover, click, drag, the wheel scrolls it, and typing goes to a text field the page has
 /// focused (Esc gives the keys back); Z shows what's under the pointer up close. Main thread.
 /// Written by Claude Opus 5.5, 2026-10-26.
@@ -64,9 +65,13 @@ public sealed class MediaInput
     /// <summary>SOJOURN_MEDIA_DEBUG=1: each gesture's steps in the log (tests, the headset's first sessions).</summary>
     public static Action<string>? Debug;
 
-    public sealed class Gesture(MediaManager m)
+    /// <summary>One hand's press on a page. opens: a still hold brings it up close (out in the world and on the HUD
+    /// board; not on the page board, where it's already up close and a still hold presses as ever).</summary>
+    public sealed class Gesture(MediaManager m, bool opens = true)
     {
-        enum Mode { None, Pending, Scroll, Press }
+        // Hold: held still past HoldMs where a still hold opens; nothing has gone to the page yet. Moving makes it a press
+        // and drag (the press sent where it began), staying still to OpenMs brings it up close, letting go is a click.
+        enum Mode { None, Pending, Scroll, Hold, Press, Opened }
         Mode _mode;
         MediaItem? _item;
         Vector2 _downPx, _lastPx;
@@ -76,11 +81,14 @@ public sealed class MediaInput
         MediaItem? _tapItem;
         Vector2 _scrollRest;
         const float MoveDeg = 1.6f;
-        const int HoldMs = 450, DoubleMs = 380;
+        const int HoldMs = 450, OpenMs = 900, DoubleMs = 380;
 
         public bool Active => _mode != Mode.None;
         public MediaItem? Item => _item;
         public bool Pressing => _mode == Mode.Press;
+
+        /// <summary>While a still hold is on its way to opening up close: how far (0-1), for the cue's ring.</summary>
+        public float? Filling => _mode == Mode.Hold ? Math.Clamp((Environment.TickCount64 - _downAt - HoldMs) / (float)(OpenMs - HoldMs), 0, 1) : null;
 
         public void Down(MediaItem item, Vector2 px, Vector3 dir)
         {
@@ -90,27 +98,44 @@ public sealed class MediaInput
             m.Locked(() => { m.UserActed(item); });
         }
 
-        /// <summary>Each frame while held: px where the ray is on the page now (null off it).</summary>
-        public void Held(Vector2? px, Vector3 dir)
+        /// <summary>Each frame while held: px where the ray is on the page now (null off it). True once, when a still hold
+        /// has lasted to OpenMs (the caller brings the item up close; the rest of the press does nothing).</summary>
+        public bool Held(Vector2? px, Vector3 dir)
         {
-            if (_item == null) return;
+            if (_item == null || _mode == Mode.Opened) return false;
             long now = Environment.TickCount64;
             float deg = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.Normalize(dir), _downDir), -1, 1)) * 180 / MathF.PI;
             var p = Player();
-            if (_mode == Mode.Pending)
+            if (_mode is Mode.Pending or Mode.Hold)
             {
-                if (deg > MoveDeg) { _mode = Mode.Scroll; _lastPx = px ?? _lastPx; Debug?.Invoke($"media gesture: scrolling ({deg:0.0} deg)"); }
                 // a press and drag is a click: only on a page that takes clicks now (focused, or its first click let through)
-                else if (now - _downAt >= HoldMs && m.Locked(() => m.TakesClick(_item)))
+                var item = _item;
+                bool Takes() => m.Locked(() => m.TakesClick(item));
+                if (deg > MoveDeg)
                 {
-                    _mode = Mode.Press;
-                    Debug?.Invoke("media gesture: held: pressing");
-                    p?.Mouse("move", _downPx.X, _downPx.Y);
-                    p?.Mouse("down", _downPx.X, _downPx.Y);
+                    if (_mode == Mode.Pending || !Takes()) { _mode = Mode.Scroll; _lastPx = px ?? _lastPx; Debug?.Invoke($"media gesture: scrolling ({deg:0.0} deg)"); }
+                    else
+                    {
+                        // held, then moved: the press goes in where it began, then follows the ray
+                        Press(p);
+                        if (px is { } to) { p?.Mouse("move", to.X, to.Y, held: true); _lastPx = to; }
+                        m.Locked(() => m.Focus(_item, 3000));
+                    }
                 }
-                return;
+                else if (opens && now - _downAt >= OpenMs)
+                {
+                    _mode = Mode.Opened;
+                    Debug?.Invoke("media gesture: held still: up close");
+                    return true;
+                }
+                else if (_mode == Mode.Pending && now - _downAt >= HoldMs)
+                {
+                    if (opens) { _mode = Mode.Hold; Debug?.Invoke("media gesture: held"); }
+                    else if (Takes()) Press(p);
+                }
+                return false;
             }
-            if (px is not { } at) return;
+            if (px is not { } at) return false;
             if (_mode == Mode.Scroll)
             {
                 // the page follows the ray: dragging it down shows what's above (a positive wheel delta scrolls up)
@@ -126,11 +151,20 @@ public sealed class MediaInput
                 _lastPx = at;
             }
             m.Locked(() => m.Focus(_item, 3000));
+            return false;
+        }
+
+        void Press(MediaPlayer? p)
+        {
+            _mode = Mode.Press;
+            Debug?.Invoke("media gesture: held: pressing");
+            p?.Mouse("move", _downPx.X, _downPx.Y);
+            p?.Mouse("down", _downPx.X, _downPx.Y);
         }
 
         /// <summary>The trigger came up: a tap clicks (a video's pauses or plays), or on a face not taking clicks yet only
-        /// focuses it (the viewer's first click); true for a double tap, or a focusing tap on a face that asks to be
-        /// zoomed to (the caller shows it up close).</summary>
+        /// focuses it (the viewer's first click); a still hold let go before it opened is a tap too. True for a double tap,
+        /// or a focusing tap on a face that asks to be zoomed to (the caller shows it up close).</summary>
         public bool Up(Vector2? px)
         {
             if (_item == null) { _mode = Mode.None; return false; }
@@ -140,9 +174,10 @@ public sealed class MediaInput
             long now = Environment.TickCount64;
             switch (_mode)
             {
-                case Mode.Pending:
-                    if (_tapItem == _item && now - _tapAt < DoubleMs && Vector2.Distance(_tapPx, _downPx) < 40) { doubled = true; _tapItem = null; break; }
-                    (_tapItem, _tapAt, _tapPx) = (_item, now, _downPx);
+                case Mode.Pending or Mode.Hold:
+                    if (_mode == Mode.Hold) _tapItem = null;   // a slow press doesn't begin a double tap
+                    else if (_tapItem == _item && now - _tapAt < DoubleMs && Vector2.Distance(_tapPx, _downPx) < 40) { doubled = true; _tapItem = null; break; }
+                    else (_tapItem, _tapAt, _tapPx) = (_item, now, _downPx);
                     var item = _item;
                     var (takes, zoom) = m.Locked(() => { bool was = m.IsFocused(item), t = m.TakesClick(item); return (t, !was && m.SetFocus(item)); });
                     if (zoom) doubled = true;
@@ -190,11 +225,16 @@ public sealed class MediaInput
         return true;
     }
 
-    public void HudHeld(int hand, PickHit? hit, Vector3 dir)
+    /// <summary>Each frame while held: the item when a still hold has just lasted long enough (the caller shows it up close).</summary>
+    public MediaItem? HudHeld(int hand, PickHit? hit, Vector3 dir)
     {
-        if (_hud[hand] is not { Active: true } g) return;
-        g.Held(At(hit) is { } sp && sp.Item == g.Item ? sp.Px : null, dir);
+        if (_hud[hand] is not { Active: true } g) return null;
+        var item = g.Item;
+        return g.Held(At(hit) is { } sp && sp.Item == item ? sp.Px : null, dir) ? item : null;
     }
+
+    /// <summary>How far a still hold on a HUD face is toward up close (the HUD board's ring), if one is.</summary>
+    public float? HudFilling(int hand) => _hud[hand]?.Filling;
 
     /// <summary>The trigger came up: the item when it was a double tap (the caller shows it up close).</summary>
     public MediaItem? HudUp(int hand, PickHit? hit)
@@ -268,7 +308,7 @@ public sealed class MediaInput
             var px = spot is { } sp && sp.Item == g.Item ? sp.Px : null;
             var item = g.Item;
             if (trigger < 0.35f) { if (g.Up(px) && item != null) zoom(item); }
-            else g.Held(px, dir);
+            else if (g.Held(px, dir) && item != null) zoom(item);
             LeftOnMedia = true;
         }
         else if (spot is { } s && (!s.Playing || s.Interact || s.Video) && !blocked)
@@ -343,7 +383,22 @@ public sealed class MediaInput
         float r = Math.Clamp(0.006f * d, 0.008f, 0.18f);
         if (_leftSpot is { Playing: false }) Play(beams, ray.To, ray.From, r * 2.2f);
         else dots.Add(new OverlayDot(ray.To, _leftGesture is { Active: true } ? r * 1.35f : r, Ink));
+        if (_leftGesture?.Filling is { } f) Fill(beams, ray.To, ray.From, r * 2.6f, f);
         return (scene ?? new OverlayScene()) with { Beams = beams, Dots = dots };
+    }
+
+    /// <summary>A still hold on its way to up close: a ring round the dot facing the eye, drawn clockwise from the top
+    /// as far as it's got (it opens when the ring closes).</summary>
+    public static void Fill(List<OverlayBeam> beams, Vector3 at, Vector3 eye, float radius, float f)
+    {
+        if (f <= 0) return;
+        var toEye = Vector3.Normalize(eye - at);
+        var right = Vector3.Normalize(Vector3.Cross(MathF.Abs(toEye.Z) < 0.9f ? Vector3.UnitZ : Vector3.UnitX, toEye));
+        var up = Vector3.Cross(toEye, right);
+        int n = Math.Max(1, (int)MathF.Ceiling(f * 40));
+        float end = f * MathF.Tau, w = radius * 0.14f;   // the play triangle's stroke
+        Vector3 P(float a) => at + (right * MathF.Sin(a) + up * MathF.Cos(a)) * radius;
+        for (int i = 0; i < n; i++) beams.Add(new OverlayBeam(P(end * i / n), P(end * (i + 1) / n), w, Ink));
     }
 
     /// <summary>A play triangle facing the eye, as lines.</summary>

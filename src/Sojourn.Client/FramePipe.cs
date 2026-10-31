@@ -26,9 +26,13 @@ public sealed class FramePipe : IDisposable
     long _posted, _taken, _released;
     bool _busy, _stop;
     ExceptionDispatchInfo? _failed;
+    long _failedAt;
     // SOJOURN_RENDER_STRESS=1: random delays on both sides of the hand-over, for shaking out ordering assumptions
     readonly bool _stress = Environment.GetEnvironmentVariable("SOJOURN_RENDER_STRESS") == "1";
     readonly Random _rng = new();
+    // SOJOURN_FAKE_HELD=1 (with SOJOURN_FAKE_DEVICE_LOST): a failure reaches the main thread's hand-over a minute late, as
+    // when Meta's xrWaitFrame held it after a driver reset, so DeviceLoss's watch can be seen restarting meanwhile
+    readonly bool _fakeHeld = Environment.GetEnvironmentVariable("SOJOURN_FAKE_HELD") == "1";
 
     public bool Threaded => _thread != null;
     /// <summary>The thread that owns the world now (the main thread between posts, the render thread from a frame's
@@ -37,6 +41,13 @@ public sealed class FramePipe : IDisposable
     /// <summary>Milliseconds the main thread waited for the world in the last <see cref="TakeWorld"/> and posting (the
     /// render thread still building the last frame's scene, or the mailbox full).</summary>
     public double WaitedMs { get; private set; }
+
+    /// <summary>The render thread's failure and when (Stopwatch ticks), null while it renders; for DeviceLoss's watch,
+    /// which restarts when the main thread is held where the failure can't reach it.</summary>
+    public (Exception Error, long At)? Failure
+    {
+        get { lock (_gate) return _failed is { } f ? (f.SourceException, _failedAt) : null; }
+    }
 
     public FramePipe(bool threaded)
     {
@@ -57,7 +68,7 @@ public sealed class FramePipe : IDisposable
         lock (_gate)
         {
             while (_next != null && _failed == null) Monitor.Wait(_gate);
-            _failed?.Throw();
+            HandFailure();
             _next = frame;
             _posted++;
             WorldOwner = -1;   // the frame's now, though the render thread hasn't taken it yet
@@ -75,11 +86,19 @@ public sealed class FramePipe : IDisposable
         lock (_gate)
         {
             while (_released < _posted && _failed == null) Monitor.Wait(_gate);
-            _failed?.Throw();
+            HandFailure();
             WorldOwner = Environment.CurrentManagedThreadId;
         }
         WaitedMs = Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
         if (_stress && _rng.Next(4) == 0) Thread.Sleep(_rng.Next(3));
+    }
+
+    /// <summary>The main thread's hand-over meets a render-thread failure: thrown here. Under the gate.</summary>
+    void HandFailure()
+    {
+        if (_failed == null) return;
+        if (_fakeHeld) Monitor.Wait(_gate, 60_000);
+        _failed.Throw();
     }
 
     /// <summary>Called on the render thread when the frame being rendered is done with the world (its scene built).
@@ -98,15 +117,27 @@ public sealed class FramePipe : IDisposable
 
     /// <summary>Wait until nothing is rendering or waiting to (before touching the GPU from the main thread: a
     /// swapchain or session torn down, waiting for the device to idle). Throws a render-thread failure.</summary>
-    public void Drain()
+    public void Drain() => Drain(Timeout.InfiniteTimeSpan);
+
+    /// <summary>As <see cref="Drain()"/>, giving up after <paramref name="within"/> (a render thread held in a call on a lost
+    /// device); false if it did.</summary>
+    public bool Drain(TimeSpan within)
     {
-        if (_thread == null) return;
+        if (_thread == null) return true;
+        long t0 = Stopwatch.GetTimestamp();
         lock (_gate)
         {
-            while ((_next != null || _busy) && _failed == null) Monitor.Wait(_gate);
+            while ((_next != null || _busy) && _failed == null)
+            {
+                if (within == Timeout.InfiniteTimeSpan) { Monitor.Wait(_gate); continue; }
+                var left = within - Stopwatch.GetElapsedTime(t0);
+                if (left <= TimeSpan.Zero) return false;
+                Monitor.Wait(_gate, left);
+            }
             _failed?.Throw();
             if (_released >= _posted) WorldOwner = Environment.CurrentManagedThreadId;
         }
+        return true;
     }
 
     void Run()
@@ -132,7 +163,12 @@ public sealed class FramePipe : IDisposable
             }
             catch (Exception e)
             {
-                lock (_gate) _failed ??= ExceptionDispatchInfo.Capture(e);
+                lock (_gate)
+                    if (_failed == null)
+                    {
+                        _failed = ExceptionDispatchInfo.Capture(e);
+                        _failedAt = Stopwatch.GetTimestamp();
+                    }
             }
             ReleaseWorld();
             lock (_gate)

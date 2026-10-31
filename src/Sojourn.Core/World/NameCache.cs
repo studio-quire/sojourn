@@ -14,18 +14,29 @@ public sealed class NameCache
 
     readonly ConcurrentDictionary<UUID, Entry> _names = new();
 
+    /// <summary>A name learned or changed: the id, the legacy name and the display name (null if none yet). The session
+    /// log keeps them, so a log sent to the studio can put stand-ins for every name in it (Sojourn.Session/LogShare.cs).</summary>
+    public event Action<UUID, string, string?>? Learned;
+
     public void SetLegacy(UUID id, string? fullName)
     {
         if (id == UUID.Zero || string.IsNullOrWhiteSpace(fullName)) return;
         fullName = fullName.Trim();
-        _names.AddOrUpdate(id, _ => new Entry(fullName, null, true), (_, e) => e with { Legacy = fullName });
+        _names.TryGetValue(id, out var was);
+        var now = _names.AddOrUpdate(id, _ => new Entry(fullName, null, true), (_, e) => e with { Legacy = fullName });
+        if (was is null || was.Legacy != fullName) Learned?.Invoke(id, now.Legacy, now.Display);
     }
 
     public void SetDisplay(AgentDisplayName d)
     {
         var legacy = $"{d.LegacyFirstName} {d.LegacyLastName}".Trim();
-        _names[d.ID] = new Entry(legacy.Length > 0 ? legacy : d.UserName ?? "", d.DisplayName, d.IsDefaultDisplayName);
+        _names.TryGetValue(d.ID, out var was);
+        var now = _names[d.ID] = new Entry(legacy.Length > 0 ? legacy : d.UserName ?? "", d.DisplayName, d.IsDefaultDisplayName);
+        if (was is null || was.Legacy != now.Legacy || was.Display != now.Display) Learned?.Invoke(d.ID, now.Legacy, now.Display);
     }
+
+    /// <summary>Every name known now: id, legacy name, display name (null if none yet).</summary>
+    public List<(UUID Id, string Legacy, string? Display)> All() => _names.Select(kv => (kv.Key, kv.Value.Legacy, kv.Value.Display)).ToList();
 
     public bool Has(UUID id) => _names.ContainsKey(id);
 

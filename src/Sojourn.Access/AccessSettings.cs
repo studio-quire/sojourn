@@ -38,6 +38,11 @@ public sealed class AccessSettings
         Save();
     }
 
+    /// <summary>Which model describes (the assistant's describer.py reads it per description): "economy", Haiku 5.5, or
+    /// "best", Opus 5.5 (docs/assistant-cost.md has what each costs and how they compared).</summary>
+    public string Describing { get; set; } = "economy";
+    public static readonly string[] DescribingChoices = { "economy", "best" };
+
     /// <summary>Voice chat's talk key (MainForm.Voice.cs): f4 (null), f12, scroll_lock or pause.</summary>
     public string? TalkKey { get; set; }
     /// <summary>Someone starting to speak in voice said as they start.</summary>
@@ -226,6 +231,10 @@ public sealed class AccessSettings
         api.Add("walk_turn_rate", new SettingsApi.Setting("access", "Sojourn Access walk mode: degrees a second while Left or Right is held",
             string.Join(", ", rates), () => Walk.TryGetValue("turn_rate", out var v) ? v : "90",
             SettingsApi.Choice("walk_turn_rate", rates, i => { Walk["turn_rate"] = rates[i]; Save(); changed(); })));
+        api.Add("access_describing", new SettingsApi.Setting("access", "Sojourn Access: who writes descriptions (Control+D, and "
+            + "the assistant's describing): economy, Claude Haiku 5.5, about a tenth of a cent each; best, Claude Opus 5.5, closer "
+            + "and surer on detail, about two cents each", string.Join(", ", DescribingChoices), () => Describing,
+            SettingsApi.Choice("access_describing", DescribingChoices, i => { Describing = DescribingChoices[i]; Save(); changed(); })));
         api.Add("walk_teleport_fallback", new SettingsApi.Setting("access", "Sojourn Access: a walk (//go, walk to, the assistant's) "
             + "with no way around what's in the way teleports there instead, where the region allows it", "on, off", () => WalkTeleportFallback,
             SettingsApi.Switch("walk_teleport_fallback", on => { Walk["teleport_fallback"] = on ? "on" : "off"; Save(); changed(); })));

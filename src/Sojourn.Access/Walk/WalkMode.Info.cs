@@ -186,14 +186,19 @@ public sealed partial class WalkMode
     /// <summary>Crossing a border seated (a vehicle): said with whether the seat held, once the region has had time to
     /// say ("Now in Bay City, still on Kart."). The window's own "Now in X." leaves seated crossings to this.</summary>
     public bool SeatedRecently => _seated || _crossed != null;
+
+    /// <summary>A seated crossing's line, for the nearby chat history (written there whether or not it's read out).</summary>
+    public event Action<string>? Crossed;
+
     void Crossing(Body b, long now)
     {
         if (_region != null && b.RegionName != _region && _seated) _crossed = (b.RegionName, now);
         if (_crossed is { } x && now - x.At > 2500)
         {
             _crossed = null;
-            if (_set.WalkText("vehicle"))
-                Line(b.Sitting ? $"Now in {x.Region}, still on {b.SeatName ?? _seatName ?? "your seat"}." : $"Now in {x.Region}; the crossing left you standing.");
+            var line = b.Sitting ? $"Now in {x.Region}, still on {b.SeatName ?? _seatName ?? "your seat"}." : $"Now in {x.Region}; the crossing left you standing.";
+            if (_set.WalkText("vehicle")) Line(line);
+            Crossed?.Invoke(line);
         }
         _region = b.RegionName;
         if (_crossed == null) { _seated = b.Sitting; if (b.Sitting) _seatName = b.SeatName ?? _seatName; }
