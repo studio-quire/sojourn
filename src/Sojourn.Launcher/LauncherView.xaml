@@ -155,7 +155,7 @@
                                 </UniformGrid>
                             </Border>
                             <TextBlock Style="{StaticResource Label}" Text="assistant"/>
-                            <Border Style="{StaticResource Track}">
+                            <Border x:Name="ProviderBorder" Style="{StaticResource Track}">
                                 <UniformGrid x:Name="ProviderTrack" Rows="1"/>
                             </Border>
                             <!-- a key pasted here is kept encrypted (ProviderKeys) and switches to its provider; never shown back -->

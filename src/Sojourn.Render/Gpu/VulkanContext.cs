@@ -286,9 +286,11 @@ public sealed unsafe class VulkanContext : IDisposable
         PhysicalDevice best = default;
         chosenProps = default;
         int bestScore = int.MinValue;
+        var seen = new List<string>();
         foreach (var d in devs)
         {
             Api.GetPhysicalDeviceProperties(d, out var pr);
+            seen.Add($"{SilkMarshal.PtrToString((nint)pr.DeviceName)}: Vulkan {Version(pr.ApiVersion)}, driver {Version(pr.DriverVersion)}");
             if (pr.ApiVersion < Vk.Version13) continue;
             int score = pr.DeviceType switch
             {
@@ -298,9 +300,12 @@ public sealed unsafe class VulkanContext : IDisposable
             };
             if (score > bestScore) { bestScore = score; best = d; chosenProps = pr; }
         }
-        if (bestScore == int.MinValue) throw new InvalidOperationException("No Vulkan 1.3 device");
+        // what was found, for a tester's log (an old driver may offer only 1.2; a newer one from the card's maker 1.3)
+        if (bestScore == int.MinValue) throw new InvalidOperationException($"No Vulkan 1.3 device (found {string.Join("; ", seen)})");
         return best;
     }
+
+    static string Version(uint v) => $"{v >> 22}.{(v >> 12) & 0x3ff}.{v & 0xfff}";
 
     uint FindGraphicsQueueFamily()
     {

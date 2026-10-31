@@ -37,6 +37,7 @@ public sealed class WalkApi : LeapApi
         ["on"] = _walk.On, ["surface"] = _walk.Surface, ["cues_played"] = _walk.Sounds.Played, ["last_line"] = _walk.LastLine,
         ["last_cue"] = _walk.Sounds.Last is { } l ? l.Cue.ToString() : null,
         ["last_cue_ms_ago"] = _walk.Sounds.Last is { } la ? Environment.TickCount64 - la.At : null,
+        ["walked"] = _walk.Walked.Last is { } w ? Math.Round(w, 2) : null, ["walked_all"] = Math.Round(_walk.Walked.All, 2),
         ["pos"] = _walk.Me() is { } b ? new JsonArray(Math.Round(b.Pos.X, 2), Math.Round(b.Pos.Y, 2), Math.Round(b.Pos.Z, 2)) : null,
         ["gaps"] = _walk.LastGaps is { } gs ? new JsonArray(gs.Select(g => (JsonNode?)new JsonObject
         {

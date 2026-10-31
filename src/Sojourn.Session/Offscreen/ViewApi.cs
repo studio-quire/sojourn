@@ -2,13 +2,14 @@ using System.Text.Json.Nodes;
 using Sojourn.Core;
 using Sojourn.Core.Agents;
 using Sojourn.Core.Leap;
+using Sojourn.Session.Collision;
 using Vector3 = System.Numerics.Vector3;
 
 namespace Sojourn.Session.Offscreen;
 
 /// <summary>
-/// SojournView: the renderer out of sight (OffscreenRenderer) for an app that shows no view: how it's doing, and the
-/// local collision model's rays (what's solid ahead, for walking and warnings without sight; docs/access.md > M3).
+/// SojournView: the renderer out of sight (OffscreenRenderer) for an app that shows no view: how it's doing, and its
+/// collision model's rays (for comparing with SojournCollision's, the model without a GPU walk mode uses).
 /// Pictures are the snapshot ops' (LLViewerWindow saveSnapshot, the assistant's look); touches land by its picks
 /// (LLAgent requestTouch, with face).
 /// </summary>
@@ -25,10 +26,9 @@ public sealed class ViewApi : LeapApi
         Op("status", "-> {state: starting|running|restarting|stopped, device, frames, idle, looks, glances, pictures, gpu_ms (a frame, "
             + "lately), cpu_ms, video_mb, textures_mb, losses (in ten minutes), idle_hz, idle_size, unseen (nothing can look at its "
             + "pictures: only geometry drawn, no textures, avatars, shadows or reflections), draw_distance}", _ => Status());
-        Op("collide", "{heading?: degrees from the way I face (0 ahead, 90 left), dir?: [x,y,z] in the region instead, pitch?: degrees, "
-            + "from?: [x,y,z] (default my chest), max?: metres (20)} -> {hit: false} or {hit, distance, normal, prim?, avatar}: "
-            + "the first solid surface along the ray in the local collision model (prims by their physics shapes, phantom ones "
-            + "passable, things not drawn yet not counted)", CollideAsync);
+        Op("collide", CollisionApi.RayArgs + ": the first solid surface along the ray in the renderer's collision model (prims by "
+            + "their physics shapes, phantom ones passable, things not drawn yet not counted); SojournCollision's collide is the one "
+            + "without a GPU that Sojourn Access walks by", CollideAsync);
     }
 
     JsonNode Status()
@@ -47,29 +47,10 @@ public sealed class ViewApi : LeapApi
 
     async Task<JsonNode?> CollideAsync(JsonObject a, CancellationToken ct)
     {
-        var c = S.Client ?? throw new NotConnected("not logged in");
-        var me = c.Self.SimPosition;
-        var from = a.Vec3("from") is { } f ? new Vector3(f.X, f.Y, f.Z) : new Vector3(me.X, me.Y, me.Z + 0.3f);
-        Vector3 dir;
-        if (a.Vec3("dir") is { } d) dir = new Vector3(d.X, d.Y, d.Z);
-        else
-        {
-            var body = c.Self.Movement.BodyRotation;
-            var fwd = LibreMetaverse.Vector3.UnitX * body;
-            double yaw = Math.Atan2(fwd.Y, fwd.X) + a.Num("heading", 0) * Math.PI / 180, pitch = a.Num("pitch", 0) * Math.PI / 180;
-            dir = new Vector3((float)(Math.Cos(yaw) * Math.Cos(pitch)), (float)(Math.Sin(yaw) * Math.Cos(pitch)), (float)Math.Sin(pitch));
-        }
-        if (dir.LengthSquared() < 1e-8f) throw new LeapError("the ray needs a direction");
+        var (from, dir, max) = CollisionApi.Ray(S, a);
         if (!_view.Running) throw new LeapError($"the view isn't running ({_view.State})");
-        var hit = await _view.CollideAsync(from, System.Numerics.Vector3.Normalize(dir), (float)Math.Clamp(a.Num("max", 20), 0.1, 256), ct);
+        var hit = await _view.CollideAsync(from, dir, max, ct);
         if (hit is not { } asked) throw new LeapError($"the view couldn't answer ({_view.State})");
-        if (asked.Hit is not { } h) return new JsonObject { ["hit"] = false };
-        var o = new JsonObject
-        {
-            ["hit"] = true, ["distance"] = Math.Round(h.Distance, 2),
-            ["normal"] = new JsonArray(Math.Round(h.Normal.X, 2), Math.Round(h.Normal.Y, 2), Math.Round(h.Normal.Z, 2)), ["avatar"] = h.Avatar,
-        };
-        if (!h.Avatar && S.Region is { } w && w.Prims.TryGetValue(h.LocalId, out var p)) o["prim"] = p.ID.ToString();
-        return o;
+        return CollisionApi.Answer(S, asked.Hit);
     }
 }

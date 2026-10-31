@@ -134,10 +134,13 @@ public sealed class VrSettings
     /// you look at, or nothing.</summary>
     public GazeSharing Gaze { get; set; } = GazeSharing.EyeContact;
     /// <summary>Whose models the assistant runs on (assistant/provider.py; docs/assistant.md > Switching it on): "claude"
-    /// (the Claude subscription Claude Code is signed in to here, the default), "anthropic" (the person's API key) or
-    /// "openrouter" (their OpenRouter key). The keys themselves are never here: Assistant/ProviderKeys.cs.</summary>
+    /// (the Claude subscription Claude Code is signed in to here, the default), "anthropic" (the person's API key),
+    /// "openrouter" (their OpenRouter key) or "relay" (a personal token for Studio Quire's relay, for people the studio
+    /// covers). The keys themselves are never here: Assistant/ProviderKeys.cs.</summary>
     public string AssistantProvider { get; set; } = "claude";
-    public static readonly string[] Providers = { "claude", "anthropic", "openrouter" };
+    public static readonly string[] Providers = { "claude", "anthropic", "openrouter", "relay" };
+    /// <summary>The providers a person can choose in this build: without "claude" when packaged (ProviderKeys.ClaudeOffered).</summary>
+    public static string[] OfferedProviders { get; } = Sojourn.Session.Assistant.ProviderKeys.ClaudeOffered ? Providers : Providers[1..];
     /// <summary>With OpenRouter: "claude" (Claude's three models there, by the assistant's model setting), or any OpenRouter
     /// model id, which then takes every request itself; the choices offered: Assistant/OpenRouterCatalog.cs.</summary>
     public string OpenRouterModel { get; set; } = "claude";

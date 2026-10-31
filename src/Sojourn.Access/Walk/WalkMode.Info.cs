@@ -42,24 +42,22 @@ public sealed partial class WalkMode
         Line(string.Create(CultureInfo.InvariantCulture, $"{b.RegionName}, {Math.Round(b.Pos.X):0}, {Math.Round(b.Pos.Y):0}, {Math.Round(b.Pos.Z):0}{on}."));
     }
 
-    async Task<bool> ViewReadyAsync()
+    bool RaysReady()
     {
-        // starting, or back in a moment after a lost GPU: worth a few seconds' wait
-        for (int i = 0; i < 25 && _view is { Running: false, State: "starting" or "restarting" }; i++) await Task.Delay(200);
-        if (_view is { Running: true }) return true;
-        Line(ViewWords.Down(_view));
+        if (_rays.Ready) return true;
+        Line("Not in a region yet.");
         return false;
     }
 
     /// <summary>A: the first thing straight ahead within 30 m, at knee, waist or chest height.</summary>
     public async Task AheadAsync()
     {
-        if (Me() is not { } b || !await ViewReadyAsync()) return;
+        if (Me() is not { } b || !RaysReady()) return;
         float yaw = b.Sitting ? b.Yaw : (Held || _wasHeld ? _yaw : b.Yaw);
         var (lo, hi) = Heights(b);
         var rays = new[] { lo, (lo + hi) / 2, hi }.Select(z => (new Vector3(b.Pos.X, b.Pos.Y, z), Dir(yaw), 30f)).ToList();
-        var got = await _view!.CollideManyAsync(rays, b.Linkset);
-        if (got is not { } batch) { Line("The 3D view couldn't answer."); return; }
+        var got = await _rays.CollideManyAsync(rays, b.Linkset);
+        if (got is not { } batch) { Line("Not in a region yet."); return; }
         var hit = batch.Hits.Aggregate((CollideHit?)null, Nearer);
         Line(hit is { } h ? $"{Obstacle(h)}, {Bearings.Metres(h.Distance)} ahead." : "Clear for 30 metres ahead.");
     }
@@ -75,15 +73,15 @@ public sealed partial class WalkMode
     /// opening.</summary>
     public async Task SweepAsync()
     {
-        if (Me() is not { } b || !await ViewReadyAsync()) return;
+        if (Me() is not { } b || !RaysReady()) return;
         float yaw = b.Sitting ? b.Yaw : (Held || _wasHeld ? _yaw : b.Yaw);
         var (lo, hi) = Heights(b);
         var rays = new List<(Vector3, Vector3, float)>(SweepRays * 2);
         foreach (var z in new[] { lo, hi })
             for (int i = 0; i < SweepRays; i++)
                 rays.Add((new Vector3(b.Pos.X, b.Pos.Y, z), Dir(yaw + i * 2 * MathF.PI / SweepRays), SweepRange));
-        var got = await _view!.CollideManyAsync(rays, b.Linkset);
-        if (got is not { } batch) { Line("The 3D view couldn't answer."); return; }
+        var got = await _rays.CollideManyAsync(rays, b.Linkset);
+        if (got is not { } batch) { Line("Not in a region yet."); return; }
         var d = new double[SweepRays];
         for (int i = 0; i < SweepRays; i++)
         {
@@ -99,7 +97,7 @@ public sealed partial class WalkMode
             var sub = new List<(Vector3, Vector3, float)>(bearings.Count * 2);
             foreach (var z in new[] { lo, hi })
                 foreach (var a in bearings) sub.Add((new Vector3(b.Pos.X, b.Pos.Y, z), Dir(yaw + (float)a), SweepRange));
-            if (await _view!.CollideManyAsync(sub, b.Linkset) is { } fine)
+            if (await _rays.CollideManyAsync(sub, b.Linkset) is { } fine)
             {
                 var sd = new double[bearings.Count];
                 for (int i = 0; i < sd.Length; i++)
@@ -137,14 +135,14 @@ public sealed partial class WalkMode
     /// met, as the person's own touch.</summary>
     public async Task TouchAheadAsync()
     {
-        if (Me() is not { } b || !await ViewReadyAsync()) return;
+        if (Me() is not { } b || !RaysReady()) return;
         float yaw = b.Sitting ? b.Yaw : (Held || _wasHeld ? _yaw : b.Yaw);
         var (lo, hi) = Heights(b);
         var rays = new List<(Vector3, Vector3, float)>();
         foreach (var z in new[] { lo, (lo + hi) / 2, hi })
             foreach (var off in new[] { 0f, 0.35f, -0.35f })
                 rays.Add((new Vector3(b.Pos.X, b.Pos.Y, z), Dir(yaw + off), 3f));
-        var got = await _view!.CollideManyAsync(rays, b.Linkset);
+        var got = await _rays.CollideManyAsync(rays, b.Linkset);
         var hit = got?.Hits.Select((h, i) => (h, i)).Where(x => x.h is { Avatar: false }).OrderBy(x => x.h!.Value.Distance).FirstOrDefault();
         if (hit?.h is not { } h || S.Region is not { } w || !w.Prims.TryGetValue(h.LocalId, out var prim)) { Line("Nothing to touch within 3 metres ahead."); return; }
         var (from, dir, _) = rays[hit.Value.i];

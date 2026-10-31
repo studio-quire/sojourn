@@ -45,6 +45,10 @@ static class Shots
             Draw(back, Path.Combine(dir, "settings-openrouter-list.png"));
             file.Provider = "anthropic";
             Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings-anthropic.png"));
+            // Studio Quire's relay: its choice shows once a token is kept (a decoy)
+            Sojourn.Session.Assistant.ProviderKeys.Keep("sqr-" + new string('0', 43));
+            file.Provider = "relay";
+            Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings-relay.png"));
             Draw(Make(places, v => v.ShowStatus(new RunStatus(Phase.Code, Headset: true))), Path.Combine(dir, "code-headset.png"));
             Draw(Make(places, v => v.ShowStatus(new RunStatus(Phase.Code, Headset: true, Question: new() { ["asks"] = 1 }, Answers: true))),
                 Path.Combine(dir, "code.png"));

@@ -129,6 +129,68 @@ public sealed class MeshPhysics
     static Vector3 V(LibreMetaverse.Vector3 v) => new(v.X, v.Y, v.Z);
 }
 
+/// <summary>
+/// What the region collides with, shared by both local collision models (the renderer's, RegionScene.CollideRay, and
+/// the one without a GPU, Collision/CollisionWorld.cs) so they give the same answers.
+/// </summary>
+public static class CollisionRule
+{
+    /// <summary>
+    /// What the region collides with for a prim, where that isn't its drawn triangles (null: they are), after the
+    /// viewer's LLPhysicsShapeBuilderUtil::determinePhysicsShape and renderPhysicsShape, in the shape's unit space:
+    /// - A mesh with a convex hull shape: the asset's hull (or the drawn mesh's, without one).
+    /// - A mesh with a prim shape: its decomposition's hulls if it has them; else its physics model, unless it's under
+    ///   0.5 m in some dimension (the region's thin-triangle rule makes that the hull); else its hull. While its type
+    ///   isn't known, as uploaded: a prim shape if the asset has a physics model, a hull if not.
+    /// - A prim or sculpt with a convex hull shape: the hull of its drawn shape. With a prim shape, its drawn triangles
+    ///   (the region's own simplifications, boxes, spheres and cylinders, are the same surfaces).
+    /// Before the mesh's data has arrived (<paramref name="physics"/> null), its drawn triangles.
+    /// </summary>
+    /// <param name="hullOfDrawn">the convex hull of the drawn shape, asked for only when it's the answer</param>
+    public static Vector3[]? Triangles(bool mesh, MeshPhysics? physics, CollideAs how, Vector3 scale, Func<Vector3[]> hullOfDrawn)
+    {
+        if (mesh)
+        {
+            if (physics is not { } phys) return how == CollideAs.ConvexHull ? NonEmpty(hullOfDrawn()) : null;
+            bool prim = how == CollideAs.Prim || how == CollideAs.Unknown && phys.UploadedAsPrim;
+            if (prim)
+            {
+                if (phys.Decomposition is { } d) return d;
+                bool thin = scale.X < 0.5f || scale.Y < 0.5f || scale.Z < 0.5f;
+                if (!thin && phys.Triangles is { } t) return t;
+            }
+            return phys.Hull ?? NonEmpty(hullOfDrawn());
+        }
+        return how == CollideAs.ConvexHull ? NonEmpty(hullOfDrawn()) : null;
+    }
+
+    static Vector3[]? NonEmpty(Vector3[] tris) => tris.Length > 0 ? tris : null;
+}
+
+/// <summary>Ray tests both local collision models share.</summary>
+public static class CollideMath
+{
+    /// <summary>A standing avatar as the collision models count it: a box around the body (half a metre square, its
+    /// height), met from outside (a ray starting inside walks out); seated avatars are their seat's. The distance and
+    /// the face's outward normal.</summary>
+    public static bool Avatar(Avatar av, Vector3 origin, Vector3 dir, float maxT, out float t, out Vector3 normal)
+    {
+        t = 0;
+        normal = default;
+        if (av.ParentID != 0) return false;
+        var p = new Vector3(av.Position.X, av.Position.Y, av.Position.Z);
+        float h = av.Scale.Z is > 0.5f and < 4f ? av.Scale.Z : 1.9f;
+        var half = new Vector3(0.25f, 0.25f, h / 2);
+        var o = origin - p;
+        if (MathF.Abs(o.X) < half.X && MathF.Abs(o.Y) < half.Y && MathF.Abs(o.Z) < half.Z) return false;
+        if (!RegionScene.Slab(origin, dir, p - half, p + half, maxT, out t) || t <= 0) return false;
+        var at = origin + dir * t - p;
+        normal = MathF.Abs(at.X / half.X) > MathF.Abs(at.Y / half.Y) ? new Vector3(MathF.Sign(at.X), 0, 0) : new Vector3(0, MathF.Sign(at.Y), 0);
+        if (MathF.Abs(at.Z) > half.Z - 1e-3f) normal = new Vector3(0, 0, MathF.Sign(at.Z));
+        return true;
+    }
+}
+
 /// <summary>Convex hulls of point sets (incremental; the sets here are a few hundred points): triangles wound
 /// counter-clockwise seen from outside, as a flat list. Flat or degenerate sets give none.</summary>
 public static class ConvexHull

@@ -160,7 +160,8 @@ public sealed partial class MainForm
         return days == 0 ? $"today {d:HH:mm}" : days == 1 ? $"yesterday {d:HH:mm}" : d.ToString("d MMMM", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>The landmarks tree: the Landmarks folder's (folders with landmarks in them) and Favorites; how many.</summary>
+    /// <summary>The landmarks tree: the Landmarks folder's (folders with landmarks in them) and Favorites; how many. The
+    /// folders are fetched and walked off the window's thread (a big Landmarks folder is a long walk), the tree made on it.</summary>
     async Task<int> FillLandmarksAsync()
     {
         if (Store is not { } store) return 0;
@@ -168,33 +169,42 @@ public sealed partial class MainForm
         var keep = _landmarks.SelectedNode?.Name;
         var open = Descendants(_landmarks.Nodes).Where(n => n.IsExpanded).Select(n => n.Name).ToHashSet();
         int count = 0;
-        async Task<TreeNode?> Folder(UUID id, string name)
+        async Task<Mark?> Folder(UUID id, string name)
         {
             await inv.EnsureLoadedAsync(id, CancellationToken.None);
-            var node = new TreeNode(name) { Name = id.ToString() };
+            var kids = new List<Mark>();
             foreach (var n in Sorted(store.GetContents(id)))
             {
-                if (n is InventoryFolder f) { if (await Folder(f.UUID, f.Name) is { } sub) node.Nodes.Add(sub); }
-                else if (n is InventoryItem it && Target(it) is { AssetType: AssetType.Landmark } lm)
+                if (n is InventoryFolder f) { if (await Folder(f.UUID, f.Name) is { } sub) kids.Add(sub); }
+                else if (n is InventoryItem it && Target(store, it) is { AssetType: AssetType.Landmark } lm)
                 {
-                    node.Nodes.Add(new TreeNode(it.Name) { Name = it.UUID.ToString(), Tag = lm });
+                    kids.Add(new(it.UUID.ToString(), it.Name, lm, new()));
                     count++;
                 }
             }
-            return node.Nodes.Count > 0 ? node : null;
+            return kids.Count > 0 ? new(id.ToString(), name, null, kids) : null;
         }
-        var tops = new List<TreeNode>();
-        foreach (var (type, name) in new[] { (FolderType.Landmark, "Landmarks"), (FolderType.Favorites, "Favorites") })
+        var folders = new[] { (FolderType.Landmark, "Landmarks"), (FolderType.Favorites, "Favorites") }
+            .Select(t => (Id: inv.FolderFor(t.Item1), Name: t.Item2)).Where(t => t.Id != UUID.Zero).ToList();
+        var tops = await Task.Run(async () =>
         {
-            var id = inv.FolderFor(type);
-            if (id != UUID.Zero && await Folder(id, name) is { } top) tops.Add(top);
+            var list = new List<Mark>();
+            foreach (var (id, name) in folders)
+                if (await Folder(id, name) is { } top) list.Add(top);
+            return list;
+        });
+        static TreeNode Node(Mark m)
+        {
+            var node = new TreeNode(m.Name) { Name = m.Id, Tag = m.Landmark };
+            foreach (var k in m.Kids) node.Nodes.Add(Node(k));
+            return node;
         }
         _landmarks.BeginUpdate();
         try
         {
             _landmarks.Nodes.Clear();
             if (tops.Count == 0) _landmarks.Nodes.Add(new TreeNode("No landmarks yet."));
-            foreach (var top in tops) _landmarks.Nodes.Add(top);
+            foreach (var top in tops) _landmarks.Nodes.Add(Node(top));
             foreach (var n in Descendants(_landmarks.Nodes).Where(n => open.Contains(n.Name) || n.Parent == null).ToList()) n.Expand();
             // (a line's own node has no name, and Find refuses an empty one)
             _landmarks.SelectedNode = (!string.IsNullOrEmpty(keep) ? _landmarks.Nodes.Find(keep, true).FirstOrDefault() : null) ?? _landmarks.Nodes[0];
@@ -202,4 +212,7 @@ public sealed partial class MainForm
         finally { _landmarks.EndUpdate(); }
         return count;
     }
+
+    /// <summary>A landmarks folder (Landmark null) or a landmark, as found off the window's thread.</summary>
+    sealed record Mark(string Id, string Name, InventoryItem? Landmark, List<Mark> Kids);
 }

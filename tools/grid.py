@@ -279,7 +279,7 @@ if __name__ == "__main__":
     if cmd == "start":
         print("up" if start() else "failed")
     elif cmd == "stop":
-        stop()
+        stop_and_wait()   # a plain stop returns while it's still answering, so a start straight after saw it "up"
     elif cmd == "status":
         print("up" if ready() else "down")
     elif cmd == "console":

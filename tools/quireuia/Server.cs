@@ -22,6 +22,8 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
   mark TEXT                 put a marker line in the event log
   windows [PID]             top-level windows
   tree [PID] [DEPTH] [raw]  the UI Automation tree (control view unless raw)
+  tabs [PID]                each visible tab control's children by the COM client, as a screen reader's UIA sees them
+                            (the managed find leaves out a WinForms tab control's first and last tab items)
   focus                     the focused element and its ancestors, and the foreground window
   find SEL                  matching elements
   get SEL                   one element in detail, with its full value or text
@@ -43,6 +45,10 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
   shot [PID] FILE           PrintWindow of the main window to a PNG
   activate [PID]            make its main window the hidden desktop's foreground (needed after a restart)
   close [PID] | close SEL    WM_CLOSE to its main window, or to the window holding SEL
+  stalls start [PID] / stalls read / stalls stop
+                            how long the app's window thread goes without answering: its main window pinged
+                            (WM_NULL by SendMessageTimeout) every 20 ms from a thread of ours; read and stop say the
+                            longest wait since start, how many waited over 100 ms, their total, and pings that failed
   quit                      stop the server";
 
     static StreamWriter log;
@@ -173,6 +179,7 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
             case "quit": quitting = true; return "bye";
             case "windows": return string.Join("\n", TopWindows(PidArg(arg)).Select(DescribeWindow));
             case "tree": return Tree(arg);
+            case "tabs": return ComUia.TabsApart(PidArg(arg));
             case "focus": return Focus();
             case "find":
                 {
@@ -322,6 +329,7 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
                     Native.PostMessage(w, 0x0010, IntPtr.Zero, IntPtr.Zero);
                     return "ok";
                 }
+            case "stalls": return Stalls.Command(arg, PidArg(arg.Split(' ').Skip(1).FirstOrDefault() ?? ""), MainWindow);
             default: return "ERR unknown command; try help";
         }
     }
@@ -657,8 +665,68 @@ static class WinEvents
     }
 }
 
+/// <summary>The watched app's window thread pinged every 20 ms (off the commands' lock, so they go on meanwhile): the
+/// longest it took to answer is how long the window froze. Claude Opus 5.5, 2026-10-30, for Sojourn Access's inventory.</summary>
+static class Stalls
+{
+    static Thread thread;
+    static volatile bool running;
+    static readonly object gate = new object();
+    static long pings, longest, over100, overTotal, failed;
+
+    public static string Command(string arg, int pid, Func<int, IntPtr> mainWindow)
+    {
+        var verb = arg.Split(' ').FirstOrDefault() ?? "";
+        if (verb == "start")
+        {
+            Stop();
+            var w = mainWindow(pid);
+            lock (gate) { pings = longest = over100 = overTotal = failed = 0; }
+            running = true;
+            thread = new Thread(() => Ping(w)) { IsBackground = true, Name = "stalls" };
+            thread.Start();
+            return "pinging hwnd=" + w.ToInt64().ToString("x");
+        }
+        if (verb == "read") return Report();
+        if (verb == "stop") { Stop(); return Report(); }
+        return "ERR stalls start [PID] | read | stop";
+    }
+
+    static void Stop()
+    {
+        running = false;
+        thread?.Join(70000);
+        thread = null;
+    }
+
+    static string Report()
+    {
+        lock (gate) return $"pings {pings} longest {longest} over100 {over100} overtotal {overTotal} failed {failed}";
+    }
+
+    static void Ping(IntPtr w)
+    {
+        var sw = new Stopwatch();
+        while (running)
+        {
+            sw.Restart();
+            bool answered = Native.SendMessageTimeout(w, 0, IntPtr.Zero, IntPtr.Zero, 0, 60000, out _) != IntPtr.Zero;
+            long ms = sw.ElapsedMilliseconds;
+            lock (gate)
+            {
+                if (answered) pings++;
+                else failed++;
+                if (ms > longest) longest = ms;
+                if (ms > 100) { over100++; overTotal += ms; }
+            }
+            Thread.Sleep(20);
+        }
+    }
+}
+
 static class Native
 {
+    [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr result);
     public delegate bool EnumWindowsProc(IntPtr h, IntPtr l);
     public delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
 

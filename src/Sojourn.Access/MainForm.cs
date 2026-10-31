@@ -112,7 +112,9 @@ public sealed partial class MainForm : Form
         await host.StartAllAsync(_args, handle, new FormVoice(this), "");
         // no frame loop here: the autopilot (the assistant's walks) steers by the avatar dead-reckoned between updates
         host.Session.Motion.DeadReckon = Environment.GetEnvironmentVariable("SOJOURN_DEAD_RECKON") != "0";
-        // the renderer out of sight: pictures for the assistant's look, touches on faces, the collision model
+        // the collision model (no GPU needed): walk mode's rays, paths, placing by words
+        var rays = _rays = host.StartCollision();
+        // the renderer out of sight: pictures for the assistant's look, touches on faces
         var view = _opt.Render ? host.StartOffscreen() : null;
         _view = view;
         host.StartDescribe(view);
@@ -122,7 +124,7 @@ public sealed partial class MainForm : Form
         {
             Clipboard = () => (string?)Invoke(() => { try { return System.Windows.Forms.Clipboard.ContainsText() ? System.Windows.Forms.Clipboard.GetText() : null; } catch { return null; } }),
         };
-        _walk = new Sojourn.Access.Walk.WalkMode(host, _ops, _set, view, line => Reader?.Answer(line)) { StopOthers = () => _cmd.StopAll() };
+        _walk = new Sojourn.Access.Walk.WalkMode(host, _ops, _set, rays, line => Reader?.Answer(line)) { StopOthers = () => _cmd.StopAll() };
         _cmd.FeetZ = () => _walk.Me()?.Feet;
         _cmd.Describe = words => (Task)Invoke(() => DescribeWordsAsync(words));
         _cmd.About = () => AppInfo.About(_opt.BaseDir);
@@ -131,11 +133,8 @@ public sealed partial class MainForm : Form
         _cmd.Music = MusicWords;
         _cmd.TeleportFallback = () => _set.WalkTeleportFallback;
         _cmd.CueText = cue => _set.WalkText(cue);
-        if (view != null)
-        {
-            var planner = _cmd.Planner = new Sojourn.Access.Walk.PathPlanner(host.Session, view);
-            host.Session.Motion.Router = (c, from, to) => RouteAsync(planner, from, to);
-        }
+        var planner = _cmd.Planner = new Sojourn.Access.Walk.PathPlanner(host.Session, rays);
+        host.Session.Motion.Router = (c, from, to) => RouteAsync(planner, from, to);
         _walkPad.Walk = _walk;
         _cmd.WalkMode = _walk;
         _walk.Walking = () => _cmd.Heading;
@@ -156,6 +155,7 @@ public sealed partial class MainForm : Form
         host.ScreenReader.WholeReplies = true;   // rich descriptions run past the announcer's length
         host.ScreenReader.Announcer.WholeAnswers = true;   // so do F1's keys, //help, a long outfit or parcel list
         host.ScreenReader.MusicMuted = () => _set.MuteAll;
+        host.ScreenReader.ReadMine = () => _set.ReadMine;
         host.ScreenReader.Actions.ConfirmKeys = "Enter confirms, Escape cancels.";
         host.Feed.Joined += e => BeginInvoke(() => Joined(e));
         StartEvents();
@@ -189,6 +189,7 @@ public sealed partial class MainForm : Form
         Host?.Tick();
         _walk?.Tick();
         NoticeCutOff();
+        LinesCutOff();
         if (Host?.Chat.QuitRequested == true && !_ended) { _quitAsked = true; Close(); }   // the assistant, asked to quit
     }
 
@@ -336,10 +337,18 @@ public sealed partial class MainForm : Form
             NoticeSaid(said);
             return said;
         }
+        var shaped = ShapeLine(e, line);
+        LineSaid(e, shaped);
+        return shaped;
+    }
+
+    string ShapeLine(FeedEntry e, string line)
+    {
         if (e.Kind is FeedKind.Im or FeedKind.Group && e.Session != null)
         {
-            bool first;
-            lock (_toldSessions) first = _toldSessions.Add(e.Session);
+            // the person's own line doesn't make the conversation told: the other's answer is still a new IM
+            bool first = false;
+            if (!e.Mine) lock (_toldSessions) first = _toldSessions.Add(e.Session);
             if (e.Session == _focusedSource) return HistoryLine(e, stamp: false);
             if (first && e.Kind == FeedKind.Im && e.Style != FeedStyle.Object)
                 return e.Style == FeedStyle.Emote ? $"New IM: {e.Name} {e.Text}" : $"{e.Name}, new IM: {e.Text}";
@@ -448,8 +457,8 @@ public sealed partial class MainForm : Form
     const string KeysHelp = """
         Areas
         Alt+1: nearby chat
-        Alt+2: conversations
-        Alt+3: people
+        Alt+2: friends
+        Alt+3: people nearby
         Alt+4: inventory
         Alt+5: search
         Alt+6: places
@@ -459,9 +468,10 @@ public sealed partial class MainForm : Form
         Alt+0: settings
         Alt+Shift+4: the inventory's second pane
         Alt or F10: the menu bar
-        Control+Tab or Control+Page Down: the next conversation, with Shift or Page Up the one before
+        Control+Tab or Control+Page Down: the next conversation (IMs and group chats), with Shift or Page Up the one before
         Control+W: close a conversation
         Tab and Shift+Tab: between the history and where you type
+        In nearby chat, Tab from Say: the people nearby, then the history
 
         Chat
         Enter: say
@@ -546,7 +556,7 @@ public sealed partial class MainForm : Form
             Name = "keysText", AccessibleName = title, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Dock = DockStyle.Fill, BackColor = SystemColors.Window,
             // every line ends in a full stop, so a screen reader pauses between them: without, "Alt+1: nearby chat"
-            // and "Alt+2: conversations" ran together, each key sounding like the end of the line before (the user, 2026-10-30)
+            // and "Alt+2: friends" ran together, each key sounding like the end of the line before (the user, 2026-10-30)
             Text = string.Join("\r\n", (walk ? Sojourn.Access.Walk.WalkMode.Help : KeysHelp).ReplaceLineEndings("\n").TrimEnd()
                 .Split('\n').Select(l => l.TrimEnd() is { Length: > 0 } t && !".?!:".Contains(t[^1]) ? t + "." : l.TrimEnd())),
         };
@@ -567,7 +577,7 @@ public sealed partial class MainForm : Form
         switch (keyData)
         {
             case Keys.Alt | Keys.D1: GoArea(_chatPage); return true;
-            case Keys.Alt | Keys.D2: GoArea(_conversationsPage); return true;
+            case Keys.Alt | Keys.D2: GoFriends(); return true;   // Radegast's Friends (conversations: Control+Tab)
             case Keys.Alt | Keys.D3: GoArea(_peoplePage); return true;
             case Keys.Alt | Keys.D4: GoInventory(second: false); return true;
             case Keys.Alt | Keys.Shift | Keys.D4: GoInventory(second: true); return true;
@@ -661,13 +671,8 @@ public sealed partial class MainForm : Form
         }
         _beforeWalk = ActiveControl == _walkPad ? null : ActiveControl;
         _walkPad.Focus();
-        // once a session, if the view's gone for good: its cues (warnings, openings, surfaces, the sonar) won't come
-        var gone = _view != null && ViewWords.Gone(_view) && !_walkToldNoView;
-        if (gone) _walkToldNoView = true;
-        Reader?.Answer("Walk mode. Arrows walk, F1 for its keys."
-                       + (gone ? $" Without warnings or the sonar: {ViewWords.Down(_view)}" : ""), keep: false);
+        Reader?.Answer("Walk mode. Arrows walk, F1 for its keys.", keep: false);
     }
-    bool _walkToldNoView;
 
     /// <summary>`//status music`: the parcel's stream as it is, or null when the parcel has none.</summary>
     string? MusicWords()
@@ -713,6 +718,7 @@ public sealed partial class MainForm : Form
         int at = _areas.SelectedTab == _chatPage ? 0
             : _areas.SelectedTab == _conversationsPage && _conversations.SelectedTab != null ? 1 + _conversations.SelectedIndex : -1;
         int next = at < 0 ? (dir > 0 ? 0 : ring.Count - 1) : ((at + dir) % ring.Count + ring.Count) % ring.Count;
+        if (ring.Count == 1 && at == 0) { Reader?.Answer("No conversations open.", keep: false); return; }
         var (area, conv) = ring[next];
         if (conv != null) _conversations.SelectedTab = conv;
         GoArea(area);

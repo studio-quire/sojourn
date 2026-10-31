@@ -14,7 +14,9 @@
   python tools/access.py test      the scripted check below; prints `ok  name: detail` / `FAIL name: detail` per check
                                    (ACCESS_STEPS=inventory,walk runs only the steps whose names have those words, after
                                    the login's checks: for working on one part; ACCESS_NO_RENDER=1 starts the app with --no-render,
-                                   nothing on the GPU, for steps that don't need the view; ACCESS_ACCOUNTS=Walk runs as Walk Tester
+                                   nothing on the GPU, for steps that don't need the view; ACCESS_NO_GPU=1 hides Vulkan's drivers
+                                   from it, as on a PC whose graphics can't run the view (it gives up; walk mode runs on the
+                                   collision model alone); ACCESS_ACCOUNTS=Walk runs as Walk Tester
                                    and Walk Visitor on ports 10 up, never throwing out a person's Access Tester)
   python tools/access.py package [--dirty]
                                    the build for a tester's own PC: self-contained (no .NET needed), win-x64, with its
@@ -107,6 +109,9 @@ AWAY = (68, 66)                    # where the visitor walks to leave the tester
 FACEBOX_XY = (62, 34)              # the visitor's touch-reporting box for the view's checks, near the tester's start
 FACEBOX = "Access Facebox"
 LOSE_AFTER = 15                    # the view out of sight's GPU "lost" once this many seconds after its first frame
+NO_RENDER = os.environ.get("ACCESS_NO_RENDER") == "1"   # the app with --no-render: no renderer out of sight at all
+NO_GPU = os.environ.get("ACCESS_NO_GPU") == "1"         # Vulkan's drivers hidden from the app: the renderer tries and gives up
+VIEWLESS = NO_RENDER or NO_GPU                          # either way no pictures or faces; the collision model needs no GPU
 LIST_DELAY_MS = 3000               # People's and Objects' first fills held back this long (SL's objects wait for names)
 
 Q_PORT = 9885                      # QuireUia's server
@@ -129,7 +134,7 @@ MAX_TABS = 25                      # Tab stops walked before calling the order e
 NAMED_TYPES = {"Edit", "Document", "Button", "CheckBox", "RadioButton", "ComboBox", "List", "Tree", "Tab", "TabItem",
                "Slider", "Spinner", "DataGrid", "Table", "Hyperlink", "MenuItem", "SplitButton"}
 # the contract's controls (AutomationId = WinForms Name) and the UIA types that would be right for them
-ROLES = {"chatInput": {"Edit"}, "chatHistory": {"Edit", "Document"}, "conversations": {"Tab"},
+ROLES = {"chatInput": {"Edit"}, "chatHistory": {"Edit", "Document"}, "chatPeople": {"List", "DataGrid", "Table"}, "conversations": {"Tab"},
          "convInput": {"Edit"}, "convHistory": {"Edit", "Document"}, "people": {"List", "DataGrid", "Table"},
          "objects": {"List", "DataGrid", "Table"}, "notices": {"List", "DataGrid", "Table"},
          "noticeText": {"Edit", "Document"}, "noticeReply": {"Edit"}, "noticeIgnore": {"Button"},
@@ -181,6 +186,15 @@ VOICE_DLL = ROOT / "local" / "voice" / "build" / "Release" / "sojourn_voice.dll"
 WEBRTC_LICENCES = ROOT / "local" / "webrtc" / "LICENSES" / "webrtc-license.txt"
 NUGET = Path(os.environ.get("NUGET_PACKAGES", Path.home() / ".nuget" / "packages"))
 RID = "win-x64"
+# the assistant's Python side in a package: python.org's embeddable CPython (3.12, as the venv; 3.12.10 is the last
+# 3.12 with Windows builds, and the venv's compiled packages are ABI-compatible across 3.12.x), checked by its hash,
+# with the venv's claude-agent-sdk and what it needs (the SDK carries Claude Code itself, _bundled/claude.exe)
+PY_EMBED = "3.12.10"
+PY_EMBED_URL = f"https://www.python.org/ftp/python/{PY_EMBED}/python-{PY_EMBED}-embed-amd64.zip"
+PY_EMBED_SHA256 = "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3"   # python.org's MD5 matched too
+PY_EMBED_ZIP = DIST / "python-embed" / f"python-{PY_EMBED}-embed-amd64.zip"
+VENV_PY = ROOT / "local" / "assistant-venv" / "Scripts" / "python.exe"
+BUNDLED_DISTS = ["claude-agent-sdk"]   # with their dependencies; no hearing or local voice (typed requests, describing)
 
 
 def git(*args):
@@ -193,9 +207,14 @@ def package():
     audio (sojourn_voice.dll), a README for a screen-reader user and the licences. Versioned 0.1.0.N, N the commit count;
     refuses uncommitted changes under src/ unless --dirty (then marked so in the version's commit and the zip's name)."""
     dirty_ok = "--dirty" in sys.argv[2:]
-    changed = git("status", "--porcelain", "--", "src")
+    lean = "--lean" in sys.argv[2:]       # without the assistant (no Python, no Claude Code: about 120 MB less)
+    tag = sys.argv[sys.argv.index("--tag") + 1] if "--tag" in sys.argv[2:-1] else None
+    if tag and not re.fullmatch(r"[a-z0-9][a-z0-9\-]{0,30}", tag):
+        print("--tag: lowercase letters, digits and dashes")
+        return 1
+    changed = git("status", "--porcelain", "--", "src", "assistant")
     if changed and not dirty_ok:
-        print("uncommitted changes under src/ (a packaged build should be one commit, so its number names it):\n" + changed
+        print("uncommitted changes under src/ or assistant/ (a packaged build should be one commit, so its number names it):\n" + changed
               + "\ncommit first, or --dirty for a local try")
         return 1
     missing = [p for p in (NVDA_DIR / "x64" / "nvdaControllerClient.dll", NVDA_DIR / "license.txt", VOICE_DLL, WEBRTC_LICENCES)
@@ -207,9 +226,13 @@ def package():
     version = f"0.1.0.{git('rev-list', '--count', 'HEAD')}"
     commit = git("rev-parse", "--short=7", "HEAD") + ("-dirty" if changed else "")
     name = f"Sojourn Access {version}"
-    zip_path = DIST / f"SojournAccess-{version}{'-dirty' if changed else ''}-{RID}.zip"
-    stage = DIST / "stage" / name
-    build_root = DIST / "build"   # its own bin and obj (Directory.Build.props), so the repo's build folder isn't touched
+    # --tag: a try, apart from releases (its own folder under local/dist, which `package --check` doesn't pick by itself)
+    out_dir = DIST / tag if tag else DIST
+    marks = "".join(f"-{m}" for m in (tag, "lean" if lean else None, "dirty" if changed else None) if m)
+    zip_path = out_dir / f"SojournAccess-{version}{marks}-{RID}.zip"
+    stage = out_dir / "stage" / name
+    # its own bin and obj (Directory.Build.props), so the repo's build folder isn't touched
+    build_root = DIST / (f"build-{tag}" if tag else "build")
     shutil.rmtree(stage, ignore_errors=True)
     stage.mkdir(parents=True)
 
@@ -235,11 +258,18 @@ def package():
     shutil.copy2(NVDA_DIR / "x64" / "nvdaControllerClient.dll", stage)
     if not (stage / "sojourn_voice.dll").exists():
         shutil.copy2(VOICE_DLL, stage)
-    write_text(stage / "README.txt", (PACKAGE_FILES / "README.txt").read_text(encoding="utf-8").replace("{VERSION}", version))
+    readme = (PACKAGE_FILES / "README.txt").read_text(encoding="utf-8").replace("{VERSION}", version)
+    keep, drop = ("lean", "assistant") if lean else ("assistant", "lean")   # [assistant]...[/assistant] blocks
+    readme = re.sub(rf"\[{drop}\].*?\[/{drop}\]\n?", "", readme, flags=re.S)
+    write_text(stage / "README.txt", re.sub(rf"\[/?{keep}\]\n?", "", readme))
     licences(stage / "Licences", build_root)
+    if not lean and bundle_assistant(stage) != 0:
+        return 1
 
     expected = ["SojournAccess.exe", "nvdaControllerClient.dll", "sojourn_voice.dll", "openjp2.dll", "libSkiaSharp.dll",
                 "shaderc_shared.dll", "Shaders", "Character", "Textures", "Fonts", "linden"]
+    if not lean:
+        expected += ["python/python.exe", "assistant/main.py"]
     absent = [e for e in expected if not (stage / e).exists()]
     if absent:
         print("not in the package: " + ", ".join(absent))
@@ -255,6 +285,139 @@ def package():
     print(f"{zip_path.relative_to(ROOT)}: {zip_path.stat().st_size / 1e6:.0f} MB ({unpacked / 1e6:.0f} MB unpacked, "
           f"{sum(1 for f in stage.rglob('*') if f.is_file())} files); the folder: {stage.relative_to(ROOT)}")
     return 0
+
+
+def bundle_assistant(stage):
+    """The assistant's Python side beside the program (docs/access-app.md > Packaging): python.org's embeddable CPython
+    in python/, the venv's claude-agent-sdk and its dependencies in python/Lib/site-packages (Claude Code itself is the
+    SDK's _bundled/claude.exe), assistant/'s code and prompts, all compiled ahead (unchecked-hash .pyc, so nothing is
+    written beside the program when it runs; Sidecar.cs starts it with -B too). Then a smoke test: the embedded Python
+    imports the sidecar's modules and finds its Claude Code inside the package."""
+    import hashlib
+    import zipfile
+    if not VENV_PY.exists():
+        print("missing the assistant's venv (python tools/assistant.py setup)")
+        return 1
+    if not PY_EMBED_ZIP.exists():
+        print(f"fetching {PY_EMBED_URL}")
+        PY_EMBED_ZIP.parent.mkdir(parents=True, exist_ok=True)
+        tmp = PY_EMBED_ZIP.with_suffix(".part")
+        urllib.request.urlretrieve(PY_EMBED_URL, tmp)
+        tmp.replace(PY_EMBED_ZIP)
+    if hashlib.sha256(PY_EMBED_ZIP.read_bytes()).hexdigest() != PY_EMBED_SHA256:
+        print(f"{PY_EMBED_ZIP.name} isn't the file python.org published (its SHA-256 differs); delete it to fetch it again")
+        return 1
+    py = stage / "python"
+    with zipfile.ZipFile(PY_EMBED_ZIP) as z:
+        z.extractall(py)
+    pth = next(py.glob("python3*._pth"))
+    pth.write_text(f"{pth.stem}.zip\n.\nLib\\site-packages\nimport site\n", encoding="ascii")
+    site = py / "Lib" / "site-packages"
+    site.mkdir(parents=True)
+
+    # what the venv has installed for the SDK: each distribution's files by its RECORD (scripts outside it left out)
+    walk = r"""
+import importlib.metadata as md, json, re, sys
+from packaging.markers import Marker
+# each distribution with the extras asked of it (mcp needs pyjwt[crypto], whose extra brings cryptography)
+want, seen, done = [(n, "") for n in sys.argv[1:]], {}, set()
+while want:
+    n, extra = want.pop()
+    k = re.sub(r"[-_.]+", "-", n).lower()
+    if (k, extra) in done: continue
+    done.add((k, extra))
+    d = seen.get(k) or md.distribution(n)
+    seen[k] = d
+    for r in d.requires or []:
+        req, _, marker = r.partition(";")
+        env = {"extra": extra, "sys_platform": "win32", "platform_system": "Windows", "os_name": "nt",
+               "python_version": "3.12", "python_full_version": "3.12.10", "implementation_name": "cpython",
+               "platform_python_implementation": "CPython", "platform_machine": "AMD64"}
+        if marker.strip() and not Marker(marker).evaluate(env): continue
+        if not marker.strip() and extra: continue   # (taken with no extra already)
+        m = re.match(r"\s*([A-Za-z0-9_.\-]+)\s*(?:\[([^\]]*)\])?", req)
+        want.append((m.group(1), ""))
+        want.extend((m.group(1), x.strip()) for x in (m.group(2) or "").split(",") if x.strip())
+out = {}
+for k, d in seen.items():
+    files = [str(f) for f in d.files or [] if not str(f).startswith("..") and "__pycache__" not in str(f)]
+    meta = d.metadata
+    lic = meta.get("License-Expression") or (meta.get("License") or "").split("\n")[0][:80] or next(
+        (c.split(" :: ")[-1] for c in meta.get_all("Classifier") or [] if c.startswith("License ::")), "see its files")
+    out[d.metadata["Name"]] = {"version": d.version, "root": str(d.locate_file("")), "files": files, "licence": lic,
+                               "home": meta.get("Home-page") or next((u.split(", ", 1)[-1] for u in meta.get_all("Project-URL") or []), "")}
+print(json.dumps(out))
+"""
+    r = subprocess.run([str(VENV_PY), "-c", walk, *BUNDLED_DISTS], capture_output=True, text=True, encoding="utf-8",
+                       creationflags=CREATE_NO_WINDOW)
+    if r.returncode:
+        print("reading the venv's packages failed:\n" + r.stderr[-1500:])
+        return 1
+    dists = json.loads(r.stdout)
+    for name, d in dists.items():
+        root = Path(d["root"])
+        for f in d["files"]:
+            dest = site / f
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(root / f, dest)
+    claude_exe = site / "claude_agent_sdk" / "_bundled" / "claude.exe"
+    if not claude_exe.exists():
+        print("the SDK's Claude Code (claude_agent_sdk/_bundled/claude.exe) isn't in the venv")
+        return 1
+
+    # the sidecar: its code and prompts
+    own = stage / "assistant"
+    own.mkdir()
+    for f in sorted((ROOT / "assistant").iterdir()):
+        if f.suffix in (".py", ".md") and f.is_file():
+            shutil.copy2(f, own / f.name)
+
+    # compiled ahead with the embedded Python itself, below normal and on two workers
+    r = subprocess.run([str(py / "python.exe"), "-E", "-s", "-m", "compileall", "-q", "-j", "2",
+                        "--invalidation-mode", "unchecked-hash", str(site), str(own)],
+                       capture_output=True, text=True, creationflags=CREATE_NO_WINDOW | BELOW_NORMAL)
+    if r.returncode:
+        print("compiling the assistant's Python failed:\n" + (r.stdout + r.stderr)[-1500:])
+        return 1
+
+    # the smoke test: as Sidecar.cs starts it (-B -E -s, the data folder in SOJOURN_LOCAL), every module imports and
+    # its Claude Code is the package's own
+    import tempfile
+    probe = ("import sys, os; sys.path.insert(0, sys.argv[1]); "
+             "import main, brain, tools, moretools, describe, jobs, build, private, privatetools, harness, home, provider, paths, voice, hearing; "
+             "print(provider.cli()); print(paths.LOCAL)")
+    with tempfile.TemporaryDirectory(prefix="sojourn-bundle-") as data:
+        env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("PYTHON", "SOJOURN_", "VIRTUAL_ENV"))}
+        env["SOJOURN_LOCAL"] = data
+        env["PATH"] = without_claude(env.get("PATH", ""))
+        r = subprocess.run([str(py / "python.exe"), "-B", "-E", "-s", "-c", probe, str(own)], capture_output=True, text=True,
+                           env=env, cwd=data, creationflags=CREATE_NO_WINDOW)
+    found = r.stdout.strip().splitlines()
+    if r.returncode or not found or Path(found[0]).resolve() != claude_exe.resolve():
+        print("the bundled sidecar's smoke test failed:\n" + (r.stdout + r.stderr)[-2000:])
+        return 1
+    print(f"assistant bundled: Python {PY_EMBED}, {len(dists)} packages, claude-agent-sdk {dists.get('claude-agent-sdk', {}).get('version')}")
+
+    # their licences: Python's, Claude Code's terms, and each package's own files (in its dist-info) named here
+    lic = stage / "Licences"
+    shutil.copy2(py / "LICENSE.txt", lic / f"Python {PY_EMBED} (PSF).txt")
+    lines = ["The assistant's parts (the python and assistant folders): the Python runtime and the packages the assistant "
+             "runs on, each with its licence. Their licence files are also inside python\\Lib\\site-packages, in each "
+             "package's .dist-info folder.", "",
+             f"Python {PY_EMBED} (python.org's embeddable package): PSF License, in 'Python {PY_EMBED} (PSF).txt' here",
+             "Claude Code (python\\Lib\\site-packages\\claude_agent_sdk\\_bundled\\claude.exe, as the Claude Agent SDK "
+             "ships it): copyright Anthropic PBC, all rights reserved; its use is subject to Anthropic's Commercial Terms "
+             "of Service (https://www.anthropic.com/legal/commercial-terms)"]
+    for name, d in sorted(dists.items(), key=lambda kv: kv[0].lower()):
+        lines.append(f"{name} {d['version']}: {d['licence']}" + (f" ({d['home']})" if d["home"] else ""))
+    write_text(lic / "The assistant's parts.txt", "\n".join(lines) + "\n")
+    return 0
+
+
+def without_claude(path):
+    """PATH without any folder holding a Claude Code (a tester's PC has none: the package's own is the SDK's)."""
+    return os.pathsep.join(p for p in path.split(os.pathsep)
+                           if p and not any((Path(p) / n).exists() for n in ("claude.exe", "claude.cmd", "claude")))
 
 
 def write_text(path, text):
@@ -385,7 +548,15 @@ def tcp(port, line, timeout=60):
 
 
 def u(line, timeout=60):
-    return tcp(Q_PORT, line, timeout)
+    try:
+        return tcp(Q_PORT, line, timeout)
+    except ToolError as e:
+        # UI Automation's element went stale between QuireUia finding it and using it (a window or tab just made or
+        # laid out): found afresh once, a moment later; an element really gone fails again
+        if "ElementNotAvailableException" not in str(e):
+            raise
+        time.sleep(0.5)
+        return tcp(Q_PORT, line, timeout)
 
 
 def v(line, timeout=60):
@@ -503,6 +674,17 @@ def find(sel):
         return [parse(re.sub(r"^\d+: ", "", l)) for l in u(f"find {sel}").splitlines() if l.strip()]
     except ToolError:
         return []
+
+
+def tab_items():
+    """The tab items of the app's visible tab controls as COM UI Automation (a screen reader's) walks them. The managed
+    client's find, which QuireUia's find uses, leaves out a WinForms tab control's first and last tab items (2026-10-30:
+    the conversation's own tab, the only one, was never found), which COM UIA and MSAA both list."""
+    try:
+        out = u(f"tabs {APP_PID}")
+    except ToolError:
+        return []
+    return [json.loads(m) for m in re.findall(r'TabItem ("(?:[^"\\]|\\.)*")', out)]
 
 
 def selection(sel):
@@ -636,7 +818,7 @@ def needs_build():
     if not APP_DLL.exists():
         return True
     built = APP_DLL.stat().st_mtime
-    for d in ("Sojourn.Access", "Sojourn.Session", "Sojourn.Core"):
+    for d in ("Sojourn.Access", "Sojourn.Session", "Sojourn.Core", "Sojourn.Render"):
         for f in (ROOT / "src" / d).rglob("*"):
             if f.suffix in (".cs", ".csproj") and "obj" not in f.parts and "bin" not in f.parts and f.stat().st_mtime > built:
                 return True
@@ -794,6 +976,10 @@ def test():
     run = Run()
 
     # ---- before anything starts
+    if not APP_AS_EXE and needs_build():   # a test of stale binaries reads as a test of the sources
+        print("building Sojourn Access", flush=True)
+        if build():
+            return 1
     app_file = APP_EXE if APP_AS_EXE else APP_DLL
     missing = [p for p in (QUIREUIA, VISITOR_DLL, app_file) if not p.exists()]
     if missing:
@@ -872,8 +1058,10 @@ def session(run, procs):
                 "--no-assistant", "--reader", "on", "--autologin"]
     if os.environ.get("ACCESS_VOICE") != "1":
         app_args.append("--no-voice")   # voice chat is on by default; its keys' step runs with it only when asked
-    if os.environ.get("ACCESS_NO_RENDER") == "1":
-        app_args.append("--no-render")   # no renderer out of sight: nothing on the GPU (the renderer and walk-mode steps need it)
+    if NO_RENDER:
+        app_args.append("--no-render")   # no renderer out of sight: nothing on the GPU (the renderer step needs it)
+    if NO_GPU:
+        env["VK_LOADER_DRIVERS_DISABLE"] = "*"   # the Vulkan loader finds no driver: as the tester's old card, a VM
     host = [APP_EXE] if APP_AS_EXE else [DOTNET, APP_DLL]
     global APP_PID
     app = APP_PID = procs["app"] = launch_hidden(host + app_args, env=env, cwd=APP_BIN)
@@ -901,8 +1089,11 @@ def session(run, procs):
         ("Tab order", lambda: tab_order(run)),
         ("nearby chat in", lambda: chat_in(run, nonce)),
         ("nearby chat out", lambda: chat_out(run, nonce)),
+        ("her own lines read back", lambda: own_lines(run, nonce)),
+        ("lines cut by typing", lambda: typed_cut(run, nonce)),
         ("an IM", lambda: im(run, nonce, tester_id)),
         ("people and objects", lambda: lists(run)),
+        ("people beside chat, friends on Alt+2", lambda: people_beside_chat(run)),
         ("the renderer out of sight", lambda: offscreen(run)),
         ("keys", lambda: keys(run, nonce)),
         ("the menu bar and the review's new keys", lambda: menu_bar(run, nonce, tester_id)),
@@ -929,6 +1120,7 @@ def session(run, procs):
         ("review keys and arrivals", lambda: review_and_arrivals(run, nonce)),
         ("sound as a map", lambda: sound_map(run, tester_id)),
         ("walk mode", lambda: walk_mode(run)),
+        ("distance walked", lambda: distance_walked(run)),
     ]
     only = [w.strip() for w in os.environ.get("ACCESS_STEPS", "").split(",") if w.strip()]
     for name, step in steps:
@@ -968,7 +1160,7 @@ def say_in_app(text, how="enter"):
 APP_PID = 0   # the app under test, for the tree checks
 
 
-def tree_check(run, when, must=("chatInput", "chatHistory")):
+def tree_check(run, when, must=("chatInput", "chatHistory", "chatPeople")):
     """The UIA tree as it is now (only the shown area's controls are in it): names, roles, and the controls that must be there."""
     tree = [parse(l) for l in u(f"tree {APP_PID}").splitlines() if l.strip()]
     unnamed = [d for d in tree if d.get("focusable") and d["type"] in NAMED_TYPES and not d["name"].strip()]
@@ -1014,8 +1206,11 @@ def tab_order(run):
     # the tab strips aren't stops (Alt+number and Control+Tab switch them): Tab and Shift+Tab go between history and Say
     strips = [label(d) for d in stops if d["id"] in ("areas", "conversations") or d["type"] in ("Tab", "TabItem")]
     run.check("no tab strip among the Tab stops", not strips, "; ".join(strips) or order)
-    run.check("Tab from Say goes straight to the history", len(stops) > 1 and stops[1]["id"] == "chatHistory",
+    # Radegast's order: from the chat input to the nearby people list, then on round to the history
+    run.check("Tab from Say goes to People nearby", len(stops) > 1 and (stops[1]["id"] == "chatPeople" or stops[1]["type"] == "ListItem"),
               label(stops[1]) if len(stops) > 1 else "focus didn't move")
+    run.check("and Tab again to the history", len(stops) > 2 and stops[2]["id"] == "chatHistory",
+              label(stops[2]) if len(stops) > 2 else "focus didn't move")
     nameless = [label(d) for d in stops if not d["name"].strip()]
     run.check("every Tab stop has a name", not nameless, "; ".join(nameless) or f"{len(stops) - 1} stops")
     if stops[-1]["id"] == "chatInput" and len(stops) > 2:
@@ -1046,6 +1241,84 @@ def chat_out(run, nonce):
         run.heard_by_visitor(name, lambda d, t=text, k=kind: d["msg"] == t and d["type"] == k and d["from"] == TNAME, n, 10, text)
     run.check("the Say box is empty after sending", value_of("id=chatInput") == "", repr(value_of("id=chatInput")))
 
+def own_lines(run, nonce):
+    """Her own lines read back once the region echoes them, in the words others' get (Alt+0's "My own lines read back")."""
+    for how, text, words in (("enter", f"mine said {nonce}", [f"{TNAME}: mine said {nonce}"]),
+                             ("shift+enter", f"mine whispered {nonce}", [f"{TNAME} whispers: mine whispered {nonce}"])):
+        m = mark()
+        say_in_app(text, how)
+        run.expect(f"her own line read back ({how})", words, m, 10)
+    m = mark()
+    api("SojournSettings", "set", access_read_mine=False)
+    say_in_app(f"mine unread {nonce}")
+    time.sleep(3)
+    heard = [e["text"] for e in said_since(m) if f"mine unread {nonce}" in (e.get("text") or "")]
+    run.check("with the row off, her own line isn't read back", not heard, "; ".join(heard) or "not read")
+    api("SojournSettings", "set", access_read_mine=True)
+
+
+def typed_cut(run, nonce):
+    """A line arriving while she types is cut at her next key by the screen reader (NVDA's speech interrupt for typed
+    characters): said again once the keys rest, those cut together as one, once; not after Control alone silenced it."""
+    def typing(word, gap=0.15):
+        for c in word:
+            key(c, target="id=chatInput")
+            time.sleep(gap)
+
+    def times(text, since):
+        return [e for e in said_since(since) if text in (e.get("text") or "")]
+
+    back_to_chat()
+    u("set id=chatInput |")
+    # not typing: said once
+    m = mark()
+    v(f"say calm line {nonce}")
+    run.expect("(a line while not typing)", [f"calm line {nonce}"], m, 10)
+    time.sleep(2)
+    run.check("a line nobody typed over is said once", len(times(f"calm line {nonce}", m)) == 1,
+              f"{len(times(f'calm line {nonce}', m))} times")
+
+    # two lines cut by typing: said again together after the pause (typing on while each arrives, as she would)
+    def type_until(text, since, secs=10):
+        end = time.time() + secs
+        while time.time() < end:
+            typing("x")
+            if times(text, since):
+                return True
+        return False
+
+    m = mark()
+    typing("ab")
+    v(f"say cut one {nonce}")
+    run.check("(the first line while typing)", type_until(f"cut one {nonce}", m), "")
+    typing("cd")
+    v(f"say cut two {nonce}")
+    run.check("(the second line while typing)", type_until(f"cut two {nonce}", m), "")
+    typing("efgh")
+    last_key = time.time() * 1000
+    again = wait(lambda: next((e for e in said_since(m) if f"cut one {nonce}" in (e.get("text") or "")
+                               and f"cut two {nonce}" in (e.get("text") or "")), None), 6)
+    run.check("lines cut by typing said again together once the keys rest", again, again["text"] if again else
+              " | ".join(e.get("text") or "" for e in said_since(m))[-300:])
+    if again:
+        run.check("after a pause of the keys, not during them", again["t"] - last_key >= 500, f'{again["t"] - last_key:.0f} ms after the last key')
+    time.sleep(2)
+    run.check("and only once", len(times(f"cut two {nonce}", m)) == 2, f"{len(times(f'cut two {nonce}', m))} times in all")
+    u("set id=chatInput |")
+
+    # Control alone silences on purpose: not said again
+    m = mark()
+    typing("ij")
+    v(f"say hushed line {nonce}")
+    run.expect("(a line while typing, then Control alone)", [f"hushed line {nonce}"], m, 10)
+    typing("k")
+    key("ctrl", target="id=chatInput")
+    time.sleep(2.5)
+    run.check("a line silenced by Control alone isn't said again", len(times(f"hushed line {nonce}", m)) == 1,
+              f"{len(times(f'hushed line {nonce}', m))} times")
+    u("set id=chatInput |")
+
+
 def im(run, nonce, tester_id):
     m = mark()
     text = f"an IM for you {nonce}"
@@ -1060,9 +1333,8 @@ def im(run, nonce, tester_id):
     d = wait_focus(lambda d: d["id"] == "convInput", 4)
     run.check("Ctrl+Tab moves to the conversation's message box", d and VNAME in d["name"], label(d) if d else focus_label())
     if d:
-        tab = wait(lambda: find(f"type=TabItem;name~={VNAME}"), 4)
-        run.check(f"a conversation tab for {VNAME}", tab, label(tab[0]) if tab else
-                  f"no TabItem named {VNAME}; tab items: " + ("; ".join(label(t) for t in find("type=TabItem")) or "none"))
+        tab = wait(lambda: [t for t in tab_items() if VNAME in t], 4)
+        run.check(f"a conversation tab for {VNAME}", tab, tab[0] if tab else "no tab item named so; tab items: " + ("; ".join(tab_items()) or "none"))
         tree_check(run, "a conversation", must=("conversations", "convInput", "convHistory"))
         hist = wait(lambda: (lambda h: h if text in h else None)(value_of("id=convHistory")), 4)
         run.check("the conversation shows the IM", hist, text if hist else "not in convHistory")
@@ -1081,9 +1353,9 @@ def im(run, nonce, tester_id):
         key("ctrl+w")
         time.sleep(1)
         after = focus_label()
-        key("alt+2")   # shown, so its tabs are in the tree
+        go_conversations()   # shown, so its tabs are in the tree
         time.sleep(1)
-        gone = not find(f"type=TabItem;name~={VNAME}")
+        gone = not [t for t in tab_items() if VNAME in t]
         run.check("Ctrl+W closes the conversation", gone, f"then {after}" if gone else "its tab is still there")
 
 
@@ -1141,6 +1413,95 @@ def lists(run):
     key("alt+1")
     d = wait_focus(lambda d: d["id"] == "chatInput", 4)
     run.check("Alt+1 back to the Say box", d, label(d) if d else focus_label())
+
+
+def go_conversations():
+    """The conversations area by the menu bar (View, Conversations): Alt+2 is Friends, as in Radegast."""
+    key("alt+v")
+    if menu_open("Conversations"):
+        key("o")
+    time.sleep(0.5)
+
+
+def listed(who):
+    """The item naming someone in the list in view, or None."""
+    got = find(f"type=ListItem;name~={who}")
+    return got[0]["name"] if got else None
+
+
+def people_beside_chat(run):
+    """People nearby a Tab from Say, as Radegast keeps its nearby list beside chat (a blind tester looked for it there,
+    2026-10-30): the item read on arriving, with the distance; the actions on the Applications key; Control+D; the
+    list unchanged while she's in it and current when she comes back; then Alt+2, Radegast's Friends key."""
+    back_to_chat()
+    m = mark()
+    key("tab")
+    d = wait_focus(lambda d: d["id"] == "chatPeople" or d["type"] == "ListItem", 4)
+    run.check("Tab from Say lands in People nearby", d, label(d) if d else focus_label())
+    name = wait(lambda: listed(VNAME), 10)
+    arrived_in_list(run, "People beside chat", m, lambda n: VNAME in n)
+
+    def distance_right(what, name):
+        x, y, z, _ = tester_where()
+        dist = math.dist((x, y, z), visitor_where())
+        mm = re.search(re.escape(VNAME) + r", (?:(\d+) metres?|under a metre), \w+ o'clock", name or "")
+        return run.check(what, mm and abs((int(mm[1]) if mm[1] else 0) - dist) <= 1.5, f"{name}; measured {dist:.1f} m")
+
+    distance_right("the visitor in it, with the distance in metres", name)
+    key("apps")
+    menu = menu_open("Send IM")
+    run.check("the Applications key: the same actions as Alt+3's (Send IM, Walk to, Pay ...)",
+              menu and menu_open("Walk to", 1) and menu_open("Pay...", 1), "Send IM shown" if menu else "no menu")
+    key("esc")
+    d = wait_focus(lambda d: d["id"] == "chatPeople" or (d["type"] == "ListItem" and VNAME in d["name"]), 3)
+    run.check("Escape closes it, back on the person", d, label(d) if d else focus_label())
+    m = mark()
+    key("ctrl+d")
+    run.expect("Control+D there is about them", ["Describ", VNAME], m, 10)
+    time.sleep(1)
+
+    # the list she's in stays as it is; beside it, it's kept current (every 3 s)
+    before = listed(VNAME)
+    to = (VISITOR_START[0] + 5, VISITOR_START[1] + 4)
+    v(f"goto {to[0]} {to[1]}")
+    wait(lambda: math.dist(visitor_where()[:2], to) < 1.5, 15, 0.5)
+    time.sleep(4)
+    still = listed(VNAME)
+    run.check("while she's in it, the list doesn't change under her", still == before, f"{before} -> {still}")
+    key("shift+tab")
+    d = wait_focus(lambda d: d["id"] == "chatInput", 3)
+    run.check("Shift+Tab from it back to Say", d, label(d) if d else focus_label())
+    time.sleep(4)
+    key("tab")
+    wait_focus(lambda d: d["id"] == "chatPeople" or d["type"] == "ListItem", 4)
+    now = listed(VNAME)
+    if distance_right("coming back to it from Say, the distance is current", now):
+        run.check("(and it had changed)", now != before, f"{before} -> {now}")
+    back_to_chat()
+    v(f"goto {VISITOR_START[0]} {VISITOR_START[1]}")
+
+    # Alt+2: Friends, as in Radegast (the tester's habit; conversations are Control+Tab's)
+    key("alt+2")
+    d = wait_focus(lambda d: d["id"] == "friends" or (d["type"] == "ListItem" and re.search(r", (online|offline)$|^No friends yet", d["name"])), 4)
+    run.check("Alt+2 goes to Friends, a friend (or none) read", d, label(d) if d else focus_label())
+    tree_check(run, "Alt+2's friends", must=("people", "friends", "groups"))
+    back_to_chat()
+    key("alt+v")
+    shown = menu_open("Friends")
+    run.check("View shows Friends with Alt+2", shown and menu_keys("type=MenuItem;name=Friends").endswith("Alt+2"),
+              menu_keys("type=MenuItem;name=Friends") if shown else "no menu")
+    run.check("and Conversations (Control+Tab goes round them)", menu_open("Conversations", 1), "")
+    key("esc")
+    key("esc")
+    back_to_chat()
+    m = mark()
+    key("ctrl+tab")
+    if wait_focus(lambda d: d["id"] == "convInput", 2):
+        print("     (a conversation is open: Control+Tab with none isn't checked)")
+        back_to_chat()
+    else:
+        run.expect("Control+Tab with no conversations says so", ["No conversations open"], m, 4)
+    wait(lambda: math.dist(visitor_where()[:2], VISITOR_START[:2]) < 1.5, 15, 0.5)   # back where the steps after expect it
 
 
 def keys(run, nonce):
@@ -1384,8 +1745,10 @@ def inv_search(words, expect_first):
             time.sleep(0.5)
     type_text(words, "id=inventorySearch")
     wait(lambda: value_of("id=inventorySearch") == words, 3, 0.2)
-    # (a search through a big inventory, earlier runs' fixtures piled up in the Trash among them, holds the window's
-    # thread for seconds, and UI Automation gives up on the box meanwhile)
+    # (UI Automation can give up on the box for a while: finding it by id walks the whole window, the tree's items
+    # included, and WinForms then disconnects every item's provider one by one, a few ms each, when the tree is
+    # emptied for the list. That was the seconds-long hold seen here, not the search's walk, which is 10 ms for 60,000
+    # items: tools/invbench.py, 2026-10-30)
     for attempt in range(4):
         try:
             key("enter", target="id=inventorySearch")
@@ -1876,7 +2239,7 @@ def describing(run):
     m = mark()
     key("ctrl+d")
     # said once a session: the parts step's describing may have had it first, so looked for since the run began
-    run.expect("Control+D without the assistant says it needs one (once a session)", ["needs the assistant", "Claude account"], 0, 10)
+    run.expect("Control+D without the assistant says it needs one (once a session)", ["needs the assistant"], 0, 10)
     run.expect("then what the lists know of the place, the visitor by name", ["What the lists know", VNAME], m, 10)
     m = mark()
     key("ctrl+shift+d")
@@ -1903,7 +2266,7 @@ def describing(run):
     vid = visitor_id()
     r = api("SojournDescribe", "look", 60, subject=vid, detail="brief")
     pics = r.get("pictures") or []
-    if os.environ.get("ACCESS_NO_RENDER") == "1":
+    if VIEWLESS:
         run.check("without the renderer: no pictures, said so", not pics and "no pictures" in json.dumps(r.get("notes")), json.dumps(r)[:300])
         return
     import base64
@@ -2018,6 +2381,13 @@ def offscreen(run):
     has a box the visitor puts out, touches land on its faces as the VR client's do (the box's script says which), and
     the assistant's look then gets a real picture, drawing the view whole. The box stays out until the visitor's cleanup
     at the end."""
+    if NO_GPU:
+        st = wait(lambda: (lambda s: s if s["state"] == "stopped" else None)(api("SojournView", "status")), 60, 1)
+        run.check("without a Vulkan driver the view out of sight gives up, never having drawn", st and st["frames"] == 0,
+                  json.dumps(st) if st else json.dumps(api("SojournView", "status")))
+        box_checks(run, touches=False)
+        return
+
     def running():
         st = api("SojournView", "status")
         return st if st["state"] == "running" and st["losses"] >= 1 and st["frames"] > 2 else None
@@ -2043,8 +2413,9 @@ def offscreen(run):
     run.check("and the view is drawn whole from then on", st.get("unseen") is False, json.dumps(st))
 
 
-def box_checks(run):
-    """The collision model and touches on the visitor's facebox (unseen, in the step above)."""
+def box_checks(run, touches=True):
+    """The collision models and touches on the visitor's facebox (unseen, in the step above): the one without a GPU
+    (SojournCollision, walk mode's) and the renderer's (SojournView) meet it where it is."""
     x, y, z, _ = tester_where()
     made = v(f"facebox {FACEBOX_XY[0]} {FACEBOX_XY[1]} {z:.1f}", timeout=30)
     box = re.search(r"id ([0-9a-f-]{36})", made)
@@ -2053,11 +2424,15 @@ def box_checks(run):
     box_id = box[1]
     dx, dy = FACEBOX_XY[0] - x, FACEBOX_XY[1] - y
     far = math.hypot(dx, dy)
-    hit = wait(lambda: (lambda h: h if h.get("hit") and h.get("prim") == box_id else None)(
-        api("SojournView", "collide", **{"from": [x, y, z], "dir": [dx, dy, 0], "max": 10})), 15, 1)
-    run.check("the collision model has the box where it is", hit and abs(hit["distance"] - (far - 0.25)) < 0.3,
-              f"{json.dumps(hit)}; the box's middle {far:.2f} m away" if hit else
-              json.dumps(api("SojournView", "collide", **{"from": [x, y, z], "dir": [dx, dy, 0], "max": 10})))
+    ray = {"from": [x, y, z], "dir": [dx, dy, 0], "max": 10}
+    hit = wait(lambda: (lambda h: h if h.get("hit") and h.get("prim") == box_id else None)(api("SojournCollision", "collide", **ray)), 15, 1)
+    run.check("the collision model (no GPU) has the box where it is", hit and abs(hit["distance"] - (far - 0.25)) < 0.3,
+              f"{json.dumps(hit)}; the box's middle {far:.2f} m away" if hit else json.dumps(api("SojournCollision", "collide", **ray)))
+    if not touches:
+        return
+    seen = wait(lambda: (lambda h: h if h.get("hit") and h.get("prim") == box_id else None)(api("SojournView", "collide", **ray)), 15, 1)
+    run.check("the renderer's collision model has it at the same distance", seen and hit and abs(seen["distance"] - hit["distance"]) < 0.02,
+              f"{json.dumps(seen)} / {json.dumps(hit)}" if seen else json.dumps(api("SojournView", "collide", **ray)))
 
     n = visitor_n()
     # face 4, the box's side away from the tester (west): a touch the eyes' ray couldn't land
@@ -2078,7 +2453,6 @@ def box_checks(run):
 
 
 CHEST = "Treasure Chest"
-NO_RENDER = os.environ.get("ACCESS_NO_RENDER") == "1"
 
 
 def list_items(sel):
@@ -2154,7 +2528,7 @@ def parts(run):
         f = wait_focus(lambda d: d["id"] == "faces" or d["type"] == "ListItem", 4)
         run.check("Tab again goes to the lid's faces", f and any(p["name"] == "Faces of part 2 of " + CHEST for p in find("id=faces")),
                   label(f) if f else focus_label())
-        if NO_RENDER:
+        if VIEWLESS:
             said = " | ".join(list_items("id=faces"))
             run.check("without the renderer, the faces list says they need it", "need the view" in said, said)
         else:
@@ -2177,7 +2551,7 @@ def parts(run):
         m = mark()
         say_in_app("//touch treasure chest latch")
         run.expect("//touch OBJECT PART touches that part by name", ["Touched Latch"], m, 15)
-        if not NO_RENDER:
+        if not VIEWLESS:
             n = visitor_n()
             m = mark()
             say_in_app("//touch treasure chest face top")
@@ -2522,9 +2896,9 @@ def menu_bar(run, nonce, tester_id):
     back_to_chat()
 
     # ---- an IM arriving while the focus is on "No conversations yet"
-    key("alt+2")
+    go_conversations()
     d = wait_focus(lambda d: d["id"] == "noConversations", 4)
-    if run.check("(Alt+2 with none open: the no-conversations line)", d, label(d) if d else focus_label()):
+    if run.check("(View > Conversations with none open: the no-conversations line)", d, label(d) if d else focus_label()):
         m = mark()
         v(f"im {tester_id} while you read {nonce}")
         run.expect("(the IM announced)", [f"while you read {nonce}"], m, 10)
@@ -2975,6 +3349,27 @@ def clear_course(tester_id):
     return n
 
 
+def walk_models_agree(run):
+    """Both collision models, the one without a GPU (SojournCollision, what walk mode uses) and the renderer's
+    (SojournView), cast the same rays from inside the corridor: all round at knee and chest height, and down. They should
+    meet the same prims at the same distances (the course is boxes, the same surfaces at any level of detail)."""
+    # the renderer's counts only what it has drawn: wait for the end wall and the west wall's far part (frames turn a
+    # quarter at a time)
+    wait(lambda: api("SojournView", "collide", dir=[0, 1, 0], max=15).get("hit") and
+         api("SojournView", "collide", dir=[-0.2, 1, 0], max=15).get("distance", 99) < 8, 20, 1)
+    x, y, z, _ = tester_where()
+    rays = [([x, y, z + dz], [math.cos(a), math.sin(a), 0], 15) for dz in (-0.4, 0.4) for a in (i * math.pi / 8 for i in range(16))]
+    rays.append(([x, y, z + 0.4], [0, 0, -1], 5))
+    bad = []
+    for frm, d, mx in rays:
+        ray = {"from": frm, "dir": d, "max": mx}
+        a, b = api("SojournCollision", "collide", **ray), api("SojournView", "collide", **ray)
+        same = a.get("hit") == b.get("hit") and (not a.get("hit") or (abs(a["distance"] - b["distance"]) < 0.02 and a.get("prim") == b.get("prim")))
+        if not same:
+            bad.append(f"dir {d[0]:.2f},{d[1]:.2f},{d[2]:.0f} at {frm[2] - z:+.1f}: {a.get('distance', '-')} / {b.get('distance', '-')}")
+    run.check("both collision models give the same answers in the corridor (33 rays)", not bad, "; ".join(bad) or "all alike")
+
+
 def walk_pos():
     """Where walk mode has the avatar (dead-reckoned: the region's own word on it can be a second and a half old)."""
     return tuple(api("SojournWalk", "status")["pos"])
@@ -3183,14 +3578,86 @@ def walk_crossing(run):
     time.sleep(2)
 
 
+DISTANCE_LINE = re.compile(r"^(\d+(?:\.\d)?) metres?( backward| to the left| to the right)?\.$")
+
+
+def distance_walked(run):
+    """How far the arrows walked (Walk/WalkMode.Distance.cs; a blind tester's ask, 2026-10-30): three taps of Up said
+    once as one stretch when the keys rest, matching how far the avatar went; a tap of Down said as backward; M and
+    Shift+M; nothing said with walk_distance off. Needs no renderer."""
+    back_to_chat()
+    m = mark()
+    say_in_app("//face 90")
+    run.expect("(facing north)", ["Facing", "north"], m, 8)
+    time.sleep(1)
+    m = mark()
+    key("f3")
+    if not run.check("(F3: walk mode)", wait_focus(lambda d: d["id"] == "walkPad", 5), focus_label()):
+        return
+
+    def stretch(keyname, taps, what, way=None):
+        time.sleep(1.5)
+        x0, y0, *_ = tester_where()
+        m = mark()
+        for _ in range(taps):
+            key(keyname)
+            time.sleep(0.3)
+        got = walk_said(m, ["metre"], 8)
+        time.sleep(2)
+        x1, y1, *_ = tester_where()
+        moved = math.dist((x0, y0), (x1, y1))
+        lines = [e["text"] for e in said_since(m) if DISTANCE_LINE.match(e.get("text") or "")]
+        mm = DISTANCE_LINE.match(lines[0]) if lines else None
+        run.check(f"{what}: how far said once the keys rest, once", len(lines) == 1, "; ".join(lines) or "not said")
+        if mm:
+            said = float(mm[1])
+            run.check(f"{what}: as far as the avatar went", abs(said - moved) <= 0.25 + 0.1 * moved,
+                      f"said {lines[0]!r}, moved {moved:.2f} m ({moved / taps:.2f} m a tap)")
+            run.check(f"{what}: the way said", (mm[2] or "").strip() == (way or ""), lines[0])
+        return moved
+
+    a = stretch("up", 3, "three taps of Up")
+    b = stretch("down", 1, "a tap of Down", "backward")
+    m = mark()
+    key("m")
+    got = run.expect("M: the last walk, all of them, where the count began", ["Last walk:", "backward", "In all:", "Where the count began"], m, 5)
+    if got and a and b:
+        mm = re.search(r"In all: (\d+(?:\.\d)?) metres?", got["text"])
+        run.check("the count in all adds the stretches up", mm and abs(float(mm[1]) - (a + b)) <= 0.4, f"{got['text']}; walked {a:.2f} + {b:.2f}")
+    m = mark()
+    key("shift+m")
+    run.expect("Shift+M counts from here", ["Counting from here."], m, 5)
+    m = mark()
+    key("m")
+    run.expect("then M says nothing's walked yet", ["Nothing walked yet."], m, 5)
+    api("SojournSettings", "set", walk_distance="off")
+    try:
+        time.sleep(1)
+        m = mark()
+        key("up")
+        time.sleep(3.5)
+        lines = [e["text"] for e in said_since(m) if DISTANCE_LINE.match(e.get("text") or "")]
+        run.check("with walk_distance off, nothing said", not lines, "; ".join(lines) or "nothing")
+    finally:
+        api("SojournSettings", "set", walk_distance="text")
+    m = mark()
+    key("esc")
+    run.expect("(Escape: walk mode off)", ["Walk mode off"], m, 5)
+
+
 def walk_mode(run):
     """Walk mode (Walk/WalkMode.cs, docs/access-app.md > Walk mode) on a course of its own in Atelier East: F3 into it,
     F1, the heading, the sonar's words, walking north by a held Up arrow with footsteps on the stone floor, the opening
     passed on the left, the warning before the end wall (named Blue Door) and Blocked at it, a step turn each way,
     what's ahead, touching it, Space, the drop warning walking off a platform, Escape back to the Say box."""
     bx, by = COURSE
-    # after the faked GPU loss (SOJOURN_OFFSCREEN_LOSE_AFTER), so it doesn't fall in the middle of a walk
-    wait(lambda: (lambda st: st["state"] == "running" and st["losses"] >= 1)(api("SojournView", "status")), 60, 1)
+    if NO_GPU:
+        st = wait(lambda: (lambda s: s if s["state"] == "stopped" else None)(api("SojournView", "status")), 60, 1)
+        run.check("(the view out of sight has given up: no Vulkan driver; walk mode on the collision model alone)", st,
+                  json.dumps(api("SojournView", "status")))
+    elif not NO_RENDER:
+        # after the faked GPU loss (SOJOURN_OFFSCREEN_LOSE_AFTER), so the comparison below doesn't meet a restarting view
+        wait(lambda: (lambda st: st["state"] == "running" and st["losses"] >= 1)(api("SojournView", "status")), 60, 1)
     try:
         walk_crossing(run)
     finally:
@@ -3216,13 +3683,13 @@ def walk_mode(run):
         m = mark()
         say_in_app("//face 90")
         run.expect("facing north", ["Facing", "north"], m, 8)
-        # the collision model counts what the view has drawn: wait for the east wall
-        seen = wait(lambda: (lambda h: h if h.get("hit") else None)(api("SojournView", "collide", dir=[1, 0, 0], max=5)), 30, 1)
-        run.check("the view out of sight has drawn the course (the east wall met)", seen and abs(seen["distance"] - 1.4) < 0.3,
-                  json.dumps(seen))
-        # and the end wall and the west wall's far part (frames turn a quarter at a time)
-        wait(lambda: api("SojournView", "collide", dir=[0, 1, 0], max=15).get("hit") and
-             api("SojournView", "collide", dir=[-0.2, 1, 0], max=15).get("distance", 99) < 8, 20, 1)
+        # the collision model (no GPU) knows the course once the region has sent it
+        seen = wait(lambda: (lambda h: h if h.get("hit") else None)(api("SojournCollision", "collide", dir=[1, 0, 0], max=5)), 30, 1)
+        run.check("the collision model has the course (the east wall met)", seen and abs(seen["distance"] - 1.4) < 0.3, json.dumps(seen))
+        st = api("SojournCollision", "status")
+        run.check("(its status: prims indexed and shapes ready)", st.get("placed", 0) >= 10 and st.get("ready", 0) >= 1, json.dumps(st))
+        if not VIEWLESS:
+            walk_models_agree(run)
 
         m = mark()
         key("f3")
@@ -3251,6 +3718,7 @@ def walk_mode(run):
         run.check("and the corridor's mouth behind",
                   re.search(r"Opening at (five|six|seven) o'clock, (under a metre|1 metre) away, [23](?:\.\d)? metres wide", text), text)
 
+        print(f"     (the collision model after the sonar: {json.dumps(api('SojournCollision', 'status'))})")
         st0 = api("SojournWalk", "status")
         m = mark()
         u("keydown focus | 38")
@@ -3383,6 +3851,7 @@ def finish(run):
 CHECK_ACCOUNT = ("Package", "Tester")   # its own account, so a check never throws out a person's Access Tester
 CHECK_DESKTOP = "sojourn-package"
 CHECK_Q_PORT = 9905
+CHECK_API_PORT = 9735                    # the agent API, which a package with the assistant opens for its sidecar
 SHIPPED_DLLS = ("nvdaControllerClient.dll", "sojourn_voice.dll", "openjp2.dll", "shaderc_shared.dll")
 OURS_NAMED = re.compile(r"(?i)sojourn|metaverse|quire")
 
@@ -3487,7 +3956,8 @@ def package_check():
     import grid
     global Q_PORT, EVENTS, APP_PID
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    rest = [a for a in sys.argv[2:] if a not in ("--check", "--keep", "--bare")]
+    relay = sys.argv[sys.argv.index("--relay") + 1] if "--relay" in sys.argv[2:-1] else None
+    rest = [a for a in sys.argv[2:] if a not in ("--check", "--keep", "--bare", "--relay", relay)]
     keep = "--keep" in sys.argv[2:]
     # a PC unlike ours: no Vulkan driver (a VM, Microsoft's basic display adapter) and no Media Foundation (Windows'
     # N editions), which sojourn_voice.dll imports, so it won't load: removing it fails the same way
@@ -3540,6 +4010,27 @@ def package_check():
             raise Stop
         if bare:
             (folder / "sojourn_voice.dll").unlink()
+        # a package with the assistant (python/ and assistant/ beside the exe): its sidecar runs, off (no provider) or,
+        # with --relay NAME, on Studio Quire's relay with that token (tools/relay.py), asked something and capped
+        assistant = (folder / "assistant" / "main.py").exists()
+        if relay and not assistant:
+            check("--relay needs a package with the assistant", False, zip_path.name)
+            raise Stop
+        keys = work / "keys"
+        if relay:
+            import relay as relaymod
+            sys.path.insert(0, str(folder / "assistant"))
+            os.environ["SOJOURN_KEYS"] = str(keys)
+            sys.dont_write_bytecode = True   # (nothing written into the package's folder)
+            import provider as providermod   # the package's own: kept as the app's provider keeps it
+            providermod.save_key("relay", relaymod.read_secret(relaymod.token_file(relay)))
+            del os.environ["SOJOURN_KEYS"]
+            data.mkdir(parents=True, exist_ok=True)
+            (data / "vr-settings.json").write_text(json.dumps({"assistantProvider": "relay"}), encoding="utf-8")
+        elif assistant:
+            # a Claude account saved, as every earlier build's settings have it (the old default): not offered packaged
+            data.mkdir(parents=True, exist_ok=True)
+            (data / "vr-settings.json").write_text(json.dumps({"assistantProvider": "claude"}), encoding="utf-8")
         before = tree_hashes(folder)
         profile = known_folders()
         profile_before = top_level(profile)
@@ -3547,7 +4038,7 @@ def package_check():
 
         # a tester's PC: no .NET of ours on the way (the SDK and any install off PATH, no DOTNET_ variables), %TEMP%,
         # %TMP%, %LOCALAPPDATA% and %APPDATA% pointed into the check's folder so whatever follows them shows up there
-        path = os.pathsep.join(p for p in os.environ.get("PATH", "").split(os.pathsep) if "dotnet" not in p.lower())
+        path = without_claude(os.pathsep.join(p for p in os.environ.get("PATH", "").split(os.pathsep) if "dotnet" not in p.lower()))
         env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("DOTNET_", "SOJOURN_", "ACCESS_"))}
         env.update(PATH=path, TEMP=str(env_dirs["TEMP"]), TMP=str(env_dirs["TEMP"]), LOCALAPPDATA=str(env_dirs["LOCALAPPDATA"]),
                    APPDATA=str(env_dirs["APPDATA"]),
@@ -3557,6 +4048,8 @@ def package_check():
                    SOJOURN_VOICE_MIC_FILE="none")         # and no microphone
         if bare:
             env["VK_LOADER_DRIVERS_DISABLE"] = "*"      # the Vulkan loader (1.3.234 on) then finds no driver at all
+        if relay:
+            env["SOJOURN_KEYS"] = str(keys)             # the token kept above (the app and its sidecar read it there)
 
         server = launch_hidden_on(CHECK_DESKTOP, [QUIREUIA, "serve", "--port", Q_PORT, "--log", EVENTS])
         if not check("QuireUia's server answers", wait(lambda: u("help", timeout=5), 20), f"pid {server}"):
@@ -3567,7 +4060,7 @@ def package_check():
             raise Stop
 
         args = [exe, "--local", "--user", " ".join(CHECK_ACCOUNT), "--password", PASSWORD, "--start",
-                "uri:%s&%d&%d&%d" % (REGION, *TESTER_START), "--autologin", "--reader", "on", "--no-voice", "--base", data]
+                "uri:%s&%d&%d&%d" % (REGION, *TESTER_START), "--autologin", "--reader", "on", "--no-voice", "--base", data, "--port", CHECK_API_PORT]
         t0 = time.time()
         app = APP_PID = launch_hidden_on(CHECK_DESKTOP, args, env=env, cwd=folder)
         u(f"watch {app}")
@@ -3603,16 +4096,58 @@ def package_check():
             bound = [s for s in socks if s[0] == "tcp" and s[4] == "Bound"]
             used = [s for s in socks if s not in bound]
             wide = [s for s in used if not loopback(s[1]) or (s[0] == "tcp" and not loopback(s[3]) and s[4] != "Listen")]
-            check(f"nothing listening on TCP ({when})", not listen,
-                  f"{len(socks) - len(bound) - sum(1 for s in socks if s[0] == 'udp')} TCP connections, none listening" if not listen else
-                  "; ".join(f"{s[1]}:{s[2]}" for s in listen))
+            if assistant:   # the agent API, for the sidecar: on loopback, at the port asked for, and nothing else
+                api_only = all(s[2] == CHECK_API_PORT and loopback(s[1]) for s in listen) and listen
+                check(f"listening only on the agent API, on loopback ({when})", api_only,
+                      "; ".join(f"{s[1]}:{s[2]}" for s in listen) or "nothing listening")
+            else:
+                check(f"nothing listening on TCP ({when})", not listen,
+                      f"{len(socks) - len(bound) - sum(1 for s in socks if s[0] == 'udp')} TCP connections, none listening" if not listen else
+                      "; ".join(f"{s[1]}:{s[2]}" for s in listen))
             check(f"TCP and UDP on loopback only ({when})", used and not wide,
                   ", ".join(sorted({f"{s[0]} {s[1]}" + (f"->{s[3]}" if s[3] else f":{s[2]}") for s in used}))[:300]
                   + f" ({len(bound)} outgoing sockets' Bound rows aside)" if not wide
                   else "; ".join(f"{s[0]} {s[1]}:{s[2]}->{s[3]} {s[4]}" for s in wide))
         network("logged in")
-        check("nothing at all on the agent API's port 9725", port_free(9725), "connection refused" if port_free(9725)
-              else "something answers on 9725 (ours if the app is the owner above)")
+        if not assistant:
+            check(f"nothing at all on the agent API's port {CHECK_API_PORT}", port_free(CHECK_API_PORT), "connection refused"
+                  if port_free(CHECK_API_PORT) else f"something answers on {CHECK_API_PORT} (ours if the app is the owner above)")
+        logs = data / "logs"
+
+        def log_text():
+            return "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in sorted(logs.glob("*.log")))
+        sidecar = None
+        if assistant:
+            import psutil
+
+            def bundled_python():
+                try:
+                    return next((c for c in psutil.Process(app).children(recursive=True)
+                                 if Path(c.exe()).parent == folder / "python"), None)
+                except psutil.Error:
+                    return None
+            sidecar = wait(bundled_python, 30, 1)
+            check("the assistant's sidecar runs on the package's own Python", sidecar,
+                  f"pid {sidecar.pid}, {sidecar.exe()}" if sidecar else "no python.exe from the package under the app")
+            want = "relay: ready" if relay else "claude: none"
+            said = wait(lambda: re.search(rf"provider: {want}.*", log_text()), 60, 1)
+            check(f"its provider checked ({want})", said, said[0][:200] if said else
+                  "; ".join(re.findall(r"assistant: .*", log_text())[-4:])[:300])
+            key("alt+9")   # (a tab's controls are in the UIA tree only once it has been shown)
+            d = wait_focus(lambda d: d["id"] == "assistantInput", 5)
+            ask_name = (d or {}).get("name") or focus_label()
+            check("Alt+9's box is the assistant's, not 'not in this build'", ask_name == "Ask the assistant", ask_name)
+            back_to_chat()
+            # Alt+0: no Claude account in a packaged build, the saved one shown as none chosen; a token or key otherwise
+            key("alt+0")
+            wait_focus(lambda d: d["name"] == "Settings" or d["type"] == "ListItem", 4)
+            row = wait(lambda: find("type=ListItem;name~=Provider for the assistant:"), 5)
+            names = [d["name"] for d in find("type=ListItem")] if row else []
+            shown = next((n for n in names if n.startswith("Provider for the assistant:")), "")
+            check("Alt+0's provider row offers no Claude account",
+                  shown and "Claude account" not in " ".join(names) and ("Studio Quire" in shown if relay else "none chosen yet" in shown),
+                  shown or "no provider row")
+            back_to_chat()
 
         # ---- F1, //about, Control+D without the assistant, chat
         key("f1")
@@ -3627,17 +4162,22 @@ def package_check():
             text = got["text"]
             check("//about names the public source", "github.com/studio-quire/sojourn" in text, text[:200])
             check("//about names the data folder", str(data) in text, text[-160:])
-        m = mark()
-        key("ctrl+d")
-        run.expect("Control+D answers", ["Describing needs the assistant"], m, 10)
-        wait(lambda: False, 1.5)
-        m2 = mark()
-        key("ctrl+d")
-        wait(lambda: said_since(m2), 10)
-        wait(lambda: False, 1.5)
-        absent = [e["text"] for e in said_since(m) if "this build doesn't include" in (e.get("text") or "")]
-        check("Control+D's absence said once, not again", len(absent) == 1 and said_since(m2),
-              f"said {len(absent)} time(s) in two presses; the second: {' | '.join(e.get('text') or '' for e in said_since(m2))[:160]}")
+        if not relay:
+            m = mark()
+            key("ctrl+d")
+            got = run.expect("Control+D answers", ["Describing needs the assistant"], m, 10)
+            if got and assistant:
+                check("and says why it's off and how to switch it on", "Alt+0" in got["text"] and "Studio Quire" in got["text"],
+                      got["text"][:300])
+            wait(lambda: False, 1.5)
+            m2 = mark()
+            key("ctrl+d")
+            wait(lambda: said_since(m2), 10)
+            wait(lambda: False, 1.5)
+            mark_words = "Describing needs the assistant" if assistant else "this build doesn't include"
+            absent = [e["text"] for e in said_since(m) if mark_words in (e.get("text") or "")]
+            check("Control+D's absence said once, not again", len(absent) == 1 and said_since(m2),
+                  f"said {len(absent)} time(s) in two presses; the second: {' | '.join(e.get('text') or '' for e in said_since(m2))[:160]}")
         back_to_chat()
         line = f"package check {uuid.uuid4().hex[:6]}"
         say_in_app(line)
@@ -3645,24 +4185,22 @@ def package_check():
         check("chat sent (the grid's echo in the Nearby chat history)", heard, line if heard else value_of("id=chatHistory")[-200:])
 
         # ---- the renderer out of sight, the natives
-        logs = data / "logs"
-        def log_text():
-            return "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in sorted(logs.glob("*.log")))
         if bare:
             down = wait(lambda: re.search(r".*the view out of sight couldn't start.*", log_text()), 60, 1)
             check("the renderer's absence is logged, not fatal", down and alive(app), down[0][:200] if down else "no such line")
             up = re.search(r"the view out of sight is up on ([^:]+)", log_text())
             check("and no renderer came up", not up, up[0] if up else "none")
-            # what a person hears from the keys that lean on the view, with none: walk mode, its sonar, describing
-            # (F3 and S should say why in a person's words: this PC's graphics, not the renderer's state)
-            for k, what, plain in (("f3", "F3 (walk mode)", "graphics can't run"), ("s", "S (the sonar)", "graphics can't run"),
+            # the keys a person might expect to lean on the view: walk mode and its sonar need none (the collision model
+            # without a GPU, since 2026-10-30), so they work as usual; describing answers from the lists
+            for k, what, plain in (("f3", "F3 (walk mode)", "Walk mode."), ("s", "S (the sonar)", ""),
                                    ("esc", "Escape (walk mode off)", "Walk mode off"), ("ctrl+d", "Control+D", "")):
                 m = mark()
                 key(k)
                 said = wait(lambda: said_since(m), 8)
                 wait(lambda: False, 1.5)
                 text = " | ".join(e.get("text") or "" for e in said_since(m))
-                check(f"{what} answers without the view", said and alive(app) and plain in text, text[:220] or "silence")
+                check(f"{what} answers without the view", said and alive(app) and plain in text and "graphics" not in text,
+                      text[:220] or "silence")
             back_to_chat()
             dlls = ["nvdaControllerClient.dll"]   # sojourn_voice is gone; openjp2 and shaderc load with a renderer only
         else:
@@ -3676,6 +4214,8 @@ def package_check():
             failed = re.findall(r".*(?:couldn't start|the GPU was lost|stopped:).*", log_text())
             check("no renderer failures in the log", not failed, "; ".join(failed)[:200] or "none")
             dlls = SHIPPED_DLLS
+        if relay:
+            relay_steps(run, relay)
         # what it costs a PC while nothing happens (a tester's may be a small laptop, and NVDA wants the CPU too)
         import psutil
         p = psutil.Process(app)
@@ -3691,7 +4231,7 @@ def package_check():
         foreign = [m for m in mods if str(ROOT).lower() in m.lower()]
         check("nothing loaded from the repo", not foreign, "; ".join(foreign) or f"{len(mods)} modules")
         network("after the renderer and chat")
-        crashes = re.findall(r".*(?:Unhandled exception|fail:).*", log_text())
+        crashes = re.findall(r".*(?:Unhandled exception|fail:|assistant: Traceback|assistant: \w*Error\b).*", log_text())
         check("no unhandled exceptions or failures in the log", not crashes, "; ".join(crashes)[:300] or "none")
     except Stop:
         pass
@@ -3754,6 +4294,80 @@ def package_check():
     total = run.ok + len(run.failed)
     print(f"\n{zip_path.name}: {run.ok} of {total} passed" + (f"; failed: {', '.join(run.failed)}" if run.failed else ""))
     return 0 if not run.failed else 1
+
+
+def relay_steps(run, name):
+    """`package --check --relay NAME`: the packaged assistant on Studio Quire's relay with the token NAME (tools/relay.py
+    token new NAME; a token of its own, as this sets its cap to nothing for a moment): a typed request in Alt+9 and a
+    description by Control+D answered and counted by the relay, then the cap reached and said in a plain sentence."""
+    import relay as relaymod
+    check = run.check
+    token = relaymod.read_secret(relaymod.token_file(name))
+    errors = re.compile(r"API Error|\{\s*\"type\"|billing_error|authentication_error")
+
+    def history():
+        return value_of("id=assistantHistory") or ""
+
+    def reply_after(n, secs):
+        """The assistant's next reply in Alt+9's history after its first n characters."""
+        def look():
+            m_ = re.search(r"Assistant: (.+)", history()[n:])
+            return m_.group(1).strip() if m_ else None
+        return wait(look, secs, 1)
+
+    def ask(text, secs=180):
+        key("alt+9")
+        wait_focus(lambda d: d["id"] == "assistantInput", 5)
+        n = len(history())
+        u("set id=assistantInput |")
+        type_text(text, "id=assistantInput")
+        wait(lambda: value_of("id=assistantInput") == text, 3, 0.2)
+        key("enter", target="id=assistantInput")
+        return reply_after(n, secs)
+
+    u0 = relaymod.usage(token) or {}
+    t0 = time.time()
+    said = ask("In one short sentence: which region am I in?")
+    check("a typed request (Alt+9) is answered through the relay", said and "Atelier" in said and not errors.search(said),
+          f"{time.time() - t0:.0f} s: {said[:200]}" if said else "no reply in 180 s")
+    relaymod.wait_until(lambda: (relaymod.usage(token) or {}).get("requests", 0) > u0.get("requests", 0), 20, 1)
+    u1 = relaymod.usage(token) or {}
+    check("and the relay counted it", u1.get("requests", 0) > u0.get("requests", 0) and u1.get("spent_usd", 0) > u0.get("spent_usd", 0),
+          f"${u0.get('spent_usd', 0):.4f} -> ${u1.get('spent_usd', 0):.4f}, {u1.get('requests', 0) - u0.get('requests', 0)} requests")
+
+    back_to_chat()
+    key("alt+9")
+    wait_focus(lambda d: d["id"] == "assistantInput", 5)
+    n = len(history())
+    back_to_chat()
+    m = mark()
+    t0 = time.time()
+    key("ctrl+d")
+    run.expect("Control+D starts describing here", ["Describing"], m, 10)
+    key("alt+9")
+    wait_focus(lambda d: d["id"] == "assistantInput", 5)
+    described = reply_after(n, 240)
+    check("a description (Control+D) comes back through the relay", described and len(described) > 40 and not errors.search(described),
+          f"{time.time() - t0:.0f} s: {described[:240]}" if described else "no reply in 240 s")
+    u2 = relaymod.usage(token) or {}
+    print(f"     the relay's count for {name} this month: ${u2.get('spent_usd', 0):.4f} over {u2.get('requests', 0)} requests "
+          f"(these two: ${u2.get('spent_usd', 0) - u0.get('spent_usd', 0):.4f})")
+
+    # the cap reached: the token's cap set to a millionth of a dollar for a moment, then put back
+    reg = relaymod.registry()
+    cap = reg[name]["cap"]
+    try:
+        reg[name]["cap"] = 0.000001
+        relaymod.push_tokens(reg)
+        relaymod.wait_until(lambda: (relaymod.usage(token) or {}).get("left_usd", 1) == 0, 60)
+        back_to_chat()
+        said = ask("Say hello.", 90)
+        check("over the cap, the assistant says so in a plain sentence", said and "allowance" in said and not errors.search(said),
+              said[:240] if said else "no reply in 90 s")
+    finally:
+        reg[name]["cap"] = cap
+        relaymod.push_tokens(reg)
+    back_to_chat()
 
 
 def launch_hidden_on(desktop, args, env=None, cwd=None):

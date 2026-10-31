@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using LibreMetaverse;
 using LibreMetaverse.StructuredData;
 using Sojourn.Core.Agents;
+using Sojourn.Render.World;
 using Vector3 = System.Numerics.Vector3;
 
 namespace Sojourn.Session.Control;
@@ -52,6 +53,18 @@ public sealed class PhysicsShapes
         }
         Want(p.ID, urgent: true);
         return null;
+    }
+
+    /// <summary>How a prim counts for the local collision models (RegionScene.CollideRay, CollisionWorld): flexible
+    /// and phantom ones (a linkset's root phantom makes it all so) passable, else its physics shape type as the region
+    /// gave it, or not known yet (asked for now).</summary>
+    public CollideAs Collide(Primitive p)
+    {
+        if (((byte)p.PrimData.PathCurve & 0x80) != 0) return CollideAs.Passable;   // flexible prims are phantom
+        var flags = _session.State.PrimFlagsOf(p);
+        if (p.ParentID != 0 && _session.Region is { } w && w.Prims.TryGetValue(p.ParentID, out var root)) flags |= _session.State.PrimFlagsOf(root);
+        if ((flags & PrimFlags.Phantom) != 0) return CollideAs.Passable;
+        return Of(p) is { } t ? (CollideAs)(byte)t : CollideAs.Unknown;
     }
 
     void Want(UUID id, bool urgent)

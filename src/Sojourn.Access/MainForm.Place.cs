@@ -76,14 +76,14 @@ public sealed partial class MainForm
         var (dx, dy) = spot.Offset(me.Heading);
         double x = me.Pos.X + dx, y = me.Pos.Y + dy;
         float feet = _walk?.Me()?.Feet ?? me.Pos.Z - 0.9f;
-        // the renderer's collision model: the first solid surface down from head height (a table, a floor), the thing
-        // being moved left out
-        if (_view != null && Host?.Session.Region is { } w)
+        // the collision model: the first solid surface down from head height (a table, a floor), the thing being moved
+        // left out
+        if (_rays != null && Host?.Session.Region is { } w)
         {
             var passable = moving == null ? null : Host.Session.Objects.Linkset(w, Host.Session.Objects.RootOf(w, moving)).Select(p => p.LocalID).ToHashSet();
             var from = new System.Numerics.Vector3((float)x, (float)y, feet + 2.2f);
             var rays = new[] { (from, -System.Numerics.Vector3.UnitZ, 30f) };
-            if (await _view.CollideManyAsync(rays, passable) is { } batch && batch.Hits[0] is { } hit)
+            if (await _rays.CollideManyAsync(rays, passable) is { } batch && batch.Hits[0] is { } hit)
             {
                 var name = hit.LocalId != 0 && w.Prims.TryGetValue(hit.LocalId, out var on) ? Host.Session.Objects.RootOf(w, on).Properties?.Name : null;
                 return new SpotPoint(x, y, from.Z - hit.Distance, hit.LocalId == 0 ? null : name);

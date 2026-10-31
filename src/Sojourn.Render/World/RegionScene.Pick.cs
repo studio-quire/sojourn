@@ -286,7 +286,7 @@ public sealed partial class RegionScene
     }
 
     /// <summary>Ray against an axis-aligned box: the entry distance (0 inside), if it's before <paramref name="maxT"/>.</summary>
-    static bool Slab(Vector3 o, Vector3 d, Vector3 min, Vector3 max, float maxT, out float tEnter)
+    internal static bool Slab(Vector3 o, Vector3 d, Vector3 min, Vector3 max, float maxT, out float tEnter)
     {
         float t0 = 0, t1 = maxT;
         for (int a = 0; a < 3; a++)
@@ -309,7 +309,7 @@ public sealed partial class RegionScene
     }
 
     /// <summary>Möller-Trumbore, both sides; u and v weigh the second and third corners.</summary>
-    static bool Triangle(Vector3 o, Vector3 d, Vector3 a, Vector3 b, Vector3 c, out float t, out float u, out float v)
+    internal static bool Triangle(Vector3 o, Vector3 d, Vector3 a, Vector3 b, Vector3 c, out float t, out float u, out float v)
     {
         t = 0; v = 0;
         var e1 = b - a;

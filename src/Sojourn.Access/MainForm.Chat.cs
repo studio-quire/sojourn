@@ -42,12 +42,20 @@ public sealed partial class MainForm
     };
 
     /// <summary>A page holding a history over its input line, with a label for each (the labels' mnemonics move to them):
-    /// the history is one Shift+Tab back from the input, as in Radegast.</summary>
-    static TableLayoutPanel HistoryOverInput(string inputLabel, TextBox input, string historyLabel, TextBox history)
+    /// the history is one Shift+Tab back from the input, as in Radegast. `beside`, to their right, is the Tab after the
+    /// input (nearby chat's People nearby: Say, Tab to the people, Tab again to the history, as Radegast goes round).</summary>
+    static TableLayoutPanel HistoryOverInput(string inputLabel, TextBox input, string historyLabel, TextBox history, Control? beside = null)
     {
-        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
+        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = beside == null ? 2 : 3, RowCount = 2 };
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        if (beside != null)
+        {
+            t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300));
+            t.Controls.Add(beside, 2, 0);
+            t.SetRowSpan(beside, 2);
+            beside.TabIndex = 4;
+        }
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var hl = new Label { Text = historyLabel, AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top };
@@ -68,7 +76,8 @@ public sealed partial class MainForm
         _chatPage = new TabPage("Nearby chat") { Name = "chatPage", AccessibleName = "Nearby chat" };
         _chatInput = InputBox("chatInput", "Say");
         _chatHistory = HistoryBox("chatHistory", "Nearby chat history");
-        _chatPage.Controls.Add(HistoryOverInput("Say", _chatInput, "History", _chatHistory));
+        (_chatPeople, _chatPersonMenu) = PeopleList("chatPeople", "chatPersonMenu");
+        _chatPage.Controls.Add(HistoryOverInput("Say", _chatInput, "History", _chatHistory, _chatPeople));
         _chatInput.KeyDown += (_, e) => ChatKey(e);
     }
 

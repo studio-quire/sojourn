@@ -54,8 +54,12 @@ public partial class LauncherView : UserControl
         _desktop = desktop;
         _extra = extra;
 
+        // a packaged build offers no Claude account (ProviderKeys.ClaudeOffered): a key or token already kept takes the
+        // place of a saved "claude", and with none kept no provider is chosen until one is pasted
+        if (ProviderKeys.FallbackFor(ProviderNow) is { } kept) _settings.Provider = kept;
         foreach (var (value, label) in SettingsFile.Providers)
         {
+            if (value == "claude" && !ProviderKeys.ClaudeOffered) continue;
             var rb = new RadioButton { GroupName = "provider", Style = (Style)FindResource("Segment"), Content = label, Tag = value };
             rb.Checked += (_, _) => { if (!_loading) { _settings.Provider = value; ShowAssistant(); } };
             ProviderTrack.Children.Add(rb);
@@ -287,10 +291,22 @@ public partial class LauncherView : UserControl
     void ShowAssistant()
     {
         var kind = ProviderNow;
-        bool keyed = kind != "claude";
-        bool kept = keyed && ProviderKeys.Has(kind);
+        // Studio Quire's relay is for the few the studio covers: its choice shows once it's chosen or its token is kept
+        // (a token pasted into any key box is recognised), and then the four go on two rows, as one row clips them
+        bool relay = kind == "relay" || ProviderKeys.Has("relay");
+        foreach (RadioButton rb in ProviderTrack.Children)
+            if ((string)rb.Tag == "relay") rb.Visibility = relay ? Visibility.Visible : Visibility.Collapsed;
+        bool two = relay && ProviderKeys.ClaudeOffered;
+        ProviderTrack.Rows = two ? 2 : 1;
+        if (two) ProviderBorder.Height = 74;
+        else ProviderBorder.ClearValue(HeightProperty);
+        bool chosen = kind != "claude" || ProviderKeys.ClaudeOffered;
+        bool keyed = kind != "claude" || !chosen;   // none chosen: the box takes a key or token, which chooses its provider
+        bool kept = kind != "claude" && ProviderKeys.Has(kind);
         bool armed = Environment.TickCount64 - _forgetPressedAt < 4000;
-        KeyHint.Text = !keyed ? "API key" : kept ? (armed ? "forget the key?" : $"{ProviderKeys.Name(kind)} key kept") : $"{ProviderKeys.Name(kind)} key";
+        var noun = kind == "relay" ? "token" : "key";
+        KeyHint.Text = kind == "claude" ? (chosen ? "API key" : "key or token")
+            : kept ? (armed ? $"forget the {noun}?" : $"{ProviderKeys.Thing(kind)} kept") : ProviderKeys.Thing(kind);
         // a kept key: the box greyed out and closed, as a remembered password; × (twice) forgets it and opens it again
         KeyBox.IsEnabled = !kept;
         KeyBox.Opacity = kept ? 0.6 : 1;
@@ -304,7 +320,8 @@ public partial class LauncherView : UserControl
         DenyDataSwitch.Visibility = openRouter ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>A key in the box (pasted, or Enter): kept encrypted if it's an Anthropic or OpenRouter key, its provider
+    /// <summary>A key in the box (pasted, or Enter): kept encrypted if it's an Anthropic or OpenRouter key or a Studio
+    /// Quire token, its provider
     /// chosen, the box cleared. Only from the person's own keys or mouse (RealPress); never shown back or logged.</summary>
     void TryKeep(bool enter)
     {
@@ -329,7 +346,7 @@ public partial class LauncherView : UserControl
         if (kind == null) { Note("couldn't keep the key", null, TimeSpan.FromSeconds(8), alarm: true); return; }
         _settings.Provider = kind;
         LoadSettings();
-        Note($"{ProviderKeys.Name(kind)} key kept", null, TimeSpan.FromSeconds(8));
+        Note($"{ProviderKeys.Thing(kind)} kept", null, TimeSpan.FromSeconds(8));
     }
 
     /// <summary>× twice within four seconds: the provider's key deleted.</summary>
@@ -346,7 +363,7 @@ public partial class LauncherView : UserControl
         _forgetPressedAt = -10_000;
         ProviderKeys.Forget(kind);
         ShowAssistant();
-        Note($"{ProviderKeys.Name(kind)} key forgotten", null, TimeSpan.FromSeconds(8));
+        Note($"{ProviderKeys.Thing(kind)} forgotten", null, TimeSpan.FromSeconds(8));
     }
 
     /// <summary>OpenRouter's model as typed (any id) or picked from the list; empty: Claude's three.</summary>

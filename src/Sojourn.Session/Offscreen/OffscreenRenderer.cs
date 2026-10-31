@@ -22,7 +22,8 @@ public readonly record struct FaceSet(FaceShape[] Faces);
 /// <summary>
 /// The renderer out of sight (docs/access.md > M0b): the VR client's real-time renderer with no window, swapchain or
 /// headset, for an app that doesn't show the world (Sojourn Access) but needs what only a renderer knows: pictures for
-/// the assistant's look (LiveSnapshots), where touches land on a prim's faces, and the local collision model.
+/// the assistant's look (LiveSnapshots), where touches land on a prim's faces, and its collision model (Sojourn Access
+/// walks by the one without a GPU, Session's Collision/LocalCollision.cs; this one's rays are SojournView's, for comparing).
 ///
 /// One thread of its own, below normal priority, both simulates and renders (no pipe: at a few frames a second nothing
 /// is gained by overlapping), so the world is this thread's between frames; picks, touches and collision rays from
@@ -81,11 +82,6 @@ public sealed partial class OffscreenRenderer : IDisposable
     public int LookMax { get; set; } = 1280;
     /// <summary>How long a picture waits for what's in view to load before it's taken.</summary>
     public double SettleSeconds { get; set; } = 3;
-    /// <summary>Frames a second while the person moves (Sojourn Access's walk mode sets <see cref="Moving"/>): what comes
-    /// near gets drawn sooner, so the collision model has it before it's reached.</summary>
-    public double MovingHz { get; set; } = 4;
-    /// <summary>The person is moving (walking, flying, driving): at least <see cref="MovingHz"/> frames a second.</summary>
-    public volatile bool Moving;
     /// <summary>How long it stays drawn whole after anything last could look at its pictures (the assistant up, a
     /// picture asked for), before it's unseen again.</summary>
     public TimeSpan PicturesLinger { get; set; } = TimeSpan.FromMinutes(10);
@@ -118,8 +114,12 @@ public sealed partial class OffscreenRenderer : IDisposable
     string _device = "";
 
     /// <param name="assistantUp">an assistant is running (or starting) that may ask for pictures</param>
-    public OffscreenRenderer(AgentSession session, LiveSnapshots snapshots, Func<bool> assistantBusy, Func<bool> assistantUp, string cacheDir, Action<string> log)
+    /// <param name="physics">the region's physics shape types, shared with the collision model without a GPU when the app
+    /// has one (else its own, asked for around the avatar)</param>
+    public OffscreenRenderer(AgentSession session, LiveSnapshots snapshots, Func<bool> assistantBusy, Func<bool> assistantUp, string cacheDir, Action<string> log,
+        PhysicsShapes? physics = null)
     {
+        _physics = physics;
         _s = session;
         _snapshots = snapshots;
         _busy = assistantBusy;
@@ -238,47 +238,7 @@ public sealed partial class OffscreenRenderer : IDisposable
             return true;
         }, TimeSpan.FromSeconds(3), ct);
 
-    /// <summary>Many collision rays at once (one trip to the render thread), each like <see cref="CollideAsync"/>;
-    /// prims whose local ids are in <paramref name="passable"/> don't count (the vehicle one sits on). Null when it couldn't
-    /// be asked.</summary>
-    public Task<RayBatch?> CollideManyAsync(IReadOnlyList<(Vector3 From, Vector3 Dir, float Max)> rays, IReadOnlySet<uint>? passable = null,
-        CancellationToken ct = default) =>
-        Queue<RayBatch>((r, done) =>
-        {
-            if (_s.Client is not { Network.CurrentSim: { } sim } c) { done(null); return true; }
-            Func<Primitive, CollideAs> solid = passable is { Count: > 0 } ? p => passable.Contains(p.LocalID) || passable.Contains(p.ParentID) ? CollideAs.Passable : Solid(p) : Solid;
-            var hits = new CollideHit?[rays.Count];
-            for (int i = 0; i < rays.Count; i++)
-            {
-                var (from, dir, max) = rays[i];
-                if (dir.LengthSquared() > 1e-8f) hits[i] = r.CollideRay(sim.Handle, from, Vector3.Normalize(dir), max, c.Self.LocalID, solid);
-            }
-            done(new RayBatch(hits, sim.Handle));
-            return true;
-        }, TimeSpan.FromSeconds(3), ct);
-
-    /// <summary>The collision model's solid triangles in a box (FrameRenderer.SolidTriangles), for planning walks: the
-    /// agent's region frame; prims in <paramref name="passable"/> left out. Null when it couldn't be asked.</summary>
-    public Task<Solids?> SolidsAsync(Vector3 min, Vector3 max, IReadOnlySet<uint>? passable = null, CancellationToken ct = default) =>
-        Queue<Solids>((r, done) =>
-        {
-            if (_s.Client is not { Network.CurrentSim: { } sim }) { done(null); return true; }
-            Func<Primitive, CollideAs> solid = passable is { Count: > 0 } ? p => passable.Contains(p.LocalID) || passable.Contains(p.ParentID) ? CollideAs.Passable : Solid(p) : Solid;
-            var tris = new List<Vector3>();
-            var ids = new List<uint>();
-            r.SolidTriangles(sim.Handle, min, max, solid, tris, ids);
-            done(new Solids(tris, ids, sim.Handle));
-            return true;
-        }, TimeSpan.FromSeconds(5), ct);
-
-    CollideAs Solid(Primitive p)
-    {
-        if (((byte)p.PrimData.PathCurve & 0x80) != 0) return CollideAs.Passable;   // flexible prims are phantom
-        var flags = _s.State.PrimFlagsOf(p);
-        if (p.ParentID != 0 && _s.Region is { } w && w.Prims.TryGetValue(p.ParentID, out var root)) flags |= _s.State.PrimFlagsOf(root);
-        if ((flags & PrimFlags.Phantom) != 0) return CollideAs.Passable;
-        return _physics?.Of(p) is { } t ? (CollideAs)(byte)t : CollideAs.Unknown;
-    }
+    CollideAs Solid(Primitive p) => _physics?.Collide(p) ?? CollideAs.Unknown;
 
     WorldJob? _current;
     bool Due(WorldJob j) => Stopwatch.GetTimestamp() >= j.Deadline - Stopwatch.Frequency * 3 / 2;
@@ -367,7 +327,7 @@ public sealed partial class OffscreenRenderer : IDisposable
             _gaveUp = true;
             State = "stopped";
             _log($"the view out of sight stopped: {(lost ? "the GPU was lost" : "it failed")} three times in ten minutes ({e.Message}); " +
-                 "no pictures, touches by surface or collision rays this session");
+                 "no pictures, faces or touches by surface this session (walk mode's rays need no GPU)");
             return;
         }
         State = "restarting";
@@ -418,7 +378,6 @@ public sealed partial class OffscreenRenderer : IDisposable
         bool unseen = _seenAt == 0 || Stopwatch.GetElapsedTime(_seenAt, now) > PicturesLinger;
         if (unseen != _unseen || _appliedTo != r) Apply(r, unseen);
         double hz = busy ? Math.Max(BusyHz, IdleHz) : IdleHz;
-        if (Moving) hz = Math.Max(hz, MovingHz);
         bool idleDue = hz > 0 && now >= _nextIdle;
         if (sim == null || (look == null && glance == null && !idleDue))
         {
@@ -663,10 +622,3 @@ public sealed partial class OffscreenRenderer : IDisposable
         }
     }
 }
-
-/// <summary>What a batch of collision rays met, in order (null: nothing within its reach), in the frame of the region
-/// they were cast in.</summary>
-public readonly record struct RayBatch(CollideHit?[] Hits, ulong Region);
-
-/// <summary>Solid triangles (three points each) and each one's prim, in the frame of the region asked about.</summary>
-public readonly record struct Solids(List<Vector3> Triangles, List<uint> Prims, ulong Region);

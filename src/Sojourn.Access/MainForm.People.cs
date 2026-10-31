@@ -47,12 +47,12 @@ public sealed partial class MainForm
         MenuOn(_groups, _groupMenu);
         _friends.KeyDown += (_, e) =>
         {
-            if (e.KeyCode == Keys.F5) { e.Handled = true; RefreshFriendsAndGroups(said: true); }
+            if (e.KeyCode == Keys.F5) { e.Handled = true; RefreshFriendsAndGroups(said: true, into: _friends); }
             else if (e.KeyCode == Keys.Enter && _friends.FocusedItem?.Tag is Friend f) { e.Handled = e.SuppressKeyPress = true; StartIm(f.Id, f.Name); }
         };
         _groups.KeyDown += (_, e) =>
         {
-            if (e.KeyCode == Keys.F5) { e.Handled = true; RefreshFriendsAndGroups(said: true); }
+            if (e.KeyCode == Keys.F5) { e.Handled = true; RefreshFriendsAndGroups(said: true, into: _groups); }
             else if (e.KeyCode == Keys.Enter && _groups.FocusedItem?.Tag is MyGroup g) { e.Handled = e.SuppressKeyPress = true; StartGroupChat(g); }
         };
 
@@ -72,18 +72,30 @@ public sealed partial class MainForm
         _peoplePage.Controls.Add(t);
     }
 
-    /// <summary>Friends (online first, then by name) and my groups (the one whose tag is worn said so).</summary>
-    void RefreshFriendsAndGroups(bool said)
+    /// <summary>Alt+2, Radegast's Friends key: the people area with the focus on Friends (its first friend read, online
+    /// first); pressed there again, read again.</summary>
+    void GoFriends()
+    {
+        bool there = _areas.SelectedTab == _peoplePage && _friends.Focused;
+        _areas.SelectedTab = _peoplePage;   // (arriving from elsewhere refreshes the area's lists)
+        if (there) RefreshFriendsAndGroups(said: false, into: _friends);
+        _friends.Focus();
+        FocusChanged();
+    }
+
+    /// <summary>Friends (online first, then by name) and my groups (the one whose tag is worn said so), into the lists the
+    /// person isn't in, and into `into` even if they are.</summary>
+    void RefreshFriendsAndGroups(bool said, ListView? into = null)
     {
         if (_ops?.Client is not { } c) return;
         var friends = c.Friends.FriendList.Values
             .Select(f => new Friend(f.UUID, Host!.Session.Names.Complete(f.UUID, string.IsNullOrEmpty(f.Name) ? "a friend" : f.Name), f.IsOnline))
             .OrderByDescending(f => f.Online).ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase).ToList();
-        if (!_friends.Focused)
+        if (!_friends.Focused || into == _friends)
             Fill(_friends, friends.Select(f => ($"{f.Name}, {(f.Online ? "online" : "offline")}", f.Id.ToString(), (object)f)).ToList(), "No friends yet.");
         var groups = Host!.Session.State.Groups.Values.Select(g => new MyGroup(g.ID, g.Name))
             .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList();
-        if (!_groups.Focused)
+        if (!_groups.Focused || into == _groups)
             Fill(_groups, groups.Select(g => ($"{g.Name}{(g.Id == c.Self.ActiveGroup ? ", tag worn" : "")}", g.Id.ToString(), (object)g)).ToList(), "In no groups.");
         if (said) Reader?.Answer($"{friends.Count(f => f.Online)} of {friends.Count} friends online; {groups.Count} groups.", keep: false);
     }

@@ -11,17 +11,19 @@ import os
 import stat
 from pathlib import Path
 
+from paths import LOCAL
+
 HERE = Path(__file__).resolve().parent
 INDEX = "MEMORY.md"
 INDEX_SOFT_MAX = 3000     # characters: past this the index comes with a nudge to tighten it
 
 
 def default_dir():
-    return Path(os.environ.get("SOJOURN_HOME") or HERE.parent / "local" / "assistant" / "home")
+    return Path(os.environ.get("SOJOURN_HOME") or LOCAL / "assistant" / "home")
 
 
 def work_dir():
-    return Path(os.environ.get("SOJOURN_WORK") or HERE.parent / "local" / "assistant" / "work")
+    return Path(os.environ.get("SOJOURN_WORK") or LOCAL / "assistant" / "work")
 
 
 def _linked(st):

@@ -11,6 +11,10 @@ public sealed partial class MainForm
     TabPage _peoplePage = null!, _objectsPage = null!;
     ListView _people = null!, _objects = null!;
     ContextMenuStrip _personMenu = null!, _objectMenu = null!;
+    /// <summary>People nearby again in the chat area, a Tab from Say (Radegast keeps its nearby list beside chat, and a
+    /// blind tester's habit reaches for it there): the same items, actions and refreshing as Alt+3's.</summary>
+    ListView _chatPeople = null!;
+    ContextMenuStrip _chatPersonMenu = null!;
     long _listsAt;
 
     static ListView List(string name, string accessibleName)
@@ -27,10 +31,17 @@ public sealed partial class MainForm
     void BuildPeople()
     {
         _peoplePage = new TabPage("People nearby") { Name = "peoplePage", AccessibleName = "People nearby" };
-        _people = List("people", "People nearby");
-        _personMenu = new ContextMenuStrip { Name = "personMenu", AccessibleName = "Actions" };
+        (_people, _personMenu) = PeopleList("people", "personMenu");
+        BuildPeoplePage();
+    }
+
+    /// <summary>A People nearby list with its actions on the Applications key (or Shift+F10, or Enter), F5 refreshing it.</summary>
+    (ListView, ContextMenuStrip) PeopleList(string name, string menuName)
+    {
+        var list = List(name, "People nearby");
+        var menu = new ContextMenuStrip { Name = menuName, AccessibleName = "Actions" };
         void Item(string text, Action<PersonOps.Person> act) =>
-            _personMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_people.FocusedItem?.Tag is PersonOps.Person p) act(p); }));
+            menu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (list.FocusedItem?.Tag is PersonOps.Person p) act(p); }));
         Item("Send &IM", p => StartIm(p.Id, p.Name));
         Item("&Walk to", p => _ = _cmd.WalkAsync(p.Pos, p.Name, 1.5));
         Item("&Face", p => _ = _cmd.FacePointAsync(p.Pos, p.Name));
@@ -43,11 +54,14 @@ public sealed partial class MainForm
         Item("Offer &teleport", p => _ = PersonOpAsync("offerTeleport", p, $"Teleport offered to {p.Name}."));
         Item("&Request teleport", p => _ = PersonOpAsync("requestTeleport", p, $"Asked {p.Name} for a teleport."));
         Item("Always in&cognito with them", p => IncognitoWith(p.Id, p.Name));
-        KeysOn(_personMenu, ("&Describe", "Control+D"));
-        MenuOn(_people, _personMenu);
-        _people.KeyDown += (_, e) => ListKey(_people, _personMenu, e, RefreshPeople);
-        BuildPeoplePage();
+        KeysOn(menu, ("&Describe", "Control+D"));
+        MenuOn(list, menu);
+        list.KeyDown += (_, e) => ListKey(list, menu, e, asked => RefreshPeople(asked, list));
+        return (list, menu);
     }
+
+    /// <summary>The People nearby list the focus is in, if it's in one.</summary>
+    ListView? PeopleFocused => _people.Focused ? _people : _chatPeople.Focused ? _chatPeople : null;
 
     async Task PersonOpAsync(string op, PersonOps.Person p, string done)
     {
@@ -122,7 +136,8 @@ public sealed partial class MainForm
 
     void AreaShown()
     {
-        if (_areas.SelectedTab == _peoplePage) { _ = RefreshPeople(false); RefreshFriendsAndGroups(said: false); }
+        if (_areas.SelectedTab == _peoplePage) { _ = RefreshPeople(false, _people); RefreshFriendsAndGroups(said: false); }
+        else if (_areas.SelectedTab == _chatPage) _ = RefreshPeople(false);
         else if (_areas.SelectedTab == _objectsPage) _ = RefreshObjects(false);
         else if (_areas.SelectedTab == _inventoryPage) InventoryShown();
         else if (_areas.SelectedTab == _placesPage) _ = RefreshPlacesAsync(said: false);
@@ -133,7 +148,7 @@ public sealed partial class MainForm
     {
         if (Environment.TickCount64 - _listsAt < 3000) return;
         _listsAt = Environment.TickCount64;
-        if (_areas.SelectedTab == _peoplePage && !_people.Focused) _ = RefreshPeople(false);
+        if (_areas.SelectedTab == _peoplePage && !_people.Focused || _areas.SelectedTab == _chatPage && !_chatPeople.Focused) _ = RefreshPeople(false);
         if (_areas.SelectedTab == _peoplePage) RefreshFriendsAndGroups(said: false);
         if (_areas.SelectedTab == _objectsPage && !_objects.Focused && !_objectsBusy) _ = RefreshObjects(false);
     }
@@ -151,24 +166,44 @@ public sealed partial class MainForm
     /// nearby, looking"); its first item is then read as the focus moves to it.</summary>
     static void Looking(ListView list, string name, bool looking) => list.AccessibleName = looking ? $"{name}, looking" : name;
 
-    async Task RefreshPeople(bool asked)
+    (bool Asked, ListView? Into)? _peopleAgain;   // asked for while a refresh was under way: once it ends, again
+
+    /// <summary>People nearby into the lists showing that the person isn't in (Alt+3's, the chat area's), and into
+    /// `into` even if they are (F5 there, or the area's key pressed again: read again).</summary>
+    async Task RefreshPeople(bool asked, ListView? into = null)
     {
-        if (_peopleBusy || Host?.Session.Online != true) return;
+        if (Host?.Session.Online != true) return;
+        if (_peopleBusy)
+        {
+            // (arriving in it empty while another list's refresh runs: still not silence)
+            if (into is { Items.Count: 0 }) Looking(into, "People nearby", true);
+            if (into != null || asked || _peopleAgain == null) _peopleAgain = (asked || _peopleAgain?.Asked == true, into ?? _peopleAgain?.Into);
+            return;
+        }
+        var lists = new[] { (_people, _peoplePage), (_chatPeople, _chatPage) }
+            .Where(l => l.Item1 == into || _areas.SelectedTab == l.Item2 && !l.Item1.Focused).Select(l => l.Item1).ToList();
+        if (lists.Count == 0) return;
         _peopleBusy = true;
-        bool first = _people.Items.Count == 0;
-        if (first) Looking(_people, "People nearby", true);
+        var first = lists.Where(l => l.Items.Count == 0).ToList();
+        foreach (var l in first) Looking(l, "People nearby", true);
         try
         {
             var people = await _ops.PeopleAsync(96);
-            await ListDelay(_people);
-            Fill(_people, people.Select(p => (Text: $"{p.Name}, {_ops.Where(p.Pos)}", Key: p.Id.ToString(), Tag: (object)p)).ToList(), "Nobody nearby.");
+            var items = people.Select(p => (Text: $"{p.Name}, {_ops.Where(p.Pos)}", Key: p.Id.ToString(), Tag: (object)p)).ToList();
+            foreach (var l in lists)
+            {
+                await ListDelay(l);
+                // (it may have taken the focus meanwhile: then it stays as it is, unless asked for or still empty)
+                if (l == into || !l.Focused || l.Items.Count == 0) Fill(l, items, "Nobody nearby.");
+            }
             if (asked) Reader?.Answer(people.Count == 0 ? "Nobody nearby." : $"{people.Count} {(people.Count == 1 ? "person" : "people")}.", keep: false);
         }
         finally
         {
             _peopleBusy = false;
-            if (first) Looking(_people, "People nearby", false);
+            foreach (var l in first) Looking(l, "People nearby", false);
         }
+        if (_peopleAgain is { } again) { _peopleAgain = null; await RefreshPeople(again.Asked, again.Into); }
     }
 
     async Task RefreshObjects(bool asked)
@@ -204,6 +239,14 @@ public sealed partial class MainForm
     /// <summary>The list's items replaced, the one the person was on still focused (by key), or a line saying it's empty.</summary>
     static void Fill(ListView list, List<(string Text, string Key, object Tag)> items, string empty)
     {
+        // the same words as shown: only what the actions use is renewed (where people are), so a list beside the one
+        // the person is in (the chat area's, while they type) isn't emptied and refilled every few seconds for nothing
+        if (!list.Focused && items.Count > 0 && list.Items.Count == items.Count
+            && items.Select((it, i) => list.Items[i].Name == it.Key && list.Items[i].Text == it.Text).All(x => x))
+        {
+            for (int i = 0; i < items.Count; i++) list.Items[i].Tag = items[i].Tag;
+            return;
+        }
         var focusedKey = list.FocusedItem?.Name;
         list.BeginUpdate();
         try

@@ -25,6 +25,7 @@ public sealed partial class MainForm
         ("announce_notices", "Notices read out"),
         ("announce_replies", "The assistant's replies read out"),
         ("announce_music", "Music titles read out"),
+        ("access_read_mine", "My own lines read back"),
         ("access_mute_all", "Mute all read-out (F6)"),
         ("access_timestamps", "Times in the histories"),
         ("access_answers_without_key", "Answers without a physical key"),
@@ -65,6 +66,7 @@ public sealed partial class MainForm
         ("walk_marks", "Marks: doors, seats and touchable things (walk mode, O)"),
         ("walk_marks_volume", "Marks' volume"),
         ("walk_follow", "Following someone: their stops and turns"),
+        ("walk_distance", "Distance walked, said when you pause (walk mode)"),
         ("walk_vehicle", "Driving: what's ahead and the speed"),
         ("walk_vehicle_volume", "Driving sounds' volume"),
         ("walk_turn_step", "Degrees a tap of Left or Right turns (walk mode)"),
@@ -142,7 +144,14 @@ public sealed partial class MainForm
     // agent API's. Its key is typed or pasted into a password box, kept encrypted for this Windows account
     // (ProviderKeys), and never read back or said.
 
-    static readonly string[] ProviderLabels = { "your Claude account", "your Anthropic key", "your OpenRouter key" };
+    // a packaged build offers no Claude account (ProviderKeys.ClaudeOffered): its "claude" is none chosen yet
+    static string ProviderLabel(string kind) => kind switch
+    {
+        "claude" => Sojourn.Session.Assistant.ProviderKeys.ClaudeOffered ? "your Claude account" : "none chosen yet",
+        "anthropic" => "your Anthropic key",
+        "openrouter" => "your OpenRouter key",
+        _ => "Studio Quire's relay, with a token from the studio",
+    };
     bool _forgetKeyArmed;
 
     List<(string, string, object)> ProviderItems()
@@ -153,12 +162,16 @@ public sealed partial class MainForm
         var status = h.Assistant.ProviderStatus is { } p && p["kind"]?.GetValue<string>() == kind ? p["short"]?.GetValue<string>() : null;
         var items = new List<(string, string, object)>
         {
-            ($"Provider for the assistant: {ProviderLabels[Math.Max(0, Array.IndexOf(Sojourn.Session.Control.VrSettings.Providers, kind))]}"
-             + (status != null ? $", {status}" : ""), "@provider", "@provider"),
+            ($"Provider for the assistant: {ProviderLabel(kind)}"
+             + (status != null && Sojourn.Session.Control.VrSettings.OfferedProviders.Contains(kind) ? $", {status}" : ""), "@provider", "@provider"),
         };
-        if (kind != "claude")
-            items.Add(($"Key for the assistant: {(Sojourn.Session.Assistant.ProviderKeys.Has(kind) ? "kept (Enter to put in another, Delete to forget it)" : "none (Enter to put it in)")}",
-                "@key", "@key"));
+        // the key's row with a Claude account (or none chosen) too: a key or token put in there switches to its provider
+        var noun = kind == "relay" ? "Token" : "Key";
+        items.Add((kind == "claude" ? (Sojourn.Session.Assistant.ProviderKeys.ClaudeOffered
+                ? "Key or token for the assistant: none needed with a Claude account (Enter to put one in)"
+                : "Key or token for the assistant: none (Enter to put it in)")
+            : $"{noun} for the assistant: {(Sojourn.Session.Assistant.ProviderKeys.Has(kind) ? "kept (Enter to put in another, Delete to forget it)" : "none (Enter to put it in)")}",
+            "@key", "@key"));
         if (kind == "openrouter")
         {
             items.Add(($"Model on OpenRouter: {ModelName(st.OpenRouterModel)} (Enter for the next, Control+Enter to type one)", "@model", "@model"));
@@ -191,11 +204,12 @@ public sealed partial class MainForm
         string said;
         if (row == "@provider")
         {
-            var all = Sojourn.Session.Control.VrSettings.Providers;
+            var all = Sojourn.Session.Control.VrSettings.OfferedProviders;
             int at = Array.IndexOf(all, kind);
-            st.AssistantProvider = all[((at < 0 ? 0 : at) + (back ? -1 : 1) + all.Length) % all.Length];
-            said = $"Provider for the assistant: {ProviderLabels[Array.IndexOf(all, st.AssistantProvider)]}."
-                   + (st.AssistantProvider != "claude" && !Sojourn.Session.Assistant.ProviderKeys.Has(st.AssistantProvider) ? " No key yet: the next row puts it in." : "");
+            st.AssistantProvider = at < 0 ? all[back ? ^1 : 0] : all[(at + (back ? -1 : 1) + all.Length) % all.Length];
+            said = $"Provider for the assistant: {ProviderLabel(st.AssistantProvider)}."
+                   + (st.AssistantProvider != "claude" && !Sojourn.Session.Assistant.ProviderKeys.Has(st.AssistantProvider)
+                       ? $" No {(st.AssistantProvider == "relay" ? "token" : "key")} yet: the next row puts it in." : "");
         }
         else if (delete)
         {
@@ -203,18 +217,18 @@ public sealed partial class MainForm
             if (!_forgetKeyArmed) { _forgetKeyArmed = true; Reader?.Answer("Press Delete again to forget the key.", keep: false); return true; }
             _forgetKeyArmed = false;
             Sojourn.Session.Assistant.ProviderKeys.Forget(kind);
-            said = $"{Sojourn.Session.Assistant.ProviderKeys.Name(kind)} key forgotten.";
+            said = $"{Sojourn.Session.Assistant.ProviderKeys.Thing(kind)} forgotten.";
         }
         else if (row == "@key")
         {
-            var text = Dialogs.Ask(this, "Assistant key", "Anthropic or OpenRouter key (paste with Control+V)", secret: true);
-            if (text == null) { Reader?.Answer("No key kept.", keep: false); return true; }
+            var text = Dialogs.Ask(this, "Assistant key or token", "Studio Quire token, or Anthropic or OpenRouter key (paste with Control+V)", secret: true);
+            if (text == null) { Reader?.Answer("Nothing kept.", keep: false); return true; }
             string? kept;
             try { kept = Sojourn.Session.Assistant.ProviderKeys.Keep(text); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException) { Reader?.Answer("Couldn't keep the key."); return true; }
-            if (kept == null) { Reader?.Answer("That isn't an Anthropic or OpenRouter key. Nothing kept."); return true; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException) { Reader?.Answer("Couldn't keep it."); return true; }
+            if (kept == null) { Reader?.Answer("That isn't a Studio Quire token or an Anthropic or OpenRouter key. Nothing kept."); return true; }
             st.AssistantProvider = kept;
-            said = $"{Sojourn.Session.Assistant.ProviderKeys.Name(kept)} key kept; the assistant uses it now.";
+            said = $"{Sojourn.Session.Assistant.ProviderKeys.Thing(kept)} kept; the assistant uses it now.";
         }
         else if (row == "@data")
         {

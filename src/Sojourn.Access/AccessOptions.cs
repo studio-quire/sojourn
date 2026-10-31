@@ -8,7 +8,8 @@ namespace Sojourn.Access;
 ///       [--port 9725] [--api|--no-api] [--base DIR] [--no-assistant] [--no-voice] [--no-sounds] [--reader auto|on|off] [--autologin] [--no-render]
 ///       [--local]
 /// --local: the local grid (tools/grid.py) offered at the login and chosen; a packaged build otherwise offers Second Life.
-/// --no-render: no renderer out of sight (no pictures for the assistant, touches without a surface, no collision rays).
+/// --no-render: no renderer out of sight (no pictures for the assistant, touches without a surface, no faces listed);
+/// walk mode's rays come from the collision model, which needs no GPU, either way.
 /// --no-voice: no voice chat this run (it's on by default, push to talk on F4; --voice, its old opt-in, still parses).
 /// </summary>
 public sealed record AccessOptions
@@ -21,7 +22,8 @@ public sealed record AccessOptions
     public string? Start { get; init; }
     public int Port { get; init; } = 9725;
     public string BaseDir { get; init; } = DefaultBaseDir();
-    /// <summary>The assistant: on where its Python side is (the repo), off in a packaged build (no Claude account needed).</summary>
+    /// <summary>The assistant: on where its Python side is (the repo, or bundled in a packaged build); it does nothing
+    /// until a provider that works is chosen in Alt+0, and everything else works without one.</summary>
     public bool Assistant { get; init; } = AssistantInBuild;
     /// <summary>The agent API on Port: on in the repo (tests, the assistant, dev tools); off in a packaged build unless
     /// --api, since any program on her PC could read her chat through it.</summary>
@@ -38,8 +40,9 @@ public sealed record AccessOptions
     /// <summary>The repo this runs from (src/Sojourn.Access above the program), or null: a packaged build.</summary>
     public static string? RepoRoot { get; } = FindRepo();
     public static bool Packaged => RepoRoot == null;
-    /// <summary>The assistant's Python side is found above the program only in the repo; a packaged build has none.</summary>
-    public static bool AssistantInBuild { get; } = Sojourn.Session.Assistant.Sidecar.Root != null;
+    /// <summary>The assistant's Python side: above the program in the repo, beside it in a packaged build that bundles
+    /// it (tools/access.py package).</summary>
+    public static bool AssistantInBuild { get; } = Sojourn.Session.Assistant.Sidecar.Available;
     /// <summary>The local grid on the login form: always in the repo; in a packaged build when asked for.</summary>
     public bool LocalOffered => !Packaged || Local;
 

@@ -54,10 +54,24 @@ If your graphics can't run it
 
 Sojourn Access draws the world out of sight, using your PC's graphics, to tell what's around you: walk mode's warnings and sonar, the faces of objects, and the pictures the assistant describes. On a PC whose graphics can't (a virtual machine, or a very old graphics card or driver), it says so when you use one of those, and everything else works. Updating your graphics driver may help.
 
+[assistant]
+The assistant
+
+Sojourn Access has an AI assistant: it describes the people, things and places around you (Control+D, and Control+Shift+D for you and what you're wearing), and answers or does what you type in Alt+9. It's off until you choose how it runs, in Alt+0 (settings), in its first rows:
+
+With a token from Studio Quire, if the studio has given you one: go to the row "Key or token for the assistant", press Enter, paste the token with Control+V and press Enter. Studio Quire pays for what you use, up to a monthly allowance; if that runs out, the assistant says so and comes back on the first of the next month.
+
+Or with your own Anthropic or OpenRouter key, put in the same way. Requests are typed; this build doesn't hear spoken requests.
+
+What it sends: only when you ask it something, your request goes to Anthropic, the maker of the Claude AI models, with what it looks up to answer: the names of the people and things around you and where they are, recent chat when it's needed, pictures of the view around you, and its notes on your preferences. With a Studio Quire token it goes through Studio Quire's relay, which passes it on and keeps nothing of it, only how much was used. Your token or key is kept encrypted for your Windows account.
+
+[/assistant]
+[lean]
 Without the assistant
 
 Sojourn Access can work with an AI assistant that describes what's around you and does things for you, but this build doesn't include it. Describing (Control+D) needs the assistant, so here it tells you what Sojourn Access knows from its lists instead. Nothing else needs it.
 
+[/lean]
 Quitting
 
 Alt+F4 in the main window. It asks "Log out and quit?": Enter quits, Escape stays.
@@ -66,11 +80,11 @@ Where your settings live
 
 Your settings, logs and Second Life's cache are kept in a folder of your own: Sojourn Access, inside your AppData Local folder. To open it, press Windows+R, type %LOCALAPPDATA%\Sojourn Access and press Enter. The logs of your last ten sessions are there; they include chat, and they stay on this computer.
 
-Sojourn Access has no analytics, tracking or crash reports of its own. It connects only where any viewer does: to Second Life, and to the music stream a parcel plays.
+Sojourn Access has no analytics, tracking or crash reports of its own. It connects only where any viewer does: to Second Life, and to the music stream a parcel plays[assistant]; and, once you switch the assistant on, to Anthropic or OpenRouter, or Studio Quire's relay[/assistant].
 
 Removing it
 
-Quit it, then delete this folder, and delete the Sojourn Access folder in AppData Local described above. That's everything, except that if Windows Firewall asked about it, Windows keeps your answer in its own settings, which does no harm.
+Quit it, then delete this folder, and delete the Sojourn Access folder in AppData Local described above.[assistant] If you put in a token or key for the assistant, delete the Sojourn folder there too.[/assistant] That's everything, except that if Windows Firewall asked about it, Windows keeps your answer in its own settings, which does no harm.
 
 Who made it
 

@@ -4,6 +4,7 @@ using Sojourn.Core.Config;
 using Sojourn.Render.Realtime;
 using Sojourn.Session.Access;
 using Sojourn.Session.Assistant;
+using Sojourn.Session.Collision;
 using Sojourn.Session.Audio;
 using Sojourn.Session.Bridge;
 using Sojourn.Session.Building;
@@ -131,6 +132,13 @@ public sealed class SessionHost : IAsyncDisposable
         SettingsPath = VrSettings.PathIn(Options.BaseDir);
         Settings = VrSettings.Load(SettingsPath, Warn);
         var st = Settings;
+        // a packaged build offers no Claude account: a key or token already kept takes its place, else none is chosen
+        if (Sojourn.Session.Assistant.ProviderKeys.FallbackFor(st.AssistantProvider) is { } kept)
+        {
+            Info($"assistant: the provider {st.AssistantProvider} isn't offered in this build; using the {kept} kept");
+            st.AssistantProvider = kept;
+            SaveSettings();
+        }
         AudioEngine.Chosen = hs => hs ? (st.HeadsetMicrophone, st.HeadsetSpeakers) : (st.Microphone, st.Speakers);
         foreach (var change in Options.VrOverrides) change(Settings);
     }
@@ -191,6 +199,7 @@ public sealed class SessionHost : IAsyncDisposable
     /// mode's note for tools/dev.py. args: the app's command line, for the note.</summary>
     public void StartSidecar(bool inHeadset, string[] args)
     {
+        Sidecar.DataDir = Options.BaseDir;
         Sidecar = Options.Assistant && Bridge != null
             ? Sidecar.Start(Options.BridgePort, inHeadset, AssistantHost.ModelName(Settings.AssistantModel), Log, Assistant.DevToken) : null;
         if (Sidecar is { } sc) Assistant.SidecarLaunched(() => sc.Running);
@@ -299,11 +308,28 @@ public sealed class SessionHost : IAsyncDisposable
         RegisterSettings();
     }
 
+    /// <summary>The local collision model without a GPU (<see cref="StartCollision"/>).</summary>
+    public LocalCollision? Collision { get; private set; }
+
+    /// <summary>
+    /// The local collision model without a GPU (Collision/LocalCollision.cs), for an app that shows no view: what's solid
+    /// around the person, from the world's prims and their physics shapes, on any PC (SojournCollision). Before
+    /// <see cref="StartOffscreen"/>, which then shares its physics shape types.
+    /// </summary>
+    public LocalCollision StartCollision()
+    {
+        var clog = Logs.CreateLogger("collision");
+        var model = Collision = new LocalCollision(Session, m => clog.LogInformation("{Msg}", m));
+        Session.Api.Register(new CollisionApi(Session, model));
+        return model;
+    }
+
     /// <summary>
     /// The renderer out of sight (Offscreen/OffscreenRenderer.cs), for an app that shows no view but wants pictures for the
-    /// assistant's look and the snapshot ops, touches landing on faces, and the local collision model (SojournView). Its
-    /// own thread starts the GPU (a failure there leaves the app as it was, without these). The session must have been
-    /// made with renderHooks. configure: its rates and sizes, before it starts.
+    /// assistant's look and the snapshot ops, and touches landing on faces (its own collision model answers SojournView's
+    /// rays, for comparing with <see cref="Collision"/>'s). Its own thread starts the GPU (a failure there leaves the app
+    /// as it was, without these). The session must have been made with renderHooks. configure: its rates and sizes,
+    /// before it starts.
     /// </summary>
     public OffscreenRenderer StartOffscreen(Action<OffscreenRenderer>? configure = null)
     {
@@ -311,7 +337,7 @@ public sealed class SessionHost : IAsyncDisposable
         // unseen (no textures, avatars, shadows...) unless an assistant that may ask for pictures is up or starting
         var view = Offscreen = new OffscreenRenderer(Session, Assistant.Snapshots, () => Assistant.Panel.Read(p => p.Working),
             () => Assistant.SidecarAlive || Sidecar?.Running == true,
-            Path.Combine(Options.BaseDir, "cache", "render"), m => rlog.LogInformation("{Msg}", m));
+            Path.Combine(Options.BaseDir, "cache", "render"), m => rlog.LogInformation("{Msg}", m), Collision?.Physics);
         configure?.Invoke(view);
         Sojourn.Core.Rendering.Snapshots.Provider = Assistant.Snapshots;
         Session.FindTouchSurface = view.FindTouchAsync;
@@ -346,6 +372,7 @@ public sealed class SessionHost : IAsyncDisposable
         }
         DevMode.Withdraw(DevFile);
         Step("the view out of sight", () => Offscreen?.Dispose());
+        Step("the collision model", () => Collision?.Dispose());
         await Task.WhenAll(
             Task.Run(() => Step("SL's logout", () => Session?.LogoutAsync().GetAwaiter().GetResult())),
             Task.Run(() => Step("the assistant", () => Sidecar?.Dispose())),

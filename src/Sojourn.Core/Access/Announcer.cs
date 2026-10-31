@@ -327,7 +327,22 @@ public sealed class Announcer : IDisposable
 
     // --- the worker --------------------------------------------------------------------------------------------------
 
-    IReaderVoice? Voice() => Reader == "NVDA" && _nvda != null ? _nvda : _uia ?? (IReaderVoice?)_nvda;
+    IReaderVoice? Voice() => Reader == "NVDA" && _nvda != null && !NvdaRefusing ? _nvda : _uia ?? (IReaderVoice?)_nvda;
+
+    // NVDA's controller client can refuse (a tester's NVDA, 2026-10-30: everything that arrived went silent, nothing
+    // logged): then speech goes through UI Automation's notifications instead, which NVDA reads for the window in
+    // front, and the controller is tried again after a while
+    long _nvdaRefusedUntil;
+    int _nvdaRefusals;
+    bool NvdaRefusing => Environment.TickCount64 < Interlocked.Read(ref _nvdaRefusedUntil);
+
+    void NvdaRefused()
+    {
+        int n = ++_nvdaRefusals;
+        Interlocked.Exchange(ref _nvdaRefusedUntil, Environment.TickCount64 + 60_000);
+        if (n <= 3 || n % 50 == 0)
+            _log($"screen reader: NVDA's controller refused speech (error {_nvda?.LastError}, {n} so far); speaking through UI Automation instead for a minute");
+    }
 
     void Detect()
     {
@@ -365,7 +380,14 @@ public sealed class Announcer : IDisposable
                 var voice = Voice();
                 try
                 {
-                    if (voice?.Speak(item.Text, item.Interrupt, item.Urgent) == true)
+                    bool said = voice?.Speak(item.Text, item.Interrupt, item.Urgent) == true;
+                    if (!said && voice == _nvda && _uia != null)
+                    {
+                        NvdaRefused();
+                        voice = _uia;
+                        said = _uia.Speak(item.Text, item.Interrupt, item.Urgent);
+                    }
+                    if (said)
                     {
                         Interlocked.Increment(ref _spoken);
                         if (voice == _nvda) _nvda!.Braille(item.Text.Length > 300 ? item.Text[..300] : item.Text);

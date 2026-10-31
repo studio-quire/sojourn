@@ -46,7 +46,7 @@ def read_wav(path):
     return x
 
 
-PARAKEET = Path(__file__).resolve().parents[1] / "local" / "assistant" / "parakeet" / "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
+PARAKEET = __import__("paths").LOCAL / "assistant" / "parakeet" / "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
 
 
 def _norm(s):

@@ -23,6 +23,7 @@ public sealed partial class MainForm
     UUID _partsOf, _facesOf;
     int _partsVersion, _facesVersion;
     Sojourn.Session.Offscreen.OffscreenRenderer? _view;
+    Sojourn.Session.Collision.LocalCollision? _rays;
 
     bool ShowingHuds => _objectsShow.SelectedIndex == 1;
 

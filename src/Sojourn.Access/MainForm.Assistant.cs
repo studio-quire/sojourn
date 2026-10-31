@@ -2,7 +2,7 @@ namespace Sojourn.Access;
 
 /// <summary>The assistant: a typed request in a real edit control, feeding the session's assistant host (the same as the
 /// VR client's), its replies read out by the announcer (A1) and kept in a history here, its choices as buttons. It
-/// needs a Claude account; everything else in the app works without one.</summary>
+/// needs a provider that works (Alt+0); everything else in the app works without one.</summary>
 public sealed partial class MainForm
 {
     TabPage _assistantPage = null!;
@@ -46,6 +46,14 @@ public sealed partial class MainForm
                 : "The assistant isn't in this build. Everything else works without it.";
             Append(_assistantHistory, none);
             Reader?.Answer(none);
+            return;
+        }
+        if (!h.Assistant.SidecarAlive && h.Sidecar is { Running: false })
+        {
+            // its process ended (an error: the session's log has it), so nothing would ever answer
+            const string stopped = "The assistant has stopped, so it can't answer. Quitting and starting Sojourn Access again starts it again. Everything else works without it.";
+            Append(_assistantHistory, stopped);
+            Reader?.Answer(stopped);
             return;
         }
         h.Assistant.Request(text);

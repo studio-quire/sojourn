@@ -40,6 +40,7 @@ from claude_agent_sdk.types import StreamEvent
 import build as buildmod
 import harness
 import home as homemod
+import paths
 import jobs as jobmod
 import privatetools
 import provider as providermod
@@ -108,7 +109,7 @@ HIDDEN_OPS = {(pump, op) for pump, ops in {
     "SojournSafety": "derender rerender hidden sounds blockSound particles blockParticleOwner releaseKeys bumps",
     "SojournFeed": "lines keys",
 }.items() for op in ops.split()}
-PROMPTS = Path(__file__).resolve().parents[1] / "local" / "assistant" / "prompts"
+PROMPTS = paths.LOCAL / "assistant" / "prompts"
 
 
 def workdir():
@@ -132,7 +133,7 @@ def incognito_dir():
 def wipe_incognito(log=print):
     import shutil
     d = incognito_dir()
-    for p in (d, Path.home() / ".claude" / "projects" / harness.slug(d)):
+    for p in (d, *(c / "projects" / harness.slug(d) for c in paths.claude_dirs())):
         if p.exists():
             shutil.rmtree(p, ignore_errors=True)
             if p.exists():
@@ -397,7 +398,7 @@ class Brain:
         self.recent = []      # this sitting's exchanges: {seq, t, request, reply, by}
         self.seq = 0
         self.task = None
-        self.timings = HERE.parent / "local" / "assistant" / "timings.jsonl"
+        self.timings = paths.LOCAL / "assistant" / "timings.jsonl"
         # private mode (private.py says when): {since, paused}, the spell's own exchanges kept apart and dropped at its
         # end, (minutes, when it ended) for the first requests after, and sessions switching (requests wait for it)
         self.private = None
@@ -846,7 +847,8 @@ class Brain:
             rec["context_s"] = round(time.time() - tc, 2)
             handover = []
             reply, used, info = await first.ask(job(first, ctx), on_handover=handover.append if first.escalate else None)
-            if info["error"] and not reply and not used and not handover and not self.stopping:
+            refused = ("refused", "credits", "allowance")   # the provider said no: asking again won't help
+            if info["error"] and not reply and not used and not handover and not self.stopping and self.provider.state not in refused:
                 # it ended in an error before doing anything (an API error, say): once more, as the person would
                 self.log(f"{first.name} ended with {info['error']} before acting; asking again")
                 rec["retried"] = info["error"]
@@ -870,6 +872,10 @@ class Brain:
                 elif not reply:
                     self.log(f"{last.name} ended with {info['error']}")
                     reply = "That stopped partway, before I could finish." if used else "That didn't go through. Try again?"
+            if self.provider.state in refused and not self.stopping:
+                # a key refused, credits or the month's allowance run out during it: said plainly (Claude Code's own
+                # text for it is the API's error, JSON and all)
+                reply = self.provider.how()
         except asyncio.CancelledError:
             api.panel(working=False, status="stopped")
             raise

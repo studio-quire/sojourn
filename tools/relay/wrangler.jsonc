@@ -1,0 +1,17 @@
+{
+  // Studio Quire's relay for Sojourn Access's assistant (README.md beside this). Deploy and manage it with
+  // `python tools/relay.py ...` from the sojourn repo, which runs wrangler here and puts the secrets in.
+  "name": "sojourn-relay",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-30",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "relay.studioquire.org", "custom_domain": true }],
+  "durable_objects": { "bindings": [{ "name": "METER", "class_name": "Meter" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Meter"] }],
+  // nothing about requests kept beyond Cloudflare's own request counts: no Workers Logs, no traces, no logpush
+  "observability": { "enabled": false },
+  "logpush": false
+  // secrets (wrangler secret put, by tools/relay.py): ANTHROPIC_KEY, the studio's key for its "Sojourn relay"
+  // workspace; TOKENS, {"<sha-256 of a token, hex>": {"name": "...", "cap": <dollars a month>}}
+}

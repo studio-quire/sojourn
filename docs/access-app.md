@@ -30,10 +30,14 @@ and check it.
 
 `python tools/access.py package` (about 2 minutes) makes `local/dist/SojournAccess-0.1.0.N-win-x64.zip`, N the repo's
 commit count, so every packaged build has its own number at the login (`AppInfo`; the TPV policy's unique version,
-channel still "Sojourn"; a build in the repo stays 0.1.0.0). It refuses uncommitted changes under `src/` (`--dirty` for
-a local try, marked so in the zip's name and `//about`). Built through `SOJOURN_BUILD_ROOT=local/dist/build`, so the
-repo's own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access 0.1.0.N/`.
-- **What's in it** (87 MB zipped, 225 MB unpacked, checked 2026-10-29): `SojournAccess.exe`, self-contained single-file
+channel still "Sojourn"; a build in the repo stays 0.1.0.0). It refuses uncommitted changes under `src/` or
+`assistant/` (`--dirty` for a local try, marked so in the zip's name and `//about`). `--lean` leaves the assistant out
+(as every release before 0.1.0.583 was; `-lean` in the name); `--tag NAME` builds a try into `local/dist/NAME/`, apart
+from releases (`-NAME` in the name; `package --check` takes its zip only when named). Built through
+`SOJOURN_BUILD_ROOT=local/dist/build`, so the repo's own bin and obj are untouched; staged in `local/dist/stage/Sojourn
+Access 0.1.0.N/`.
+- **What's in it** (with the assistant: 274 MB zipped, 641 MB unpacked, 3528 files, 0.1.0.583, 2026-10-30; lean: 87 MB
+  zipped, 225 MB unpacked, 2026-10-29): `SojournAccess.exe`, self-contained single-file
   (the .NET 10 runtime, WinForms and ASP.NET's Kestrel inside; our pdbs embedded, so stack traces have lines);
   beside it the natives it loads by name: `sojourn_voice.dll` (voice and world audio, from `local/voice`),
   `openjp2.dll`, `shaderc_shared.dll` and `libSkiaSharp.dll` (the renderer), `nvdaControllerClient.dll` (from
@@ -42,41 +46,70 @@ repo's own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access
   LGPL parts, libwebrtc, OpenJPEG, Archivo, every NuGet package with files in the build read from the publish's
   `project.assets.json`, the .NET runtime packs; texts not found elsewhere in `Package/licences/`). Web and video media
   (CEF, libVLC) aren't in it: only the VR client uses them.
+- **The assistant in it** (`bundle_assistant`, Claude Opus 5.5, 2026-10-30): `python/`, python.org's embeddable CPython
+  3.12.10 (fetched once into `local/dist/python-embed`, checked by its SHA-256), with the venv's `claude-agent-sdk` and
+  everything it needs in `python/Lib/site-packages` (31 distributions, copied by their RECORD files, the extras asked of
+  each followed: mcp needs `pyjwt[crypto]`); the SDK's own Claude Code (`claude_agent_sdk/_bundled/claude.exe`, 322 MB
+  of the 403) runs the sessions. `assistant/`, the sidecar's code and prompts. All compiled ahead (unchecked-hash .pyc),
+  and `Sidecar.cs` starts it with `-B -E -s` and nothing from the PC's Python environment, so nothing is written beside
+  the program. Packaging ends with a smoke test: the embedded Python imports every sidecar module and finds the
+  package's own Claude Code. No hearing (Whisper, Parakeet) and no spoken replies: requests are typed. Licences: Python's
+  PSF licence and "The assistant's parts.txt" (Claude Code under Anthropic's Commercial Terms, each package's licence).
+  The assistant's data (memory, scratch, Claude Code's own config by `CLAUDE_CONFIG_DIR`) goes under
+  `<data folder>/assistant`; keys and tokens in `%LOCALAPPDATA%\Sojourn\secrets\assistant` (DPAPI, as in the repo);
+  the bundled Claude Code runs with its telemetry, error reports and update checks off, and its own `LOCALAPPDATA`
+  under `<data folder>/assistant/claude/local` (its cache, MCP logs holding the tools' calls among it, follows
+  LOCALAPPDATA, not CLAUDE_CONFIG_DIR) (`provider.py` `env`). `voice.py` imports
+  without numpy for the voice list `tools.py` reads (that import crashed the bundled sidecar at its first session);
+  the bundle's smoke test imports `voice` and `hearing` too.
+- **Providers when packaged**: an Anthropic key, OpenRouter and the studio relay only, in Alt+0's first rows (no
+  Claude-account sign-in: CLAUDE.md's decision of 2026-10-30; `ProviderKeys.ClaudeOffered`). A saved "claude" (every
+  earlier build's settings hold it, as the old default) gives way at settings load to a key or token already kept,
+  else it reads "none chosen yet" and the assistant says once, in Alt+9's history and on the first Control+D, that it's
+  off until a token or key is pasted into the key row. With the studio relay, the tester's use is paid by the studio up
+  to a cap a month (`tools/relay/README.md`; the tester's token is `local/secrets/studio/relay-token-tester.key`,
+  DPAPI'd, $50 a month); over it she hears the allowance is used up and the day it returns.
 - **Packaged, it behaves as a person's app** (`AccessOptions.Packaged`: no `src/Sojourn.Access` above the program):
   data, settings, logs and caches in `%LOCALAPPDATA%\Sojourn Access`, never beside the program; Second Life chosen at
-  the login, the local grid not listed unless `--local`; no assistant (its Python side only exists in the repo,
-  `AccessOptions.AssistantInBuild`): Control+D says once a session that describing needs the assistant, which this
-  build doesn't include, then what the lists know, and Alt+9's input is named "Ask the assistant (not in this build)".
+  the login, the local grid not listed unless `--local`. With the assistant bundled (`Sidecar.Bundled`,
+  `AccessOptions.AssistantInBuild`) its sidecar starts at login and the agent API listens on loopback for it; a lean
+  build has neither: Control+D says once a session that describing needs the assistant, which this build doesn't
+  include, then what the lists know, and Alt+9's input is named "Ask the assistant (not in this build)".
   `//about` says the version, the commit, the disclaimer and the data folder; F1's list ends by pointing to it.
-- **Checked** by `python tools/access.py package --check [ZIP]` (default the newest zip; about a minute; passed 37 of
-  37 on 0.1.0.531, 2026-10-30, and on 0.1.0.545 (the review's next list) the same evening, as --bare too; released as v0.1.0.531 on studio-quire/sojourn-access): the zip unpacked in a fresh folder under %TEMP%, run on a hidden desktop of its own
+- **Checked** by `python tools/access.py package --check [ZIP]` (default the newest zip; about two minutes; lean: 37 of
+  37 on 0.1.0.531 and 0.1.0.545, as --bare too, released as v0.1.0.547 on studio-quire/sojourn-access; with the
+  assistant, 0.1.0.589, 2026-10-30: 41 of 41, --bare 41 of 41, --relay 43 of 43): the zip unpacked in a fresh folder under %TEMP%, run on a hidden desktop of its own
   through QuireUia as Package Tester (`--local --autologin --reader on --no-voice`, world audio to a file, no mic, the
   data folder `--base` in the check's folder: .NET's GetFolderPath ignores %LOCALAPPDATA%, so the default folder itself
   isn't exercised), with no dotnet on PATH and %TEMP%, %LOCALAPPDATA% and %APPDATA% pointed into the check's folder.
   It checks: no .NET loaded from outside the exe, logged in to the local grid, the main window and the focus in Say,
   arriving, F1's keys window, `//about` read out as UIA notifications (`//about` naming github.com/studio-quire/sojourn and the
-  data folder), Control+D's absence said once in two presses, chat sent (the grid's echo), the renderer out of sight
+  data folder), with the assistant its sidecar on the package's own Python, its provider checked (a saved Claude
+  account read as none chosen), Alt+9's box named for it and Alt+0's provider row offering no Claude account,
+  Control+D's absence said once in two presses (with the assistant: why it's off and how to choose), chat sent (the grid's echo), the renderer out of sight
   up and the GPU working for it, `nvdaControllerClient.dll`, `sojourn_voice.dll`, `openjp2.dll`, `shaderc_shared.dll`
-  loaded from the package's folder and nothing from the repo, no TCP listener at all (9725 included) and every socket
-  on loopback (Windows' "Bound" rows of outgoing sockets aside), no failures in the log, a clean exit and logout, the
+  loaded from the package's folder and nothing from the repo, no TCP listener at all (a lean build; with the assistant,
+  only the agent API on loopback, at port 9735 there) and every socket on loopback (Windows' "Bound" rows of outgoing sockets aside), no failures in the log, a clean exit and logout, the
   package's folder byte-for-byte unchanged, nothing written through the redirected folders nor anything named as ours
   new in the profile's real ones (the GPU driver's own cache aside); then it removes everything it made. It refuses
   to run beside the VR client or dev mode. `--bare` runs it as on a PC unlike ours (2026-10-30): Vulkan's drivers
   hidden (`VK_LOADER_DRIVERS_DISABLE=*`: a VM, Microsoft's basic display adapter, an old card) and `sojourn_voice.dll`
   removed, which fails as it would on Windows' N editions (it imports Media Foundation's `MFPlat.DLL`). It still logs
-  in, reads out, chats and quits clean; the renderer gives up after three tries (`NeverRan`), and walk mode, the sonar
-  and faces say so in a person's words (`ViewWords`); arrival says once that sounds can't play and why (`SoundWords`;
+  in, reads out, chats and quits clean; the renderer gives up after three tries (`NeverRan`, its log line naming the
+  devices found and their Vulkan versions), and faces and pictures say so in a person's words (`ViewWords`); walk mode
+  and its sonar need no GPU (the collision model, below); arrival says once that sounds can't play and why (`SoundWords`;
   README.txt tells how to add the Media Feature Pack). The other natives need nothing beyond Windows itself
   (shaderc only the universal CRT, voice's CRT static; checked with objdump). Not checked: Second Life itself from a
   packaged build, voice, Windows Hello, SmartScreen and the firewall's question (the first SL login asks for a new
   exe: UDP binds every interface): the guided test of a release, below.
 - **Not signed**: SmartScreen warns on first start; the README walks through it and the zip's Unblock. Signing is the
   user's call.
-- **An assistant-enabled package** would need: the sidecar (`assistant/`) and a Python runtime shipped (an embeddable
-  CPython with the venv's packages, a few hundred MB, or the sidecar ported into the app), `Sidecar` finding them beside
-  the program instead of above it, the person's own Claude sign-in or API key and somewhere to keep it (DPAPI, as
-  `LoginStore`), the local hearing models if voice requests are wanted, and the privacy and TPV disclosures that come
-  with sending chat and pictures to Anthropic (`docs/tpv-policy.md` > Data and privacy).
+- **Through the relay, end to end**: `python tools/relay.py token new e2e --cap 2`, then `package --check ZIP --relay
+  e2e`: the token kept as the app keeps it, the provider set to the relay, then a typed Alt+9 request answered (the
+  region named) and counted by the relay, a Control+D description, and the cap set to a millionth of a dollar for a
+  moment so the next request hears the allowance is used up in a plain sentence (the cap put back after). Revoke the
+  token after (`relay.py token revoke e2e`). Spoken requests, Second Life itself and the privacy and TPV disclosures
+  beyond the README (`docs/tpv-policy.md` > Data and privacy) aren't checked by it.
 
 ## Using it
 
@@ -97,10 +130,11 @@ account after a failed one restarts the app with the form filled in (each accoun
 
 | Key | Area | What's there |
 |---|---|---|
-| Alt+1 | Nearby chat | the nearby chat history (read-only, reviewable line by line) over Say (input); the history is one Shift+Tab back from Say, as in Radegast |
-| Alt+2 | Conversations | a tab per IM or group chat: its history over its input ("Message to Kestrel") |
+| Alt+1 | Nearby chat | the nearby chat history (read-only, reviewable line by line) over Say (input), People nearby beside them; the history is one Shift+Tab back from Say, People nearby one Tab on (then the history), as Radegast goes round (People beside chat, below) |
+| Alt+2 | Friends | the People area with the focus on Friends, its first friend read: Radegast's Alt+2 (a blind tester's habit, 2026-10-30) |
 | Alt+3 | People | Nearby ("Kestrel Tester, 4 metres, two o'clock", nearest first), Friends ("Kestrel, online", online first), My groups ("Builders, tag worn") |
-| Alt+4 | Inventory | the tree ("Red Dress, skirt, worn"; "Hair, object, worn on Skull"; "..., marked"), Search, and Show (everything, worn, recent) |
+| Control+Tab | Conversations | a tab per IM or group chat: its history over its input ("Message to Kestrel"); also View > Conversations |
+| Alt+4 | Inventory | the tree ("Red Dress, skirt, worn"; "Hair, object, worn on Skull"; "..., marked"), Search, and Show (everything, worn, recent, trash) |
 | Alt+5 | Search | Search for (words), Look for (people, places, events, groups, classifieds), Results |
 | Alt+6 | Places | Landmarks (a tree: the Landmarks folder and Favorites), Teleport history ("Bay City, Harbour, today 14:05"), Go to region (a box), Regions around ("Bay City, 3 people, next door to the north") |
 | Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touchable" (or ", can sit"), nearest first, within 30 m (Show: your HUDs instead); Tab: the selected one's parts, then a part's faces (Parts and faces, below) |
@@ -112,8 +146,8 @@ account after a failed one restarts the app with the form filled in (each accoun
 menus' role, for finding out what exists): World (teleport home, to the SLurl on the clipboard, set home here, landmark
 here, sit on the ground or stand up, fly or stop flying, walk mode, Away and Do not disturb as checked items,
 incognito, region info, parcels in this region, status, what you're wearing, describe where you are, describe me,
-who's in voice, open mic or push to talk), View (the areas by their Alt+numbers, the second inventory pane, the newest
-notice, the conversation ring, closing one), Read-out (mute all, mute this conversation, times, arrivals, Recent
+who's in voice, open mic or push to talk), View (the areas by their Alt+numbers, Friends among them, the second
+inventory pane, the newest notice, Conversations, the conversation ring, closing one), Read-out (mute all, mute this conversation, times, arrivals, Recent
 messages: the last nine as items with their Control+numbers, then back, forward, oldest, newest, mark, copy) and Help
 (keys, the slash commands, about). Each item shows its key beside it (`ShortcutKeyDisplayString`, which UI Automation
 gives screen readers as the item's accelerator key: the hidden-desktop test reads "Control+Shift+1" on Region info);
@@ -133,12 +167,13 @@ and the focus goes back where it was. Spoken, they ran to some 2,000 characters 
 stop key lost the rest, outside the review history; walk mode's F1 the same, its own keys):
 - In any input: Enter says (or sends), Shift+Enter whispers, Ctrl+Enter shouts (nearby only); Ctrl+Up/Down bring back
   earlier lines; Ctrl+Backspace deletes the word before the caret (`LineBox`, `TextKeys`: a plain Windows edit box types
-  U+007F for it). Tab and Shift+Tab go between a history and its input: the tab strips aren't Tab stops (Alt+number
-  and Ctrl+Tab switch them). `/me`, `/7 text` (a channel) as in any viewer; `//` commands below.
+  U+007F for it). Tab and Shift+Tab go between a history and its input (in nearby chat, Tab from Say reaches People
+  nearby first): the tab strips aren't Tab stops (Alt+number and Ctrl+Tab switch them). `/me`, `/7 text` (a channel) as in any viewer; `//` commands below.
 - Ctrl+Tab / Ctrl+Shift+Tab, or Ctrl+Page Down / Page Up: nearby chat and the conversations as one ring (focus to the
   input), from anywhere (a tab control's own Ctrl+Page keys would switch only the strip the focus is in). Ctrl+W closes
-  the conversation you're in. With none open, Alt+2 lands on a read-only line saying so; an IM arriving while the focus
-  is there leaves it there, the line now naming the conversation and Control+Tab, until the focus leaves it.
+  the conversation you're in. With none open, Ctrl+Tab says "No conversations open." and View > Conversations lands on
+  a read-only line saying so; an IM arriving while the focus is there leaves it there, the line now naming the
+  conversation and Control+Tab, until the focus leaves it.
 - Ctrl+N: the newest notice (the Notices area, it selected). On the notices list: 1-9, 0, minus and equals press its keys in order (a
   script menu's twelve: "... 0 Ten, minus Next, equals Back"),
   Enter goes to its keys (or the reply box for llTextBox), Delete puts it away; on a confirmation, Enter confirms and
@@ -168,8 +203,10 @@ stop key lost the rest, outside the review history; walk mode's F1 the same, its
   Delete and Give ask first (the confirmation comes up selected in Notices: Enter confirms, Escape cancels, then the
   focus is back in the tree; as in the official viewer and Firestorm, a worn body part isn't deleted, said at once
   without asking, and other worn items, the folder's too, are taken off first, the confirmation saying so); F2 renames; Ctrl+F goes to Search, where typing lists what matches flat with its folder
-  ("2 found"), Enter goes back to the tree, Escape clears it; Tab from Search reaches Show (Up/Down: everything,
-  worn, recent: the last day's). F5 shows it again (the tree doesn't change under you otherwise; your actions
+  ("2 found"), Enter goes back to the tree, Escape clears it; a search leaves the Trash out and says what it has there
+  ("2 found, and 3 in the Trash (Show: Trash lists them)"); a long one says "Searching." first. Tab from Search
+  reaches Show (Up/Down: everything, worn, recent: the last day's, trash: what's in the Trash, or with words what
+  matches there). F5 shows it again (the tree doesn't change under you otherwise; your actions
   refresh what they touched). A notecard or script opens in its own window, an edit control: Ctrl+S saves ("Saved.",
   or a script's compile errors read out and listed under the text), Escape closes (asking first if changed).
   Unbox rezzes the box 2 m ahead, copies what's inside into a new folder named after it at the top of the inventory,
@@ -224,6 +261,17 @@ stop key lost the rest, outside the review history; walk mode's F1 the same, its
 - F4 (`access_talk_key`: f4, f12, scroll_lock, pause) held: talk in voice, with a click as the mic opens and closes;
   Shift+F4 push-to-talk or open mic; Ctrl+Shift+V who's in voice (Voice chat, below).
 
+**People beside chat** (`chatPeople`, a blind tester's Radegast habit, 2026-10-30: Radegast's nearby list sits beside
+chat, Tab from its input reaching it): in Alt+1, People nearby is to the right of the history and Say. Tab from Say
+lands on it ("People nearby, list, Kestrel Tester, 4 metres, two o'clock, 1 of 3", the person last on, else the
+nearest), Tab again goes to the history, Shift+Tab back to Say. It's Alt+3's list made by the same code
+(`PeopleList`): the same words, the Applications key's actions (Enter too), Control+D, F5; within 96 m, nearest first,
+"Nobody nearby." when empty. Like every list it never changes while the focus is in it (F5 reads it again) and is
+kept current every 3 s while the chat area shows and the focus is elsewhere (in Say, typing), so arriving in it the
+distances are at most a few seconds old; a refresh whose words haven't changed leaves the list as it is (only where
+people are, for Walk to and Face, is renewed), so nothing beside the Say box churns while she types. Only the list
+with the focus announces its item (`ReaderList`).
+
 **The status bar** (a StatusStrip at the very foot of the window, below the walk pad) holds one label, named "Location:
 Atelier 64, 36, 15, L$0" for the screen reader once in world (a label's name is all it reads of it): NVDA+End finds the
 status bar by the window's bottom-left corner and reads its name and its children's, so "Status Location: ...". The
@@ -236,7 +284,16 @@ the first line of a new IM says "new IM". Notices in the feed's words ("Access M
 in a session adds "Control N to answer."). A screen reader stops speaking at any key press or focus move, so a
 notice cut off that way before it could be heard out (within a second to three, by its length) is said again once,
 when the keys have rested 0.7 s, unless the focus went to the notices or the person silenced it with Control or Shift
-alone (the screen reader's own keys to stop or pause speech: `RealInput.SilencedAt`). One-off notices (friends online, alerts, a teleport that failed) are also
+alone (the screen reader's own keys to stop or pause speech: `RealInput.SilencedAt`). Chat lines cut off by typing
+(`MainForm.CutLines.cs`): NVDA's "speech interrupt for typed characters" (on by default) cancels all its speech at
+every key typed into a box, and its source (`speech.cancelSpeech` clears every priority's queue; braille messages go
+at the next caret move too) leaves nothing we can send that survives; a blind tester relies on hearing chat while she
+types (2026-10-30) and turning the setting off slowed NVDA for her. So a line whose estimated speaking time (40 ms a
+character, 0.8-8 s, queued after the one before) a key typed into an editable box fell in is said again once the keys
+have rested 0.7 s, those cut together as one ("Kestrel: hi. Access Visitor: hello."), each once, not after Control alone. Her
+own lines (said, whispered, shouted, emotes, IMs) are read back in the same words as others' (Alt+0 "My own lines read
+back", `access_read_mine`, on by default, her wish): nearby once the region echoes them, so she hears they went out;
+IMs as they're sent (the grid echoes none). One-off notices (friends online, alerts, a teleport that failed) are also
 status lines in the nearby chat history, as in Radegast. Arrivals by teleports this app didn't start (an offer, home,
 the assistant) and region crossings are said ("Arrived in X.", "Now in X."). The reader's per-kind switches are A1's
 (`announce_nearby` ... in SojournSettings). Arrivals and departures are Firestorm's radar reports
@@ -330,6 +387,7 @@ Radegast's 3D window and every viewer send them); the local collision model only
 | D | doors and gates by name within 15 m: "Garden Gate, 6 m, two o'clock." |
 | O | the marks: doors, seats and touchable things within 12 m, said and sounded from where they are (below) |
 | B / Shift+B | where the beacon is ("Beacon on Bench, 4 metres, twelve o'clock." / "Heading to 54, 41, ..."); Shift+B takes one you put on off |
+| M / Shift+M | how far: "Last walk: 0.9 metres. In all: 4.2 metres. Where the count began: 3.1 metres, six o'clock." (while walking, "... so far"); Shift+M: "Counting from here." (the count also starts again at a teleport) |
 | F1 | these keys |
 
 Seated on something, or with a script holding the movement keys, the same arrows drive it (CONTROL_FWD and BACK,
@@ -351,6 +409,7 @@ played through world audio's mixer, placed: a cue about something on your left i
 | edges (`walk_edges`, both) | a drop of more than 1.5 m a step and a half ahead; water ahead when you're dry | a falling glide; three bloops for water | "Drop ahead, 3 m down." / "Water ahead." |
 | turns (`walk_turns`, text) | after a step turn, or a held turn let go | a tick | "north-northwest." / "east, 0 degrees." |
 | sonar (`walk_sonar`, both) | S | twelve pings, one from each hour of the clock, starting ahead and going round to the right: higher the nearer (under 2.5 m, under 7, further), a breath where it's open (nothing within 15 m); then a three-note chime from each opening | "Walls: ahead 11 m, right 1 m, left 1 m. Open: behind. Opening at twelve o'clock, 6 m away, 1.4 m wide. Opening at six o'clock, under a metre away, 2.8 m wide." and doors by name |
+| distance (`walk_distance`, text) | a stretch walked by the arrows has ended: no walking key for 0.7 s, no key at all for 0.7 s, the avatar stopped (or 3 s on), and walk mode's line before it heard out; taps in quick succession (a turn between them too) are one stretch; straight from where it began; under 0.3 m nothing; not a `//go`, a follow or a vehicle | none | "0.9 metres." / "4 metres." (tenths under 3 m: a tap is about 0.9 on Second Life) / "1.8 metres backward." / "1 metre to the left." (by the keys that walked it) |
 | follow (`walk_follow`, text) | following someone | none | "With Kestrel, 3 m, twelve o'clock." / "Kestrel sat down, ..." / "Kestrel is getting away: 24 m, ..." |
 | vehicle (`walk_vehicle`, both) | driving: what's ahead (as the warning, further at speed), the speed when it changes by a third, a seated border crossing | as the warning | "12 m a second." / "Still on Walk Kart after the crossing." / "The crossing left you standing: you're no longer seated." |
 | beacon (`walk_beacon`, both; volume quiet) | a walk under way (`//go`, walk to, a follow, the assistant's walk), else one put on someone or something | a soft pip from the target's direction, every 1.4 s far off down to 0.6 s near, with a fifth above it while it's within 20 degrees ahead (front and back are hard to tell by ear); a small bell flourish on reaching a hand beacon | "Reached Bench." / "Beacon lost: Kestrel isn't here now."; B says where it is |
@@ -368,17 +427,26 @@ on a click, or named chair, seat, bench, sofa, couch, stool, cushion, poseball, 
 touches; never what you're sitting on.
 
 Other settings: `walk_turn_step` (smooth, 10, 15, 22.5, 30, 45, 90 degrees), `walk_turn_rate` (45-180 degrees a second),
-`walk_teleport_fallback` (on). If the renderer out of sight stops for a moment (a lost GPU starting again) while
-walk mode has the keys, that's said ("Walk cues paused: ..." and "Walk cues back.") so silence isn't taken for open
-ground. With `--no-render` there are no cues from the model (footsteps still play, on "ground").
+`walk_teleport_fallback` (on).
+
+**The collision model** (2026-10-30, after the tester's PC couldn't run the renderer: Radeon RX 550 2 GB, 8 GB RAM):
+every ray here (warnings, openings, drops, the surface underfoot, the sonar, A and T, paths, placing by words)
+comes from a model that needs no GPU, so walk mode answers the same on any PC, `--no-render` included. It's built from
+the session's world: every prim in the regions around (not only what a renderer has drawn), prims by the viewer's
+volume code (the viewer's LOD 2), sculpts from their maps, meshes by their assets' physics (hull, decomposition,
+physics model), each counting by the physics shape type the region gives it, phantom and flexible ones passable;
+standing avatars as boxes; trees, grass and attachments not at all (the renderer's model's rule, shared code, so the
+two answer alike: the test compares them). Prims count at once; sculpts and meshes once downloaded (the grid's disk
+cache, shared with the renderer), nearest first within the draw distance (64-256 m). The ground is the region's
+heightmap.
 
 **Paths** (`Walk/PathPlanner.cs`) for `//go`, walk to, follow and the assistant's walks (`LLAgent startAutoPilot`): the
 collision model's solid triangles over the walk's area plus 12 m, on a grid of 0.25 m cells, what stands between knee
 and head height (0.45-1.8 m over the floor) as obstacles; nearer than 0.3 m to them is blocked (a 0.8 m doorway still
 passes), and A* pays more within 0.75 m, so the path keeps to the middle of gaps; then pulled straight where a line keeps
 that room. The floor is the ground under each cell when the walk starts on the ground, else the floor stood on: a path
-stays on one level (stairs up count as walls). People aren't obstacles. Only what the renderer has drawn is known, so
-a walk that gets stuck marks the spot for two minutes and plans again (twice), then falls back to the teleport.
+stays on one level (stairs up count as walls). People aren't obstacles. A mesh or sculpt still downloading isn't known
+yet, so a walk that gets stuck marks the spot for two minutes and plans again (twice), then falls back to the teleport.
 
 **Parts and faces** (M2, a blind tester's child prims: the sunken city's Treasure Chest 6 answers only on a child prim, which
 Radegast lists by name alone; `MainForm.Parts.cs`, `Linkset.cs`). In Objects (Alt+7) the list has two more under it,
@@ -437,8 +505,11 @@ speaking, who else is in voice, your mic. `access_voice_speakers` (off): someone
 once in ten seconds. A call ringing is said; `//voice answer` or `//voice decline`. Alt+0 has voice on or off, the mode and
 how loud residents are (not where voice is heard from: Access hears from the avatar's head, having no camera).
 
-**The assistant** (Alt+9) works only with a Claude account and the assistant's Python side set up (`python
-tools/assistant.py setup`); without them it says so and everything else works. Replies are read by the announcer (A1's
+**The assistant** (Alt+9) works once a provider that works is chosen in Alt+0's first rows (from the repo: the Claude
+account signed in here, an Anthropic key, OpenRouter or the studio relay, with the venv set up by `python
+tools/assistant.py setup`; packaged: the last three only, Packaging above; `docs/assistant.md` > Switching it on);
+without one it says once why and how to choose, and everything else works. A key or token goes in on the key row
+(Enter, a password box, Control+V); its shape picks the provider. Replies are read by the announcer (A1's
 "the assistant" kind) and kept in the history; its choices are buttons ("1: ..."); a confirmation it needs comes to
 Notices as the first item. Its instructions know it's Sojourn Access (`assistant/prompt-access.md`): no view, replies
 through the screen reader, plain text, directions by clock face as the lists give them.
@@ -454,9 +525,9 @@ Applications key of people, friends and objects, Describe pictures (or Ctrl+D) i
 assistant's reply (read out whole, a few sentences at a time in turn, where other announcements are cut at 700
 characters: `AccessWiring.WholeReplies`; kept in Alt+9's history and in review). The request carries its subject by id, so the
 model describes exactly that, and the pictures start drawing as the request goes (`DescribeApi.Prepare`), so they're
-usually ready when the model asks. Without the assistant (no Claude account, or `--no-assistant`) it says so plainly,
-then what the lists know, which needs no model: "Describing needs the assistant, and it isn't running: it needs a
-Claude account. What the lists know: Kestrel Tester, 4 metres, two o'clock. Wearing items named: ..."; for you, your
+usually ready when the model asks. Without the assistant (no provider that works, the month's allowance used up, or `--no-assistant`) it says so
+plainly, once a session, with the sidecar's own words for why and how to switch it on, then what the lists know, which
+needs no model: "Describing needs the assistant. The assistant is off until you choose how it runs: ... What the lists know: Kestrel Tester, 4 metres, two o'clock. Wearing items named: ..."; for you, your
 clothing, body parts and attachments by their names; for an object, its own description, floating text and owner; for
 here, the parcel, its description, the people and named things around.
 
@@ -490,9 +561,9 @@ pictures (said so), only the facts and textures.
   the VR client. `Program.cs` (the login form first, then the session; the grid's questions; another account restarts
   the app), `LoginForm.cs` (with the ToS and MFA windows), `MainForm.cs` (the session made and started with
   `SessionHost.StartAllAsync`, keys, read-out shaping, the session's own events: arrivals),
-  `MainForm.Chat.cs` (nearby, conversations, histories), `MainForm.Lists.cs` (people, objects),
+  `MainForm.Chat.cs` (nearby, conversations, histories), `MainForm.Lists.cs` (people, Alt+3's and beside chat, objects),
   `MainForm.Notices.cs`, `MainForm.Assistant.cs`, `MainForm.Settings.cs` (a curated list over SojournSettings),
-  `MainForm.Inventory.cs` (the tree, search and Show, the actions), `ReaderTree.cs` (its tree view and Places', read
+  `MainForm.Inventory.cs` (the tree, search and Show, the actions; Big inventories, below), `ReaderTree.cs` (its tree view and Places', read
   through Windows' own MSAA object: WinForms' numbered the items wrong for NVDA), `ReaderList.cs` (every list: its
   item's focus announced only while the list has the focus), `MainForm.Places.cs`, `MainForm.Search.cs`,
   `MainForm.People.cs` (friends, groups, profiles, pay), `MainForm.Describe.cs` (describing), `MainForm.Parts.cs` and
@@ -582,6 +653,31 @@ pictures (said so), only the facts and textures.
 - **Objects' refreshes** (`RefreshObjects`): one asked for while another waits up to 3 s for names (Show changed to
   your HUDs just after Alt+7, F5) runs once that ends; it used to be dropped, and a list the person is in never
   refreshes by itself.
+- **Big inventories** (2026-10-30, for a tester with thousands of items, a fishing game's catch; `MainForm.Inventory.cs`):
+  - A search or Show's list (worn, recent, trash) walks the inventory off the window's thread (`FindFlat`), reading the
+    store as Sojourn.Core's walks do (LibreMetaverse's `GetContents` copies a folder's contents under that folder's
+    lock; lookups are its concurrent dictionary); what's worn and the Trash's id are read on the window's thread first.
+    A newer search cancels the older (each pane its own). One done within 0.1 s shows at once, exactly as before;
+    a slower one says "Searching." at 0.5 s if the person asked, and when it lands the focus goes to the tree only if
+    it's still in Search. Searches leave the Trash out and count its matches; Show: Trash walks only the Trash. Each
+    list logs how many nodes it looked at and how long the walk and the list took ("inventory search: 59512 looked at,
+    500 listed ... walked in 8 ms, shown in 57 ms").
+  - The walk was never the slow part: 8-10 ms for 59,500 items. The tree view is: inserting costs ~45 us a node and
+    emptying about as much, so opening a folder of 4,500 held the window 200-230 ms and F5 with it open 340 ms. A
+    folder seen for the first time goes in 500 nodes at once (and as far as the one that stays selected), the rest 500
+    at a time from a WinForms timer, whose ticks come after waiting keys (`FillRest`); a folder shown already is brought
+    up to date in place (`Reconcile`: only what went or came is removed or inserted, renamed ones moved, the words
+    renewed, filled subfolders likewise), so a refresh after an action or F5 no longer empties and refills it. If the
+    selected node went, its folder takes the selection (the top of the tree, at the top). Landmarks (Places) and
+    `//route`'s and `//tp`'s notecard and landmark searches collect off the window's thread too.
+  - With UI Automation, emptying is far worse: WinForms disconnects each item's UIA provider (made for every item once
+    a client walks the tree, as a test's `find id=...` does) one by one, 2-3 ms each; F5 with 4,500 open took 12 s.
+    NVDA reads the tree by MSAA (`ReaderTree`) and doesn't make them; that was the test's seconds-long hold.
+  - Measured by `python tools/invbench.py` (Inventory Big, 19,500 items, and Inventory Huge, 58,500, synthetic IARs
+    loaded once; run on the hidden desktop with QuireUia's `stalls`: the window pinged every 20 ms, the longest it went
+    without answering; a wait inside a COM call, as the UIA disconnects, still answers pings, so the app's own log
+    says those). Huge, before and after: a search that matches nothing 0 / 0 ms, 500 found 48 / 31 ms, opening the
+    4,500-fish folder 229 / 54 ms, F5 with it open 344 (and 177 more) / 30 ms.
 - **Enter in one-line inputs** (`LineBox`) is handled before Windows makes a character of it, so the edit control never
   gets the carriage return it answers with the default beep (heard in the guided test).
 - **Read-out** is A1's `AccessWiring` in the session, with two seams added for this app (2026-10-29): its own UIA
@@ -614,9 +710,9 @@ pictures (said so), only the facts and textures.
   works, and a picture at its own size when asked: the assistant's `look` (`LLViewerWindow saveSnapshot`) gets a real
   one, and the person's view is the avatar's eyes, a little down. The assistant's touches land where the VR client's
   would (on the surface the eyes' ray meets; with `face`, that face's middle, the far side too), still behind the
-  person's confirmation for others' things. `SojournView` reports its state and casts the collision model's rays
-  (`collide`), and walk mode's cues and paths come from its collision model. A lost GPU restarts it within the app in 3 s. Its log lines are
-  `render`'s in the session log.
+  person's confirmation for others' things. `SojournView` reports its state and casts its own collision model's rays
+  (`collide`, for comparing: walk mode's cues and paths come from the model without a GPU, below). A lost GPU restarts
+  it within the app in 3 s. Its log lines are `render`'s in the session log.
   **Unseen** (2026-10-30, after the first run on Second Life: at Firestorm Social Island it held ~1.7 GB of memory and
   ~1.9 GB of video memory, 1.2 GB of it textures fetched at 2-3 MB/s, for pictures nothing could look at): while nothing
   can look at its pictures it draws only geometry, which is all the picks, faces, the collision model, rays, physics
@@ -625,8 +721,7 @@ pictures (said so), only the facts and textures.
   (`FrameRequest.NoAvatars`; the collision model's standing avatars are boxes from the world model, and Objects lists
   no attachments); no shadows, reflection probes, particles, flexible prims' sway or avatar physics. The draw distance
   stays the person's: at 64 m instead of 128 it saved only ~50 MB of memory in the perf grid's forest and no video
-  memory, while paths for `//go` (their area plus 12 m, up to 200 m) know only what's been drawn
-  (`UnseenDrawDistance`). Its geometry arenas are a quarter of the client's (`GeometryArenaScale`, 72 MB each, more as needed), unseen or not.
+  memory (`UnseenDrawDistance`). Its geometry arenas are a quarter of the client's (`GeometryArenaScale`, 72 MB each, more as needed), unseen or not.
   Nothing can look while no assistant is up or starting (`AssistantHost.SidecarAlive`, or the sidecar's process
   running: a packaged build always, a repo run with `--no-assistant` or without the venv) and no picture was asked for
   in the last 10 minutes (`PicturesLinger`). A picture asked for (the snapshot ops, SojournDescribe's, the assistant's
@@ -641,14 +736,26 @@ pictures (said so), only the facts and textures.
   limit), where Social Island's cost was mostly ~2,000 textures and whole avatars, none of which load unseen. A
   packaged build idle on the light local grid (`package --check`): 546 MB in memory and 328 MB of video memory, from
   531 and 574.
+- **The collision model** (2026-10-30; Walk mode > The collision model, above): Render's `Collision/CollisionWorld.cs`
+  (every region the session's world knows, each prim placed as the region reports changes, `RegionWorld.Changed`, in 16 m
+  columns, 256 a query checked against the world as a safety net, a full rescan when the counts disagree; rays and solid
+  triangles in a box, under one lock) and `CollisionShapes.cs` (shapes by key: prims built on the spot, the rest by a
+  queue, eight downloads at once, nearest first, decoding on one or two threads; let go after ten idle minutes), by
+  `CollisionRule` and `CollideMath` (`World/PhysicsShape.cs`), which `RegionScene.CollideRay` (the renderer's, the VR
+  client's walk) uses too. Session's `Collision/LocalCollision.cs` wraps it: the physics shape types (`PhysicsShapes`,
+  shared with the renderer out of sight), the passable rule (`PhysicsShapes.Collide`), rays off the caller's thread, and a
+  loop keeping the shapes within reach ready; started by `SessionHost.StartCollision` (Access only, before the
+  renderer). `SojournCollision status` (prims, shapes ready, waiting, downloading, failed, MB) and `collide`. Its log
+  lines are `collision`'s. Cost (2026-10-30, local grid, Atelier East with the walk course, 592 prims, 47 shapes): a
+  sonar's 720 rays 3-3.5 ms on one core, a walking probe's 8 under 0.3 ms; the shapes 3.0 MB (`shapes_mb`; 3.5 at
+  LOD 3). Not yet measured on a busy Second Life region.
 - **Walk mode** (`Walk/`, 2026-10-29): `WalkMode.cs` (the body as it is now, footsteps, the listener), `.Keys.cs`
   (keys to control flags, turning, braking, driving), `.Probe.cs` (ten batches of rays a second while moving: ahead,
   both sides, underfoot, down a step and a half ahead; the warnings, openings, edges, surface), `.Info.cs` (H, V, L, A,
-  S, T, D, and a seated crossing said), `Sonar.cs` (the ring's words and openings, edges refined by sub-rays: pure
+  S, T, D, and a seated crossing said), `.Distance.cs` (the distance walked, M), `Sonar.cs` (the ring's words and openings, edges refined by sub-rays: pure
   geometry), `CueSounds.cs` (the sounds, made in code), `PathPlanner.cs`, `WalkPad.cs`, `WalkApi.cs` (SojournWalk:
-  status, sweep). It runs on the window's 50 ms tick; rays go to the renderer's thread in one batch
-  (`OffscreenRenderer.CollideManyAsync`, the seat's own linkset left out) and come back to the window. In walk mode the
-  renderer draws at least four frames a second (`MovingHz`, two otherwise), so what comes near is in the model sooner.
+  status, sweep). It runs on the window's 50 ms tick; rays go to the collision model in one batch
+  (`LocalCollision.CollideManyAsync`, the seat's own linkset left out) and come back to the window.
   Positions are dead-reckoned (the region sends a walking avatar's position only now and then); when the region's word
   on the velocity says still while the position moves (a seat moved by llSetPos), the velocity comes from the positions.
   `SOJOURN_WALK_LOG=path` logs every probe and plan.
@@ -666,10 +773,9 @@ pictures (said so), only the facts and textures.
 - **The session's parts M3 touched** (behaviour-neutral for the VR client, which doesn't use them): Core's `Motion.Router`
   (paths for the session's autopilot: the waypoints an app plans, each passed within 0.5 m; null in the VR client, so
   its walks are as they were) and `RetargetAutoPilot` (a moving target), `StartAutoPilot(..., route: false)`;
-  Render's `RegionScene.SolidTriangles` / `FrameRenderer.SolidTriangles` (the collision model's triangles in a box);
   Session's `SoundBank.AddLocal` (a client's own sounds, never fetched or let go), `AudioWiring.Bank` and
-  `OwnFootsteps` (the viewer's own footsteps for the own avatar off while walk mode plays its own by surface),
-  `OffscreenRenderer.CollideManyAsync`, `SolidsAsync`, `Moving`/`MovingHz`, a log line for a frame over half a second.
+  `OwnFootsteps` (the viewer's own footsteps for the own avatar off while walk mode plays its own by surface), a log
+  line for a frame over half a second. (Its rays later moved to the collision model without a GPU, above.)
 - **The session's parts M5 touched** (also neutral for the VR client): `OffscreenRenderer.ShootAsync`
   (`OffscreenRenderer.Shots.cs`: shots planned on the render thread, each drawn until loaded, at most 3 s, 4 rich, its
   pixels waited for, then the 16 x 9 grid of picks), `DescribeApi` registered by `SessionHost.StartDescribe` (Access
@@ -687,7 +793,9 @@ pictures (said so), only the facts and textures.
 `python tools/access.py test` (local grid; about 4 minutes; nothing on the visible desktop; `build` and `tools`
 first; `ACCESS_STEPS=inventory` runs only the steps named so, after the login's checks; `ACCESS_NO_RENDER=1` starts the
 app with `--no-render`, nothing on the GPU, for the steps that don't need the view, e.g. while someone's in the
-headset). Last full run 2026-10-30 evening, after the review's next list (the menu bar step and the rest): 510 of 511, the
+headset; `ACCESS_NO_GPU=1` hides Vulkan's drivers from it (`VK_LOADER_DRIVERS_DISABLE=*`), as on a PC whose graphics
+can't run the view: the renderer step then checks it gave up without drawing and the collision model still meets the
+visitor's box, and the walk-mode step runs on the collision model alone). Last full run 2026-10-30 evening, after the review's next list (the menu bar step and the rest): 510 of 511, the
 known tab-item one below. Earlier: 2026-10-29
 15:50 (keys judged by the real-input guard, about 9 minutes with the walk-mode step): 299 of 300, the known tab-item
 one below. After M2, 2026-10-29 19:00, with `ACCESS_NO_RENDER=1`: 367 of 397, the 25 that need the renderer, the tab
@@ -705,7 +813,8 @@ real-input guard applying, so Ctrl+N then a number and a confirmation then Enter
 controller client claims NVDA runs, so speech would go nowhere), and a bot (`tools/visitor`, Access Visitor) that
 talks, IMs, and owns a scripted fixture box sending menus, llTextBox, permission requests and offers. It covers
 login and focus, every area's controls named with their roles and the Tab order (the history one Shift+Tab back from Say, no tab strip a stop), chat in and out (say, whisper,
-shout), an IM's tab arriving without taking the focus, Ctrl+Tab and Ctrl+W, people and objects with their bearings
+shout), her own lines read back (and not, with the row off), lines cut by posted typing said again together after the
+pause, once, and not after Control alone, an IM's tab arriving without taking the focus, Ctrl+Tab and Ctrl+W, people and objects with their bearings
 measured against positions (their first fills held back 3 s, `SOJOURN_TEST_LIST_DELAY_MS`, as Second Life's objects
 wait for names: arriving, the list says "looking"; once it and the lists under it have filled, its own item is the only
 one with the keyboard focus and the last focus event, by UI Automation and MSAA), F1's window (every key, Escape back to Say), Ctrl+Backspace, F6,
@@ -745,18 +854,20 @@ said). Menus open on the Applications key's press (`MenuOn`), not by WinForms' C
 WM_CONTEXTMENU and never for posted keys. Ctrl+G isn't (the clipboard is the person's desktop's).
 The renderer step (`ACCESS_STEPS=renderer`; the app runs with `SOJOURN_OFFSCREEN_LOSE_AFTER=15`, so its GPU is "lost"
 once first): the view runs again with one loss counted and is unseen (the test has no assistant), the visitor's
-`facebox` (a box whose script says each touch's face and surface coordinates) is met by `SojournView collide` at its
-distance, and two touches through the person's confirmation (Ctrl+N, Enter): one on face 4, the box's side away from
+`facebox` (a box whose script says each touch's face and surface coordinates) is met by `SojournCollision collide` at
+its distance and by `SojournView collide` at the same distance, and two touches through the person's confirmation (Ctrl+N, Enter): one on face 4, the box's side away from
 the tester, and a plain one, landing on the face toward the eyes; the box's script reports both faces with their
 coordinates. All that unseen; then `saveSnapshot` gives a 1024x576 picture that isn't flat, and the view is drawn
 whole from then on (for the next 10 minutes of the run). The app's renderer is light (about 0.2% of the GPU); a run that wants clean GPU timings elsewhere should
 still not overlap it.
-The walk-mode step (`ACCESS_STEPS="walk mode"`, about 4 minutes; after the faked GPU loss so it doesn't fall mid-walk):
+The walk-mode step (`ACCESS_STEPS="walk mode"`, about 4 minutes; after the faked GPU loss, when there's a renderer):
 first a seated crossing (the visitor's `kart`, a physical LSL car, near Atelier's east edge where the ground is about
 as high as Atelier East's, sat on and driven east by a held Up: the crossing said with whether the seat held; on the
 local grid it held, "Now in Atelier East, still on Walk Kart."); then a
 course the tester builds in Atelier East (a 3 m corridor north with a stone floor, a 1.4 m opening in its west wall,
-its end a wall named Blue Door; a platform 3 m up; a closed pen), cleared through the grid console after: F3 and the
+its end a wall named Blue Door; a platform 3 m up; a closed pen), cleared through the grid console after: the
+collision model meeting the east wall, and with a renderer both models casting the same 33 rays in the corridor (all
+round at knee and chest height, and down) and agreeing within 2 cm on the same prims; F3 and the
 focus on the walk pad, F1, H, S's words (walls both sides at a metre, the end 11 m ahead, the opening at twelve
 o'clock about 1.4 m wide, the corridor's mouth behind), a held Up (posted key down and up: QuireUia's `keydown` and
 `keyup`) walking to the end with the opening passed on the left said between 5.5 and 9.5 m along, the warning naming
@@ -777,6 +888,18 @@ and a scripted bell 4 m ahead, right and left: O's words by clock face and each 
 `//beacon` on the visitor pipping from its bearing, quietly; one on the bench brighter ahead, walked to by a held Up
 until "Reached"; a `//go`'s and the assistant's walk's destinations on the beacon while they last and silent after.
 It can't say whether they sound right.
+
+The people-beside-chat step (`ACCESS_STEPS="people beside"`, under a minute, no renderer needed): Tab from Say lands
+in People nearby, its own item the only one focused and the last focus event, the visitor with its distance measured
+against positions; the Applications key's menu (Send IM, Walk to, Pay...), Escape back; Control+D about the visitor;
+the visitor walking 6 m off while the focus is in the list leaves it as it was, and back from Say the distance is
+current; Alt+2 lands in Friends; View shows Friends with Alt+2 and Conversations; Control+Tab with none open says so.
+The Tab order step checks Say, People nearby, the history, Say. The IM and menu bar steps reach the conversations by
+View > Conversations (Alt+V, O).
+The distance step (`ACCESS_STEPS=distance`, under a minute, no renderer needed): facing north in walk mode, three taps
+of Up said once, as one stretch, within 0.25 m and 10% of how far the avatar went (the run prints the metres a tap); a
+tap of Down said "backward"; M with the last walk, the two in all (their sum) and where the count began; Shift+M and
+M's "Nothing walked yet."; nothing said with `walk_distance` off.
 
 The menu bar step (`ACCESS_STEPS="menu bar"`, about a minute, no renderer needed; the review of 2026-10-30): Alt+W
 opens World with Region info, Teleport home and Who's in voice showing Control+Shift+1, Control+Shift+H and
@@ -811,10 +934,16 @@ letting go closing it, Shift+F4's modes and Ctrl+Shift+V.
 `ACCESS_ACCOUNTS=Walk` runs the test as Walk Tester and Walk Visitor on ports 10 up, so it never throws out a person's
 guided session as Access Tester; it still uses Atelier's spots, so run it while nobody's testing there.
 `access.py test` refuses to start while its tester or visitor is on the grid (two runs kick each other out).
-The one failure: UI Automation doesn't list the conversations' tab items, and of the areas' it lists all but the first
-and last (WinForms' TabControl provider, as our client sees it). The focus never needs the strip (Ctrl+Tab and Alt+2
-land in the input, named for the conversation), and NVDA reads Win32 tab controls through MSAA, so it may not matter:
-the guided test asks. Lessons from the Radegast tools hold: no console windows (Windows 11 puts them in the visible
+Tab items: the long-standing "known tab-item failure" (the conversation's tab never found) was the test's client, not
+the app. QuireUia's `find` uses the managed UI Automation client (System.Windows.Automation), which leaves out a
+WinForms tab control's first and last tab items; the COM client (UIAutomationCore, what screen readers use) walking
+the same controls, raw or control view, forward or back, lists them all (each tab control's selected page as a pane,
+then every tab), as MSAA does (checked 2026-10-30 on the hidden desktop: the areas' eleven, and the one conversation's
+tab). The test reads tab items by QuireUia's `tabs`, which walks them with the COM client in a process of its own:
+in QuireUia's server the managed client has registered its client-side proxies with UIAutomationCore for the whole
+process (its WindowsTab proxy takes WinForms' tab controls by class name), and the COM client there saw one pane per
+tab control and nothing else. A screen reader's process has no such proxies. The focus never needs the strip (Ctrl+Tab lands
+in the input, named for the conversation). Lessons from the Radegast tools hold: no console windows (Windows 11 puts them in the visible
 Terminal), one stable binary path (dotnet.exe), UIA doesn't cross desktops, Git Bash turns a leading `//` into `/`
 (`MSYS_NO_PATHCONV=1`).
 

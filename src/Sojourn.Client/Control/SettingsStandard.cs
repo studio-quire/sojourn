@@ -109,7 +109,7 @@ public static class SettingsStandard
         api.Own("confirm_touches", "assistant", "touches and menu answers on other people's things wait for the person's press; a safeguard on the assistant, so only the person turns it off in the menu",
             () => N(st.ConfirmTouches));
         api.Own("assistant_provider", "assistant", "whose models the assistant runs on (claude: the Claude account signed in on this PC; "
-            + "anthropic or openrouter: the person's own key); the person's own choice in the launcher, since it spends their money, and keys never pass through here",
+            + "anthropic or openrouter: the person's own key; relay: Studio Quire's relay, by a token the studio gave them); the person's own choice in the launcher, since it spends their money, and keys never pass through here",
             () => N(st.AssistantProvider));
         api.Own("openrouter_model", "assistant", "with OpenRouter, which model answers (claude: Anthropic's, as usual; any other OpenRouter id takes "
             + "every request itself); the person's own choice in the menu or the launcher", () => N(st.OpenRouterModel));

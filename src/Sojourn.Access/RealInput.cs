@@ -47,6 +47,10 @@ public sealed class RealInput : IMessageFilter
     /// <summary>When a key last went down here, from anything (what's being said may have been cut off then).</summary>
     public static long LastKeyAt { get; private set; }
 
+    /// <summary>When a key last went down in a box being typed into (no Control or Alt held): the screen reader's speech
+    /// stops at each one (NVDA's "speech interrupt for typed characters", on by default).</summary>
+    public static long LastTypedAt { get; private set; }
+
     /// <summary>When Control or Shift was last pressed and let go with no other key between: the screen reader's own keys
     /// for stopping and pausing speech, so what it was saying was silenced on purpose.</summary>
     public static long SilencedAt { get; private set; }
@@ -73,6 +77,9 @@ public sealed class RealInput : IMessageFilter
             {
                 LastKeyAt = now;
                 int vk = (int)m.WParam;
+                if (m.Msg == WM_KEYDOWN && vk is not (VK_SHIFT or VK_CONTROL) && (Control.ModifierKeys & (Keys.Control | Keys.Alt)) == 0
+                    && Control.FromHandle(m.HWnd) is TextBoxBase { ReadOnly: false })
+                    LastTypedAt = now;
                 if (vk is VK_SHIFT or VK_CONTROL) { if (((long)m.LParam & 0x40000000) == 0) _loneModifier = vk; }
                 else _loneModifier = 0;
                 var from = Source();

@@ -53,6 +53,9 @@ public sealed partial class WalkMode
         O: doors, seats and touchable things around, each sounding from where it is
         B: where the beacon is
         Shift+B: take the beacon off
+        M: how far you walked, and where you began counting
+        Shift+M: count from here
+        After you walk and pause, how far is said
 
         Doing
         T: touch what's ahead
@@ -76,7 +79,6 @@ public sealed partial class WalkMode
         On = false;
         ReleaseAll();
         Sounds.Play(CueSounds.Cue.ModeOff, 0.45f, null);
-        if (_view != null) _view.Moving = false;
     }
 
     public void ReleaseAll()
@@ -115,7 +117,7 @@ public sealed partial class WalkMode
             if (key is K.Fwd or K.Back or K.SideL or K.SideR && !HeldMoveBefore(key)) { _moveSince = now; _toldBlocked = false; }
             return true;
         }
-        if (repeat) return code is Keys.Home or Keys.Space or Keys.H or Keys.V or Keys.L or Keys.A or Keys.S or Keys.T or Keys.D or Keys.O or Keys.B;
+        if (repeat) return code is Keys.Home or Keys.Space or Keys.H or Keys.V or Keys.L or Keys.A or Keys.S or Keys.T or Keys.D or Keys.O or Keys.B or Keys.M;
         switch (code)
         {
             case Keys.Home: ToggleFly(); return true;
@@ -130,6 +132,8 @@ public sealed partial class WalkMode
             case Keys.O: _ = MarksAsync(); return true;
             case Keys.B when shift: BeaconOff(); return true;
             case Keys.B: BeaconLine(); return true;
+            case Keys.M when shift: DistanceReset(); return true;
+            case Keys.M: DistanceLine(); return true;
         }
         return false;
     }

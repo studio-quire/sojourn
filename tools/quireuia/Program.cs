@@ -44,6 +44,8 @@ static class Program
                     return 1;
                 }
             case "send": return Client.Run(rest);
+            // (in a process of its own, run by the server's tabs: see ComUia.Tabs)
+            case "tabs": Console.Out.Write(ComUia.Tabs(int.Parse(rest[0]))); return 0;
             default: Console.Error.WriteLine("unknown verb " + args[0]); return 2;
         }
     }

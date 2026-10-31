@@ -5,8 +5,9 @@ using System.Text.RegularExpressions;
 namespace Sojourn.Session.Assistant;
 
 /// <summary>
-/// The person's own keys for the assistant's provider (an Anthropic API key, an OpenRouter key): docs/assistant.md >
-/// Switching it on. Each is kept in a file of its own in the keys folder, encrypted for this Windows account (DPAPI),
+/// The person's own keys for the assistant's provider (an Anthropic API key, an OpenRouter key, or a personal token for
+/// Studio Quire's relay): docs/assistant.md > Switching it on. Each is kept in a file of its own in the keys folder,
+/// encrypted for this Windows account (DPAPI),
 /// and read only by the sidecar (assistant/provider.py), which never hands it to Claude Code: its sessions talk to a
 /// loopback proxy that adds the key. The folder is the repo's local/secrets/assistant, or a release's
 /// %LOCALAPPDATA%\Sojourn\secrets\assistant (SOJOURN_KEYS for tests), both under the assistant's deny rules and shell
@@ -19,13 +20,24 @@ namespace Sojourn.Session.Assistant;
 /// </summary>
 public static class ProviderKeys
 {
-    public static readonly string[] Kinds = { "anthropic", "openrouter" };
+    public static readonly string[] Kinds = { "anthropic", "openrouter", "relay" };
+
+    /// <summary>The Claude account (the subscription Claude Code is signed in to) is offered only in runs from the repo:
+    /// packaged and public builds offer keys and the studio's token alone (Anthropic's Agent SDK terms; CLAUDE.md's
+    /// decision of 2026-10-30). There a setting of "claude" means none chosen yet.</summary>
+    public static bool ClaudeOffered { get; } = RepoRoot() != null;
+
+    /// <summary>A packaged build's setting that names no provider it offers ("claude", from the old default or a run that
+    /// had it): the provider of a key or token already kept, or null (none chosen yet).</summary>
+    public static string? FallbackFor(string kind) => ClaudeOffered || Kinds.Contains(kind) ? null : Kinds.FirstOrDefault(Has);
 
     // what a key looks like (provider.py's SHAPES): anything else pasted is refused, never kept
     static readonly Dictionary<string, Regex> Shapes = new()
     {
         ["anthropic"] = new(@"^sk-ant-[A-Za-z0-9_\-]{16,300}$"),
         ["openrouter"] = new(@"^sk-or-[A-Za-z0-9_\-]{16,300}$"),
+        // a personal token for Studio Quire's relay (tools/relay.py makes them)
+        ["relay"] = new(@"^sqr-[A-Za-z0-9_\-]{40,64}$"),
     };
 
     public static string Dir
@@ -53,7 +65,10 @@ public static class ProviderKeys
     public static bool HasSoniox() => File.Exists(FileOf("soniox"))
         || RepoRoot() is { } root && File.Exists(Path.Combine(root, "local", "secrets", "soniox.key"));
 
-    public static string Name(string kind) => kind == "openrouter" ? "OpenRouter" : "Anthropic";
+    public static string Name(string kind) => kind switch { "openrouter" => "OpenRouter", "relay" => "Studio Quire", _ => "Anthropic" };
+
+    /// <summary>What's kept for a provider, as said: "Anthropic key", "Studio Quire token".</summary>
+    public static string Thing(string kind) => $"{Name(kind)} {(kind == "relay" ? "token" : "key")}";
 
     /// <summary>Which provider a key is for, by its shape (trimmed of spaces and quotes), and the key; null if it's no key.</summary>
     public static (string Kind, string Key)? Recognise(string? text)
@@ -101,9 +116,9 @@ public static class ProviderKeys
         string? kind;
         try { kind = Keep(text); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException) { return (null, "couldn't keep it"); }
-        if (kind == null) return (null, "that isn't an Anthropic or OpenRouter key");
+        if (kind == null) return (null, "that isn't an Anthropic or OpenRouter key or a Studio Quire token");
         try { ClearClipboardIf(text); } catch (Exception) { }
-        return (kind, $"{Name(kind)} key kept");
+        return (kind, $"{Thing(kind)} kept");
     }
 
     // ---- the clipboard (Win32: no window or UI framework needed) ----

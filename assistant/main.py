@@ -34,6 +34,34 @@ def log(msg):
     print(f"{time.strftime('%H:%M:%S')} {msg}", flush=True)
 
 
+class NoEars:
+    """Where the hearing models aren't installed: no microphone, nothing heard."""
+    available, client, mic_name, notice, hearing = False, None, None, None, None
+
+    def set_hearing(self, which):
+        self.hearing = which
+
+
+class NoSpeaker:
+    """Where the local voice isn't installed: replies are only shown (Sojourn Access's go to the screen reader)."""
+    sink = None
+
+    def __bool__(self):
+        return False   # brain.py's `if self.speaker and ...`: nothing to say aloud
+
+    def stop(self):
+        pass
+
+    def set_voice(self, voice):
+        pass
+
+    def warm(self):
+        pass
+
+    def say(self, text):
+        pass
+
+
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default="http://127.0.0.1:9720")
@@ -59,14 +87,23 @@ async def main():
         await asyncio.sleep(1)
     seq = st.get("seq", 0)
 
-    from ears import Ears
     from hearing import Words
     import home as homemod
     words = Words(api, log, home=homemod.default_dir())   # the names around the person, for the ears (hearing.py)
     await asyncio.to_thread(words.fetch)
-    ears = await asyncio.to_thread(Ears, a.vr, a.whisper, 4, log, api, "whisper", words)
-    from voice import Speaker
-    speaker = Speaker(log)
+    try:
+        import faster_whisper  # noqa: F401
+        import numpy  # noqa: F401
+    except ImportError:
+        # a packaged Sojourn Access (docs/access-app.md > Packaging): no hearing or local voice in it, so requests are
+        # typed and replies go to the screen reader
+        log("no hearing or local voice here (faster-whisper and numpy aren't installed): typed requests only")
+        ears, speaker = NoEars(), NoSpeaker()
+    else:
+        from ears import Ears
+        from voice import Speaker
+        ears = await asyncio.to_thread(Ears, a.vr, a.whisper, 4, log, api, "whisper", words)
+        speaker = Speaker(log)
     if ears.client:
         speaker.sink = ears.client.sink   # replies play in voice chat's mix: cancelled from the mic, never sent
     relay = None

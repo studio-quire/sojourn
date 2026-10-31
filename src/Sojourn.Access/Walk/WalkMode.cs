@@ -7,7 +7,7 @@ using Sojourn.Core.Agents;
 using Sojourn.Render.World;
 using Sojourn.Session;
 using Sojourn.Session.Control;
-using Sojourn.Session.Offscreen;
+using Sojourn.Session.Collision;
 using LQuaternion = LibreMetaverse.Quaternion;
 using LVector3 = LibreMetaverse.Vector3;
 using Vector2 = System.Numerics.Vector2;
@@ -18,21 +18,20 @@ namespace Sojourn.Access.Walk;
 /// <summary>
 /// Walk mode (docs/access-app.md > Walk mode): the arrows move the avatar through the region's own movement (the
 /// agent's control flags, as Radegast's 3D window and every viewer send them), never a local simulation; the local
-/// collision model (the renderer out of sight, M0b) only tells the person what's around: footsteps by surface, a
+/// collision model (Session's LocalCollision: no GPU needed) only tells the person what's around: footsteps by surface, a
 /// warning before a bump, openings and doors beside them as they pass, a drop or water ahead, a sonar sweep on a key,
 /// the heading on a key. A blind tester asked for this, after the audio game Shades of Doom.
 /// Every cue is a sound and a line for the screen reader, each switchable and with its own
 /// level (AccessSettings.Walk): sound is never the only channel. Seated on something, or with a script holding the
 /// movement keys, the same arrows drive it (a vehicle, a horse, a boat) with feedback on speed, heading and what's
-/// ahead. Runs on the window's thread (its 50 ms tick and key events); rays go to the renderer's thread and come back
-/// here. Written by Claude Opus 5.5, 2026-10-29.
+/// ahead. Runs on the window's thread (its 50 ms tick and key events); rays run on the thread pool and come back here. Written by Claude Opus 5.5, 2026-10-29.
 /// </summary>
 public sealed partial class WalkMode
 {
     readonly SessionHost _host;
     readonly PersonOps _ops;
     readonly AccessSettings _set;
-    readonly OffscreenRenderer? _view;
+    readonly LocalCollision _rays;
     readonly Action<string> _say;
     public readonly CueSounds Sounds;
     AgentSession S => _host.Session;
@@ -43,12 +42,12 @@ public sealed partial class WalkMode
     public Action? StopOthers { get; set; }
 
     /// <param name="say">A cue's line or an answer: read out through the screen reader (cutting in) and kept for review.</param>
-    public WalkMode(SessionHost host, PersonOps ops, AccessSettings set, OffscreenRenderer? view, Action<string> say)
+    public WalkMode(SessionHost host, PersonOps ops, AccessSettings set, LocalCollision rays, Action<string> say)
     {
         _host = host;
         _ops = ops;
         _set = set;
-        _view = view;
+        _rays = rays;
         _say = say;
         Sounds = new CueSounds(host.Audio, () => S.Client?.Self.AgentID ?? UUID.Zero) { Relative = RelativeOf };
         ApplyFootsteps();
@@ -187,11 +186,10 @@ public sealed partial class WalkMode
         Listen(b);
         Drive(b, dt, now);
         Steps(b, dt);
-        if (_view != null) _view.Moving = On || Speed(b) > 0.3f;   // in walk mode the model is kept fresher
+        Distance(b, now);
         Probe(b, now);
         Crossing(b, now);
         BeaconTick(b, now);
-        ViewState();
     }
 
     /// <summary>World audio and voice hear from the avatar's head, facing where it faces (Access has no camera of its
@@ -201,19 +199,6 @@ public sealed partial class WalkMode
         var pose = new CameraPose(b.Region, b.Pos + new Vector3(0, 0, 0.7f), Dir(b.Yaw), false);
         _host.Audio?.Listen(pose);
         _host.Voice?.Voice.SetListener(pose.Region, pose.Position, pose.Forward, Vector3.UnitZ);
-    }
-
-    bool _viewDown;
-
-    /// <summary>The view out of sight down (a lost GPU, starting again in a few seconds) while walk mode has the keys:
-    /// said, so silence isn't taken for open ground, and said again when the cues are back.</summary>
-    void ViewState()
-    {
-        if (_view == null) return;
-        bool down = !_view.Running;
-        if (down == _viewDown) return;
-        _viewDown = down;
-        if (On) Line(down ? "Walk cues paused: the 3D view is starting again." : "Walk cues back.");
     }
 
     static float Speed(Body b) => new Vector2(b.Vel.X, b.Vel.Y).Length();

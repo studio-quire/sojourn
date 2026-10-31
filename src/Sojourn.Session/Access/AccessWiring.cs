@@ -87,6 +87,10 @@ public sealed class AccessWiring : IDisposable
     /// that arrives; the feed's lines go through <see cref="Shape"/>). Null: always said.</summary>
     public Func<bool>? MusicMuted { get; set; }
 
+    /// <summary>The person's own lines read back too, nearby once the region has echoed them (so it's heard that they
+    /// were sent), IMs as they go (the grid echoes none). Null: never (the VR client, where the person sees them).</summary>
+    public Func<bool>? ReadMine { get; set; }
+
     sealed class PanelGate(AssistantHost a) : IConfirmGate
     {
         public ConfirmView? Waiting => a.Panel.Read(p => p.Confirm) is { } pc ? new ConfirmView(pc, pc.Title, pc.Detail, pc.ArmedAt) : null;
@@ -135,7 +139,7 @@ public sealed class AccessWiring : IDisposable
         foreach (var e in entries.Where(e => e.Seq > _seq).OrderBy(e => e.Seq))
         {
             _seq = e.Seq;
-            if (e.Mine) continue;
+            if (e.Mine && ReadMine?.Invoke() != true) continue;
             if (e.Kind == FeedKind.Notice)
             {
                 // a recalled or replaced notice is said once; the next page of a menu answered by key is read whole

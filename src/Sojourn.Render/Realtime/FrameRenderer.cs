@@ -1423,21 +1423,6 @@ public sealed partial class FrameRenderer : IDisposable
         return hit;
     }
 
-    /// <summary>The collision model's solid triangles in a box (RegionScene.SolidTriangles) in every region loaded, in the
-    /// frame of the region <paramref name="regionHandle"/>. Render thread, between frames.</summary>
-    public void SolidTriangles(ulong regionHandle, Vector3 min, Vector3 max, Func<Primitive, CollideAs> solid, List<Vector3> into, List<uint> ids)
-    {
-        CheckWorld();
-        foreach (var scene in _world.Regions)
-        {
-            if (!scene.Source.HasSimulator) continue;
-            var offset = RegionOffset(regionHandle, scene.Source.Handle);
-            int from = into.Count;
-            scene.SolidTriangles(min + offset, max + offset, solid, into, ids);
-            if (offset != Vector3.Zero) for (int i = from; i < into.Count; i++) into[i] -= offset;
-        }
-    }
-
     /// <summary>Where the own avatar's eyes were drawn last frame while it sat (the sit animation's, in the frame of the
     /// view's region) and which way its body faced, or null.</summary>
     public (Vector3 Eyes, Vector3 Facing)? SelfSeatedEyes { get { CheckWorld(); return _world.Avatars.SelfSeatedEyes; } }

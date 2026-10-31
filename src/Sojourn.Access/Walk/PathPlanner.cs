@@ -1,6 +1,6 @@
 using System.Numerics;
 using Sojourn.Core.Agents;
-using Sojourn.Session.Offscreen;
+using Sojourn.Session.Collision;
 
 namespace Sojourn.Access.Walk;
 
@@ -16,7 +16,7 @@ namespace Sojourn.Access.Walk;
 public sealed class PathPlanner
 {
     readonly AgentSession _s;
-    readonly OffscreenRenderer _view;
+    readonly LocalCollision _rays;
 
     public const float Cell = 0.25f;
     const float Margin = 12f, MaxSpan = 200f;
@@ -26,10 +26,10 @@ public sealed class PathPlanner
     /// <summary>The room a path keeps from walls where there's that much (a corner closer than this was bumped).</summary>
     const float Room = 0.55f;
 
-    public PathPlanner(AgentSession s, OffscreenRenderer view)
+    public PathPlanner(AgentSession s, LocalCollision rays)
     {
         _s = s;
-        _view = view;
+        _rays = rays;
     }
 
     /// <summary>A plan: the waypoints after the start (the last is the goal, or the nearest free spot to it), whether the
@@ -37,7 +37,7 @@ public sealed class PathPlanner
     public sealed record Plan(List<Vector2> Waypoints, bool Direct, float Length, bool GoalMoved);
 
     /// <summary>Whether a plan can be asked for now (the view is up): a null plan then means there's no way.</summary>
-    public bool CanAsk => _view.Running;
+    public bool CanAsk => _rays.Ready;
 
     /// <summary>Spots to treat as walls (where a walk got stuck), region frame, until they expire.</summary>
     readonly List<(Vector2 At, float R, long Until)> _blocked = new();
@@ -51,7 +51,7 @@ public sealed class PathPlanner
     /// agent's region frame; null when there's no way (or the view can't be asked).</summary>
     public async Task<Plan?> PlanAsync(Vector2 from, float feet, Vector2 to, IReadOnlySet<uint>? passable = null, CancellationToken ct = default)
     {
-        if (!_view.Running) return null;
+        if (!_rays.Ready) return null;
         var lo = Vector2.Min(from, to) - new Vector2(Margin);
         var hi = Vector2.Max(from, to) + new Vector2(Margin);
         if (hi.X - lo.X > MaxSpan || hi.Y - lo.Y > MaxSpan)
@@ -65,7 +65,7 @@ public sealed class PathPlanner
         bool onGround = Ground(from.X, from.Y) is { } g0 && feet - g0 < 0.4f;
         float zMin = onGround ? Math.Min(feet, Ground(from.X, from.Y) ?? feet) - 2 : feet - 0.5f;
         float zMax = feet + 30;   // the ground can rise along the way: filtered per cell below
-        var got = await _view.SolidsAsync(new Vector3(lo, zMin), new Vector3(hi, zMax), passable, ct);
+        var got = await _rays.SolidsAsync(new Vector3(lo, zMin), new Vector3(hi, zMax), passable, ct);
         if (got is not { } solids) return null;
         return await Task.Run(() => Solve(solids.Triangles, from, feet, to, lo, hi, onGround ? Ground : null), ct);
     }

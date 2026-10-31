@@ -39,23 +39,39 @@ public sealed class Sidecar : IDisposable
     public static Sidecar? Start(int apiPort, bool vr, string mode, ILogger log, string? devToken = null)
     {
         var root = FindRoot();
-        if (root == null) { log.LogWarning("assistant: no assistant/main.py above {Dir}", AppContext.BaseDirectory); return null; }
-        var python = Path.Combine(root, "local", "assistant-venv", "Scripts", "python.exe");
+        var bundled = root == null ? Bundled : null;
+        if (root == null && bundled == null) { log.LogWarning("assistant: no assistant/main.py above {Dir}", AppContext.BaseDirectory); return null; }
+        var python = root != null
+            ? Path.Combine(root, "local", "assistant-venv", "Scripts", "python.exe")
+            : Path.Combine(bundled!, "python", "python.exe");
         if (!File.Exists(python))
         {
             log.LogWarning("assistant: no venv at {Python}; run python tools/assistant.py setup", python);
             return null;
         }
+        var home = root ?? bundled!;
         var psi = new ProcessStartInfo(python)
         {
-            WorkingDirectory = root,
+            WorkingDirectory = root ?? LocalDir,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true,
         };
         psi.ArgumentList.Add("-u");
-        psi.ArgumentList.Add(Path.Combine(root, "assistant", "main.py"));
+        if (root == null)
+        {
+            // a packaged build (docs/access-app.md > Packaging): its own Python beside the program, which stays as it
+            // was unpacked (no bytecode written, nothing from the PC's Python environment), the data in LocalDir
+            Directory.CreateDirectory(LocalDir);
+            psi.ArgumentList.Add("-B");
+            psi.ArgumentList.Add("-E");
+            psi.ArgumentList.Add("-s");
+            psi.Environment["SOJOURN_LOCAL"] = LocalDir;
+            psi.Environment["PYTHONDONTWRITEBYTECODE"] = "1";
+            foreach (var k in new[] { "PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONUSERBASE" }) psi.Environment.Remove(k);
+        }
+        psi.ArgumentList.Add(Path.Combine(home, "assistant", "main.py"));
         psi.ArgumentList.Add("--api");
         psi.ArgumentList.Add($"http://127.0.0.1:{apiPort}");
         if (vr) psi.ArgumentList.Add("--vr");
@@ -81,13 +97,31 @@ public sealed class Sidecar : IDisposable
         return new Sidecar(proc, job);
     }
 
-    /// <summary>The project folder the assistant lives in (with assistant/main.py), or null.</summary>
+    /// <summary>The repo the assistant lives in (with assistant/main.py and src/), or null.</summary>
     public static string? Root => FindRoot();
+
+    /// <summary>A packaged build's own assistant: assistant/ and an embedded Python (python/python.exe) beside the
+    /// program (tools/access.py package), or null.</summary>
+    public static string? Bundled { get; } =
+        File.Exists(Path.Combine(AppContext.BaseDirectory, "assistant", "main.py"))
+        && File.Exists(Path.Combine(AppContext.BaseDirectory, "python", "python.exe")) ? AppContext.BaseDirectory : null;
+
+    /// <summary>The assistant's Python side is here, from the repo or bundled.</summary>
+    public static bool Available => Root != null || Bundled != null;
+
+    /// <summary>Where the sidecar keeps its things (its memory under assistant/home, scratch, settings): the repo's
+    /// local/, or for a bundled one the app's data folder (the app sets <see cref="DataDir"/>; assistant/paths.py).</summary>
+    public static string LocalDir => FindRoot() is { } root ? Path.Combine(root, "local")
+        : DataDir ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sojourn");
+
+    /// <summary>The app's data folder, for a bundled sidecar (SessionHost sets it from its BaseDir).</summary>
+    public static string? DataDir { get; set; }
 
     static string? FindRoot()
     {
         for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
-            if (File.Exists(Path.Combine(d.FullName, "assistant", "main.py"))) return d.FullName;
+            if (File.Exists(Path.Combine(d.FullName, "assistant", "main.py")) && Directory.Exists(Path.Combine(d.FullName, "src")))
+                return d.FullName;
         return null;
     }
 

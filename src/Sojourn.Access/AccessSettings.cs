@@ -22,6 +22,9 @@ public sealed class AccessSettings
     public List<string> Muted { get; set; } = new();
     /// <summary>[hh:mm] before each line in the histories (off: Radegast's users find them tiring to hear).</summary>
     public bool Timestamps { get; set; }
+    /// <summary>The person's own lines read back as they're sent (nearby once the region echoes them): a blind tester's
+    /// wish, 2026-10-30, to hear that what she typed went out.</summary>
+    public bool ReadMine { get; set; } = true;
     /// <summary>How confirmations, notices' keys, the ToS and typed answers take an answer that doesn't come from a key on
     /// a physical keyboard (a braille keyboard, Dragon, Voice Access, an on-screen keyboard, switch access): "refuse", or
     /// "hello", asking Windows Hello (face, fingerprint or PIN) and then taking it (Hello.cs). Physical keys answer either way.</summary>
@@ -61,6 +64,7 @@ public sealed class AccessSettings
         ("turns", "text", "where you face after a turn"),
         ("sonar", "both", "the sonar key's sweep (S in walk mode)"),
         ("follow", "text", "following someone: when they stop, turn away or go out of reach"),
+        ("distance", "text", "how far the arrows walked, said when you pause (M asks; no sound)"),
         ("vehicle", "both", "driving: what's ahead and the speed when it changes a lot"),
         ("beacon", "both", "a beacon on where you're heading (a //go, walk to, a follow, the assistant's walk, or one you put on "
             + "someone or something; text: reaching it, or losing it)"),
@@ -244,7 +248,10 @@ public sealed class AccessSettings
         api.Add("access_mute_all", new SettingsApi.Setting("access", "Sojourn Access: incoming lines not read out through the screen reader "
             + "(answers to the person's keys still are; F6)", "on, off", () => MuteAll,
             SettingsApi.Switch("access_mute_all", on => { MuteAll = on; Save(); changed(); })));
-        api.Add("access_timestamps", new SettingsApi.Setting("access", "Sojourn Access: a time before each line in the chat histories",
+        api.Add("access_read_mine", new SettingsApi.Setting("access", "Sojourn Access: the person's own lines (said, whispered, shouted, "
+            + "emotes, IMs) read back in the same words as others', nearby once the region has echoed them", "on, off", () => ReadMine,
+            SettingsApi.Switch("access_read_mine", on => { ReadMine = on; Save(); changed(); })));
+        api.Add("access_timestamps",new SettingsApi.Setting("access", "Sojourn Access: a time before each line in the chat histories",
             "on, off", () => Timestamps, SettingsApi.Switch("access_timestamps", on => { Timestamps = on; Save(); changed(); })));
         api.Add("access_muted_sources", new SettingsApi.Setting("access", "Sojourn Access: conversations not read out (Shift+F6 in one); "
             + "set [] to read them all again", "a list", () => new JsonArray(Muted.Select(m => (JsonNode)m).ToArray()), v =>

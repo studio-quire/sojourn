@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using LibreMetaverse;
 using Sojourn.Core;
 using Sojourn.Core.Agents;
+using Microsoft.Extensions.Logging;
 
 namespace Sojourn.Access;
 
@@ -22,6 +23,11 @@ namespace Sojourn.Access;
 /// and marks; Control+M moves what's marked (or selected) into the folder selected in the other pane, the Applications
 /// key's "Copy to the other pane" copies, and cut and paste work across them; Control+W in the second pane closes it.
 /// The trees don't change under the person: their actions refresh the folders they touched (in both panes), F5 everything.
+///
+/// A search or Show's list walks the whole inventory, thousands of items in a real one (a fishing game's catch): the
+/// walk runs off the window's thread, the newest asked cancelling the one before, so the window and the screen reader
+/// never wait on it (docs/access-app.md > How it fits > Big inventories). Searches leave the Trash out; Show: Trash lists
+/// what's in it.
 /// </summary>
 public sealed partial class MainForm
 {
@@ -47,7 +53,10 @@ public sealed partial class MainForm
         // reader reads on every item ("check box, not checked") and the guided test took for worn or not
         public readonly HashSet<string> Marked = new();
         public readonly HashSet<string> Open = new();   // the folders the person has open, kept open when the tree is filled again
-        public string Mode = "";   // "" the tree; else what the flat list shows: "search", "worn", "recent"
+        public string Mode = "";   // "" the tree; else what the flat list shows: "search", "worn", "recent", "trash"
+        public CancellationTokenSource? Finding;   // the flat list being found off the window's thread, if one is
+        public readonly Dictionary<UUID, object> Fills = new();   // big folders still going in, by folder (FillRest)
+        public string? Keep;   // during a fill: the node that stays selected
         public (HashSet<UUID> Ids, Dictionary<UUID, string> Points)? WornShown;
         public bool ShownOnce;
         public bool Contains(Control? c) => c != null && (c == Tree || c == Search || c == Show);
@@ -91,7 +100,7 @@ public sealed partial class MainForm
         };
         var search = new LineBox { Name = name == "inventory" ? "inventorySearch" : name + "Search", AccessibleName = title == "" ? "Search inventory" : "Search the second pane", Dock = DockStyle.Fill };
         var show = new ComboBox { Name = name == "inventory" ? "inventoryShow" : name + "Show", AccessibleName = title == "" ? "Show" : "Show, second pane", DropDownStyle = ComboBoxStyle.DropDownList, Width = 140 };
-        show.Items.AddRange(new object[] { "Everything", "Worn", "Recent" });
+        show.Items.AddRange(new object[] { "Everything", "Worn", "Recent", "Trash" });
         show.SelectedIndex = 0;
         var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 2, Margin = Padding.Empty };
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -127,8 +136,8 @@ public sealed partial class MainForm
         p.SearchTimer.Tick += (_, _) => { p.SearchTimer.Stop(); ShowInventory(p, said: true); };
         search.KeyDown += (_, e) =>
         {
-            if (e.KeyCode == Keys.Enter) { e.Handled = e.SuppressKeyPress = true; p.SearchTimer.Stop(); ShowInventory(p, said: true); tree.Focus(); }
-            else if (e.KeyCode == Keys.Escape) { e.Handled = e.SuppressKeyPress = true; search.Clear(); p.SearchTimer.Stop(); ShowInventory(p, said: false); tree.Focus(); }
+            if (e.KeyCode == Keys.Enter) { e.Handled = e.SuppressKeyPress = true; p.SearchTimer.Stop(); ShowInventory(p, said: true, focus: true); }
+            else if (e.KeyCode == Keys.Escape) { e.Handled = e.SuppressKeyPress = true; search.Clear(); p.SearchTimer.Stop(); ShowInventory(p, said: false, focus: true); }
         };
         show.SelectedIndexChanged += (_, _) => ShowInventory(p, said: show.Focused);
         return p;
@@ -177,78 +186,189 @@ public sealed partial class MainForm
 
     static TreeNode Placeholder() => new("Loading") { Name = "" };
 
-    /// <summary>The tree, or the flat list for a search or the Show choice; said: how many, when the person asked.</summary>
-    void ShowInventory(InvPane p, bool said)
+    /// <summary>The tree, or the flat list for a search or the Show choice; said: how many, when the person asked;
+    /// focus: the tree takes the focus once it shows them (Enter and Escape in Search). A flat list is found off the
+    /// window's thread (FindFlat), cancelling the one asked before; one found within a tenth of a second shows at once,
+    /// as it always did, and a slower one says "Searching." at half a second (when the person asked) and shows when
+    /// it's found, the focus going to the tree then if it's still in Search.</summary>
+    void ShowInventory(InvPane p, bool said, bool focus = false)
     {
+        p.Finding?.Cancel();
+        p.Finding = null;
         var tree = p.Tree;
-        if (Store is not { RootFolder: { } root } store)
+        if (Store is not { RootFolder: { } root } store || _ops.Client is not { } client)
         {
+            p.Fills.Clear();
             tree.Nodes.Clear();
             tree.SelectedNode = tree.Nodes.Add("Inventory not loaded yet. F5 to look again.");
+            if (focus) tree.Focus();
             return;
         }
         var words = p.Search.Text.Trim();
         var show = p.Show.SelectedIndex;
-        p.Mode = words.Length > 0 ? "search" : show == 1 ? "worn" : show == 2 ? "recent" : "";
-        if (p.Mode == "") { FillFolder(p, null, root.UUID); return; }
-
-        var worn = Worn();
-        var found = new List<(InventoryBase Node, string Path)>();
-        var since = DateTime.UtcNow.AddHours(-24);
-        Walk(store, root.UUID, "", (n, path) =>
+        var mode = words.Length > 0 ? "search" : show == 1 ? "worn" : show == 2 ? "recent" : show == 3 ? "trash" : "";
+        if (mode == "")
         {
-            bool hit = p.Mode switch
-            {
-                "search" => n.Name.Contains(words, StringComparison.OrdinalIgnoreCase)
-                            && (show != 1 || n is InventoryItem wi && worn.Ids.Contains(Target(wi).UUID))
-                            && (show != 2 || n is InventoryItem ri && Utc(ri.CreationDate) >= since),
-                "worn" => n is InventoryItem it && it.AssetType is not (AssetType.Link or AssetType.LinkFolder) && worn.Ids.Contains(it.UUID),
-                _ => n is InventoryItem rt && Utc(rt.CreationDate) >= since,
-            };
-            if (hit) found.Add((n, path));
-            return found.Count < 500;
-        });
-        var ordered = p.Mode == "recent"
-            ? found.OrderByDescending(f => ((InventoryItem)f.Node).CreationDate).ToList()
-            : found.OrderBy(f => f.Node is InventoryFolder ? 0 : 1).ThenBy(f => f.Node.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            p.Mode = "";
+            FillFolder(p, null, root.UUID);
+            if (focus) tree.Focus();
+            return;
+        }
+        var ask = new FlatAsk(store, root.UUID, client.Inventory.FindFolderForType(FolderType.Trash), mode, words, show, Worn());
+        var cts = p.Finding = new CancellationTokenSource();
+        var find = Task.Run(() => FindFlat(ask, cts.Token), cts.Token);
+        try { find.Wait(100); }
+        catch (AggregateException) { }   // (cancelled or failed: ShowFlat and ShowFlatLater see which)
+        if (find.IsCompleted) ShowFlat(p, cts, find, said, focus);
+        else ShowFlatLater(p, cts, find, said, focus);
+    }
+
+    /// <summary>A flat list still being found: "Searching." at half a second if the person asked, then the list.
+    /// (async void: a failure reaches the window's handler, logged and said, as one on the window's thread does.)</summary>
+    async void ShowFlatLater(InvPane p, CancellationTokenSource cts, Task<Flat> find, bool said, bool focus)
+    {
+        if (said && await Task.WhenAny(find, Task.Delay(400)) != find && p.Finding == cts) Reader?.Answer("Searching.", keep: false);
+        try { await find; }
+        catch (OperationCanceledException) { return; }
+        // the focus follows only if it's still where Enter was pressed (the person may have gone on elsewhere)
+        ShowFlat(p, cts, find, said, focus && ActiveControl == p.Search);
+    }
+
+    /// <summary>A flat list found, shown, unless a newer one was asked for meanwhile or it's another login's.</summary>
+    void ShowFlat(InvPane p, CancellationTokenSource cts, Task<Flat> find, bool said, bool focus)
+    {
+        if (p.Finding != cts || find.IsCanceled) return;
+        p.Finding = null;
+        var (ask, ordered, inTrash, seen, walkMs) = find.Result;   // (a failure throws here, on the window's thread)
+        if (Store != ask.Store) return;
+        var tree = p.Tree;
+        var worn = ask.Worn;
+        var words = ask.Words;
+        bool trashOnly = ask.Show == 3;
+        p.Mode = ask.Mode;
         var keep = tree.SelectedNode?.Name;
         p.WornShown = worn;
+        // what a search left out in the Trash is counted, and Show: Trash lists it
+        var trashed = inTrash > 0 ? $"{inTrash} in the Trash (Show: Trash lists {(inTrash == 1 ? "it" : "them")})" : "";
+        var shown = System.Diagnostics.Stopwatch.StartNew();
+        p.Fills.Clear();   // (a big folder still going in has left the tree)
         tree.BeginUpdate();
         try
         {
             tree.Nodes.Clear();
             foreach (var (n, path) in ordered)
                 tree.Nodes.Add(MakeNode(p, n, worn, path.Length > 0 ? path : "My Inventory"));
-            if (ordered.Count == 0) tree.Nodes.Add(new TreeNode(p.Mode == "search" ? $"Nothing called {words}." : p.Mode == "worn" ? "Nothing worn." : "Nothing new in the last day."));
+            if (ordered.Count == 0)
+                tree.Nodes.Add(new TreeNode(p.Mode switch
+                {
+                    "search" when trashOnly => $"Nothing called {words} in the Trash.",
+                    "search" => trashed.Length > 0 ? $"Nothing called {words}, but {trashed}." : $"Nothing called {words}.",
+                    "worn" => "Nothing worn.",
+                    "trash" => "The Trash is empty.",
+                    _ => "Nothing new in the last day.",
+                }));
             tree.SelectedNode = (keep != null ? tree.Nodes[keep] : null) ?? tree.Nodes[0];
         }
         finally { tree.EndUpdate(); }
         if (said)
+        {
+            var many = $"{ordered.Count}{(ordered.Count >= FlatLimit ? " or more" : "")}";
             Reader?.Answer(ordered.Count == 0 ? tree.Nodes[0].Text
-                : $"{ordered.Count}{(ordered.Count >= 500 ? " or more" : "")} {(p.Mode == "worn" ? "worn" : "found")}.", keep: false);
+                : p.Mode == "worn" ? $"{many} worn."
+                : trashOnly ? $"{many} in the Trash."
+                : trashed.Length > 0 ? $"{many} found, and {trashed}." : $"{many} found.", keep: false);
+        }
+        if (focus) tree.Focus();
+        // (how long each part took, for a tester's log: the walk off the window's thread, the list on it)
+        _ops.Session.Log.LogInformation("inventory {Mode}: {Seen} looked at, {Found} listed, {InTrash} in the Trash; walked in {Walk} ms, shown in {Shown} ms",
+            p.Mode, seen, ordered.Count, inTrash, walkMs, shown.ElapsedMilliseconds);
+    }
+
+    const int FlatLimit = 500;
+
+    /// <summary>What a flat list asks for, with what's read on the window's thread for it (the Trash's id, what's worn).</summary>
+    sealed record FlatAsk(LibreMetaverse.Inventory Store, UUID Root, UUID Trash, string Mode, string Words, int Show,
+        (HashSet<UUID> Ids, Dictionary<UUID, string> Points) Worn);
+
+    /// <summary>A flat list found: its nodes in order, with the folder each is in, how many matches the Trash has, how
+    /// many nodes were looked at and how long it took.</summary>
+    sealed record Flat(FlatAsk Ask, List<(InventoryBase Node, string Path)> Found, int InTrash, int Seen, long Ms);
+
+    /// <summary>A flat list's walk, off the window's thread. It reads the store as Sojourn.Core's own walks do: GetContents
+    /// hands out a copy of a folder's contents taken under that folder's lock, and lookups are LibreMetaverse's concurrent
+    /// dictionary; nothing of the window's is touched. A search leaves the Trash out, counting its matches; Show: Trash
+    /// walks only the Trash. At most 500, as before.</summary>
+    static Flat FindFlat(FlatAsk a, CancellationToken ct)
+    {
+        var took = System.Diagnostics.Stopwatch.StartNew();
+        var store = a.Store;
+        var since = DateTime.UtcNow.AddHours(-24);
+        int seen = 0;
+        bool Hit(InventoryBase n) => a.Mode switch
+        {
+            "search" => n.Name.Contains(a.Words, StringComparison.OrdinalIgnoreCase)
+                        && (a.Show != 1 || n is InventoryItem wi && a.Worn.Ids.Contains(Target(store, wi).UUID))
+                        && (a.Show != 2 || n is InventoryItem ri && Utc(ri.CreationDate) >= since),
+            "worn" => n is InventoryItem it && it.AssetType is not (AssetType.Link or AssetType.LinkFolder) && a.Worn.Ids.Contains(it.UUID),
+            "trash" => true,
+            _ => n is InventoryItem rt && Utc(rt.CreationDate) >= since,
+        };
+        bool trashOnly = a.Show == 3;
+        var found = new List<(InventoryBase Node, string Path)>();
+        if (trashOnly && a.Trash == UUID.Zero) return new(a, found, 0, 0, 0);
+        var trashName = store.TryGetValue<InventoryFolder>(a.Trash, out var tf) ? tf.Name : "Trash";
+        Walk(store, trashOnly ? a.Trash : a.Root, trashOnly ? trashName : "", trashOnly ? UUID.Zero : a.Trash, ct, (n, path) =>
+        {
+            seen++;
+            if (Hit(n)) found.Add((n, path));
+            return found.Count < FlatLimit;
+        });
+        int inTrash = 0;
+        if (a.Mode == "search" && !trashOnly && a.Trash != UUID.Zero)
+            Walk(store, a.Trash, trashName, UUID.Zero, ct, (n, _) => { seen++; if (Hit(n)) inTrash++; return true; });
+        var ordered = a.Mode == "recent"
+            ? found.OrderByDescending(f => ((InventoryItem)f.Node).CreationDate).ToList()
+            : found.OrderBy(f => f.Node is InventoryFolder ? 0 : 1).ThenBy(f => f.Node.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        return new(a, ordered, inTrash, seen, took.ElapsedMilliseconds);
     }
 
     static DateTime Utc(DateTime d) => d.Kind == DateTimeKind.Local ? d.ToUniversalTime() : DateTime.SpecifyKind(d, DateTimeKind.Utc);
 
-    /// <summary>Every node under a folder, depth first, with the path of the folder it's in; stops when told.</summary>
-    static void Walk(LibreMetaverse.Inventory store, UUID folder, string path, Func<InventoryBase, string, bool> each)
+    /// <summary>Every node under a folder, depth first, with the path of the folder it's in (the outfit's links and
+    /// <paramref name="skip"/> not entered); false once told to stop. Any thread; throws when cancelled.</summary>
+    static bool Walk(LibreMetaverse.Inventory store, UUID folder, string path, UUID skip, CancellationToken ct, Func<InventoryBase, string, bool> each)
     {
-        foreach (var n in store.GetContents(folder))
+        ct.ThrowIfCancellationRequested();
+        List<InventoryBase> contents;
+        try { contents = store.GetContents(folder); }
+        catch (InventoryException) { return true; }   // (gone meanwhile)
+        foreach (var n in contents)
         {
-            if (!each(n, path)) return;
-            if (n is InventoryFolder f && f.PreferredType != FolderType.CurrentOutfit)
-                Walk(store, f.UUID, path.Length > 0 ? $"{path}/{f.Name}" : f.Name, each);
+            if (!each(n, path)) return false;
+            if (n is InventoryFolder f && f.PreferredType != FolderType.CurrentOutfit && f.UUID != skip
+                && !Walk(store, f.UUID, path.Length > 0 ? $"{path}/{f.Name}" : f.Name, skip, ct, each))
+                return false;
         }
+        return true;
     }
 
     /// <summary>A folder's contents as nodes (folder null: the top of the tree), folders first then items, by name; the
-    /// nodes that were open, marked and selected stay so.</summary>
-    void FillFolder(InvPane p, TreeNode? node, UUID folder)
+    /// nodes that were open, marked and selected stay so. Shown already (a refresh after an action, F5), they're brought
+    /// up to date in place (Reconcile): emptying a tree view costs as much as filling it, 200 ms for a folder of 4,500
+    /// (a fishing game's catch), so only what changed goes or comes. Shown the first time, a folder of thousands goes in
+    /// a part at a time: the first 500 (and as far as the one that stays selected) at once, the rest in parts of 500
+    /// between the person's keys (FillRest); the whole folder at once held the window's thread 200 ms, nearly all of it
+    /// the tree view's own inserting.</summary>
+    void FillFolder(InvPane p, TreeNode? node, UUID folder) => FillFolder(p, node, folder, null);
+
+    void FillFolder(InvPane p, TreeNode? node, UUID folder, (HashSet<UUID> Ids, Dictionary<UUID, string> Points)? wornNow)
     {
         if (Store is not { } store) return;
         var tree = p.Tree;
         var nodes = node?.Nodes ?? tree.Nodes;
-        var kids = Sorted(store.GetContents(folder));
+        List<InventoryBase> kids;
+        try { kids = Sorted(store.GetContents(folder)); }
+        catch (InventoryException) { kids = new(); }   // (gone meanwhile)
         if (kids.Count == 0 && node != null)
             _ = _ops.Session.Inventory.EnsureLoadedAsync(folder, CancellationToken.None).ContinueWith(_ =>
             {
@@ -259,23 +379,143 @@ public sealed partial class MainForm
                     FillFolder(p, node, folder);
                 });
             });
-        var selected = tree.SelectedNode?.Name;
-        var worn = Worn();
+        var worn = wornNow ?? Worn();
         p.WornShown = worn;
+        if (ShowsTree(nodes))
+        {
+            Reconcile(p, node, folder, nodes, kids, worn);
+            return;
+        }
+        var selected = tree.SelectedNode?.Name;
+        // (the outermost fill's selection: a folder opened inside it, as open folders are, keeps that one among its first part)
+        bool outer = p.Keep == null;
+        if (outer) p.Keep = selected ?? "";
+        try
+        {
+            var made = kids.Select(k => MakeNode(p, k, worn, null)).ToArray();
+            var keep = p.Keep;
+            int now = made.Length <= FillPart ? made.Length : Math.Max(FillPart, Array.FindIndex(made, n => n.Name == keep) + 1);
+            var fill = p.Fills[folder] = new object();
+            tree.BeginUpdate();
+            try
+            {
+                nodes.Clear();
+                nodes.AddRange(made[..now]);
+                // (opening one fills it, and it opens its own open folders in turn)
+                OpenAgain(p, made[..now]);
+                if (node == null && nodes.Count == 0) nodes.Add(new TreeNode("Inventory is empty, or not loaded yet. F5 to look again."));
+                var again = selected != null ? tree.Nodes.Find(selected, true).FirstOrDefault() : null;
+                if (again != null) tree.SelectedNode = again;
+                else if (tree.SelectedNode == null && tree.Nodes.Count > 0) tree.SelectedNode = tree.Nodes[0];
+            }
+            finally { tree.EndUpdate(); }
+            if (now < made.Length) AfterInput(() => FillRest(p, node, folder, made, now, fill));
+            else p.Fills.Remove(folder);
+        }
+        finally { if (outer) p.Keep = null; }
+    }
+
+    /// <summary>Whether these nodes are a folder's contents as the tree shows them (not a flat list's, a line saying
+    /// there's nothing, or a folder's placeholder).</summary>
+    static bool ShowsTree(TreeNodeCollection nodes)
+    {
+        if (nodes.Count == 0) return false;
+        foreach (TreeNode n in nodes)
+            if (n is not InvNode { Path: null }) return false;
+        return true;
+    }
+
+    /// <summary>A folder shown already, brought up to date: nodes no longer in it removed, new ones put in their place,
+    /// moved ones (renamed) moved, every node's words and item renewed, and its folders that were filled brought up to
+    /// date the same way. What's open stays open; what's selected stays selected, or if it went, the folder itself
+    /// (the top of the tree, for the top) takes the selection.</summary>
+    void Reconcile(InvPane p, TreeNode? node, UUID folder, TreeNodeCollection nodes, List<InventoryBase> kids,
+        (HashSet<UUID> Ids, Dictionary<UUID, string> Points) worn)
+    {
+        var tree = p.Tree;
+        p.Fills.Remove(folder);   // (a big folder still going in: the rest goes in now, below)
+        var want = kids.Select(k => k.UUID.ToString()).ToHashSet();
+        var selected = tree.SelectedNode;
+        bool lost = false;
         tree.BeginUpdate();
         try
         {
-            nodes.Clear();
-            foreach (var k in kids) nodes.Add(MakeNode(p, k, worn, null));
-            // (opening one fills it, and it opens its own open folders in turn)
-            foreach (var tn in nodes.Cast<TreeNode>().ToList())
-                if (p.Open.Contains(tn.Name)) tn.Expand();
+            for (int i = nodes.Count - 1; i >= 0; i--)
+            {
+                if (want.Contains(nodes[i].Name)) continue;
+                for (var up = selected; up != null && !lost; up = up.Parent) lost = up == nodes[i];
+                nodes.RemoveAt(i);
+            }
+            var have = new Dictionary<string, InvNode>();
+            foreach (InvNode n in nodes) have[n.Name] = n;
+            for (int i = 0; i < kids.Count; i++)
+            {
+                var k = kids[i];
+                if (have.TryGetValue(k.UUID.ToString(), out var tn))
+                {
+                    if (!ReferenceEquals(nodes[i], tn))
+                    {
+                        bool wasSelected = selected == tn;
+                        nodes.Remove(tn);
+                        nodes.Insert(i, tn);
+                        if (wasSelected) tree.SelectedNode = tn;
+                    }
+                    tn.Item = k;
+                    tn.Tag = k;
+                    if (Label(p, tn, worn) is var text && tn.Text != text) tn.Text = text;
+                    if (k is InventoryFolder && Filled(tn)) FillFolder(p, tn, k.UUID, worn);
+                }
+                else
+                {
+                    var made = MakeNode(p, k, worn, null);
+                    nodes.Insert(i, made);
+                    if (p.Open.Contains(made.Name)) made.Expand();
+                }
+            }
             if (node == null && nodes.Count == 0) nodes.Add(new TreeNode("Inventory is empty, or not loaded yet. F5 to look again."));
-            var again = selected != null ? tree.Nodes.Find(selected, true).FirstOrDefault() : null;
-            if (again != null) tree.SelectedNode = again;
-            else if (tree.SelectedNode == null && tree.Nodes.Count > 0) tree.SelectedNode = tree.Nodes[0];
+            if (lost || tree.SelectedNode == null) tree.SelectedNode = node ?? (tree.Nodes.Count > 0 ? tree.Nodes[0] : null);
         }
         finally { tree.EndUpdate(); }
+    }
+
+    const int FillPart = 500;
+
+    /// <summary>The rest of a big folder's nodes, a part at a time, each after whatever input came meanwhile; stops when
+    /// the folder was filled or brought up to date again since, or its node left the tree.</summary>
+    void FillRest(InvPane p, TreeNode? node, UUID folder, TreeNode[] made, int from, object fill)
+    {
+        if (IsDisposed || !p.Fills.TryGetValue(folder, out var f) || f != fill || node is { TreeView: null }) return;
+        var nodes = node?.Nodes ?? p.Tree.Nodes;
+        int to = Math.Min(made.Length, from + FillPart);
+        p.Tree.BeginUpdate();
+        try
+        {
+            nodes.AddRange(made[from..to]);
+            OpenAgain(p, made[from..to]);
+        }
+        finally { p.Tree.EndUpdate(); }
+        if (to < made.Length) AfterInput(() => FillRest(p, node, folder, made, to, fill));
+        else p.Fills.Remove(folder);
+    }
+
+    static void OpenAgain(InvPane p, TreeNode[] added)
+    {
+        foreach (var tn in added)
+            if (p.Open.Contains(tn.Name)) tn.Expand();
+    }
+
+    /// <summary>Runs on the window's thread once the input waiting has been handled: a WinForms timer's tick comes after
+    /// keys in Windows' order, where BeginInvoke's message would come before them.</summary>
+    static void AfterInput(Action a)
+    {
+        var t = new System.Windows.Forms.Timer { Interval = 1 };
+        t.Tick += (_, _) =>
+        {
+            t.Stop();
+            t.Dispose();
+            a();
+        };
+        t.Start();
     }
 
     static List<InventoryBase> Sorted(IEnumerable<InventoryBase> nodes) => nodes
@@ -293,7 +533,7 @@ public sealed partial class MainForm
     /// <summary>An inventory node, with the folder it's in when it's in a flat list (for its words again later).</summary>
     sealed class InvNode(InventoryBase item, string? path) : TreeNode
     {
-        public readonly InventoryBase Item = item;
+        public InventoryBase Item = item;   // (renewed when a refresh finds it again: LibreMetaverse may have replaced it)
         public readonly string? Path = path;
     }
 
@@ -350,8 +590,10 @@ public sealed partial class MainForm
     }
 
     /// <summary>What a link points to (else the item itself).</summary>
-    InventoryItem Target(InventoryItem it) =>
-        it.AssetType == AssetType.Link && Store?.TryGetValue<InventoryItem>(it.AssetUUID, out var t) == true ? t : it;
+    InventoryItem Target(InventoryItem it) => Store is { } store ? Target(store, it) : it;
+
+    static InventoryItem Target(LibreMetaverse.Inventory store, InventoryItem it) =>
+        it.AssetType == AssetType.Link && store.TryGetValue<InventoryItem>(it.AssetUUID, out var t) ? t : it;
 
     static string TypeWord(InventoryItem it) => it.AssetType switch
     {

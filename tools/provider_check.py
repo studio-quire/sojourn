@@ -225,6 +225,16 @@ async def mock():
 
         p.configure({"provider": "claude"})
         check(p.state in ("ready", "no_login") and p.env() == {}, f"the Claude account: as signed in here ({p.state})")
+        import paths
+        paths.PACKAGED = True   # a packaged build offers no Claude account: its "claude" is none chosen yet
+        try:
+            p.app = "access"
+            p.configure({"provider": "claude"})
+            told = p.how()
+            check(not p.ready and p.state == "none" and "Alt+0" in told and "Studio Quire" in told and "Claude" not in told,
+                  f"packaged: no Claude account, none chosen, how to choose said ({p.state}: {told[:80]}...)")
+        finally:
+            paths.PACKAGED, p.app = False, None
     finally:
         m.terminate()
         m.wait(5)

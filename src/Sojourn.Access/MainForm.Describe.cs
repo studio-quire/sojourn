@@ -11,7 +11,7 @@ namespace Sojourn.Access;
 /// as it is), or else the place around them; Control+Shift+D describes them and what they're wearing; the same key
 /// again for the same subject asks for more. `//describe` the same by words. The assistant does the describing
 /// (SojournDescribe gives it pictures aimed at the subject and the names around), so the request names its subject by
-/// id and the pictures start drawing as it goes. Without the assistant (no Claude account) it says so plainly, then
+/// id and the pictures start drawing as it goes. Without the assistant (no provider that works) it says so plainly, then
 /// what the lists know: names, an object's own description and floating text, what someone wears by its items' names.
 /// </summary>
 public sealed partial class MainForm
@@ -28,7 +28,7 @@ public sealed partial class MainForm
     /// <summary>What Control+D means where the focus is.</summary>
     Subject SelectedSubject()
     {
-        if (_people.Focused && _people.FocusedItem?.Tag is PersonOps.Person p) return Of(p);
+        if (PeopleFocused?.FocusedItem?.Tag is PersonOps.Person p) return Of(p);
         if (_friends.Focused && _friends.FocusedItem?.Tag is Friend f) return Of(f);
         if (_objects.Focused && _objects.FocusedItem?.Tag is PersonOps.Thing t) return Of(t);
         // a part, or the part a face is on (a face alone is too small to describe apart from its part)
@@ -72,6 +72,13 @@ public sealed partial class MainForm
         _described = (s, detail, Environment.TickCount64);
         bool rich = detail == "rich";
         if (!_opt.Assistant || (!h.Assistant.SidecarAlive && h.Sidecar == null)) { await WithoutAssistantAsync(s); return; }
+        // the assistant up but off (no provider that works, or the month's allowance used up): why, then the lists
+        if (h.Assistant.ProviderStatus is { } ps && ps["state"]?.GetValue<string>() is { } state
+            && state is not ("ready" or "offline" or "checking") && ps["words"]?.GetValue<string>() is { Length: > 0 } why)
+        {
+            await WithoutAssistantAsync(s, why);
+            return;
+        }
         if (s.Of == "view") h.Describe?.Prepare(s.Key, detail);
         var asked = rich ? $"{s.Asked}, in detail: you've described it briefly already, so add to that." : $"{s.Asked}, briefly.";
         Ask($"{asked} [describe key: subject={s.Key}, of={s.Of}, detail={detail}]",
@@ -111,10 +118,11 @@ public sealed partial class MainForm
 
     /// <summary>No assistant: said plainly the first time this session, then what the lists know, which needs no model
     /// (after the first time, only that).</summary>
-    async Task WithoutAssistantAsync(Subject s)
+    /// <param name="why">the assistant's own words for why it's off, when it's up but has no provider that works</param>
+    async Task WithoutAssistantAsync(Subject s, string? why = null)
     {
-        var none = _toldNoAssistant ? "" : AccessOptions.AssistantInBuild
-            ? "Describing needs the assistant, and it isn't running: it needs a Claude account. "
+        var none = _toldNoAssistant ? "" : why != null ? $"Describing needs the assistant. {why.TrimEnd()} "
+            : AccessOptions.AssistantInBuild ? "Describing needs the assistant, and it isn't running. "
             : "Describing needs the assistant, which this build doesn't include. ";
         _toldNoAssistant = true;
         if (s.Of != "view") { Answer(none.Length > 0 ? none.Trim() : "Describing needs the assistant."); return; }

@@ -418,6 +418,34 @@ Found, and done (Claude Opus 5.5):
 - Seen, for a blind tester: a sighted gamer reached for WASD in walk mode, where A and S are taken (what's ahead, the
   sonar); walk mode itself didn't make sense to a sighted person, as expected.
 
+### Her first session in Access, on Second Life (the blind tester, 2026-10-30)
+
+0.1.0.531 on her own PC with NVDA, from ~21:20 EDT, Tessel and her partner beside her in world, reported live on the helper
+channel (our words, her quotes where Tessel gave them). Her summary: the walking is interesting even if she has to
+pause and take her bearings, she looks forward to a sonar she can use, and the reading works nicely now.
+- **Liked**: the direction said while turning in walk mode ("OMG! I love that it told me..."), the detail in what's
+  read ("Way more detail!"), `//go` ("even better for //go"), Control+[ review, the music's level, the welcome mat that
+  talked as she crossed it, IMs read out. Alt+3's clock directions and distances were right (Tessel checked against
+  the map).
+- **Chat wasn't read while she typed**: NVDA's "Speech interrupt for typed characters" cut each arrival off; with it
+  off NVDA reads arrivals while she types. Since (branch fix/arrivals-while-typing, merged): a line cut off by typing
+  is said again after a 700 ms pause.
+- **She wants her own lines read back** (Radegast does): now on by default, Alt+0 "Read my own lines".
+- **Her PC can't run the view out of sight**, so walk mode had no sonar, warnings or openings. HP Pavilion 690-0028:
+  Ryzen 5 2400G, 8 GB RAM, Windows 10, Radeon RX 550 2 GB (Polaris). The renderer asks for Vulkan 1.3; an old OEM
+  driver may offer only 1.2. Wanted: a sonar and warnings that need no GPU at all ("Oh, bless the builders"). Since
+  (branch feat/sonar): every walk-mode ray comes from a collision model without a GPU (`docs/access-app.md` > Walk
+  mode > The collision model); the renderer's log line now names the devices found and their Vulkan versions.
+- **How far does a tap walk?** (~0.9 m by Tessel's tracking): without the sonar she can't tell how far she went.
+  Wanted: the distance walked, spoken when she pauses. Since (branch feat/people): said when the keys rest ("0.9
+  metres."), M for the last walk, the count and where it began (`docs/access-app.md` > Walk mode).
+- **People a Tab from chat, with distances**, as Radegast has it beside chat; Alt+3 works but isn't where her habit
+  reaches. Since (feat/people): People nearby beside the chat history, a Tab from Say (`docs/access-app.md` > People
+  beside chat).
+- **Her friends list on Alt+2**, as in Radegast (said after the session, having gone back to Radegast to check): Alt+2
+  was Conversations. Since (feat/people): Alt+2 goes to Friends; conversations are Control+Tab's (and View >
+  Conversations).
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -443,10 +471,12 @@ Added to the questions below: what's read out while Access is in the background 
 - First: while Sojourn Access is in the background, should she hear everything, only IMs and menus, or nothing (a
   setting either way)? TWBlue keeps reading off by default as too chatty and relies on sounds; Mudlet reads.
 - F6 mutes the read-out here (the old add-on's key), but in Windows F6 moves between panes: keep it only if she used
-  the add-on's key. Enter on a worn item takes it off: is one stray Enter too easy? Alt+2 is Friends in Radegast and
-  Conversations here: does that habit matter?
+  the add-on's key. Enter on a worn item takes it off: is one stray Enter too easy?
 - What "edit notecards without going back two versions" means (her list): the Radegast agents couldn't reproduce
   losing versions in 2.54 (save, reopen, relog all kept the latest).
+- Cost (through Tessel, 2026-10-30): reading that an AI describer comes later, she said it would be fun to test but she doubts she could pay for it. Decided the same evening: the studio covers her use (the user, 2026-10-30); how is ours to build (Access's assistant in a packaged build, then a way in that doesn't need her own key): a studio relay (a Cloudflare Worker holding the studio's Anthropic key as a secret, a personal token for her, usage capped, no content kept). The key is scoped to the studio's "Sojourn relay" workspace in the Anthropic console (so it can't use the Admin API; the workspace carries the spend limit; paid from the plan's monthly API credit, otherwise unused), kept in local/secrets/studio/relay-anthropic.key, DPAPI for the user's Windows account, put there by the user without passing through a session (checked against the API 2026-10-30). The relay caps each person too ($50 a month to start).
+- Audio sides (her partner, through Tessel, 2026-10-30): Radegast had left and right reversed for over ten years; in hers tonight a stream to her west sounded on her right while facing south, which is right. Worth a check that ours is too (tools/audio.py's tests, and her ears once she tries walk mode's sonar).
+- Her Radegast habit (through Tessel, 2026-10-30): Alt+5 to teleport around by SLurls, with mixed success there. Ours: Alt+5 is Search (places teleport from it), a SLurl on the clipboard is Control+G, typed is //tp. Is that close enough, and what fails for her in Radegast's?
 - Naming her in Radegast issues and PRs: yes, by her SL name, as someone who asked for chat read-outs (her answer through Tessel, 2026-10-30). Sojourn's own public repo still names no private individuals.
 - For Sojourn Access's first slice (`docs/access-app.md`), once she's tried it or heard it described: is a clock face
   ("two o'clock") right for where people and things are, or left/right and ahead, or degrees? Should a conversation's

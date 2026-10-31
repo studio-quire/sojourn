@@ -46,6 +46,64 @@ static class ComUia
         }
     }
 
+    /// <summary>`tabs`: Tabs in a process of its own (this exe's `tabs PID`, on the same desktop). In the server, the
+    /// managed client has registered its client-side proxies with UIAutomationCore for the whole process (its WindowsTab
+    /// proxy takes WinForms' tab controls by class name), and the COM client here then sees what the managed one does:
+    /// one pane per tab control and nothing else (2026-10-30). A screen reader's process has no such proxies.</summary>
+    public static string TabsApart(int pid)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo(System.Reflection.Assembly.GetExecutingAssembly().Location, "tabs " + pid)
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
+        };
+        using (var p = System.Diagnostics.Process.Start(psi))
+        {
+            var text = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(10000);
+            return text.Length == 0 ? "ERR tabs gave nothing" : text;
+        }
+    }
+
+    /// <summary>Each tab control's children in the process as the COM client (a screen reader's UIA) walks them, one line
+    /// a control: "tabs hwnd=... | Pane "Conversations" | TabItem "Nearby chat" | ...". The managed client's find leaves
+    /// out a WinForms tab control's first and last tab items (2026-10-30), which COM UIA and MSAA both list.</summary>
+    public static string Tabs(int pid)
+    {
+        var client = (IUIAutomation5)new CUIAutomation8();
+        var walker = client.get_ControlViewWalker();
+        var lines = new System.Collections.Generic.List<string>();
+        EnumWindows((top, _) =>
+        {
+            GetWindowThreadProcessId(top, out var p);
+            if (pid != 0 && p != pid) return true;
+            EnumChildWindows(top, (h, __) =>
+            {
+                var cls = new System.Text.StringBuilder(256);
+                GetClassName(h, cls, 256);
+                if (!cls.ToString().Contains("SysTabControl32") || !IsWindowVisible(h)) return true;
+                var line = "tabs hwnd=" + h.ToInt64().ToString("x");
+                try
+                {
+                    var c = walker.GetFirstChildElement(client.ElementFromHandle(h));
+                    for (int guard = 0; c != null && guard < 100; guard++, c = walker.GetNextSiblingElement(c))
+                        line += " | " + (Prop(c, ControlTypePropertyId) is int t && t == 50019 ? "TabItem" : "Pane") + " " + Server.J(Prop(c, NamePropertyId) as string);
+                }
+                catch (Exception e) { line += " | error " + e.Message; }
+                lines.Add(line);
+                return true;
+            }, IntPtr.Zero);
+            return true;
+        }, IntPtr.Zero);
+        return lines.Count == 0 ? "ERR no tab controls" : string.Join("\n", lines);
+    }
+
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr p, EnumProc f, IntPtr l);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+
     static object Prop(IUIAutomationElement e, int id)
     {
         try { return e.GetCurrentPropertyValue(id); } catch { return null; }
@@ -99,9 +157,9 @@ static class ComUia
         // IUIAutomation
         void CompareElements(); void CompareRuntimeIds();
         IUIAutomationElement GetRootElement();
-        void ElementFromHandle(); void ElementFromPoint(); void GetFocusedElement();
+        IUIAutomationElement ElementFromHandle(IntPtr hwnd); void ElementFromPoint(); void GetFocusedElement();
         void GetRootElementBuildCache(); void ElementFromHandleBuildCache(); void ElementFromPointBuildCache();
-        void GetFocusedElementBuildCache(); void CreateTreeWalker(); void get_ControlViewWalker(); void get_ContentViewWalker();
+        void GetFocusedElementBuildCache(); void CreateTreeWalker(); IUIAutomationTreeWalker get_ControlViewWalker(); void get_ContentViewWalker();
         void get_RawViewWalker(); void get_RawViewCondition(); void get_ControlViewCondition(); void get_ContentViewCondition();
         void CreateCacheRequest(); void CreateTrueCondition(); void CreateFalseCondition(); void CreatePropertyCondition();
         void CreatePropertyConditionEx(); void CreateAndCondition(); void CreateAndConditionFromArray();
@@ -128,6 +186,15 @@ static class ComUia
         // IUIAutomation5
         void AddNotificationEventHandler(IUIAutomationElement element, int scope,
             [MarshalAs(UnmanagedType.IUnknown)] object cacheRequest, IUIAutomationNotificationEventHandler handler);
+    }
+
+    [ComImport, Guid("4042c624-389c-4afc-a630-9df854a541fc"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IUIAutomationTreeWalker
+    {
+        IUIAutomationElement GetParentElement(IUIAutomationElement e);
+        IUIAutomationElement GetFirstChildElement(IUIAutomationElement e);
+        IUIAutomationElement GetLastChildElement(IUIAutomationElement e);
+        IUIAutomationElement GetNextSiblingElement(IUIAutomationElement e);
     }
 
     [ComImport, Guid("d22108aa-8ac5-49a5-837b-37bbb3d7591e"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

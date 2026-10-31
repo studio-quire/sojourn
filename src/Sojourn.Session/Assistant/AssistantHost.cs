@@ -172,7 +172,7 @@ public sealed class AssistantHost
     }
 
     /// <summary>The assistant's memory: notes it keeps in its own folder (assistant/home.py).</summary>
-    public static string MemoryDir => Path.Combine(Sidecar.Root ?? AppContext.BaseDirectory, "local", "assistant", "home");
+    public static string MemoryDir => Path.Combine(Sidecar.LocalDir, "assistant", "home");
 
     public static bool MemoryKept()
     {

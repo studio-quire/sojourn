@@ -22,6 +22,12 @@ model and effort rows with a Claude account or key; with OpenRouter its model, p
 it) and a trouble note on the first row when it doesn't work. Sojourn Access, which ships and
 starts on its own, keeps them in Alt+0 (its first rows). The providers, with the sidecar's state for each:
 - **claude** (the default): the Claude subscription Claude Code is signed in to on this PC (`claude`, then `/login`).
+  Runs from the repo only (`ProviderKeys.ClaudeOffered`): packaged and public builds offer no Claude-account sign-in
+  (CLAUDE.md's decision of 2026-10-30, Anthropic's Agent SDK terms), so neither Access's Alt+0 nor a packaged launcher
+  lists it. There "claude", the setting's old default that every earlier build saved, means none chosen yet: the
+  session host puts a key or token already kept in its place (`ProviderKeys.FallbackFor`, at settings load), else
+  the sidecar's state is `none` and the person hears once how to choose (a token from Studio Quire, or their own
+  Anthropic or OpenRouter key, pasted into the key row); the provider row says "none chosen yet".
 - **anthropic**: the person's Anthropic API key.
 - **openrouter**: their OpenRouter key, and **openrouter model**: `claude`, shown as **Claude Haiku · Sonnet ·
   Opus** with its tags (anthropic/claude-haiku-5.5 · sonnet-5.5 · opus-5.5: Claude Code's ids as `or_slug` maps them,
@@ -36,6 +42,13 @@ starts on its own, keeps them in Alt+0 (its first rows). The providers, with the
   built in (2026-10-30). A chosen tag stays as chosen when a family moves on. The launcher's box takes any id typed;
   the headset's row steps through the list (the name, or Claude's tags, under its label); Access's Enter steps it,
   Control+Enter takes any id.
+- **relay** ("Studio relay"): a personal token (`sqr-...`) from Studio Quire, for people the studio covers, such as
+  the blind tester: Anthropic's API through the studio's relay (https://relay.studioquire.org, a Cloudflare Worker
+  holding the studio's key, a monthly cap per token; `tools/relay/README.md`, made and capped by `python
+  tools/relay.py`). Kept and added by the proxy as a key is, so it works exactly as an Anthropic key does. Its check
+  is the relay's `/relay/usage` (costs nothing); a month's allowance used up (402 from the relay) is the state
+  `allowance`, said plainly with the day it comes back, and the first request that goes through after it clears it.
+  The launcher shows its choice only once a token is kept or it's chosen; Access lists it always.
 
 **Putting a key in**: the launcher's key box (paste it; its shape says which provider it's for and switches to it; kept
 only from the person's own keys or mouse, `RealPress`; × twice forgets it). Access: Enter on the key row opens a
@@ -82,7 +95,7 @@ has six cases for it.
   to 80% of it. The prompt tells the model what it is (Claude Code's own text calls it Claude). How well another model
   follows Claude Code's tools and our prompts is untested.
 
-**Without one that works** (not signed in, no key, refused, out of credits, no tool use): the sidecar runs (hearing,
+**Without one that works** (none chosen, not signed in, no key, refused, out of credits or allowance, no tool use): the sidecar runs (hearing,
 the panel), no sessions start, the panel says once how to switch it on, and each request gets the same words back.
 A key refused mid-sitting (401/403/402 through the proxy) turns the state and the words to say so.
 `tools/provider_check.py` checks all of it against `tools/provider_mock.py` (decoy keys, nothing spent; the data

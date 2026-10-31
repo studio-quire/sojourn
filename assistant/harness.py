@@ -21,8 +21,10 @@ import re
 import time
 from pathlib import Path
 
+from paths import LOCAL, PACKAGED, claude_dirs
+
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent                      # projects/sojourn
+ROOT = HERE.parent                      # projects/sojourn (or a packaged build's program folder: paths.py)
 STUDIO = ROOT.parent.parent
 USER = Path.home()
 
@@ -50,9 +52,16 @@ def secret_paths(own_slug):
     out = [ROOT / "local" / "secrets", USER / "AppData" / "Local" / "Sojourn" / "secrets", ROOT / "local" / "grid",
            USER / ".ssh", USER / ".config", USER / ".docker", USER / ".cagent", USER / ".copilot", USER / ".claude.json"]
     # Claude's own: credentials, settings, every other session's transcripts and the studio's memory
-    out += children(USER / ".claude", keep=("projects",)) + children(USER / ".claude" / "projects", keep=(own_slug,))
-    # every program's data (browsers' passwords, Windows' credentials, the official viewer's saved login, gh, Tailscale)
-    out += children(USER / "AppData" / "Roaming") + children(USER / "AppData" / "Local", keep=("Temp",)) + [USER / "AppData" / "LocalLow"]
+    for c in claude_dirs():
+        out += children(c, keep=("projects",)) + children(c / "projects", keep=(own_slug,))
+    # every program's data (browsers' passwords, Windows' credentials, the official viewer's saved login, gh, Tailscale);
+    # a packaged Sojourn Access's data folder is one of them but for its assistant/ (home, work), whose own Claude Code
+    # folder is covered above
+    local_app = USER / "AppData" / "Local"
+    own = LOCAL.name if PACKAGED and LOCAL.parent == local_app else None
+    out += children(USER / "AppData" / "Roaming") + children(local_app, keep=("Temp", own)) + [USER / "AppData" / "LocalLow"]
+    if PACKAGED:
+        out += children(LOCAL, keep=("assistant",)) + [LOCAL / "assistant" / "claude" / ".claude.json"]
     out += [p for p in USER.glob(".*") if p.is_file() and re.search(r"cred|token|secret|sunshine|netrc|npmrc|pypirc|history", p.name, re.I)]
     return out
 
@@ -89,6 +98,8 @@ def studio_elsewhere():
 def protected():
     """What the file tools may read but never change: Sojourn's code, docs, tools, the assistant's own prompt and code,
     and the client's settings and state (the person's own choices; confirm_touches is theirs alone)."""
+    if PACKAGED:   # the program's folder whole (paths.py), and its settings
+        return [ROOT, LOCAL / "assistant" / "settings.json"]
     return [ROOT / "src", ROOT / "assistant", ROOT / "tools", ROOT / "docs", ROOT / "CLAUDE.md", ROOT / "board.json",
             ROOT / "local" / "client", ROOT / "local" / "main", ROOT / "local" / "tester", ROOT / "local" / "friend",
             ROOT / "local" / "assistant" / "settings.json", ROOT / "local" / "assistant-venv"]
@@ -312,7 +323,7 @@ def env():
             "DISABLE_AUTO_COMPACT": "1"}              # and autoCompactEnabled false: a session hands off by itself
 
 
-SETTINGS_FILE = ROOT / "local" / "assistant" / "settings.json"
+SETTINGS_FILE = LOCAL / "assistant" / "settings.json"
 
 
 def settings_file(home, work, incognito=False, auto=True):

@@ -739,7 +739,8 @@ public sealed class Commands
         await inv.EnsureLoadedAsync(root, CancellationToken.None);
         var folder = store.GetContents(root).OfType<InventoryFolder>().FirstOrDefault(f => f.Name == "Radegast Landmarks")?.UUID
                      ?? inv.FolderFor(FolderType.Landmark);
-        var found = await inv.CollectAsync(folder, null, null, null, null, 500, CancellationToken.None);
+        // (off the window's thread: the collecting after the fetch is a walk of every folder under it)
+        var found = await Task.Run(() => inv.CollectAsync(folder, null, null, null, null, 500, CancellationToken.None));
         return (found["items"] as JsonObject ?? new()).Select(kv => kv.Value as JsonObject).OfType<JsonObject>()
             .Where(j => j.Str("inv_type") == "landmark" || j.Str("asset_type") == "landmark")
             .OrderBy(j => j["creation_date"]?.GetValue<long>() ?? 0)
@@ -848,7 +849,8 @@ public sealed class Commands
     {
         var inv = _s.Inventory;
         var root = inv.FolderFor(FolderType.Root);
-        var found = await inv.CollectAsync(root, null, null, "notecard", null, 2000, CancellationToken.None);
+        // (off the window's thread: it walks the whole inventory, Trash aside)
+        var found = await Task.Run(() => inv.CollectAsync(root, null, null, "notecard", null, 2000, CancellationToken.None));
         var cards = (found["items"] as JsonObject ?? new()).Select(kv => kv.Value as JsonObject).OfType<JsonObject>()
             .Select(j => (Id: UUID.TryParse(j.Str("id"), out var id) ? id : UUID.Zero, Name: j.Str("name") ?? "")).Where(c => c.Id != UUID.Zero).ToList();
         var hit = cards.FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));

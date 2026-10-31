@@ -70,6 +70,9 @@ public sealed class NvdaVoice : IReaderVoice
 
     public bool Running => _test() == 0;
 
+    /// <summary>The controller's last answer to speaking (0: spoken; else a Windows RPC error).</summary>
+    public int LastError { get; private set; }
+
     public bool Speak(string text, bool interrupt, bool urgent = false)
     {
         if (urgent && _ssml != null && !_noSsml)
@@ -79,7 +82,9 @@ public sealed class NvdaVoice : IReaderVoice
             if (r == 1717) _noSsml = true;   // RPC_S_UNKNOWN_IF: an NVDA before 2024.1
         }
         if (interrupt || urgent) _cancel();
-        return _speak(text) == 0;
+        int e = _speak(text);
+        LastError = e;
+        return e == 0;
     }
 
     public void Cancel() => _cancel();

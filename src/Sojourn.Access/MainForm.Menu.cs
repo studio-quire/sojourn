@@ -47,7 +47,7 @@ public sealed partial class MainForm
 
         var view = Top("&View",
             Later("Nearby &chat", "Alt+1", () => GoArea(_chatPage)),
-            Later("C&onversations", "Alt+2", () => GoArea(_conversationsPage)),
+            Later("&Friends", "Alt+2", GoFriends),
             Later("&People", "Alt+3", () => GoArea(_peoplePage)),
             Later("&Inventory", "Alt+4", () => GoInventory(second: false)),
             Later("Inventory, s&econd pane", "Alt+Shift+4", () => GoInventory(second: true)),
@@ -59,6 +59,7 @@ public sealed partial class MainForm
             Later("Se&ttings", "Alt+0", () => GoArea(_settingsPage)),
             new ToolStripSeparator(),
             Later("The ne&west notice", "Control+N", NewestNotice),
+            Later("C&onversations", null, () => GoArea(_conversationsPage)),
             Later("Ne&xt conversation", "Control+Tab", () => Ring(+1)),
             Later("Previous con&versation", "Control+Shift+Tab", () => Ring(-1)),
             Later("Close this conversation", "Control+W", CloseConversation));

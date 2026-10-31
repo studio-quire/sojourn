@@ -1,6 +1,6 @@
 using LibreMetaverse;
 using Sojourn.Render.World;
-using Sojourn.Session.Offscreen;
+using Sojourn.Session.Collision;
 using Vector3 = System.Numerics.Vector3;
 
 namespace Sojourn.Access.Walk;
@@ -32,7 +32,7 @@ public sealed partial class WalkMode
 
     void Probe(Body b, long now)
     {
-        if (_view is not { Running: true } || _probing) return;
+        if (!_rays.Ready || _probing) return;
         bool moving = Speed(b) > 0.3f || HeldMove;
         if (now - _probeAt < (moving ? 100 : 1000)) return;
         if (!moving && !On && !b.Sitting) { _probeAt = now; return; }
@@ -57,11 +57,11 @@ public sealed partial class WalkMode
             long asked = Environment.TickCount64;
             try
             {
-                var got = await _view.CollideManyAsync(rays, b.Linkset);
+                var got = await _rays.CollideManyAsync(rays, b.Linkset);
                 if (WalkLog != null && Environment.TickCount64 - asked > 300) Log($"probe late: {Environment.TickCount64 - asked} ms ({(got == null ? "no answer" : "answered")})");
                 if (got is { } batch && batch.Region == b.Region) Read(b, batch.Hits, chest, look, moveYaw, Environment.TickCount64);
             }
-            catch (Exception) { /* a ray lost to a restarting view: the next probe asks again */ }
+            catch (Exception) { /* a ray lost (a region left meanwhile): the next probe asks again */ }
             finally { _probing = false; }
         }
     }
