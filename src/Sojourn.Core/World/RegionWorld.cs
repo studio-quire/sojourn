@@ -228,6 +228,30 @@ public sealed class RegionWorld
         return true;
     }
 
+    /// <summary>A prim and every prim under it (its linkset, or an attachment's), as a kill would remove them; avatars
+    /// sitting on it stay. How many prims went.</summary>
+    internal int RemoveObject(uint local)
+    {
+        if (!Prims.ContainsKey(local)) return 0;
+        var gone = new HashSet<uint> { local };
+        bool grew = true;
+        while (grew)
+        {
+            grew = false;
+            foreach (var (pl, prim) in Prims)
+                if (gone.Contains(prim.ParentID) && gone.Add(pl)) grew = true;
+        }
+        int n = 0;
+        foreach (var pl in gone)
+            if (Prims.TryRemove(pl, out var prim))
+            {
+                if (GlobalToLocal.TryGetValue(prim.ID, out var m) && m == pl) GlobalToLocal.TryRemove(prim.ID, out _);
+                Raise(WorldChange.Removed, pl);
+                n++;
+            }
+        return n;
+    }
+
     internal void Raise(WorldChange change, uint localId)
     {
         Interlocked.Increment(ref _version);
@@ -250,7 +274,15 @@ public sealed class RegionWorld
     /// <summary>A prim's position in region coordinates, walking up its link and attachment parents.</summary>
     public Vector3 RegionPosition(Primitive p)
     {
-        var pos = p.Position;
+        TryRegionPosition(p, out var pos);
+        return pos;
+    }
+
+    /// <summary>As <see cref="RegionPosition"/>, false when a parent on the way isn't here (a linkset's child that came
+    /// before its root, as after a crossing): the position is then only its offset from that parent.</summary>
+    public bool TryRegionPosition(Primitive p, out Vector3 pos)
+    {
+        pos = p.Position;
         var cur = p;
         for (var depth = 0; cur.ParentID != 0 && depth < 8; depth++)
         {
@@ -264,9 +296,9 @@ public sealed class RegionWorld
                 pos = av.Position + pos * av.Rotation;
                 cur = av;
             }
-            else break;
+            else return false;
         }
-        return pos;
+        return true;
     }
 
     public Quaternion RegionRotation(Primitive p)

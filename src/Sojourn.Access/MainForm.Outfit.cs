@@ -82,6 +82,7 @@ public sealed partial class MainForm
                 ? $"Still arriving, as attachments do for a minute or so after logging in or teleporting: {Sorted(outfitObjects.Values)}."
                 : $"In your outfit but not attached: {Sorted(outfitObjects.Values)}.");
         if (body.Count > 0) lines.Add($"Body: {Sorted(body)}.");
+        if (attached.Count + huds.Count > 0) lines.Add("Alt+Shift+7 lists them to touch.");
         Answer(string.Join(" ", lines));
         return Task.CompletedTask;
     }

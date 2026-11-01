@@ -34,6 +34,7 @@ public sealed class Look
     CancellationTokenSource? _pending;
     readonly Dictionary<WearableType, (WornItem W, Wearable A)> _bodyParts = new();
     int _lastCofRequested = -1, _lastCofReceived = -1;
+    bool _serverBakedGrid;   // a region of this login baked on the server: the grid does (Second Life)
 
     public string Status { get; private set; } = "not sent yet";
     public DateTime? SentAt { get; private set; }
@@ -81,8 +82,10 @@ public sealed class Look
         {
             _regionAt = DateTime.UtcNow;
             // CSB: the region keeps the appearance across a crossing/teleport; resend the same bakes so a region that
-            // lacks them asks for a rebake. SSB: nothing (as the viewer).
-            if (!ServerBaking(c) && SentAt is not null) Schedule(c, TimeSpan.FromSeconds(3), reupload: false, "new region");
+            // lacks them asks for a rebake. SSB: nothing (as the viewer). A region whose handshake hasn't come yet says
+            // neither (its protocols are still 0, as on Second Life after a crossing into a neighbour that never shook
+            // hands): the grid's way is the one it showed before.
+            if (!ServerBaking(c) && !_serverBakedGrid && SentAt is not null) Schedule(c, TimeSpan.FromSeconds(3), reupload: false, "new region");
         });
     }
 
@@ -90,6 +93,7 @@ public sealed class Look
     public void OnLoggedIn(GridClient c)
     {
         SentAt = null;   // the login send comes first; region changes resend after it
+        _serverBakedGrid = false;
         Array.Clear(_sentBakes);
         Array.Clear(_sentCacheIds);
         _lastCofRequested = _lastCofReceived = -1;
@@ -249,7 +253,11 @@ public sealed class Look
         await _gate.WaitAsync(ct);
         try
         {
-            if (ServerBaking(c)) await SendServerBakedAsync(c, ct);
+            if (ServerBaking(c) || _serverBakedGrid)
+            {
+                _serverBakedGrid = true;
+                await SendServerBakedAsync(c, ct);
+            }
             else await SendClientBakedAsync(c, reupload, ct);
             SentAt = DateTime.UtcNow;
             _s.Log.LogInformation("appearance sent ({Why}): {Status}", why, Status);

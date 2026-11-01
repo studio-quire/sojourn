@@ -82,7 +82,7 @@ public sealed partial class AgentSession
         Look.Wire(c);
         Anims.Wire(c);
         Safety.Wire(c);
-        CrossingGuard.Attach(c, Log);
+        CrossingGuard.Attach(c, Log, msg => Notify.Add("CrossingFailed", "notify", msg, Notifications.None));
         SelfUpdateGuard.Attach(c, Log);
         ChildCapsGuard.Attach(c, Log);
         CircuitGuard.Attach(c, Log);

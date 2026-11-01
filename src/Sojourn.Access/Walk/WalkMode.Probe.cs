@@ -142,13 +142,36 @@ public sealed partial class WalkMode
         }
         else if (!moving) { _left.Closed = _right.Closed = false; }
 
-        // driving: the speed said when it changes a lot
-        if (b.Sitting && (Math.Abs(speed - _lastSpeedTold) > Math.Max(2f, _lastSpeedTold * 0.3f)) && now - _speedToldAt > 3000)
+        // driving: the speed said once it settles at a new one. A vehicle's reported velocity swings from update to update
+        // (a train read 19, 6, 13, 8 metres a second three seconds apart), so it's the distance travelled over 2 s, said
+        // after holding within 15% for 2 s, and only when it differs from the last said by 3 m/s and a third.
+        if (b.Sitting && TrackedSpeed(b, now) is float s)
         {
-            _lastSpeedTold = speed;
-            _speedToldAt = now;
-            if (_set.WalkText("vehicle")) Line(speed < 0.3f ? "Stopped." : $"{SpeedWords(speed)}.");
+            if (Math.Abs(s - _settling) > Math.Max(1f, _settling * 0.15f)) { _settling = s; _settlingSince = now; }
+            else if (now - _settlingSince > 2000 && now - _speedToldAt > 4000
+                && (s < 0.3f ? _lastSpeedTold >= 1f : Math.Abs(s - _lastSpeedTold) > Math.Max(3f, _lastSpeedTold * 0.35f)))
+            {
+                _lastSpeedTold = s;
+                _speedToldAt = now;
+                if (_set.WalkSpeed) Line(s < 0.3f ? "Stopped." : $"{SpeedWords(s)}.");
+            }
         }
+        else if (!b.Sitting && _track.Count > 0) { _track.Clear(); _lastSpeedTold = _settling = 0; }
+    }
+
+    readonly Queue<(long T, Vector3 P)> _track = new();
+    float _settling;
+    long _settlingSince;
+
+    /// <summary>Ground speed over the last 2 s from global positions (a region crossing doesn't jump), once there's 1 s of track.</summary>
+    float? TrackedSpeed(Body b, long now)
+    {
+        var g = new Vector3((b.Region >> 32) + b.Pos.X, (b.Region & 0xFFFFFFFF) + b.Pos.Y, 0);
+        _track.Enqueue((now, g));
+        while (now - _track.Peek().T > 2000) _track.Dequeue();
+        var (t0, p0) = _track.Peek();
+        if (now - t0 < 1000) return null;
+        return Vector3.Distance(g, p0) * 1000f / (now - t0);
     }
 
     void Pass(Body b, Side s, CollideHit? hit, int side, double travelled, long now)

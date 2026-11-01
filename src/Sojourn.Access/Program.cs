@@ -84,6 +84,15 @@ sealed class AccessApp : ApplicationContext
         _sessionFor = choice;
         _main = new MainForm(_opt, _settings, _args);
         _main.FormClosed += (_, _) => ExitThread();
+        _main.NeedsLogin += words =>
+        {
+            // after arrival the session gave up logging in again by itself: the login window takes over, as at the start
+            _askedTerms = false;
+            _mfaAsked = 0;
+            _login.Show();
+            _login.Activate();
+            _login.Failed(words);
+        };
         try { await _main.StartAsync(choice); }
         catch (Exception e) { _login.Failed($"Couldn't start: {e.Message}"); return; }
         _watch.Start();
@@ -97,7 +106,6 @@ sealed class AccessApp : ApplicationContext
         switch (s.Status)
         {
             case AgentStatus.Online:
-                _watch.Stop();
                 _toldFailure = null;
                 if (!_shown)
                 {
@@ -107,14 +115,25 @@ sealed class AccessApp : ApplicationContext
                     _main.Arrived();
                     _login.Hide();
                 }
+                else if (_login.Visible)
+                {
+                    // logged in again from the login window after the session had given up: back to the main window
+                    _login.Hide();
+                    _main.Activate();
+                }
+                // (still watched while in world: logging in again by itself after a drop may meet the grid's terms or MFA)
+                _askedTerms = false;
+                _mfaAsked = 0;
                 break;
             case AgentStatus.TermsRequired when !_askedTerms && s.PendingTerms is { } t:
                 _askedTerms = true;
+                if (_shown) { _login.Show(); _login.Activate(); }
                 _login.Say(t.Kind == "tos" ? "The grid asks you to agree to its Terms of Service." : "The grid has a message to read before you log in.");
                 s.AnswerTerms(_login.AskTerms(t.Kind, t.Message));
                 break;
             case AgentStatus.MfaRequired when s.MfaAsks > _mfaAsked:
                 _mfaAsked = s.MfaAsks;
+                if (_shown) { _login.Show(); _login.Activate(); }
                 _login.Say(_mfaAsked > 1 ? "That code didn't work. The code from your authenticator, again." : "The grid asks for the code from your authenticator.");
                 if (_login.AskMfa(_mfaAsked > 1) is { } code) s.SubmitMfa(code);
                 else _ = s.LogoutAsync();   // cancelled: no login until the person asks again

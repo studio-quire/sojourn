@@ -212,6 +212,7 @@ public sealed partial class MainForm : Form
         WatchWorn();
         WatchSpeakers();
         FriendsBurstSaid();
+        WatchConnection();
     }
 
     string? _lastRegion;
@@ -485,6 +486,7 @@ public sealed partial class MainForm : Form
         Alt+9: the assistant
         Alt+0: settings
         Alt+Shift+4: the inventory's second pane
+        Alt+Shift+7: what you wear, HUDs first, to touch
         Alt or F10: the menu bar
         Control+Tab or Control+Page Down: the next conversation (IMs and group chats), with Shift or Page Up the one before
         Control+W: close a conversation
@@ -549,6 +551,7 @@ public sealed partial class MainForm : Form
         Objects
         Tab: the selected one's parts, then a part's faces
         Enter: touch
+        Alt+Shift+7: what you wear instead (HUDs, then a pet or anything with a menu); Alt+7's Show switches back
 
         Voice
         F4 held: talk
@@ -606,6 +609,7 @@ public sealed partial class MainForm : Form
             case Keys.Alt | Keys.D5: GoArea(_searchPage); return true;
             case Keys.Alt | Keys.D6: GoArea(_placesPage); return true;
             case Keys.Alt | Keys.D7: GoArea(_objectsPage); return true;
+            case Keys.Alt | Keys.Shift | Keys.D7: GoWorn(); return true;
             case Keys.Alt | Keys.D8: GoArea(_noticesPage); return true;
             case Keys.Alt | Keys.D9: GoArea(_assistantPage); return true;
             case Keys.Alt | Keys.D0: GoArea(_settingsPage); return true;

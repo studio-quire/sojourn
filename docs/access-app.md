@@ -111,6 +111,16 @@ MFA code come in their own small windows, answered only by the person's own key 
 opens with the focus in the Say box and "Logged in, in Atelier. F1 for keys." is said. Another account after a failed
 one restarts the app with the form filled in (each account's state is its own).
 
+After that the connection is said too (`MainForm.Connection.cs`): a drop is the session's notice ("Lost the
+connection: no region has answered for half a minute. Logging in again by itself; ...", or the grid's words for a
+disconnect, or a crossing that didn't go through); each try that fails is said once ("Not back yet: Second Life still
+counts you as logged in from before; ... Trying again by itself."); being back is "Back in Second Life, in X."; a
+login that can't succeed by itself is said and the login window opens with the reason, Enter there logging in again
+(it closes on arrival). The grid's terms or a code asked while logging in again come up as at the start. Meanwhile
+what needs the world answers "not in world right now; logging in again". Before, nothing was said: on 2026-11-01 the
+blind tester heard only "Not sent: not logged in" after a train's crossing failed, took it for a crash and closed the
+app while it was logging in again.
+
 ### Areas
 
 Alt+number; Radegast's numbers where Radegast has the same area.
@@ -124,7 +134,7 @@ Alt+number; Radegast's numbers where Radegast has the same area.
 | Alt+4 | Inventory | the tree ("Red Dress, skirt, worn"; "Hair, object, worn on Skull"; "..., marked"), Search, and Show (everything, worn, recent, trash) |
 | Alt+5 | Search | Search for (words), Look for (people, places, events, groups, classifieds), Results |
 | Alt+6 | Places | Landmarks (a tree: the Landmarks folder and Favorites), Teleport history ("Bay City, Harbour, today 14:05"), Go to region (a box), Regions around ("Bay City, 3 people, next door to the north") |
-| Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touchable" (or ", can sit"), nearest first, within 30 m (Show: your HUDs instead); Tab: the selected one's parts, then a part's faces (Parts and faces, below) |
+| Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touchable" (or ", can sit"), nearest first, within 30 m (Show: what you wear instead, Alt+Shift+7); Tab: the selected one's parts, then a part's faces (Parts and faces, below) |
 | Alt+8 | Notices | what waits for an answer, newest first; the selected one's text, keys and reply box; Escape goes back where Control+N came from |
 | Alt+9 | Assistant | a typed request ("Ask the assistant"), its replies, its choices as buttons |
 | Alt+0 | Settings | first the assistant's provider and whether it works, its key or token row and OpenRouter's model (The assistant, below); then the ones that matter here (read-out and its kinds, mutes, timestamps, arrivals, earcons and volumes, the sound output and microphone, walk mode's cues). Each row leads with what it's about, so first-letter navigation finds it ("IM sound", "Footsteps (walk mode)", "Nearby chat read out"; no two rows start with the same three words); Enter, Space or Right moves one to its next value, Shift with them or Left to the one before (a sound's row plays it) |
@@ -196,7 +206,8 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   nearby and a friend) gives what Control+C or Control+X last took in the inventory, each thing confirmed: the blind
   tester's Radegast habit of copying an item and giving it from the person (2026-10-31), beside the inventory's Give
   to... On an object: Touch, Sit, Walk to, Beacon, Face, Describe, Where (with its floating
-  text), Parts, Move... (yours: Placing by words, below); on a HUD only Touch, Describe, Where, Parts.
+  text), Parts, Move..., Take into your inventory, Delete (the last three on your own: Placing by words, below; Delete,
+  also the key, is confirmed in Notices and goes to the Trash); on something worn only Touch, Describe, Where, Parts.
 - Lists: F5 refreshes; a list you're in never changes under you otherwise (it refreshes every 3 s while you're
   elsewhere). Arriving in a list that hasn't filled yet (Second Life's objects wait up to 3 s for their names), its
   name says so ("Objects nearby, looking") and its first item is read as it fills; the landmarks tree has a "Looking
@@ -236,7 +247,7 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
     then puts the box away (deleted when the inventory still has it, taken back when it was no-copy). Rez on the ground
     sets an object down 2 m ahead with its bottom on the terrain (or the floor you stand on, when that's well above
     it); Rez where you say... (S) asks where in words (Placing by words, below).
-- **The second pane** (a blind tester's second inventory window): Alt+Shift+4 opens a second pane beside the first
+- **The second pane** (the blind tester's second inventory window): Alt+Shift+4 opens a second pane beside the first
   ("Inventory, second pane", its own search and Show, `inventory2`) and goes to it; Alt+4 goes to the first. Each also
   from the menu bar's View and the tree's Applications key ("Open a second pane", "To the first pane"). Pressed in the
   pane the focus is already in, either reads where you are. Each pane has its own marks and open folders; Ctrl+M
@@ -483,7 +494,7 @@ in your left ear.
 | sonar (`walk_sonar`, both) | S | twelve pings, one from each hour of the clock, starting ahead and going round to the right: higher the nearer (under 2.5 m, under 7, further), a breath where it's open (nothing within 15 m); then a three-note chime from each opening | "Walls: ahead 11 m, right 1 m, left 1 m. Open: behind. Opening at twelve o'clock, 6 m away, 1.4 m wide. Opening at six o'clock, under a metre away, 2.8 m wide." and doors by name |
 | distance (`walk_distance`, text) | a stretch walked by the arrows has ended: no walking key for 0.7 s, no key at all for 0.7 s, the avatar stopped (or 3 s on), and walk mode's line before it heard out; taps in quick succession (a turn between them too) are one stretch; straight from where it began; under 0.3 m nothing; not a `//go`, a follow or a vehicle | none | "0.9 metres." / "4 metres." (tenths under 3 m: a tap is about 0.9 on Second Life) / "1.8 metres backward." / "1 metre to the left." (by the keys that walked it) |
 | follow (`walk_follow`, text) | following someone | none | "With Kestrel, 3 m, twelve o'clock." / "Kestrel sat down, ..." / "Kestrel is getting away: 24 m, ..." |
-| vehicle (`walk_vehicle`, both) | driving: what's ahead (as the warning, further at speed), the speed when it changes by a third, a seated border crossing | as the warning | "12 m a second." / "Still on Walk Kart after the crossing." / "The crossing left you standing: you're no longer seated." |
+| vehicle (`walk_vehicle`, both) | driving: what's ahead (as the warning, further at speed), a seated border crossing; the speed has its own switch, `walk_speed` (on): the distance travelled over 2 s, said once it has held within 15% for 2 s and differs from the last said by 3 m/s and a third (a train's reported velocity swung 19, 6, 13, 8 three seconds apart, 2026-11-01) | as the warning | "12 m a second." / "Still on Walk Kart after the crossing." / "The crossing left you standing: you're no longer seated." |
 | beacon (`walk_beacon`, both; volume quiet) | a walk under way (`//go`, walk to, a follow, the assistant's walk), else one put on someone or something | a soft pip from the target's direction, every 1.4 s far off down to 0.6 s near, with a fifth above it while it's within 20 degrees ahead (front and back are hard to tell by ear); a small bell flourish on reaching a hand beacon | "Reached Bench." / "Beacon lost: Kestrel isn't here now."; B says where it is |
 | marks (`walk_marks`, both) | O | each thing in turn round from ahead to the right, as the sonar: a door knocks (as the warning's door), a seat sinks (two low notes falling), a touchable thing taps (a small high bell) | "Bench, a seat, 4 metres, twelve o'clock. Garden Gate, a door, 4 metres, three o'clock. Bell, touchable, 4 metres, nine o'clock." |
 
@@ -550,10 +561,13 @@ from guided testing of Radegast, and no list changes while you're in it):
   number, which scripts and builders use. Enter touches that face's middle (llDetectedTouchFace and ST as a click
   there). Without the renderer (`--no-render`, or a PC that can't run it), or on a HUD (not drawn out of sight), the
   list says so and parts are touched whole.
-- **Show** (`objectsShow`, after the lists): things nearby, or your HUDs ("7Seas HUD, on HUD Top Right, 14 parts"),
-  whose buttons are parts like any other: their parts listed, Enter presses one (on the part, without a surface: a HUD
-  drawn as one textured prim with regions by touch position can't be pressed by part; that's the assistant's picture
-  job).
+- **Show** (`objectsShow`, after the lists; Alt+Shift+7 goes straight there): things nearby, or what you wear, HUDs first
+  ("7Seas HUD, on HUD Top Right, 14 parts, touchable"), then everything attached to the body (a pet or a skirt with a
+  menu, "Pet, on Left Shoulder, 3 parts"; the blind tester couldn't reach her worn things, 2026-11-01). Their
+  buttons are parts like any other: their parts listed (a body attachment's without where-words: its offsets are in
+  its attachment point's frame), Enter presses one (on the part, without a surface: a HUD drawn as one textured prim
+  with regions by touch position can't be pressed by part; that's the assistant's picture job). Delete there says to
+  take it off in the inventory.
 - `//touch NAME` touches the nearest thing or part within 10 m with that name; for an object whose root takes no
   touches and exactly one part does, that part (the chest's lid); `//touch OBJECT PART` ("//touch chest latch");
   `//touch NAME face top` (bottom, front, far, left, right, inside, or a number). For routes and notecards.

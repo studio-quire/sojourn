@@ -72,7 +72,10 @@ public sealed partial class WalkMode
         var w = S.Region;
         var av = w?.Avatars.Values.FirstOrDefault(a => a.ID == c.Self.AgentID);
         float half = av is { Scale.Z: > 1f and < 3.5f } ? av.Scale.Z / 2 : 0.95f;
-        if (c.Self.SittingOn != 0 && w != null && av != null && w.Prims.TryGetValue(c.Self.SittingOn, out var seat))
+        // the seat as the current region has the avatar: Self.SittingOn keeps the old region's local id after a
+        // crossing until a full update for the avatar comes, so the seat wasn't found and the listener jumped
+        uint seatId = av is { ParentID: not 0 } ? av.ParentID : c.Self.SittingOn;
+        if (seatId != 0 && w != null && av != null && w.Prims.TryGetValue(seatId, out var seat))
         {
             var root = S.Objects.RootOf(w, seat);
             var set = new HashSet<uint> { root.LocalID };
@@ -118,7 +121,8 @@ public sealed partial class WalkMode
     {
         if (S.Client is not { } c) return;
         var raw = c.Self.SimPosition;
-        if (c.Self.SittingOn != 0 && S.Region is { } w && w.Avatars.Values.FirstOrDefault(a => a.ID == c.Self.AgentID) is { } av) raw = w.RegionPosition(av);
+        if (S.Region is { } w && w.Avatars.Values.FirstOrDefault(a => a.ID == c.Self.AgentID) is { } av && (av.ParentID != 0 || c.Self.SittingOn != 0))
+            raw = w.RegionPosition(av);
         long now = Environment.TickCount64;
         if (raw == _raw) return;
         float dt = (now - _rawAt) / 1000f;

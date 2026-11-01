@@ -381,6 +381,30 @@ By offline IMs to Tessel, 09:52-12:30 SLT, after a while on the old build too (o
   or the default changing (the shim had gone silent for good) and said in one line, the sound output and microphone in
   Alt+0 with Control+Shift+O for the next output, and the answers row in plain words.
 
+### A train ride on 0.1.0.718 (the blind tester, 2026-11-01)
+
+By offline IMs to Tessel, 06:54-10:00 SLT, driving her partner's multi-region train round her atoll (our words), and
+her log (sent 12:57, `local/relay-logs/tester-20261101T175707-4c467c.txt`).
+- **Liked**: the earcons ("relies on them all the time now"); crossings handled well for most of the ride.
+- **Window order**: she now thinks her ask to swap history and input was wrong and sees why it was the other way; a
+  toggle could work, back burner. Left as it is.
+- **Speed lines**: "8 metres a second", "4 metres a second" over and over, not knowing why; she'd like a toggle. The
+  reported velocity swung (19, 6, 13, 8 three seconds apart); now smoothed and said only when settled, with its own
+  switch, `walk_speed` (`docs/access-app.md` > walk cues).
+- **Worn things and HUDs couldn't be clicked** (her "MAJOR"); she didn't know whether their menus would be read. Show:
+  your HUDs existed but she hadn't found it, and body attachments (a pet with a menu) weren't listed at all. Now
+  Alt+Shift+7, every worn thing, HUDs first; their menus come to Notices as any script's do.
+- **No way to delete what she'd rezzed**: Take into your inventory and Delete (the key too, confirmed) on her own things
+  in Objects.
+- **Crossings**: train sounds fading in and out at crossings; at the end, a crossing into the next region lost her seat
+  (the train said "Driver missing! stopping..."), the next region's connection failed, and our reconnect's login was
+  refused ("Login canceled"), so she relogged and reported a crash; when the train moved again copies of her skirt and
+  her pet were left behind. Being looked into on branch `access-crossings`.
+- IMs not read was her own setting (solved).
+- That afternoon she told other blind residents about Sojourn Access, and at least two were downloading it (through
+  Tessel, 13:58 SLT). They have no relay token, so no assistant and no Send a log (it points them to the issues page);
+  what they say may come through her.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -416,6 +440,10 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
+- Sent with 0.1.0.718 (2026-10-31, 23:22): does the assistant now see on her PC (pictures on the processor), and
+  how long does a description take? Are Control+Shift+G (gestures), L (copy the last answer) and O (sound output)
+  good keys? Should a gesture say "Playing X." each time, or stay quiet since its chat line is read back? Answers
+  arrive on the helper channel (`tools/tessel_watch.py`); a log she sends is `python tools/relay.py logs fetch`.
 - First: while Sojourn Access is in the background, should she hear everything, only IMs and menus, or nothing (a
   setting either way)? TWBlue keeps reading off by default as too chatty and relies on sounds; Mudlet reads.
 - F6 mutes the read-out here (the old add-on's key), but in Windows F6 moves between panes: keep it only if she used

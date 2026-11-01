@@ -17,7 +17,10 @@ From the viewer's source (`llaudioengine.cpp`, `llaudiosourcevo.cpp`, `LLViewerO
 
 - **Attached sounds** (llPlaySound, llLoopSound, llLoopSoundMaster/Slave, llSetSoundQueueing, llAdjustSoundVolume,
   llStopSound, llSetSoundRadius): one source per object, following it as it moves (an attachment where it's worn, a
-  HUD's centred), from AttachedSound, AttachedSoundGainChange and the object updates' sound fields; postponed 15 s for
+  HUD's centred) and into the region that last told of it, as the viewer's one object crosses a border (a stale copy
+  left in the old region had kept a train's loop at the border, fading as it pulled away; a child prim that comes
+  before its root keeps its last place till the root comes), from AttachedSound, AttachedSoundGainChange and the
+  object updates' sound fields; postponed 15 s for
   an object not seen yet; a loop already playing is left alone; without the queue flag a new sound stops the old one
   first. Slaves start when the loudest master loops, at its offset, sample-exact (in the mixer). A queued sound plays
   straight after the current one, also sample-exact; one still waiting for its asset is replaced, as in the viewer

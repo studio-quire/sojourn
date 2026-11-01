@@ -3258,15 +3258,13 @@ def huds(run, nonce):
         m = mark()
         say_in_app("//outfit")
         run.expect("//outfit says it too", ["Wearing", name], m, 6)
-        key("alt+7")
+        m = mark()
+        key("alt+shift+7")   # Objects showing what you wear, HUDs first (the blind tester found no way to her HUDs)
         wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
-        u("setfocus id=objectsShow")
-        if not run.check("(Show reached)", wait_focus(lambda d: d["id"] == "objectsShow", 3), focus_label()):
-            return
-        key("down")
-        wait(lambda: u("setfocus id=objects"), 4)   # (the list is refilled and renamed as Show changes)
         listed = wait(lambda: find(f"type=ListItem;name~={name}, on HUD Center, 2 parts"), 8)
-        run.check("Show: Your HUDs lists it, where it's worn and its parts", listed, " | ".join(list_items("id=objects")))
+        run.check("Alt+Shift+7: what you wear lists it first, where it's worn and its parts", listed, " | ".join(list_items("id=objects")))
+        items = list_items("id=objects")
+        run.check("HUDs come first", items and items[0].startswith(name), " | ".join(items))
         if not listed:
             return
         wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 3)
@@ -3353,6 +3351,18 @@ def placing(run, nonce):
         up = wait(lambda: (lambda os: os[0]["pos"][2] if os and os[0]["pos"][2] - z0 > 0.3 else None)(
             api("TesselObjects", "nearby", dist=10, query=name).get("objects")), 6)
         run.check("half a metre higher", up and abs(up - z0 - 0.5) < 0.1, f"from {z0:.2f} to {up}")
+        # deleting what she rezzed (the blind tester found no way, 2026-11-01): Delete in Objects, confirmed in Notices
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("f5")
+        time.sleep(1.5)
+        if run.check("(selected again in Objects)", select_in("id=objects", name), selected_text("id=objects")):
+            m = mark()
+            key("del")
+            confirm_in_notices(run, "Trash", m)
+            run.expect(f"Enter confirms: {name} deleted from the world", [f"Deleted {name}"], m, 10)
+            gone = wait(lambda: not api("TesselObjects", "nearby", dist=20, query=name).get("objects"), 8)
+            run.check("it's gone from the world", gone, "still there")
     finally:
         for o in api("TesselObjects", "nearby", dist=20, query=name).get("objects", []):
             api("TesselBuild", "take", 30, ids=[o["id"]], folder_id=root)

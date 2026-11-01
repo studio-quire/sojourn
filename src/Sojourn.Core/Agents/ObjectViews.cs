@@ -329,6 +329,8 @@ public sealed class ObjectViews
             if (av.ID == _s.AgentId) return false;
             if ((int)p.PrimData.AttachmentPoint is >= 31 and <= 38) return false;
         }
+        // an attachment with no wearer: a copy a crossing left behind (worn things are parented to their avatar)
+        else if (p.IsAttachment) return false;
         return p.PrimData.PCode is PCode.Prim or PCode.Tree or PCode.NewTree or PCode.Grass;
     }
 

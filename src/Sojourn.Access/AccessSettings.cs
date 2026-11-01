@@ -70,7 +70,7 @@ public sealed class AccessSettings
         ("sonar", "both", "the sonar key's sweep (S in walk mode)"),
         ("follow", "text", "following someone: when they stop, turn away or go out of reach"),
         ("distance", "text", "how far the arrows walked, said when you pause (M asks; no sound)"),
-        ("vehicle", "both", "driving: what's ahead and the speed when it changes a lot"),
+        ("vehicle", "both", "driving: a warning of what's ahead (the speed has its own switch, walk_speed)"),
         ("beacon", "both", "a beacon on where you're heading (a //go, walk to, a follow, the assistant's walk, or one you put on "
             + "someone or something; text: reaching it, or losing it)"),
         ("marks", "both", "doors, seats and touchable things around, sounding from where they are (O in walk mode)"),
@@ -124,6 +124,7 @@ public sealed class AccessSettings
     /// <summary>Degrees a second while Left or Right is held.</summary>
     public double WalkTurnRate => Walk.TryGetValue("turn_rate", out var v) ? double.Parse(v, System.Globalization.CultureInfo.InvariantCulture) : 90;
     /// <summary>A walk with no way around what's in the way ends in a teleport there (where the region allows it).</summary>
+    public bool WalkSpeed => !Walk.TryGetValue("speed", out var v) || v == "on";
     public bool WalkTeleportFallback => !Walk.TryGetValue("teleport_fallback", out var v) || v == "on";
 
     /// <summary>Which of Access's own defaults for the session's settings (vr-settings.json, shared code with the VR client,
@@ -235,6 +236,9 @@ public sealed class AccessSettings
             + "the assistant's describing): economy, Claude Haiku 5.5, about a tenth of a cent each; best, Claude Opus 5.5, closer "
             + "and surer on detail, about two cents each", string.Join(", ", DescribingChoices), () => Describing,
             SettingsApi.Choice("access_describing", DescribingChoices, i => { Describing = DescribingChoices[i]; Save(); changed(); })));
+        api.Add("walk_speed", new SettingsApi.Setting("access", "Sojourn Access: while seated on a moving vehicle, its speed said "
+            + "when it settles at a new one (V says it any time)", "on, off", () => WalkSpeed,
+            SettingsApi.Switch("walk_speed", on => { Walk["speed"] = on ? "on" : "off"; Save(); changed(); })));
         api.Add("walk_teleport_fallback", new SettingsApi.Setting("access", "Sojourn Access: a walk (//go, walk to, the assistant's) "
             + "with no way around what's in the way teleports there instead, where the region allows it", "on, off", () => WalkTeleportFallback,
             SettingsApi.Switch("walk_teleport_fallback", on => { Walk["teleport_fallback"] = on ? "on" : "off"; Save(); changed(); })));

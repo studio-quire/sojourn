@@ -145,7 +145,9 @@ public sealed class WorldSounds : IDisposable
         c.Sound.AttachedSound += (_, e) => _events.Enqueue(() => OnAttached(e));
         c.Sound.AttachedSoundGainChange += (_, e) => _events.Enqueue(() =>
         {
-            if (_sources.TryGetValue(e.ObjectID, out var src)) src.Gain = Math.Clamp(e.Gain, 0, 1);
+            if (!_sources.TryGetValue(e.ObjectID, out var src)) return;
+            src.Gain = Math.Clamp(e.Gain, 0, 1);
+            Rehome(src, e.Simulator.Handle);
         });
         c.Sound.PreloadSound += (_, e) => _events.Enqueue(() => OnPreload(e));
         c.Objects.ObjectUpdate += (_, e) =>
@@ -250,8 +252,28 @@ public sealed class WorldSounds : IDisposable
             else { _postponed.Remove(e.ObjectID); _postponedIds.TryRemove(e.ObjectID, out _); }
             return;
         }
+        if (_sources.TryGetValue(e.ObjectID, out var have)) Rehome(have, e.Simulator.Handle);
         SetAttached(e.Simulator.Handle, e.ObjectID, e.SoundID, e.OwnerID, e.Gain, e.Flags, null);
     }
+
+    /// <summary>The object's sound follows it into the region that last told of it, as the viewer's sound follows its
+    /// one object across a border. A source stayed with the region it began in while that region kept its copy, and
+    /// the old region often never kills its copy of a vehicle that left: a train's loop was placed where the train had
+    /// crossed and faded as it pulled away, back only when the copy went or the track came near again (the blind
+    /// tester, 2026-11-01).</summary>
+    void Rehome(Source s, ulong handle)
+    {
+        if (!s.Attached || s.Region == handle || handle == 0) return;
+        var from = s.Region;
+        s.Region = handle;
+        UpdatePosition(s);
+        if (_rehomeLogged.Add((from, handle)))
+            _log($"audio: sounds of objects that crossed from {RegionName(from)} now heard from {RegionName(handle)}");
+    }
+
+    readonly HashSet<(ulong, ulong)> _rehomeLogged = new();   // once a pair of regions, not once a prim
+
+    string RegionName(ulong handle) => _s.World.Region(_s.GridKey, handle)?.Name is { Length: > 0 } n ? n : $"{handle >> 40},{(handle & 0xffffffff) >> 8}";
 
     void OnPreload(PreloadSoundEventArgs e)
     {
@@ -271,7 +293,11 @@ public sealed class WorldSounds : IDisposable
             if (DateTime.UtcNow < post.Until)
                 SetAttached(handle, id, post.E.SoundID, post.E.OwnerID, post.E.Gain, post.E.Flags, null);
         }
-        if (_sources.TryGetValue(id, out var have)) have.Cutoff = radius;
+        if (_sources.TryGetValue(id, out var have))
+        {
+            have.Cutoff = radius;
+            Rehome(have, handle);
+        }
         // the update carries the object's sound state every time; SetAttached ignores a loop already playing
         SetAttached(handle, id, sound, owner, gain, flags, radius);
     }
@@ -403,7 +429,9 @@ public sealed class WorldSounds : IDisposable
         }
         s.MissingSince = DateTime.MaxValue;
         s.Region = w.Handle;
-        var at = Global(w.Handle, w.RegionPosition(p));
+        // a child that came before its root (after a crossing): where it was heard last, until the root comes
+        if (!w.TryRegionPosition(p, out var local)) return;
+        var at = Global(w.Handle, local);
         s.Pos = at;
         s.CutoffPos = at;
         s.Hud = false;
@@ -650,7 +678,8 @@ public sealed class WorldSounds : IDisposable
                     ["channel"] = s.Channel, ["loop"] = s.Loop, ["gain"] = Math.Round(s.Gain, 3), ["muted"] = s.Muted,
                     ["cutoff"] = Math.Round(s.Cutoff, 2), ["dist"] = Math.Round((s.Pos - ear).Length(), 2),
                     ["priority"] = Math.Round(s.Priority, 5), ["queued"] = s.Queued == UUID.Zero ? null : s.Queued.ToString(),
-                    ["played_once"] = s.PlayedOnce, ["hud"] = s.Hud,
+                    ["played_once"] = s.PlayedOnce, ["hud"] = s.Hud, ["region"] = s.Attached ? RegionName(s.Region) : null,
+                    ["pos"] = s.PosKnown ? new System.Text.Json.Nodes.JsonArray(Math.Round(s.Pos.X, 2), Math.Round(s.Pos.Y, 2), Math.Round(s.Pos.Z, 2)) : null,
                 });
             done.TrySetResult(arr);
         });

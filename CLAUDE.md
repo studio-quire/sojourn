@@ -17,7 +17,7 @@ Working name. Our own Second Life client, built for VR first, with a personal AI
   social, land, building, inventory and the AO, the map, voice and media extras, the menus, the login screen, the
   launcher). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
 - **Sojourn Access**: milestones M0-M5 built (2026-10-29); test builds (the assistant bundled) published as releases
-  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.707 (2026-10-31); a blind
+  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.718 (2026-10-31); a blind
   tester's first session on Second Life was 2026-10-30. `docs/access.md` (plan, milestones, what testers said), `docs/access-app.md` (as built, packaging).
 - **Public source** since 2026-10-29 (`docs/publishing.md`). The VR viewer itself has no release yet.
 - **Next**: the board's checks; the gaps left in `docs/viewer-gaps.md` (> Closing the rest) and the calls waiting on

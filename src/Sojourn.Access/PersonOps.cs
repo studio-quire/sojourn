@@ -33,10 +33,10 @@ public sealed class PersonOps(AgentSession s)
         args["op"] = op;
         if (!s.Api.ApiMap.TryGetValue(pump, out var api) || !api.Ops.TryGetValue(op, out var handler))
             return Json.Error($"{pump}.{op} isn't here");
-        if (api.NeedsSession && !s.Online) return Json.Error("not logged in");
+        if (api.NeedsSession && !s.Online) return Json.Error(NotIn);
         try { return await handler.Run(args, ct) as JsonObject ?? new JsonObject(); }
         catch (LeapError e) { return Json.Error(e.Message); }
-        catch (NotConnected) { return Json.Error("not logged in"); }
+        catch (NotConnected) { return Json.Error(NotIn); }
         catch (OperationCanceledException) { throw; }
         catch (Exception e) { return Json.Error($"{e.GetType().Name}: {e.Message}"); }
     }
@@ -47,8 +47,11 @@ public sealed class PersonOps(AgentSession s)
         args ??= new JsonObject();
         args["op"] = op;
         try { return await s.Api.CallAsync(pump, args, reply: true, TimeSpan.FromSeconds(150), ct) as JsonObject ?? new JsonObject(); }
-        catch (NotConnected) { return Json.Error("not logged in"); }
+        catch (NotConnected) { return Json.Error(NotIn); }
     }
+
+    /// <summary>Why an op can't run out of world: logging in again after a drop is said as that.</summary>
+    string NotIn => s.WantsOnline ? "not in world right now; logging in again" : "not logged in";
 
     public static string? Error(JsonObject r) => r["error"] is JsonValue v && v.TryGetValue<string>(out var e) ? e : null;
 
@@ -95,8 +98,10 @@ public sealed class PersonOps(AgentSession s)
 
     public sealed record Thing(UUID Id, string Name, Vector3 Pos, double Dist, bool Sit, bool Touch, string? Text)
     {
-        /// <summary>One of the person's own HUDs (Objects' Show: your HUDs): Text says where it's worn.</summary>
+        /// <summary>Something the person wears (Objects' Show: what you wear; a HUD or on the body): Text says where.</summary>
         public bool Hud { get; init; }
+        /// <summary>The person's own, in the world: theirs to take or delete.</summary>
+        public bool Mine { get; init; }
     }
 
     /// <summary>Objects around (root objects, not attachments), nearest first; query: words in the name, description
@@ -115,7 +120,7 @@ public sealed class PersonOps(AgentSession s)
             var flags = (o["flags"] as JsonArray ?? new()).Select(f => f?.ToString()).ToHashSet();
             var name = o.Str("name") is { Length: > 0 } n ? n : "object";
             list.Add(new Thing(id, name, new Vector3((float)pos[0]!.GetValue<double>(), (float)pos[1]!.GetValue<double>(), (float)pos[2]!.GetValue<double>()),
-                o["dist"]?.GetValue<double>() ?? 0, o.Str("click_action") == "sit", flags.Contains("touch"), o.Str("text")));
+                o["dist"]?.GetValue<double>() ?? 0, o.Str("click_action") == "sit", flags.Contains("touch"), o.Str("text")) { Mine = flags.Contains("mine") });
         }
         return list.OrderBy(t => t.Dist).ToList();
     }

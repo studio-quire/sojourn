@@ -58,6 +58,7 @@ public sealed partial class MainForm
             Later("&Search", "Alt+5", () => GoArea(_searchPage)),
             Later("P&laces", "Alt+6", () => GoArea(_placesPage)),
             Later("O&bjects", "Alt+7", () => GoArea(_objectsPage)),
+            Later("What you wea&r, to touch", "Alt+Shift+7", GoWorn),
             Later("&Notices", "Alt+8", () => GoArea(_noticesPage)),
             Later("The &assistant", "Alt+9", () => GoArea(_assistantPage)),
             Later("Se&ttings", "Alt+0", () => GoArea(_settingsPage)),

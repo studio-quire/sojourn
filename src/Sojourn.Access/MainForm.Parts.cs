@@ -10,7 +10,8 @@ namespace Sojourn.Access;
 /// it ("Parts of Treasure Chest"), each by name and number or, unnamed, by what and where it is (Linkset.cs), and the part
 /// selected there has its faces listed below that ("Faces of part 2"), by direction from where the person is. Enter on a
 /// part touches that part (not the root), Enter on a face touches that face; the Applications key has the rest. Show
-/// switches the objects list between what's nearby and the person's own HUDs, whose buttons are parts like any other.
+/// switches the objects list between what's nearby and what the person wears (HUDs first, then attachments such as a pet
+/// with a menu; Alt+Shift+7), whose buttons are parts like any other.
 /// The lists follow the selection above them only when it moves: Tab passing through a list never changes what the next
 /// one is about (Radegast's lesson: tabbing past its object list made the root the target again, the guided test of
 /// 2026-10-29), and none changes while the person is in it.
@@ -25,18 +26,18 @@ public sealed partial class MainForm
     Sojourn.Session.Offscreen.OffscreenRenderer? _view;
     Sojourn.Session.Collision.LocalCollision? _rays;
 
-    bool ShowingHuds => _objectsShow.SelectedIndex == 1;
+    bool ShowingWorn => _objectsShow.SelectedIndex == 1;
 
     void BuildParts()
     {
         _parts = List("parts", "Parts");
         _faces = List("faces", "Faces");
         _objectsShow = new ComboBox { Name = "objectsShow", AccessibleName = "Show", DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
-        _objectsShow.Items.AddRange(new object[] { "Things nearby", "Your HUDs" });
+        _objectsShow.Items.AddRange(new object[] { "Things nearby", "What you wear, HUDs first" });
         _objectsShow.SelectedIndex = 0;
         _objectsShow.SelectedIndexChanged += (_, _) =>
         {
-            _objects.AccessibleName = ShowingHuds ? "Your HUDs" : "Objects nearby";
+            _objects.AccessibleName = ShowingWorn ? "What you wear" : "Objects nearby";
             _ = RefreshObjects(_objectsShow.Focused);
         };
 
@@ -45,7 +46,7 @@ public sealed partial class MainForm
             _partMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_parts.FocusedItem?.Tag is Linkset.Part p) act(p); }));
         PartItem("&Touch", p => _ = TouchPartAsync(p, null));
         PartItem("&Sit", p => _ = SitPartAsync(p));
-        PartItem("W&here", p => Answer(p.Hud ? $"{PartName(p)} is on your HUD." : $"{PartName(p)} is {_ops.Where(L(p.Pos), full: true)}."));
+        PartItem("W&here", p => Answer(p.Hud ? $"{PartName(p)} is {(OnHud(p.Root) ? "on your HUD" : "part of something you're wearing")}." : $"{PartName(p)} is {_ops.Where(L(p.Pos), full: true)}."));
         PartItem("&Describe", p => _ = DescribeAsync(Of(p)));
         PartItem("&Faces", p => { _faces.Focus(); });
         KeysOn(_partMenu, ("&Touch", "Enter"), ("&Describe", "Control+D"), ("&Faces", "Tab"));
@@ -112,7 +113,7 @@ public sealed partial class MainForm
         _partsOf = t.Id;
         _parts.AccessibleName = $"Parts of {t.Name}";
         if (!same) Fill(_parts, new(), "Finding its parts.");
-        var parts = await PartsOfAsync(t.Id, t.Hud);
+        var parts = await PartsOfAsync(t.Id, t.Hud, placed: !t.Hud || OnHud(t.Id));
         if (version != _partsVersion || IsDisposed) return;
         if (parts == null) { Fill(_parts, new(), $"{t.Name} isn't here any more."); return; }
         Fill(_parts, parts.Select(p => (p.Words, p.Id.ToString(), (object)p)).ToList(), "No parts.");
@@ -120,7 +121,7 @@ public sealed partial class MainForm
         if (_parts.FocusedItem?.Tag is Linkset.Part first && (first.Id != _facesOf || said)) _ = RefreshFacesAsync(first);
     }
 
-    async Task<List<Linkset.Part>?> PartsOfAsync(UUID root, bool hud)
+    async Task<List<Linkset.Part>?> PartsOfAsync(UUID root, bool hud, bool placed = true)
     {
         if (Host?.Session.Region is not { } w || w.PrimById(root) is not { } prim) return null;
         // every part selected briefly, as the edit tool's linked parts are (Radegast's parts list does the same): the
@@ -135,7 +136,7 @@ public sealed partial class MainForm
             try { await views.FetchAsync(w, missing, TimeSpan.FromSeconds(2), CancellationToken.None); } catch (Exception) { }
         if (Host.Session.Region is not { } w2 || w2.PrimById(root) is not { } p2) return null;
         var me = _ops.Me() is { } m ? new System.Numerics.Vector3(m.Pos.X, m.Pos.Y, m.Pos.Z) : (System.Numerics.Vector3?)null;
-        return Linkset.Parts(w2, Host.Session.Objects, p2, Host.Session, me, hud);
+        return Linkset.Parts(w2, Host.Session.Objects, p2, Host.Session, me, hud, placed);
     }
 
     /// <summary>The selected part's faces by direction from the person (the renderer out of sight knows them once it has
@@ -145,7 +146,7 @@ public sealed partial class MainForm
         int version = ++_facesVersion;
         _facesOf = p.Id;
         _faces.AccessibleName = $"Faces of {PartName(p)}";
-        if (p.Hud) { Fill(_faces, new(), "A HUD's faces aren't drawn here: Enter on the part touches it."); return; }
+        if (p.Hud) { Fill(_faces, new(), "Faces of what you wear aren't drawn here: Enter on the part touches it."); return; }
         if (ViewWords.Gone(_view)) { Fill(_faces, new(), $"Faces need the 3D view. {ViewWords.Down(_view)} Enter on the part touches it."); return; }
         Fill(_faces, new(), "Finding its faces.");
         var set = await _view!.FacesAsync(p.Id);
@@ -182,21 +183,44 @@ public sealed partial class MainForm
         Answer(PersonOps.Error(r) is { } e ? $"Didn't sit: {e}" : $"Sitting on {PartName(p)}.");
     }
 
-    /// <summary>The person's own HUDs (worn on the HUD points), for the objects list's Show.</summary>
-    async Task<List<PersonOps.Thing>> HudsAsync()
+    /// <summary>"2 HUDs and 14 other things worn."</summary>
+    string WornCount(List<PersonOps.Thing> things)
+    {
+        int huds = things.Count(t => OnHud(t.Id)), rest = things.Count - huds;
+        string h = huds == 1 ? "1 HUD" : $"{huds} HUDs", r = rest == 1 ? "1 other thing worn" : $"{rest} other things worn";
+        return huds == 0 ? $"No HUDs, {(rest == 1 ? "1 thing" : $"{rest} things")} worn." : rest == 0 ? $"{h}." : $"{h} and {r}.";
+    }
+
+    /// <summary>Alt+Shift+7: the objects list showing what you wear (HUDs first), the focus in it.</summary>
+    void GoWorn()
+    {
+        if (_objectsShow.SelectedIndex != 1) _objectsShow.SelectedIndex = 1;
+        GoArea(_objectsPage);
+    }
+
+    /// <summary>Whether a worn object (by its root) is on a HUD point rather than the body.</summary>
+    bool OnHud(UUID root) => Host?.Session.Region?.PrimById(root) is { } p && (int)p.PrimData.AttachmentPoint is >= 31 and <= 38;
+
+    /// <summary>What the person wears, for the objects list's Show: HUDs first, then what's attached to the body (a pet or
+    /// a skirt with a menu is touched as a HUD is; the blind tester couldn't reach her worn things, 2026-11-01). Thing.Hud
+    /// marks them all as worn.</summary>
+    async Task<List<PersonOps.Thing>> WornAsync()
     {
         if (Host?.Session.Region is not { } w || _ops.Client is not { } c) return new();
-        var roots = w.Prims.Values.Where(p => p.ParentID == c.Self.LocalID && c.Self.LocalID != 0 && (int)p.PrimData.AttachmentPoint is >= 31 and <= 38).ToList();
+        var roots = w.Prims.Values.Where(p => p.ParentID == c.Self.LocalID && c.Self.LocalID != 0).ToList();
         // a worn object's own name comes only once it's been selected (the edit tool's)
         if (roots.Any(p => p.Properties == null))
             try { await Host.Session.Objects.FetchFullAsync(w, roots, TimeSpan.FromSeconds(3), CancellationToken.None); } catch (Exception) { }
         return roots.Select(p =>
         {
-            var name = p.Properties?.Name is { Length: > 0 } n ? n : "a HUD";
+            bool hud = (int)p.PrimData.AttachmentPoint is >= 31 and <= 38;
+            var name = p.Properties?.Name is { Length: > 0 } n ? n : hud ? "a HUD" : "something worn";
             var point = Sojourn.Core.Agents.ObjectViews.AttachPointName((int)p.PrimData.AttachmentPoint);
             int count = Host.Session.Objects.Linkset(w, p).Count;
-            return new PersonOps.Thing(p.ID, name, default, 0, false, false, $"on {point}, {(count == 1 ? "1 part" : $"{count} parts")}") { Hud = true };
-        }).OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            bool touch = Host.Session.Objects.Linkset(w, p).Any(x => (Host.Session.State.PrimFlagsOf(x) & PrimFlags.Touch) != 0);
+            return (Hud: hud, Thing: new PersonOps.Thing(p.ID, name, default, 0, false, touch,
+                $"on {point}, {(count == 1 ? "1 part" : $"{count} parts")}{(touch ? ", touchable" : "")}") { Hud = true });
+        }).OrderBy(x => x.Hud ? 0 : 1).ThenBy(x => x.Thing.Name, StringComparer.OrdinalIgnoreCase).Select(x => x.Thing).ToList();
     }
 
     /// <summary>`//touch NAME [face WORDS]`: the nearest part (or object) within 10 m whose name has the words, or the

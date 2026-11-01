@@ -38,7 +38,8 @@
 //                                                         next touch ("NAME renamed to N")
 //   cart [NAME] X Y Z                                     a cart to drive seated (default "Walk Cart"): takes the sitter's
 //                                                         movement keys, moves on forward and back, turns on left and right
-//   kart [NAME] X Y Z                                     a physical car vehicle (default "Walk Kart") for seated crossings
+//   kart [NAME] X Y Z [sound UUID]                        a physical car vehicle (default "Walk Kart") for seated crossings;
+//                                                         with a sound, it loops it while someone sits in it
 //   cleanup                                               take every object it rezzed in this run to its trash
 //   derez NAME                                            take every object it rezzed with that name to its trash
 //   pos | whereis | quit                                  "REGION <x, y, z> heading DEG" (as the region has it)
@@ -557,21 +558,28 @@ static class Program
     /// turns physical while sat on, drives forward at up to 10 m/s and steers; "kart controls taken" when it has them.</summary>
     static async Task<string> Kart(string rest)
     {
-        if (NameAndPos(rest, "Walk Kart") is not var (name, pos)) return "ERR kart [NAME] X Y Z";
+        var loop = "";
+        if (rest.IndexOf(" sound ", StringComparison.Ordinal) is var at and >= 0)
+        {
+            loop = rest[(at + 7)..].Trim();
+            rest = rest[..at];
+            if (!UUID.TryParse(loop, out _)) return "ERR kart [NAME] X Y Z [sound UUID]";
+        }
+        if (NameAndPos(rest, "Walk Kart") is not var (name, pos)) return "ERR kart [NAME] X Y Z [sound UUID]";
         var sim = client.Network.CurrentSim;
         var box = await RezBox(pos, new Vector3(2.0f, 1.2f, 0.5f));
         if (box == null) return "ERR no object came back";
         Named(box.LocalID, name);
         var script = await UploadScript("Walk kart",
-            "integer K; default { state_entry() { llSitTarget(<0, 0, 0.75>, ZERO_ROTATION); "
+            "integer K; string LOOP = \"" + loop + "\"; default { state_entry() { llSitTarget(<0, 0, 0.75>, ZERO_ROTATION); "
             + "K = CONTROL_FWD | CONTROL_BACK | CONTROL_ROT_LEFT | CONTROL_ROT_RIGHT | CONTROL_LEFT | CONTROL_RIGHT; "
             + "llSetVehicleType(VEHICLE_TYPE_CAR); llSetVehicleFloatParam(VEHICLE_LINEAR_MOTOR_TIMESCALE, 0.4); "
             + "llSetVehicleFloatParam(VEHICLE_LINEAR_MOTOR_DECAY_TIMESCALE, 0.6); llSetVehicleFloatParam(VEHICLE_ANGULAR_MOTOR_TIMESCALE, 0.2); "
             + "llSetVehicleFloatParam(VEHICLE_ANGULAR_MOTOR_DECAY_TIMESCALE, 0.3); llSetVehicleVectorParam(VEHICLE_LINEAR_FRICTION_TIMESCALE, <100, 0.5, 100>); "
             + "llSay(0, llGetObjectName() + \" ready\"); } "
             + "changed(integer c) { if (c & CHANGED_LINK) { key who = llAvatarOnSitTarget(); "
-            + "if (who != NULL_KEY) { llSetStatus(STATUS_PHYSICS, TRUE); llRequestPermissions(who, PERMISSION_TAKE_CONTROLS); } "
-            + "else { llSetStatus(STATUS_PHYSICS, FALSE); llSay(0, \"kart empty\"); } } } "
+            + "if (who != NULL_KEY) { llSetStatus(STATUS_PHYSICS, TRUE); llRequestPermissions(who, PERMISSION_TAKE_CONTROLS); if (LOOP != \"\") llLoopSound(LOOP, 1.0); } "
+            + "else { llSetStatus(STATUS_PHYSICS, FALSE); llStopSound(); llSay(0, \"kart empty\"); } } } "
             + "run_time_permissions(integer p) { if (p & PERMISSION_TAKE_CONTROLS) { llTakeControls(K, TRUE, FALSE); llSay(0, \"kart controls taken\"); } } "
             + "control(key id, integer level, integer edge) { vector m = ZERO_VECTOR; if (level & CONTROL_FWD) m.x = 10; if (level & CONTROL_BACK) m.x = -5; "
             + "llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION, m); float t = 0; if (level & (CONTROL_ROT_LEFT | CONTROL_LEFT)) t = 1.5; "

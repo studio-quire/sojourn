@@ -126,6 +126,7 @@ public sealed class WorldHub
             if (e.Avatar.ID == client.Self.AgentID) SelfIn(gridKey, client, e.Simulator, log);
         });
         client.Network.SimChanged += (_, _) => Guard(() => SelfIn(gridKey, client, client.Network.CurrentSim, log));
+        client.Self.RegionCrossed += (_, e) => Guard(() => { if (e.NewSimulator != null) SelfIn(gridKey, client, e.NewSimulator, log); });
         client.Avatars.AvatarAppearance += (_, e) => Guard(() => RememberAppearance(gridKey, e));
         client.Self.ChatFromSimulator += (_, e) => Guard(() =>
         {
@@ -284,6 +285,38 @@ public sealed class WorldHub
         foreach (var w in _regions.Values)
             if (w != here && w.GridKey == gridKey && w.RemoveAvatarsById(c.Self.AgentID) > 0)
                 log?.Invoke($"own avatar in {here.Name}: dropped the copy left in {w.Name}");
+        // (not mid-crossing: the region still current may be the one being left, the other the one taking me in)
+        if (!c.Self.IsCrossing()) LeftBehind(gridKey, c, here, me, log);
+    }
+
+    /// <summary>What the avatar carries and sits on, left behind in other regions: the old region often never kills
+    /// them either, and its copies are read as real things there. My attachments (also those that came again without
+    /// their avatar as parent, which no sweep down from the avatar finds), and the linkset I sit on in the region that
+    /// has me (a vehicle that carried me over can only be here). Only those: an object that left the region I'm in for a
+    /// neighbour may itself be the stale copy, so nothing else is judged by which region has it. 2026-11-01: after a
+    /// train ride the blind tester found copies of her skirt and her pet in the objects list.</summary>
+    void LeftBehind(string gridKey, GridClient c, RegionWorld here, Avatar me, Action<string>? log)
+    {
+        var mine = c.Self.AgentID;
+        UUID seatRoot = UUID.Zero;
+        if (me.ParentID != 0 && here.Prims.TryGetValue(me.ParentID, out var seat))
+        {
+            var root = seat;
+            for (int i = 0; i < 8 && root.ParentID != 0 && here.Prims.TryGetValue(root.ParentID, out var up); i++) root = up;
+            seatRoot = root.ID;
+        }
+        foreach (var w in _regions.Values)
+        {
+            if (w == here || w.GridKey != gridKey) continue;
+            int worn = 0, ride = 0;
+            foreach (var (local, p) in w.Prims)
+                if (p.IsAttachment && p.OwnerID == mine && w.Prims.ContainsKey(local)) worn += w.RemoveObject(local);
+            if (seatRoot != UUID.Zero && w.PrimById(seatRoot) is { } stale) ride = w.RemoveObject(stale.LocalID);
+            if (worn + ride > 0)
+                log?.Invoke($"own avatar in {here.Name}: dropped what was left in {w.Name}" +
+                            (worn > 0 ? $", {worn} prim{(worn == 1 ? "" : "s")} of my attachments" : "") +
+                            (ride > 0 ? $", the {ride}-prim seat I'm on" : ""));
+        }
     }
 
     static void Place(Simulator sim, (ulong Handle, uint SizeX, uint SizeY) k)

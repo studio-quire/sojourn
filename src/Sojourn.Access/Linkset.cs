@@ -32,7 +32,10 @@ public static class Linkset
 
     /// <summary>The parts of a root's linkset from the world model, root first, numbered, with their words; me: where the
     /// person is (region frame) for "nearer you", null for a HUD (its own frame: up, down, left and right on the screen).</summary>
-    public static List<Part> Parts(RegionWorld w, ObjectViews views, Primitive root, AgentSession s, System.Numerics.Vector3? me, bool hud)
+    /// placed false: no where-words (a body attachment's offsets are in its attachment point's frame, which says nothing
+    /// to the person).
+    public static List<Part> Parts(RegionWorld w, ObjectViews views, Primitive root, AgentSession s, System.Numerics.Vector3? me, bool hud,
+        bool placed = true)
     {
         var prims = views.Linkset(w, root);
         var ordered = new List<Primitive> { root };
@@ -52,14 +55,14 @@ public static class Linkset
             var part = new Part(p.ID, root.ID, p.LocalID, i + 1, ordered.Count, name, i == 0 ? name.Length > 0 && name is not ("Object" or "Primitive")
                 : !Unnamed(name, rootName), p.PrimData.PCode == PCode.Prim ? ObjectViews.ShapeName(p) : "part", pos, V(p.Scale),
                 (flags & PrimFlags.Touch) != 0, p.ClickAction == ClickAction.Sit, desc, hud, rootName.Length > 0 ? rootName : "the object");
-            list.Add(part with { Words = Words(part, rootName, rootPos, me) });
+            list.Add(part with { Words = Words(part, rootName, rootPos, me, placed) });
         }
         return list;
     }
 
     /// <summary>"Treasure Chest, part 1 of 5, the root, a box", "Part 2 of 5, a box above the root, touchable",
     /// "Latch, part 3 of 5, a tiny box in front of the root, nearer you, touchable"; a lone prim is "the whole object".</summary>
-    public static string Words(Part p, string rootName, System.Numerics.Vector3 rootPos, System.Numerics.Vector3? me)
+    public static string Words(Part p, string rootName, System.Numerics.Vector3 rootPos, System.Numerics.Vector3? me, bool placed = true)
     {
         string number = p.Count == 1 ? "the whole object" : $"part {p.Number} of {p.Count}";
         string what = $"a {Article(Size(p.Scale))}{Kind(p.Shape)}";
@@ -68,7 +71,7 @@ public static class Linkset
             words = (p.Named ? $"{p.Name}, {number}" : char.ToUpperInvariant(number[0]) + number[1..]) + (p.Count > 1 ? ", the root, " : ", ") + what;
         else
         {
-            var where = Where(p.Pos - rootPos, rootPos, me, p.Hud);
+            var where = placed ? Where(p.Pos - rootPos, rootPos, me, p.Hud) : "";
             words = (p.Named ? $"{p.Name}, {number}, " : $"Part {p.Number} of {p.Count}, ") + what + (where.Length > 0 ? " " + where : "");
         }
         if (p.Desc != null && !p.Named) words += $", described as {p.Desc}";

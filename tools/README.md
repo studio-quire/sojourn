@@ -9,6 +9,7 @@ grid unless the script says so).
 - `launcher.py`: the launcher (Sojourn.exe): build, run, its states drawn offscreen, `check` its terms and MFA path on a hidden desktop.
 - `access.py`: Sojourn Access: build, run, `package` (docs/access-app.md > Packaging; `fetch-lavapipe` first, the view's software driver), the visitor bot's commands, its test on a hidden desktop.
 - `probe.py`: Sojourn.Session without the VR client: two console hosts log in, answer SojournSettings and hear each other; no GPU.
+- `crossing.py`: a seated region crossing in the visitor's kart through one console host (in the new region, still seated, connected; `--sound` its loop heard from the kart; `--noack MS` the old 60 s wait emulated); no GPU.
 - `dev.py`: dev mode: start, watch, say, shot, log, call, restart (docs/driving.md).
 - `grid.py`: the local grid: start/stop, accounts, console, `scene light|dense`, `voice up`.
 - `fixtures.py`: the test inventory, fountain and second account.

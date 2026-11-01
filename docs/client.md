@@ -436,12 +436,34 @@ lab 8300-8899; Tessel 9063, 9070, 9020, 9080.
   prim in a neighbour: without the guard the agent and the view followed it down).
 - Region crossings: LibreMetaverse 3.2.0 undoes a crossing whose arrival reply comes before it listens (30 s later it
   moves the agent back into the old region) and leaves the new circuit without its handshake flag, which stops every
-  AgentUpdate. `Agents/CrossingGuard.cs` finishes the crossing and restores the flag (by reflection on its private
-  members: recheck them on a LibreMetaverse upgrade; the guard logs "crossing into ..." when it acts).
+  AgentUpdate. Before either, its Connect resends UseCircuitCode on the circuit it already has and blocks up to 60 s
+  for the acknowledgement before CompleteAgentMovement goes out (the viewer sends only CompleteAgentMovement): on the
+  main grid a region didn't acknowledge it while the blind tester rode a train over its border (2026-11-01), so the
+  region never took her in, the train's script stopped for want of a driver and the session lost its region. And it
+  ignores a crossing that comes while the last is unfinished (a vehicle over two borders in seconds).
+  `Agents/CrossingGuard.cs` finishes the crossing, restores the flag, lets the acknowledgement wait go at once for a
+  circuit already up (crossings, and teleports into a connected neighbour), ends a stale crossing for a newer one, and
+  says a crossing that fails (notice `CrossingFailed`). All by reflection on private members: recheck them on a
+  LibreMetaverse upgrade; the guard logs "crossing into ..." when it acts. `SOJOURN_CROSSING_GUARD=0` turns the last
+  three off; with it, `SOJOURN_CROSSING_NOACK=MS` holds each crossing MS ms as the wait did. OpenSim takes a late
+  CompleteAgentMovement 40 s on and keeps the rider seated; on Second Life the train found itself without a driver
+  about 10 s in.
+  `python tools/crossing.py [--sound] [--noack MS]`: a seated crossing in the visitor's kart through a console session
+  (no GPU, no window): in Atelier East, still seated, connected, and with `--sound` the kart's loop heard from the kart.
+- What a crossing leaves behind: old regions often never kill what crossed out (OpenSim crosses a ridden vehicle
+  silently), and each region's store keeps its copy. Once the current region has the avatar and no crossing is under
+  way, `WorldHub.SelfIn` drops the avatar's other copies with what they wear, other regions' copies of its attachments
+  (also ones that came again without their avatar as parent) and of the linkset it sits on (`own avatar in X: dropped
+  what was left in Y, ...`). Nothing else is judged by region: an object that left the current region for a neighbour
+  may itself be the stale copy. An attachment without a wearer is never listed (`ObjectViews.Listable`).
+- Losing the region: the session's watchdog logs in again after 30 s out of every region; first it sends a logout
+  through whatever circuit still answers (up to 4 s), so the grid doesn't refuse the new login as still logged in.
+  The drop is a notice (`RegionLost`, or `Disconnected` with the grid's words), so a person hears that the session is
+  mending itself.
 - Crossing at speed: the new region's first full update for the agent says it stands still at the handover point
   (OpenSim gives the avatar its momentum back a physics step after CompleteAgentMovement), and LibreMetaverse writes
-  the CrossedRegion position into Client.Self after its Network.Connect returns, which first waits for a UseCircuitCode
-  acknowledgement (a round trip on the main grid; on the local grid it lands before anything newer). The headset's
+  the CrossedRegion position into Client.Self after its Network.Connect returns (at once now that CrossingGuard lets
+  its acknowledgement wait go; it lands before anything newer). The headset's
   rig takes both as the region's lurches, not motion (`docs/vr.md` > The rig > Crossing at speed).
   `SOJOURN_SELF_TRACE=1` (`Agents/SelfTrace.cs`) logs every word on the agent's own position as it arrives
   (CrossedRegion, AgentMovementComplete, full and terse updates from any region, the current region changing, and a

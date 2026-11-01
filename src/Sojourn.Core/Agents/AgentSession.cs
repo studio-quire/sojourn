@@ -92,6 +92,10 @@ public sealed partial class AgentSession : IAsyncDisposable
         Scripts = new Scripts.ScriptEditor(this);
     }
 
+    /// <summary>Whether the session means to be in world: logging in or back in by itself after a drop. False once the
+    /// person logged out or a login failed for good (wrong password, terms declined).</summary>
+    public bool WantsOnline => _wantOnline;
+
     /// <summary>True while logged in and connected to a region.</summary>
     public bool Online => Status == AgentStatus.Online && _client is { } c && c.Network.Connected && c.Network.CurrentSim is not null;
 
@@ -266,12 +270,23 @@ public sealed partial class AgentSession : IAsyncDisposable
 
             var stop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             using var reg = _life.Token.Register(() => stop.TrySetResult());
-            var which = await Task.WhenAny(disconnected.Task, stop.Task, WaitForLogoutRequestAsync(), WatchdogAsync(client));
+            var watchdog = WatchdogAsync(client);
+            var which = await Task.WhenAny(disconnected.Task, stop.Task, WaitForLogoutRequestAsync(), watchdog);
             if (which == disconnected.Task && _wantOnline)
             {
                 var e = disconnected.Task.Result;
                 Log.LogWarning("disconnected: {Reason} {Msg}", e.Reason, e.Message);
                 StatusMessage = $"disconnected ({e.Reason}{(string.IsNullOrEmpty(e.Message) ? "" : ": " + e.Message)})";
+                if (e.Reason != NetworkManager.DisconnectType.ClientInitiated)
+                    Notify.Add("Disconnected", "notify", "Second Life disconnected you" +
+                        (string.IsNullOrWhiteSpace(e.Message) ? "." : $": {e.Message.Trim().TrimEnd('.')}.") + " Logging in again by itself.", Notifications.None);
+            }
+            else if (which == watchdog && _wantOnline)
+            {
+                // Out of every region, but the grid may still count the session as logged in, and then refuses the next
+                // login for a minute or so ("presence"). A logout through whatever circuit still answers ends it now;
+                // one that doesn't answer costs a few seconds.
+                await LogoutForRetryAsync(client);
             }
             return LoginOutcome.WasOnline;
         }
@@ -317,6 +332,9 @@ public sealed partial class AgentSession : IAsyncDisposable
             {
                 Log.LogWarning("no region for 30 s; reconnecting");
                 StatusMessage = "lost the region (watchdog)";
+                Notify.Add("RegionLost", "notify",
+                    "Lost the connection: no region has answered for half a minute. Logging in again by itself; this can take a minute or two.",
+                    Notifications.None);
                 return;
             }
         }
@@ -471,6 +489,19 @@ public sealed partial class AgentSession : IAsyncDisposable
         }
         catch (Exception ex) { Log.LogDebug(ex, "logout"); }
         _disconnected?.TrySetResult(new DisconnectedEventArgs(NetworkManager.DisconnectType.ClientInitiated, "logout"));
+    }
+
+    async Task LogoutForRetryAsync(GridClient c)
+    {
+        try
+        {
+            if (c.Network.Connected && c.Network.CurrentSim is { Connected: true })
+            {
+                await c.Network.LogoutAsync().WaitAsync(TimeSpan.FromSeconds(4));
+                Log.LogInformation("logged out of what was left of the session, so the next login isn't refused as still logged in");
+            }
+        }
+        catch (Exception ex) { Log.LogDebug(ex, "logout before logging in again"); }
     }
 
     async Task DisposeClientAsync(GridClient c)
