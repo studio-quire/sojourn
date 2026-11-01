@@ -42,8 +42,11 @@ own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access 0.1.0.
   inside; our pdbs embedded, so stack traces have lines); beside it the natives it loads by name: `sojourn_voice.dll`
   (voice and world audio, from `local/voice`), `openjp2.dll`, `shaderc_shared.dll` and `libSkiaSharp.dll` (the
   renderer), `nvdaControllerClient.dll` (from `local/nvda`); the folders `Shaders`, `Character`, `Textures`, `Fonts`,
-  `linden`; `README.txt` (for a screen-reader user: the template is `src/Sojourn.Access/Package/README.txt`);
-  `Licences/` (notices for NVDA's client, the viewer's LGPL parts, libwebrtc, OpenJPEG, Archivo, every NuGet package
+  `linden`; `lavapipe` (Mesa's software Vulkan driver for the view on a PC whose graphics can't run it, 56 MB, about
+  21 MB of the zip: How it fits > On the processor; `python tools/access.py fetch-lavapipe` puts it in `local/lavapipe`
+  first, from mesa-dist-win's release, checked by SHA-256); `README.txt` (for a screen-reader user: the template is `src/Sojourn.Access/Package/README.txt`);
+  `Licences/` (notices for NVDA's client, the viewer's LGPL parts, libwebrtc, OpenJPEG, Archivo, Mesa's lavapipe with
+  the LLVM inside it (`Package/licences/Mesa lavapipe.txt`), every NuGet package
   with files in the build read from the publish's `project.assets.json`, the .NET runtime packs; texts not found
   elsewhere in `Package/licences/`). Web and video media (CEF, libVLC) aren't in it: only the VR client uses them.
 - **The assistant in it** (`bundle_assistant`): `python/`, python.org's embeddable CPython 3.12.10 (fetched once into
@@ -80,10 +83,11 @@ own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access 0.1.0.
   unpacked and run as a tester would, on a hidden desktop, with `--bare` for a PC unlike ours and `--relay TOKEN` for
   the assistant through the relay end to end. What it checks and what it can't reach: `docs/access-testing.md` >
   Checking a package.
-- **Runs on a PC unlike ours**: with no working Vulkan (a VM, Microsoft's basic display adapter, an old card) the
-  renderer gives up after three tries (`NeverRan`, its log line naming the devices found and their Vulkan versions),
-  and faces and pictures say so in a person's words (`ViewWords`); walk mode and its sonar need no GPU (the collision
-  model, below). Without `sojourn_voice.dll` working (Windows' N editions lack Media Foundation's `MFPlat.DLL`, which
+- **Runs on a PC unlike ours**: with no Vulkan 1.3 GPU (a VM, Microsoft's basic display adapter, an old card or
+  driver) the view draws on the processor instead (How it fits > On the processor), so faces and pictures work, only
+  slower. Without that driver too it gives up after three tries (`NeverRan`, its log line naming the devices found and
+  their Vulkan versions), and faces and pictures say so in a person's words (`ViewWords`); walk mode and its sonar need
+  no GPU either way (the collision model, below). Without `sojourn_voice.dll` working (Windows' N editions lack Media Foundation's `MFPlat.DLL`, which
   it imports) arrival says once that sounds can't play and why (`SoundWords`; README.txt tells how to add the Media
   Feature Pack). The other natives need nothing beyond Windows itself (shaderc only the universal CRT, voice's CRT
   static; checked with objdump).
@@ -123,7 +127,7 @@ Alt+number; Radegast's numbers where Radegast has the same area.
 | Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touchable" (or ", can sit"), nearest first, within 30 m (Show: your HUDs instead); Tab: the selected one's parts, then a part's faces (Parts and faces, below) |
 | Alt+8 | Notices | what waits for an answer, newest first; the selected one's text, keys and reply box; Escape goes back where Control+N came from |
 | Alt+9 | Assistant | a typed request ("Ask the assistant"), its replies, its choices as buttons |
-| Alt+0 | Settings | first the assistant's provider and whether it works, its key or token row and OpenRouter's model (The assistant, below); then the ones that matter here (read-out and its kinds, mutes, timestamps, arrivals, earcons and volumes, walk mode's cues). Each row leads with what it's about, so first-letter navigation finds it ("IM sound", "Footsteps (walk mode)", "Nearby chat read out"; no two rows start with the same three words); Enter, Space or Right moves one to its next value, Shift with them or Left to the one before (a sound's row plays it) |
+| Alt+0 | Settings | first the assistant's provider and whether it works, its key or token row and OpenRouter's model (The assistant, below); then the ones that matter here (read-out and its kinds, mutes, timestamps, arrivals, earcons and volumes, the sound output and microphone, walk mode's cues). Each row leads with what it's about, so first-letter navigation finds it ("IM sound", "Footsteps (walk mode)", "Nearby chat read out"; no two rows start with the same three words); Enter, Space or Right moves one to its next value, Shift with them or Left to the one before (a sound's row plays it) |
 
 Pressing the Alt+number of the area you're in reads it again ("Inventory: Red Dress, skirt, worn.").
 
@@ -131,12 +135,13 @@ Pressing the Alt+number of the area you're in reads it again ("Inventory: Red Dr
 
 `MainForm.Menu.cs`; Alt or F10, then the arrows, or Alt+W, V, R, H for a menu. It's there for finding out what exists,
 as Radegast's menus are. World (teleport home, to the SLurl on the clipboard, set home here, landmark here, sit on the
-ground or stand up, fly or stop flying, walk mode, Away and Do not disturb as checked items, incognito, region info,
-parcels in this region, status, what you're wearing, describe where you are, describe me, who's in voice, open mic or
-push to talk), View (the areas by their Alt+numbers, Friends among them, the second inventory pane, the newest notice,
-Conversations, the conversation ring, closing one), Read-out (mute all, mute this conversation, times, arrivals, Recent
-messages: the last nine as items with their Control+numbers, then back, forward, oldest, newest, mark, copy) and Help
-(keys, the slash commands, send a log, about).
+ground or stand up, fly or stop flying, walk mode, Gestures: the active ones to play, Away and Do not disturb as checked
+items, incognito, region info, parcels in this region, status, what you're wearing, describe where you are, describe
+me, who's in voice, open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
+Friends among them, the second inventory pane, the newest notice, Conversations, the conversation ring, closing one),
+Read-out (mute all, mute this conversation, times, arrivals, Recent messages: the last nine as items with their
+Control+numbers, then back, forward, oldest, newest, mark, copy, copy the assistant's last answer) and Help (keys, the
+slash commands, send a log, about).
 
 - Each item shows its key beside it (`ShortcutKeyDisplayString`, which UI Automation gives screen readers as the item's
   accelerator key); the keys themselves stay in `ProcessCmdKey`, never the items' `ShortcutKeys`.
@@ -186,8 +191,11 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   Profile, Offer or Request teleport, Pay..., End friendship (confirmed). On a group (Enter: its chat, a conversation
   tab): Group chat, About the group, Wear its tag, No group tag, Leave (the grid asks in Notices). A profile opens in
   its own window: a read-only text read line by line (name, born, partner, about, interests, picks, first life, web),
-  Send IM, Pay, Close (Escape). Pay asks the amount, then waits for the person's confirmation in Notices (refused at
-  once when it can't be afforded). On an object: Touch, Sit, Walk to, Beacon, Face, Describe, Where (with its floating
+  Send IM, Pay, Give what you copied, Describe pictures, Close (Escape). Pay asks the amount, then waits for the
+  person's confirmation in Notices (refused at once when it can't be afforded). Give what you copied (also on a person
+  nearby and a friend) gives what Control+C or Control+X last took in the inventory, each thing confirmed: the blind
+  tester's Radegast habit of copying an item and giving it from the person (2026-10-31), beside the inventory's Give
+  to... On an object: Touch, Sit, Walk to, Beacon, Face, Describe, Where (with its floating
   text), Parts, Move... (yours: Placing by words, below); on a HUD only Touch, Describe, Where, Parts.
 - Lists: F5 refreshes; a list you're in never changes under you otherwise (it refreshes every 3 s while you're
   elsewhere). Arriving in a list that hasn't filled yet (Second Life's objects wait up to 3 s for their names), its
@@ -211,6 +219,8 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   lists every action: Wear, Add to outfit, Take off, Rez on the ground, Rez where you say..., Unbox, Give to..., Cut,
   Copy, Paste, Rename, Details (rights, maker, date), Delete; on a folder Replace outfit, Add to outfit, Take off the
   folder's items, New folder, New notecard; a notecard also Play as a route (`//route`).
+  - A gesture's words say whether it's active, and its trigger ("Clap, gesture, active, /clap"); Enter plays it (any
+    gesture, active or not), and its Applications key has Play, Activate and Deactivate (for all the marked ones).
   - Ctrl+X / Ctrl+C then Ctrl+V on a folder (or an item in it) move or copy; F2 renames.
   - Delete and Give ask first (the confirmation comes up selected in Notices: Enter confirms, Escape cancels, then the
     focus is back in the tree). As in the official viewer and Firestorm, a worn body part isn't deleted, said at once
@@ -258,6 +268,15 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   (`Announcer.ArrivedAgo`, a Core addition); Ctrl+[ and ] go on from there. Ctrl+Shift+M marks the line you're on (or
   the newest), Ctrl+Shift+C copies the lines from the mark to the one you're on to the clipboard ("Copied 3 lines."):
   the old NVDA add-on's review, mark and copy.
+- Ctrl+Shift+L: the assistant's last answer, whole, onto the clipboard ("Copied the assistant's last answer, 214
+  words."; an answer given in several replies to one request is all of them; while it's still answering, what's there
+  so far, said so): the blind tester's copy out of Alt+9's history took only part of a long one (2026-10-31). The
+  histories also show a line's own line breaks now (Windows' edit control breaks lines only at CR LF, so an answer's
+  paragraphs had run together as one line).
+- Ctrl+Shift+G: the active gestures as a menu where the focus is ("Clap" with "/clap" beside it as its key), Enter
+  plays one; also World > Gestures (Gestures, below).
+- Ctrl+Shift+O: the sound out of the next device ("Sound on Headphones (USB Audio)."), then back to the default (Sound
+  devices, below).
 - Ctrl+Shift+T: times in the chat histories ("[14:05] Kestrel: hi", from the next line) or not.
 - F3: walk mode (below); F3 or Escape again leaves it.
 - Ctrl+D: describe what's selected, or else where you are; Ctrl+Shift+D: you and what you're wearing; the same key
@@ -267,7 +286,13 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   Alt+4, and a slip closed the app at once in the guided test).
 - Ctrl+Shift+W: what you're wearing, by name from the worn list (no model): "Wearing 6 things. Clothing: Red Blouse,
   shirt; ... Attached: Hair on Skull; ... HUDs: 7Seas HUD, top right. Body: ...". Sorted, so a "**Wearing: ..." item
-  (a blind tester's outfit label) comes first. `//outfit` the same.
+  (a blind tester's outfit label) comes first. `//outfit` the same. The outfit's attachments not on the avatar yet (their links
+  in Current Outfit, not attached) are said as arriving for two minutes after logging in and one after a teleport or
+  reaching another region, since on Second Life they come in over a minute or so for everyone ("Wearing 5 things, 1
+  more still arriving. ... Still arriving, as attachments do for a minute or so after logging in or teleporting:
+  Skirt."), and after that as "In your outfit but not attached: ..."; the inventory's words for such an item say the
+  same ("Skirt, object, worn, still arriving"), and Enter (Wear) attaches it again. The blind tester's skirt "looked
+  missing, then re-attached itself" just after login (2026-10-31).
 - Ctrl+Shift+I: incognito on; off again only by a physical key (Incognito, below).
 - F4 (`access_talk_key`: f4, f12, scroll_lock, pause) held: talk in voice, with a click as the mic opens and closes;
   Shift+F4 push-to-talk or open mic; Ctrl+Shift+V who's in voice (Voice chat, below).
@@ -311,7 +336,13 @@ the window's bottom-left corner and reads its name and its children's, so "Statu
   read back", `access_read_mine`, on by default, her wish): nearby once the region echoes them, so she hears they went
   out; IMs as they're sent (the grid echoes none).
 - One-off notices (friends online, alerts, a teleport that failed) are also status lines in the nearby chat history,
-  as in Radegast. Arrivals by teleports this app didn't start (an offer, home, the assistant) and region crossings are
+  as in Radegast.
+- Friends online at login are one line (`MainForm.FriendsOnline.cs`): the grid tells of every friend online as the
+  session starts, which the blind tester heard as 23 lines in the same second (2026-10-31). Those arriving while
+  logging in and for 30 s after arriving (or after logging in again), with any that follow within 3 s of the last, are
+  said together once they stop: "23 friends online: Ann, Bob, Cat and 20 more; the chat history names them all.", the
+  history's line naming every one (two or three are all named), with one friends sound; one alone is said as before.
+  After that each comes online on a line of its own, as always. Arrivals by teleports this app didn't start (an offer, home, the assistant) and region crossings are
   said ("Arrived in X.", "Now in X."). Every arrival and crossing is a line in the history too, a seated one (a train,
   a car) included ("Now in X, still on Y."), written there whether or not it's read out: the blind tester wore a
   script printing the region in local chat for this (2026-10-31).
@@ -562,6 +593,37 @@ said; `//voice answer` or `//voice decline`. Alt+0 has voice on or off, the mode
 voice is heard from: Access hears from the avatar's head, having no camera). World audio (objects' sounds, the
 parcel's music and its titles read out) is on unless `--no-sounds`.
 
+**Sound devices** (`MainForm.Devices.cs`): Alt+0's "Sound output: speakers or headphones" and "Microphone for voice"
+rows are the session's own `speakers` and `microphone` (the VR client's menu sets the same): Enter steps from "the
+default (Speakers (Realtek))" through each device as Windows names it, Shift+Enter back; Control+Shift+O moves the
+sound to the next device ("Sound on Headphones (USB Audio)."), round to the default. A change takes effect at once
+(`AudioEngine.Reopen`), and a chosen device that's unplugged plays through the default until it's back. The blind
+tester switches her headset and speakers in Radegast (2026-10-31). The shim follows Windows by itself (the default as
+it moves, a device unplugged and plugged back, none there at all: `docs/voice.md`); after 0.1.0.707 went silent when
+her headset was unplugged, what it did is said in one line once its events settle (1.5 s), while voice runs (its
+thread reads them): "Sound now on Speakers (Realtek).", "No speakers or headphones: Sojourn Access is silent until one
+is plugged in.", "Microphone now ...", "No microphone: voice chat hears nothing until one is plugged in."; the talk key
+then says "No microphone: nobody hears you until one is plugged in."
+
+### Gestures
+
+`MainForm.Gestures.cs` over Core's `GestureOps`; the blind tester couldn't play hers at all (2026-10-31). The active
+gestures are the inventory's gesture items activated (OpenSim marks the item; Second Life's login lists them, which
+`Look` now makes active too), with their triggers once their assets are read (at login, in the background).
+- Typed in nearby chat, the first word of a line that's an active gesture's trigger (split at spaces, case aside, as
+  the official viewer's `triggerAndReviseString`) plays it ("Playing Clap.") and is replaced by the gesture's
+  replacement text, or left out; what's left is said, nothing if nothing is. Channel lines (`/5 ...`) and IMs aren't
+  looked at, as in the viewer.
+- Control+Shift+G: the active gestures as a menu where the focus is, by name, each trigger shown as its key; Enter
+  plays one. World > Gestures lists the same.
+- The inventory: a gesture's words, Enter and its Applications key (Keys, above).
+- Playing (`GestureOps.Start`, also the agent API's `LLGesture startGesture`, now any gesture of mine): the steps as
+  the viewer's `LLGestureMgr` runs them, not LibreMetaverse's player: animations started and stopped, a sound triggered
+  in the region from where you are, chat said as your own nearby chat (so read back as your lines are; "/5 text" on its
+  channel), waits for a time or for its animations to end (30 s at most); at the end it waits for its animations as the
+  viewer does, so a looping one keeps it playing until stopped (`stopGesture`), which stops what it started. One
+  already playing isn't started again.
+
 ### The assistant
 
 Alt+9. It works once a provider that works is chosen in Alt+0's first rows (from the repo: the Claude account signed
@@ -668,7 +730,8 @@ the filter on a synthetic log (`dotnet run --project tools/logcheck`; with a pat
   `MainForm.Places.cs`, `MainForm.Search.cs`, `MainForm.People.cs` (friends, groups, profiles, pay),
   `MainForm.Describe.cs` (describing), `MainForm.Parts.cs` and `Linkset.cs` (parts and faces), `MainForm.Place.cs` and
   `PlaceWords.cs` (placing by words), `MainForm.Outfit.cs`, `MainForm.Incognito.cs`, `MainForm.Voice.cs`,
-  `MainForm.Menu.cs` (the menu bar), `MainForm.CutLines.cs` (lines cut by typing), `EditorForm.cs` (notecards and
+  `MainForm.Menu.cs` (the menu bar), `MainForm.Gestures.cs`, `MainForm.FriendsOnline.cs` (friends online at login as
+  one line), `MainForm.Devices.cs` (sound devices), `MainForm.CutLines.cs` (lines cut by typing), `EditorForm.cs` (notecards and
   scripts), `Dialogs.cs` (a line asked for; a person picked), `Commands.cs` (the `//` set), `PersonOps.cs` (the
   person's own actions through the ops; where people and things are), `Bearings.cs` (clock faces, compass, SLurls),
   `FormVoice.cs` (UIA notifications from WinForms' own accessibility objects), `RealInput.cs`, `AccessSettings.cs`,
@@ -722,8 +785,11 @@ the filter on a synthetic log (`dotnet run --project tools/logcheck`; with a pat
     (`tools/inputcheck` checks it). I agree is undone if anything but the person's press ticks it.
   - Negative answers (Cancel, Ignore) and the assistant's offered choices take the person's input, passed-on keys
     included.
-  - **Without a physical key** (`access_answers_without_key`, Settings: `refuse` by default, or `hello`, "refused" and
-    "Windows Hello" in Alt+0; lowering it to hello is the person's own, in Alt+0 by a physical key or Windows Hello, and
+  - **Without a physical key** (`access_answers_without_key`, Settings: `refuse` by default, or `hello`; Alt+0's row is
+    "Answers from a braille display, dictation or on-screen keyboard", its values said with what they mean ("refused.
+    Confirmations, menus and replies take only a physical keyboard's keys, since a program can send keys too; leave it
+    if you use a keyboard", or "through Windows Hello ..."), the setting's own description the same, since the blind
+    tester asked what "answers without a physical key: refused" meant (2026-10-31); lowering it to hello is the person's own, in Alt+0 by a physical key or Windows Hello, and
     SojournSettings refuses it to callers, since it guards against programs, the assistant's among them; back to refuse
     anyone may): braille keyboards, Dragon, Voice Access, on-screen keyboards and switch access type through injected
     input, which can't be told from a program's. With `hello`, such an answer is asked again by Windows Hello
@@ -824,6 +890,45 @@ the filter on a synthetic log (`dotnet run --project tools/logcheck`; with a pat
   assistant, three minutes from a cold cache; whole / unseen): private bytes 1.50 / 0.80 GB, video memory 0.90 / 0.32
   GB, CPU 3% / 2% of a core, a frame 2.1-2.2 / 0.4 ms of GPU. A packaged build idle on the light local grid: 546 MB in
   memory and 328 MB of video memory.
+  **On the processor** (Claude Opus 5.5, 2026-10-31, for the blind tester's PC: a Ryzen 5 2400G's Vega 11 and an RX 550
+  on a 2019 OEM driver offering Vulkan 1.1, so no pictures and descriptions from the lists alone): when no GPU can run
+  it (`NoUsableGpuException`: no driver, none with Vulkan 1.3, or a missing feature at vkCreateDevice), or one failed
+  three times in ten minutes, it starts again at once on Mesa's lavapipe, a conformant Vulkan 1.4 driver on LLVM,
+  from the package's `lavapipe` folder (Render's `Gpu/SoftwareVulkan.cs`). Nothing is installed: the Vulkan loader is
+  pointed at its manifest for this process only (`VK_DRIVER_FILES`, and `VK_ICD_FILENAMES` for loaders before
+  1.3.207), only while the instance is made, the loader's driver filters cleared for it, so no hardware driver loads
+  beside it and nothing the app starts inherits it. `SOJOURN_SOFTWARE_VULKAN` names another copy (repo runs);
+  `SOJOURN_OFFSCREEN_SOFTWARE=1` uses it from the start; `SojournView status` has `software`. On it:
+  - no frames between pictures and none while the assistant works (`idle_hz` 0): an idle Access stays light (4-10% of
+    a core, mostly the session itself). Picks, faces and touches glance at what isn't drawn yet, and a glance is only
+    planned (`FrameRequest.PlanOnly`: what's in view asked for, counted and uploaded, nothing drawn; a prim's
+    triangles are kept as it's built); the renderer's own collision rays know only what's been drawn (walk mode never
+    uses them).
+  - a picture settles on planned frames, then is the one frame drawn (the GPU draws every settling frame).
+  - the driver compiles its shaders as it first draws them, seconds of every core, and this build keeps no cache
+    between sessions: so 20 s after it's up, once something can look at its pictures, what's around is drawn once, the
+    four ways round from the eyes, settled first (`WarmUp`; ~10 s on 8 threads here). Without it the first
+    description waited 8 s more than the rest; a new place's new materials still cost a few seconds the first time.
+  - reflection probes but the default one, no SMAA and no sharpening (without even the default probe, a shiny plaza
+    took the sky's blue and lost its colours); the load governor's frame side off (it's off for every out-of-sight
+    renderer: nobody watches its frame rate, and a processor's frames are seconds, which held loading back to a
+    crawl); video memory is the PC's own, so it's budgeted from our allocations at 1 GB (`VulkanSetup.SoftwareBudget`;
+    textures shed from 512 MB).
+  - the driver's threads (one rasteriser per logical processor and its queue's) are put below normal priority, as the
+    view's own thread is, found by their start address inside `vulkan_lvp.dll`, so the screen reader and the window
+    come first.
+  - each picture logs its size, settling and drawing time ("on the processor: ... drawn in N ms"), so a tester's log
+    says what it costs on her PC.
+  Measured on the local grid at Atelier's plaza, the app held to 4 cores and 8 threads of this PC's Ryzen 5 9600X
+  (`LP_NUM_THREADS=8`): a picture 0.1-0.25 s at 640-1280 px once warm (the first of a kind 2-6 s); Control+D on the
+  place 11.8 s to the spoken reply (Haiku 8.1 s of it; on the GPU 9.3 s, 5.5 s the model's), on herself 8.6 s (7.7);
+  the warm-up 10-13 s once; memory 0.8 GB idle, 1.1-1.3 GB after pictures (the GPU path: ~0.55 GB plus its video
+  memory). Her 2400G is older and slower per core (Zen 1, half-width AVX2): guessed at two to four times these.
+  Pictures look as the GPU's do, the probes and antialiasing aside (the cost lab's captures side by side). It found a
+  bug of the renderer's own: a tick (the world kept current without drawing) staged uploads and a shrunk texture's
+  copy, then counted as a frame for freeing what was retired, so after a few ticks a waiting copy named a destroyed
+  image; lavapipe crashed on it (an access violation in its copy commands, twice in a dozen sessions). `Tick` now sends
+  what it staged at once. The VR client never uses the software driver.
 - **The collision model** (Walk mode > The collision model, above): Render's `Collision/CollisionWorld.cs` (every
   region the session's world knows, each prim placed as the region reports changes, `RegionWorld.Changed`, in 16 m
   columns, 256 a query checked against the world as a safety net, a full rescan when the counts disagree; rays and solid
@@ -869,6 +974,10 @@ the filter on a synthetic log (`dotnet run --project tools/logcheck`; with a pat
   - For parts and faces (M2): Render's `RegionScene.FaceList` / `FrameRenderer.FaceList` (a prim's faces as drawn),
     `OffscreenRenderer.FacesAsync`, and `FindTouchAsync` counting a child prim given alone first (only the renderer
     out of sight's; the VR client's touches are DirectTouch's).
+  - For gestures and the outfit (2026-10-31), which the VR client gets too: `GestureOps`' own player, `Trigger` and
+    `WarmTriggers`, `LLGesture` playing any gesture of mine, `Look` making the login's active gestures active;
+    `TesselInventory link` (Paste as link; the test's outfit link); `AgentInventory.IsAttached`, so `TesselAgent
+    attach` wears again an object in the outfit that isn't on (it refused it as "already worn").
   - For describing (M5): `OffscreenRenderer.ShootAsync` (`OffscreenRenderer.Shots.cs`: shots planned on the render
     thread, each drawn until loaded, at most 3 s, 4 rich, its pixels waited for, then the 16 x 9 grid of picks),
     `DescribeApi` registered by `SessionHost.StartDescribe` (Access only), `SessionHost.App` / `AssistantHost.App`

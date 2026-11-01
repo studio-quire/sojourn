@@ -107,6 +107,13 @@ public sealed class Earcons
         _ => null,
     };
 
+    /// <summary>The friends online at login, said as one line: their sound once.</summary>
+    public void FriendsOnline()
+    {
+        float level = _set.EarconLevel("friends");
+        if (level > 0 && Due(CueSounds.Cue.EarFriendOn)) _sounds.Play(CueSounds.Cue.EarFriendOn, level, null);
+    }
+
     /// <summary>Voice chat's mic opening or closing (push to talk, an open mic's mute): a short click, centred.</summary>
     public void Mic(bool open)
     {

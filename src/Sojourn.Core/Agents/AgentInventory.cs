@@ -295,6 +295,17 @@ public sealed class AgentInventory
         C.Inventory.Store?.TryGetValue(id, out var n) == true ? n : null;
 
     /// <summary>Worn: one of my attachments came from this item, or the outfit folder links to it.</summary>
+    /// <summary>Attached now: one of my attachments in the current region came from this item.</summary>
+    public bool IsAttached(InventoryItem item)
+    {
+        var c = C;
+        var w = _s.Region;
+        if (w is null || w.Avatars.Values.FirstOrDefault(a => a.ID == c.Self.AgentID) is not { } me) return false;
+        foreach (var p in w.Prims.Values)
+            if (p.ParentID == me.LocalID && AttachItemId(p) == item.UUID) return true;
+        return false;
+    }
+
     public bool IsWorn(InventoryItem item)
     {
         var c = C;

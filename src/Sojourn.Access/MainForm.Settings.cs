@@ -29,7 +29,8 @@ public sealed partial class MainForm
         ("access_read_mine", "My own lines read back"),
         ("access_mute_all", "Mute all read-out (F6)"),
         ("access_timestamps", "Times in the histories"),
-        ("access_answers_without_key", "Answers without a physical key"),
+        // (the blind tester asked what "answers without a physical key: refused" meant, 2026-10-31: the row says it plainly)
+        ("access_answers_without_key", "Answers from a braille display, dictation or on-screen keyboard"),
         ("earcon_im", "IM sound"),
         ("earcon_mention", "Mention sound (your name or a keyword)"),
         ("earcon_menu", "Menu sound (a script menu or question)"),
@@ -47,6 +48,8 @@ public sealed partial class MainForm
         ("music", "Parcel's music"),
         ("music_volume", "Music volume"),
         ("volume", "Overall volume"),
+        ("speakers", "Sound output: speakers or headphones (Control+Shift+O)"),
+        ("microphone", "Microphone for voice"),
         ("radar_chat_range", "Chat range arrivals and departures"),
         ("radar_draw_distance", "Draw distance arrivals and departures"),
         ("radar_region", "Region arrivals and departures"),
@@ -96,6 +99,7 @@ public sealed partial class MainForm
             e.Handled = e.SuppressKeyPress = true;
             // incognito's off, and letting it see mid-spell, are the person's own key here, judged as it's handled
             if (IncognitoRow(name) || AnswersRow(name)) return;
+            if (DeviceRow(name)) { _ = NextDeviceAsync(name, e.Shift || e.KeyCode == Keys.Left ? -1 : 1); return; }
             _ = NextValueAsync(name, e.Shift || e.KeyCode == Keys.Left ? -1 : 1);
         };
         _settingsPage.Controls.Add(_settingsList);
@@ -276,9 +280,12 @@ public sealed partial class MainForm
     static string ValueWords(string name, string value) => (name, value) switch
     {
         (_, "both") when name.StartsWith("walk_") => "sound and text",
-        ("access_answers_without_key", "refuse") => "refused",
-        ("access_answers_without_key", "hello") => "Windows Hello",
+        ("access_answers_without_key", "refuse") => "refused. Confirmations, menus and replies take only a physical keyboard's "
+            + "keys, since a program can send keys too; leave it if you use a keyboard",
+        ("access_answers_without_key", "hello") => "through Windows Hello. Each such answer is asked again by face, fingerprint "
+            + "or PIN; a physical keyboard's keys answer as before",
         ("access_talk_key", "f4" or "f12") => value.ToUpperInvariant(),
+        ("speakers" or "microphone", _) => DeviceWords(name, value),
         _ => value.Replace('_', ' '),
     };
 

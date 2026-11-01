@@ -21,6 +21,13 @@ public sealed class TesselInventory : SessionApi
             (a, ct) => J(inv.UpdateAsync(a, ct)));
         Op("delete", "{id | ids, purge=false}: to Trash, or gone for good with purge", (a, ct) => J(inv.DeleteAsync(a, ct)));
         Op("emptyTrash", "purge everything in Trash", (_, ct) => J(inv.EmptyTrashAsync(ct)));
+        Op("link", "{item_id, folder_id} -> {linked}: a link to an item of mine in a folder (the viewer's Paste as link)", async (a, ct) =>
+        {
+            var item = await inv.ItemAsync(a, ct);
+            var folder = a.Uuid("folder_id") ?? throw new LeapError("need folder_id");
+            await C.Inventory.CreateLinkAsync(folder, item.UUID, item.Name, item.Description, item.InventoryType, LibreMetaverse.UUID.Random(), ct);
+            return (JsonNode?)new JsonObject { ["linked"] = true };
+        });
         Op("copy", "{id, dest_id?, name?} -> item (or {folder_id, items}): copy an item or folder, mine or the Library's, into my inventory",
             (a, ct) => J(inv.CopyAsync(a, ct)));
         Op("createNotecard", "{name, text?, desc?, folder_id?, next_perms?} -> {item_id, asset_id}", (a, ct) => J(inv.CreateNotecardAsync(a, ct)));

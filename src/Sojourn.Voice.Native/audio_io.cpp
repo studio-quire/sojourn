@@ -112,10 +112,44 @@ std::string DeviceListJson(bool capture) {
     return j + "]";
 }
 
-// Resolves a device spec to an IMMDevice: "" the default device, "comms" the default communications device, an
-// endpoint id, or "name:substring".
+enum { kCapture = 0, kRender = 1 };
+
+// Tests (sv_test_device): a stream lost as if AUDCLNT_E_DEVICE_INVALIDATED came (its event stopping), devices gone
+// (all of a direction's, or those whose name has a part), and what the default resolves to.
+static std::atomic<bool> g_test_lose[2], g_test_gone[2];
+static std::mutex g_test_mu;
+static std::string g_test_gone_name[2], g_test_default[2];
+
+static bool TestGone(int dir, const std::string& name) {
+    if (!g_test_gone[dir].load()) return false;
+    std::lock_guard<std::mutex> lk(g_test_mu);
+    return g_test_gone_name[dir].empty() || name.find(g_test_gone_name[dir]) != std::string::npos;
+}
+
+static std::string DeviceId(IMMDevice* d) {
+    std::string r;
+    LPWSTR id = nullptr;
+    if (d && SUCCEEDED(d->GetId(&id))) {
+        r = Utf8(id);
+        CoTaskMemFree(id);
+    }
+    return r;
+}
+
+// Resolves a device spec to an active IMMDevice: "" the default device, "comms" the default communications device,
+// an endpoint id, or "name:substring". False if it isn't there (an id names unplugged devices too: those count as
+// not there).
 static bool OpenDevice(IMMDeviceEnumerator* en, bool capture, const std::string& spec, IMMDevice** out,
                        std::string* name) {
+    int dir = capture ? kCapture : kRender;
+    if (spec.empty()) {
+        std::string fake;
+        {
+            std::lock_guard<std::mutex> lk(g_test_mu);
+            fake = g_test_default[dir];
+        }
+        if (!fake.empty()) return OpenDevice(en, capture, fake, out, name);
+    }
     EDataFlow flow = capture ? eCapture : eRender;
     HRESULT hr = E_FAIL;
     if (spec.empty()) {
@@ -134,12 +168,23 @@ static bool OpenDevice(IMMDeviceEnumerator* en, bool capture, const std::string&
         hr = en->GetDevice(Wide(spec).c_str(), out);
     }
     if (FAILED(hr) || !*out) return false;
+    DWORD state = 0;
+    if (FAILED((*out)->GetState(&state)) || state != DEVICE_STATE_ACTIVE) {
+        (*out)->Release();
+        *out = nullptr;
+        return false;
+    }
     ComPtr<IPropertyStore> props;
     if (SUCCEEDED((*out)->OpenPropertyStore(STGM_READ, props.put()))) {
         PROPVARIANT v;
         PropVariantInit(&v);
         if (SUCCEEDED(props->GetValue(PKEY_Device_FriendlyName, &v)) && v.vt == VT_LPWSTR) *name = Utf8(v.pwszVal);
         PropVariantClear(&v);
+    }
+    if (TestGone(dir, *name)) {
+        (*out)->Release();
+        *out = nullptr;
+        return false;
     }
     return true;
 }
@@ -318,22 +363,131 @@ private:
     LARGE_INTEGER freq_, start_;
 };
 
+// --- the threads and device changes ---
+//
+// Each direction has one thread for the engine's life; sv_audio_start only hands it a new spec, so its caller never
+// waits on a device. On WASAPI the thread follows Windows' devices: the default ("" or "comms") is followed when
+// Windows moves it; a device asked for by id or name is used while it's there and the default meanwhile; a device
+// that goes (unplugged, Link dropping, its format changed) is reopened on what's there now; with nothing there the
+// engine keeps moving on paced silence, looking again on each change Windows reports and once a second. A lost
+// device's event usually stops firing, so every wait times out and polls the stream.
+
+// Set (auto-reset) by Windows' endpoint notifications, a new spec, stop, and the test hook.
+static HANDLE g_wake[2] = {nullptr, nullptr};
+static void Wake(int dir) {
+    if (g_wake[dir]) SetEvent(g_wake[dir]);
+}
+
+class Notifier : public IMMNotificationClient {
+public:
+    ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&ref_); }
+    ULONG STDMETHODCALLTYPE Release() override {
+        ULONG r = InterlockedDecrement(&ref_);
+        if (r == 0) delete this;
+        return r;
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        if (iid == __uuidof(IUnknown) || iid == __uuidof(IMMNotificationClient)) {
+            AddRef();
+            *out = static_cast<IMMNotificationClient*>(this);
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    // On Windows' own threads, which mustn't block: the audio threads only get woken, and look for themselves.
+    HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(LPCWSTR, DWORD) override { return Both(); }
+    HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR) override { return Both(); }
+    HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR) override { return Both(); }
+    HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(EDataFlow flow, ERole, LPCWSTR) override {
+        if (flow != eRender) Wake(kCapture);
+        if (flow != eCapture) Wake(kRender);
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(LPCWSTR, const PROPERTYKEY) override { return S_OK; }
+
+private:
+    HRESULT Both() {
+        Wake(kCapture);
+        Wake(kRender);
+        return S_OK;
+    }
+    LONG ref_ = 1;
+};
+
 struct Io {
-    std::thread capture, render;
+    std::thread th[2];
     std::atomic<bool> stop{false};
-    std::string capture_spec, render_spec;
+    std::mutex mu;
+    std::string spec[2];
+    std::atomic<uint64_t> gen[2] = {0, 0};
 };
 static Io* io = nullptr;
 static std::mutex io_mu;
 
-static void Mmcss() {
-    DWORD task = 0;
-    AvSetMmThreadCharacteristicsW(L"Pro Audio", &task);
+// What a loop runs for: until stop, or a new spec for its direction.
+struct Want {
+    Io* s;
+    int dir;
+    uint64_t gen;
+    bool changed() const { return s->stop.load() || s->gen[dir].load() != gen; }
+};
+
+static bool FollowsDefault(const std::string& spec) { return spec.empty() || spec == "comms"; }
+
+// No device: the engine keeps moving on paced silence (render: its playout runs on, so nothing piles up and nothing
+// stale plays later; capture: silence, as a muted mic) until Windows reports a change or ms pass.
+static void Idle(const Want& w, int ms) {
+    Pacer pacer;
+    float frame[kFrame * 2];
+    static const float zeros[kFrame] = {};
+    for (int i = 1; i <= ms / 10 && !w.changed(); i++) {
+        pacer.WaitTick(i);
+        if (w.dir == kRender)
+            RenderFrame(frame);
+        else
+            CaptureFrame(zeros);
+        if (WaitForSingleObject(g_wake[w.dir], 0) == WAIT_OBJECT_0) break;
+    }
+}
+
+enum class Ended { Changed, Reopen, Lost, Missing, Carry };
+
+// After a wake: whether the open device is still there, and still the one to use (the default it follows moved, or
+// the device asked for is back while on the default).
+static Ended Recheck(IMMDeviceEnumerator* en, int dir, IMMDevice* dev, const std::string& id, const std::string& name,
+                     const std::string& wanted, const std::string& spec) {
+    bool capture = dir == kCapture;
+    DWORD state = 0;
+    if (FAILED(dev->GetState(&state)) || state != DEVICE_STATE_ACTIVE || TestGone(dir, name)) return Ended::Lost;
+    ComPtr<IMMDevice> d;
+    std::string n;
+    if (spec != wanted && OpenDevice(en, capture, wanted, d.put(), &n)) return Ended::Reopen;
+    if (FollowsDefault(spec) && OpenDevice(en, capture, spec, d.put(), &n) && DeviceId(d.p) != id) return Ended::Reopen;
+    return Ended::Carry;
+}
+
+// Waits for the stream's event or a wake, 200 ms at most; a lost stream (tests) waits on the wake alone, as a real
+// lost device's event stops. Returns 0 the stream's event, 1 a wake, -1 a timeout.
+static int WaitStream(HANDLE ev, int dir, bool dead) {
+    HANDLE hs[2] = {ev, g_wake[dir]};
+    DWORD r = dead ? (WaitForSingleObject(hs[1], 200) == WAIT_OBJECT_0 ? WAIT_OBJECT_0 + 1 : WAIT_TIMEOUT)
+                   : WaitForMultipleObjects(2, hs, FALSE, 200);
+    return r == WAIT_OBJECT_0 ? 0 : r == WAIT_OBJECT_0 + 1 ? 1 : -1;
+}
+
+static std::string Describe(const std::string& spec) { return spec.empty() ? "the default device" : spec; }
+
+static void ReportMissing(bool& reported, int dir, const std::string& what) {
+    if (reported) return;
+    reported = true;
+    Log(2, std::string(dir == kCapture ? "capture" : "render") + ": no device (" + what + ")");
+    Emit(0, SV_EV_DEVICE, "failed", what.c_str(), dir);
 }
 
 // --- capture ---
 
-static void CaptureFileLoop(Io* s, const std::string& path, bool loop) {
+static void CaptureFileLoop(const Want& w, const std::string& path, bool loop) {
     std::vector<float> pcm;
     if (!ReadWavMono48k(path, pcm)) {
         Log(3, "capture: can't read WAV " + path);
@@ -346,7 +500,7 @@ static void CaptureFileLoop(Io* s, const std::string& path, bool loop) {
     size_t pos = 0;
     float frame[kFrame];
     g_capture_delay_ms.store(0);
-    for (int64_t n = 1; !s->stop.load(); n++) {
+    for (int64_t n = 1; !w.changed(); n++) {
         pacer.WaitTick(n);
         for (int i = 0; i < kFrame; i++) {
             if (pos >= pcm.size() && loop && !pcm.empty()) pos = 0;
@@ -356,37 +510,39 @@ static void CaptureFileLoop(Io* s, const std::string& path, bool loop) {
     }
 }
 
-static void CaptureNullLoop(Io* s) {
+static void CaptureNullLoop(const Want& w) {
     Pacer pacer;
     float frame[kFrame] = {};
-    for (int64_t n = 1; !s->stop.load(); n++) {
+    for (int64_t n = 1; !w.changed(); n++) {
         pacer.WaitTick(n);
         CaptureFrame(frame);
     }
 }
 
-// One open-run of a WASAPI capture device. Returns false if the device went away or couldn't open.
-static bool CaptureWasapiRun(Io* s, IMMDeviceEnumerator* en, const std::string& spec) {
+// One open-run of a WASAPI capture device, until it goes, gives way, or the spec changes.
+static Ended CaptureWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std::string& wanted,
+                              const std::string& spec, bool& reported) {
     ComPtr<IMMDevice> dev;
     std::string name;
     if (!OpenDevice(en, true, spec, dev.put(), &name)) {
-        Log(2, "capture: no device " + spec);
-        return false;
+        ReportMissing(reported, kCapture, Describe(spec));
+        return Ended::Missing;
     }
+    std::string id = DeviceId(dev.p);
     ComPtr<IAudioClient> client;
     if (FAILED(dev->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)client.put()))) {
-        Log(3, "capture: can't activate " + name);
-        return false;
+        ReportMissing(reported, kCapture, name + ": can't activate");
+        return Ended::Missing;
     }
     WAVEFORMATEXTENSIBLE fmt = FloatFormat(1);
     DWORD flags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                   AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
     HRESULT hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 200000, 0, (WAVEFORMATEX*)&fmt, nullptr);
     if (FAILED(hr)) {
-        char b[96];
-        snprintf(b, sizeof b, "capture: Initialize failed 0x%08lx on ", (unsigned long)hr);
-        Log(3, b + name);
-        return false;
+        char b[64];
+        snprintf(b, sizeof b, ": Initialize failed 0x%08lx", (unsigned long)hr);
+        ReportMissing(reported, kCapture, name + b);
+        return Ended::Missing;
     }
     HANDLE ev = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     client->SetEventHandle(ev);
@@ -394,38 +550,50 @@ static bool CaptureWasapiRun(Io* s, IMMDeviceEnumerator* en, const std::string& 
     client->GetService(__uuidof(IAudioCaptureClient), (void**)cap.put());
     REFERENCE_TIME lat = 0;
     client->GetStreamLatency(&lat);
-    hr = client->Start();
-    if (FAILED(hr)) {
-        Log(3, "capture: can't start " + name);
+    if (!cap || FAILED(client->Start())) {
         CloseHandle(ev);
-        return false;
+        ReportMissing(reported, kCapture, name + ": can't start");
+        return Ended::Missing;
     }
+    reported = false;
     Log(1, "capture: " + name);
     Emit(0, SV_EV_DEVICE, "open", name.c_str(), 0);
 
     std::vector<float> fifo;
     fifo.reserve(kFrame * 8);
-    bool lost = false, silent = false;
+    bool silent = false, dead = false;
     int timeouts = 0;
-    while (!s->stop.load()) {
-        DWORD w = WaitForSingleObject(ev, 200);
-        if (w != WAIT_OBJECT_0) {
+    Ended end = Ended::Changed;
+    for (;;) {
+        if (g_test_lose[kCapture].exchange(false)) dead = true;
+        int r = WaitStream(ev, kCapture, dead);
+        if (w.changed()) break;
+        if (r == 1) {
+            Ended e = Recheck(en, kCapture, dev.p, id, name, wanted, spec);
+            if (e != Ended::Carry) {
+                end = e;
+                break;
+            }
+        }
+        if (r < 0) {
             // Link's virtual mic opens but delivers nothing while the headset is off
             if (++timeouts == 5 && !silent) {
                 silent = true;
                 Log(2, "capture: no audio from " + name);
                 Emit(0, SV_EV_DEVICE, "silent", name.c_str(), 0);
             }
-            continue;
+        } else if (r == 0) {
+            timeouts = 0;
+            if (silent) {
+                silent = false;
+                Emit(0, SV_EV_DEVICE, "open", name.c_str(), 0);
+            }
         }
-        timeouts = 0;
-        if (silent) {
-            silent = false;
-            Emit(0, SV_EV_DEVICE, "open", name.c_str(), 0);
-        }
+        // read what's there; after a timeout this is the poll that finds a lost device
+        bool lost = false;
         for (;;) {
             UINT32 packet = 0;
-            hr = cap->GetNextPacketSize(&packet);
+            hr = dead ? AUDCLNT_E_DEVICE_INVALIDATED : cap->GetNextPacketSize(&packet);
             if (FAILED(hr)) {
                 lost = true;
                 break;
@@ -444,7 +612,10 @@ static bool CaptureWasapiRun(Io* s, IMMDeviceEnumerator* en, const std::string& 
             for (UINT32 i = 0; i < frames; i++) fifo.push_back((bf & AUDCLNT_BUFFERFLAGS_SILENT) ? 0.0f : f[i]);
             cap->ReleaseBuffer(frames);
         }
-        if (lost) break;
+        if (lost) {
+            end = Ended::Lost;
+            break;
+        }
         size_t off = 0;
         while (fifo.size() - off >= (size_t)kFrame) {
             g_capture_delay_ms.store((int)(lat / 10000) + (int)((fifo.size() - off) * 1000 / kRate));
@@ -455,78 +626,65 @@ static bool CaptureWasapiRun(Io* s, IMMDeviceEnumerator* en, const std::string& 
     }
     client->Stop();
     CloseHandle(ev);
-    if (lost) {
+    if (end == Ended::Lost) {
+        reported = true;   // "lost" says it; no "failed" after it while nothing's there
         Log(2, "capture: device lost: " + name);
         Emit(0, SV_EV_DEVICE, "lost", name.c_str(), 0);
-        return false;
+    } else if (end == Ended::Reopen) {
+        Log(1, "capture: leaving " + name + " for " + (spec != wanted ? Describe(wanted) : "the new default"));
     }
-    return true;
-}
-
-static void CaptureWasapiLoop(Io* s, std::string spec) {
-    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    Mmcss();
-    ComPtr<IMMDeviceEnumerator> en;
-    CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), (void**)en.put());
-    bool reported = false;
-    while (!s->stop.load()) {
-        if (en && CaptureWasapiRun(s, en.p, spec)) break;
-        if (!reported) {
-            Emit(0, SV_EV_DEVICE, "failed", spec.c_str(), 0);
-            reported = true;
-        }
-        // Retry the same device, then fall back to the default (Link's devices vanish when it drops).
-        for (int i = 0; i < 10 && !s->stop.load(); i++) Sleep(100);
-        if (!spec.empty() && en) {
-            ComPtr<IMMDevice> d;
-            std::string n;
-            if (!OpenDevice(en.p, true, spec, d.put(), &n)) spec.clear();
-        }
-    }
-    CoUninitialize();
+    return end;
 }
 
 // --- render ---
 
-static void RenderFileLoop(Io* s, const std::string& path) {
-    WavWriter w;
-    if (!w.Open(path)) Log(3, "render: can't write " + path);
+static void RenderFileLoop(const Want& w, const std::string& path) {
+    WavWriter wr;
+    if (!wr.Open(path)) Log(3, "render: can't write " + path);
     Pacer pacer;
     g_render_file_t0.store(UnixMs());
     float frame[kFrame * 2];
     g_render_delay_ms.store(0);
-    for (int64_t n = 1; !s->stop.load(); n++) {
+    for (int64_t n = 1; !w.changed(); n++) {
         pacer.WaitTick(n);
         RenderFrame(frame);
-        w.Write(frame, kFrame);
+        wr.Write(frame, kFrame);
     }
-    w.Finish(true);
+    wr.Finish(true);
 }
 
-static void RenderNullLoop(Io* s) {
+static void RenderNullLoop(const Want& w) {
     Pacer pacer;
     float frame[kFrame * 2];
-    for (int64_t n = 1; !s->stop.load(); n++) {
+    for (int64_t n = 1; !w.changed(); n++) {
         pacer.WaitTick(n);
         RenderFrame(frame);
     }
 }
 
-static bool RenderWasapiRun(Io* s, IMMDeviceEnumerator* en, const std::string& spec) {
+static Ended RenderWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std::string& wanted,
+                             const std::string& spec, bool& reported) {
     ComPtr<IMMDevice> dev;
     std::string name;
-    if (!OpenDevice(en, false, spec, dev.put(), &name)) return false;
+    if (!OpenDevice(en, false, spec, dev.put(), &name)) {
+        ReportMissing(reported, kRender, Describe(spec));
+        return Ended::Missing;
+    }
+    std::string id = DeviceId(dev.p);
     ComPtr<IAudioClient> client;
-    if (FAILED(dev->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)client.put()))) return false;
+    if (FAILED(dev->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)client.put()))) {
+        ReportMissing(reported, kRender, name + ": can't activate");
+        return Ended::Missing;
+    }
     WAVEFORMATEXTENSIBLE fmt = FloatFormat(2);
     DWORD flags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                   AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
     HRESULT hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 400000, 0, (WAVEFORMATEX*)&fmt, nullptr);
     if (FAILED(hr)) {
-        char b[96];
-        snprintf(b, sizeof b, "render: Initialize failed 0x%08lx on ", (unsigned long)hr);
-        Log(3, b + name);
-        return false;
+        char b[64];
+        snprintf(b, sizeof b, ": Initialize failed 0x%08lx", (unsigned long)hr);
+        ReportMissing(reported, kRender, name + b);
+        return Ended::Missing;
     }
     HANDLE ev = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     client->SetEventHandle(ev);
@@ -536,12 +694,18 @@ static bool RenderWasapiRun(Io* s, IMMDeviceEnumerator* en, const std::string& s
     client->GetService(__uuidof(IAudioRenderClient), (void**)rc.put());
     REFERENCE_TIME lat = 0;
     client->GetStreamLatency(&lat);
+    if (!rc) {
+        CloseHandle(ev);
+        ReportMissing(reported, kRender, name + ": no render client");
+        return Ended::Missing;
+    }
 
     // Keep ~30 ms queued in the device: enough to ride out a late wakeup beside the renderer, little enough for
     // voice.
     const UINT32 target = std::min<UINT32>(buffer_frames, kFrame * 3);
     std::deque<float> fifo;
     float frame[kFrame * 2];
+    ULONGLONG driven = GetTickCount64();   // when the engine's playout last moved
     auto fill = [&](UINT32 want) -> bool {
         BYTE* data = nullptr;
         if (FAILED(rc->GetBuffer(want, &data))) return false;
@@ -557,88 +721,170 @@ static bool RenderWasapiRun(Io* s, IMMDeviceEnumerator* en, const std::string& s
             fifo.pop_front();
         }
         rc->ReleaseBuffer(want, 0);
+        driven = GetTickCount64();
         return true;
     };
     fill(target);
-    client->Start();
+    if (FAILED(client->Start())) {
+        CloseHandle(ev);
+        ReportMissing(reported, kRender, name + ": can't start");
+        return Ended::Missing;
+    }
+    reported = false;
     Log(1, "render: " + name);
     Emit(0, SV_EV_DEVICE, "open", name.c_str(), 1);
-    bool lost = false;
-    while (!s->stop.load()) {
-        DWORD w = WaitForSingleObject(ev, 200);
-        if (w != WAIT_OBJECT_0) continue;
+    bool dead = false, stalled = false;
+    int timeouts = 0;
+    Ended end = Ended::Changed;
+    for (;;) {
+        if (g_test_lose[kRender].exchange(false)) dead = true;
+        int r = WaitStream(ev, kRender, dead);
+        if (w.changed()) break;
+        if (r == 1) {
+            Ended e = Recheck(en, kRender, dev.p, id, name, wanted, spec);
+            if (e != Ended::Carry) {
+                end = e;
+                break;
+            }
+        }
+        // after a timeout this is the poll that finds a lost device
         UINT32 padding = 0;
-        if (FAILED(client->GetCurrentPadding(&padding))) {
-            lost = true;
+        if (dead || FAILED(client->GetCurrentPadding(&padding))) {
+            end = Ended::Lost;
             break;
         }
-        if (padding == 0) g_render_glitches++;
+        if (r == 0) {
+            timeouts = 0;
+            if (stalled) {
+                stalled = false;
+                Emit(0, SV_EV_DEVICE, "open", name.c_str(), 1);
+            }
+            if (padding == 0) g_render_glitches++;
+        } else if (r < 0 && ++timeouts == 5 && !stalled) {
+            stalled = true;
+            Log(2, "render: " + name + " takes no audio");
+            Emit(0, SV_EV_DEVICE, "silent", name.c_str(), 1);
+        }
         g_render_delay_ms.store((int)(lat / 10000) + (int)((padding + fifo.size() / 2) * 1000 / kRate));
         if (padding < target && !fill(target - padding)) {
-            lost = true;
+            end = Ended::Lost;
             break;
+        }
+        // a device that's there but takes nothing: the engine's playout runs on regardless, discarded
+        if (stalled) {
+            ULONGLONG now = GetTickCount64();
+            int owed = (int)std::min<ULONGLONG>((now - driven) / 10, 50);
+            for (int i = 0; i < owed; i++) RenderFrame(frame);
+            driven += (ULONGLONG)owed * 10;
         }
     }
     client->Stop();
     CloseHandle(ev);
-    if (lost) {
+    if (end == Ended::Lost) {
+        reported = true;
         Log(2, "render: device lost: " + name);
         Emit(0, SV_EV_DEVICE, "lost", name.c_str(), 1);
-        return false;
+    } else if (end == Ended::Reopen) {
+        Log(1, "render: leaving " + name + " for " + (spec != wanted ? Describe(wanted) : "the new default"));
     }
-    return true;
+    return end;
 }
 
-static void RenderWasapiLoop(Io* s, std::string spec) {
-    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    Mmcss();
-    ComPtr<IMMDeviceEnumerator> en;
-    CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), (void**)en.put());
-    bool reported = false;
-    while (!s->stop.load()) {
-        if (en && RenderWasapiRun(s, en.p, spec)) break;
-        if (!reported) {
-            Emit(0, SV_EV_DEVICE, "failed", spec.c_str(), 1);
-            reported = true;
-        }
-        // Keep the engine's playout moving while there's no device, so its buffers don't pile up.
-        Pacer pacer;
-        float frame[kFrame * 2];
-        for (int i = 1; i <= 100 && !s->stop.load(); i++) {
-            pacer.WaitTick(i);
-            RenderFrame(frame);
-        }
-        if (!spec.empty() && en) {
+// A WASAPI direction, until its spec changes: the device asked for while it's there, else the default; reopened as
+// devices come and go.
+static void WasapiLoop(const Want& w, IMMDeviceEnumerator* en, const std::string& wanted) {
+    bool capture = w.dir == kCapture;
+    const char* dirname = capture ? "capture" : "render";
+    DWORD task = 0;
+    HANDLE mm = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task);
+    bool reported = false, away = false;
+    while (!w.changed()) {
+        std::string spec = wanted;
+        if (!FollowsDefault(wanted)) {
             ComPtr<IMMDevice> d;
             std::string n;
-            if (!OpenDevice(en.p, false, spec, d.put(), &n)) spec.clear();
+            bool there = OpenDevice(en, capture, wanted, d.put(), &n);
+            if (!there) spec.clear();
+            if (!there && !away) Log(2, std::string(dirname) + ": " + wanted + " isn't there: the default meanwhile");
+            away = !there;
+        }
+        ULONGLONG t0 = GetTickCount64();
+        Ended e = capture ? CaptureWasapiRun(w, en, wanted, spec, reported) : RenderWasapiRun(w, en, wanted, spec, reported);
+        if (e == Ended::Changed) break;
+        if (e == Ended::Reopen) continue;
+        // lost after a good run: straight onto what's there now (Windows has usually moved the default already);
+        // lost at once, or nothing there: wait for a change, a second at most
+        if (e == Ended::Lost && GetTickCount64() - t0 > 1000) continue;
+        Idle(w, 1000);
+    }
+    if (mm) AvRevertMmThreadCharacteristics(mm);
+}
+
+static void DirThread(Io* s, int dir) {
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    ComPtr<IMMDeviceEnumerator> en;
+    Notifier* note = nullptr;
+    while (!s->stop.load()) {
+        std::string spec;
+        uint64_t gen;
+        {
+            std::lock_guard<std::mutex> lk(s->mu);
+            spec = s->spec[dir];
+            gen = s->gen[dir].load();
+        }
+        Want w{s, dir, gen};
+        bool loop = spec.rfind("loop:", 0) == 0;
+        if (spec == "none") {
+            dir == kCapture ? CaptureNullLoop(w) : RenderNullLoop(w);
+        } else if (spec.rfind("file:", 0) == 0 || (loop && dir == kCapture)) {
+            dir == kCapture ? CaptureFileLoop(w, spec.substr(5), loop) : RenderFileLoop(w, spec.substr(5));
+        } else {
+            if (!en && SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                                  __uuidof(IMMDeviceEnumerator), (void**)en.put()))) {
+                note = new Notifier();
+                if (FAILED(en->RegisterEndpointNotificationCallback(note))) {
+                    Log(2, "audio: no device notifications; devices are looked for once a second");
+                    note->Release();
+                    note = nullptr;
+                }
+            }
+            if (en)
+                WasapiLoop(w, en.p, spec);
+            else
+                Idle(w, 1000);
         }
     }
+    if (note) {
+        en->UnregisterEndpointNotificationCallback(note);
+        note->Release();
+    }
+    en.reset();
     CoUninitialize();
 }
 
 bool AudioStart(const std::string& capture, const std::string& render) {
-    AudioStop();
     std::lock_guard<std::mutex> lk(io_mu);
-    io = new Io();
-    io->capture_spec = capture;
-    io->render_spec = render;
-    Io* s = io;
-    if (capture == "none")
-        s->capture = std::thread(CaptureNullLoop, s);
-    else if (capture.rfind("file:", 0) == 0)
-        s->capture = std::thread(CaptureFileLoop, s, capture.substr(5), false);
-    else if (capture.rfind("loop:", 0) == 0)
-        s->capture = std::thread(CaptureFileLoop, s, capture.substr(5), true);
-    else
-        s->capture = std::thread(CaptureWasapiLoop, s, capture);
-
-    if (render == "none")
-        s->render = std::thread(RenderNullLoop, s);
-    else if (render.rfind("file:", 0) == 0)
-        s->render = std::thread(RenderFileLoop, s, render.substr(5));
-    else
-        s->render = std::thread(RenderWasapiLoop, s, render);
+    for (auto& h : g_wake)
+        if (!h) h = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (!io) {
+        io = new Io();
+        io->spec[kCapture] = capture;
+        io->spec[kRender] = render;
+        io->th[kCapture] = std::thread(DirThread, io, kCapture);
+        io->th[kRender] = std::thread(DirThread, io, kRender);
+        return true;
+    }
+    // the threads carry on: a direction whose spec changed reopens, the other isn't touched
+    const std::string specs[2] = {capture, render};
+    for (int d = 0; d < 2; d++) {
+        {
+            std::lock_guard<std::mutex> lk2(io->mu);
+            if (io->spec[d] == specs[d]) continue;
+            io->spec[d] = specs[d];
+            io->gen[d]++;
+        }
+        Wake(d);
+    }
     return true;
 }
 
@@ -646,10 +892,42 @@ void AudioStop() {
     std::lock_guard<std::mutex> lk(io_mu);
     if (!io) return;
     io->stop.store(true);
-    if (io->capture.joinable()) io->capture.join();
-    if (io->render.joinable()) io->render.join();
-    delete io;
+    Wake(kCapture);
+    Wake(kRender);
+    // The threads see stop within 200 ms; one stuck in a driver's call is left behind (with its Io) rather than
+    // holding up the caller.
+    bool stuck = false;
+    for (auto& t : io->th) {
+        if (!t.joinable()) continue;
+        if (WaitForSingleObject((HANDLE)t.native_handle(), 3000) == WAIT_OBJECT_0) {
+            t.join();
+        } else {
+            t.detach();
+            stuck = true;
+        }
+    }
+    if (stuck)
+        Log(3, "audio: a device thread didn't stop within 3 s; left behind");
+    else
+        delete io;
     io = nullptr;
+}
+
+void AudioTest(int dir, int what, const std::string& spec) {
+    if (dir != kCapture && dir != kRender) return;
+    {
+        std::lock_guard<std::mutex> lk(g_test_mu);
+        switch (what) {
+            case 0: g_test_lose[dir].store(true); break;
+            case 1:
+                g_test_gone_name[dir] = spec.rfind("name:", 0) == 0 ? spec.substr(5) : spec;
+                g_test_gone[dir].store(true);
+                break;
+            case 2: g_test_gone[dir].store(false); break;
+            case 3: g_test_default[dir] = spec; break;
+        }
+    }
+    Wake(dir);
 }
 
 }  // namespace sv

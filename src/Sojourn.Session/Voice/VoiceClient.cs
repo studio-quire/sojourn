@@ -73,8 +73,16 @@ public sealed class VoiceClient : IDisposable
     public string Status { get; private set; } = "starting";
     public bool Available { get; }
     public bool MicOpen => _micOpen;
-    /// <summary>The capture device as it last opened.</summary>
+    /// <summary>The capture device as it last opened; null while there's none (unplugged, nothing to open: the shim
+    /// sends silence, as a muted mic, until one appears).</summary>
     public string? MicDevice { get; private set; }
+    /// <summary>The output device as it last opened; null while there's none (the mix runs on, unheard).</summary>
+    public string? SpeakerDevice { get; private set; }
+    /// <summary>Raised on the voice thread when the shim's devices change (it follows Windows' itself): mic (else the
+    /// output), what ("open": opened, or moved to another device such as the new default; "lost": the device in use
+    /// went; "failed": nothing to open; "silent": open but no audio, or taking none, for a second) and the device's name
+    /// (for "failed", what was asked for).</summary>
+    public event Action<bool, string, string?>? DeviceChanged;
     public bool ModeratorMuted { get; private set; }
     /// <summary>The region or parcel you're on has voice off (and no call is up): nothing you say goes anywhere.</summary>
     public bool OffHere { get; private set; }
@@ -328,10 +336,13 @@ public sealed class VoiceClient : IDisposable
     {
         if (e.Kind == NativeEventKind.Device)
         {
-            string dir = e.N == 0 ? "mic" : "speaker";
-            if (e.N == 0 && e.A == "open") MicDevice = e.B;
-            _log($"voice: {dir} {e.A}: {e.B}");
-            if (e.N == 0 && e.A is "silent" or "failed" or "lost") SetStatus($"the mic ({e.B}) is {(e.A == "silent" ? "silent" : e.A)}");
+            bool mic = e.N == 0;
+            string what = e.A ?? "";
+            if (what == "open") { if (mic) MicDevice = e.B; else SpeakerDevice = e.B; }
+            else if (what is "lost" or "failed") { if (mic) MicDevice = null; else SpeakerDevice = null; }
+            _log($"voice: {(mic ? "mic" : "speaker")} {what}: {e.B}");
+            if (mic && what is "silent" or "failed" or "lost") SetStatus($"the mic ({e.B}) is {what}");
+            try { DeviceChanged?.Invoke(mic, what, e.B); } catch (Exception ex) { _log($"voice: device handler: {ex.Message}"); }
             return;
         }
         if (_byPc.TryGetValue(e.Pc, out var conn)) conn.OnEvent(e);

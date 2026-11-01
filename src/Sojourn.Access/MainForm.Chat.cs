@@ -94,6 +94,8 @@ public sealed partial class MainForm
             _chatInput.Clear();
             if (Commands.IsCommand(text)) { _ = _cmd.RunAsync(text); return; }
             var type = e.Control ? "shout" : e.Shift ? "whisper" : "normal";
+            // a gesture's trigger plays it instead of being said (its replacement text, or the rest of the line, is)
+            if (Triggered(text) is { } revised) { if (revised.Length > 0) _ = SayAsync(revised, type); return; }
             _ = SayAsync(text, type);
         }
         else if (e.Control && e.KeyCode is Keys.Up or Keys.Down)
@@ -252,7 +254,7 @@ public sealed partial class MainForm
                 if (cv.Other == UUID.Zero && e.Kind == FeedKind.Im && !e.Mine) cv.Other = e.From;
                 Append(cv.History, HistoryLine(e, _set.Timestamps));
                 break;
-            case FeedKind.Notice when e.NoticeId == Guid.Empty:
+            case FeedKind.Notice when e.NoticeId == Guid.Empty && !InFriendsBurst(e):
                 AppendChat(e.Name.Length > 0 ? (e.Text.Length > 0 && char.IsLower(e.Text[0]) ? $"{e.Name} {e.Text}" : $"{e.Name}: {e.Text}") : e.Text);
                 break;
         }
@@ -289,7 +291,9 @@ public sealed partial class MainForm
             box.Text = text[cut..];
             start = Math.Max(0, start - cut);
         }
-        box.AppendText((box.TextLength > 0 ? "\r\n" : "") + line);
+        // a line's own line breaks as Windows' edit control shows them (a bare \n isn't one there, so an answer of
+        // several paragraphs ran together as one line; the blind tester's copy of a long one took only part, 2026-10-31)
+        box.AppendText((box.TextLength > 0 ? "\r\n" : "") + line.ReplaceLineEndings("\r\n"));
         if (reviewing) box.Select(start, length);
     }
 

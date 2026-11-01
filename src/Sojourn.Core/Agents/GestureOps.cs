@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json.Nodes;
 using LibreMetaverse;
 using LibreMetaverse.Assets;
+using Microsoft.Extensions.Logging;
 using Sojourn.Core.Leap;
 
 namespace Sojourn.Core.Agents;
@@ -290,13 +291,163 @@ public sealed class GestureOps
         return new JsonObject { ["gestures"] = sorted };
     }
 
-    /// <summary>Plays an active gesture by item id (LLGesture startGesture), or any gesture item of mine.</summary>
-    public async Task<bool> PlayAsync(UUID itemId, CancellationToken ct)
+    // --- playing (LLGestureMgr's player): a gesture's steps run in turn, its chat said as the person's own nearby chat ---
+
+    readonly System.Collections.Concurrent.ConcurrentDictionary<UUID, CancellationTokenSource> _playing = new();
+
+    public bool IsPlaying(UUID itemId) => _playing.ContainsKey(itemId);
+
+    /// <summary>Starts a gesture of mine by item id (an active one's asset, else the item's own; a link's target), its
+    /// name, or null when it isn't a gesture I have. One already playing isn't started again (the viewer's rule).</summary>
+    public string? Start(UUID itemId)
     {
         var c = C;
-        if (!c.Self.ActiveGestures.TryGetValue(itemId, out var asset)) return false;
-        _ = DecodeAssetAsync(asset, CancellationToken.None);
-        await c.Self.PlayGestureAsync(asset, ct);
+        if (_s.Inventory.Node(itemId) is InventoryItem { AssetType: AssetType.Link } link && _s.Inventory.Node(link.AssetUUID) is InventoryItem t)
+            itemId = t.UUID;
+        var item = _s.Inventory.Node(itemId) as InventoryItem;
+        if (!c.Self.ActiveGestures.TryGetValue(itemId, out var asset))
+        {
+            if (item is not { AssetType: AssetType.Gesture } || item.AssetUUID == UUID.Zero) return null;
+            asset = item.AssetUUID;
+        }
+        var name = item?.Name ?? "gesture";
+        var cts = new CancellationTokenSource();
+        if (!_playing.TryAdd(itemId, cts)) return name;
+        _ = Task.Run(async () =>
+        {
+            try { await RunAsync(c, asset, cts.Token); }
+            catch (OperationCanceledException) { }
+            catch (Exception e) { _s.Log.LogWarning(e, "gesture {Name}", name); }
+            finally { _playing.TryRemove(new KeyValuePair<UUID, CancellationTokenSource>(itemId, cts)); }
+        });
+        return name;
+    }
+
+    /// <summary>Stops a gesture playing (its animations still going stopped); whether it was.</summary>
+    public bool Stop(UUID itemId)
+    {
+        if (!_playing.TryRemove(itemId, out var cts)) return false;
+        cts.Cancel();
         return true;
+    }
+
+    /// <summary>Plays a gesture to its end (LLGesture's old way in; Start is the one to use).</summary>
+    public async Task<bool> PlayAsync(UUID itemId, CancellationToken ct)
+    {
+        if (Start(itemId) is null) return false;
+        using var reg = ct.Register(() => Stop(itemId));
+        while (IsPlaying(itemId)) await Task.Delay(100, CancellationToken.None);
+        return true;
+    }
+
+    /// <summary>The steps as LLGestureMgr runs them: animations started or stopped, sounds triggered in the region from
+    /// where I am (the region plays them to everyone, me too), chat said as my own nearby chat ("/5 text" on its
+    /// channel), waits for a time or for the animations it started to end; at the end it waits for those as the viewer
+    /// does (mWaitingAtEnd), so a looping one keeps it playing until it's stopped. Stopped early, what it started stops.</summary>
+    async Task RunAsync(GridClient c, UUID asset, CancellationToken ct)
+    {
+        var g = await DecodeAssetAsync(asset, ct) ?? throw new LeapError("the gesture couldn't be read");
+        var started = new HashSet<UUID>();
+        try
+        {
+            foreach (var step in g.Sequence)
+            {
+                ct.ThrowIfCancellationRequested();
+                switch (step)
+                {
+                    case GestureStepAnimation a when a.AnimationStart:
+                        c.Self.AnimationStart(a.ID, true);
+                        started.Add(a.ID);
+                        break;
+                    case GestureStepAnimation a:
+                        c.Self.AnimationStop(a.ID, true);
+                        started.Remove(a.ID);
+                        break;
+                    case GestureStepSound s:
+                        c.Sound.SendSoundTrigger(s.ID, c.Self.SimPosition, 1f);
+                        break;
+                    case GestureStepChat ch when !string.IsNullOrWhiteSpace(ch.Text):
+                        Say(c, ch.Text);
+                        break;
+                    case GestureStepWait w:
+                        if (w.WaitForTime) await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(w.WaitTime, 0, 3600)), ct);
+                        if (w.WaitForAnimation) await AnimationsEndAsync(started, ct, TimeSpan.FromSeconds(30));
+                        break;
+                }
+            }
+            await AnimationsEndAsync(started, ct, Timeout.InfiniteTimeSpan);
+        }
+        catch (OperationCanceledException)
+        {
+            foreach (var id in started) c.Self.AnimationStop(id, true);
+            throw;
+        }
+    }
+
+    static readonly System.Text.RegularExpressions.Regex ChannelPrefix = new(@"^/(-?\d+)\s?(.*)$", System.Text.RegularExpressions.RegexOptions.Singleline);
+
+    void Say(GridClient c, string text)
+    {
+        int channel = 0;
+        if (ChannelPrefix.Match(text) is { Success: true } m && int.TryParse(m.Groups[1].Value, out var ch) && ch >= 0)
+        {
+            channel = ch;
+            text = m.Groups[2].Value;
+        }
+        c.Self.Chat(text, channel, ChatType.Normal);
+        if (channel == 0) _s.State.LastWords = text;
+    }
+
+    /// <summary>Until none of these animations plays on me any more (one the region never listed counts as ended a
+    /// second on), or the limit.</summary>
+    async Task AnimationsEndAsync(HashSet<UUID> anims, CancellationToken ct, TimeSpan limit)
+    {
+        if (anims.Count == 0) return;
+        var seen = new HashSet<UUID>();
+        var from = DateTime.UtcNow;
+        while (limit == Timeout.InfiniteTimeSpan || DateTime.UtcNow - from < limit)
+        {
+            var now = _s.Anims.Now().Select(p => p.Id).ToHashSet();
+            seen.UnionWith(anims.Where(now.Contains));
+            if (anims.All(a => !now.Contains(a) && (seen.Contains(a) || DateTime.UtcNow - from > TimeSpan.FromSeconds(1)))) return;
+            await Task.Delay(100, ct);
+        }
+    }
+
+    /// <summary>What nearby chat does with a line before it's said (LLGestureMgr::triggerAndReviseString): the first
+    /// word (split at spaces, as the viewer does) that's an active gesture's trigger, case aside, plays that gesture (one
+    /// at random when several share it), and the line is said with that word replaced by the gesture's replacement text,
+    /// or left out when it has none; null when no word is a trigger. Only for channel 0, which is the caller's to know.</summary>
+    public (UUID Item, string Name, string Revised)? Trigger(string line)
+    {
+        if (_s.Client is not { } c || c.Self.ActiveGestures.IsEmpty) return null;
+        var words = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < words.Length; i++)
+        {
+            var matches = c.Self.ActiveGestures
+                .Where(kv => Decoded.TryGetValue(kv.Value, out var g) && g.Trigger.Length > 0 && string.Equals(g.Trigger, words[i], StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (matches.Count == 0) continue;
+            var (item, asset) = matches[Random.Shared.Next(matches.Count)];
+            var replace = Decoded[asset].ReplaceWith ?? "";
+            // (the person's own capitals kept when the replacement is the word itself)
+            var word = replace.Length == 0 ? null : string.Equals(replace, words[i], StringComparison.OrdinalIgnoreCase) ? words[i] : replace;
+            var revised = string.Join(' ', words.Take(i).Concat(word is null ? Array.Empty<string>() : new[] { word }).Concat(words.Skip(i + 1)));
+            var name = Start(item) ?? "gesture";
+            return (item, name, revised.Trim());
+        }
+        return null;
+    }
+
+    /// <summary>The active gestures' assets read in the background, so their triggers are known before they're typed.</summary>
+    public void WarmTriggers()
+    {
+        if (_s.Client is not { } c) return;
+        foreach (var asset in c.Self.ActiveGestures.Values.Distinct().ToList())
+            _ = Task.Run(async () =>
+            {
+                try { await DecodeAssetAsync(asset, CancellationToken.None); }
+                catch (Exception e) { _s.Log.LogDebug(e, "gesture asset {Asset}", asset); }
+            });
     }
 }

@@ -116,9 +116,19 @@ public sealed class Look
         });
     }
 
-    /// <summary>LibreMetaverse 3.2.0 never reads the login response's active gestures; the inventory has them (an
-    /// active gesture item carries flag 1), so rebuild the list from there once the inventory has loaded.</summary>
+    /// <summary>LibreMetaverse 3.2.0 keeps the login response's active gestures (its "gestures" list, which the official
+    /// viewer activates) but never makes them active, and OpenSim marks an active gesture's item with flag 1: both go
+    /// into the active list once the inventory has loaded, and their assets are read so their triggers work.</summary>
     void RestoreActiveGestures(GridClient c)
+    {
+        if (c.Network.LoginResponseData?.Gestures is { } atLogin)
+            foreach (var (item, asset) in atLogin)
+                if (item != UUID.Zero && asset != UUID.Zero) c.Self.ActiveGestures[item] = asset;
+        try { RestoreFlaggedGestures(c); }
+        finally { _s.Gestures.WarmTriggers(); }
+    }
+
+    void RestoreFlaggedGestures(GridClient c)
     {
         var store = c.Inventory.Store;
         if (store?.RootFolder is not { } root) return;

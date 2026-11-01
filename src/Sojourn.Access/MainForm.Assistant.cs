@@ -60,6 +60,30 @@ public sealed partial class MainForm
         Reader?.Answer(h.Assistant.SidecarAlive ? said ?? "Asked." : $"{said ?? "Asked."} The assistant is still starting.", keep: false);
     }
 
+    /// <summary>Control+Shift+L (Read-out > Copy the assistant's last answer): the last answer, whole, onto the clipboard,
+    /// to paste to a friend (the blind tester's copy from Alt+9's history took only part of a long one, 2026-10-31). An
+    /// answer given in several replies to the same request is all of them. SOJOURN_TEST_NO_CLIPBOARD leaves the clipboard
+    /// alone, as Control+Shift+C does.</summary>
+    void CopyLastAnswer()
+    {
+        if (Host is not { } h || Reader is not { } r) return;
+        var replies = h.Assistant.Panel.Replies;
+        if (replies.Count == 0) { r.Answer("The assistant hasn't answered anything yet.", keep: false); return; }
+        var last = replies[^1];
+        var parts = new List<string>();
+        for (int i = replies.Count - 1; i >= 0 && (i == replies.Count - 1 || (last.Asked != null && replies[i].Asked == last.Asked)); i--)
+            parts.Insert(0, replies[i].Text.Trim());
+        var text = string.Join("\r\n\r\n", parts).ReplaceLineEndings("\r\n");
+        int words = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+        bool test = Environment.GetEnvironmentVariable("SOJOURN_TEST_NO_CLIPBOARD") == "1";
+        if (!test)
+            try { Clipboard.SetText(text); }
+            catch (Exception e) { r.Answer($"Couldn't copy: {e.Message}", keep: false); return; }
+        bool still = h.Assistant.Panel.Read(p => p.Working);
+        r.Answer($"Copied the assistant's last answer, {words} {(words == 1 ? "word" : "words")}{(still ? ", as far as it's got: it's still answering" : "")}"
+                 + $"{(test ? " (not onto the clipboard: a test)" : "")}.", keep: false);
+    }
+
     void PollAssistant()
     {
         var a = Host!.Assistant;

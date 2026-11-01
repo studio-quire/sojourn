@@ -23,7 +23,7 @@ public sealed class ViewApi : LeapApi
     public ViewApi(AgentSession s, OffscreenRenderer view) : base(s)
     {
         _view = view;
-        Op("status", "-> {state: starting|running|restarting|stopped, device, frames, idle, looks, glances, pictures, gpu_ms (a frame, "
+        Op("status", "-> {state: starting|running|restarting|stopped, device, software (drawn on the processor: no GPU here could), frames, idle, looks, glances, pictures, gpu_ms (a frame, "
             + "lately), cpu_ms, video_mb, textures_mb, losses (in ten minutes), idle_hz, idle_size, unseen (nothing can look at its "
             + "pictures: only geometry drawn, no textures, avatars, shadows or reflections), draw_distance}", _ => Status());
         Op("collide", CollisionApi.RayArgs + ": the first solid surface along the ray in the renderer's collision model (prims by "
@@ -36,12 +36,12 @@ public sealed class ViewApi : LeapApi
         var st = _view.Status();
         return new JsonObject
         {
-            ["state"] = st.State, ["device"] = st.Device, ["frames"] = st.Frames, ["idle"] = st.Idle, ["looks"] = st.Looks,
+            ["state"] = st.State, ["device"] = st.Device, ["software"] = _view.Software, ["frames"] = st.Frames, ["idle"] = st.Idle, ["looks"] = st.Looks,
             ["glances"] = st.Glances, ["pictures"] = st.Pictures,
             ["gpu_ms"] = double.IsFinite(st.GpuMs) ? Math.Round(st.GpuMs, 2) : null, ["gpu_frames"] = st.GpuFrames,
             ["cpu_ms"] = double.IsFinite(st.CpuMs) ? Math.Round(st.CpuMs, 2) : null,
             ["video_mb"] = st.VramUsed >> 20, ["textures_mb"] = st.TextureBytes >> 20, ["losses"] = st.Losses,
-            ["idle_hz"] = _view.IdleHz, ["idle_size"] = _view.IdleSize, ["unseen"] = _view.Unseen, ["draw_distance"] = Math.Round(_view.Reach),
+            ["idle_hz"] = _view.Software ? 0 : _view.IdleHz, ["idle_size"] = _view.IdleSize, ["unseen"] = _view.Unseen, ["draw_distance"] = Math.Round(_view.Reach),
         };
     }
 

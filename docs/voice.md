@@ -128,6 +128,18 @@ Built and tested on the local grid (Testing, below). On Second Life in the heads
   canceller carries on); a chosen device that isn't connected (unplugged, Link off) falls back to automatic, logged.
   `SOJOURN_VOICE_MIC` / `SOJOURN_VOICE_SPEAKER` still override (tests). The engine and devices are shared with world
   audio (`Audio/AudioEngine.cs`): whichever starts first opens them.
+- **Devices coming and going** (2026-10-31; before it, the blind tester unplugging a headset left Access silent until
+  she logged in again): the shim follows Windows itself (`audio_io.cpp`, an `IMMNotificationClient`). Automatic follows
+  the default as Windows moves it (a headset unplugged, plugged back in); a device asked for by name is used while it's
+  there and the default meanwhile, and is gone back to when it returns (on the desktop; in the headset automatic is
+  the Oculus pair); a device that goes is reopened on what's there now, within about 200 ms; with nothing there at all
+  the engine runs on paced silence (the mix plays out unheard, so nothing piles up to burst out later; the mic sends
+  silence, as muted) and the device opens when one appears. A lost device's event usually stops firing, which used to
+  leave the audio threads waiting on it for good: every wait now times out and polls the stream. Each direction has one
+  thread for the engine's life, so `sv_audio_start` only hands it a spec and never waits on a device (only a direction
+  whose spec changed reopens); `sv_audio_stop` waits 3 s at most. Device events (`open` also on moving to another
+  device, `lost`, `failed` once until something opens, `silent`) reach `VoiceClient.DeviceChanged`, `MicDevice` and
+  `SpeakerDevice` (null while there's none).
 
 ## How it fits together
 
@@ -239,6 +251,12 @@ restarts the grid). OpenSim 0.9.3.1's Janus service names the stock AudioBridge 
 - `loopback`: the shim alone, two in-process peer connections: connects, the data channel both ways, a signal through
   raw (envelope correlation ~0.97, 50-70 ms) and processed (Whisper hears the same words), mute gives silence, the
   assistant's gate silences residents and taps 1000 + 300 + 250 ms.
+- `devices-change`: the shim following devices, simulated on real ones (`sv_test_device`; Steam's virtual mic and
+  speakers here, so the only real device opened is the default speaker, playing silence): a stream lost as if
+  invalidated (its event stopping) and reopened in ~220 ms, the speakers asked for gone (onto the default) and back,
+  nothing there at all (the engine runs on at 100 frames a second, no spinning, no `failed`), devices back, the
+  default moving and back; `sv_audio_start` returns in under 0.1 ms and `sv_audio_stop` in ~10 ms. A real unplug or
+  default change can't be made here without touching the PC's own devices.
 - `devices`, `chirp [--desktop|--synthetic]`: the echo path of real devices for the headset session (a sweep to the
   Oculus headphones, the Oculus mic raw and echo-cancelled; prints the round trip and echo level); `--synthetic` checks
   the tool on a made-up echo (120 ms, -6 dB).

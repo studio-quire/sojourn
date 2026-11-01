@@ -7,7 +7,7 @@ grid unless the script says so).
 - `setup.py`: a complete build from a fresh clone on any Windows PC (prerequisites, voice, media, NVDA's client, the apps, the assistant; `--check` reports only); the public BUILDING.md (`publish/sojourn/`) guides a person's own agent through it. `buildenv.py`: where dotnet, VS 2022's C++ tools and CMake are, for it and the build scripts.
 - `client.py`: build and run the VR client (`run`, `vr`, `vr-sim`, `--logs`, `--login`, `--base-dir`).
 - `launcher.py`: the launcher (Sojourn.exe): build, run, its states drawn offscreen, `check` its terms and MFA path on a hidden desktop.
-- `access.py`: Sojourn Access: build, run, `package` (docs/access-app.md > Packaging), the visitor bot's commands, its test on a hidden desktop.
+- `access.py`: Sojourn Access: build, run, `package` (docs/access-app.md > Packaging; `fetch-lavapipe` first, the view's software driver), the visitor bot's commands, its test on a hidden desktop.
 - `probe.py`: Sojourn.Session without the VR client: two console hosts log in, answer SojournSettings and hear each other; no GPU.
 - `dev.py`: dev mode: start, watch, say, shot, log, call, restart (docs/driving.md).
 - `grid.py`: the local grid: start/stop, accounts, console, `scene light|dense`, `voice up`.

@@ -143,7 +143,7 @@ public sealed partial class MainForm : Form
         _cmd.WalkMode = _walk;
         _walk.Walking = () => _cmd.Heading;
         // sound as a map (M4): a sound per kind of thing arriving, standing in for the viewer's new-IM and alert sounds
-        _earcons = new Sojourn.Access.Sound.Earcons(_set, _walk, e => _set.IsMuted(SourceOf(e))
+        _earcons = new Sojourn.Access.Sound.Earcons(_set, _walk, e => _set.IsMuted(SourceOf(e)) || InFriendsBurst(e)
             || (e.Kind is FeedKind.Im or FeedKind.Group && e.Session != null && e.Session == _focusedSource));
         host.Feed.Joined += e => BeginInvoke(() => _earcons.Arrived(e));
         if (host.Audio is { } audio) audio.ConversationSound = false;
@@ -153,6 +153,7 @@ public sealed partial class MainForm : Form
         StartIncognito();
         AddIncognitoSettings(host.SettingsApi);
         StartVoiceKeys();
+        StartDeviceWords();
         AddVoiceSettings(host.SettingsApi);
         _cmd.Voice = words => (Task)Invoke(() => VoiceWordsAsync(words));
         host.ScreenReader.Shape = Shape;
@@ -182,11 +183,14 @@ public sealed partial class MainForm : Form
     {
         _areas.SelectedTab = _chatPage;
         _chatInput.Focus();
+        OutfitMoving(login: true);
+        FriendsWindowOpens();
         UpdateWhere();
         // no earcons, footsteps or world sounds at all is worth hearing once, before wondering at the silence
         var noSound = SoundWords.Missing(Host) is { } why ? why + " " : "";
         if (_ops.Me() is { } me) Reader?.Answer($"Logged in, in {me.Region}. {noSound}F1 for keys.", keep: false);
         if (Reader is { } r) r.Greeting = "Sojourn Access. F1 for keys.";
+        _arrived = true;
     }
 
     void Tick()
@@ -207,6 +211,7 @@ public sealed partial class MainForm : Form
         AutoRefreshLists();
         WatchWorn();
         WatchSpeakers();
+        FriendsBurstSaid();
     }
 
     string? _lastRegion;
@@ -234,6 +239,7 @@ public sealed partial class MainForm : Form
         if (_lastRegion != null && me.Region != _lastRegion && !_cmd.TeleportingSelf && Environment.TickCount64 - _teleportedAt > 15_000
             && _walk?.SeatedRecently != true)   // a seated crossing is walk mode's to say, with whether the seat held
             Announce($"Now in {me.Region}.");
+        if (_lastRegion != null && me.Region != _lastRegion) OutfitMoving(login: false);
         _lastRegion = me.Region;
     }
 
@@ -342,6 +348,7 @@ public sealed partial class MainForm : Form
         if (_set.IsMuted(source)) return null;
         if (e.Kind == FeedKind.Notice)
         {
+            if (InFriendsBurst(e)) return null;   // said with the others once they stop (MainForm.FriendsOnline.cs)
             var said = Sentences(line);
             NoticeSaid(said, LogWords.FromOf(e));
             return said;
@@ -490,6 +497,8 @@ public sealed partial class MainForm : Form
         Control+Enter: shout
         //help in the Say box: the slash commands
         Control+Backspace: delete the word before the caret
+        Control+Shift+G: your active gestures, to play one
+        A gesture's trigger typed in the Say box plays it
 
         Notices
         Control+N: the newest notice
@@ -511,6 +520,7 @@ public sealed partial class MainForm : Form
         Control+R: repeat
         Control+Shift+M: mark a line
         Control+Shift+C: copy from the mark to the line you're on
+        Control+Shift+L: copy the assistant's last answer, whole
         Control+Shift+T: times in the histories
         Control+Shift+A: arrivals and departures read out
 
@@ -544,6 +554,7 @@ public sealed partial class MainForm : Form
         F4 held: talk
         Shift+F4: switch to an open mic
         Control+Shift+V: who's in voice
+        Control+Shift+O: the sound out of the next device (headphones, speakers), then back to the default
 
         Other
         Control+Shift+I: incognito on and off
@@ -617,6 +628,9 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.Shift | Keys.OemCloseBrackets: Reader?.Repeat(); return true;
             case Keys.Control | Keys.Shift | Keys.M: if (Reader is { } rm) rm.Answer(rm.Mark(), keep: false); return true;
             case Keys.Control | Keys.Shift | Keys.C: CopyFromMark(); return true;
+            case Keys.Control | Keys.Shift | Keys.L: CopyLastAnswer(); return true;
+            case Keys.Control | Keys.Shift | Keys.G: ShowGestures(); return true;
+            case Keys.Control | Keys.Shift | Keys.O: _ = NextOutputAsync(); return true;
             case Keys.Control | Keys.Shift | Keys.T: ToggleTimestamps(); return true;
             case Keys.Control | Keys.Shift | Keys.A: _ = ToggleArrivalsAsync(); return true;
             case Keys.F1: ShowKeys(walk: _walkPad.Focused); return true;
@@ -850,6 +864,7 @@ public sealed partial class MainForm : Form
     void Teleported()
     {
         _teleportedAt = Environment.TickCount64;
+        OutfitMoving(login: false);   // (a teleport within the region too: attachments can drop and come back)
         if (_cmd.TeleportingSelf || _ops.Me() is not { } me) return;
         _lastRegion = me.Region;
         Announce($"Arrived in {me.Region}.");

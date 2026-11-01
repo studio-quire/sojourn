@@ -36,8 +36,10 @@ screen reader's API, NVDA first, not a built-in voice; the stream's song title t
   A confirmation cuts in at once ("Pay L$50 to Mira Lane. Your balance after: L$1,250. Enter confirms, Escape
   cancels."), and on NVDA 2024.1+ the interrupted line resumes after it. One that names only the start of a list
   ("... and 40 more") adds "Control R reads the whole list."; Ctrl+R then says it with every name, whole, however long.
-- **Held behind a confirmation**: while one waits, nothing others or the assistant wrote is read (the panel's rule:
-  nothing caller-written beside a confirmation); it all follows, in order, once it's answered.
+- **Held behind a confirmation**: for its first 10 s nothing others or the assistant wrote is read (the panel's rule:
+  nothing caller-written beside a confirmation); it follows, in order, once it's answered. One left waiting longer
+  stops holding (`AccessWiring.HoldFor`), so a missed confirmation can't silence everything: what waited is read and
+  "A confirmation is still waiting for your answer." once (Access's test: "a confirmation left waiting").
 - **Follows the feed**: lines come from the chat feed (`Social/SocialFeed.cs`), so mutes, blocks, the viewer's
   filtering and Do Not Disturb apply as they do on screen; the feed's chat switch (what's drawn) doesn't affect them.
 - Dictated drafts are read back ("Draft to nearby: ... Enter sends, Escape cancels."), incognito turning on and off

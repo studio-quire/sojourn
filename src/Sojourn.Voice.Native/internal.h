@@ -70,6 +70,7 @@ void WorldMix(float* stereo);
 // Audio I/O (audio_io.cpp).
 bool AudioStart(const std::string& capture, const std::string& render);
 void AudioStop();
+void AudioTest(int dir, int what, const std::string& spec);
 std::string DeviceListJson(bool capture);
 
 // Peers (peer.cpp).

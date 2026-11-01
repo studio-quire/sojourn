@@ -240,10 +240,13 @@ public sealed class AccessSettings
             SettingsApi.Switch("walk_teleport_fallback", on => { Walk["teleport_fallback"] = on ? "on" : "off"; Save(); changed(); })));
         // a safeguard against programs on this PC, the assistant's among them: any caller may set it back to refuse, and
         // only the person lowers it to hello, in Alt+0 by their own key or Windows Hello (MainForm.AnswersRow)
-        api.Add("access_answers_without_key", new SettingsApi.Setting("access", "Sojourn Access: a confirmation, a notice's key, the ToS "
-            + "or a typed answer that doesn't come from a key on a physical keyboard (a braille keyboard, dictation, an on-screen "
-            + "keyboard, switch access): refuse it, or hello, asking Windows Hello (face, fingerprint or PIN) first. A physical key "
-            + "answers either way. Only the person changes it to hello (Alt+0)", string.Join(", ", AnswersChoices), () => AnswersWithoutKey,
+        api.Add("access_answers_without_key", new SettingsApi.Setting("access", "Sojourn Access: for people who answer without a "
+            + "keyboard's own keys, by a braille display's keys, dictation, an on-screen keyboard or switch access. Confirmations "
+            + "(paying, giving, deleting), a script menu's or notice's keys, the ToS and typed replies count only keys pressed on a "
+            + "physical keyboard, because a program on the PC (the assistant's included) can send keys too, and Windows marks those "
+            + "the same as a braille display's or dictation's. refuse (the default; leave it if you use a keyboard): such answers are "
+            + "refused. hello: such an answer is asked again by Windows Hello (face, fingerprint or PIN) and then counts. A "
+            + "physical key answers either way. Only the person changes it to hello (Alt+0)", string.Join(", ", AnswersChoices), () => AnswersWithoutKey,
             v =>
             {
                 int pick = -1;

@@ -18,6 +18,9 @@ public sealed record VulkanSetup
     /// runtime, XR_KHR_vulkan_enable2: it adds the extensions it needs and chooses the GPU the headset is on).</summary>
     public IVulkanCreator? Creator { get; init; }
     public Action<string>? Log { get; init; }
+    /// <summary>On a device that draws on the processor (lavapipe: its "video memory" is the PC's own, and its budget
+    /// counts every process's use), what this process may hold, counted from our own allocations.</summary>
+    public ulong SoftwareBudget { get; init; } = 1UL << 30;
 }
 
 public unsafe interface IVulkanCreator
@@ -49,6 +52,9 @@ public sealed unsafe class VulkanContext : IDisposable
     public PhysicalDeviceMemoryProperties MemoryProperties { get; }
     public string DeviceName { get; }
     public bool HasMemoryBudget { get; }
+    /// <summary>Draws on the processor (a software driver: SoftwareVulkan).</summary>
+    public bool Software => Properties.DeviceType == PhysicalDeviceType.Cpu;
+    readonly ulong _softwareBudget;
     public bool Validation { get; }
     public GpuAllocator Allocator { get; }
     public SurfaceKHR Surface { get; }
@@ -66,6 +72,7 @@ public sealed unsafe class VulkanContext : IDisposable
     public VulkanContext(VulkanSetup setup)
     {
         Log = setup.Log;
+        _softwareBudget = setup.SoftwareBudget;
         Api = Vk.GetApi();
         bool validation = setup.Validation;
 
@@ -105,7 +112,13 @@ public sealed unsafe class VulkanContext : IDisposable
             instance = creator.CreateInstance(Api, &ici);
             Api.CurrentInstance = instance;   // Silk loads instance functions through this
         }
-        else Check(Api.CreateInstance(in ici, null, out instance), "vkCreateInstance");
+        else
+        {
+            var made = Api.CreateInstance(in ici, null, out instance);
+            // the loader's answer when it finds no driver at all (or none that takes 1.3)
+            if (made == Result.ErrorIncompatibleDriver) throw new NoUsableGpuException("No Vulkan driver (vkCreateInstance: incompatible driver)");
+            Check(made, "vkCreateInstance");
+        }
         Instance = instance;
         SilkMarshal.Free((nint)layerPtrs);
         SilkMarshal.Free((nint)extPtrs);
@@ -126,7 +139,11 @@ public sealed unsafe class VulkanContext : IDisposable
             Api.GetPhysicalDeviceProperties(PhysicalDevice, out props);
             if (props.ApiVersion < Vk.Version13) throw new InvalidOperationException("the headset's GPU has no Vulkan 1.3");
         }
-        else PhysicalDevice = PickPhysicalDevice(out props);
+        else
+        {
+            try { PhysicalDevice = PickPhysicalDevice(out props); }
+            catch (NoUsableGpuException) { DropInstance(); throw; }   // (one may be tried next in this process: SoftwareVulkan)
+        }
         Properties = props;
         DeviceName = SilkMarshal.PtrToString((nint)props.DeviceName) ?? "?";
         Api.GetPhysicalDeviceMemoryProperties(PhysicalDevice, out var memProps);
@@ -214,7 +231,17 @@ public sealed unsafe class VulkanContext : IDisposable
             device = setup.Creator.CreateDevice(Api, PhysicalDevice, &dci);
             Api.CurrentDevice = device;
         }
-        else Check(Api.CreateDevice(PhysicalDevice, in dci, null, out device), "vkCreateDevice");
+        else
+        {
+            var made = Api.CreateDevice(PhysicalDevice, in dci, null, out device);
+            if (made is Result.ErrorFeatureNotPresent or Result.ErrorExtensionNotPresent)
+            {
+                SilkMarshal.Free((nint)devExtPtrs);
+                DropInstance();
+                throw new NoUsableGpuException($"{DeviceName} lacks what the renderer needs (vkCreateDevice: {made})");
+            }
+            Check(made, "vkCreateDevice");
+        }
         SilkMarshal.Free((nint)devExtPtrs);
         Device = device;
         Api.GetDeviceQueue(Device, QueueFamily, 0, out var queue);
@@ -231,6 +258,13 @@ public sealed unsafe class VulkanContext : IDisposable
         Check(Api.CreateFence(Device, in fci, null, out _oneShotFence), "vkCreateFence");
 
         Allocator = new GpuAllocator(this);
+    }
+
+    void DropInstance()
+    {
+        if (SurfaceApi != null) SurfaceApi.DestroySurface(Instance, Surface, null);
+        if (_debugUtils != null) _debugUtils.DestroyDebugUtilsMessenger(Instance, _messenger, null);
+        Api.DestroyInstance(Instance, null);
     }
 
     bool HasLayer(string name)
@@ -280,7 +314,7 @@ public sealed unsafe class VulkanContext : IDisposable
     {
         uint count = 0;
         Api.EnumeratePhysicalDevices(Instance, ref count, null);
-        if (count == 0) throw new InvalidOperationException("No Vulkan devices");
+        if (count == 0) throw new NoUsableGpuException("No Vulkan devices");
         var devs = new PhysicalDevice[count];
         fixed (PhysicalDevice* p = devs) Api.EnumeratePhysicalDevices(Instance, ref count, p);
         PhysicalDevice best = default;
@@ -301,7 +335,7 @@ public sealed unsafe class VulkanContext : IDisposable
             if (score > bestScore) { bestScore = score; best = d; chosenProps = pr; }
         }
         // what was found, for a tester's log (an old driver may offer only 1.2; a newer one from the card's maker 1.3)
-        if (bestScore == int.MinValue) throw new InvalidOperationException($"No Vulkan 1.3 device (found {string.Join("; ", seen)})");
+        if (bestScore == int.MinValue) throw new NoUsableGpuException($"No Vulkan 1.3 device (found {string.Join("; ", seen)})");
         return best;
     }
 
@@ -406,6 +440,7 @@ public sealed unsafe class VulkanContext : IDisposable
     /// <summary>Device-local heap usage and budget in bytes (whole process view from VK_EXT_memory_budget).</summary>
     public (ulong Usage, ulong Budget) DeviceLocalBudget()
     {
+        if (Software) return (Allocator.TotalAllocated, _softwareBudget);
         if (!HasMemoryBudget) return (Allocator.TotalAllocated, 0);
         var budget = new PhysicalDeviceMemoryBudgetPropertiesEXT { SType = StructureType.PhysicalDeviceMemoryBudgetPropertiesExt };
         var mp2 = new PhysicalDeviceMemoryProperties2 { SType = StructureType.PhysicalDeviceMemoryProperties2, PNext = &budget };

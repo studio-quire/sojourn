@@ -420,6 +420,8 @@ SV_API int sv_audio_start(const char* capture, const char* render) {
 
 SV_API void sv_audio_stop(void) { AudioStop(); }
 
+SV_API void sv_test_device(int dir, int what, const char* spec) { AudioTest(dir, what, spec ? spec : ""); }
+
 SV_API void sv_set_mute(int muted, int fade_ms) {
     if (!g) return;
     g->mute_fade_ms.store(std::max(0, fade_ms));

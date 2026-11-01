@@ -84,11 +84,13 @@ public sealed partial class OffscreenRenderer
         int best = int.MaxValue;
         long improved = t0;
         FrameStats st;
+        int planned = 0;
         while (true)
         {
             r.Motion.BeginFrame();
-            st = Render(r, req);
+            st = Render(r, Settling(r, req));
             _lookFrames++;
+            planned++;
             if (st.Pending < best) (best, improved) = (st.Pending, Stopwatch.GetTimestamp());
             if (_stop || st.Pending == 0 || Stopwatch.GetElapsedTime(t0).TotalSeconds >= settle || Stopwatch.GetElapsedTime(improved).TotalSeconds > 1) break;
             _wake.WaitOne(Math.Max(0, 50 - (int)st.TotalCpuMs));
@@ -98,11 +100,16 @@ public sealed partial class OffscreenRenderer
         (byte[] Px, int W, int H)? got = null;
         using var arrived = new ManualResetEventSlim();
         r.Motion.BeginFrame();
+        long drawn = Stopwatch.GetTimestamp();
+        double settled = Stopwatch.GetElapsedTime(t0, drawn).TotalSeconds;
         st = Render(r, req with { CaptureTo = (px, pw, ph) => { got = (px, pw, ph); arrived.Set(); } });
+        if (r.Software)   // (how long pictures take on the PCs that draw on the processor: in a tester's log)
+            _log($"the view out of sight on the processor: \"{spec.Label}\" at {req.Width}x{req.Height}, {settled:0.0} s settling " +
+                 $"({planned} planned frames, {st.Pending} still loading), drawn in {Stopwatch.GetElapsedTime(drawn).TotalMilliseconds:0} ms");
         for (int i = 0; i < 4 && !arrived.Wait(250); i++)
         {
             r.Motion.BeginFrame();
-            Render(r, req);
+            Render(r, Settling(r, req));
         }
         var (rgba, w, h) = got ?? (new byte[req.Width * req.Height * 4], req.Width, req.Height);
         return Seen(r, sim, spec, req, rgba, w, h, got == null ? -1 : st.Pending) with { Relit = relight };

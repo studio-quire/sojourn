@@ -28,8 +28,10 @@ enum sv_event_kind {
     SV_EV_DATA = 8,           // a = message text
     SV_EV_RENEGOTIATE = 9,    // the connection needs a fresh offer (failed, or disconnected for 10 s)
     SV_EV_ERROR = 10,         // a = text
-    SV_EV_DEVICE = 20,        // pc = 0; n = 0 capture / 1 render; a = "open" | "lost" | "failed" | "silent" (open
-                              // but no audio for 1 s), b = device name
+    SV_EV_DEVICE = 20,        // pc = 0; n = 0 capture / 1 render; a = "open" (also on moving to another device, and
+                              // on a silent one coming back) | "lost" (the device in use went) | "failed" (nothing
+                              // to open, once until something opens) | "silent" (open but no audio, or for render
+                              // taking none, for 1 s), b = device name
 };
 typedef void (*sv_event_fn)(int64_t pc, int kind, const char* a, const char* b, int n);
 
@@ -40,11 +42,19 @@ SV_API void sv_shutdown(void);
 // (including the terminator); writes nothing past cap.
 SV_API int sv_devices(int capture, char* buf, int cap);
 
-// Opens the devices and starts the audio threads (stopping any running). Device spec: "" the default device,
-// "comms" the default communications device, an endpoint id, a friendly-name substring prefixed "name:", "file:PATH" (a WAV, played
-// once then silence / written as 48 kHz stereo), "loop:PATH" (a WAV mic, repeated), "none" (paced silence / discard).
+// Opens the devices and starts the audio threads; called again, a direction whose spec changed reopens (never
+// blocking the caller). Device spec: "" the default device, "comms" the default communications device, an endpoint
+// id, a friendly-name substring prefixed "name:", "file:PATH" (a WAV, played once then silence / written as 48 kHz
+// stereo), "loop:PATH" (a WAV mic, repeated), "none" (paced silence / discard). Devices are followed: "" and "comms"
+// move with Windows' default; an id or name is used while it's there and the default meanwhile; with no device at all
+// the engine runs on silence and the device opens when one appears.
 SV_API int sv_audio_start(const char* capture, const char* render);
 SV_API void sv_audio_stop(void);
+// Tests: device changes, simulated. dir 0 capture / 1 render. what: 0 the stream in use is lost (as
+// AUDCLNT_E_DEVICE_INVALIDATED, its event stopping); 1 devices gone (spec "" every device of the direction, or
+// "name:part" those whose name has it); 2 the gone ones back; 3 the default moves (spec: what "" resolves to from now;
+// "" Windows' own default again).
+SV_API void sv_test_device(int dir, int what, const char* spec);
 
 // The person's mic toward residents: muted sends zeros, with a ramp of fade_ms.
 SV_API void sv_set_mute(int muted, int fade_ms);

@@ -565,7 +565,6 @@ public sealed class LLGesture : SessionApi
 {
     public override string Name => "LLGesture";
     public override string Desc => "Gestures";
-    readonly System.Collections.Concurrent.ConcurrentDictionary<UUID, CancellationTokenSource> _playing = new();
 
     public LLGesture(AgentSession s) : base(s)
     {
@@ -577,32 +576,25 @@ public sealed class LLGesture : SessionApi
                 var name = (S.Inventory.Node(item) as InventoryItem)?.Name ?? "";
                 g[item.ToString()] = new JsonObject
                 {
-                    ["name"] = name, ["trigger"] = GestureOps.KnownTrigger(asset) ?? "", ["playing"] = _playing.ContainsKey(item),
+                    ["name"] = name, ["trigger"] = GestureOps.KnownTrigger(asset) ?? "", ["playing"] = S.Gestures.IsPlaying(item),
                     ["asset_id"] = asset.ToString(),
                 };
             }
             return new JsonObject { ["gestures"] = g };
         });
-        Op("startGesture", "{id} -> {playing: true}: an active gesture's item id (getActiveGestures; TesselInventory activateGesture first)", a =>
+        Op("startGesture", "{id} -> {playing: true, name}: a gesture's item id, active (getActiveGestures) or any gesture of mine "
+            + "(TesselInventory gestures); its chat is said as my own nearby chat", a =>
         {
             var id = a.Uuid("id") ?? throw new LeapError("need id (a gesture's item id)");
-            if (!C.Self.ActiveGestures.ContainsKey(id))
-                throw new LeapError(S.Inventory.Node(id) is InventoryItem { AssetType: AssetType.Gesture } g
-                    ? $"{g.Name} isn't active; activate it first (TesselInventory activateGesture)"
-                    : "no active gesture has that id (getActiveGestures lists them)");
-            var cts = new CancellationTokenSource();
-            _playing[id] = cts;
-            _ = S.Gestures.PlayAsync(id, cts.Token).ContinueWith(_ => _playing.TryRemove(id, out var _), TaskScheduler.Default);
-            return new JsonObject { ["playing"] = true };
+            var name = S.Gestures.Start(id) ?? throw new LeapError("no gesture of mine has that id (getActiveGestures, TesselInventory gestures)");
+            return new JsonObject { ["playing"] = true, ["name"] = name };
         });
         Op("stopGesture", "{id} -> {was_playing}", a =>
         {
             var id = a.Uuid("id") ?? throw new LeapError("need id (a gesture's item id)");
-            var was = _playing.TryRemove(id, out var cts);
-            cts?.Cancel();
-            return new JsonObject { ["was_playing"] = was };
+            return new JsonObject { ["was_playing"] = S.Gestures.Stop(id) };
         });
-        Op("isGesturePlaying", "{id}", a => new JsonObject { ["playing"] = a.Uuid("id") is { } id && _playing.ContainsKey(id) });
+        Op("isGesturePlaying", "{id}", a => new JsonObject { ["playing"] = a.Uuid("id") is { } id && S.Gestures.IsPlaying(id) });
     }
 }
 

@@ -9,7 +9,9 @@ namespace Sojourn.Session.Audio;
 ///
 /// Devices: the person's choice (<see cref="Chosen"/>, Settings menu > sound) when it's connected, else the headset's
 /// pair in VR (Link's "Oculus Virtual Audio Device") and the system's defaults on the desktop; a new choice reopens
-/// them at once. SOJOURN_VOICE_MIC / SOJOURN_VOICE_SPEAKER name others (part of a name); for tests SOJOURN_VOICE_MIC_FILE plays a
+/// them at once. The shim follows Windows from there (audio_io.cpp): the default as it moves, a device unplugged and
+/// plugged back, nothing there at all; nothing here waits on a device.
+/// SOJOURN_VOICE_MIC / SOJOURN_VOICE_SPEAKER name others (part of a name); for tests SOJOURN_VOICE_MIC_FILE plays a
 /// WAV as the mic (once; loop:PATH repeats) and SOJOURN_VOICE_OUT_FILE writes what's heard to a WAV, the latter on a
 /// local grid only: other residents' voices are never recorded.
 /// </summary>
@@ -99,9 +101,17 @@ public static class AudioEngine
         string mic = headset ? "name:Oculus Virtual Audio Device" : "", speaker = mic;
         if (Chosen?.Invoke(headset) is var (cm, cs))
         {
-            // a device that isn't connected now (unplugged, Link off) leaves it automatic rather than silent
-            if (cm != null) { if (List(true).Any(d => d.Name == cm)) mic = "name:" + cm; else _log?.Invoke($"audio: the chosen microphone ({cm}) isn't connected"); }
-            if (cs != null) { if (List(false).Any(d => d.Name == cs)) speaker = "name:" + cs; else _log?.Invoke($"audio: the chosen speakers ({cs}) aren't connected"); }
+            // A device that isn't connected now (unplugged, Link off) leaves it automatic rather than silent. On the
+            // desktop automatic is the default, which the shim falls back to by itself while a device asked for is away,
+            // and it goes back to that device when it's plugged in; in the headset automatic is the Oculus pair.
+            string? Pick(string name, bool capture, string what)
+            {
+                if (List(capture).Any(d => d.Name == name)) return "name:" + name;
+                _log?.Invoke($"audio: the chosen {what} ({name}) {(capture ? "isn't" : "aren't")} connected{(headset ? "" : ": the default until then")}");
+                return headset ? null : "name:" + name;
+            }
+            if (cm != null && Pick(cm, true, "microphone") is { } pm) mic = pm;
+            if (cs != null && Pick(cs, false, "speakers") is { } ps) speaker = ps;
         }
         if (Environment.GetEnvironmentVariable("SOJOURN_VOICE_MIC") is { Length: > 0 } m) mic = "name:" + m;
         if (Environment.GetEnvironmentVariable("SOJOURN_VOICE_SPEAKER") is { Length: > 0 } s) speaker = "name:" + s;

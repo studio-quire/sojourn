@@ -8,6 +8,10 @@
                                          prints the round trip, the echo's level and what cancelling leaves
   python tools/voice.py loopback         the shim alone: two in-process peer connections, a WAV through them,
                                          checked for delay, likeness, the mute and the assistant's gate
+  python tools/voice.py devices-change   the shim following devices, simulated on real ones (nothing played;
+                                         virtual devices where there are some): a stream lost, the device asked
+                                         for gone and back, nothing there at all, the default moving; checked for
+                                         recovery, the engine running on throughout, no spinning, no waiting
   python tools/voice.py roundtrip        two clients on the local grid (grid.py voice up): Sojourn Friend plays
                                          speech as its mic, Sojourn Pilot records what it hears; checked for the
                                          words (Whisper), mouth-to-ear latency, and the stereo balance flipping
@@ -941,6 +945,95 @@ def devices():
     return r.returncode
 
 
+def devices_change():
+    """sv_loopback devices-change on a mic and a speaker that aren't the defaults (Steam's virtual pair if it's
+    there), so the only real device opened is the default speaker, playing silence."""
+    if build():
+        return 1
+    r = subprocess.run([str(LOOPBACK), "devices"], capture_output=True, text=True, encoding="utf-8")
+    lists = {}
+    for line in r.stdout.splitlines():
+        lists.update(json.loads(line))
+
+    def pick(kind, prefer):
+        others = [d for d in lists.get(kind, []) if not d["default"]]
+        hit = next((d for d in others if prefer in d["name"]), others[0] if others else None)
+        return hit and hit["name"]
+
+    cap, ren = pick("capture", "Steam Streaming Microphone"), pick("render", "Steam Streaming Speakers")
+    if not cap or not ren:
+        print("devices-change needs a mic and a speaker besides the defaults", file=sys.stderr)
+        return 1
+    r = subprocess.run([str(LOOPBACK), "devices-change", "name:" + cap, "name:" + ren], capture_output=True,
+                       text=True, encoding="utf-8", creationflags=BELOW_NORMAL, timeout=90)
+    events = [json.loads(line) for line in r.stdout.splitlines() if line.startswith("{")]
+    steps, cur, prev_stats = {}, None, None
+    for e in events:
+        if e["event"] == "begin":
+            cur = steps[e["step"]] = {"t": e["t"], "dev": []}
+        elif e["event"] == "device" and cur is not None:
+            cur["dev"].append(e)
+        elif e["event"] == "end":
+            st = e["stats"]
+            cur.update(cpu=e["cpu_ms"], ms=e["t"] - cur["t"],
+                       cap=st["capture_frames"] - (prev_stats or {}).get("capture_frames", 0),
+                       ren=st["render_frames"] - (prev_stats or {}).get("render_frames", 0))
+            prev_stats = st
+    done = next((e for e in events if e["event"] == "done"), None)
+    ok = True
+
+    def check(name, cond, detail):
+        nonlocal ok
+        ok &= bool(cond)
+        print(f"{'ok  ' if cond else 'FAIL'} {name}: {detail}")
+
+    def seq(step, d):
+        return [(e["what"], e["name"], e["t"] - steps[step]["t"]) for e in steps.get(step, {}).get("dev", []) if e["dir"] == d]
+
+    def says(step, d):
+        return ", ".join(f"{w} {n} at {t} ms" for w, n, t in seq(step, d)) or "nothing"
+
+    def opened(step, d, part=None, other_than=None):
+        return [x for x in seq(step, d) if x[0] == "open" and (part is None or part in x[1])
+                and (other_than is None or other_than not in x[1])]
+
+    def lost(step, d):
+        return any(w == "lost" for w, _, _ in seq(step, d))
+
+    print(f"mic asked for: {cap}; speakers asked for: {ren}")
+    check("both open", opened("open", 0, cap) and opened("open", 1, ren), f"{says('open', 0)}; {says('open', 1)}")
+    for step, d in (("render invalidated", 1), ("capture invalidated", 0)):
+        back = opened(step, d, cap if d == 0 else ren)
+        check(f"{step}: lost and reopened", lost(step, d) and back and back[0][2] < 1000, says(step, d))
+    check("the speakers asked for gone: onto the default", lost("render device gone", 1) and opened("render device gone", 1, other_than=ren),
+          says("render device gone", 1))
+    check("and back to them when they return", opened("render device back", 1, ren), says("render device back", 1))
+    check("nothing there: lost, quiet", lost("all gone", 0) and lost("all gone", 1) and not opened("all gone", 0)
+          and not opened("all gone", 1) and not any(w == "failed" for w, _, _ in seq("all gone", 0) + seq("all gone", 1)),
+          f"{says('all gone', 0)}; {says('all gone', 1)}")
+    g = steps.get("all gone", {})
+    want = g.get("ms", 0) / 10
+    check("nothing there: the engine runs on (paced)", 0.85 * want <= g.get("ren", 0) <= 1.1 * want and 0.85 * want <= g.get("cap", 0) <= 1.1 * want,
+          f"{g.get('ren')} render / {g.get('cap')} capture frames in {g.get('ms')} ms")
+    check("nothing there: no spinning", g.get("cpu", 1e9) < 0.1 * g.get("ms", 0),
+          f"{g.get('cpu')} ms of CPU in {g.get('ms')} ms (the whole process, the clock's 15.6 ms resolution)")
+    check("devices back: reopened", opened("all back", 0, cap) and opened("all back", 1, ren), f"{says('all back', 0)}; {says('all back', 1)}")
+    check("the default followed", opened("default", 1, other_than=ren) and opened("default moved", 1, ren)
+          and opened("default back", 1, other_than=ren),
+          f"{says('default', 1)}; moved: {says('default moved', 1)}; back: {says('default back', 1)}")
+    stalls = [s for s, v in steps.items() if s not in ("all gone", "gone at the end") and v.get("ren", 0) < 0.8 * v.get("ms", 0) / 10]
+    check("the playout never stalls", not stalls, f"short steps: {stalls}" if stalls else
+          "about 100 render frames a second in every step")
+    check("no waiting on the caller's thread", done and done["start_ms"] < 50 and done["restart_ms"] < 50 and done["stop_ms"] < 1000,
+          done and f"sv_audio_start {done['start_ms']:.2f} ms, again with a new spec {done['restart_ms']:.2f} ms, "
+                   f"sv_audio_stop with nothing there {done['stop_ms']:.1f} ms")
+    if r.returncode or not done:
+        print(r.stdout[-2000:], r.stderr[-2000:], file=sys.stderr)
+        ok = False
+    print("devices-change:", "passed" if ok else "FAILED")
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     cmd = sys.argv[1] if len(sys.argv) > 1 else "loopback"
@@ -954,6 +1047,8 @@ if __name__ == "__main__":
         sys.exit(chirp("--desktop" in sys.argv, "--synthetic" in sys.argv))
     if cmd == "loopback":
         sys.exit(loopback())
+    if cmd == "devices-change":
+        sys.exit(devices_change())
     if cmd == "roundtrip":
         sys.exit(roundtrip())
     if cmd == "scenarios":

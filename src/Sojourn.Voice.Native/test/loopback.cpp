@@ -2,6 +2,7 @@
 // other; the mic (a WAV) goes out of one and the playout (a WAV) records what the other received.
 //   sv_loopback devices
 //   sv_loopback open [CAPTURE RENDER]     open the real devices (default: communications) for 2 s, silent
+//   sv_loopback devices-change CAPTURE RENDER   devices lost, gone, back and the default moving (simulated), silent
 //   sv_loopback run IN.wav OUT.wav SECONDS [--mute-at S] [--raw] [--gate-at S --gate-for S]
 // --raw turns our APM off (to check the path itself is transparent), --no-aec only its echo canceller. Prints JSON lines; tools/voice.py analyses.
 #include "../sojourn_voice.h"
@@ -22,6 +23,7 @@ static int64_t pc_a = 0, pc_b = 0;
 static std::atomic<int> connected{0}, data_open{0}, got_a{0}, got_b{0};
 static std::vector<std::pair<int64_t, std::string>> pending;  // events handled on the main thread
 static std::atomic<long long> tap_frames{0};
+static DWORD t_start = GetTickCount();
 
 static void OnLog(int level, const char* msg) {
     if (level >= 2) fprintf(stderr, "[%d] %s\n", level, msg);
@@ -80,7 +82,8 @@ static void Drain() {
             {
                 std::string name;
                 for (char ch : e.b) name += (ch == '\\' || ch == '"') ? std::string("\\") + ch : std::string(1, ch);
-                printf("{\"event\":\"device\",\"what\":\"%s\",\"name\":\"%s\",\"dir\":%d}\n", e.a.c_str(), name.c_str(), e.n);
+                printf("{\"event\":\"device\",\"what\":\"%s\",\"name\":\"%s\",\"dir\":%d,\"t\":%lu}\n", e.a.c_str(),
+                       name.c_str(), e.n, GetTickCount() - t_start);
             }
                 break;
         }
@@ -114,6 +117,79 @@ int main(int argc, char** argv) {
         sv_stats(stats, sizeof stats);
         printf("{\"event\":\"done\",\"stats\":%s}\n", stats);
         sv_audio_stop();
+        sv_shutdown();
+        return 0;
+    }
+    if (argc >= 4 && !strcmp(argv[1], "devices-change")) {
+        // Device changes, simulated through sv_test_device on real devices: CAPTURE and RENDER are specs of devices
+        // asked for (to lose and get back); render is also run on the default, moved to RENDER and back. Nothing is
+        // played: the engine's mix is silence. Each step prints its device events, the frames that ran and the CPU
+        // the process used.
+        sv_init(OnLog, OnEvent);
+        const char* cap = argv[2];
+        const char* ren = argv[3];
+        auto ms_of = [](auto f) {
+            LARGE_INTEGER a, b, fq;
+            QueryPerformanceFrequency(&fq);
+            QueryPerformanceCounter(&a);
+            f();
+            QueryPerformanceCounter(&b);
+            return (b.QuadPart - a.QuadPart) * 1000.0 / fq.QuadPart;
+        };
+        auto cpu_ms = [] {
+            FILETIME c, x, k, u;
+            GetProcessTimes(GetCurrentProcess(), &c, &x, &k, &u);
+            auto v = [](FILETIME f) { return ((long long)f.dwHighDateTime << 32 | f.dwLowDateTime) / 10000.0; };
+            return v(k) + v(u);
+        };
+        auto step = [&](const char* name, int ms) {
+            printf("{\"event\":\"begin\",\"step\":\"%s\",\"t\":%lu}\n", name, GetTickCount() - t_start);
+            fflush(stdout);
+            double c0 = cpu_ms();
+            DWORD s = GetTickCount();
+            while (GetTickCount() - s < (DWORD)ms) {
+                Drain();
+                Sleep(10);
+            }
+            Drain();
+            char stats[2048];
+            sv_stats(stats, sizeof stats);
+            printf("{\"event\":\"end\",\"step\":\"%s\",\"t\":%lu,\"cpu_ms\":%.1f,\"stats\":%s}\n", name,
+                   GetTickCount() - t_start, cpu_ms() - c0, stats);
+            fflush(stdout);
+        };
+        double start_ms = ms_of([&] { sv_audio_start(cap, ren); });
+        step("open", 1500);
+        sv_test_device(1, 0, "");
+        step("render invalidated", 1500);
+        sv_test_device(0, 0, "");
+        step("capture invalidated", 1500);
+        sv_test_device(1, 1, ren);
+        step("render device gone", 1500);
+        sv_test_device(1, 2, "");
+        step("render device back", 1500);
+        sv_test_device(0, 1, "");
+        sv_test_device(1, 1, "");
+        step("all gone", 3000);
+        sv_test_device(0, 2, "");
+        sv_test_device(1, 2, "");
+        step("all back", 1500);
+        double restart_ms = ms_of([&] { sv_audio_start(cap, ""); });
+        step("default", 1500);
+        sv_test_device(1, 3, ren);
+        step("default moved", 1500);
+        sv_test_device(1, 3, "");
+        step("default back", 1500);
+        sv_test_device(0, 1, "");
+        sv_test_device(1, 1, "");
+        step("gone at the end", 1200);
+        double stop_ms = ms_of([] { sv_audio_stop(); });
+        sv_test_device(0, 2, "");
+        sv_test_device(1, 2, "");
+        Drain();
+        printf("{\"event\":\"done\",\"start_ms\":%.2f,\"restart_ms\":%.2f,\"stop_ms\":%.2f}\n", start_ms, restart_ms,
+               stop_ms);
+        fflush(stdout);
         sv_shutdown();
         return 0;
     }

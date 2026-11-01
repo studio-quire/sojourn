@@ -52,6 +52,10 @@ public readonly record struct FaceSet(FaceShape[] Faces);
 /// reflection probes, particles, flexible prims' sway or avatar physics (the draw distance stays: <see cref="UnseenDrawDistance"/>).
 /// The first picture asked for, or the assistant coming up, draws it whole again at once (what's in view loading from
 /// then on; a picture waits its usual settling time for it).
+///
+/// On the processor (2026-10-31): where no GPU can run it, Mesa's lavapipe beside the program draws instead
+/// (Render's Gpu/SoftwareVulkan.cs; docs/access-app.md > How it fits > On the processor): no frames between pictures,
+/// glances and settling only planned, what's around drawn once ahead of the first picture (<see cref="WarmUp"/>).
 /// </summary>
 public sealed partial class OffscreenRenderer : IDisposable
 {
@@ -71,6 +75,14 @@ public sealed partial class OffscreenRenderer : IDisposable
     readonly List<long> _losses = new();
     long _retryAt;
     bool _gaveUp;
+    // drawing on the processor (Render's Gpu/SoftwareVulkan.cs: Mesa's lavapipe beside the program), once no GPU here
+    // could run it or one failed three times; SOJOURN_OFFSCREEN_SOFTWARE=1 from the start (testing on a PC with a GPU)
+    string? _softwareManifest = Environment.GetEnvironmentVariable("SOJOURN_OFFSCREEN_SOFTWARE") == "1" ? SoftwareVulkan.Find() : null;
+    long _threadsLoweredAt, _upAt;
+    bool _warmed;   // (on the processor: what's around drawn once ahead of any picture, per renderer: WarmUp)
+    const double WarmAfter = 20;   // seconds after it's up, the session's arrival settled
+    /// <summary>Drawing on the processor: a software Vulkan driver, since this PC's graphics couldn't run it.</summary>
+    public bool Software => _r?.Software ?? _softwareManifest != null;
 
     /// <summary>Idle frames a second (0: only when a picture, touch or ray needs one; the world is still kept current).</summary>
     public double IdleHz { get; set; } = 2;
@@ -101,7 +113,8 @@ public sealed partial class OffscreenRenderer : IDisposable
     public bool Running => _r != null;
     public string State { get; private set; } = "starting";
     /// <summary>Given up without ever having come up: most likely a PC whose graphics can't run it (no Vulkan 1.3
-    /// driver: a VM, Microsoft's basic display adapter, an old card).</summary>
+    /// driver: a VM, Microsoft's basic display adapter, an old card) in a build without the software driver, or one
+    /// where that failed too.</summary>
     public bool NeverRan => _gaveUp && !_everUp;
     volatile bool _everUp;
 
@@ -277,7 +290,7 @@ public sealed partial class OffscreenRenderer : IDisposable
         State = "starting";
         try
         {
-            var r = new FrameRenderer(new FrameRendererOptions
+            var options = new FrameRendererOptions
             {
                 CacheDirectory = _cacheDir,
                 WorkerThreads = 2,
@@ -286,19 +299,47 @@ public sealed partial class OffscreenRenderer : IDisposable
                 // a quarter of the client's (1M vertices, 72 MB): unseen, a busy place's geometry near fits in one
                 GeometryArenaScale = 0.25,
                 Log = m => _log(m),
-            });
+            };
+            FrameRenderer r;
+            if (_softwareManifest is { } manifest)
+            {
+                // what a description can do without, each dear on the processor: reflection probes but the default one
+                // (each capture is a dozen renders; without even that one, shiny floors took the sky's blue and lost
+                // their colours), SMAA and sharpening
+                options = options with
+                {
+                    ProbeLevel = 0,
+                    Graphics = options.Graphics with { FsaaType = 0, CasSharpness = 0 },
+                };
+                using (SoftwareVulkan.Use(manifest)) r = new FrameRenderer(options);
+                LowerSoftwareThreads(force: true);
+            }
+            else r = new FrameRenderer(options);
             r.Quality.Mirrors = false;   // a second render of the scene per mirror in view, for nobody to see
+            // nobody watches its frame rate: loading never held back for slow frames (a processor's are seconds), only
+            // video memory governed
+            r.Quality.LoadGovernor = false;
             r.OwnsWorld = () => Environment.CurrentManagedThreadId == _thread.ManagedThreadId;
             PassProfiler.Enabled = true;
             _device = r.DeviceName;
             if (_feed == null) _feed = new RegionFeed(_s.World, r);
             else _feed.Switch(r);
             _r = r;
+            (_upAt, _warmed) = (Stopwatch.GetTimestamp(), false);
             _everUp = true;
             _windowAt = Stopwatch.GetTimestamp();
             State = "running";
-            _log($"the view out of sight is up on {r.DeviceName}: {IdleHz:0.#} frames a second at {IdleSize} px between pictures");
+            _log(r.Software
+                ? $"the view out of sight is up on {r.DeviceName}, drawing on the processor: pictures only when asked for, no frames between them"
+                : $"the view out of sight is up on {r.DeviceName}: {IdleHz:0.#} frames a second at {IdleSize} px between pictures");
             return true;
+        }
+        catch (NoUsableGpuException e) when (_softwareManifest == null && SoftwareVulkan.Find() is { } manifest)
+        {
+            // no GPU here can run it (an old driver's Vulkan 1.1, a VM): the processor draws instead, at once
+            _log($"the view out of sight can't run on this PC's graphics ({e.Message}); drawing on the processor instead (Mesa's lavapipe)");
+            _softwareManifest = manifest;
+            return false;
         }
         catch (Exception e)
         {
@@ -322,6 +363,17 @@ public sealed partial class OffscreenRenderer : IDisposable
             // a lost device may refuse every call: what can be freed is, the rest goes with the process
             try { r.Dispose(); } catch (Exception de) { _log($"the view out of sight: letting go of the old renderer: {de.Message}"); }
         }
+        if (_losses.Count >= 3 && _softwareManifest == null && SoftwareVulkan.Find() is { } manifest)
+        {
+            // a GPU that keeps failing (a driver that resets under load): the processor draws instead from now on
+            _softwareManifest = manifest;
+            _losses.Clear();
+            State = "restarting";
+            _retryAt = now + Stopwatch.Frequency * 3;
+            _log($"the view out of sight: {(lost ? "the GPU was lost" : "it failed")} three times in ten minutes ({e.Message}); " +
+                 "drawing on the processor from now on (Mesa's lavapipe), starting in 3 s");
+            return;
+        }
         if (_losses.Count >= 3)
         {
             _gaveUp = true;
@@ -334,6 +386,20 @@ public sealed partial class OffscreenRenderer : IDisposable
         _retryAt = now + Stopwatch.Frequency * 3;
         _log($"the view out of sight: {(lost ? "the GPU was lost" : "it failed")} ({e.GetType().Name}: {e.Message}); starting again in 3 s" +
              (lost ? "" : Environment.NewLine + e));
+    }
+
+    /// <summary>The software driver's threads below normal priority, as this thread is: on starting, and after frames at
+    /// most every 10 s (it may start more as it goes).</summary>
+    void LowerSoftwareThreads(bool force = false)
+    {
+        long now = Stopwatch.GetTimestamp();
+        if (!force && (now - _threadsLoweredAt) < Stopwatch.Frequency * 10) return;
+        _threadsLoweredAt = now;
+        try
+        {
+            if (SoftwareVulkan.LowerThreads() is var n and > 0) _log($"the view out of sight: {n} of the software driver's threads put below normal priority");
+        }
+        catch (Exception e) { _log($"the view out of sight: the software driver's threads kept their priority ({e.Message})"); }
     }
 
     static bool IsDeviceLost(Exception? e)
@@ -377,8 +443,13 @@ public sealed partial class OffscreenRenderer : IDisposable
         if (look != null || busy || _assistantUp()) _seenAt = now;
         bool unseen = _seenAt == 0 || Stopwatch.GetElapsedTime(_seenAt, now) > PicturesLinger;
         if (unseen != _unseen || _appliedTo != r) Apply(r, unseen);
-        double hz = busy ? Math.Max(BusyHz, IdleHz) : IdleHz;
-        bool idleDue = hz > 0 && now >= _nextIdle;
+        // on the processor a frame is a second or more of every core: none between pictures (picks, faces and touches
+        // glance at what isn't drawn yet; walk mode's rays need no renderer), nor while the assistant works (a
+        // description's pictures are drawn from cameras of their own as it's asked)
+        double hz = r.Software ? 0 : busy ? Math.Max(BusyHz, IdleHz) : IdleHz;
+        // but what's around drawn once when it's settled in (WarmUp): the driver compiles its shaders as it first draws
+        bool warm = r.Software && !_warmed && !_unseen && Stopwatch.GetElapsedTime(_upAt, now).TotalSeconds >= WarmAfter;
+        bool idleDue = (hz > 0 || warm) && now >= _nextIdle;
         if (sim == null || (look == null && glance == null && !idleDue))
         {
             // nothing to draw now: the world kept current (region changes, finished uploads) four times a second
@@ -408,6 +479,11 @@ public sealed partial class OffscreenRenderer : IDisposable
             _nextIdle = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency / Math.Max(hz, 0.5));
             return;
         }
+        if (warm && glance == null)
+        {
+            WarmUp(r, sim.Handle, eyes, fov);
+            return;
+        }
         if (glance is var (gr, at) && gr == sim.Handle)
         {
             var dir = at - eyes.Eye;
@@ -416,6 +492,8 @@ public sealed partial class OffscreenRenderer : IDisposable
             {
                 RegionHandle = sim.Handle, Position = eyes.Eye, Forward = Vector3.Normalize(dir), Width = 512, Height = 512,
                 VerticalFov = 0.9f, DrawDistance = Reach, HideAvatars = hide, NoAvatars = _unseen,
+                // a prim's triangles are kept as it's built for drawing, so on the processor planning is enough
+                PlanOnly = r.Software,
             };
             _glanceFrames++;
         }
@@ -441,6 +519,45 @@ public sealed partial class OffscreenRenderer : IDisposable
         Render(r, req);
         if (Stopwatch.GetElapsedTime(t0).TotalMilliseconds is var took and > 500) _log($"the view out of sight: a slow frame, {took:0} ms");
         if (glance == null) _nextIdle = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency / Math.Max(hz, 0.05));
+    }
+
+    /// <summary>On the processor, once a renderer has settled in: what's around drawn whole as pictures are (settled,
+    /// then drawn), the four ways round from the person's eyes as a description of the place has it, their own body in
+    /// view below (nothing hidden: what avatars wear is drawn by shaders of its own), so the driver compiles
+    /// its shaders for what's here now, at below normal priority, rather than in the first description's wait (seconds
+    /// of every core on a slow PC; the driver keeps nothing between sessions).</summary>
+    void WarmUp(FrameRenderer r, ulong region, (Vector3 Eye, Vector3 Forward, Vector3 Avatar) eyes, float fov)
+    {
+        _warmed = true;
+        long t0 = Stopwatch.GetTimestamp();
+        double drawn = 0;
+        var right = Vector3.Cross(eyes.Forward, Vector3.UnitZ);
+        foreach (var f in new[] { eyes.Forward, right, -eyes.Forward, -right })
+        {
+            var req = new FrameRequest
+            {
+                RegionHandle = region, Position = eyes.Eye, Forward = Vector3.Normalize(f + new Vector3(0, 0, -0.3f)),
+                Width = 768, Height = 432, VerticalFov = fov, DrawDistance = Reach,
+            };
+            long settle = Stopwatch.GetTimestamp(), improved = settle;
+            int best = int.MaxValue;
+            while (!_stop && Stopwatch.GetElapsedTime(settle).TotalSeconds < SettleSeconds)
+            {
+                r.Motion.BeginFrame();
+                var st = Render(r, Settling(r, req));
+                if (st.Pending < best) (best, improved) = (st.Pending, Stopwatch.GetTimestamp());
+                if (st.Pending == 0 || Stopwatch.GetElapsedTime(improved).TotalSeconds > 1) break;
+                RunJobs(r);
+                _wake.WaitOne(50);
+            }
+            r.Motion.BeginFrame();
+            long d0 = Stopwatch.GetTimestamp();
+            Render(r, req);
+            drawn += Stopwatch.GetElapsedTime(d0).TotalMilliseconds;
+            RunJobs(r);
+        }
+        _log($"the view out of sight on the processor: what's around drawn once ahead of any picture, {Stopwatch.GetElapsedTime(t0).TotalSeconds:0.0} s " +
+             $"({drawn:0} ms of it drawing, its shaders compiled)");
     }
 
     (int W, int H) LookSize(int w, int h)
@@ -483,7 +600,7 @@ public sealed partial class OffscreenRenderer : IDisposable
     };
 
     /// <summary>A picture: frames at its size until what's in view has arrived (or the settling time is up), then one
-    /// with the snapshots' callbacks.</summary>
+    /// with the snapshots' callbacks. On the processor the frames before it are only planned (<see cref="Settling"/>).</summary>
     void Picture(FrameRenderer r, FrameRequest req)
     {
         long t0 = Stopwatch.GetTimestamp();
@@ -491,7 +608,7 @@ public sealed partial class OffscreenRenderer : IDisposable
         long improved = t0;
         while (!_stop)
         {
-            var st = Render(r, req);
+            var st = Render(r, Settling(r, req));
             _lookFrames++;
             if (st.Pending < best) (best, improved) = (st.Pending, Stopwatch.GetTimestamp());
             double waited = Stopwatch.GetElapsedTime(t0).TotalSeconds;
@@ -508,17 +625,26 @@ public sealed partial class OffscreenRenderer : IDisposable
         _pictures++;
     }
 
+    /// <summary>A frame while a picture settles: on the processor, where a drawn frame is a second or more of every core,
+    /// only planned (what's in view asked for, counted and uploaded as it arrives), so the picture is the one frame
+    /// drawn; on a GPU drawn, as the picture will be.</summary>
+    static FrameRequest Settling(FrameRenderer r, FrameRequest req) => r.Software ? req with { PlanOnly = true } : req;
+
     FrameStats Render(FrameRenderer r, FrameRequest req)
     {
         var st = r.RenderFrame(req, NoTarget.Instance);
         r.WaitIdle();   // nothing in flight between frames: a picture's callback runs now, and the GPU is idle until the next
         _frames++;
         if (_firstFrame == 0) _firstFrame = Stopwatch.GetTimestamp();
+        if (r.Software) LowerSoftwareThreads();
         _lastFrameCpu = st.TotalCpuMs;
         if (Stopwatch.GetElapsedTime(_windowAt).TotalSeconds >= 10)
         {
-            var (gpu, frames, _) = r.Profiler.TakeWindow();
+            var (gpu, frames, passes) = r.Profiler.TakeWindow();
             (_gpuMs, _gpuFrames, _cpuMs) = (gpu, frames, st.TotalCpuMs);
+            if (r.Software && frames > 0)
+                _log($"the view out of sight on the processor: {frames} frames lately, {gpu:0} ms each; dearest passes " +
+                     string.Join(", ", passes.OrderByDescending(p => p.Ms).Take(8).Select(p => $"{p.Pass} {p.Ms:0}")));
             _windowAt = Stopwatch.GetTimestamp();
         }
         return st;

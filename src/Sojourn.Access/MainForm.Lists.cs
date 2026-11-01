@@ -51,6 +51,7 @@ public sealed partial class MainForm
         Item("&Beacon", p => _walk?.BeaconOn(p.Name, p.Id));
         Item("&Profile", p => _ = ProfileAsync(p.Id, p.Name));
         Item("P&ay...", p => _ = PayAsync(p.Id, p.Name));
+        Item("&Give what you copied", p => _ = GiveCopiedAsync(p.Id, p.Name));
         Item("Offer &teleport", p => _ = PersonOpAsync("offerTeleport", p, $"Teleport offered to {p.Name}."));
         Item("&Request teleport", p => _ = PersonOpAsync("requestTeleport", p, $"Asked {p.Name} for a teleport."));
         Item("Always in&cognito with them", p => IncognitoWith(p.Id, p.Name));

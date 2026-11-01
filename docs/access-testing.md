@@ -13,9 +13,13 @@ the test couldn't see (fixed since in the test's client: Tab items, below).
 - `ACCESS_STEPS=inventory` runs only the steps whose names have those words (after the login's checks).
 - `ACCESS_NO_RENDER=1` starts the app with `--no-render`, nothing on the GPU, for the steps that don't need the view
   (e.g. while someone's in the headset). `ACCESS_NO_GPU=1` hides Vulkan's drivers from it
-  (`VK_LOADER_DRIVERS_DISABLE=*`), as on a PC whose graphics can't run the view: the renderer step then checks it gave
-  up without drawing and the collision model still meets the visitor's box, and the walk-mode step runs on the
-  collision model alone.
+  (`VK_LOADER_DRIVERS_DISABLE=*`), as on a PC whose graphics can't run the view: it then draws on the processor with
+  `local/lavapipe` (`python tools/access.py fetch-lavapipe`; the test hands it over as `SOJOURN_SOFTWARE_VULKAN`), and
+  the renderer step checks it's on llvmpipe, draws nothing and stays light while idle (CPU over 10 s), lands touches on
+  faces and gets the look picture (timed); the describing step prints each look's seconds. With
+  `ACCESS_NO_SOFTWARE=1` as well it gives up instead: the renderer step checks it gave up without drawing and the
+  collision model still meets the visitor's box, and the walk-mode step runs on the collision model alone.
+  `ACCESS_SOFTWARE=1` draws on the processor with the GPU there (`SOJOURN_OFFSCREEN_SOFTWARE=1`).
 - `ACCESS_VOICE=1` (with `tools/grid.py voice up`) runs it with voice; otherwise `--no-voice`.
 - `ACCESS_ACCOUNTS=Walk` runs it as Walk Tester and Walk Visitor on ports 10 up, so it never throws out a person's
   guided session as Access Tester; it still uses Atelier's spots, so run it while nobody's testing there. The test
@@ -39,8 +43,17 @@ unnamed lid alone has a script); `sofa` (renames itself while sat on or on a tou
 open on the Applications key's press (`MenuOn`), not by WinForms' ContextMenuStrip, which opens on WM_CONTEXTMENU and
 never for posted keys.
 
+Two more bots, Access Palone and Access Paltwo (`PALS`; Walk's with ACCESS_ACCOUNTS), log in in Atelier Northeast
+before the app does, out of every list's way: the tester's friends (made by the first run's friends step, which they
+accept, and kept on the grid), so the grid tells of them at login.
+
 **The steps**, by the names `ACCESS_STEPS` matches (in run order; each step's function in `tools/access.py` has a
 docstring with its checks in full):
+- **the outfit while it arrives** (first, within two minutes of the login): an object linked in Current Outfit but not
+  attached said as still arriving by Ctrl+Shift+W and in the inventory's words, worn again by Enter, then attached.
+- **friends online at login**: the pals (and the visitor, if a friend) said as one "N friends online: ..." line, none
+  alone, the history naming all; after the burst a pal logging out and in is said alone. The first run makes the
+  friendships and checks this from the next.
 - **the window's controls** (again after use), **Tab order**: every area's controls named with their roles; Say,
   People nearby, the history, Say; no tab strip a stop.
 - **nearby chat in / out**, **her own lines read back**, **lines cut by typing**, **an IM**: say, whisper, shout; her
@@ -59,6 +72,9 @@ docstring with its checks in full):
   toward the eyes), the box reporting both; then `saveSnapshot` gives a picture that isn't flat, and the view is drawn
   whole for the next 10 minutes of the run.
 - **keys**: F1's window (every key, Escape back to Say), Ctrl+Backspace, Ctrl+R, F6 muting.
+- **the assistant's last answer**: a two-paragraph answer put on the panel by the agent API, its paragraphs on lines
+  of their own in Alt+9's history, Ctrl+Shift+L saying it copied every word (the count is the check: the clipboard is
+  left alone), Read-out's item with its key.
 - **the menu bar and the review's new keys**: the World, View and Help menus with each item's key shown (QuireUia's
   `get` gives UI Automation's access and accelerator keys), items doing what their keys do, the context menus' keys,
   Control+1 to 9, a notice's keys on its Applications key, Escape from Notices back where Control+N came from,
@@ -66,7 +82,9 @@ docstring with its checks in full):
   pressed (WinForms opens the menu bar for them only in the foreground window, which a hidden desktop never has).
 - **settings**: Alt+0's rows (no two starting with the same three words, Right and Left stepping), SojournSettings
   refusing to lower `access_answers_without_key`, the music and world sounds starting at 0.15 and 0.5 (applied once),
-  the music's volume stepped, `//status music`.
+  the music's volume stepped, `//status music`; the answers-without-a-key row and its description in plain words; the
+  sound output row stepping the default and the first device, Ctrl+Shift+O (world audio goes to a file whatever is
+  chosen, so the PC's devices are never played to).
 - **the quit question**: Alt+F4 asks, Escape stays.
 - **a script menu**, **a text box**, **a permission question**: answered by keys; a menu's announcement said again
   when a key cuts it off (not when silenced by Control alone); a menu of twelve, minus and equals pressing Next and
@@ -84,6 +102,10 @@ docstring with its checks in full):
   the view), `//touch` by name, by part and by face.
 - **your HUDs**: a two-prim HUD made and worn (its script put in through the confirmation by keys); named by
   Ctrl+Shift+W and `//outfit`; Show: Your HUDs lists its parts; Enter on its button heard by its script.
+- **gestures**: two made and activated through the agent API; a trigger typed in Say playing its gesture (the visitor
+  hears its line from her, the clap on her avatar, the trigger never said, her line read back), a replacement said in
+  its place, Ctrl+Shift+G's menu with triggers as keys playing one, World > Gestures, the inventory's words, Play and
+  Deactivate (its trigger then said as typed) and Activate again.
 - **placing by words**: a block rezzed "a metre to my left" (within 0.3 m, on the ground), then moved "by 50 cm up".
 - **two inventory panes**: Alt+4 again reading the first, Alt+Shift+4 opening the second, a search there, Ctrl+M moving
   marked notecards across, Ctrl+W closing it.
@@ -108,7 +130,8 @@ docstring with its checks in full):
   walking out of chat range and back, both said.
 - **sound as a map** (about 2 minutes, no renderer needed), by `SojournWalk status`' record of the cues sent: which
   earcon starts for what arrives and where it's placed, an Alt+0 change playing it, the mic's click, O's marks by clock
-  face, the beacon on the visitor and on a bench walked to until "Reached", a walk's destination on the beacon. It can't
+  face with each one's sound matched to its own item in the line (everything in range, not only the step's three),
+  the beacon on the visitor and on a bench walked to until "Reached", a walk's destination on the beacon. It can't
   say whether they sound right.
 - **walk mode** (about 4 minutes; world audio to a file, `SOJOURN_VOICE_OUT_FILE`, never the speakers; walk log in
   `local/access-test/walk.log`): a seated border crossing on the visitor's `kart` (said, and a line in the history);
@@ -168,8 +191,12 @@ VR client or dev mode. It checks:
 
 `--bare` runs it as on a PC unlike ours: Vulkan's drivers hidden (`VK_LOADER_DRIVERS_DISABLE=*`) and
 `sojourn_voice.dll` removed (as on Windows' N editions). It still logs in, reads out, chats and quits clean; the
-renderer gives up after three tries, and the words for faces, pictures and sounds are as `docs/access-app.md` >
-Packaging says.
+view draws on the processor from the package's `lavapipe` folder (the log's switch and "up on llvmpipe", the driver's
+threads below normal priority, with the assistant what's around drawn once, no renderer failures, `vulkan_lvp.dll`
+loaded from there, and the idle CPU and memory printed), and nothing is written outside the data folder (this Mesa
+build keeps no shader cache). A try build with it, 2026-10-31: 42 of 42, idle 4% of a core and 937 MB.
+`--bare --no-software` removes the `lavapipe` folder too, as packages before it were: the renderer gives up
+after three tries, and the words for faces, pictures and sounds are as `docs/access-app.md` > Packaging says.
 
 **Through the relay, end to end**: `python tools/relay.py token new e2e --cap 2`, then `package --check ZIP --relay
 e2e`: the token kept as the app keeps it, the provider set to the relay, then a typed Alt+9 request answered (the

@@ -230,7 +230,9 @@ public sealed class TesselAgent : SessionApi
             var name = pv is JsonValue v && v.TryGetValue<string>(out var s) ? s : pv.ToJsonString();
             point = ObjectViews.AttachPointId(name) ?? throw new LeapError($"unknown attachment point {name}");
         }
-        if (S.Inventory.IsWorn(item)) throw new LeapError("already worn");
+        // an object in the outfit (its link in Current Outfit) that isn't on the avatar, as after logging in on Second
+        // Life when one didn't arrive, is attached again, as the viewer's Wear does
+        if (item.AssetType == AssetType.Object ? S.Inventory.IsAttached(item) : S.Inventory.IsWorn(item)) throw new LeapError("already worn");
         // only objects, clothing and body parts are worn: a notecard "attached" got an outfit link and nothing else
         // (2026-10-27), as the viewer would never do
         if (item.AssetType is not (AssetType.Object or AssetType.Bodypart or AssetType.Clothing))

@@ -46,8 +46,8 @@ public sealed class AccessWiring : IDisposable
         {
             // the headset blanks the PC's monitor while incognito; the PC's reader keeps quiet the same way
             Quiet = () => inHeadset() && s.Private.On,
-            // nothing others or the assistant wrote beside a confirmation (the panel's rule): it follows once answered
-            Hold = () => assistant.Confirmations.Pending,
+            // nothing others or the assistant wrote beside a new confirmation (the panel's rule): it follows once answered
+            Hold = () => HoldNow(assistant),
             Greeting = greeting ?? "Sojourn. F1 for keys.",
             Heard = LogWords.Heard,
         };
@@ -65,6 +65,28 @@ public sealed class AccessWiring : IDisposable
         s.Private.SeesChanged += sees => { if (s.Private.On) Announcer.Answer(sees ? "The assistant sees." : "The assistant doesn't see."); };
         _thread = new Thread(Run) { IsBackground = true, Name = "screen reader watch", Priority = ThreadPriority.BelowNormal };
         _thread.Start();
+    }
+
+    // A confirmation holds what arrives only while it's new: one missed or left waiting would otherwise leave the
+    // reader silent for everything else until it's answered (seen in a test, 2026-10-31). After HoldFor what waited
+    // is read, once a line says the confirmation still waits.
+    static readonly TimeSpan HoldFor = TimeSpan.FromSeconds(10);
+    DateTime? _pendingSince;
+    bool _reminded;
+
+    bool HoldNow(AssistantHost assistant)
+    {
+        if (!assistant.Confirmations.Pending) { _pendingSince = null; _reminded = false; return false; }
+        var now = DateTime.UtcNow;
+        _pendingSince ??= now;
+        if (now - _pendingSince < HoldFor) return true;
+        if (!_reminded)
+        {
+            _reminded = true;
+            // outside the announcer's lock (Hold is asked inside it)
+            ThreadPool.QueueUserWorkItem(_ => Announcer.Answer("A confirmation is still waiting for your answer."));
+        }
+        return false;
     }
 
     /// <summary>On the main thread (UIA's window hook is the window's: hwnd, the app's window). keyName: the key that

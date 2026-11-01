@@ -80,7 +80,9 @@ Sojourn.Session/Audio (C#)                                       sojourn_voice.d
 
 - **One engine**: whoever starts first (voice, or world audio with `--no-voice`) opens the devices; world audio alone
   opens only the speaker, and voice reopens them with the mic. Everything world audio plays is in the device mix, so
-  it's in the echo canceller's reference and never reaches the mic or residents.
+  it's in the echo canceller's reference and never reaches the mic or residents. The output follows Windows' default
+  and survives devices coming and going (`docs/voice.md` > Devices coming and going): with no output at all the mix
+  runs on unheard, so sounds end on time and nothing stale plays when a device returns.
 - **The listener** comes straight from the render loop (`sv_listener`: the camera on the desktop, the head in the
   headset, VrView), so a head turn is heard within the device's buffer (~30 ms), not at the audio thread's 50 Hz.
   Positions are global metres in doubles.

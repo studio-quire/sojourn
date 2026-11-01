@@ -15,20 +15,27 @@
                                    (ACCESS_STEPS=inventory,walk runs only the steps whose names have those words, after
                                    the login's checks: for working on one part; ACCESS_NO_RENDER=1 starts the app with --no-render,
                                    nothing on the GPU, for steps that don't need the view; ACCESS_NO_GPU=1 hides Vulkan's drivers
-                                   from it, as on a PC whose graphics can't run the view (it gives up; walk mode runs on the
-                                   collision model alone); ACCESS_ACCOUNTS=Walk runs as Walk Tester
-                                   and Walk Visitor on ports 10 up, never throwing out a person's Access Tester)
+                                   from it, as on a PC whose graphics can't run the view: it draws on the processor with
+                                   local/lavapipe (fetch-lavapipe), or with ACCESS_NO_SOFTWARE=1 gives up (walk mode runs on
+                                   the collision model alone); ACCESS_SOFTWARE=1 draws on the processor with the GPU there;
+                                   ACCESS_ACCOUNTS=Walk runs as Walk Tester and Walk Visitor on ports 10 up, its files in
+                                   local/access-test-walk, never throwing out a person's Access Tester; SOJOURN_BUILD_ROOT
+                                   builds and runs from a tree of its own)
+  python tools/access.py fetch-lavapipe
+                                   Mesa's lavapipe (the view on the processor) into local/lavapipe, from mesa-dist-win's
+                                   release, checked by SHA-256; package needs it
   python tools/access.py package [--dirty]
                                    the build for a tester's own PC: self-contained (no .NET needed), win-x64, with its
                                    README and licences, zipped to local/dist/SojournAccess-0.1.0.N-win-x64.zip (N the
                                    commit count; uncommitted changes under src/ refused unless --dirty); it keeps its
                                    data in %LOCALAPPDATA%\\Sojourn Access and logs in to Second Life unless run with --local
-  python tools/access.py package --check [ZIP] [--keep] [--bare]
+  python tools/access.py package --check [ZIP] [--keep] [--bare [--no-software]]
                                    the zip (default the newest in local/dist) unpacked in a fresh folder under %TEMP% and
                                    run as a tester would, on a hidden desktop of its own, as Package Tester on the local
                                    grid: ok/FAIL lines as the test's (docs/access-app.md > Packaging); then everything it
                                    made removed (--keep leaves the folder). --bare: as on a PC with no Vulkan driver and
-                                   no Media Foundation (Windows N): Vulkan's drivers hidden, sojourn_voice.dll removed
+                                   no Media Foundation (Windows N): Vulkan's drivers hidden, sojourn_voice.dll removed; the
+                                   view draws on the processor (the package's lavapipe), or gives up with --no-software
   python tools/access.py stop      close whatever a broken run left (our app, visitors and QuireUia server, by path)
   python tools/access.py sweep     delete whatever the Access Visitor still owns in Atelier (the grid console)
 
@@ -78,13 +85,16 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from buildenv import DOTNET   # noqa: E402  (the .NET SDK wherever it's installed)
 APP_PROJECT = ROOT / "src" / "Sojourn.Access" / "Sojourn.Access.csproj"
-APP_BIN = ROOT / "src" / "Sojourn.Access" / "bin" / "Release" / "net10.0-windows10.0.22621.0"
+# SOJOURN_BUILD_ROOT=dir: build and run from a tree of its own (src/Directory.Build.props), for a second session's runs
+APP_BIN = ((Path(os.environ["SOJOURN_BUILD_ROOT"]) / "bin" / "Sojourn.Access") if os.environ.get("SOJOURN_BUILD_ROOT")
+           else ROOT / "src" / "Sojourn.Access" / "bin") / "Release" / "net10.0-windows10.0.22621.0"
 APP_EXE = APP_BIN / "SojournAccess.exe"
 APP_DLL = APP_BIN / "SojournAccess.dll"
 APP_AS_EXE = False                 # the apphost can't find .NET here; dotnet + the dll it is
 QUIREUIA = ROOT / "local" / "bin" / "QuireUia" / "QuireUia.exe"
 VISITOR_DLL = ROOT / "local" / "bin" / "Visitor" / "Visitor.dll"
-OUT = ROOT / "local" / "access-test"
+OUT = ROOT / "local" / ("access-test-" + os.environ["ACCESS_ACCOUNTS"].strip().lower() if os.environ.get("ACCESS_ACCOUNTS")
+                         else "access-test")   # ACCESS_ACCOUNTS (below): its own folder too
 VISITOR_HOME = ROOT / "local" / "access-visitor"   # the `visitor` command's (a person's session), apart from the test's
 EVENTS = OUT / "events.jsonl"
 HEARD = OUT / "heard.wav"           # what the app played (walk mode's cues among it)
@@ -110,8 +120,14 @@ FACEBOX_XY = (62, 34)              # the visitor's touch-reporting box for the v
 FACEBOX = "Access Facebox"
 LOSE_AFTER = 15                    # the view out of sight's GPU "lost" once this many seconds after its first frame
 NO_RENDER = os.environ.get("ACCESS_NO_RENDER") == "1"   # the app with --no-render: no renderer out of sight at all
-NO_GPU = os.environ.get("ACCESS_NO_GPU") == "1"         # Vulkan's drivers hidden from the app: the renderer tries and gives up
-VIEWLESS = NO_RENDER or NO_GPU                          # either way no pictures or faces; the collision model needs no GPU
+NO_GPU = os.environ.get("ACCESS_NO_GPU") == "1"         # Vulkan's drivers hidden from the app, as on a PC whose graphics can't run the view
+# the software Vulkan driver the view falls back to without a GPU (Mesa's lavapipe: fetch-lavapipe), given to repo runs by
+# SOJOURN_SOFTWARE_VULKAN (a package has it beside the program); ACCESS_NO_SOFTWARE=1 leaves it out, so without a GPU the
+# view gives up; ACCESS_SOFTWARE=1 draws on it with the GPU there (SOJOURN_OFFSCREEN_SOFTWARE)
+LAVAPIPE = ROOT / "local" / "lavapipe"
+SOFTWARE_OK = (LAVAPIPE / "lvp_icd.x86_64.json").exists() and os.environ.get("ACCESS_NO_SOFTWARE") != "1"
+SOFTWARE = SOFTWARE_OK and (NO_GPU or os.environ.get("ACCESS_SOFTWARE") == "1")   # the view expected on the processor
+VIEWLESS = NO_RENDER or (NO_GPU and not SOFTWARE)       # no pictures or faces; the collision model needs no GPU
 LIST_DELAY_MS = 3000               # People's and Objects' first fills held back this long (SL's objects wait for names)
 
 Q_PORT = 9885                      # QuireUia's server
@@ -125,6 +141,12 @@ if os.environ.get("ACCESS_ACCOUNTS"):
     TESTER, VISITOR = (_first, "Tester"), (_first, "Visitor")
     Q_PORT, V_PORT, API_PORT = Q_PORT + 10, V_PORT + 10, API_PORT + 10
 TNAME, VNAME = " ".join(TESTER), " ".join(VISITOR)
+# two more bots, the tester's friends (made once, kept on the grid), online before the app logs in: the grid tells of
+# every friend online at login, which the app says as one line (MainForm.FriendsOnline.cs); out of the way in Atelier
+# Northeast, so no list or arrival check meets them
+PALS = ((VISITOR[0], "Palone"), (VISITOR[0], "Paltwo"))
+PAL_PORTS = (V_PORT + 2, V_PORT + 3)
+PAL_START = ("Atelier Northeast", 200, 200, 30)
 
 LOGIN_SECS = 120
 NOTICE_SECS = 15
@@ -195,6 +217,53 @@ PY_EMBED_SHA256 = "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a
 PY_EMBED_ZIP = DIST / "python-embed" / f"python-{PY_EMBED}-embed-amd64.zip"
 VENV_PY = ROOT / "local" / "assistant-venv" / "Scripts" / "python.exe"
 BUNDLED_DISTS = ["claude-agent-sdk", "anthropic"]   # with their dependencies (anthropic: describing's lean calls); no hearing or local voice
+# the software Vulkan driver the view falls back to on a PC whose graphics can't run it (Render's Gpu/SoftwareVulkan.cs):
+# Mesa's lavapipe as mesa-dist-win builds it, its release archive checked by the SHA-256 GitHub lists for it, the two
+# files taken from it checked too (fetch-lavapipe); in every package's lavapipe folder
+MESA = "26.2.5"
+MESA_URL = f"https://github.com/pal1000/mesa-dist-win/releases/download/{MESA}/mesa3d-{MESA}-release-msvc.7z"
+MESA_SHA256 = "997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2"
+LAVAPIPE_FILES = {"vulkan_lvp.dll": "cb50fd861b77743c7ab46a946af15a7af7a7e0bc697644c1e777d2784080570d",
+                  "lvp_icd.x86_64.json": "5b867ac6fe25dca5f23a3479a18333df2577542a0ac565ba34a9666af03fdd92"}
+
+
+def fetch_lavapipe():
+    """Mesa's lavapipe for the view on the processor into local/lavapipe (repo runs find it by SOJOURN_SOFTWARE_VULKAN,
+    which the test sets; package copies it): mesa-dist-win's release archive into a folder of its own under local/dist,
+    checked by its SHA-256, the driver and its manifest taken out with 7-Zip and checked by theirs."""
+    import hashlib
+    sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+    if all((LAVAPIPE / n).exists() and sha(LAVAPIPE / n) == h for n, h in LAVAPIPE_FILES.items()):
+        print(f"{LAVAPIPE.relative_to(ROOT)}: Mesa {MESA}'s lavapipe already there")
+        return 0
+    seven = shutil.which("7z") or next((str(p) for p in (Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "7-Zip" / "7z.exe",)
+                                        if p.exists()), None)
+    if not seven:
+        print("7-Zip is needed to unpack mesa-dist-win's .7z (winget install 7zip.7zip)")
+        return 1
+    archive = DIST / f"mesa-{MESA}" / Path(MESA_URL).name
+    if not archive.exists() or sha(archive) != MESA_SHA256:
+        print(f"fetching {MESA_URL}")
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        tmp = archive.with_suffix(".part")
+        urllib.request.urlretrieve(MESA_URL, tmp)
+        tmp.replace(archive)
+    if sha(archive) != MESA_SHA256:
+        print(f"{archive.name} isn't the file mesa-dist-win published (its SHA-256 differs); not used")
+        return 1
+    out = archive.parent / "x64"
+    shutil.rmtree(out, ignore_errors=True)
+    r = subprocess.run([seven, "e", str(archive), f"-o{out}", "-y"] + [f"x64/{n}" for n in LAVAPIPE_FILES],
+                       capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+    wrong = [n for n, h in LAVAPIPE_FILES.items() if not (out / n).exists() or sha(out / n) != h]
+    if r.returncode or wrong:
+        print(f"unpacking failed or gave other files ({', '.join(wrong)}):\n{r.stdout[-800:]}{r.stderr[-800:]}")
+        return 1
+    LAVAPIPE.mkdir(parents=True, exist_ok=True)
+    for n in LAVAPIPE_FILES:
+        shutil.copy2(out / n, LAVAPIPE / n)
+    print(f"{LAVAPIPE.relative_to(ROOT)}: Mesa {MESA}'s lavapipe ({(LAVAPIPE / 'vulkan_lvp.dll').stat().st_size / 1e6:.0f} MB)")
+    return 0
 
 
 def git(*args):
@@ -217,11 +286,11 @@ def package():
         print("uncommitted changes under src/ or assistant/ (a packaged build should be one commit, so its number names it):\n" + changed
               + "\ncommit first, or --dirty for a local try")
         return 1
-    missing = [p for p in (NVDA_DIR / "x64" / "nvdaControllerClient.dll", NVDA_DIR / "license.txt", VOICE_DLL, WEBRTC_LICENCES)
-               if not p.exists()]
+    missing = [p for p in (NVDA_DIR / "x64" / "nvdaControllerClient.dll", NVDA_DIR / "license.txt", VOICE_DLL, WEBRTC_LICENCES,
+                           *(LAVAPIPE / n for n in LAVAPIPE_FILES)) if not p.exists()]
     if missing:
         print("missing: " + ", ".join(str(p.relative_to(ROOT)) for p in missing)
-              + " (python tools/screenreader.py fetch; python tools/voice.py build)")
+              + " (python tools/screenreader.py fetch; python tools/voice.py build; python tools/access.py fetch-lavapipe)")
         return 1
     version = f"0.1.0.{git('rev-list', '--count', 'HEAD')}"
     commit = git("rev-parse", "--short=7", "HEAD") + ("-dirty" if changed else "")
@@ -256,6 +325,9 @@ def package():
     for f in [*stage.rglob("*.pdb"), stage / "aspnetcorev2_inprocess.dll"]:
         f.unlink(missing_ok=True)
     shutil.copy2(NVDA_DIR / "x64" / "nvdaControllerClient.dll", stage)
+    (stage / "lavapipe").mkdir()   # the view on the processor, where no GPU can run it (fetch_lavapipe)
+    for n in LAVAPIPE_FILES:
+        shutil.copy2(LAVAPIPE / n, stage / "lavapipe" / n)
     if not (stage / "sojourn_voice.dll").exists():
         shutil.copy2(VOICE_DLL, stage)
     readme = (PACKAGE_FILES / "README.txt").read_text(encoding="utf-8").replace("{VERSION}", version)
@@ -267,7 +339,7 @@ def package():
         return 1
 
     expected = ["SojournAccess.exe", "nvdaControllerClient.dll", "sojourn_voice.dll", "openjp2.dll", "libSkiaSharp.dll",
-                "shaderc_shared.dll", "Shaders", "Character", "Textures", "Fonts", "linden"]
+                "shaderc_shared.dll", "lavapipe/vulkan_lvp.dll", "lavapipe/lvp_icd.x86_64.json", "Shaders", "Character", "Textures", "Fonts", "linden"]
     if not lean:
         expected += ["python/python.exe", "assistant/main.py"]
     absent = [e for e in expected if not (stage / e).exists()]
@@ -447,6 +519,7 @@ def licences(dest, build_root):
                + html.unescape(WEBRTC_LICENCES.read_text(encoding="utf-8", errors="replace")))
     write_text(dest / "OpenJPEG, openjp2.dll.txt", "openjp2.dll is OpenJPEG 2.5.3, built from its source.\n\n"
                + (PACKAGE_FILES / "licences" / "OpenJPEG.txt").read_text(encoding="utf-8"))
+    shutil.copy2(PACKAGE_FILES / "licences" / "Mesa lavapipe.txt", dest / "Mesa lavapipe and LLVM, in the lavapipe folder.txt")
     write_text(dest / "Archivo font (OFL-1.1).txt",
                (ROOT / "src" / "Sojourn.Session" / "Assets" / "Fonts" / "Archivo-OFL.txt").read_text(encoding="utf-8"))
 
@@ -480,6 +553,8 @@ def licences(dest, build_root):
                  "https://aka.ms/WinSDKLicenseURL")
     lines += ["", "OpenJPEG 2.5.3 (openjp2.dll): BSD-2-Clause", "libwebrtc m144 (in sojourn_voice.dll): BSD-3-Clause and others",
               "NVDA Controller Client 2026.3 (nvdaControllerClient.dll): LGPL-2.1",
+              f"Mesa {MESA}'s lavapipe (the lavapipe folder, mesa-dist-win's build): MIT and others, with LLVM inside "
+              "(Apache-2.0 WITH LLVM-exception); in 'Mesa lavapipe and LLVM, in the lavapipe folder.txt'",
               "Second Life viewer parts (renderer code, Character, Textures): LGPL-2.1, Linden Research, Inc.",
               "The linden folder (LibreMetaverse's copy of the viewer's data files): see cc-by-sa-3.0.txt in it",
               "Archivo font (Fonts): SIL Open Font License 1.1", "",
@@ -752,10 +827,13 @@ def ours():
         cmd = parts[2].lower()
         if "sojournaccess" in cmd and base in cmd:
             found.append((int(parts[0]), "app"))
-        elif str(QUIREUIA).lower() in cmd and " serve" in cmd and out in cmd:
+        # (by its log file: the folder alone is a prefix of ACCESS_ACCOUNTS runs' own, access-test-walk)
+        elif str(QUIREUIA).lower() in cmd and " serve" in cmd and str(EVENTS).lower() in cmd:
             found.append((int(parts[0]), "QuireUia"))
         elif str(VISITOR_DLL).lower() in cmd and f"--port {V_PORT}" in cmd:
             found.append((int(parts[0]), "visitor"))
+        elif str(VISITOR_DLL).lower() in cmd and any(f"--port {p} " in cmd for p in PAL_PORTS):
+            found.append((int(parts[0]), "pal"))
     return found
 
 
@@ -960,6 +1038,36 @@ class Run:
         return got
 
 
+PAL_LOGS = {}
+
+
+def pal_start(i):
+    """One of the tester's friends (PALS) logged in, out of the way (PAL_START), taking any friendship offered."""
+    first, last = PALS[i]
+    log = PAL_LOGS[i] = open(OUT / "visitor" / f"pal{i + 1}.log", "w", encoding="utf-8")
+    subprocess.Popen([str(DOTNET), str(VISITOR_DLL), "--port", str(PAL_PORTS[i]), "--first", first, "--last", last,
+                      "--password", PASSWORD, "--start", "%s/%d/%d/%d" % PAL_START, "--login", GRID_URI, "--accept-friends"],
+                     cwd=OUT / "visitor", stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                     creationflags=CREATE_NO_WINDOW | BELOW_NORMAL | NEW_GROUP)
+
+
+def pal_up(i):
+    try:
+        return tcp(PAL_PORTS[i], "pos", 5)
+    except (OSError, ToolError):
+        return None
+
+
+def pal_quit(i):
+    """Logs a friend out (it exits once logged out); whether it was up."""
+    try:
+        tcp(PAL_PORTS[i], "quit", 10)
+    except (OSError, ToolError):
+        return False
+    wait(lambda: not pal_up(i), 15, 0.5)
+    return True
+
+
 def visitor_n():
     """The visitor's running line number now (what it hears and receives after this is newer)."""
     nums = [json.loads(l)["n"] for kind in ("heard", "events") for l in v(f"{kind} 1").splitlines() if l.startswith("{")]
@@ -988,12 +1096,12 @@ def test():
     if not grid.ready():
         print("the local grid is down (python tools/grid.py start)")
         return 1
-    busy = [p for p in (Q_PORT, V_PORT, API_PORT) if not port_free(p)]
+    busy = [p for p in (Q_PORT, V_PORT, API_PORT) + PAL_PORTS if not port_free(p)]
     running = ours()
     if busy or running:
         print(f"something is already running (ports in use: {busy}; ours: {running}): python tools/access.py stop")
         return 1
-    for first, last in (TESTER, VISITOR):
+    for first, last in (TESTER, VISITOR) + PALS:
         r = grid.account(first, last, PASSWORD)
         print(f"account {first} {last}: {'exists' if r == 'exists' else 'made'}")
         if online(first, last):
@@ -1013,6 +1121,8 @@ def test():
     except Exception as e:
         run.check("the run (stopped)", False, f"{type(e).__name__}: {e}")
     finally:
+        for i in range(len(PALS)):
+            pal_quit(i)
         shutdown(run, procs["server"], procs["app"], procs["visitor"])
     return finish(run)
 
@@ -1044,6 +1154,11 @@ def session(run, procs):
     vx, vy, vz = visitor_settled()
     fixture = v(f"fixture {FIXTURE_XY[0]} {FIXTURE_XY[1]} {vz + 0.3:.1f}", timeout=60)
     check("the fixture box is out and its script running", fixture.startswith("fixture"), fixture)
+    # the tester's two other friends, online before it logs in (friends online at login)
+    for i in range(len(PALS)):
+        pal_start(i)
+    pals = [wait(lambda i=i: pal_up(i), 60, 1) for i in range(len(PALS))]
+    check("(the two friends logged in)", all(pals), "; ".join(str(p) for p in pals))
 
     # posted keys are judged as the hand's, every other rule of the person's own press applying (the focus and the
     # selected notice moved by our own code or anything else, other threads' sends, held keys; ACCESS_TEST_INPUT=1 lets
@@ -1062,6 +1177,10 @@ def session(run, procs):
         app_args.append("--no-render")   # no renderer out of sight: nothing on the GPU (the renderer step needs it)
     if NO_GPU:
         env["VK_LOADER_DRIVERS_DISABLE"] = "*"   # the Vulkan loader finds no driver: as the tester's old card, a VM
+    if SOFTWARE_OK:
+        env["SOJOURN_SOFTWARE_VULKAN"] = str(LAVAPIPE)
+    if SOFTWARE and not NO_GPU:
+        env["SOJOURN_OFFSCREEN_SOFTWARE"] = "1"
     host = [APP_EXE] if APP_AS_EXE else [DOTNET, APP_DLL]
     global APP_PID
     app = APP_PID = procs["app"] = launch_hidden(host + app_args, env=env, cwd=APP_BIN)
@@ -1083,8 +1202,12 @@ def session(run, procs):
     f = wait_focus(lambda d: d["id"] == "chatInput", 15)
     check("the focus lands in the Say box", f, label(f) if f else focus_label())
     run.expect("arriving is announced", ["Logged in"], 0, 10)
+    global ARRIVED_AT
+    ARRIVED_AT = time.time()
 
     steps = [
+        ("the outfit while it arrives", lambda: outfit_arriving(run, nonce)),   # (first: within two minutes of the login)
+        ("friends online at login", lambda: friends_online(run)),
         ("the window's controls", lambda: tree_check(run, "nearby chat")),
         ("Tab order", lambda: tab_order(run)),
         ("nearby chat in", lambda: chat_in(run, nonce)),
@@ -1096,6 +1219,7 @@ def session(run, procs):
         ("people beside chat, friends on Alt+2", lambda: people_beside_chat(run)),
         ("the renderer out of sight", lambda: offscreen(run)),
         ("keys", lambda: keys(run, nonce)),
+        ("the assistant's last answer", lambda: assistant_answer(run, nonce)),
         ("the menu bar and the review's new keys", lambda: menu_bar(run, nonce, tester_id)),
         ("settings", lambda: settings(run)),
         ("the quit question", lambda: quit_question(run)),
@@ -1103,9 +1227,11 @@ def session(run, procs):
         ("a dance machine's menu, ignored", lambda: notice_dance(run, tester_id)),
         ("a text box", lambda: notice_text(run, tester_id, nonce)),
         ("a permission question", lambda: notice_perm(run, tester_id)),
+        ("a confirmation left waiting", lambda: confirm_left_waiting(run, nonce)),
         ("inventory", lambda: inventory(run, nonce)),
         ("every part", lambda: parts(run)),
         ("your HUDs", lambda: huds(run, nonce)),
+        ("gestures", lambda: gestures(run, nonce)),
         ("placing by words", lambda: placing(run, nonce)),
         ("two inventory panes", lambda: two_panes(run, nonce)),
         ("incognito", lambda: incognito(run, nonce)),
@@ -1230,6 +1356,48 @@ def chat_in(run, nonce):
     run.check("and in the Nearby chat history", got, line if got else value_of("id=chatHistory")[-200:])
     f = focused()
     run.check("the focus stays in the Say box", f and f["id"] == "chatInput", label(f) if f else "nothing")
+
+
+def confirm_left_waiting(run, nonce):
+    """A confirmation holds what arrives only while it's new (10 s, AccessWiring.HoldFor): one left waiting doesn't keep
+    the reader silent; what waited is read, with a line saying the confirmation still waits. Then cancelled."""
+    import threading
+    vid = visitor_id()
+
+    # a give waits for her confirmation (a payment from an account with no L$ is refused before asking)
+    notes = api("LLInventory", "getBasicFolderID", ft_name="notecard")["id"]
+    item = next((k for n, k in inv_items(notes).items() if n), None)
+    if not run.check("(a notecard to offer)", item, item or "none in Notecards"):
+        return
+
+    def pay():
+        try:
+            api("TesselAgent", "give", 60, to=vid, item_id=item)
+        except Exception:
+            pass
+    def notices():
+        try:
+            return selection("id=notices") or ""
+        except ToolError:
+            return ""   # (the Notices page not showing)
+    m0 = mark()
+    threading.Thread(target=pay, daemon=True).start()
+    if not run.expect("(a give's confirmation said)", ["Give", "Enter confirms"], m0, 8):
+        return
+    m = mark()
+    line = f"while you decide {nonce}"
+    v(f"say {line}")
+    time.sleep(4)
+    early = [e.get("text") for e in said_since(m) if line in (e.get("text") or "")]
+    run.check("while the confirmation is new, what arrives waits", not early, "; ".join(early) or "nothing read yet")
+    run.expect("left waiting, it's read anyway", [line], m, 15)
+    run.expect("with a line saying the confirmation still waits", ["still waiting for your answer"], m, 3)
+    key("ctrl+n")
+    wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 4)
+    time.sleep(1.2)
+    key("esc")
+    gone = wait(lambda: "Give" not in notices(), 6, 0.3)
+    run.check("(cancelled)", gone, notices())
 
 
 def chat_out(run, nonce):
@@ -1559,6 +1727,237 @@ def people_beside_chat(run):
     wait(lambda: math.dist(visitor_where()[:2], VISITOR_START[:2]) < 1.5, 15, 0.5)   # back where the steps after expect it
 
 
+def account_id(first, last):
+    import grid
+    for line in grid.console(f"show account {first} {last}", wait=1):
+        m = re.search(r"ID:\s*([0-9a-f-]{36})", line)
+        if m:
+            return m[1]
+    return None
+
+
+ARRIVED_AT = 0.0   # when the app said it had logged in (time.time())
+
+
+def outfit_arriving(run, nonce):
+    """The outfit's attachments still coming in (the blind tester's skirt "looked missing, then re-attached itself"
+    just after logging in, 2026-10-31): an object linked in Current Outfit but not on the avatar, as on Second Life in
+    the first minute or so after logging in or teleporting, is said as still arriving by Control+Shift+W and in the
+    inventory's words; once it's on, as attached. Runs first, within the two minutes after logging in."""
+    name = f"Access Skirt {nonce}"
+    objects = api("LLInventory", "getBasicFolderID", ft_name="object")["id"]
+    cof = api("LLInventory", "getBasicFolderID", ft_name="current")["id"]
+    x, y, z, _ = tester_where()
+    box = api("TesselBuild", "create", 20, shape="box", pos=[x + 2, y - 2, z], scale=[0.3, 0.3, 0.3], name=name)["id"]
+    api("TesselBuild", "take", 30, ids=[box], folder_id=objects)
+    item = wait(lambda: inv_items(objects).get(name), 10)
+    if not run.check("(fixture: an object in the inventory)", item, name):
+        return
+    try:
+        api("TesselInventory", "link", item_id=item, folder_id=cof)
+        if not run.check("(it's in the outfit, not attached: linked in Current Outfit)", wait(lambda: name in inv_items(cof), 10),
+                         ", ".join(inv_items(cof))):
+            return
+        back_to_chat()
+        m = mark()
+        key("ctrl+shift+w")
+        said = run.expect("Control+Shift+W says an outfit's attachment not on yet is still arriving", ["Still arriving", name], m, 5)
+        run.check("and doesn't call it attached", said and f"Attached: {name}" not in said["text"] and f"{name} on" not in said["text"],
+                  said["text"] if said else "")
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        sel = inv_search(name, name)
+        run.check("the inventory's words say it's still arriving", sel and "still arriving" in sel, sel or selection("id=inventory"))
+        # one that never came can be worn again: Enter (Wear, the first action) attaches it
+        m = mark()
+        key("enter")
+        run.expect("Enter on it wears it again", [f"Wearing {name}"], m, 15)
+        on = wait(lambda: attached(item), 15)
+        if run.check("(then it's attached)", on, ""):
+            words = wait(lambda: (lambda s: s if "worn on" in s else None)(selection("id=inventory")), 6)
+            run.check("and the item's words follow: worn on its point", words, selection("id=inventory"))
+            back_to_chat()
+            m = mark()
+            key("ctrl+shift+w")
+            said = run.expect("Control+Shift+W says it's attached", ["Attached:", name], m, 5)
+            run.check("and no longer still arriving", said and "Still arriving" not in said["text"], said["text"] if said else "")
+    finally:
+        try:
+            api("TesselAgent", "detach", 30, item_id=item)
+            time.sleep(1)
+            delete_by_search(run, name)   # (deleting waits for her own press: by keys, behind its confirmation)
+        except Exception as e:
+            print(f"     (the skirt's clean-up: {e})")
+        back_to_chat()
+
+
+def friends_online(run):
+    """Friends online at login said as one line (the blind tester heard 23 "is online" lines in the same second,
+    2026-10-31): the two PALS (and the visitor, if a friend) online before the app logged in, so the grid told of them
+    together; said once, naming them, and one line in the history; none of them on a line of its own. After the
+    login's burst (30 s), a friend coming online is said alone as before. The friendships are made here the first time
+    (the PALS take any offered), and the burst is checked from the next run."""
+    pal_ids = [account_id(*p) for p in PALS]
+    names = [" ".join(p) for p in PALS]
+    friends = {f["id"]: f for f in api("TesselAgent", "friends").get("friends", [])}
+    missing = [i for i, pid in enumerate(pal_ids) if pid and pid not in friends]
+    if missing:
+        for i in missing:
+            api("TesselAgent", "offerFriendship", to=pal_ids[i], message="the friends-online check")
+        made = wait(lambda: all(pal_ids[i] in {f["id"] for f in api("TesselAgent", "friends").get("friends", [])} for i in missing), 20)
+        run.check("(the friends-online check's friendships made)", made, ", ".join(names[i] for i in missing))
+        print("     (friendships made now: the login's one line is checked from the next run)")
+        return
+    said = said_since(0)
+    burst = [e for e in said if "friends online" in (e.get("text") or "")]
+    run.check("friends online at login said once, as one line", len(burst) == 1, " | ".join(e.get("text") or "" for e in burst) or "not said")
+    if burst:
+        text = burst[0]["text"]
+        run.check("naming them", all(n in text for n in names) and re.match(r"^\d+ friends online: ", text), text)
+    alone = [e["text"] for e in said if any(e.get("text", "").startswith(f"{n} is online") for n in names)]
+    run.check("and none of them on a line of its own", not alone, " | ".join(alone) or "none")
+    history = value_of("id=chatHistory")
+    run.check("the history has the line, every name in it", any("friends online" in l and all(n in l for n in names) for l in history.splitlines()),
+              next((l for l in history.splitlines() if "friends online" in l), history[-200:]))
+    # after the login's burst: one coming online is its own line again
+    wait(lambda: time.time() - ARRIVED_AT > 35, 40, 1)
+    m = mark()
+    pal_quit(1)
+    run.expect("a friend going offline is said", [f"{names[1]} is offline"], m, 15)
+    m = mark()
+    pal_start(1)
+    up = wait(lambda: pal_up(1), 60, 1)
+    if run.check("(the friend logged in again)", up, ""):
+        got = run.expect("after the login, a friend coming online is said alone, as before", [f"{names[1]} is online"], m, 20)
+        run.check("(not as a count)", got and "friends online" not in got["text"], got["text"] if got else "")
+
+
+def assistant_answer(run, nonce):
+    """Control+Shift+L: the assistant's last answer, whole, for the clipboard (the blind tester's copy from Alt+9's
+    history took only part of a long one, 2026-10-31). An answer of two paragraphs is put on the panel by the agent API
+    (as the sidecar does); Alt+9's history shows each paragraph on its own line (a bare \\n ran them together), and
+    Control+Shift+L says it copied every word (the test leaves the clipboard alone, so the count is the check); the
+    Read-out menu has it with its key."""
+    m = mark()
+    key("ctrl+shift+l")
+    run.expect("Control+Shift+L with no answer yet says so", ["hasn't answered"], m, 4)
+    first = f"The pier is two regions east {nonce}, past the lighthouse."
+    second = "Take the coast road and turn left at the market; the boats leave on the hour."
+    answer = first + "\n\n" + second
+    api("SojournAssistant", "panel", result=answer, working=False)
+    key("alt+9")
+    wait_focus(lambda d: d["id"] == "assistantInput", 4)
+    shown = wait(lambda: (lambda h: h if second in h else None)(value_of("id=assistantHistory")), 6)
+    lines = (shown or "").splitlines()
+    run.check("Alt+9's history has the answer, its paragraphs on lines of their own",
+              any(l.endswith(first) for l in lines) and second in lines, " / ".join(lines[-4:]) or "not shown")
+    words = len(answer.split())
+    m = mark()
+    key("ctrl+shift+l")
+    run.expect("Control+Shift+L copies it whole, saying how many words", [f"Copied the assistant's last answer, {words} words"], m, 4)
+    back_to_chat()
+    key("alt+r")
+    if run.check("the Read-out menu has it", menu_open("Copy the assistant's last answer"), focus_label()):
+        run.check("with Control+Shift+L beside it", menu_keys("type=MenuItem;name=Copy the assistant's last answer").endswith("Control+Shift+L"),
+                  menu_keys("type=MenuItem;name=Copy the assistant's last answer"))
+        key("esc")
+        key("esc")
+    back_to_chat()
+
+
+def gestures(run, nonce):
+    """Gestures (the blind tester couldn't play hers at all, 2026-10-31): two made and activated through the agent API
+    (a clap and a line; a greeting whose trigger is replaced by its words), then by keys: a trigger typed in Say plays
+    its gesture instead of being said (the region hears the gesture's line from her, the clap plays on her avatar, the
+    trigger itself never said), a replacement said in the trigger's place with the rest of the line; Control+Shift+G's
+    menu lists them with their triggers and plays one; World > Gestures; in the inventory a gesture's words say active
+    and its trigger, its Applications key has Play and Deactivate, and deactivated, its trigger is said as typed."""
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+    folder_name = f"Access Gestures {nonce}"
+    folder = api("TesselInventory", "createFolder", name=folder_name, parent_id=root)["folder_id"]
+    clap, hello = f"Access Clap {nonce}", f"Access Hello {nonce}"
+    clap_trigger, hello_trigger = f"/clap{nonce}", f"/hi{nonce}"
+    clap_line = f"claps for {nonce}"
+    try:
+        g1 = api("TesselInventory", "createGesture", 40, name=clap, trigger=clap_trigger, folder_id=folder,
+                 steps=[{"animation": "clap"}, {"chat": clap_line}])
+        g2 = api("TesselInventory", "createGesture", 40, name=hello, trigger=hello_trigger, replace="Hello there",
+                 folder_id=folder, steps=[{"animation": "wave"}])
+        if not run.check("(fixtures: two gestures, active)", g1.get("active") and g2.get("active"), f"{g1.get('item_id')} {g2.get('item_id')}"):
+            return
+        # a trigger typed in Say: the gesture plays, its line said as hers; the trigger itself never said
+        n = visitor_n()
+        m = mark()
+        say_in_app(f"{clap_trigger}")
+        run.expect("typing a trigger says the gesture is playing", [f"Playing {clap}"], m, 5)
+        run.heard_by_visitor("the gesture's line goes out as her own chat", lambda d: d["from"] == TNAME and d["msg"] == clap_line, n, 10, clap_line)
+        anims = wait(lambda: any(a.get("name") == "clap" for a in api("LLAgent", "animations").get("animations", [])), 4, 0.2)
+        run.check("and its animation plays on her avatar", anims, json.dumps(api("LLAgent", "animations").get("animations", []))[:200])
+        run.expect("her line is read back as her own lines are", [clap_line], m, 8)
+        time.sleep(1.5)
+        heard = v(f"heard 50 since {n}")
+        run.check("the trigger itself isn't said", clap_trigger not in heard, "not heard" if clap_trigger not in heard else heard[-200:])
+        # a replacement: the trigger's word replaced, the rest of the line kept
+        n = visitor_n()
+        say_in_app(f"{hello_trigger} everyone")
+        run.heard_by_visitor("a trigger with replacement text is said as those words, the rest kept",
+                             lambda d: d["from"] == TNAME and d["msg"] == "Hello there everyone", n, 10, "Hello there everyone")
+        # Control+Shift+G: the active gestures as a menu, with their triggers
+        back_to_chat()
+        key("ctrl+shift+g")
+        if run.check("Control+Shift+G opens the gestures menu", menu_open(clap), focus_label()):
+            run.check("each gesture with its trigger beside it", menu_keys(f"type=MenuItem;name={clap}").endswith(clap_trigger),
+                      menu_keys(f"type=MenuItem;name={clap}"))
+            n = visitor_n()
+            m = mark()
+            # (menu items are pressed by UI Automation's invoke; a gesture is no confirmation, so that's enough)
+            u(f"invoke type=MenuItem;name={clap}")
+            run.expect("Enter on one plays it, saying so", [f"Playing {clap}"], m, 5)
+            run.heard_by_visitor("its line goes out", lambda d: d["from"] == TNAME and d["msg"] == clap_line, n, 10, clap_line)
+        back_to_chat()
+        key("alt+w")
+        if menu_open("Gestures"):
+            run.check("World has Gestures, with Control+Shift+G", menu_keys("type=MenuItem;name=Gestures").endswith("Control+Shift+G"),
+                      menu_keys("type=MenuItem;name=Gestures"))
+            key("esc")
+        back_to_chat()
+        # the inventory: active and the trigger in its words; Play, Deactivate on the Applications key
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        sel = inv_search(clap, clap)
+        run.check("in the inventory a gesture's words say active and its trigger", sel and f"gesture, active, {clap_trigger}" in sel,
+                  sel or selection("id=inventory"))
+        key("apps")
+        if run.check("its Applications key has Play and Deactivate", menu_open("Play") and menu_open("Deactivate"), focus_label()):
+            m = mark()
+            key("v")
+            run.expect("Deactivate, said", [f"{clap} is no longer active"], m, 6)
+            words = wait(lambda: (lambda s: s if "active" not in s else None)(selection("id=inventory")), 4)
+            run.check("and its words follow", words, selection("id=inventory"))
+            n = visitor_n()
+            say_in_app(clap_trigger)
+            run.heard_by_visitor("deactivated, its trigger is said as typed", lambda d: d["from"] == TNAME and d["msg"] == clap_trigger, n, 10, clap_trigger)
+            key("alt+4")
+            wait_focus(lambda d: d["id"] == "inventory", 4)
+            inv_search(clap, clap)
+            key("apps")
+            if menu_open("Activate"):
+                m = mark()
+                key("a")
+                run.expect("Activate, said with its trigger", [f"{clap} active", clap_trigger], m, 8)
+            else:
+                run.check("deactivated, its menu has Activate", False, focus_label())
+    finally:
+        try:
+            ids = [g.get("item_id") for g in (locals().get("g1"), locals().get("g2")) if g and g.get("item_id")]
+            if ids:
+                api("TesselInventory", "deactivateGesture", item_ids=ids)
+            delete_by_search(run, folder_name)
+        except Exception as e:
+            print(f"     (the gestures' clean-up: {e})")
+        back_to_chat()
+
+
 def keys(run, nonce):
     # F1: the keys in a window to read line by line (spoken, Control dropped the rest of some 2,000 characters)
     key("f1")
@@ -1676,6 +2075,46 @@ def settings(run):
             key(how)
             run.expect(f"{how.title()} on it: {want}", [f"Music volume: {want}."], m, 5)
         setting("music_volume", 0.15)
+
+    # the answers-without-a-key row in plain words (the blind tester asked what "answers without a physical key:
+    # refused" meant, 2026-10-31): who it's for, and to leave it with a keyboard
+    row = wait(lambda: find("type=ListItem;name~=Answers from a braille display"), 4)
+    run.check("the answers row says who it's for and to leave it with a keyboard",
+              row and "dictation or on-screen keyboard: refused" in row[0]["name"] and "leave it if you use a keyboard" in row[0]["name"],
+              label(row[0]) if row else "not listed")
+    desc = (api("SojournSettings", "get", name="access_answers_without_key").get("settings", {})
+            .get("access_answers_without_key", {}).get("desc", ""))
+    run.check("and so does its tip (the setting's own words)", "braille display" in desc and "leave it if you use a keyboard" in desc, desc[:160])
+
+    # the sound's device (her Radegast habit of switching headset and speakers, 2026-10-31): Alt+0 steps the default,
+    # then each device as Windows names it; Control+Shift+O the next. (The test's world audio goes to a file whatever is
+    # chosen, so the PC's own devices are never opened or played to.)
+    row = wait(lambda: find("type=ListItem;name~=Sound output: speakers or headphones"), 4)
+    if run.check("Alt+0 has the sound output, the default first", row and ": the default" in row[0]["name"], label(row[0]) if row else "not listed"):
+        devices = api("SojournAudio", "devices").get("speakers") or []
+        key("home")
+        for _ in range(80):
+            if "Sound output" in selection("id=settings"):
+                break
+            key("down")
+            time.sleep(0.1)
+        m = mark()
+        key("enter")
+        first = devices[0]["name"] if devices else None
+        if first:
+            run.expect("Enter on it: the first device, by its Windows name", [f"Sound output: speakers or headphones (Control+Shift+O): {first}."], m, 5)
+            run.check("(chosen)", setting("speakers") == first, str(setting("speakers")))
+        m = mark()
+        key("shift+enter")
+        run.expect("Shift+Enter back to the default", ["the default"], m, 5)
+        run.check("(automatic again)", setting("speakers") == "auto", str(setting("speakers")))
+        if first:
+            back_to_chat()
+            m = mark()
+            key("ctrl+shift+o")
+            run.expect("Control+Shift+O: the sound on the next device, said", [f"Sound on {first}."], m, 5)
+            run.check("(chosen)", setting("speakers") == first, str(setting("speakers")))
+            setting("speakers", "auto")
 
 
 def open_newest_notice(run, words):
@@ -2122,6 +2561,28 @@ def inventory(run, nonce):
         back = wait_focus(lambda d: d["id"] == "inventory", 4)
         run.check("and the focus is back in the tree", back, label(back) if back else focus_label())
 
+        # the other way round, Radegast's (the blind tester's habit, 2026-10-31): copy it, then give it from the person
+        key("ctrl+c")
+        time.sleep(0.5)
+        key("alt+3")
+        # it says "looking" until it fills, then lands on the nearest
+        on = wait(lambda: next((c for c in find("type=ListItem;focused=1") if VNAME in c["name"]), None), 15, 0.5)
+        if run.check("Alt+3 lands on the visitor", on, label(on) if on else focus_label()):
+            n = visitor_n()
+            m = mark()
+            key("apps")
+            time.sleep(0.6)
+            key("g")
+            # (the people list is a ListItem too: wait for the confirmation's own item before answering it)
+            wait_focus(lambda d: d["id"] == "notices" or (d["type"] == "ListItem" and "Give" in d["name"]), 6)
+            confirm_in_notices(run, "Give", m)
+            got = wait(lambda: next((json.loads(l) for l in v(f"events 20 since {n}").splitlines()
+                                     if l.startswith("{") and '"InventoryOffered"' in l and note2 in l), None), 12, 0.5)
+            run.check("copied, then Give what you copied on the person: the visitor is offered it", got,
+                      f'{got["dialog"]}: {got["msg"]}' if got else "no offer arrived")
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+
     # deleting, behind the person's confirmation: the run's folders go to the Trash (the first cancelled once)
     for name, fid in ((test_name, folder), (crate_name, box_folder)):
         if not fid:
@@ -2389,7 +2850,7 @@ def describing(run):
     run.expect("//describe more asks again", ["What the lists know"], m, 10)
 
     vid = visitor_id()
-    r = api("SojournDescribe", "look", 60, subject=vid, detail="brief")
+    r = timed_look(subject=vid, detail="brief")
     pics = r.get("pictures") or []
     if VIEWLESS:
         run.check("without the renderer: no pictures, said so", not pics and "no pictures" in json.dumps(r.get("notes")), json.dumps(r)[:300])
@@ -2409,15 +2870,25 @@ def describing(run):
               json.dumps(who) + f", fills {pics[0].get('subject_fills') if pics else '?'}")
     fixture = next((o for o in api("TesselObjects", "nearby", 10, dist=30, query="Access Fixture").get("objects", [])), None)
     if run.check("the fixture box is nearby", fixture, "found" if fixture else "not listed"):
-        r = api("SojournDescribe", "look", 60, subject=fixture["id"], detail="brief")
+        r = timed_look(subject=fixture["id"], detail="brief")
         p = (r.get("pictures") or [{}])[0]
         run.check("a picture of the fixture box, framed on it and named", p.get("png") and r["subject"].get("name") == "Access Fixture"
                   and int((p.get("subject_fills") or "0%")[:-1]) >= 10, f"{p.get('label')}, fills {p.get('subject_fills')}, {r['subject'].get('where')}")
-    r = api("SojournDescribe", "look", 60, subject="here", detail="brief")
+    r = timed_look(subject="here", detail="brief")
     labels = [p.get("label", "") for p in r.get("pictures") or []]
     run.check("here: four views round the tester, the visitor among the people around",
               len(labels) == 4 and "ahead" in labels[0] and any(VNAME in s for s in r["subject"].get("people_within_30_metres", [])),
               "; ".join(labels))
+
+
+def timed_look(**args):
+    """SojournDescribe look, its time and each picture's settling printed (on the processor they're seconds each)."""
+    t0 = time.time()
+    r = api("SojournDescribe", "look", 90, **args)
+    pics = r.get("pictures") or []
+    print(f"     (look {args.get('subject')}: {time.time() - t0:.1f} s, {len(pics)} picture(s)"
+          + (f", {pics[0].get('width')}x{pics[0].get('height')}" if pics else "") + ")")
+    return r
 
 
 def review_and_arrivals(run, nonce):
@@ -2506,11 +2977,14 @@ def offscreen(run):
     has a box the visitor puts out, touches land on its faces as the VR client's do (the box's script says which), and
     the assistant's look then gets a real picture, drawing the view whole. The box stays out until the visitor's cleanup
     at the end."""
-    if NO_GPU:
+    if NO_GPU and not SOFTWARE:
         st = wait(lambda: (lambda s: s if s["state"] == "stopped" else None)(api("SojournView", "status")), 60, 1)
         run.check("without a Vulkan driver the view out of sight gives up, never having drawn", st and st["frames"] == 0,
                   json.dumps(st) if st else json.dumps(api("SojournView", "status")))
         box_checks(run, touches=False)
+        return
+    if SOFTWARE:
+        offscreen_software(run)
         return
 
     def running():
@@ -2538,9 +3012,52 @@ def offscreen(run):
     run.check("and the view is drawn whole from then on", st.get("unseen") is False, json.dumps(st))
 
 
-def box_checks(run, touches=True):
+def offscreen_software(run):
+    """The renderer out of sight on the processor (no GPU here can run it: Render's Gpu/SoftwareVulkan.cs, Mesa's
+    lavapipe): it starts on it, draws nothing between pictures, so an idle app stays light, still lands touches on faces
+    (each glances at what it touches), and the assistant's look gets a real picture, timed."""
+    import psutil
+
+    def running():
+        st = api("SojournView", "status")
+        return st if st["state"] == "running" else None
+    st = wait(running, 60, 1)
+    run.check("the view out of sight runs on the processor (no GPU it can use)", st and st.get("software") is True and "llvmpipe" in st["device"],
+              json.dumps(st) if st else json.dumps(api("SojournView", "status")))
+    time.sleep(3)
+    p = psutil.Process(APP_PID)
+    p.cpu_percent(None)
+    time.sleep(10)
+    cpu = p.cpu_percent(None)
+    mem = p.memory_info()
+    st = api("SojournView", "status")
+    run.check("idle, it draws nothing and the app stays light", st["frames"] == 0 and st["idle_hz"] == 0 and cpu < 15,
+              f"{st['frames']} frames, idle_hz {st['idle_hz']}; {cpu:.0f}% of a core over 10 s, "
+              f"{mem.private / 2**20:.0f} MB private, {mem.rss / 2**20:.0f} MB working set")
+    box_checks(run, rays=False)
+    path = OUT / "look.png"
+    t0 = time.time()
+    r = api("LLViewerWindow", "saveSnapshot", timeout=60, filename=str(path), width=1024, height=1024, tool="assistant")
+    took = time.time() - t0
+    detail = json.dumps(r)
+    ok = False
+    if path.exists():
+        from PIL import Image, ImageStat
+        im = Image.open(path).convert("RGB")
+        spread = sum(ImageStat.Stat(im).stddev) / 3
+        ok = im.size == (1024, 576) and spread > 6
+        detail += f"; {im.size[0]}x{im.size[1]}, spread {spread:.0f} ({path.relative_to(ROOT)})"
+    run.check("the assistant's look (saveSnapshot) gets a picture drawn on the processor", r.get("ok") and ok, f"{took:.1f} s; {detail}")
+    mem = p.memory_info()
+    print(f"     (after the picture: {mem.private / 2**20:.0f} MB private, {mem.rss / 2**20:.0f} MB working set; "
+          f"{json.dumps(api('SojournView', 'status'))})")
+
+
+def box_checks(run, touches=True, rays=True):
     """The collision models and touches on the visitor's facebox (unseen, in the step above): the one without a GPU
-    (SojournCollision, walk mode's) and the renderer's (SojournView) meet it where it is."""
+    (SojournCollision, walk mode's) and the renderer's (SojournView) meet it where it is. rays=False: not the
+    renderer's, which counts only what it has drawn (on the processor nothing is drawn between pictures; it's for
+    comparing, walk mode never uses it)."""
     x, y, z, _ = tester_where()
     made = v(f"facebox {FACEBOX_XY[0]} {FACEBOX_XY[1]} {z:.1f}", timeout=30)
     box = re.search(r"id ([0-9a-f-]{36})", made)
@@ -2555,9 +3072,10 @@ def box_checks(run, touches=True):
               f"{json.dumps(hit)}; the box's middle {far:.2f} m away" if hit else json.dumps(api("SojournCollision", "collide", **ray)))
     if not touches:
         return
-    seen = wait(lambda: (lambda h: h if h.get("hit") and h.get("prim") == box_id else None)(api("SojournView", "collide", **ray)), 15, 1)
-    run.check("the renderer's collision model has it at the same distance", seen and hit and abs(seen["distance"] - hit["distance"]) < 0.02,
-              f"{json.dumps(seen)} / {json.dumps(hit)}" if seen else json.dumps(api("SojournView", "collide", **ray)))
+    if rays:
+        seen = wait(lambda: (lambda h: h if h.get("hit") and h.get("prim") == box_id else None)(api("SojournView", "collide", **ray)), 15, 1)
+        run.check("the renderer's collision model has it at the same distance", seen and hit and abs(seen["distance"] - hit["distance"]) < 0.02,
+                  f"{json.dumps(seen)} / {json.dumps(hit)}" if seen else json.dumps(api("SojournView", "collide", **ray)))
 
     n = visitor_n()
     # face 4, the box's side away from the tester (west): a touch the eyes' ray couldn't land
@@ -3353,12 +3871,18 @@ def sound_map(run, tester_id):
                   re.search(r"Marks Bench, a seat, 4 metres, twelve o'clock", text) and re.search(r"Marks Gate, a door, 4 metres, three o'clock", text)
                   and re.search(r"Marks Bell, touchable, 4 metres, nine o'clock", text), text)
         time.sleep(3.5)
+        # Each cue against the item said in its place in the line (they go in the same order), so a second seat in
+        # range can't stand in for the bench: the clock words were checked above, the sounds must agree with them.
         sent = cues_since(t0, "MarkSeat", "Door", "MarkTouch")
-        want = {"MarkSeat": 0, "Door": 90, "MarkTouch": 270}
-        placed = {c["cue"]: c["bearing"] for c in sent}
-        run.check("and each sounded from where it is (a seat sinks, the gate knocks, the bell taps)",
-                  all(k in placed and placed[k] is not None and off_by(placed[k], b) < 20 for k, b in want.items()),
-                  json.dumps(placed))
+        said = re.findall(r"([^.]+?), (a door|a seat|touchable), [^,]+, (\w+) o'clock\.", text)
+        kinds = {"a door": "Door", "a seat": "MarkSeat", "touchable": "MarkTouch"}
+        pairs = [(n.strip(), c["cue"], kinds[k], c["bearing"], HOURS.index(h) * 30 if h in HOURS else None)
+                 for (n, k, h), c in zip(said, sent)]
+        run.check("and each sounded from where it is said to be (a seat sinks, the gate knocks, the bell taps)",
+                  len(said) >= 3 and len(sent) == len(said)
+                  and all(cue == want_cue and b is not None and w is not None and off_by(b, w) < 20 for _, cue, want_cue, b, w in pairs),
+                  f"{len(sent)} cues for {len(said)} said: "
+                  + "; ".join(f"{n}: {cue} at {b} (said {w})" for n, cue, _, b, w in pairs))
 
         m = mark()
         key("b")
@@ -3881,11 +4405,11 @@ def walk_mode(run):
     passed on the left, the warning before the end wall (named Blue Door) and Blocked at it, a step turn each way,
     what's ahead, touching it, Space, the drop warning walking off a platform, Escape back to the Say box."""
     bx, by = COURSE
-    if NO_GPU:
+    if NO_GPU and not SOFTWARE:
         st = wait(lambda: (lambda s: s if s["state"] == "stopped" else None)(api("SojournView", "status")), 60, 1)
         run.check("(the view out of sight has given up: no Vulkan driver; walk mode on the collision model alone)", st,
                   json.dumps(api("SojournView", "status")))
-    elif not NO_RENDER:
+    elif not NO_RENDER and not SOFTWARE:
         # after the faked GPU loss (SOJOURN_OFFSCREEN_LOSE_AFTER), so the comparison below doesn't meet a restarting view
         wait(lambda: (lambda st: st["state"] == "running" and st["losses"] >= 1)(api("SojournView", "status")), 60, 1)
     try:
@@ -3918,7 +4442,7 @@ def walk_mode(run):
         run.check("the collision model has the course (the east wall met)", seen and abs(seen["distance"] - 1.4) < 0.3, json.dumps(seen))
         st = api("SojournCollision", "status")
         run.check("(its status: prims indexed and shapes ready)", st.get("placed", 0) >= 10 and st.get("ready", 0) >= 1, json.dumps(st))
-        if not VIEWLESS:
+        if not VIEWLESS and not SOFTWARE:   # (on the processor the renderer draws nothing between pictures)
             walk_models_agree(run)
 
         m = mark()
@@ -4187,11 +4711,14 @@ def package_check():
     global Q_PORT, EVENTS, APP_PID
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     relay = sys.argv[sys.argv.index("--relay") + 1] if "--relay" in sys.argv[2:-1] else None
-    rest = [a for a in sys.argv[2:] if a not in ("--check", "--keep", "--bare", "--relay", relay)]
+    rest = [a for a in sys.argv[2:] if a not in ("--check", "--keep", "--bare", "--no-software", "--relay", relay)]
     keep = "--keep" in sys.argv[2:]
-    # a PC unlike ours: no Vulkan driver (a VM, Microsoft's basic display adapter) and no Media Foundation (Windows'
-    # N editions), which sojourn_voice.dll imports, so it won't load: removing it fails the same way
+    # a PC unlike ours: no Vulkan driver it can use (a VM, Microsoft's basic display adapter, an old card's driver) and
+    # no Media Foundation (Windows' N editions), which sojourn_voice.dll imports, so it won't load: removing it fails the
+    # same way. The view then draws on the processor (the package's lavapipe folder); --no-software removes that too, as
+    # packages before it were, and the view gives up
     bare = "--bare" in sys.argv[2:]
+    no_software = bare and "--no-software" in sys.argv[2:]
     zips = [Path(rest[0]).resolve()] if rest else sorted(DIST.glob("SojournAccess-*.zip"), key=lambda p: p.stat().st_mtime)
     if not zips or not zips[-1].exists():
         print("no zip (python tools/access.py package)")
@@ -4199,7 +4726,8 @@ def package_check():
     zip_path = zips[-1]
     version = re.search(r"SojournAccess-(0\.1\.0\.\d+)", zip_path.name)
     version = version[1] if version else "?"
-    print(f"checking {zip_path.name}" + (" as on a bare PC (no Vulkan driver, no sojourn_voice.dll)" if bare else ""))
+    print(f"checking {zip_path.name}" + (" as on a bare PC (no Vulkan driver, no sojourn_voice.dll" +
+                                         (", no software driver)" if no_software else "; the view on the processor)") if bare else ""))
 
     others = others_running()
     if others:
@@ -4240,6 +4768,9 @@ def package_check():
             raise Stop
         if bare:
             (folder / "sojourn_voice.dll").unlink()
+        if no_software:
+            shutil.rmtree(folder / "lavapipe")
+        software = bare and (folder / "lavapipe" / "vulkan_lvp.dll").exists()
         # a package with the assistant (python/ and assistant/ beside the exe): its sidecar runs, off (no provider) or,
         # with --relay NAME, on Studio Quire's relay with that token (tools/relay.py), asked something and capped
         assistant = (folder / "assistant" / "main.py").exists()
@@ -4415,7 +4946,23 @@ def package_check():
         check("chat sent (the grid's echo in the Nearby chat history)", heard, line if heard else value_of("id=chatHistory")[-200:])
 
         # ---- the renderer out of sight, the natives
-        if bare:
+        if software:
+            # no GPU it can use: it draws on the processor (Render's Gpu/SoftwareVulkan.cs), from the package's lavapipe
+            moved = wait(lambda: re.search(r".*can't run on this PC's graphics.*drawing on the processor instead.*", log_text()), 60, 1)
+            up = wait(lambda: re.search(r"the view out of sight is up on (llvmpipe[^,]*)", log_text()), 30, 1)
+            check("without a GPU it can use, the view draws on the processor", moved and up and alive(app),
+                  up[0] if up else moved[0][:200] if moved else "no such line in the session's log")
+            lowered = re.search(r"\d+ of the software driver's threads put below normal priority", log_text())
+            check("the software driver's threads below normal priority (the screen reader first)", lowered,
+                  lowered[0] if lowered else "no such line")
+            if assistant:
+                # the assistant (even off) makes its pictures possible: what's around is drawn once ahead of them
+                warm = wait(lambda: re.search(r"what's around drawn once ahead of any picture, .*", log_text()), 90, 1)
+                check("and draws: what's around drawn once, ahead of any picture", warm and alive(app), warm[0] if warm else "no such line")
+            failed = re.findall(r".*(?:couldn't start|the GPU was lost|stopped:).*", log_text())
+            check("no renderer failures in the log", not failed, "; ".join(failed)[:200] or "none")
+            dlls = ["nvdaControllerClient.dll", "openjp2.dll", "shaderc_shared.dll", "lavapipe/vulkan_lvp.dll"]
+        elif bare:
             down = wait(lambda: re.search(r".*the view out of sight couldn't start.*", log_text()), 60, 1)
             check("the renderer's absence is logged, not fatal", down and alive(app), down[0][:200] if down else "no such line")
             up = re.search(r"the view out of sight is up on ([^:]+)", log_text())
@@ -4456,8 +5003,8 @@ def package_check():
               f"{p.memory_info().rss / 1e6:.0f} MB in memory, {g1[1] / 1e6:.0f} MB of video memory")
         mods = modules_of(app)
         for dll in dlls:
-            where = next((m for m in mods if Path(m).name.lower() == dll.lower()), None)
-            check(f"{dll} loaded from the package's folder", where and Path(where).parent == folder, where or "not loaded")
+            where = next((m for m in mods if Path(m).name.lower() == Path(dll).name.lower()), None)
+            check(f"{dll} loaded from the package's folder", where and Path(where).parent == (folder / dll).parent, where or "not loaded")
         foreign = [m for m in mods if str(ROOT).lower() in m.lower()]
         check("nothing loaded from the repo", not foreign, "; ".join(foreign) or f"{len(mods)} modules")
         network("after the renderer and chat")
@@ -4634,8 +5181,9 @@ def send_log_steps(run, relaymod):
         run.check("it has her own line", f"my own line {nonce}" in text, f"{len(text)} characters")
         run.check("and what was read out", "read out (" in text, "")
         key("esc")
-        back = wait_focus(lambda d: d["id"] == "sendLogReview", 3)
-        run.check("Escape closes it, back on Review", back, label(back) if back else focus_label())
+        # Alt+R presses Review without moving the focus (a button's mnemonic), so back is the note it was pressed from
+        back = wait_focus(lambda d: d["id"] in ("sendLogNote", "sendLogReview"), 3)
+        run.check("Escape closes it, back where the focus was", back, label(back) if back else focus_label())
     m = mark()
     key("alt+n")
     run.expect("Send sends it and says so", ["Log sent"], m, 20)
@@ -4663,7 +5211,8 @@ if __name__ == "__main__":
     if cmd == "package" and "--check" in sys.argv[2:]:
         cmd = "package-check"
     commands = {"build": build, "run": run_for_person, "visitor": lambda: visitor_command(sys.argv[2:]), "tools": tools,
-                "test": test, "stop": stop, "sweep": sweep, "package": package, "package-check": package_check}
+                "test": test, "stop": stop, "sweep": sweep, "package": package, "package-check": package_check,
+                "fetch-lavapipe": fetch_lavapipe}
     if cmd not in commands:
         print(__doc__)
         sys.exit(2)

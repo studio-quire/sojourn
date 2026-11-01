@@ -29,6 +29,7 @@ public sealed partial class MainForm
             _sitItem = Item("&Sit on the ground", null, () => _ = SitOrStandAsync()),
             _flyItem = Item("&Fly", null, ToggleFly),
             Later("Wal&k mode", "F3", ToggleWalk),
+            _gesturesItem = new ToolStripMenuItem("&Gestures") { Name = "menuGestures", ShortcutKeyDisplayString = "Control+Shift+G" },
             new ToolStripSeparator(),
             _awayItem = Item("&Away", null, () => _ = PresenceAsync("away")),
             _dndItem = Item("&Do not disturb", null, () => _ = PresenceAsync("do_not_disturb")),
@@ -42,8 +43,11 @@ public sealed partial class MainForm
             Item("Describe &me", "Control+Shift+D", () => DescribeKey(me: true)),
             new ToolStripSeparator(),
             Item("Who's in &voice", "Control+Shift+V", SayVoice),
-            _micItem = Item("&Open mic", "Shift+F4", ToggleVoiceMode));
+            _micItem = Item("&Open mic", "Shift+F4", ToggleVoiceMode),
+            Item("Sound o&ut of the next device", "Control+Shift+O", () => _ = NextOutputAsync()));
         world.DropDownOpening += (_, _) => WorldShown();
+        _gesturesItem.DropDownItems.Add(new ToolStripMenuItem("(none yet)"));   // a submenu needs an item to open
+        _gesturesItem.DropDownOpening += (_, _) => FillGestures(_gesturesItem.DropDownItems);
 
         var view = Top("&View",
             Later("Nearby &chat", "Alt+1", () => GoArea(_chatPage)),
@@ -79,7 +83,8 @@ public sealed partial class MainForm
             Item("The &oldest", "Control+Shift+[", () => Reader?.Oldest()),
             Item("The &newest", "Control+R", () => Reader?.Repeat()),
             Item("Mar&k this line", "Control+Shift+M", () => { if (Reader is { } r) r.Answer(r.Mark(), keep: false); }),
-            Item("&Copy from the mark", "Control+Shift+C", CopyFromMark));
+            Item("&Copy from the mark", "Control+Shift+C", CopyFromMark),
+            Item("Copy the assistant's last ans&wer", "Control+Shift+L", CopyLastAnswer));
         reading.DropDownOpening += (_, _) =>
         {
             _muteItem.Checked = _set.MuteAll;

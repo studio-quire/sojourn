@@ -62,12 +62,13 @@ public sealed partial class MainForm
             if (v.Muted && !RealInput.Person) { Reader?.Answer(RealInput.Why, keep: false); return true; }
             v.ToggleMute();
             _earcons?.Mic(open: !v.Muted);
-            Reader?.Answer(v.Muted ? "Mic muted." : "Mic live.", keep: false);
+            Reader?.Answer(v.Muted ? "Mic muted." : _micGone ? "Mic live, but there's no microphone: nobody hears you until one is plugged in." : "Mic live.", keep: false);
             return true;
         }
         if (!RealInput.Person) { Reader?.Answer(RealInput.Why, keep: false); return true; }
         if (!v.Enabled) { Reader?.Answer("Voice chat is off: Alt+0 turns it on.", keep: false); return true; }
         if (v.OffHere) Reader?.Answer("Voice is off here: nobody hears you.", keep: false);
+        else if (_micGone) Reader?.Answer("No microphone: nobody hears you until one is plugged in.", keep: false);
         Host!.Voice!.KeyDown();
         _micOpen = true;
         _earcons?.Mic(open: true);

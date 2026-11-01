@@ -566,10 +566,13 @@ public sealed partial class MainForm
         if (_areas.SelectedTab != _inventoryPage || Environment.TickCount64 - _wornAt < 1000) return;
         _wornAt = Environment.TickCount64;
         var now = Worn();
+        // the outfit's things not attached stop being "still arriving" once its first minute or two is over
+        bool arrivingFlipped = _arrivingShown != OutfitArriving;
+        _arrivingShown = OutfitArriving;
         foreach (var p in Panes)
         {
             if (p.WornShown is not { } shown) continue;
-            if (now.Ids.SetEquals(shown.Ids) && now.Points.Count == shown.Points.Count && now.Points.All(x => shown.Points.TryGetValue(x.Key, out var v) && v == x.Value))
+            if (!arrivingFlipped && now.Ids.SetEquals(shown.Ids) && now.Points.Count == shown.Points.Count && now.Points.All(x => shown.Points.TryGetValue(x.Key, out var v) && v == x.Value))
                 continue;
             Relabel(p, now);
         }
@@ -583,7 +586,11 @@ public sealed partial class MainForm
         var target = Target(it);
         var words = $"{it.Name}, {TypeWord(target)}";
         if (worn.Ids.Contains(target.UUID))
-            words += worn.Points.TryGetValue(target.UUID, out var at) ? $", worn on {at}" : ", worn";
+            words += worn.Points.TryGetValue(target.UUID, out var at) ? $", worn on {at}"
+                // in the outfit (its link in Current Outfit) and not on the avatar yet: arriving, or not attached
+                : target.AssetType == AssetType.Object ? $", {NotAttachedWords}" : ", worn";
+        else if (target.AssetType == AssetType.Gesture && GestureActive(target))
+            words += Sojourn.Core.Agents.GestureOps.KnownTrigger(target.AssetUUID) is { Length: > 0 } t ? $", active, {t}" : ", active";
         if (it.AssetType == AssetType.Link) words += ", link";
         else if (it.AssetType == AssetType.LinkFolder) words += ", folder link";
         return words;
@@ -765,7 +772,13 @@ public sealed partial class MainForm
         if (one && target!.AssetType == AssetType.Notecard) list.Add(new("Play as a ro&ute", () => _ = PlayRouteAsync(target)));
         // (each menu's letters its own: Cu&t below has T)
         if (one && target!.AssetType == AssetType.Landmark) list.Add(new("Teleport the&re", () => _ = _cmd.TeleportLandmarkAsync(target.UUID, target.Name)));
-        var notWorn = wearable.Where(i => !worn.Ids.Contains(i.UUID)).ToList();
+        // gestures: Enter plays one; the chosen ones activated or deactivated together
+        var gestures = items.Select(Target).Where(i => i.AssetType == AssetType.Gesture).ToList();
+        if (one && gestures.Count == 1) list.Add(new("P&lay", () => _ = PlayGestureAsync(gestures[0].UUID)));
+        if (gestures.Any(g => !GestureActive(g))) list.Add(new("&Activate", () => _ = ActivateGesturesAsync(gestures.Where(g => !GestureActive(g)).ToList(), on: true)));
+        if (gestures.Any(GestureActive)) list.Add(new("Deacti&vate", () => _ = ActivateGesturesAsync(gestures.Where(GestureActive).ToList(), on: false)));
+        // (an object in the outfit but not on the avatar can be worn again: Wear attaches it)
+        var notWorn = wearable.Where(i => !worn.Ids.Contains(i.UUID) || i.AssetType == AssetType.Object && !worn.Points.ContainsKey(i.UUID)).ToList();
         var isWorn = wearable.Where(i => worn.Ids.Contains(i.UUID)).ToList();
         if (notWorn.Count > 0) list.Add(new("&Wear", () => _ = WearAsync(p, notWorn, replace: true)));
         if (notWorn.Any(i => i.AssetType is AssetType.Object or AssetType.Clothing)) list.Add(new("&Add to outfit", () => _ = WearAsync(p, notWorn, replace: false)));
@@ -1010,6 +1023,27 @@ public sealed partial class MainForm
             Answer(PersonOps.Error(r) is { } e ? $"{n.Name} not given: {e}" : $"Gave {n.Name} to {who.Name}.");
         }
         Unmark(p);
+        RefreshInventory(chosen.Select(c => c.ParentUUID).ToArray());
+    }
+
+    /// <summary>What's cut or copied in the inventory, given to someone from their side (the profile's Give, the people
+    /// and friends menus): the blind tester's Radegast habit, copying an item and giving it from the person
+    /// (2026-10-31). Each give waits for her confirmation, as from the inventory.</summary>
+    async Task GiveCopiedAsync(UUID to, string name)
+    {
+        var chosen = _invClip.Select(id => Store is { } s && s.Contains(id) ? s[id] : null).OfType<InventoryBase>().ToList();
+        if (chosen.Count == 0)
+        {
+            Answer($"Nothing copied to give. In your inventory, Alt+4, Control+C on what you'd give {name}, then Give here.");
+            return;
+        }
+        foreach (var n in chosen)
+        {
+            var args = new JsonObject { ["to"] = to.ToString() };
+            args[n is InventoryFolder ? "folder_id" : "item_id"] = n.UUID.ToString();
+            if (await ConfirmedAsync("TesselAgent", "give", args) is not { } r) continue;
+            Answer(PersonOps.Error(r) is { } e ? $"{n.Name} not given: {e}" : $"Gave {n.Name} to {name}.");
+        }
         RefreshInventory(chosen.Select(c => c.ParentUUID).ToArray());
     }
 

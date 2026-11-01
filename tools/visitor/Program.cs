@@ -4,7 +4,7 @@
 // asking, a scripted fixture box, notecard offers, facing and walking.
 //
 //   Visitor [--port 9886] [--first Access] [--last Visitor] [--password sojourn-local] [--start Atelier/68/38/24]
-//           [--login http://127.0.0.1:9700/]
+//           [--login http://127.0.0.1:9700/] [--accept-friends]   (the last: takes any friendship offered)
 // Commands, one per TCP connection (QuireUia send --port 9886 ... works as a client):
 //   say TEXT | shout TEXT | whisper TEXT | emote TEXT     local chat
 //   im UUID TEXT                                          instant message
@@ -40,7 +40,7 @@
 //                                                         movement keys, moves on forward and back, turns on left and right
 //   kart [NAME] X Y Z                                     a physical car vehicle (default "Walk Kart") for seated crossings
 //   cleanup                                               take every object it rezzed in this run to its trash
-//   derez NAME                                            take every object of ours with that name to the trash
+//   derez NAME                                            take every object it rezzed with that name to its trash
 //   pos | whereis | quit                                  "REGION <x, y, z> heading DEG" (as the region has it)
 using System.Collections.Concurrent;
 using System.Net;
@@ -62,6 +62,7 @@ static class Program
     static ScriptDialogEventArgs lastDialog;
     static ScriptQuestionEventArgs lastQuestion;
     static readonly List<uint> rezzed = new();
+    static readonly Dictionary<uint, string> named = new();   // what we named the objects we rezzed, for derez NAME
     static InventoryItem card;
 
     static string Opt(List<string> a, string name, string dflt)
@@ -85,6 +86,9 @@ static class Program
         lp.URI = login;
         lp.Start = NetworkManager.StartLocation(start[0], int.Parse(start[1]), int.Parse(start[2]), int.Parse(start[3]));
         Hook();
+        // --accept-friends: a friend for the test's friends-online-at-login check, taking any friendship offered
+        if (a.Contains("--accept-friends"))
+            client.Friends.FriendshipOffered += (s, e) => client.Friends.AcceptFriendship(e.AgentID, e.SessionID);
         if (!await client.Network.LoginAsync(lp, CancellationToken.None))
         {
             Console.WriteLine("login failed: " + client.Network.LoginMessage);
@@ -356,7 +360,7 @@ static class Program
         var prim = await RezBox(pos, new Vector3(0.5f));
         if (prim == null) return "ERR no object came back";
         var sim = client.Network.CurrentSim;
-        client.Objects.SetName(sim, prim.LocalID, name);
+        Named(prim.LocalID, name);
         client.Objects.DeselectObject(sim, prim.LocalID);
         return $"rezzed {name} local {prim.LocalID} id {prim.ID}";
     }
@@ -399,7 +403,7 @@ static class Program
         var plain = await RezBox(pos - new Vector3(0, 0, 0.3f), new Vector3(0.8f, 0.5f, 0.5f));
         var latch = await RezBox(pos + new Vector3(0.45f, 0, -0.1f), new Vector3(0.1f, 0.1f, 0.1f));
         if (root == null || plain == null || latch == null) return "ERR a part didn't come back";
-        client.Objects.SetName(sim, root.LocalID, name);
+        Named(root.LocalID, name);
         client.Objects.SetName(sim, latch.LocalID, "Latch");
         var item = await UploadScript("Latch touch",
             "default { touch_start(integer n) { llSay(0, llGetObjectName() + \" touched by \" + llDetectedName(0) + \", link \" + (string)llDetectedLinkNumber(0)); } }");
@@ -426,7 +430,7 @@ static class Program
         var latch = await RezBox(pos + new Vector3(0, -0.28f, 0.1f), new Vector3(0.1f, 0.06f, 0.1f));
         var foot = await RezBox(pos + new Vector3(0.3f, 0.15f, -0.24f), new Vector3(0.1f, 0.1f, 0.08f));
         if (body == null || lid == null || latch == null || foot == null) return "ERR a part didn't come back";
-        client.Objects.SetName(sim, body.LocalID, name);
+        Named(body.LocalID, name);
         client.Objects.SetName(sim, latch.LocalID, "Latch");
         var script = await UploadScript("Chest lid",
             "default { state_entry() { llSay(0, \"chest lid ready\"); } "
@@ -495,7 +499,7 @@ static class Program
         var sim = client.Network.CurrentSim;
         var box = await RezBox(pos, new Vector3(0.5f));
         if (box == null) return "ERR no object came back";
-        client.Objects.SetName(sim, box.LocalID, name);
+        Named(box.LocalID, name);
         var nc = await Card();
         client.Inventory.UpdateTaskInventory(box.LocalID, nc, sim, false);
         await Task.Delay(1000);
@@ -523,7 +527,7 @@ static class Program
         var sim = client.Network.CurrentSim;
         var box = await RezBox(pos, new Vector3(1.6f, 1.0f, 0.4f));
         if (box == null) return "ERR no object came back";
-        client.Objects.SetName(sim, box.LocalID, name);
+        Named(box.LocalID, name);
         var script = await UploadScript("Walk cart",
             "integer K; default { state_entry() { llSitTarget(<0, 0, 0.7>, ZERO_ROTATION); "
             + "K = CONTROL_FWD | CONTROL_BACK | CONTROL_ROT_LEFT | CONTROL_ROT_RIGHT | CONTROL_LEFT | CONTROL_RIGHT | CONTROL_UP | CONTROL_DOWN; "
@@ -557,7 +561,7 @@ static class Program
         var sim = client.Network.CurrentSim;
         var box = await RezBox(pos, new Vector3(2.0f, 1.2f, 0.5f));
         if (box == null) return "ERR no object came back";
-        client.Objects.SetName(sim, box.LocalID, name);
+        Named(box.LocalID, name);
         var script = await UploadScript("Walk kart",
             "integer K; default { state_entry() { llSitTarget(<0, 0, 0.75>, ZERO_ROTATION); "
             + "K = CONTROL_FWD | CONTROL_BACK | CONTROL_ROT_LEFT | CONTROL_ROT_RIGHT | CONTROL_LEFT | CONTROL_RIGHT; "
@@ -595,7 +599,7 @@ static class Program
         var sim = client.Network.CurrentSim;
         var box = await RezBox(pos, new Vector3(1.6f, 0.7f, 0.5f));
         if (box == null) return "ERR no object came back";
-        client.Objects.SetName(sim, box.LocalID, name);
+        Named(box.LocalID, name);
         var script = await UploadScript("Access sofa",
             "string baseName; integer taken; "
             + "rename(integer v) { taken = v; if (taken) llSetObjectName(baseName + \" for two\"); else llSetObjectName(baseName); "
@@ -622,7 +626,7 @@ static class Program
         var sim = client.Network.CurrentSim;
         var box = await RezBox(pos, new Vector3(0.5f));
         if (box == null) return "ERR no object came back";
-        client.Objects.SetName(sim, box.LocalID, name);
+        Named(box.LocalID, name);
         var script = await UploadScript("Access facebox",
             "default { state_entry() { llSay(0, llGetObjectName() + \" ready\"); } "
             + "touch_start(integer n) { llSay(0, llGetObjectName() + \" touched face \" + (string)llDetectedTouchFace(0) + \" st \" + (string)llDetectedTouchST(0)); } }");
@@ -680,19 +684,26 @@ static class Program
         return $"took {ids.Count}";
     }
 
+    static void Named(uint localId, string name)
+    {
+        client.Objects.SetName(client.Network.CurrentSim, localId, name);
+        lock (rezzed) named[localId] = name;
+    }
+
+    // By the name we gave it, not the world's copy: object updates carry no owner and names only come with properties
+    // asked for, so matching those found nothing and things meant to be gone stayed out for later steps (a sofa left
+    // 10 m behind the sound-as-a-map marks, its seat cue rightly from behind).
     static string Derez(string name)
     {
-        var sim = client.Network.CurrentSim;
         var trash = client.Inventory.FindFolderForType(FolderType.Trash);
-        var mine = sim.ObjectsPrimitives.Values.Where(p => p.ParentID == 0 && p.OwnerID == client.Self.AgentID).ToList();
-        // Names come with properties; ask for them and match what we have.
-        int n = 0;
-        foreach (var p in mine)
+        List<uint> ids;
+        lock (rezzed)
         {
-            if (p.Properties?.Name != name) continue;
-            client.Inventory.RequestDeRezToInventory(p.LocalID, DeRezDestination.AgentInventoryTake, trash, UUID.Random());
-            n++;
+            ids = named.Where(kv => kv.Value == name).Select(kv => kv.Key).ToList();
+            foreach (var id in ids) { named.Remove(id); rezzed.Remove(id); }
         }
-        return $"derezzed {n} of {mine.Count} owned";
+        foreach (var id in ids)
+            client.Inventory.RequestDeRezToInventory(id, DeRezDestination.AgentInventoryTake, trash, UUID.Random());
+        return $"derezzed {ids.Count}";
     }
 }

@@ -143,7 +143,9 @@ assistant up or starting, no picture asked for in 10 minutes) it draws only geom
 avatars, shadows, reflections or particles; a picture or the assistant coming up draws it whole again (numbers in
 access-app.md). Drawing whole (local grid, Atelier, RTX 5070): an idle frame ~1.1 ms of GPU and 3-5 ms of CPU, ~0.2%
 of the GPU at 2 a second; a picture 0.4 s once the place is loaded; ~400 MB of working set and ~0.5-0.6 GB of video
-memory in a small place. Left: AvatarsApi (its limits belong to one renderer, so a restart needs them carried over),
+memory in a small place. **On the processor** since 2026-10-31: where no GPU can run it (the blind tester's Vulkan
+1.1 driver), Mesa's lavapipe from the package draws instead, pictures only (none between them), a picture a few
+tenths of a second once warm on four modern cores (access-app.md > How it fits > On the processor). Left: AvatarsApi (its limits belong to one renderer, so a restart needs them carried over),
 the person's environment choices (the client's `EnvironmentWiring`), quality settings beyond rate and size (mirrors
 are off, shadows capped at 1024), stills and 360s through `CaptureWiring` (it holds a renderer, so it too needs the
 restart in mind), and HUD prims for touches.
@@ -358,11 +360,26 @@ By offline IMs to Tessel, 09:52-12:30 SLT, after a while on the old build too (o
 - Afternoon, through Tessel: region crossings on a multi-region train are spoken but not written to the chat history
   (she wears a script that prints the region in local chat and would like the viewer to); going to her partner in the
   same place (The Cellar, a jazz club) kept trying to teleport her and never worked, while a pose ball got her there; a
-  dance machine's dialog stayed in Notices after she answered, with no key to dismiss it. Done (`docs/access-app.md`):
-  arrivals and crossings are history lines; paths follow floors up steps and onto stages, a goal out of reach is walked
-  as near as the way goes, and the teleport fallback skips landing-point parcels and never repeats a miss; the
-  machine's menu was sent again after each pick, and Delete already put it away though nothing she heard said so, so
-  it's now Ignore, named in every notice's keys.
+  dance machine's dialog stayed in Notices after she answered, with no key to dismiss it. Done in 707
+  (`docs/access-app.md`): arrivals and crossings are history lines; paths follow floors up steps and onto stages, a
+  goal out of reach is walked as near as the way goes, and the teleport fallback skips landing-point parcels and never
+  repeats a miss; the machine's menu was sent again after each pick, and Delete already put it away though nothing
+  she heard said so, so it's now Ignore, named in every notice's keys. (She found Shift+F10's Put away herself.)
+- Evening, with the assistant on (her code by IM) and then 707: describing knows only the object lists ("I wish it
+  could see more"): her PC's renderer can't start, both chips reporting Vulkan 1.1 on a 2019 AMD driver (her first
+  sent log); positions and distances read well. She couldn't copy a long answer out of Alt+9 whole. The failed 'go
+  to' was her standing and him up a small flight of steps (fixed in 707). No way to give from the person (Radegast's
+  copy, then Give in the profile): built after 707. The skirt again looked missing right after a login, then came:
+  likely attachments still arriving. Unplugging her headset and mic left Access stuck until she logged in again (on
+  589). Gestures don't play, by list or trigger (Access has none yet). At login 23 friends' "is online" lines were read
+  one by one. She asked what "answers without a physical key: refused" means, whether her code carries over (it does)
+  and what to say in a blog post she plans ("this viewer is just awesome"): answered through Tessel. Later she asked
+  to switch between her headset and speakers, as in Radegast. Done after 707 (`docs/access-app.md`): gestures (her
+  active ones, triggers in chat, Control+Shift+G, the inventory's Play and Activate), Control+Shift+L copying the
+  assistant's last answer whole (and the histories' paragraphs on lines of their own), friends online at login as one
+  line, the outfit's attachments said as still arriving after a login or teleport, audio following a device unplugged
+  or the default changing (the shim had gone silent for good) and said in one line, the sound output and microphone in
+  Alt+0 with Control+Shift+O for the next output, and the answers row in plain words.
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
@@ -385,8 +402,14 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   faces list).
 - The assistant's prompt names the agent API's port as 9720 (`assistant/prompt-powers.md`); Access's is 9725.
 - Branch `fix/own-voice` (arrivals in Access's own voice) is WIP, not wired in.
-- On her RX 550 a current AMD driver likely gives Vulkan 1.3 (Access's log now names the devices' Vulkan versions);
-  otherwise a 1.2 path is moderate work.
+- Her PC's log (2026-10-31) named both chips at Vulkan 1.1.125 (driver 2.0.116, by its look a 2019 OEM driver): the view
+  now draws on the processor there. Her real seconds a picture are in her next log ("on the processor: ..."); if
+  they're too slow on the 2400G, the levers are the warm-up's reach, the picture sizes and the probe. AMD's legacy
+  driver for Polaris and Vega (Adrenalin 26.5.2, Ryzen 2000G APUs included) would probably give her GPU Vulkan 1.3
+  and faster pictures (reports mixed for Vega), an option to mention, never asked of her. Running the renderer itself
+  on her driver isn't a 1.2 path: 1.1.125 predates dynamic rendering, synchronization2 and timeline semaphores, so
+  every pass's begin-rendering (10 places), every barrier (14) and the SPIR-V target would need a second form: large,
+  and testable only on her PC.
 - Audio sides (her partner, through Tessel, 2026-10-30): Radegast had left and right reversed for over ten years; in
   hers that night a stream to her west sounded on her right while facing south, which is right. Worth a check that
   ours is too (`tools/audio.py`'s tests, and her ears once she has walk mode's sonar).

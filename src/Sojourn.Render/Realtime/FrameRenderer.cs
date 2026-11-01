@@ -154,6 +154,10 @@ public sealed record FrameRequest
     public OverlayScene? Overlay { get; init; }
     /// <summary>The person's HUD attachments (Realtime/Hud.cs): drawn after the captures, under the overlay.</summary>
     public HudRequest? Hud { get; init; }
+    /// <summary>Planned, not drawn: what's in view is asked for and counted (FrameStats.Pending) and what has arrived
+    /// goes to the GPU, as a still's settling does; nothing is recorded or presented. For a picture's settling where a
+    /// drawn frame is dear (the renderer out of sight on the processor).</summary>
+    public bool PlanOnly { get; init; }
 
     public static readonly IReadOnlyList<EyeSpec> Mono = new[] { new EyeSpec(0) };
     public static IReadOnlyList<EyeSpec> Stereo(float ipd) => new[] { new EyeSpec(-ipd / 2), new EyeSpec(ipd / 2) };
@@ -237,6 +241,8 @@ public sealed partial class FrameRenderer : IDisposable
     readonly AllocProfile? _allocs;
 
     public string DeviceName => _gpu.Vk.DeviceName;
+    /// <summary>Drawn on the processor (Gpu/SoftwareVulkan.cs).</summary>
+    public bool Software => _gpu.Vk.Software;
     /// <summary>Quality settings that apply from the next frame.</summary>
     public RenderQuality Quality { get; }
     ViewOptions View => Math.Abs(_view.LodFactor - Quality.LodFactor) < 1e-4f && _view.MinPixels == Budget.Pixels && _view.MinShadowPixels == Budget.ShadowPixels
@@ -325,7 +331,8 @@ public sealed partial class FrameRenderer : IDisposable
         _gpu.Renderer.Profiler.FrameDone = ms => _world.Governor.Gpu(ms);
         var (vramUsed, vramBudget) = _gpu.Vk.DeviceLocalBudget();
         _opt.Log?.Invoke($"video memory: {_gpu.Vk.DeviceLocalHeapBytes >> 20} MB, this process budgeted {vramBudget >> 20} MB" +
-                         (_gpu.Vk.HasMemoryBudget ? "" : " (no VK_EXT_memory_budget: 85% of the heap assumed)") +
+                         (_gpu.Vk.Software ? " (drawn on the processor: the PC's own memory, our allocations counted)"
+                          : _gpu.Vk.HasMemoryBudget ? "" : " (no VK_EXT_memory_budget: 85% of the heap assumed)") +
                          $", using {vramUsed >> 20} MB" + (LoadGovernor.TestBudget > 0 ? $"; testing with a budget of {LoadGovernor.TestBudget >> 20} MB" : "") +
                          $"; {_gpu.Bindless.MaxTextures} texture slots, {Bindless.MaxCubes} cube slots");
         _world.Geometry.Log = _opt.Log;
@@ -353,6 +360,11 @@ public sealed partial class FrameRenderer : IDisposable
         ApplyRegionChanges();
         _world.BeginFrame();
         Periodic();
+        // what BeginFrame staged (uploads, a shrunk texture's copy) goes to the GPU now: EndFrame counts this as a frame
+        // and frees what was retired three frames ago, so a copy left waiting for the next drawn frame could name an
+        // image already destroyed (lavapipe crashed on it, 2026-10-31; between the out-of-sight renderer's pictures
+        // only ticks run, for minutes)
+        if (_gpu.Uploader.HasPending) _gpu.Uploader.FlushNow();
         _world.EndFrame();
     }
 
@@ -500,6 +512,13 @@ public sealed partial class FrameRenderer : IDisposable
             }
             double sceneMs = Stopwatch.GetElapsedTime(tScene).TotalMilliseconds;
             Budget.Frame(sceneMs);
+            if (req.PlanOnly)
+            {
+                WorldReleased?.Invoke();
+                _gpu.Uploader.FlushNow();   // what this frame's loading staged, uploaded now (no frame records it)
+                return new FrameStats(waitMs, sceneMs, avatarMs, 0, 0, Stopwatch.GetElapsedTime(t0).TotalMilliseconds,
+                    dl.Instances.Count, dl.TotalDraws, pending, 0, false);
+            }
 
             // reflection probes: plan for the centre view, capture inline before the scene: whole captures (the
             // default probe, or every capture when slicing is off), or a few faces of the one capture in progress

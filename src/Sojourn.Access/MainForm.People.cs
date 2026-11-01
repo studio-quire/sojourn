@@ -33,6 +33,7 @@ public sealed partial class MainForm
         FriendItem("Offer &teleport", f => _ = PersonIdOpAsync("offerTeleport", f.Id, $"Teleport offered to {f.Name}."));
         FriendItem("&Request teleport", f => _ = PersonIdOpAsync("requestTeleport", f.Id, $"Asked {f.Name} for a teleport."));
         FriendItem("P&ay...", f => _ = PayAsync(f.Id, f.Name));
+        FriendItem("&Give what you copied", f => _ = GiveCopiedAsync(f.Id, f.Name));
         FriendItem("&End friendship", f => _ = EndFriendshipAsync(f));
         void GroupItem(string text, Action<MyGroup> act) =>
             _groupMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_groups.FocusedItem?.Tag is MyGroup g) act(g); }));
@@ -168,6 +169,7 @@ public sealed partial class MainForm
         };
         var im = new Button { Name = "profileIm", Text = "Send &IM", AutoSize = true };
         var pay = new Button { Name = "profilePay", Text = "P&ay...", AutoSize = true };
+        var give = new Button { Name = "profileGive", Text = "&Give what you copied", AutoSize = true };
         var close = new Button { Name = "profileClose", Text = "Close", AutoSize = true, DialogResult = DialogResult.Cancel };
         // its pictures described by the assistant (Control+D here too; again for more)
         var describe = new Button { Name = "profileDescribe", Text = "&Describe pictures", AutoSize = true };
@@ -181,10 +183,11 @@ public sealed partial class MainForm
         };
         im.Click += (_, _) => { form.Close(); StartIm(id, shownName); };
         pay.Click += (_, _) => { form.Close(); _ = PayAsync(id, shownName); };
+        give.Click += (_, _) => { form.Close(); _ = GiveCopiedAsync(id, shownName); };
         close.Click += (_, _) => form.Close();
         form.CancelButton = close;
         var row = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Bottom };
-        row.Controls.AddRange(new Control[] { im, pay, describe, close });
+        row.Controls.AddRange(new Control[] { im, pay, give, describe, close });
         form.Controls.Add(text);
         form.Controls.Add(row);
         form.ActiveControl = text;
