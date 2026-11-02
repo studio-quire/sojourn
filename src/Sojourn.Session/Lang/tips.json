@@ -3006,5 +3006,37 @@
     "az": "RLV obyektlərinizin indi nəyi məhdudlaşdırdığı və hər birini hansı obyektin qoyduğu.",
     "de": "Was Ihre RLV-Objekte jetzt einschränken und welches Objekt jeweils dahintersteht.",
     "zh-Hans": "你的 RLV 物件现在限制了什么，以及分别由哪个物件施加。"
+  },
+  "Logs you out and takes you back to where you logged in, to log in again or as someone else.": {
+    "_": "settings menu: the tip on the 'log out' row in the you section (back to the login screen, or to the launcher); keep about as long as the English (at most three lines of ~50 characters); plain, friendly sentences",
+    "zh": "登出並回到你登入的地方，可以重新登入或換一個帳號。",
+    "it": "Ti disconnette e ti riporta dove hai fatto l'accesso, per rientrare o entrare con un altro account.",
+    "es": "Cierra tu sesión y te lleva de vuelta a donde la iniciaste, para volver a entrar o con otra cuenta.",
+    "pt": "Encerra a sessão e leva você de volta aonde entrou, para entrar de novo ou com outra conta.",
+    "ja": "ログアウトして、ログインした画面に戻ります。もう一度、または別のアカウントでログインできます。",
+    "tr": "Oturumunuzu kapatır ve giriş yaptığınız yere döndürür; yeniden ya da başka bir hesapla girebilirsiniz.",
+    "fr": "Vous déconnecte et vous ramène là où vous vous êtes connecté, pour revenir ou entrer avec un autre compte.",
+    "da": "Logger dig af og tager dig tilbage, hvor du loggede ind, så du kan logge ind igen eller som en anden.",
+    "ru": "Выходит из аккаунта и возвращает туда, где вы входили, чтобы войти снова или под другим аккаунтом.",
+    "pl": "Wylogowuje cię i wraca tam, gdzie się logowałeś, by zalogować się ponownie lub na inne konto.",
+    "az": "Hesabdan çıxır və daxil olduğunuz yerə qaytarır ki, yenidən və ya başqa hesabla daxil olasınız.",
+    "de": "Meldet Sie ab und bringt Sie dorthin zurück, wo Sie sich angemeldet haben, um sich erneut oder mit einem anderen Konto anzumelden.",
+    "zh-Hans": "登出并回到你登录的地方，可以重新登录或换一个账号。"
+  },
+  "Logs you out and closes Sojourn.": {
+    "_": "settings menu: the tip on the 'quit Sojourn' row in the you section (in a launcher run, the launcher closes too); keep 'Sojourn' as is; keep about as long as the English; plain, friendly sentences",
+    "zh": "登出並關閉 Sojourn。",
+    "it": "Ti disconnette e chiude Sojourn.",
+    "es": "Cierra tu sesión y cierra Sojourn.",
+    "pt": "Encerra a sessão e fecha o Sojourn.",
+    "ja": "ログアウトして Sojourn を終了します。",
+    "tr": "Oturumunuzu kapatır ve Sojourn'u kapatır.",
+    "fr": "Vous déconnecte et ferme Sojourn.",
+    "da": "Logger dig af og lukker Sojourn.",
+    "ru": "Выходит из аккаунта и закрывает Sojourn.",
+    "pl": "Wylogowuje cię i zamyka Sojourn.",
+    "az": "Hesabdan çıxır və Sojourn-u bağlayır.",
+    "de": "Meldet Sie ab und beendet Sojourn.",
+    "zh-Hans": "登出并关闭 Sojourn。"
   }
 }

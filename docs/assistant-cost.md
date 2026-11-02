@@ -70,6 +70,7 @@ only the session title.
 | Control+D, brief | $0.0007-0.001 | $0.018-0.026 |
 | "more" (rich) | ~$0.002 | ~$0.04 |
 | a typed ask about a thing ("what does the poster say?") | ~$0.002 (two short session turns and the description) | |
+| a recorded ride told (Shift+C; 16 pictures at most brief, 40 more; `docs/access-app.md` > Walk mode > Recording a ride) | $0.0017 measured (40 s, 14 pictures); ~$0.004 rich for five minutes | ~$0.05 / ~$0.10 (reckoned) |
 
 The lab's standard sitting (ten requests: four describe keys, six typed, `costlab.py sitting`): $0.0239 before,
 $0.0128 after, with the session at 55K tokens at its end instead of 85K. The difference grows with the sitting: before,

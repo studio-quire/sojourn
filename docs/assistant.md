@@ -916,9 +916,10 @@ used for. How each rule is enforced: `docs/assistant-incognito.md`.
 - **Nothing kept**, either kind: the spell's events, IMs and notifications are sealed and gone when it ends; the
   console and session log pause; memory and handoffs pause; the sessions start again at each end; afterwards the
   assistant knows only how long it lasted.
-- **On** by the menu's incognito section, the wrist token, P on the desktop, or asking the assistant in the person's
-  own words (its call, as with any request; its `incognito` tool). **Off** only by the person's own controls (the
-  token, the menu's switch, P, as real input), and during a spell only the menu's switch, by their hand, lets the
+- **On** by the menu's incognito section, P on the desktop, or asking the assistant in the person's own words (its
+  call, as with any request; its `incognito` tool). The wrist token shows only during a spell and ends it (the user,
+  2026-11-02: no wrist control to start one). **Off** only by the person's own controls (the token, the menu's switch,
+  P, as real input), and during a spell only the menu's switch, by their hand, lets the
   assistant see; no caller, the assistant included, can do either.
 - **No words are matched** (the user, 2026-10-27: phrase matching was too finicky): nothing said turns it on or off.
 - **Automatic** spells: with someone or at a place the person keeps it with, and (off by default) while any IM

@@ -15,7 +15,7 @@ public sealed partial class WalkMode
     // send nothing): a short step walking, a nudge of a vehicle's steering
     readonly long[] _until = new long[8];
     readonly Dictionary<Keys, K> _pressedAs = new();
-    bool Down(K k) => _k[(int)k] || Environment.TickCount64 < _until[(int)k] || (k == K.Back && StopHolding);
+    bool Down(K k) => _k[(int)k] || Environment.TickCount64 < _until[(int)k] || (k == K.Back && StopHolding) || (k == K.Fwd && StopHoldingUp);
     bool Held => Enumerable.Range(0, 8).Any(i => Down((K)i));
     bool HeldMove => Down(K.Fwd) || Down(K.Back) || Down(K.SideL) || Down(K.SideR);
     int Get(K k) => Down(k) ? 1 : 0;
@@ -45,7 +45,8 @@ public sealed partial class WalkMode
 
         Asking
         H: your heading
-        V: your speed
+        V: your speed; seated, the vehicle's, and what it shows as floating text
+        Shift+V: only what the vehicle shows
         L: where you are
         A: what's ahead
         S: the sonar sweep
@@ -70,6 +71,10 @@ public sealed partial class WalkMode
         Backspace: take back the last point or note
         P: pause, or go on
         Shift+R: stop, name it and save it as a notecard in Routes
+
+        Recording a ride
+        C: start recording a ride: a picture every few seconds and what's around, kept on this PC until you ask; C again stops (it stops by itself when you stand up or the ride stops)
+        Shift+C: the ride told by the assistant; again for more
 
         Leaving
         Escape or F3: leave walk mode
@@ -128,15 +133,17 @@ public sealed partial class WalkMode
             }
             if (key is K.Fwd or K.Back or K.SideL or K.SideR && !HeldMoveBefore(key)) { _moveSince = now; _toldBlocked = false; }
             if (key is K.Fwd or K.Back && Me() is { Sitting: true }) CountThrottle(key);
+            if (key == K.Fwd) _fwdSince = now;
             return true;
         }
         if (repeat) return code is Keys.Home or Keys.Space or Keys.H or Keys.V or Keys.L or Keys.A or Keys.S or Keys.T or Keys.D or Keys.O or Keys.B or Keys.M
-            or Keys.R or Keys.N or Keys.P or Keys.Back or Keys.W;
+            or Keys.R or Keys.N or Keys.P or Keys.Back or Keys.W or Keys.C;
         switch (code)
         {
             case Keys.Home: ToggleFly(); return true;
             case Keys.Space: StopKey(Me()); return true;
             case Keys.H: Heading(); return true;
+            case Keys.V when shift: SeatTextLine(); return true;
             case Keys.V: SpeedLine(); return true;
             case Keys.L: WhereLine(); return true;
             case Keys.A: _ = AheadAsync(); return true;
@@ -155,6 +162,8 @@ public sealed partial class WalkMode
             case Keys.N: RecordKey?.Invoke("note"); return true;
             case Keys.P: RecordKey?.Invoke("pause"); return true;
             case Keys.Back: RecordKey?.Invoke("undo"); return true;
+            case Keys.C when shift: RideKey?.Invoke("describe"); return true;
+            case Keys.C: RideKey?.Invoke(""); return true;
         }
         return false;
     }
@@ -166,6 +175,7 @@ public sealed partial class WalkMode
         if (!_pressedAs.Remove(code, out var k)) return;
         bool wasMoving = _k[(int)K.Fwd] || _k[(int)K.Back] || _k[(int)K.SideL] || _k[(int)K.SideR];
         _k[(int)k] = false;
+        if (k == K.Fwd) _fwdHeldFor = Environment.TickCount64 - _fwdSince;
         if (k is K.TurnL or K.TurnR && !_k[(int)K.TurnL] && !_k[(int)K.TurnR])
         {
             if (_turnSmooth && Me() is { } b && !Driving(b)) Turned(b, stepped: false);
@@ -243,6 +253,12 @@ public sealed partial class WalkMode
     /// desktop pilot does); nothing is touched while no key is held and nothing is braking, so the autopilot and the
     /// assistant's moves have the flags to themselves.</summary>
     void Drive(Body b, double dt, long now)
+    {
+        // a vehicle stop's own thread lets go of its press with these flags (WalkMode.Stop.cs > Watch)
+        lock (_controlsLock) DriveFlags(b, dt, now);
+    }
+
+    void DriveFlags(Body b, double dt, long now)
     {
         if (S.Client is not { Network.Connected: true } c) return;
         var mv = c.Self.Movement;

@@ -16,7 +16,7 @@ public static class LoginStart
         PanelLook.InUse = PanelLook.Restore(settings.PanelLook);
         UiSize.Scale = settings.UiSize;
         var store = new LoginStore(opt.BaseDir);
-        var sheet = new LoginSheet(store, () => PanelLook.InUse, log) { About = $"{host.Channel} {host.Version}" };
+        var sheet = new LoginSheet(store, () => PanelLook.InUse, log) { About = $"{host.Channel} {host.Version}", LauncherRun = LaunchState.ForLauncher };
         resumed = null;
         if (opt.LoginResume && store.TakeOver() is { } back)
         {

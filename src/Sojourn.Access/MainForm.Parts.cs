@@ -239,6 +239,13 @@ public sealed partial class MainForm
         GoArea(_objectsPage);
     }
 
+    /// <summary>Alt+7: objects nearby, whatever Show was left on (Alt+Shift+7 had switched it to what you wear).</summary>
+    void GoNearby()
+    {
+        if (_objectsShow.SelectedIndex != 0) _objectsShow.SelectedIndex = 0;
+        GoArea(_objectsPage);
+    }
+
     /// <summary>Whether a worn object (by its root) is on a HUD point rather than the body.</summary>
     bool OnHud(UUID root) => Host?.Session.Region?.PrimById(root) is { } p && (int)p.PrimData.AttachmentPoint is >= 31 and <= 38;
 

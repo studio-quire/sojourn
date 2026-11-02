@@ -1,12 +1,14 @@
-"""Sojourn's dev mode, from the Claude Code session (or similar agent) driving it: the client starts with --dev, has no
-Claude of its own, and what the person says or types to its assistant comes to this session instead. DEV-MODE.md is
+"""Sojourn's dev mode, from the Claude Code session (or similar agent) driving it: the client starts in dev mode (the
+person's "your agent" choice in the launcher, or --dev), has no assistant of its own, and what the person says or types
+to its assistant comes to this session instead. DEV-MODE.md is
 the guide for a person's own Claude; docs/dev-mode.md how it works. Works from the source tree (tools/dev.py) and
 from an installed copy (dev.py beside the installed Sojourn.exe, run by the Python Sojourn ships, python\\python.exe).
 Standard library only.
 
-  python dev.py launch [--desktop]     open Sojourn's launcher in dev mode for the person: they sign in there and press
-                                       Launch (the password, the grid's terms and any code are theirs); the watch says
-                                       when the client is in
+  python dev.py launch [--desktop]     open Sojourn's launcher with their agent as the assistant (--dev; one already open
+                                       is switched and brought forward instead, never a second): they sign in there and
+                                       press Launch (the password, the grid's terms and any code are theirs); the watch
+                                       says when the client is in
   python dev.py watch [--once [--wait S]]   one line per thing the person says, types, picks or points at (run it
                                        under the Monitor tool; it carries on where the last watch stopped, across
                                        restarts, and waits for a client to come). --once: the next lines, then exit
@@ -21,8 +23,11 @@ Standard library only.
         a picture of what they see, the panel, feed and cards over the view as the headset's compositor lays them
         (--close: that one also close up, at about its own pixels; --world: the view without them); prints the paths
   python dev.py log [-n 60] [regex]   the end of this session's client log
-  python dev.py call PUMP OP ['{json}' | key=value ...]   any agent API op (`call _command getAPIs` lists the
-                                       pumps, `call _command getAPI api=PUMP` a pump's ops; docs/client.md)
+  python dev.py call PUMP OP ['{json}' | - | @file.json | key=value ...]   any agent API op, its arguments one JSON
+                                       object (on the command line; `-` from stdin, which survives any shell, PowerShell
+                                       5.1's quote stripping included; `@file` from a UTF-8 file) or key=value ...
+                                       (`call _command getAPIs` lists the pumps, `call _command getAPI api=PUMP` a
+                                       pump's ops; docs/client.md)
   python dev.py info | list | stop
 
 From the source tree only (the studio's sittings: the local grid, or Second Life with a stored password):
@@ -61,6 +66,8 @@ MAIN_DIR = ROOT / "local" / "main"
 MAIN_PASSWORD = ROOT / "local" / "secrets" / "sl-main.txt"
 MAIN_LOGIN = MAIN_DIR / "login.json"   # the account's name (not a secret), remembered after the first --account
 
+HANDED_OVER = 3   # the launcher's exit code when one was already open and took this start's wish (OneLauncher.cs)
+
 # a console of its own (the ToS and MFA are answered there by the person), minimised and behind; outlives us
 NEW_CONSOLE, NEW_GROUP, BREAKAWAY, DETACHED, NO_WINDOW = 0x10, 0x200, 0x01000000, 0x08, 0x08000000
 
@@ -98,6 +105,34 @@ def alive(pid):
     ok = k.GetExitCodeProcess(h, ctypes.byref(code))
     k.CloseHandle(h)
     return bool(ok) and code.value == 259   # STILL_ACTIVE
+
+
+def children(pid):
+    """The living processes pid started (Windows keeps the parent's pid on each): a client that starts itself again
+    (a lost GPU, back to its login screen) starts its successor before it exits; one the launcher starts again doesn't."""
+    class Entry(ctypes.Structure):
+        _fields_ = [("size", ctypes.c_ulong), ("usage", ctypes.c_ulong), ("pid", ctypes.c_ulong),
+                    ("heap", ctypes.c_size_t), ("module", ctypes.c_ulong), ("threads", ctypes.c_ulong),
+                    ("parent", ctypes.c_ulong), ("priority", ctypes.c_long), ("flags", ctypes.c_ulong),
+                    ("exe", ctypes.c_wchar * 260)]
+    k = ctypes.windll.kernel32
+    k.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+    snap = k.CreateToolhelp32Snapshot(0x2, 0)   # TH32CS_SNAPPROCESS
+    if not snap or snap == ctypes.c_void_p(-1).value:
+        return []
+    found = []
+    try:
+        e = Entry()
+        e.size = ctypes.sizeof(Entry)
+        more = k.Process32FirstW(ctypes.c_void_p(snap), ctypes.byref(e))
+        while more:
+            # the client itself (installed, or the repo's under dotnet), not its sidecar or helpers on their way out
+            if e.parent == int(pid) and e.exe.lower() in ("sojournvr.exe", "dotnet.exe") and alive(e.pid):
+                found.append(e.pid)
+            more = k.Process32NextW(ctypes.c_void_p(snap), ctypes.byref(e))
+    finally:
+        k.CloseHandle(ctypes.c_void_p(snap))
+    return found
 
 
 def default_port():
@@ -240,7 +275,9 @@ def restart(a):
 
 def launch(a):
     """The launcher in dev mode, for the person to sign in (Sojourn.exe --dev): the installed one, or the source tree's
-    build. It and the client it starts take the focus as for the person (unless SOJOURN_BACKGROUND=1, for tests)."""
+    build. It and the client it starts take the focus as for the person (unless SOJOURN_BACKGROUND=1, for tests). A
+    launcher already open for the same folder takes the --dev itself and comes forward, and the new one exits with
+    HANDED_OVER (the launcher's OneLauncher.cs), so the person never has two to choose between."""
     port = 9720   # the launcher's client listens there (the client's default)
     if Api(port).status() is not None:
         n = note(port)
@@ -267,8 +304,20 @@ def launch(a):
         p = subprocess.Popen(line, creationflags=DETACHED | NEW_GROUP | NO_WINDOW | BREAKAWAY, **kw)
     except OSError:
         p = subprocess.Popen(line, creationflags=DETACHED | NEW_GROUP | NO_WINDOW, **kw)
-    out(f"the launcher is open in dev mode (pid {p.pid}). The person signs in there and presses Launch: their password, "
-        "the grid's terms and any authenticator code are theirs to give. Arm the watch now; it says when the client is in.")
+    try:
+        code = p.wait(timeout=6)   # a fresh launcher keeps running; one that hands over to an open one exits at once
+    except subprocess.TimeoutExpired:
+        code = None
+    if code == HANDED_OVER:
+        out("Sojourn's launcher was already open: it's now set for you as the assistant and has come to the front (no "
+            "second one was opened). Tell the person to sign in there and press Launch: their password, the grid's terms "
+            "and any authenticator code are theirs to give. Arm the watch now; it says when the client is in.")
+    elif code is not None:
+        sys.exit(f"the launcher closed at once (exit code {code}): see its window or try again")
+    else:
+        out(f"the launcher is open with you as the assistant (dev mode, pid {p.pid}). The person signs in there and "
+            "presses Launch: their password, the grid's terms and any authenticator code are theirs to give. Arm the watch "
+            "now; it says when the client is in.")
 
 
 # --- what's there ------------------------------------------------------------------------------------------------
@@ -355,13 +404,15 @@ def where_from(n):
 
 def watch(port, once=False, wait_s=90):
     """One line per dev event; carries on from the cursor (DEV/PORT.cursor: pid and seq) so a re-armed watch misses
-    nothing, waits for a dev-mode client to come (the launcher's, once the person is in), follows a restart on the same
-    port, and ends with a line when the client is gone for good. once: return after the first lines, or quietly after
-    wait_s seconds of nothing (for agents without a monitor, called again and again)."""
+    nothing, and waits for a dev-mode client to come (the launcher's, once the person is in). A client that starts
+    itself again (a lost GPU, back to its login screen) is "back"; one that closes "has closed", and the watch carries
+    on waiting for the next ("Sojourn is in" when the person launches again). once: return after the first lines, or
+    quietly after wait_s seconds of nothing (for agents without a monitor, called again and again)."""
     cur_file, beat = DEV / f"{port}.cursor", DEV / f"{port}.watching"
     DEV.mkdir(parents=True, exist_ok=True)
     api = Api(port)
     seen = gone_since = None
+    successors = []   # what the client that went started itself, if it restarted rather than closed
     said_waiting = False
     until = time.time() + wait_s
     printed = 0
@@ -378,10 +429,16 @@ def watch(port, once=False, wait_s=90):
         pid = n.get("pid") if n else None
         if not pid or not alive(pid):
             if seen:
-                gone_since = gone_since or time.time()
-                if time.time() - gone_since > 120:
-                    say(f"sojourn: the client on :{port} has closed")
-                    return
+                if not gone_since:
+                    gone_since, successors = time.time(), children(seen)
+                # starting itself again: its successor is coming (it logs in again first); else it closed
+                if not successors or not any(alive(c) for c in successors) or time.time() - gone_since > 180:
+                    say(f"sojourn: the client on :{port} has closed; waiting for Sojourn to start again")
+                    seen = gone_since = None
+                    successors = []
+                    said_waiting = True   # the next one in is new: "Sojourn is in"
+                    if once:
+                        return
             elif not said_waiting and not once:
                 said_waiting = True
                 other = api.status() is not None
@@ -390,6 +447,15 @@ def watch(port, once=False, wait_s=90):
                     f"sojourn: waiting for Sojourn in dev mode on :{port} (the person signs in at the launcher)")
             time.sleep(2)
             continue
+        if seen and pid != seen and not gone_since:
+            # a new client on the port before the old one was seen gone (the launcher's next run came quickly)
+            say(f"sojourn: the client on :{port} has closed")
+            seen, said_waiting = None, True
+        if seen and gone_since and pid not in successors:
+            say(f"sojourn: the client on :{port} has closed")
+            seen = gone_since = None
+            successors = []
+            said_waiting = True
         if not seen:
             seen = pid
             try:
@@ -399,8 +465,8 @@ def watch(port, once=False, wait_s=90):
             if said_waiting or once and new_client:
                 say(f"sojourn: Sojourn is in, in dev mode on :{port} (pid {pid}, {where_from(n)}); the person's words come here")
         elif gone_since:
-            say(f"sojourn: the client on :{port} is back (pid {pid})")
-            gone_since = None
+            say(f"sojourn: the client on :{port} started itself again and is back (pid {pid})")
+            seen, gone_since, successors = pid, None, []
         try:
             cpid, seq = cur_file.read_text().split()
             seq = int(seq) if int(cpid) == pid else 0
@@ -436,12 +502,37 @@ def panel(port, **fields):
     Api(port).cmd("SojournAssistant", "panel", 5, **fields)
 
 
+JSON_HELP = ("PowerShell 5.1 (Windows' own) strips the double quotes inside arguments to programs, which breaks JSON typed "
+             "on the command line. Pass it on stdin instead (PowerShell: '{\"key\": [1, 2]}' | <dev> call PUMP OP -), or "
+             "from a UTF-8 file (<dev> call PUMP OP @args.json), or key=value for simple values")
+
+
 def parse_args_kv(items):
-    if len(items) == 1 and items[0].lstrip().startswith("{"):
-        return json.loads(items[0])
+    """An op's arguments: '{json}', `-` (JSON on stdin), `@file` (JSON in a UTF-8 file), or key=value ... (each value
+    JSON if it parses, else the text)."""
+    if len(items) == 1 and (items[0] == "-" or items[0].startswith("@") or items[0].lstrip().startswith("{")):
+        arg = items[0]
+        where = "stdin" if arg == "-" else arg[1:] if arg.startswith("@") else "the command line"
+        try:
+            text = (sys.stdin.buffer.read().decode("utf-8-sig") if arg == "-" else
+                    Path(arg[1:]).read_text(encoding="utf-8-sig") if arg.startswith("@") else arg)
+        except (OSError, UnicodeDecodeError) as e:
+            sys.exit(f"dev.py call: couldn't read the arguments from {where}: {e}")
+        try:
+            data = json.loads(text)
+        except ValueError as e:
+            sys.exit(f"dev.py call: the arguments from {where} aren't JSON ({e.msg} at character {e.pos}: "
+                     f"{text[max(0, e.pos - 20):e.pos + 20]!r}). " + (JSON_HELP if where == "the command line" else
+                     "Check the file or what was piped in."))
+        if not isinstance(data, dict):
+            sys.exit(f"dev.py call: the arguments from {where} must be a JSON object ({{...}}), not {type(data).__name__}")
+        return data
     data = {}
     for it in items:
-        k, _, v = it.partition("=")
+        k, eq, v = it.partition("=")
+        if not eq:
+            sys.exit(f"dev.py call: {it!r} isn't key=value; the arguments are key=value ..., or one JSON object "
+                     "('{...}' on the command line, - for stdin, @file for a UTF-8 file)")
         try:
             data[k] = json.loads(v)
         except ValueError:

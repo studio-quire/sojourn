@@ -95,6 +95,8 @@ public static class MenuGuide
         A("you/skeleton", "Fixes your avatar when its shape looks stretched or bent wrong."),
         A("you/attachments", "Reloads what you're wearing when something is missing or out of place."),
         A("you/animations", "Restarts your animations when others see you stuck or out of step."),
+        S("you/log out", "Logs you out and takes you back to where you logged in, to log in again or as someone else."),
+        S("you/quit Sojourn", "Logs you out and closes Sojourn."),
 
         // --- social
         A("social/name tags", "Names over people's heads."),
@@ -158,8 +160,8 @@ public static class MenuGuide
         S("safety/* hidden", "Shows again everything you've hidden from view."),
 
         // --- view
-        A("view/menu size", "How big the menus and the assistant's panel are."),
-        A("view/menu positions", "Brings every menu you've moved back in front of you, following you again."),
+        S("view/menu size", "How big the menus and the assistant's panel are."),
+        S("view/menu positions", "Brings every menu you've moved back in front of you, following you again."),
         S("view/language", "The language of Sojourn's menus and its own words. As Windows follows your PC's display language."),
         S("view/draw distance", "How far you can see. Further shows more, but loads more and can slow things down."),
         S("view/quality", "Light, balanced or full: shadows, reflections, detail and distance set together, as in the launcher. Yours: changed by hand."),

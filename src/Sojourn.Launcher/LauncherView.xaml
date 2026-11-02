@@ -55,10 +55,10 @@
                 <Button x:Name="CloseKey" Style="{StaticResource Key}" Content="&#xE8BB;" FontSize="10" AutomationProperties.Name="Close" IsTabStop="False"/>
             </StackPanel>
 
-            <TextBlock x:Name="DevNote" Grid.Row="1" Text="dev mode: your own Claude is the assistant" FontSize="12"
+            <TextBlock x:Name="DevNote" Grid.Row="1" Text="your own agent is the assistant" FontSize="12"
                        Foreground="{StaticResource Faint}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,2"
                        Visibility="Collapsed"/>
-            <TextBlock Grid.Row="1" Text="Sojourn" FontFamily="{StaticResource Wordmark}" FontSize="44" HorizontalAlignment="Center"
+            <TextBlock Grid.Row="1" Text="Sojourn" FontFamily="{StaticResource Wordmark}" FontWeight="Light" FontSize="44" HorizontalAlignment="Center"
                        Margin="0,0,0,20">
                 <TextBlock.Foreground>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -169,6 +169,23 @@
                                 <Button x:Name="ForgetKey" Style="{StaticResource Key}" Content="&#xE711;" FontSize="11" HorizontalAlignment="Right"
                                         Margin="0,0,4,0" Foreground="{StaticResource Faint}" Visibility="Collapsed" AutomationProperties.Name="Forget the key"/>
                             </Grid>
+                            <!-- the person's own agent (Claude Code or similar) as the assistant: what to tell it, to copy -->
+                            <StackPanel x:Name="AgentBlock" Margin="0,10,0,0" Visibility="Collapsed">
+                                <TextBlock Text="An AI agent on this PC, such as Claude Code, will be Sojourn's assistant. Tell it:" FontSize="13"
+                                           Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="4,0,4,8"/>
+                                <Border CornerRadius="13" Background="#66FFFFFF" BorderBrush="{StaticResource Rim}" BorderThickness="1" Padding="12,8,4,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="AgentSentence" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        <Button x:Name="CopySentence" Grid.Column="1" Style="{StaticResource WordKey}" Height="30" Padding="10,0"
+                                                Foreground="{StaticResource Accent}" Margin="4,0,0,0" VerticalAlignment="Center"
+                                                AutomationProperties.Name="Copy what to tell it"/>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
                             <Grid x:Name="ModelRow" Margin="0,10,0,0" Visibility="Collapsed">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition/>
@@ -194,7 +211,7 @@
                                     </Border>
                                 </Popup>
                             </Grid>
-                            <WrapPanel Margin="4,14,0,0">
+                            <WrapPanel x:Name="Switches" Margin="4,14,0,0">
                                 <CheckBox x:Name="AutoSwitch" Style="{StaticResource Switch}" Content="auto mode" Margin="0,0,22,0"/>
                                 <CheckBox x:Name="DenyDataSwitch" Style="{StaticResource Switch}" Content="no data collection" Visibility="Collapsed"/>
                             </WrapPanel>

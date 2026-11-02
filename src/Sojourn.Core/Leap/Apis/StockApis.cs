@@ -317,10 +317,13 @@ public sealed class LLChatBar : SessionApi
 
     public LLChatBar(AgentSession s) : base(s)
     {
-        Op("sendChat", "{message, channel=0, type=normal|whisper|shout}", SendChat);
+        Op("sendChat", "{message, channel=0, type=normal|whisper|shout} -> {parts} when a long line went as several", SendChatAsync);
     }
 
-    JsonNode? SendChat(JsonObject a)
+    /// <summary>One long line's parts at a time (Agents/ChatSplit.cs).</summary>
+    readonly SemaphoreSlim _turn = new(1, 1);
+
+    async Task<JsonNode?> SendChatAsync(JsonObject a, CancellationToken ct)
     {
         var c = C;
         var msg = a.Str("message") ?? "";
@@ -350,9 +353,14 @@ public sealed class LLChatBar : SessionApi
             };
             c.Network.SendPacket(pkt, Sim);
         }
-        else c.Self.Chat(msg, channel, type);
+        int parts = 1;
+        // to people, a line over the grid's limit goes in parts rather than cut off; a script's channel gets it as it is
+        if (channel == 0) parts = await ChatSplit.SendAsync(_turn, msg, part => c.Self.Chat(part, 0, type), ct);
+        else if (channel > 0) c.Self.Chat(msg, channel, type);
         if (channel == 0 && msg.Length > 0) S.State.LastWords = msg;
-        return rlv == null ? new JsonObject() : new JsonObject { ["sent"] = msg, ["rlv"] = rlv };
+        var r = rlv == null ? new JsonObject() : new JsonObject { ["sent"] = msg, ["rlv"] = rlv };
+        if (parts > 1) r["parts"] = parts;
+        return r;
     }
 }
 
@@ -367,7 +375,9 @@ public sealed class LLNotifications : SessionApi
 
     public LLNotifications(AgentSession s) : base(s)
     {
-        Op("respond", "{uuid, response}: uuid may be a unique prefix; buttons match by name, else by label", async (a, _) =>
+        Op("respond", "{uuid, response}: uuid may be a unique prefix; response a button's name or label (any case; a script "
+            + "menu's text box takes other words as typed), its index, or {name: true}; a response that answers no button is an error "
+            + "and the notification stays (cancel declines)", async (a, _) =>
         {
             var id = S.Notify.Resolve(a.Str("uuid"));
             if (id is null) return Json.Error($"no notification waiting with id {a.Str("uuid")}");

@@ -1,6 +1,6 @@
 {
   "log out": {
-    "_": "settings menu, the \"you\" section's last row (login-screen runs): its label; logs out and goes back to the login screen; lowercase, as the UI",
+    "_": "settings menu, the \"you\" section's row above \"quit Sojourn\" (runs with a login screen or the launcher): its label; logs out and goes back to where the person logged in (the login screen, or the launcher); lowercase, as the UI",
     "zh": "登出",
     "it": "disconnetti",
     "es": "cerrar sesión",
@@ -32,7 +32,7 @@
     "zh-Hans": "退出"
   },
   "sure?": {
-    "_": "a confirmation asked by a second press: the \"log out\" row's value after the first press, and the login sheet's \"forget account\" key after its first press (~10 chars); lowercase, as the UI",
+    "_": "a confirmation asked by a second press: the \"log out\" and \"quit Sojourn\" rows' value after the first press, and the login sheet's \"forget account\" key after its first press (~10 chars); lowercase, as the UI",
     "zh": "確定？",
     "it": "sicuro?",
     "es": "¿seguro?",
@@ -990,5 +990,37 @@
     "az": "Control R bütün siyahını oxuyur.",
     "de": "Strg+R liest die ganze Liste.",
     "zh-Hans": "Ctrl+R 读出整个清单。"
+  },
+  "quit Sojourn": {
+    "_": "settings menu, the \"you\" section's last row: its label; logs out and closes Sojourn (the launcher too); keep 'Sojourn' as is, it's the app's name; lowercase, as the UI",
+    "zh": "結束 Sojourn",
+    "it": "esci da Sojourn",
+    "es": "salir de Sojourn",
+    "pt": "sair do Sojourn",
+    "ja": "Sojourn を終了",
+    "tr": "Sojourn'dan çık",
+    "fr": "quitter Sojourn",
+    "da": "afslut Sojourn",
+    "ru": "выйти из Sojourn",
+    "pl": "zamknij Sojourn",
+    "az": "Sojourn-dan çıx",
+    "de": "Sojourn beenden",
+    "zh-Hans": "退出 Sojourn"
+  },
+  "close#you": {
+    "_": "settings menu, the \"quit Sojourn\" row's value, shown at the row's right before the first press: closes Sojourn (~8 chars); lowercase, as the UI",
+    "zh": "關閉",
+    "it": "chiudi",
+    "es": "cerrar",
+    "pt": "fechar",
+    "ja": "終了",
+    "tr": "kapat",
+    "fr": "fermer",
+    "da": "luk",
+    "ru": "закрыть",
+    "pl": "zamknij",
+    "az": "bağla",
+    "de": "Beenden",
+    "zh-Hans": "关闭"
   }
 }

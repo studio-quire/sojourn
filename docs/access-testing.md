@@ -46,7 +46,7 @@ drives the app by UI Automation and posted keys), with:
 
 A bot (`tools/visitor`, Access Visitor) talks, IMs, and owns scripted fixtures: a box sending menus, llTextBox,
 permission requests and offers; `facebox` (says each touch's face and surface coordinates); `treasure` (a chest whose
-unnamed lid alone has a script); `sofa` (renames itself while sat on or on a touch); `kart` (a physical LSL car; with `throttle`, a throttle train that says its track ends past `endx`) and `cart` (its script takes the sitter's keys);
+unnamed lid alone has a script); `sofa` (renames itself while sat on or on a touch); `kart` (a physical LSL car; with `throttle`, a throttle train that says its track ends past `endx`, and with `hover 1` shows its throttle and speed as floating text; `lose N`, `start P` and `quiet 1` for the stop's trials) and `cart` (its script takes the sitter's keys);
 `switch` (a rail switch as the SLRR standard has one: a "Switch Stand" whose description says Main or Branch, a touch
 part, two guide rails that swap their names and phantom; a touch or Main and Branch on its channel set it). Menus
 open on the Applications key's press (`MenuOn`), not by WinForms' ContextMenuStrip, which opens on WM_CONTEXTMENU and
@@ -72,6 +72,10 @@ docstring with its checks in full):
   talking every second or so for 20 s while a thread posts keys every 0.15 s, a line of her own sent halfway): each
   line said at most twice, the cut ones said again in one go after the pause, the newest three after how many there
   were, her own read back once; an IM's tab arriving without taking the focus, Ctrl+Tab and Ctrl+W.
+- **a long line in parts**: about 2,600 bytes typed in Say and put in an IM's box whole (UI Automation's SetValue: the
+  posted characters pass through the ANSI code page, which loses three-byte ones), every sentence with non-ASCII
+  characters: the visitor gets every part, in order, all the text, none over 1000 bytes, each ending at a sentence's
+  end; "Sent in N parts." said and the parts not read back; a line of 13 parts waits for Enter again, then all go.
 - **the builders' tab** (`builders`): without ACCESS_RELAY, Control+Shift+B's tab saying how to reach us without a
   token, Enter saying it again and keeping the text. With it, on the live relay with that token (its messages deleted
   after): a reply posted before the app started said once after logging in, the introduction the first time, Enter
@@ -201,12 +205,21 @@ docstring with its checks in full):
   switch cue; W saying it ahead with both ways' names; Shift+W touching its stand, "Switch set to the branch, East
   Yard." and the visitor hearing the stand set, the throw's cue; `//switch`, `//switch main` (set back, heard),
   `//switch main` again ("already"); then on past both, the second said once and the first not again.
-- **stopping a vehicle** (about 2 minutes, no renderer needed): on a flat stretch of Atelier East, the visitor's `kart`
-  as a car, a held Up, then Space with Up still held: "Stopping.", "Stopped.", and it never moves back; then its kart as
+- **stopping a vehicle** (about 10 minutes, no renderer needed): on a flat stretch of Atelier East, the visitor's `kart`
+  as a car, a held Up, then Space with Up still held: "Stopping.", "Stopped.", nothing said of moving backward, and it
+  never moves back (`ACCESS_STOP_CARS=N` runs the car N times, a flake check, and `ACCESS_STOP_TRAIN=0` skips the rest;
+  the app's `SOJOURN_TEST_STOP_STALL=MS` holds the window's thread up to that long a tick in three while stopping, and
+  `SOJOURN_TEST_STOP_LAG=MS` shows the stop the seat's velocity that much late); then its kart as
   a throttle train (`throttle 5`, on past 0 into reverse, each change said), opened 8 taps of Up (walk mode counting
   8) and stopped by Space, again by `//stop` from Say, then opened 12 and run past the end of its track (`endx`): "Track
   ends: stopping." with the TrackEnd cue, "Stopped.", the throttle's lines ending at 0 and never below, still, never
-  moving back, and its later "No Guide found" lines not starting another stop.
+  moving back, and its later "No Guide found" lines not starting another stop. Then the trials, each a fresh train
+  stopped once by Space and once at the track's end, its throttle as the train tells the visitor (`llOwnerSay`): "text"
+  (`hover 1 quiet 1 lose 3`: every third press lost on the way, the throttle shown only as floating text, as the blind
+  tester's train), "lines" (`lose 3`, said aloud), "none" (`quiet 1 lose 3`, said nowhere the app hears: the count and
+  the taps' effect) and "start" (`quiet 1 start 20`: opened to 20% before the arrows, the count short). Each must say
+  "Stopped.", end at 0, never go below it and never move back; `ACCESS_STOP_TRIALS=N` (1) runs each kind N times and
+  `ACCESS_STOP_KINDS=text,none` picks kinds, and the line after them tallies failures and reversals.
 - **recording a route** (about 2 minutes, no renderer needed): in Atelier East, north of the walk course, a wall with a
   doorway; in walk mode R starts recording, held Up walks through the doorway, taps of Right turn east, held Up walks on,
   then a `//tp` into Atelier Northeast; R's state, N's note (Backspace taking it back, N again), Shift+R's name and the
@@ -214,6 +227,15 @@ docstring with its checks in full):
   its start line, a few `//go xyz` lines, one in the doorway and one at the turn, the teleport's SLurl, the note last;
   then from the start `//route` plays it, reading its notes, and ends within 3 m of where the recording did. The
   notecard is deleted after; the Routes folder stays.
+- **recording a ride** (about 2 minutes; pictures need the renderer, the telling `ACCESS_RELAY`): on a flat stretch of
+  Atelier East, three named markers 4 m north of the way east and the visitor's throttle train (`kart ... throttle 10
+  hover 1`, its floating text "Throttle N%" and "Speed N km/h"); seated, V and Shift+V say what it shows, `//text` too;
+  C starts recording, three taps of Up open it to 3 m/s, V adds "It shows: Throttle 30%", H answers within a second
+  four times while pictures are taken; Space stops it and the recording ends by itself 8 s later, said; SojournRide's
+  moments every ~3 s, pictures taken (none skipped), the markers among the names passed in order, the floating text
+  and the train's lines kept, the pictures JPEG at 640x360 with what's seen in each (`ride-0.jpg` in the run's folder).
+  With the relay Shift+C tells it, the markers named in order, and Shift+C again tells more (the telling's tokens
+  printed); without, Shift+C says what the recording knows, the markers in order.
 
 **Tab items.** QuireUia's `find` uses the managed UI Automation client (System.Windows.Automation), which leaves out a
 WinForms tab control's first and last tab items; the COM client (UIAutomationCore, what screen readers use) lists them

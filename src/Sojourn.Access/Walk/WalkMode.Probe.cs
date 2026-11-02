@@ -148,7 +148,8 @@ public sealed partial class WalkMode
         if (b.Sitting && TrackedSpeed(b, now) is float s)
         {
             if (Math.Abs(s - _settling) > Math.Max(1f, _settling * 0.15f)) { _settling = s; _settlingSince = now; }
-            else if (now - _settlingSince > 2000 && now - _speedToldAt > 4000
+            // (not while stopping it: the stop says "Stopped." itself)
+            else if (now - _settlingSince > 2000 && now - _speedToldAt > 4000 && _vstop == null
                 && (s < 0.3f ? _lastSpeedTold >= 1f : Math.Abs(s - _lastSpeedTold) > Math.Max(3f, _lastSpeedTold * 0.35f)))
             {
                 _lastSpeedTold = s;
@@ -242,5 +243,5 @@ public sealed partial class WalkMode
 
     static bool IsDoor(string name) => name.Contains("door", StringComparison.OrdinalIgnoreCase) || name.Contains("gate", StringComparison.OrdinalIgnoreCase);
 
-    static string SpeedWords(float speed) => $"{(speed < 1 ? Bearings.MetresTenths(speed) : Bearings.Metres(speed))} a second";
+    internal static string SpeedWords(float speed) => $"{(speed < 1 ? Bearings.MetresTenths(speed) : Bearings.Metres(speed))} a second";
 }

@@ -50,7 +50,10 @@ static class Shots
             store.Logged(new SavedAccount { First = "juniper", Last = "Resident", Grid = Grids.Main, Start = "last" }, "$1$" + new string('0', 32), true);
 
             Draw(Make(places), Path.Combine(dir, "account.png"));
-            Draw(Make(places, dev: true), Path.Combine(dir, "dev.png"));
+            // the person's own agent as the assistant: the login with its line under the wordmark (--dev, or the
+            // choice), and the settings with what to tell the agent in the key's place
+            Draw(Make(places, dev: true), Path.Combine(dir, "agent.png"));
+            Draw(Make(places, v => v.ShowPage("settings"), dev: true), Path.Combine(dir, "settings-agent.png"));
             Draw(Make(places, v => v.ShowPage("accounts")), Path.Combine(dir, "accounts.png"));
             Draw(Make(places, v => v.ShowPage("new")), Path.Combine(dir, "new.png"));
             Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings.png"));

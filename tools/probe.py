@@ -2,6 +2,8 @@
 the local grid as Sojourn Probe (:9760) and Sojourn Echo (:9761), stand together in Atelier, and through their own
 agent APIs answer SojournSettings and say a line in local chat every few seconds until each hears the other's.
 
+  python tools/probe.py answers    how LLNotifications respond reads a response (by name, label, index, map; what
+                                   answers nothing is an error), without the grid (the probe's AnswerChecks.cs)
   python tools/probe.py [--seconds 120] [--voice] [--sounds] [--render]
                                    needs the grid (tools/grid.py start); no GPU unless --render: each also starts the
                                    renderer out of sight (Session's Offscreen/) and takes a picture by the snapshot op
@@ -29,10 +31,13 @@ def main():
     rest = sys.argv[1:]
     seconds = rest[rest.index("--seconds") + 1] if "--seconds" in rest else "120"
     extra = [a for a in ("--voice", "--sounds", "--render") if a in rest]
+    if rest[:1] == ["answers"]:
+        if build() != 0:
+            sys.exit("build failed")
+        sys.exit(subprocess.run([str(DOTNET), str(DLL), "--answers"], cwd=ROOT, creationflags=BELOW_NORMAL).returncode)
     if not grid.ready():
         sys.exit("the local grid isn't up: python tools/grid.py start")
-    if subprocess.run([str(DOTNET), "build", str(PROJECT), "-c", "Release", "-m:2", "-v:q", "-nologo", "-clp:ErrorsOnly", "-nodeReuse:false"],
-                      creationflags=BELOW_NORMAL).returncode != 0:
+    if build() != 0:
         sys.exit("build failed")
     pair = [("Probe", 9760, "Atelier&128&118&26"), ("Echo", 9761, "Atelier&130&118&26")]
     for last, _, _ in pair:
@@ -62,6 +67,11 @@ def main():
         ok &= code == 0
     print("probe: both passed" if ok else "probe: FAILED")
     sys.exit(0 if ok else 1)
+
+
+def build():
+    return subprocess.run([str(DOTNET), "build", str(PROJECT), "-c", "Release", "-m:2", "-v:q", "-nologo", "-clp:ErrorsOnly", "-nodeReuse:false"],
+                          creationflags=BELOW_NORMAL).returncode
 
 
 if __name__ == "__main__":

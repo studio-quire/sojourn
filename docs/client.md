@@ -46,7 +46,7 @@ Options (`src/Sojourn.Client/ClientOptions.cs`):
 | `--validate` | Vulkan's validation layer (`local/vulkan-validation`) and OpenXR's core validation (`local/openxr-sdk`), through `tools/client.py` |
 | `--vr`, `--xr-scale`, `--hz`, `--xr-wait`, `--quest-eyes`; `--seated`, `--standing`, `--snap`, `--smooth-turn`, `--turn-speed`, `--hand-relative`, `--no-body` | the headset and its settings: `docs/vr.md` |
 | `--no-assistant` | don't start the assistant's Python side (`docs/assistant.md`) |
-| `--dev` | dev mode: no Claude of its own, the Claude Code session that started it is the assistant (`tools/dev.py`, `docs/dev-mode.md`) |
+| `--dev` | dev mode: no Claude of its own, an agent session watching through `tools/dev.py` is the assistant (also the launcher's "your agent" choice, without the switch; `docs/dev-mode.md`) |
 | `--no-voice`, `--voice-mode ptt\|open`, `--voice-unmuted` | voice chat off; push-to-talk or open mic (a settings override); open mic starting live (tests): `docs/voice.md` |
 | `--no-sounds` | no world audio (objects' and gestures' sounds, footsteps, UI sounds, the parcel's music): `docs/audio.md` |
 | `--assistant-model quick\|sonnet\|opus` | who takes the assistant's requests first (saved setting otherwise; `docs/assistant.md` > Claude) |
@@ -111,8 +111,9 @@ The console beside the window prints what's said nearby and IMs; a typed line is
 `/event`, `/events?since=&wait=`, `/rpc`) over Multitude's LEAP emulation, so `sl.py`-style tools and phase 3's
 assistant drive this session (`src/Sojourn.Session/Bridge/BridgeServer.cs`; what each op does:
 `projects/multitude/docs/api.md`): `TesselAgent move` walks and flies the avatar, `LLChatBar sendChat` speaks, and so
-on. While an API move or autopilot runs and no key is held, the keys leave the controls
-alone and the camera follows the body. Snapshot ops (`LLViewerWindow saveSnapshot`) save the next frame as the person
+on. `sendChat` (on channel 0) and `TesselIM send` put a line over the grid's limit out as several messages
+(`Agents/ChatSplit.cs`; Sojourn Access's docs/access-app.md > Long lines), answering `parts`. While an API move or
+autopilot runs and no key is held, the keys leave the controls alone and the camera follows the body. Snapshot ops (`LLViewerWindow saveSnapshot`) save the next frame as the person
 sees it (`Assistant/LiveSnapshots.cs`; never a moved camera). `LLAgent requestTeleport` with `skip_confirmation`
 teleports at once, as the viewer's does, and waits for the arrival.
 
@@ -304,7 +305,10 @@ The account is chosen before the session exists because everything kept per acco
 `<base>/state/<grid>/<first.last>/` (grid: `agni`, `aditi` or `host_port`), the cache per grid under
 `<base>/cache/<grid>`; the settings (`vr-settings.json`) stay the base dir's, the person's for every account. So
 another account is another run: Back, Cancel or the menu's log out ("you" section, at the foot, twice) shut the
-client down as quitting does and start it again at the login screen (`LoginRestart`), the account shown selected.
+client down as quitting does and start it again at the login screen (`LoginRestart`), the account shown selected. In a
+run the launcher started (`LaunchState.ForLauncher`), log out ends the client instead, back to the launcher, which
+stays open. Under it, quit Sojourn (twice, in every run) closes the client, and in a launcher run the launcher too;
+both rows are in the simple menu, so "you" shows there with just them (the user, 2026-11-02).
 For the person's own use, `--base-dir local/main` keeps their headset settings; the first login there asks for MFA
 once (the old `state/pilot` isn't carried over).
 

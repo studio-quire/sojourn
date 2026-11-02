@@ -98,19 +98,42 @@ public sealed partial class LoginSheet
     }
 
     /// <summary>Showing (the main loop's panel and the pointer give way to it).</summary>
-    public bool Active => !Leaving && Current != null;
+    public bool Active => !Leaving && !Closing && Current != null;
 
-    long _logoutArmedAt = -10_000;
+    /// <summary>Started by the launcher, which stays open while the client runs (LaunchState): logging out closes the
+    /// client and the person is back at the launcher.</summary>
+    public bool LauncherRun { get; init; }
+    /// <summary>The client closes and nothing starts again here: logged out in a launcher run, or quit.</summary>
+    public bool Closing { get; private set; }
+    /// <summary>Quit in a launcher run: the launcher closes too (LaunchState's "quit").</summary>
+    public bool QuitAll { get; private set; }
 
-    /// <summary>The settings menu's row (the "you" section, login-screen runs): log out and back to the login screen,
-    /// a second press within four seconds to be sure.</summary>
+    long _logoutArmedAt = -10_000, _quitArmedAt = -10_000;
+
+    /// <summary>The settings menu's row (the "you" section, runs with a login screen or the launcher): log out, back to
+    /// where the person logged in, a second press within four seconds to be sure.</summary>
     public (MenuRow Row, Action<int> Act) LogOutRow()
     {
         bool armed = Environment.TickCount64 - _logoutArmedAt < 4000;
         return (new MenuRow("log out", armed ? "sure?" : "out", false), _ =>
         {
-            if (Environment.TickCount64 - _logoutArmedAt < 4000) { Leaving = true; _log("login: the person logged out"); }
-            else _logoutArmedAt = Environment.TickCount64;
+            if (Environment.TickCount64 - _logoutArmedAt >= 4000) { _logoutArmedAt = Environment.TickCount64; return; }
+            if (LauncherRun) { Closing = true; _log("login: the person logged out, back to the launcher"); }
+            else { Leaving = true; _log("login: the person logged out"); }
+        });
+    }
+
+    /// <summary>The "you" section's last row: Sojourn closes (the launcher too, in a launcher run), a second press
+    /// within four seconds to be sure.</summary>
+    public (MenuRow Row, Action<int> Act) QuitRow()
+    {
+        bool armed = Environment.TickCount64 - _quitArmedAt < 4000;
+        return (new MenuRow("quit Sojourn", armed ? "sure?" : "close", false), _ =>
+        {
+            if (Environment.TickCount64 - _quitArmedAt >= 4000) { _quitArmedAt = Environment.TickCount64; return; }
+            Closing = true;
+            QuitAll = LauncherRun;
+            _log(LauncherRun ? "the person quit Sojourn, the launcher too" : "the person quit Sojourn");
         });
     }
 

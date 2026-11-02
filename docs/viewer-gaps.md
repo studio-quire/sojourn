@@ -431,7 +431,7 @@ For any further batch:
 In this order:
 1. **RLV/RLVa**, first: built 2026-11-01 (`docs/rlv.md`). Enforced at the dispatcher's gate for every caller, the assistant included. The way out
    overrides it and stays a sure exit (Claude Opus 5.5's suggestion, which the user let stand).
-2. **Direct building by hand** (B9's first part): the assistant finds a thing and places it roughly, the person
+2. **Direct building by hand** (B9's first part; in the first release, the user's call on 2026-11-02): the assistant finds a thing and places it roughly, the person
    fine-tunes position and rotation by hand in VR (their idea, 2026-10-30). The rest of B9 (an inventory board,
    appearance sliders, the poser) later.
 3. **The Marketplace and buying L$**: the assistant may browse, search and fill a cart, and shows what it plans to buy

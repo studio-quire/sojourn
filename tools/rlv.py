@@ -10,7 +10,8 @@
                                 @chatshout, @sendchannel, @recvchat, @recvemote), @shownames on what's heard, the gate's
                                 words for the assistant (SojournRlv status), and the #RLV folder: @getinv, @attach:<folder>=force,
                                 @getattach, @getinvworn, @getpath, @detach=n holding the Cuff on against the agent API,
-                                @remattach and @detach:<folder>=force, the Cuff's restrictions going with it when it comes off
+                                @remattach and @detach:<folder>=force, the Cuff's restrictions going with it when it comes off;
+                                and the agent API's attachPoints naming the worn Cuff, wearItems saying where it went
   python tools/rlv.py eyes      the VR client on the desktop in stereo as Sojourn Rlv (:9769), both eyes through the headset's
                                 per-eye path: a vision sphere (@setsphere) darkening the far half of each eye, and @clear; its
                                 pictures in local/rlv/eyes; takes local/gpu.lock for its minute
@@ -409,6 +410,7 @@ def test():
         rig("@attach:cuffs=force")
         worn = wait(worn_cuff, 20, 1)
         ok("@attach:cuffs=force wears it", worn, json.dumps(worn)[:200] if worn else "nothing")
+        ok("attachPoints names what's worn", worn and "RLV Cuff" in worn[0].get("name", ""), worn[0].get("name") if worn else "nothing")
         time.sleep(2)
         rig("@getattach:left hand=1001,getinvworn:cuffs=1002,getpath:left hand=1003")
         got = heard(s, "heard 100", 8, count=3)
@@ -455,6 +457,12 @@ def test():
         time.sleep(1)
         st = api("SojournRlv", "status")
         ok("@clear lets go", not st.get("held"), json.dumps(st.get("held")))
+        # worn by the agent API: the answer says where it went (its own last point, here the left hand)
+        r = api("LLAppearance", "wearItems", items_id=[cuff_item], replace=False, timeout=30)
+        went = (r.get("attached") or [{}])[0]
+        ok("wearItems says where it went", went.get("point") == "Left Hand" and went.get("hud") is False, json.dumps(r))
+        api("LLAppearance", "detachItems", items_id=[cuff_item], timeout=30)
+        ok("and it comes off again", wait(lambda: not worn_cuff(), 15, 1), "")
     finally:
         try:
             proc.terminate()

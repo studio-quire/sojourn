@@ -74,6 +74,8 @@ def keep_for_lab(look, of, key):
     import json
     out = os.path.join(root, time.strftime("%Y%m%d-%H%M%S-") + re.sub(r"[^\w-]+", "_", key)[:48] + f"-{look.get('detail')}")
     os.makedirs(out, exist_ok=True)
+    if "ride" in look:
+        return   # (rides aren't captured for the lab)
     keep = {k: v for k, v in look.items() if k != "pictures"}
     keep["pictures"] = []
     for i, p in enumerate(look.get("pictures") or [], 1):
@@ -100,6 +102,11 @@ async def gather(kit, of, words, detail):
 
 
 async def _gather(kit, of, words, detail):
+    if of == "ride":
+        # a ride the person recorded in Sojourn Access (SojournRide): its moments in order, pictures among them
+        kit.did("going over your ride")
+        r = await kit.call("SojournRide", "get", 30, detail=detail)
+        return r | {"detail": detail}, "A ride the person recorded, from start to end:", f"ride {r.get('id')}"
     if of == "texture":
         if not UUID.fullmatch(words.strip()):
             raise ApiError("a texture's id")
@@ -173,15 +180,15 @@ def build_describe(kit):
     @tool("describe", "Describe something to the person, who may not be able to see it: a place (subject: here), "
           "a person or a thing near them (a name, an id, or 'that' for what's pointed at or selected), the person "
           "themselves and what they're wearing (subject: me), a person's profile pictures (of: profile), a texture "
-          "(of: texture, subject its id) or an inventory picture, snapshot or thumbnail (of: item, subject its name or "
-          "id). The subject is the one person or thing asked about, by its name as the lists give it (\"Jazz Poster\"), "
+          "(of: texture, subject its id), an inventory picture, snapshot or thumbnail (of: item, subject its name or "
+          "id), or a ride they recorded in Sojourn Access, told in order (of: ride, subject: ride). The subject is the one person or thing asked about, by its name as the lists give it (\"Jazz Poster\"), "
           "never here for one thing in the place: pictures are drawn aimed at it, a sign's or poster's image whole for "
           "its text. detail: brief (the default) or rich (when they ask for more); words: their question when it's about "
           "a part of the subject (\"what does her shirt say?\"). Use this rather than look whenever they ask what "
           "something or someone looks like, what's here, what a sign says, or what they're wearing.",
           {"type": "object", "properties": {
               "subject": {"type": "string"},
-              "of": {"type": "string", "enum": ["view", "profile", "texture", "item"]},
+              "of": {"type": "string", "enum": ["view", "profile", "texture", "item", "ride"]},
               "detail": {"type": "string", "enum": ["brief", "rich"]},
               "words": {"type": "string"}}, "required": ["subject"]})
     async def describe(args):
@@ -201,8 +208,9 @@ def build_describe(kit):
                                  "reply, word for word, adding nothing before or after.\n\n" + text}]}
         out = []
         for kind, v in describer.parts(look, intro):
-            out.append({"type": "image", "data": v, "mimeType": "image/png"} if kind == "image" else {"type": "text", "text": v})
-        out.append({"type": "text", "text": HOW})
+            out.append({"type": "image", "data": v, "mimeType": "image/jpeg" if kind == "jpeg" else "image/png"}
+                       if kind in ("image", "jpeg") else {"type": "text", "text": v})
+        out.append({"type": "text", "text": HOW + ("\n\n" + describer.RIDE_HOW if of == "ride" else "")})
         return {"content": out}
 
     return describe

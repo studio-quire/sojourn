@@ -222,7 +222,7 @@ var regionFeed = new RegionFeed(registry.World, renderer);
 
 var session = sessionHost.AddSession();
 // the login's progress, the grid's ToS and MFA questions and failures, in the panel's place until the first arrival
-login ??= new Sojourn.Client.Login.LoginSheet(null, () => PanelLook.InUse, m => log.LogInformation("{Msg}", m));
+login ??= new Sojourn.Client.Login.LoginSheet(null, () => PanelLook.InUse, m => log.LogInformation("{Msg}", m)) { LauncherRun = LaunchState.ForLauncher };
 login.Attach(session);
 var pilot = new Pilot(session, renderer.Motion);
 // the headset's settings: saved per machine, the command line's on top for this session
@@ -630,12 +630,15 @@ var about = new Sojourn.Client.Control.AboutMenu(sessionHost.Release, reader.Rea
 (settingsMenu.AboutRows, settingsMenu.AboutText) = (about.Rows, about.Text);
 if (sessionHost.Release.Stats is { } viewerStats)
     (viewerStats.Fps, viewerStats.Graphics) = (() => map.Fps, () => Sojourn.Client.Control.AboutMenu.Gpu(renderer.Vk));
-if (login.FromScreen)
+// at the foot of the "you" section: log out, back to where the person logged in (the login screen, or the launcher,
+// which stays open; a command-line login has nowhere to go back to), and quit
+settingsMenu.LeavingRows = () =>
 {
-    // log out, back to the login screen: at the foot of the "you" section
-    var youRows = settingsMenu.PeopleRows;
-    settingsMenu.PeopleRows = () => { var rows = youRows?.Invoke() ?? new(); rows.Add(login.LogOutRow()); return rows; };
-}
+    var rows = new List<(MenuRow Row, Action<int> Act)>();
+    if (login.FromScreen) rows.Add(login.LogOutRow());
+    rows.Add(login.QuitRow());
+    return rows;
+};
 sessionHost.RegisterSettings();
 string? SetResolution(float? scale) { vrSettings.Resolution = scale; return null; }
 
@@ -740,7 +743,7 @@ Task<int> RestartAfterLoss(Exception e) => DeviceLoss.Restart(e, log, opt, args,
 });
 DeviceLoss.Guard(pipe, RestartAfterLoss, log);
 try {
-while (!window.IsClosing && !chat.QuitRequested && !(bench?.Done ?? false) && !login.Leaving)
+while (!window.IsClosing && !chat.QuitRequested && !(bench?.Done ?? false) && !login.Leaving && !login.Closing)
 {
     DeviceLoss.Beat();   // the loop turns (DeviceLoss's watch)
     pipe.TakeWorld();   // the last frame's scene is built: the world is this thread's until the next post
@@ -925,7 +928,7 @@ DeviceLoss.Unguard();
 // goodbyes (SL's logout up to 10 s, voice ~2 s, Meta's ASW restored by a process ~2 s, the sidecar) run side by side.
 // They used to run one after another behind the last frame, the headset showing it frozen (the user, 2026-10-28).
 log.LogInformation("shutting down");
-LaunchState.Set("ending", headset != null);
+LaunchState.Set(login.QuitAll ? "quit" : "ending", headset != null);   // quit: the launcher closes when the client has
 var shutdownClock = Stopwatch.StartNew();
 void Step(string what, Action act)
 {

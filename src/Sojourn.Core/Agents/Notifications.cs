@@ -118,8 +118,10 @@ public sealed class Notifications
 
     /// <summary>LLNotifications respond: the first button in form order whose response value is truthy wins. Buttons
     /// match by name (the viewer's contract) or, failing that, by their label, so {"Keep": true} works on a form
-    /// whose Keep button is named otherwise. A response that names no button leaves the notification pending and
-    /// returns an error instead of answering it as a decline. Null = answered.</summary>
+    /// whose Keep button is named otherwise. A bare string picks the button so named or labelled (any case), or is a
+    /// script dialog's typed text; a bare number, the button with that index. A response that answers no button
+    /// leaves the notification pending and returns an error instead of answering it as a decline (cancel declines).
+    /// Null = answered.</summary>
     public async Task<string?> RespondAsync(Guid id, JsonNode? response, bool cancel = false)
     {
         if (!_pending.TryGetValue(id, out var p)) return "no such notification waiting (already answered, replaced or expired)";
@@ -128,10 +130,10 @@ public sealed class Notifications
         string? chosen = null;
         if (!cancel)
         {
-            var (button, labelKey, error) = Choose(form, response);
+            var (button, value, error) = Choose(form, response);
             if (error is not null) return error;
             chosen = button;
-            if (button is not null && labelKey is not null) map[button] = map[labelKey]?.DeepClone();
+            if (button is not null && value is not null) map[button] = value.DeepClone();
         }
         if (!_pending.TryRemove(id, out _)) return "already answered";
         if (p.Key is not null) _byKey.TryRemove(p.Key, out _);
@@ -149,14 +151,29 @@ public sealed class Notifications
     public string? Choose(Guid id, JsonNode? response) =>
         _pending.TryGetValue(id, out var p) ? Choose((p.Payload["form"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().ToList(), response).Button : null;
 
-    static (string? Button, string? LabelKey, string? Error) Choose(List<JsonObject> form, JsonNode? response)
+    /// <summary>The button a response answers, the value to give it in the response map when that isn't already there
+    /// under its name (a label's, a typed text), or why it answers none.</summary>
+    public static (string? Button, JsonNode? Value, string? Error) Choose(List<JsonObject> form, JsonNode? response)
     {
+        if (response is JsonValue sv && sv.TryGetValue<string>(out var said))
+        {
+            // a bare string: the button so named, else so labelled, any case (a numbered menu's "2" is the button
+            // labelled 2, not the third); else a script dialog's text box takes it as typed
+            var want = said.Trim();
+            var hit = form.FirstOrDefault(b => string.Equals(b["name"]?.GetValue<string>(), want, StringComparison.OrdinalIgnoreCase))
+                ?? form.FirstOrDefault(b => string.Equals(b["text"]?.GetValue<string>(), want, StringComparison.OrdinalIgnoreCase));
+            if (hit?["name"]?.GetValue<string>() is { } named) return (named, JsonValue.Create(true), null);
+            if (form.Any(b => b["name"]?.GetValue<string>() == "!!llTextBox!!")) return ("!!llTextBox!!", JsonValue.Create(said), null);
+            return (null, null, $"no button matches {said}; buttons: {Describe(form)}");
+        }
         if (response is JsonValue v && Json.AsDouble(v) is { } idx)
         {
             // teleport-style callbacks also take a bare button index
             var byIndex = form.FirstOrDefault(b => (int?)Json.AsDouble(b["index"]) == (int)idx)?["name"]?.GetValue<string>();
             return byIndex is null ? (null, null, $"no button {idx}; buttons: {Describe(form)}") : (byIndex, null, null);
         }
+        if (response is not (null or JsonObject))
+            return (null, null, $"a response is a button's name or label, its index, or {{name: true}}; buttons: {Describe(form)}");
         var map = response as JsonObject ?? new JsonObject();
         foreach (var b in form)
         {
@@ -168,10 +185,12 @@ public sealed class Notifications
             var name = b["name"]?.GetValue<string>();
             var text = b["text"]?.GetValue<string>();
             var key = map.Select(kv => kv.Key).FirstOrDefault(k => text is not null && string.Equals(k, text, StringComparison.OrdinalIgnoreCase));
-            if (name is not null && key is not null && Truthy(map[key])) return (name, key, null);
+            if (name is not null && key is not null && Truthy(map[key])) return (name, map[key], null);
         }
         if (form.Count > 0 && map.Count > 0)
             return (null, null, $"no button matches {string.Join(", ", map.Select(kv => kv.Key))}; buttons: {Describe(form)}");
+        // nothing given: a form with buttons waits for one (cancel declines); a notice without buttons is acknowledged
+        if (form.Count > 0) return (null, null, $"no button given; buttons: {Describe(form)} (cancel declines)");
         return (null, null, null);
     }
 

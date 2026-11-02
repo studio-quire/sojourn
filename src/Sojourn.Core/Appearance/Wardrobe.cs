@@ -263,6 +263,36 @@ public sealed class Wardrobe
         if (wearablesChanged) Look.Schedule(c, TimeSpan.FromMilliseconds(800), reupload: false, "wearing");
     }
 
+    /// <summary>Where each object item went, as the region shows it, waiting up to timeout for those not on yet:
+    /// {attached: [{item_id, name, point, hud}], not_yet?: [names]}. An object goes to its own last point, which can be
+    /// a HUD's (on the screen, not the body), so the caller can say where.</summary>
+    public async Task<JsonObject> WhereAttachedAsync(GridClient c, IReadOnlyList<InventoryItem> items, TimeSpan timeout, CancellationToken ct)
+    {
+        var found = new Dictionary<UUID, int>();
+        var end = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            var w = _s.Region;
+            if (w?.AvatarById(c.Self.AgentID) is { } me)
+                foreach (var p in w.Prims.Values)
+                    if (p.ParentID == me.LocalID && AgentInventory.AttachItemId(p) is var id && items.Any(i => i.UUID == id))
+                        found[id] = (int)p.PrimData.AttachmentPoint;
+            if (found.Count == items.Count || DateTime.UtcNow >= end) break;
+            await Task.Delay(200, ct);
+        }
+        var o = new JsonObject
+        {
+            ["attached"] = new JsonArray(items.Where(i => found.ContainsKey(i.UUID)).Select(i => (JsonNode)new JsonObject
+            {
+                ["item_id"] = i.UUID.ToString(), ["name"] = i.Name, ["point"] = ObjectViews.AttachPointName(found[i.UUID]),
+                ["hud"] = found[i.UUID] is >= 31 and <= 38,
+            }).ToArray()),
+        };
+        var late = items.Where(i => !found.ContainsKey(i.UUID)).Select(i => (JsonNode)i.Name).ToArray();
+        if (late.Length > 0) o["not_yet"] = new JsonArray(late);
+        return o;
+    }
+
     /// <summary>Takes items off: wearables (not body parts) leave the outfit; attachments detach.</summary>
     public async Task TakeOffAsync(GridClient c, IEnumerable<UUID> itemIds, CancellationToken ct)
     {

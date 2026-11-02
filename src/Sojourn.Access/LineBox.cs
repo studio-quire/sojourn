@@ -5,7 +5,9 @@ namespace Sojourn.Access;
 /// a character: handled there, the key is never translated, so the edit control never gets the carriage return it
 /// answers with the default beep (heard in the guided test of 2026-10-29). Unhandled, Enter goes on as usual (a form's
 /// default button). With AppsMenu set, the Applications key, Shift+F10 and a right click show that menu instead of the
-/// edit control's own (a conversation's, MainForm.ImSounds.cs).
+/// edit control's own (a conversation's, MainForm.ImSounds.cs). Text pasted with line breaks comes in whole, its lines
+/// joined by spaces: Windows' one-line edit control pastes only up to the first break (a copied answer of several
+/// paragraphs, pasted into an IM, lost all but its first).
 /// </summary>
 public class LineBox : TextBox
 {
@@ -40,10 +42,30 @@ public class LineBox : TextBox
             if (m.LParam != -1) AppsMenu();
             return;
         }
+        if (m.Msg == WM_PASTE && !Multiline && !ReadOnly && Enabled && PastedLines() is { } joined)
+        {
+            // (setting SelectedText lifts the box's limit, which a paste keeps to)
+            int room = MaxLength > 0 ? Math.Max(0, MaxLength - (TextLength - SelectionLength)) : joined.Length;
+            if (joined.Length > room) joined = joined[..(room > 0 && char.IsHighSurrogate(joined[room - 1]) ? room - 1 : room)];
+            SelectedText = joined;
+            return;
+        }
         base.WndProc(ref m);
     }
 
-    const int WM_KEYDOWN = 0x0100, WM_SYSKEYDOWN = 0x0104, WM_CONTEXTMENU = 0x007B;
+    /// <summary>The clipboard's text with its line breaks as spaces, if it has any; else null (pasted as usual).</summary>
+    static string? PastedLines()
+    {
+        try
+        {
+            if (!Clipboard.ContainsText()) return null;
+            var text = Clipboard.GetText();
+            return text.IndexOfAny(['\r', '\n']) < 0 ? null : System.Text.RegularExpressions.Regex.Replace(text, @"[ \t]*[\r\n]+[ \t]*", " ");
+        }
+        catch (System.Runtime.InteropServices.ExternalException) { return null; }   // the clipboard held by another program
+    }
+
+    const int WM_KEYDOWN = 0x0100, WM_SYSKEYDOWN = 0x0104, WM_CONTEXTMENU = 0x007B, WM_PASTE = 0x0302;
 }
 
 /// <summary>

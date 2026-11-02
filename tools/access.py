@@ -1319,6 +1319,7 @@ def session(run, procs):
         ("her own lines read back", lambda: own_lines(run, nonce)),
         ("lines cut by typing", lambda: typed_cut(run, nonce)),
         ("an IM", lambda: im(run, nonce, tester_id)),
+        ("a long line in parts", lambda: long_lines(run, nonce, tester_id)),
         ("the builders' tab", lambda: builders(run, nonce)),
         ("people and objects", lambda: lists(run)),
         ("people beside chat, friends on Alt+2", lambda: people_beside_chat(run)),
@@ -1361,6 +1362,7 @@ def session(run, procs):
         ("stopping a vehicle", lambda: vehicle_stop(run)),
         ("recording a route", lambda: route_recording(run)),
         ("recording a route across a border", lambda: route_crossing(run)),
+        ("recording a ride", lambda: ride_recording(run)),
     ]
     only = [w.strip() for w in os.environ.get("ACCESS_STEPS", "").split(",") if w.strip()]
     for name, step in steps:
@@ -1719,6 +1721,87 @@ def im(run, nonce, tester_id):
         time.sleep(1)
         gone = not [t for t in tab_items() if VNAME in t]
         run.check("Ctrl+W closes the conversation", gone, f"then {after}" if gone else "its tab is still there")
+
+
+def long_text(tag, nonce, sentences=20, typed=False):
+    """About 2,600 bytes of numbered sentences, two- and three-byte characters in every one, so some fall near each
+    part's end. typed: two-byte ones only (QuireUia's posted characters pass through the ANSI code page, which has no
+    日本語)."""
+    note, dash = ("Ångström's hand", ",") if typed else ("日本語", " —")
+    return " ".join(f"{tag} {i:02d} {nonce}: the café's crème brûlée sat by the window, beside a note in {note}, and the "
+                    f"light was soft{dash} almost blue." for i in range(1, sentences + 1))
+
+
+def long_lines(run, nonce, tester_id):
+    """A line over the grid's limit (1023 bytes of UTF-8) typed in Say and in an IM goes as several messages, each at
+    most 1000 bytes, in order, ending at sentences' ends, all the text there; "Sent in N parts." said, the parts not
+    read back as her own lines; a line that would go as more than ten waits for Enter again."""
+    def check_parts(where, text, got, m):
+        parts = [g["msg"] for g in got]
+        sizes = [len(x.encode("utf-8")) for x in parts]
+        run.check(f"{where}: sent as several, in order, all of it", len(parts) > 1 and " ".join(parts) == text,
+                  f"{len(parts)} parts, {sum(sizes)} of {len(text.encode('utf-8'))} bytes" if parts else "nothing arrived")
+        run.check(f"{where}: no part over 1000 bytes", parts and max(sizes) <= 1000, f"sizes {sizes}")
+        run.check(f"{where}: each part ends at a sentence's end", parts and all(x.endswith(".") for x in parts),
+                  " | ".join("..." + x[-20:] for x in parts))
+        run.expect(f"{where}: \"Sent in {len(parts)} parts.\" said", [f"Sent in {len(parts)} parts."], m, 10)
+        mine = [e["text"] for e in said_since(m) if nonce in (e.get("text") or "") and "café" in (e.get("text") or "")]
+        run.check(f"{where}: the parts not read back", not mine, "; ".join(t[:60] for t in mine) or "none read")
+
+    def collect(kind, tag, n, last):
+        def look():
+            out = v(f"{kind} 100 since {n}")
+            got = [json.loads(l) for l in ([] if out == "none" else out.splitlines()) if l.startswith("{")]
+            got = [g for g in got if g.get("from") == TNAME and f"{tag} " in (g.get("msg") or "") and nonce in g["msg"]]
+            return got if any(last in g["msg"] for g in got) else None
+        return wait(look, 20, 0.5) or []
+
+    # nearby: typed, as a person types it (the box's old 1023-character limit stopped typing there)
+    text = long_text("Said", nonce, typed=True)
+    n, m = visitor_n(), mark()
+    say_in_app(text)
+    got = collect("heard", "Said", n, f"Said 20 {nonce}")
+    run.check("Say: the visitor hears it as normal chat", got and all(g["type"] == "Normal" for g in got),
+              ", ".join(g["type"] for g in got) or "nothing")
+    check_parts("Say", text, got, m)
+
+    # an IM, in its conversation's message box
+    v(f"im {tester_id} a long one coming {nonce}")
+    run.expect("(an IM to open the conversation)", [f"a long one coming {nonce}"], m, 10)
+    key("ctrl+tab")
+    if not run.check("(Ctrl+Tab to the conversation)", wait_focus(lambda d: d["id"] == "convInput", 4), focus_label()):
+        return
+    # (put in whole, as a paste would: three-byte characters too)
+    text = long_text("Wrote", nonce)
+    n, m = visitor_n(), mark()
+    u(f"set id=convInput | {text}")
+    wait(lambda: value_of("id=convInput") == text, 5, 0.3)
+    key("enter", target="id=convInput")
+    got = collect("events", "Wrote", n, f"Wrote 20 {nonce}")
+    check_parts("IM", text, got, m)
+    key("ctrl+w")
+    time.sleep(1)
+    back_to_chat()
+
+    # more than ten parts: Enter once says so and keeps the line; Enter again sends them all
+    many = long_text("Many", nonce, 90)
+    parts = -(-len(many.encode("utf-8")) // 960)
+    n, m = visitor_n(), mark()
+    u(f"set id=chatInput | {many}")
+    key("enter", target="id=chatInput")
+    run.expect("a line of over ten parts: Enter once asks for Enter again", ["Enter again sends them all"], m, 5)
+    time.sleep(2)
+    kept = value_of("id=chatInput")
+    out = v(f"heard 100 since {n}")
+    early = [l for l in ([] if out == "none" else out.splitlines()) if f"Many 01 {nonce}" in l]
+    run.check("... the line still in the box, nothing sent", kept.startswith(many[:60]) and not early,
+              f"box {len(kept)} characters, {len(early)} heard")
+    m = mark()
+    key("enter", target="id=chatInput")
+    got = collect("heard", "Many", n, f"Many 90 {nonce}")
+    run.check("... Enter again sends them all", got and " ".join(g["msg"] for g in got) == many,
+              f"{len(got)} parts heard (about {parts} expected)")
+    run.expect("... and says how many", [f"Sent in {len(got)} parts."], m, 10)
 
 
 BUILDERS_AWAY = None   # the reply posted before the app started (with ACCESS_RELAY), said once after logging in
@@ -2264,6 +2347,7 @@ def gestures(run, nonce):
             run.check("World has Gestures, with Control+Shift+G", menu_keys("type=MenuItem;name=Gestures").endswith("Control+Shift+G"),
                       menu_keys("type=MenuItem;name=Gestures"))
             key("esc")
+            key("esc")   # (one Escape leaves the menu bar active: typed letters would pick its items, Build's Upload)
         back_to_chat()
         # the inventory: active and the trigger in its words; Play, Deactivate on the Applications key
         key("alt+4")
@@ -5641,18 +5725,18 @@ def rail_switches(run):
     try:
         made = []
         for x, ch in ((a, 133), (b, 134)):
-            v(f"tp {COURSE_REGION} {x} {y + 8} {g(x) + 1.5}", timeout=40)
+            visitor_tp(x, y + 8, g(x) + 1.5)
             time.sleep(1.5)
             made.append(v(f"switch {x} {y} {g(x)} {ch}", timeout=60))
         if not run.check("the visitor's two switches are out, their scripts running", all(r.startswith("switch") for r in made), " | ".join(made)):
             return
-        v(f"tp {COURSE_REGION} {x0} {y - 5} {g(x0) + 1.5}", timeout=40)
+        visitor_tp(x0, y - 5, g(x0) + 1.5)
         time.sleep(1.5)
         kart = v(f"kart {x0} {y} {g(x0) + 0.4} facing 0", timeout=60)
         if not run.check("the visitor's kart is out", kart.startswith("kart"), kart):
             return
         # between the switches, in chat range of both stands
-        v(f"tp {COURSE_REGION} {a + 15} {y + 9} {g(a) + 1.5}", timeout=40)
+        visitor_tp(a + 15, y + 9, g(a) + 1.5)
         go_tp(run, "the tester beside the kart", x0 - 1, y - 2, g(x0) + 1.5)
         m = mark()
         say_in_app("//sit Walk Kart")
@@ -5738,7 +5822,12 @@ def vehicle_stop(run):
     throttle train (each Up press 5% of 10 m/s, each Down 5% less, on past 0 into reverse), opened 8 taps and stopped by
     Space, again by //stop from the Say box, then opened 12 taps and run past the end of its track, where it says "sensor :
     No further track guide detected": the urgent cue, "Track ends: stopping.", "Stopped.", its throttle back at 0 and never
-    below, and it never moves back. Needs no renderer."""
+    below, and it never moves back. Then the trials: fresh trains stopped by Space and at the track's end, each kind
+    ACCESS_STOP_TRIALS times (1; ACCESS_STOP_KINDS picks them): "text", every third press lost on the way and its throttle
+    shown only as floating text (the blind tester's train); "lines", every third lost, its throttle said aloud; "none",
+    every third lost, its throttle said nowhere Access hears; "start", said nowhere, opened to 20% before the arrows. Each
+    must say "Stopped.", end at throttle 0 (as the train tells the visitor), never below, and never move back; the
+    failures and reversals are tallied. Needs no renderer."""
     back_to_chat()
     m = mark()
     say_in_app(f"//tp {COURSE_REGION}/100/60/40")
@@ -5798,31 +5887,38 @@ def vehicle_stop(run):
         return [e.get("text") or "" for e in said_since(m_)]
 
     try:
-        # a car: held Up, then Space with Up still held
-        v(f"tp {COURSE_REGION} {x0 + 10} {y + 8} {g(x0) + 1.5}", timeout=40)
-        time.sleep(1.5)
-        car = v(f"kart Walk Kart {x0} {y} {g(x0) + 0.4} facing 0", timeout=60)
-        if not run.check("the visitor's kart is out", car.startswith("kart"), car):
+        # a car: held Up, then Space with Up still held (ACCESS_STOP_CARS=N: N times, a flake check; ACCESS_STOP_TRAIN=0:
+        # the car alone)
+        for i in range(int(os.environ.get("ACCESS_STOP_CARS", "1"))):
+            if i == 0:
+                v(f"tp {COURSE_REGION} {x0 + 10} {y + 8} {g(x0) + 1.5}", timeout=40)
+                time.sleep(1.5)
+            car = v(f"kart Walk Kart {x0} {y} {g(x0) + 0.4} facing 0", timeout=60)
+            if not run.check("the visitor's kart is out", car.startswith("kart"), car):
+                return
+            go_tp(run, "the tester beside the kart", x0 - 1, y - 2, g(x0) + 1.5)
+            if not sit("Walk Kart"):
+                return
+            u("keydown focus | 38")
+            time.sleep(2.5)
+            m = mark()
+            t0 = time.time()
+            key("space")
+            samples = watch(12, ["Stopped"])
+            u("keyup focus | 38")
+            lines = lines_since(m)
+            run.check("a car: Space says Stopping, then Stopped", "Stopping." in lines and "Stopped." in lines, " | ".join(lines))
+            run.check("a car: never said to be moving backward", not any("backward" in t for t in lines), " | ".join(lines))
+            print(f"     (the car stopped in {time.time() - t0:.1f} s, at {walk_pos()[0]:.1f})")
+            still_and_forward("a car stopped by Space", samples)
+            key("esc")
+            wait_focus(lambda d: d["id"] == "chatInput", 5)
+            say_in_app("//stand")
+            time.sleep(1.5)
+            v("derez Walk Kart", timeout=15)
+
+        if os.environ.get("ACCESS_STOP_TRAIN") == "0":
             return
-        go_tp(run, "the tester beside the kart", x0 - 1, y - 2, g(x0) + 1.5)
-        if not sit("Walk Kart"):
-            return
-        u("keydown focus | 38")
-        time.sleep(2.5)
-        m = mark()
-        t0 = time.time()
-        key("space")
-        samples = watch(8, ["Stopped"])
-        u("keyup focus | 38")
-        lines = lines_since(m)
-        run.check("a car: Space says Stopping, then Stopped", "Stopping." in lines and "Stopped." in lines, " | ".join(lines))
-        print(f"     (the car stopped in {time.time() - t0:.1f} s, at {walk_pos()[0]:.1f})")
-        still_and_forward("a car stopped by Space", samples)
-        key("esc")
-        wait_focus(lambda d: d["id"] == "chatInput", 5)
-        say_in_app("//stand")
-        time.sleep(1.5)
-        v("derez Walk Kart", timeout=15)
 
         # a throttle train
         train = v(f"kart Walk Train {x0} {y} {g(x0) + 0.4} facing 0 throttle 5 endx {endx}", timeout=60)
@@ -5895,6 +5991,78 @@ def vehicle_stop(run):
                   sum(1 for t in lines_since(m) if t.startswith("Track ends")) == 1, " | ".join(lines_since(m))[-300:])
         key("esc")
         wait_focus(lambda d: d["id"] == "chatInput", 5)
+        say_in_app("//stand")
+        time.sleep(1.5)
+        v("derez Walk Train", timeout=15)
+
+        ends = ("Stopped.", "Couldn't stop", "Let go")
+
+        def trial(kind, opts, how):
+            """A fresh train of this kind opened by the arrows and stopped by Space or at the track's end: (ok, reversed,
+            what happened)."""
+            train = v(f"kart Walk Train {x0} {y} {g(x0) + 0.4} facing 0 throttle 5 endx {endx} {opts}", timeout=60)
+            if not train.startswith("kart"):
+                return False, False, train
+            try:
+                go_tp(run, "(the tester beside the train)", x0 - 1, y - 2, g(x0) + 1.5)
+                n0 = visitor_n()
+                if not sit("Walk Train"):
+                    return False, False, "not seated"
+                taps = (8 if how == "space" else 12) - (4 if "start" in opts else 0)
+                m_ = mark()
+                for _ in range(taps):
+                    key("up")
+                    time.sleep(0.45)
+                if how == "space":
+                    time.sleep(2.5)
+                    m = mark()
+                    key("space")
+                else:
+                    if not walk_said(m_, ["Track ends"], 40):
+                        return False, False, "no \"Track ends\": " + " | ".join(lines_since(m_))[-200:]
+                    m = m_
+                t0 = time.time()
+                samples = []
+                while time.time() - t0 < 32 and not any(t.startswith(ends) for t in lines_since(m)):
+                    samples.append(walk_pos()[0])
+                    time.sleep(0.2)
+                took = time.time() - t0
+                time.sleep(1.5)
+                a = walk_pos()[0]
+                time.sleep(1)
+                b = walk_pos()[0]
+                top = max(samples + [a, b])
+                lines = [t for t in lines_since(m) if t.startswith(("Stopping", "Track ends")) or t.startswith(ends)]
+                heard = v(f"heard 200 since {n0}")
+                thr = [int(d["msg"].split()[1]) for d in (json.loads(l) for l in ([] if heard == "none" else heard.splitlines()))
+                       if d.get("type") == "OwnerSay" and d.get("msg", "").startswith("throttle ")]
+                below = any(t < 0 for t in thr)
+                back = below or b < top - 0.4
+                ok = "Stopped." in lines and bool(thr) and thr[-1] == 0 and not below and abs(b - a) < 0.3 and not back
+                st = api("SojournWalk", "status")
+                return ok, back, (f"{took:.1f} s: {' | '.join(lines)}; throttle {' '.join(map(str, thr))}; counted "
+                                  f"{st.get('throttle_taps')}; furthest {top:.1f}, now {b:.1f} (last second {abs(b - a):.2f} m)")
+            finally:
+                key("esc")
+                wait_focus(lambda d: d["id"] == "chatInput", 5)
+                say_in_app("//stand")
+                time.sleep(1.5)
+                v("derez Walk Train", timeout=15)
+
+        kinds = {"text": "hover 1 quiet 1 lose 3", "lines": "lose 3", "none": "quiet 1 lose 3", "start": "quiet 1 start 20"}
+        pick = [k for k in os.environ.get("ACCESS_STOP_KINDS", ",".join(kinds)).split(",") if k in kinds]
+        tally = {}
+        for i in range(int(os.environ.get("ACCESS_STOP_TRIALS", "1"))):
+            for kind in pick:
+                for how in ("space", "end"):
+                    ok, back, detail = trial(kind, kinds[kind], how)
+                    t = tally.setdefault(f"{kind} by {'Space' if how == 'space' else 'the track end'}", [0, 0, 0])
+                    t[0] += 1
+                    t[1] += 0 if ok else 1
+                    t[2] += 1 if back else 0
+                    run.check(f"trial {i + 1}, {kind}, stopped by {'Space' if how == 'space' else 'the track end'}", ok, detail)
+        if tally:
+            print("     (trials: " + "; ".join(f"{k}: {f} of {n} failed, {b} moved back or below 0" for k, (n, f, b) in tally.items()) + ")")
     finally:
         say_in_app("//stand")
         time.sleep(1)
@@ -6076,6 +6244,200 @@ def route_recording(run):
             clear_course(tester_id)
         say_in_app("//tp Atelier/%d/%d/%d" % TP_TO)
         time.sleep(5)
+
+
+RIDE_MARKERS = (("Red Buoy", 62), ("Old Lighthouse", 82), ("Splash Pool", 102))   # beside the way, 4 m north of it
+
+
+def ride_recording(run):
+    """A ride recorded and told (Walk/RideRecorder.cs, MainForm.Rides.cs; the blind tester's wish to ride a waterslide
+    and hear it described after, 2026-11-01), and V reading what the seat shows (her partner's train shows its throttle
+    and speed as floating text). On a flat stretch of Atelier East: three named markers 4 m north of the way east, and
+    the visitor's throttle train showing "Throttle N%" and "Speed N km/h" as floating text. Seated, in walk mode: V says
+    it isn't moving and what it shows, Shift+V only what it shows, //text from Say the same. C starts recording (said);
+    three taps of Up open the throttle to 30% (3 m/s); V while moving adds what it shows; H answers within a second
+    while pictures are taken (on the processor too); past the markers Space stops it, and once it's been still 8 s the
+    recording ends by itself (said). SojournRide: moments every 3 s, pictures taken (one at a time, a due one skipped
+    rather than queued), the markers among the names passed in order, the floating text and the train's lines kept.
+    Then: with ACCESS_RELAY, Shift+C tells it, naming the markers in order, and what the telling cost; without it, Shift+C
+    says what the recording knows, the markers in order."""
+    back_to_chat()
+    m = mark()
+    say_in_app(f"//tp {COURSE_REGION}/100/60/40")
+    if not run.expect("(to Atelier East for the ride)", ["Arrived", COURSE_REGION], m, 40):
+        return
+    time.sleep(2)
+    x0, x1 = 40, 125
+    xs = list(range(x0 - 5, x1 + 11, 10))
+    y = None
+    for yy in range(16, 200, 8):
+        hs = api("TesselAgent", "ground", points=[[x, yy] for x in xs])["heights"]
+        if all(h is not None for h in hs) and max(hs) - min(hs) < 1.2:
+            hs4 = api("TesselAgent", "ground", points=[[x, yy + 4] for x in xs])["heights"]
+            if all(h is not None for h in hs4):
+                y, ground = yy, dict(zip(xs, hs))
+                break
+    if not run.check("(a flat stretch of Atelier East for the ride)", y is not None, ""):
+        return
+
+    def g(x):
+        return ground[min(ground, key=lambda k: abs(k - x))]
+
+    ray = api("SojournCollision", "collide", **{"from": [x0, y, g(x0) + 0.8], "dir": [1, 0, 0], "max": x1 + 10 - x0})
+    if not run.check("(nothing in the train's way along it)", not ray.get("hit"), json.dumps(ray)):
+        return
+
+    def lines_since(m_):
+        return [e.get("text") or "" for e in said_since(m_)]
+
+    try:
+        v(f"tp {COURSE_REGION} {x0 + 10} {y + 10} {g(x0) + 1.5}", timeout=40)
+        time.sleep(1.5)
+        for name, x in RIDE_MARKERS:
+            got = v(f"rez {name} {x} {y + 4} {g(x) + 0.6}", timeout=30)
+            run.check(f"(the {name} marker is out)", got.startswith("rezzed"), got)
+        train = v(f"kart Ride Train {x0} {y} {g(x0) + 0.4} facing 0 throttle 10 hover 1", timeout=60)
+        if not run.check("the visitor's throttle train is out, showing its floating text", train.startswith("kart"), train):
+            return
+        go_tp(run, "the tester beside the train", x0 - 1, y - 2, g(x0) + 1.5)
+        m = mark()
+        say_in_app("//sit Ride Train")
+        if not run.expect("the train's script takes the keys", ["kart controls taken"], m, 15):
+            return
+        key("f3")
+        wait_focus(lambda d: d["id"] == "walkPad", 5)
+        time.sleep(1)
+
+        # what it shows
+        m = mark()
+        key("v")
+        run.expect("V seated and still: it isn't moving, and what it shows", ["Ride Train isn't moving.", "It shows: Throttle 0%, Speed 0 km/h."], m, 5)
+        m = mark()
+        key("shift+v")
+        run.expect("Shift+V: only what it shows", ["Ride Train shows: Throttle 0%, Speed 0 km/h."], m, 5)
+
+        # recording, and the ride
+        m = mark()
+        key("c")
+        said = run.expect("C starts recording the ride, said", ["Recording the ride"], m, 5)
+        print(f"     ({(said or {}).get('text', '')})")
+        rs = api("SojournRide", "status")
+        run.check("(recording)", rs.get("recording"), json.dumps(rs)[:200])
+        t_start = time.time()
+        time.sleep(1)
+        m = mark()
+        for _ in range(3):
+            key("up")
+            time.sleep(0.45)
+        run.expect("(the throttle opened to 30)", ["throttle 30"], m, 6)
+        time.sleep(3)
+        m = mark()
+        key("v")
+        got = run.expect("V while moving: its speed, then what it shows", ["Ride Train:", "a second", "It shows: Throttle 30%"], m, 5)
+        print(f"     ({(got or {}).get('text', '')})")
+        # responsive while pictures are taken: H answered quickly, each time
+        waits = []
+        for _ in range(4):
+            m = mark()
+            t0 = time.time()
+            key("h")
+            if walk_said(m, ["Facing"], 5):
+                waits.append(time.time() - t0)
+            time.sleep(1.3)
+        run.check("H answers within a second while the ride is recorded, every time", len(waits) == 4 and max(waits) < 1.0,
+                  ", ".join(f"{w:.2f} s" for w in waits))
+        # on past the markers
+        far = RIDE_MARKERS[-1][1] + 8
+        reached = wait(lambda: walk_pos()[0] >= far or None, 45, 0.5)
+        run.check(f"(the train past the last marker, x {far})", reached, f"at {walk_pos()[0]:.1f}")
+        m = mark()
+        key("space")
+        run.expect("(Space stops the train)", ["Stopped."], m, 15)
+        said = run.expect("still for 8 s: the recording ends by itself, said", ["ride recorded"], m, 25)
+        print(f"     ({(said or {}).get('text', '')}; recorded {time.time() - t_start:.0f} s)")
+        rs = api("SojournRide", "status")
+        ride = rs.get("ride") or {}
+        print(f"     (ride: {ride.get('seconds')} s, {ride.get('moments')} moments, {ride.get('taken')} pictures taken, "
+              f"{ride.get('skipped')} skipped, last {ride.get('last_picture_ms')} ms; passed {ride.get('names_passed')})")
+        run.check("(stopped: not recording)", not rs.get("recording") and ride.get("ended") == "the ride stopped moving", json.dumps(rs)[:300])
+        run.check("a moment every 3 s or so", ride.get("moments", 0) >= ride.get("seconds", 0) / 3.5, f"{ride.get('moments')} in {ride.get('seconds')} s")
+        if not VIEWLESS:
+            run.check("pictures taken along the way", ride.get("taken", 0) >= (2 if SOFTWARE else 4), f"{ride.get('taken')} taken, {ride.get('skipped')} skipped")
+        names = [n for n, _ in RIDE_MARKERS]
+        passed = [n for n in ride.get("names_passed") or [] if n in names]
+        run.check("the markers among the names passed, in order", passed == names, json.dumps(ride.get("names_passed")))
+        run.check("what the train showed kept as it changed", any("Throttle 30%" in s for s in ride.get("shows") or []), json.dumps(ride.get("shows"))[:300])
+        run.check("the train's own lines kept", any("throttle 30" in s for s in ride.get("said") or []), json.dumps(ride.get("said"))[:300])
+        got = api("SojournRide", "get", 30, detail="brief")
+        moments = (got.get("ride") or {}).get("moments") or []
+        pics = [mo["picture"] for mo in moments if mo.get("picture")]
+        if pics:
+            import base64
+            for i, p in enumerate(pics[:3]):
+                (OUT / f"ride-{i}.jpg").write_bytes(base64.b64decode(p["jpeg"]))
+            sizes = [len(base64.b64decode(p["jpeg"])) for p in pics]
+            print(f"     ({len(pics)} pictures for a brief telling, {min(sizes) // 1024}-{max(sizes) // 1024} KB each; ride-0.jpg in the run's folder)")
+        if not VIEWLESS:
+            run.check("the pictures go with their moments, JPEG at 640x360, each with what's seen in it",
+                      pics and all(p.get("width") == 640 and p.get("height") == 360 and "seen" in p for p in pics), f"{len(pics)} pictures")
+
+        # told
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+        m = mark()
+        say_in_app("//text")
+        run.expect("//text from Say: what the seat shows", ["Ride Train shows: Throttle"], m, 5)
+        key("f3")
+        wait_focus(lambda d: d["id"] == "walkPad", 5)
+        m = mark()
+        t0 = time.time()
+        key("shift+c")
+        if not RELAY:
+            said = run.expect("Shift+C without the assistant: what the recording knows, the markers in order",
+                              ["What the recording knows", "passing"], m, 10)
+            text = (said or {}).get("text") or ""
+            at = [text.find(n) for n in names]
+            run.check("(the markers in order there)", all(a >= 0 for a in at) and at == sorted(at), text[-300:])
+        else:
+            run.expect("Shift+C: telling your ride", ["Describing your ride"], m, 10)
+            # the telling arrives in parts, a few sentences at a time: all of it once it's quiet
+            first = wait(lambda: next((e for e in said_since(m) if len(e.get("text") or "") > 60), None), 150)
+            time.sleep(6)
+            text = " ".join(t for t in lines_since(m) if not t.startswith("Describing"))
+            print(f"     (told in {time.time() - t0:.1f} s: {text[:900]})")
+            at = [text.find(n) for n in names]
+            run.check("the telling names the markers, in the order passed", first and all(a >= 0 for a in at) and at == sorted(at), text[:400])
+            timing = None
+            tf = ROOT / "local" / "assistant" / "timings.jsonl"
+            if tf.exists():
+                for line in tf.read_text(encoding="utf-8").splitlines()[-20:]:
+                    try:
+                        rec = json.loads(line)
+                    except ValueError:
+                        continue
+                    if rec.get("mode") == "describer" and rec.get("t", 0) >= t0 - 1:
+                        timing = rec
+            if timing:
+                print(f"     (the telling: {timing.get('model')}, {json.dumps(timing.get('usage'))}, {timing.get('model_s')} s of the model)")
+            # more: the same key again
+            m = mark()
+            key("shift+c")
+            run.expect("Shift+C again: more", ["More on your ride"], m, 10)
+            more = wait(lambda: next((e for e in said_since(m) if len(e.get("text") or "") > 60), None), 150)
+            time.sleep(6)
+            text2 = " ".join(t for t in lines_since(m) if not t.startswith("More on"))
+            print(f"     (more: {text2[:600]})")
+            run.check("(and it tells more)", more, text2[:200])
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+    finally:
+        say_in_app("//stand")
+        time.sleep(1)
+        try:
+            v("derez Ride Train", timeout=15)
+        except Exception:
+            pass
+        clear_owned(COURSE_REGION, visitor_id())
 
 
 def route_crossing(run):

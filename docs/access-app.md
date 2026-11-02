@@ -299,7 +299,8 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   own (Uploading, below).
 - Ctrl+Shift+T: times in the chat histories ("[14:05] Kestrel: hi", from the next line) or not.
 - F3: walk mode (below); F3 or Escape again leaves it. R there, or `//record` anywhere, records a route by walking it
-  (Walk mode > Recording a route).
+  (Walk mode > Recording a route); C there, or `//ride`, records a ride to hear it told after (Walk mode > Recording a
+  ride).
 - Ctrl+D: describe what's selected, or else where you are; Ctrl+Shift+D: you and what you're wearing; the same key
   again on the same thing: more (Describing, below).
 - Ctrl+Shift+A: arrivals and departures within chat range read out, or none (Read-out, below).
@@ -319,6 +320,31 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   below).
 - F4 (`access_talk_key`: f4, f12, scroll_lock, pause) held: talk in voice, with a click as the mic opens and closes;
   Shift+F4 push-to-talk or open mic; Ctrl+Shift+V who's in voice (Voice chat, below).
+
+### Long lines
+
+A blind tester's wish (2026-11-02), after a pasted description lost its end in an IM: Second Life cuts a chat line or
+IM at 1023 bytes of UTF-8, so a longer one goes as several messages, in order. The session does the splitting
+(`Sojourn.Core/Agents/ChatSplit.cs`, in `LLChatBar sendChat` on channel 0 and `TesselIM send`, for IMs, group chat and
+conferences alike), so the assistant's messages and the VR client's dictation are split too; `MainForm.LongLines.cs` is
+Access's side.
+- Each part is at most 1000 bytes (room to spare under the grid's 1023), ending at a sentence's end that falls in its
+  second half (. ! ? or ..., then a space and no lowercase letter, so "e.g. this" isn't one; full-width marks too),
+  else at a clause's (comma, semicolon, colon, dash), else between words, else between characters, never inside one
+  (whole grapheme clusters). An emote stays one: every part after the first starts "/me ". A line to a script's
+  channel goes as it is.
+- Parts go 0.6 s apart, so they arrive in order; a line sent while another's parts are going waits its turn. Once
+  begun, every part goes.
+- Said once all have gone: "Sent in 3 parts." Her own read-back skips the parts (each is matched as it comes back, by
+  its words): she wrote them, and a pasted description read back again would run on for minutes.
+- A line that would go as more than ten messages says "That's long enough for 13 messages. Enter again sends them
+  all." and stays in the box; Enter again sends it (a whole notecard pasted by mistake would otherwise go to a group).
+- The input boxes have no length limit now (Say's and a conversation's were 1023 characters, which cut a paste short
+  without a word), and a paste into any one-line box keeps all its lines, joined by spaces (`LineBox`: Windows'
+  one-line edit control pastes only up to the first line break, and Control+Shift+L's copy of an answer has
+  paragraphs).
+- `//` commands send nothing to chat (a route's lines that aren't commands are read as notes), so nothing there needs
+  splitting.
 
 ### People beside chat
 
@@ -369,7 +395,8 @@ the window's bottom-left corner and reads its name and its children's, so "Statu
   was read was lines said again, many of them heard already, her own over and over.
 - Her own lines (said, whispered, shouted, emotes, IMs) are read back in the same words as others' (Alt+0 "My own lines
   read back", `access_read_mine`, on by default, her wish): nearby once the region echoes them, so she hears they went
-  out; IMs as they're sent (the grid echoes none). Each is read back once; typing on over it doesn't bring it back.
+  out; IMs as they're sent (the grid echoes none). Each is read back once; typing on over it doesn't bring it back. A
+  long line sent in parts isn't read back; "Sent in 3 parts." is said instead (Long lines, above).
 - One-off notices (friends online, alerts, a teleport that failed) are also status lines in the nearby chat history,
   as in Radegast.
 - Friends online at login are one line (`MainForm.FriendsOnline.cs`): the grid tells of every friend online as the
@@ -480,6 +507,8 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//touch NAME` / `OBJECT PART` / `NAME face DIR` | touch a thing or part by name within 10 m, on a face if given (Parts and faces, below) |
 | `//switch` / `flip` / `main` / `branch` | the next rail switch and how it's set; throw it; set it to the main line or the branch, throwing it only if it isn't already (walk mode's W and Shift+W; Rail switches, below) |
 | `//stop` | as Space in walk mode, from anywhere: seated on something moving, stop it by its controls (Stopping a vehicle, below); otherwise stop a walk, a follow or a route |
+| `//ride` / `stop` / `describe` / `more` | record a ride: start (or, recording, how it's going), stop, have it told, tell more (walk mode's C and Shift+C; Walk mode > Recording a ride) |
+| `//text` / `//text NAME` | floating text: what you're sitting on shows (walk mode's Shift+V), or the nearest thing within 30 m with that name in its name ("Ride Train shows: Throttle 30%, Speed 11 km/h.") |
 | `//outfit` | what you're wearing, by name (Ctrl+Shift+W) |
 | `//upload` / `//upload PATH` | upload a file: the Open window, or the file at PATH (Ctrl+U; Uploading, below) |
 | `//describe [here|me|NAME|person NAME|object NAME|more]` | describe (Describing, below) |
@@ -490,7 +519,12 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//help [word]` | the commands |
 
 `//go xyz` takes coordinates past the region's edge (over 256, below 0: a recorded route's crossing, Recording a route,
-below) and walks there straight by the autopilot, judged arrived by where the avatar is in the region it set out from.
+below) and walks there straight by the autopilot, judged arrived by where the avatar is in the region it set out from,
+and only once it's across, as the route's next line is in the next region's frame. The region's autopilot stops the
+avatar at its edge without crossing (the local grid's did, 2026-11-02), so one standing there 1.5 s is walked across by
+the forward control, facing the goal. A walk ended or stopped cancels the region's autopilot through
+`Commands.CancelAutoPilot`, never seated: LibreMetaverse cancels by a press of forward, which a vehicle's script hears
+as Up (a train opened a step by the first tap after a `//go`).
 `//go` walks by the region's own autopilot, as Radegast's, around what's in the way (Paths, below): "Walking 9 m to
 232, 43, around something in the way: 3 stretches.", then each new stretch ("2 of 3: 2 m to the west-northwest."). It
 ends, once the avatar has stopped, with "Finished walking, under a metre from the destination." (or how far, and
@@ -526,7 +560,7 @@ window and every viewer send them); the local collision model only tells you wha
 | Home | fly, or land ("Flying." / "Not flying: landing.") |
 | Space | stop everything: the keys, a `//go`, a follow, a route ("Stopped."); seated on something moving, stop it by its controls ("Stopping.", then "Stopped.": Stopping a vehicle, below) |
 | H | heading: "Facing northeast, 45 degrees." (Second Life's degrees, 0 east, counter-clockwise, as `//face` takes them) |
-| V | speed: "Walking, 3 m a second, to the north." / "Standing still." / seated, the vehicle's |
+| V / Shift+V | speed: "Walking, 3 m a second, to the north." / "Standing still." / seated, the vehicle's, then what it shows as floating text when it shows any ("Ride Train: 3 metres a second, to the east. It shows: Throttle 30%, Speed 11 km/h."); Shift+V (or `//text`): only what it shows ("Ride Train shows: ...") |
 | L | where: "Atelier East, 236, 52, 22, on stone." |
 | A | what's ahead: the first thing straight ahead within 30 m, "Blue Door, 4 m ahead." or "Clear for 30 m ahead." |
 | S | the sonar: walls on four sides, openings by clock face, doors by name; the words and a sweep of sound (below) |
@@ -537,6 +571,7 @@ window and every viewer send them); the local collision model only tells you wha
 | B / Shift+B | where the beacon is ("Beacon on Bench, 4 metres, twelve o'clock." / "Heading to 54, 41, ..."); Shift+B takes one you put on off |
 | R / Shift+R | record a route (Recording a route, below): R starts, and while recording says how it's going ("Recording: 6 steps, 48 metres walked; the last point is 3 metres, seven o'clock."); Shift+R ends it, asks its name and saves it |
 | N / Backspace / P | while recording: a note here (a box for its words; left empty, just a point); take back the last point or note; pause, or go on |
+| C / Shift+C | record a ride (Recording a ride, below): C starts or stops it; Shift+C has the assistant tell it, again for more |
 | M / Shift+M | how far: "Last walk: 0.9 metres. In all: 4.2 metres. Where the count began: 3.1 metres, six o'clock." (while walking, "... so far"); Shift+M: "Counting from here." (the count also starts again at a teleport) |
 | F1 | these keys |
 
@@ -624,8 +659,8 @@ SLRR-style train driven by the arrows, ran off the end of its track and derailed
 teleport away and walk to where she could rez it again). Her train says so in nearby chat as the track runs out
 ("sensor : No further track guide detected", then "no_sensor : No Guide found"), and she asked for it to just stop.
 - **What starts it**: Space in walk mode, or `//stop` anywhere (Say, a conversation, a route's line), while seated on
-  something moving (over 0.5 m/s); not moving, they stop walks, follows and routes as before. And by itself: a line
-  holding "no further track", "no guide found" or "track guide" (ignoring case, underscores and spacing; more phrases in
+  something moving (over 0.3 m/s: a train at its lowest throttle creeps at 0.5); not moving, they stop walks, follows
+  and routes as before. And by itself: a line holding "no further track", "no guide found" or "track guide" (ignoring case, underscores and spacing; more phrases in
   `walk_track_end_phrases`, a list on SojournSettings, so the assistant can add one asked; not in Alt+0) from the seat
   (any part of its linkset, or anything with its name) or from any of the person's own objects (a train's HUD, a
   locomotive apart from the car she sits in), aloud, to her alone (llOwnerSay, llRegionSayTo) or as an object's IM,
@@ -635,23 +670,73 @@ teleport away and walk to where she could rez it again). Her train says so in ne
   on) turns this off.
 - **How it stops**, as she would: the back control (CONTROL_BACK, Down's), through the same control flags the arrows
   send, held apart from them, so leaving walk mode, the window losing the focus or a notice arriving doesn't let go of
-  it; an arrow pressed meanwhile hands the controls back ("Stop cancelled: the keys are yours."). Held first: a car's
-  brake or reverse thrust slows it at once. Each 1.2 s the speed over that stretch is compared with the one before; not
-  15% slower (a throttle train, whose Down press takes its throttle a step down and no further), Down is tapped instead,
-  a press every 0.3 s, as many times in all as she tapped Up on this seat less the Down taps (walk mode counts them,
-  0-20: her train's throttle goes 5% a tap, so 20 is all the way), or 20 when it doesn't know. Speeds are measured from
-  where the seat goes (a moving seat's position can come only once a second, and a train's reported velocity swung 19,
-  6, 13, 8 m/s), so the judging is over the whole stretch.
-- **Never backwards**: it lets go as soon as the seat is nearly still (its velocity and its last 0.7 s both under
-  0.5 m/s), and at once if it starts moving back the way it came ("Let go: it began moving backward, at 1 metre a
-  second."); taps never go past the count, so a throttle that runs on past 0 into reverse isn't driven there unless she
-  opened it some other way than the arrows. Let go, it says "Stopped." once the last 2 s agree; if it moves off again
-  within the stop, it presses again (while taps remain).
-- **10 s at most**: then it lets go and says "Stopped." or "Couldn't stop it: it's still moving at 4 metres a second."
-  Standing up or being thrown off ends it ("You're no longer seated.").
-- What it assumes of her train, asked: whether Down past 0 reverses it, whether a held Down does more than one step, what it
-  says of its throttle (her partner's script says it in percent: reading that would beat counting taps), and what else
-  it says when the track runs out.
+  it; an arrow pressed meanwhile hands the controls back ("Stop cancelled: the keys are yours."). The first press is
+  timed: without news from the region that it's slowing, it lasts only as long as a car with strong reverse thrust would
+  take to lose the speed (the speed over 30 m/s², 0.15-0.4 s); news of hard slowing ends it while the speed it will have
+  when the let-go acts (200 ms on) is over 0.8 m/s; news of gentle slowing (under 10 m/s², a gentle brake) holds it on,
+  150 ms at a time. 1.2 s from the start, the speed over that stretch is compared with the one before, and the region's
+  velocity with the one at the start: both 15% slower or more (or the first press already showed that), it's a car's
+  brake: later presses are pulses (0.1-1 s), each sent once the last one's effect is in (0.8 s) and as long as the
+  hardest slowing seen says leaves 0.8 m/s, with 40% to spare, or none, and it coasts the rest; not (a throttle train,
+  whose Down press takes its throttle a step down and no further), Down is tapped instead (Taps, below). Taps spent
+  while she drove by holding Up (a second or more: a car, not a throttle) mean a gentle brake the news was too slow to
+  show: pulses. And taken for a car but coasting on without slowing (no pulse safe) for 1.2 s while Up wasn't held,
+  it's a throttle after all (each press took it a step down): taps. Speeds for judging are measured from where the seat
+  goes (a moving seat's position can come only once a second, and a train's reported velocity swung 19, 6, 13, 8 m/s),
+  so the judging is over the whole stretch; the press's own timing goes by the region's velocity, which comes sooner.
+- **Taps by what it says of its throttle** (`Walk/WalkMode.Throttle.cs`, 2026-11-02): a vehicle showing its throttle in
+  the floating text of the seat's linkset ("Throttle 40%", as her partner modded her train to) or saying it from the seat
+  ("throttle 30"; once a line has come, lines win: the text is set on the script's timer, so it lags) is tapped by
+  that from the start, with no first press, Down while it reads over 0 and never below. How far one press moves it is
+  learned from a change that followed a single press (hers or the stop's; the stop's own win). Knowing that, as many
+  taps go out at once, 0.3 s apart, as leave a step to spare should one more be on the way than it seems (a press
+  counts as shown in a line 30 ms after it, in the text 300 ms after), and the last only once every earlier one shows
+  and a while has passed (0.4 s by lines; by the text, 1.5 times how often it changes, 1-3 s). A tap it doesn't show
+  within 1 s (lines) or twice the text's gap (at least 2 s) was lost, and the next goes; three in a row and what it says
+  isn't followed: taps by their effect instead. Below 0 all the same, Up puts it back (three taps at most). Not for a
+  car driven by holding Up, whose throttle falls back by itself.
+- **Taps by the count and their effect**, when it says nothing: as many as she tapped Up on this seat less the Down
+  taps (walk mode counts them, 0-20), half at once, a tap every 0.3 s (Up taps that never reached the script leave the
+  count over, and all at once would take it into reverse); then one at a time, each once the speed along the way has
+  held steady over 0.7 s (a steady speed forward is a throttle still open, for a vehicle whose speed follows its
+  throttle; a falling one may be coasting with the throttle closed, where a tap would be reverse), and only while each
+  slows it (by 3% or 0.08 m/s; one that doesn't, one more try, then "Couldn't stop it: Down doesn't slow it any more;
+  it's moving at 1 metre a second."). Past the count (a tap lost on the way, or a throttle opened some other way, leaves
+  it short) up to 20 more. Each takes about 1.7 s to show on the visitor's train, so once two in a row took about the
+  same off (within a quarter), half the steps the speed left implies go at once (by the larger of the two). With no
+  count (she didn't tap Up on this seat), every tap is by its effect.
+- **Never backwards**: a car's back control is often reverse thrust. The visitor's kart, held, lost 9.7 m/s in half a
+  second and went on backing, faster than the region's news of it comes (a velocity every 60-125 ms, showing a press
+  only ~150 ms after it, and a let-go takes as long again to act): held until the news said nearly still, it backed in
+  34 of 40 runs, by up to 1.7 m (2.8 m with the window's thread stalling), and the scripted test failed 30 of them
+  (2026-11-02). Hence the timed presses above, and a thread of the stop's own that lets go when a press's time is up, so
+  a busy window can't hold it on. Timed, the kart never backed in 90 runs (plain, with the window's thread stalling,
+  with the news 150 ms late, under full CPU load); the cost is a longer stop for a car that strong: it's let go at about
+  3 m/s and coasts, stopping in about 4 s, 2-5 m further on than a hold would. It still lets go at once if the seat
+  starts moving back the way it came ("Let go: it began moving backward, at 1 metre a second."), and as soon as it's
+  nearly still (its velocity and its last 0.7 s both under 0.5 m/s). A throttle is never tapped below 0 by what it
+  says, and by the count only half at once and the rest at a steady speed forward.
+- **"Stopped."** only once it's nearly still: under 0.2 m/s over the last 2 s by where the seat went, and by the
+  region's velocity (the visitor's train at 5% creeps on at 0.5 m/s, which the earlier 0.5 m/s mark called stopped).
+- **10 s at most**, longer while taps are taking effect (6 s more after each drop of the throttle it says, 4 s after
+  each tap by effect that slowed it, 10 s from when those began; 25 s in all): then it lets go and says "Stopped.",
+  "Couldn't stop it: it's still moving at 4 metres a second." or "Couldn't stop it: its throttle is at 0, but it's still
+  moving at 2 metres a second." Standing up or being thrown off ends it ("You're no longer seated.").
+- **Why** (2026-11-02): a full test run's ride step left the visitor's train at 10%, creeping on at 0.9 m/s ("Couldn't
+  stop it"): it was at 40% while walk mode had counted three Up taps, and the stop tapped only the count. A tap lost on a busy region does the same, and an Up tap lost leaves the count over, which taps into
+  reverse. The step's trials (`docs/access-testing.md`) take trains losing every third press, said by text, by lines or
+  not at all, and one opened to 20% before the arrows, each stopped by Space and at the track's end: none failed,
+  went below 0 or moved back in 80 (10 of each), and the kart never backed in 10. Stops took, by Space and at the
+  track's end: by lines 5.7 and 6.4 s, by the text 9.8 and 8.6 s (its text changes once a second), with nothing said
+  11.2 and 12.1 s, and from 20% before the arrows 13.0 and 15.0 s (from 60%: about 40 m past where the end was said).
+- What it assumes of her train, asked: whether Down past 0 reverses it, whether a held Down does more than one step,
+  whether its floating text changes at once or on a timer, and what else it says when the track runs out.
+
+**What the vehicle shows** (2026-11-01, after the blind tester's partner modded her train's floating text to show its
+speed and throttle): seated, V adds the floating text of the seat's linkset (llSetText on any of its parts, the root's
+first, each part's lines joined by commas, parts by semicolons), and Shift+V or `//text` says it alone. Only the seat's
+linkset: a locomotive apart from the car she sits in, or a HUD showing the speed, isn't read (`//text NAME` reads a
+thing's by name, its root's only).
 
 **The collision model** (2026-10-30, so walk mode works on a PC that can't run the renderer, as the blind tester's
 couldn't): every ray here (warnings, openings, drops, the surface underfoot, the sonar, A and T, paths, placing by
@@ -720,6 +805,54 @@ as `//route` will count them (its `//` lines); R says the count, the distance wa
 Backspace says what it took back ("Took back the point at a doorway. 4 steps; the last point is 2 metres, six o'clock.");
 P pauses (where she stands kept) and goes on: from over 30 m away or another region by a teleport (the route can't know
 the way), else a walk from the last point. The recording lives in the app only until saved: logging out loses it.
+
+**Recording a ride** (`Walk/RideRecorder.cs`, `MainForm.Rides.cs`, `Walk/RideApi.cs`; Claude Opus 5.5, 2026-11-01, after
+the blind tester wished to ride a carnival waterslide, "arrow keys make you go faster, sometimes so fast you fly off",
+and hear it described afterwards). C in walk mode (or `//ride`, or World > Recording a ride) starts it: "Recording the
+ride: a picture every few seconds and what's around, kept on this PC until you ask. C stops it, or it stops when you
+stand up or the ride does; Shift+C then tells it." Any time: standing in the queue, or already seated and moving.
+- **What it keeps**, every 3 s a moment: the time from the start, the region, speed over the ground, which way it's
+  going, climbing or falling, height and distance from the start, what she rides (when it changes), the named things
+  and people within 20 m by name and where from her going that way (never what she rides), objects' lines (the seat's
+  own, her own things', one said to her alone, or any object's within 20 m; never people's chat), and the seat's
+  floating text when it changes. Every few seconds a picture from her eyes, looking the way she's going (tipped as it
+  climbs or falls), 640x360, 90 degrees across, JPEG (15-30 KB on the local grid), with what's visible in it by name
+  (`DescribeApi.MovingPictureAsync`: a `Quick` shot, taken once the place's short settling ends, waiting for no one's
+  look, since by then it's somewhere else).
+- **Not stalling her PC**: one picture at a time; the next at least 2.5 times as long after as the last took (3 s at
+  the quickest, 15 s at most), and one due while another is still drawing is skipped, never queued. The view draws on
+  its own thread below normal priority (the processor's driver threads too), so walk mode's keys and the screen reader
+  come first. At most 40 pictures kept (a ride's 2 MB or so): past that every other one goes and they come half as
+  often, so a long ride keeps its whole length. Pictures only while the view is drawing and the assistant is on to
+  tell them; otherwise it records the moments alone and says so ("without pictures (the assistant isn't on to tell
+  them)").
+- **Ending**: C again or `//ride stop` ("Ride recorded: 1 minute 24 seconds, 28 pictures. Shift+C tells it."); by itself
+  3 s after she stands up (longer than a crossing drops a seat for), once a ride she sat on and that moved has been
+  still for 8 s, or at five minutes, each said ("The ride stopped moving: ride recorded, ...").
+- **Told**: Shift+C in walk mode (or `//ride describe`, World > Recording a ride > Tell the ride) stops a recording
+  still going and sends the ride, through the describe key's path, to one lean call (`describer.py` RIDE_HOW): the
+  moments in order as lines, each picture after its moment's line, and instructions to tell it as a short story in the
+  second person ("You set off down a steep blue tube ..."), the named things passed by name in the order passed, speeds
+  and drops as felt, a moment without a picture from its facts alone. Brief (four to seven sentences, at most 16
+  pictures chosen evenly through the ride); the same key again within ten minutes, or `//ride more`, a fuller telling
+  with every picture kept, adding to the first. Nothing leaves the PC before she asks; the ride stays until the next
+  starts or she logs out, and one recorded in incognito goes when the spell ends. Without the assistant: "What the
+  recording knows: 38 seconds on Ride Train, from Atelier East; 75 metres travelled, at most 3 metres a second; passing
+  Access Visitor, Red Buoy, Old Lighthouse, Splash Pool; 6 lines said by objects." The assistant's describe tool takes `of: ride` too,
+  so "what was that ride like?" in Alt+9 works.
+- **Cost** (economy, Haiku 5.5 high, through the relay, the local grid's test ride): a 40-second ride with 14 pictures
+  was 8.7K tokens in and 1.6K out (1.4K of it thinking): $0.0017, 8.8 s of the model, 17 s from Shift+C to the last
+  sentence read. A picture is ~300 tokens at 640x360, so a brief telling of any ride (16 at most) stays near $0.002 and
+  a rich one of a five-minute ride (40) about $0.004; on best (Opus 5.5 low) about $0.05 and $0.10, reckoned from the
+  same tokens, not measured.
+- SojournRide on the agent API: `status` (recording, the ride's length, moments, pictures taken, skipped and thinned,
+  the last picture's time, the names passed in order, what the seat showed and objects said), `get` (what the describer
+  gets; the sidecar asks only when she has it told).
+- Checked on the local grid (`tools/access.py` step "recording a ride", `docs/access-testing.md`) on the GPU, on the
+  processor (`ACCESS_NO_GPU=1`: the first pictures 1.1-1.4 s while its shaders compiled, then 40-150 ms on this PC's
+  twelve threads, none skipped, H answered in 0.05 s throughout) and with neither view nor assistant.
+- Not seen yet: a real ride on Second Life (a waterslide's tube, a coaster), pictures on the processor during a busy
+  place's ride on her 2400G, and whether the telling's length and voice suit her.
 
 ### Parts and faces
 
@@ -948,7 +1081,8 @@ as part of you, anything else by its picture: a texture's or snapshot's own, els
 you are. Ctrl+Shift+D: you and what you're wearing. The same key again on the same thing (within ten minutes) asks for
 more: brief by default (a few sentences, the gist first), rich on asking, added to what was said rather than repeated.
 Also Describe on the Applications key of people, friends and objects, Describe pictures (or Ctrl+D) in a profile's
-window, and `//describe` (here, me, NAME, person NAME, object NAME, more).
+window, and `//describe` (here, me, NAME, person NAME, object NAME, more). A ride recorded in walk mode is told the
+same way, by Shift+C there or `//ride describe` (Walk mode > Recording a ride).
 
 It says "Describing Kestrel." at once; the description arrives as the assistant's reply, read out whole, a few
 sentences at a time in turn (`AccessWiring.WholeReplies`; other announcements are cut at 700 characters), kept in
@@ -1434,7 +1568,9 @@ it).
     `uploadLook`'s `clips` (a sound of any length cut as `Media/SoundClips.cs` plans; one `max_cost` for the set).
   - For describing (M5): `OffscreenRenderer.ShootAsync` (`OffscreenRenderer.Shots.cs`: shots planned on the render
     thread, each drawn until loaded, at most 3 s, 4 rich, its pixels waited for, then the 16 x 9 grid of picks),
-    `DescribeApi` registered by `SessionHost.StartDescribe` (Access only), `SessionHost.App` / `AssistantHost.App`
+    `DescribeApi` registered by `SessionHost.StartDescribe` (Access only), `DescribeApi.MovingPictureAsync` and
+    `ShotSpec.Quick` (a ride's pictures: from the eyes along the way it goes, JPEG, waiting for no one's look),
+    `SessionHost.App` / `AssistantHost.App`
     ("access", in the sidecar's hello, so its prompt and context line say Sojourn Access and the describe tool is
     offered; null in the VR client, whose prompt and tools are as before).
   - For HUDs out of sight (2026-11-01): Render's `FrameRenderer.RenderHud` (the HUD pass with no world view;

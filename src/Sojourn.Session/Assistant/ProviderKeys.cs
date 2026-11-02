@@ -30,7 +30,11 @@ public static class ProviderKeys
 
     /// <summary>A packaged build's setting that names no provider it offers ("claude", from the old default or a run that
     /// had it): the provider of a key or token already kept, or null (none chosen yet).</summary>
-    public static string? FallbackFor(string kind) => ClaudeOffered || Kinds.Contains(kind) ? null : Kinds.FirstOrDefault(Has);
+    public static string? FallbackFor(string kind) => ClaudeOffered || Kinds.Contains(kind) || kind == Agent ? null : Kinds.FirstOrDefault(Has);
+
+    /// <summary>The person's own agent (Claude Code or similar, on this PC) as the assistant: no key and no provider of
+    /// Sojourn's; the client starts in dev mode (docs/dev-mode.md). Chosen in the launcher.</summary>
+    public const string Agent = "agent";
 
     // what a key looks like (provider.py's SHAPES): anything else pasted is refused, never kept
     static readonly Dictionary<string, Regex> Shapes = new()

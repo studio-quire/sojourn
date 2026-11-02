@@ -17,7 +17,7 @@ public sealed class TesselAgent : SessionApi
         Op("give", "{to, item_id | folder_id}: sent to them as an inventory offer they accept or decline", GiveAsync);
         Op("attach", "{item_id, point?, replace?}", AttachAsync);
         Op("detach", "{item_id | object_id}", DetachAsync);
-        Op("attachPoints", "-> {points}", AttachPoints);
+        Op("attachPoints", "-> {points: [{id, name, hud, objects: [{object_id, item_id, name}]}]}: every attachment point and what I wear on it", AttachPointsAsync);
         Op("offerFriendship", "{to, message?}", a => { C.Friends.OfferFriendship(To(a), a.Str("message") ?? ""); return new JsonObject(); });
         Op("offerTeleport", "{to | ids, message?}", a =>
         {
@@ -268,23 +268,24 @@ public sealed class TesselAgent : SessionApi
         throw new LeapError("need the worn item_id or object_id");
     }
 
-    JsonNode? AttachPoints(JsonObject a)
+    async Task<JsonNode?> AttachPointsAsync(JsonObject a, CancellationToken ct)
     {
         var c = C;
         var w = W;
         var me = w.AvatarById(c.Self.AgentID);
         var byPoint = new Dictionary<int, JsonArray>();
-        if (me is not null)
-            foreach (var p in w.Prims.Values.Where(p => p.ParentID == me.LocalID))
+        var worn = me is null ? new List<Primitive>() : w.Prims.Values.Where(p => p.ParentID == me.LocalID).ToList();
+        var names = await S.Objects.WornNamesAsync(w, worn, TimeSpan.FromSeconds(4), ct);
+        foreach (var p in worn)
+        {
+            var pt = (int)p.PrimData.AttachmentPoint;
+            if (!byPoint.TryGetValue(pt, out var arr)) byPoint[pt] = arr = new JsonArray();
+            arr.Add(new JsonObject
             {
-                var pt = (int)p.PrimData.AttachmentPoint;
-                if (!byPoint.TryGetValue(pt, out var arr)) byPoint[pt] = arr = new JsonArray();
-                arr.Add(new JsonObject
-                {
-                    ["object_id"] = p.ID.ToString(), ["item_id"] = AgentInventory.AttachItemId(p).ToString(),
-                    ["name"] = p.Properties?.Name ?? "",
-                });
-            }
+                ["object_id"] = p.ID.ToString(), ["item_id"] = AgentInventory.AttachItemId(p).ToString(),
+                ["name"] = names[p.ID],
+            });
+        }
         var points = new JsonArray();
         for (var i = 1; i < ObjectViews.AttachPointNames.Length; i++)
             points.Add(new JsonObject

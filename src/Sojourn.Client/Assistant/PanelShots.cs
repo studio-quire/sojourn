@@ -48,6 +48,31 @@ public static class PanelShots
         Shot("4f-answer-paged-lit", State(paged, also: p => p.SetHover(1)));
         // replying: the last answer stays while the next request is heard and worked on, then is a strip above the next
         foreach (var (name, panel) in Replying()) Shot(name, Drawn(panel));
+        // German, a long language: the working line (the agent writes its own in the person's language), the point
+        // question's how-to line, choices
+        Lang.Use("de");
+        Shot("de-3-working", State(s =>
+        {
+            s.Hint = Hint; s.Heard = "Was sollten wir als Nächstes beim Bau ausprobieren?"; s.Working = true; s.Model = "haiku 5.5";
+            s.Status = "Ich sehe in den Notizen des Projekts nach, was noch nicht ausprobiert wurde...";
+        }));
+        Shot("de-3c-working-longer", State(s =>
+        {
+            s.Hint = Hint; s.Heard = "Was sollten wir als Nächstes beim Bau ausprobieren?"; s.Working = true; s.Model = "anthropic/claude-sonnet-5.5";
+            s.Status = "Ich sehe in den Notizen des Projekts, im Build-Protokoll und in den letzten drei Sitzungen nach, was noch "
+                + "nicht ausprobiert wurde, und wäge ab, was sich von hier aus am schnellsten prüfen lässt...";
+        }));
+        Shot("de-4h-reply-working", Drawn(Replying().First(x => x.Name == "4h-reply-working").Panel));
+        Shot("de-5c-point", State(s =>
+        {
+            s.Hint = Hint; s.Heard = "setz dich auf den Stuhl da";
+            s.PointAsk = "Am Fenster stehen drei Stühle. Welchen meinst du?"; s.Pointing = "Korbsessel · 3 m";
+            s.PointHow = "Point, then pull the trigger";
+        }));
+        Shot("de-5b-choices-long", State(States().First(x => x.Name == "5b-choices-long").State));
+        Shot("de-6-confirm", State(States().First(x => x.Name == "6-confirm").State));
+        Shot("de-3e-no-agent", State(States().First(x => x.Name == "3e-no-agent").State));
+        Lang.Use("en");
         var look = new PanelLook();
         Shot("7b-settings-view-paged", Panel.DrawMenu(look, ViewTabs, 3, ViewRows, null, -1, scale, 1, 0, 44 / UiSize.BaseDegPerPx));
         Shot("7c-settings-view-paged-2", Panel.DrawMenu(look, ViewTabs, 3, ViewRows, null, -1, scale, 1, 1, 44 / UiSize.BaseDegPerPx));
@@ -67,6 +92,9 @@ public static class PanelShots
         Shot("7-settings-moving", Panel.DrawMenu(look, Tabs, 0, MovingRows, null, -1, scale, 1));
         Shot("8-settings-assistant", Panel.DrawMenu(look, Tabs, 1, AssistantRows(0), null, -1, scale, 1));
         Shot("8b-settings-help", Panel.DrawMenu(look, Tabs, 1, AssistantRows(0), HelpLines, -1, scale, 1));
+        // the person's own agent as the assistant (dev mode): its line in the built-in assistant's rows' place
+        Shot("8c-settings-assistant-agent", Panel.DrawMenu(look, Tabs, 1, AgentRows, null, -1, scale, 1,
+            text: Sojourn.Client.Control.SettingsMenu.AgentText));
         // about, the last section (Control/AboutMenu.cs: its own words), and its report page with and without a token
         var aboutTabs = AllTabs.Append("about").ToArray();
         float room = 44 / UiSize.BaseDegPerPx;
@@ -76,6 +104,21 @@ public static class PanelShots
             group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(true)));
         Shot("7o-settings-about-report-no-token", Panel.DrawMenu(look, aboutTabs, 10, ReportRows(false), null, -1, scale, 1, 0, room,
             group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(false)));
+        // the simple menu's "you": log out and quit, the second press asking, a tip; and in German
+        var simpleTabs = new[] { "moving", "assistant", "incognito", "you", "safety", "view", "about" };
+        MenuRow[] Leaving(bool sure) => new[] { new MenuRow("log out", sure ? "sure?" : "out", false), new MenuRow("quit Sojourn", "close", false) };
+        Shot("7p-settings-you-simple", Panel.DrawMenu(look, simpleTabs, 3, Leaving(false), null, -1, scale, 1, 0, room));
+        Shot("7q-settings-you-sure", Panel.DrawMenu(look, simpleTabs, 3, Leaving(true), null, -1, scale, 1, 0, room,
+            tip: (0, Tip("you", Leaving(true)[0]))));
+        Shot("7r-settings-you-tip-last", Panel.DrawMenu(look, simpleTabs, 3, Leaving(false), null, -1, scale, 1, 0, room,
+            tip: (1, Tip("you", Leaving(false)[1]))));
+        var oneRow = new[] { new MenuRow("controls a script took", "release", false) };
+        Shot("7s-settings-one-row-tip", Panel.DrawMenu(look, simpleTabs, 4, oneRow, null, -1, scale, 1, 0, room,
+            tip: (0, Tip("safety", oneRow[0]))));
+        Lang.Use("de");
+        Shot("de-7p-settings-you-simple", Panel.DrawMenu(look, simpleTabs, 3, Leaving(false), null, -1, scale, 1, 0, room,
+            tip: (1, Tip("you", Leaving(false)[1]))));
+        Lang.Use("en");
         // each preset, answering, confirming and as the settings (and how readable, by the measure the assistant's changes get)
         for (int i = 0; i < PanelLook.Presets.Count; i++)
         {
@@ -412,10 +455,29 @@ public static class PanelShots
         yield return ("1-idle", s => { s.Hint = Hint; });
         yield return ("2-listening", s => { s.Hint = Hint; s.Listening = true; s.Pointing = "Fountain"; });
         yield return ("2b-listening-latched", s => { s.Hint = Hint; s.Listening = true; s.Latched = true; });
+        // dev mode with no agent watching yet (assistant/devrelay.py): its line, as a result
+        yield return ("3e-no-agent", s =>
+        {
+            s.Hint = Hint; s.Heard = "where am I?";
+            s.Result = "No agent is watching yet. Start your AI agent on this PC with the sentence the launcher shows under “your agent”.";
+        });
         yield return ("3-working", s =>
         {
             s.Hint = Hint; s.Heard = "put on the grey wool coat"; s.Working = true; s.Model = "haiku 5.5";
             s.Status = "looking in Clothing for coats"; s.Pointing = "Fountain";
+        });
+        // a working line as long as one that ran past the right margin in the headset (64 characters), and one too long
+        // for its two lines
+        yield return ("3b-working-long", s =>
+        {
+            s.Hint = Hint; s.Heard = "what should we try next on the build?"; s.Working = true; s.Model = "haiku 5.5";
+            s.Status = "Checking the project's notes for what hasn't been tried yet...";
+        });
+        yield return ("3c-working-longer", s =>
+        {
+            s.Hint = Hint; s.Heard = "what should we try next on the build?"; s.Working = true; s.Model = "anthropic/claude-sonnet-5.5";
+            s.Status = "Checking the project's notes, the build log and the last three sittings for what hasn't been tried yet, "
+                + "then weighing which of those is quickest to check from here...";
         });
         yield return ("4-answer", s =>
         {
@@ -599,6 +661,16 @@ public static class PanelShots
         MenuRow.Switch("called Wren", true),
         MenuRow.Switch("its character", false, note: "“warmer, a bit cheeky”"),
         MenuRow.Switch("ask before touching others' things", true),
+    };
+
+    static readonly MenuRow[] AgentRows =
+    {
+        new MenuRow("look", PanelLook.Presets[0].Preset, false) { Looks = PanelLook.Presets, Selected = 0 },
+        MenuRow.Switch("adaptive ink", false),
+        MenuRow.Switch("spoken replies", false),
+        MenuRow.Choice("hearing", new[] { "whisper", "parakeet" }, 1),
+        MenuRow.Switch("ask before touching others' things", true),
+        MenuRow.Switch("advanced menu", false),
     };
 
     static readonly string[] HelpLines =

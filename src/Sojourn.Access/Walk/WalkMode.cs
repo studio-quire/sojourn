@@ -212,7 +212,13 @@ public sealed partial class WalkMode
         BeaconTick(b, now);
         SwitchTick(b, now);
         Recorder?.Tick(Reported(b), now);
+        Ride?.Tick(b, now);
     }
+
+    /// <summary>A ride being recorded, or the last one (RideRecorder), fed each tick.</summary>
+    public RideRecorder? Ride { get; set; }
+    /// <summary>The ride keys (C, Shift+C) as `//ride`'s words, for the window.</summary>
+    public Action<string>? RideKey { get; set; }
 
     /// <summary>The body where the region last said it is, standing (not carried on by its velocity, which runs a second
     /// or two past a stop and back: a route recorded from it kept turns that were never walked); seated, as it is.</summary>

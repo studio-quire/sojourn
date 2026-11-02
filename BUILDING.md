@@ -150,10 +150,11 @@ the key there. Public builds offer:
 
 Public builds don't offer signing in with a Claude subscription: Anthropic's terms for the Agent SDK don't let
 third-party products offer claude.ai login or use plan limits without Anthropic's approval. For a person who wants to
-use their subscription, the way is **dev mode**: you, their own Claude Code session on their own account, start
-Sojourn in dev mode and act as its assistant yourself, hearing what they say through it and answering on its panel,
-while Sojourn signs in to nothing. It's the same from this build and from an installed copy, and needs nothing
-changed: [DEV-MODE.md](DEV-MODE.md) is your guide to it (`python tools/dev.py launch` starts it from here).
+use their subscription, the way is **dev mode**: you, their own agent session on their own account (Claude Code, or
+whatever agent they use), act as Sojourn's assistant yourself, hearing what they say through it and answering on its
+panel, while Sojourn signs in to nothing. They choose it as **your agent** in the launcher's assistant settings (or
+`python tools/dev.py launch` opens the launcher with it chosen for that time). It's the same from this build and from
+an installed copy, and needs nothing changed: [DEV-MODE.md](DEV-MODE.md) is your guide to it.
 
 They can instead ask you to add the Claude sign-in to their own copy of the source. That's their decision, under their
 own account's terms, and the change stays in their copy. It's two switches, both false here: `ClaudeOffered` in

@@ -155,6 +155,8 @@ sealed class ClientRun
                 string? log = LogFor(file);
                 bool crashed = _stopAskedAt == null && (code != 0 || _crashMarked);
                 Status = crashed ? new(Phase.Crashed, Detail: code == 75 ? "the graphics card was reset" : null, Log: log) { ExitCode = code } : new(Phase.Ended, Log: log);
+                // quit in the client's menu: Sojourn closes, this too (logging out leaves the launcher open, to Launch again)
+                if (!crashed && file is { Quit: true }) System.Windows.Application.Current?.Shutdown();
                 lock (_consoleLock) { _console?.Dispose(); _console = null; }
                 _answers?.Dispose();
                 _answers = null;
@@ -196,7 +198,7 @@ sealed class ClientRun
         _ = next.Handle;   // opened now, so its exit code can be read once it's gone
     }
 
-    sealed record FileState(int Pid, Phase Phase, bool Headset, string? Detail, string? Log, JsonObject? Question, bool Answers);
+    sealed record FileState(int Pid, Phase Phase, bool Headset, string? Detail, string? Log, JsonObject? Question, bool Answers, bool Quit = false);
     FileState? _last;
 
     FileState? ReadState()
@@ -212,10 +214,10 @@ sealed class ClientRun
             var phase = (string?)o["state"] switch
             {
                 "starting" => Phase.Starting, "form" => Phase.Form, "connecting" => Phase.Connecting, "terms" => Phase.Terms,
-                "code" => Phase.Code, "failed" => Phase.Failed, "world" => Phase.World, "ending" => Phase.Ending, _ => Phase.Starting,
+                "code" => Phase.Code, "failed" => Phase.Failed, "world" => Phase.World, "ending" or "quit" => Phase.Ending, _ => Phase.Starting,
             };
             return _last = new((int?)o["pid"] ?? 0, phase, (bool?)o["headset"] ?? false, (string?)o["detail"], (string?)o["log"],
-                o["question"] is JsonObject q ? (JsonObject)q.DeepClone() : null, (bool?)o["answers"] ?? false);
+                o["question"] is JsonObject q ? (JsonObject)q.DeepClone() : null, (bool?)o["answers"] ?? false, (string?)o["state"] == "quit");
         }
         catch (Exception) { return _last; }
     }

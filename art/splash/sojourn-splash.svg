@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="360" viewBox="0 0 600 360">
+  <!-- Sojourn's splash: Setup's window while it installs (vpk pack's splashImage), rendered by tools/icon.py into
+       sojourn-splash.png beside it. Velopack shows it borderless at its pixel size times the display's scale, and
+       draws its progress bar over the bottom 12 px, edge to edge: so square corners and a track there, nothing else.
+       The launcher's look: a very light blue running straight down, the wordmark in Archivo Light, slate to blue.
+       The icon is filled in at build time: the element with data-icon gets art/icon/sojourn.svg as drawn at its
+       width (data-min/data-max), so the two never drift apart. -->
+  <defs>
+    <linearGradient id="s-back" x1="0" y1="0" x2="0" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E2F0FB"/>
+      <stop offset="0.45" stop-color="#EDF5FC"/>
+      <stop offset="1" stop-color="#F6FAFD"/>
+    </linearGradient>
+    <radialGradient id="s-glow" cx="300" cy="128" r="190" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.85"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="s-ink" x1="232" y1="226" x2="368" y2="282" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2B3F52"/>
+      <stop offset="1" stop-color="#3D78A8"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="600" height="360" fill="url(#s-back)"/>
+  <rect width="600" height="360" fill="url(#s-glow)"/>
+
+  <svg data-icon="" x="208" y="30" width="184" height="184"/>
+
+  <text x="300" y="272" text-anchor="middle" font-family="Archivo Light" font-weight="300" font-size="46"
+        fill="url(#s-ink)">Sojourn</text>
+
+  <!-- the progress bar's track, which Velopack's bar fills from the left -->
+  <rect x="0" y="348" width="600" height="12" fill="#468AB9" fill-opacity="0.1"/>
+  <!-- the rim: an edge on a light desktop, glass light along the top -->
+  <rect x="0.5" y="0.5" width="599" height="359" fill="none" stroke="#5F7F9A" stroke-opacity="0.35"/>
+  <path d="M1 1.5 H599" stroke="#FFFFFF" stroke-opacity="0.9"/>
+</svg>

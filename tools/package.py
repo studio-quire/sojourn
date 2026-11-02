@@ -65,6 +65,8 @@ PACK_ID = "SojournViewer"         # Velopack's id: installs to %LOCALAPPDATA%\\S
 TITLE = "Sojourn"
 AUTHORS = "Studio Quire"
 ICON = ROOT / "art" / "icon" / "sojourn.ico"   # Setup's, and the uninstall entry's (tools/icon.py)
+SPLASH = ROOT / "art" / "splash" / "sojourn-splash.png"   # Setup's window while installing (tools/icon.py)
+SPLASH_PROGRESS = "#6AA8D8"       # Velopack's bar along the splash's bottom 12 px
 CHANNEL = "win"
 RID = "win-x64"
 LAUNCHER = ROOT / "src" / "Sojourn.Launcher" / "Sojourn.Launcher.csproj"
@@ -326,6 +328,7 @@ def make(src, stage, out, n, commit, source, t0):
     notes.write_text(f"Sojourn {version}, from {source}.\n", encoding="utf-8")
     rc, log = run([exe, "pack", "--packId", PACK_ID, "--packVersion", pack_version, "--packDir", stage, "--mainExe", "Sojourn.exe",
                    "--packTitle", TITLE, "--packAuthors", AUTHORS, "--icon", src / ICON.relative_to(ROOT), "--channel", CHANNEL,
+                   "--splashImage", src / SPLASH.relative_to(ROOT), "--splashProgressColor", SPLASH_PROGRESS,
                    "--shortcuts", "StartMenuRoot", "--noPortable", "--releaseNotes", notes, "--outputDir", out, "--skip-updates"], env=env)
     if rc:
         print(log[-3000:])
@@ -616,6 +619,7 @@ def next_release(release_dir, work, version_n):
     exe, env = vpk()
     rc, log = run([exe, "pack", "--packId", PACK_ID, "--packVersion", f"0.1.{nv}", "--packDir", app, "--mainExe", "Sojourn.exe",
                    "--packTitle", TITLE, "--packAuthors", AUTHORS, "--icon", ICON, "--channel", CHANNEL, "--shortcuts", "StartMenuRoot",
+                   "--splashImage", SPLASH, "--splashProgressColor", SPLASH_PROGRESS,
                    "--noPortable", "--releaseNotes", notes, "--outputDir", feed, "--skip-updates"], env=env)
     if rc:
         raise RuntimeError("vpk pack for the update failed:\n" + log[-2000:])

@@ -38,9 +38,11 @@ public sealed partial class MainForm
         WordWrap = true, Dock = DockStyle.Fill, MaxLength = 0, BackColor = SystemColors.Window, TabStop = true,
     };
 
+    /// <summary>No length limit: a line over the grid's goes as several (MainForm.LongLines.cs), where a limit here cut a
+    /// pasted one short without a word.</summary>
     static TextBox InputBox(string name, string accessibleName) => new LineBox
     {
-        Name = name, AccessibleName = accessibleName, Dock = DockStyle.Fill, MaxLength = 1023,
+        Name = name, AccessibleName = accessibleName, Dock = DockStyle.Fill, MaxLength = 0,
     };
 
     /// <summary>A page holding a history over its input line, with a label for each (the labels' mnemonics move to them):
@@ -91,6 +93,7 @@ public sealed partial class MainForm
             e.SuppressKeyPress = e.Handled = true;
             var text = _chatInput.Text;
             if (text.Trim().Length == 0) return;
+            if (!Commands.IsCommand(text) && !LongLineReady(text)) return;
             Remember(_chatSent, text);
             _chatRecall = -1;
             _chatInput.Clear();
@@ -116,7 +119,7 @@ public sealed partial class MainForm
 
     async Task SayAsync(string text, string type)
     {
-        var r = await _ops.DoAsync("LLChatBar", "sendChat", new JsonObject { ["message"] = text, ["type"] = type });
+        var r = await SendInPartsAsync(text, "LLChatBar", "sendChat", new JsonObject { ["message"] = text, ["type"] = type });
         if (PersonOps.Error(r) is { } e) Answer($"Not said: {e}");
     }
 
@@ -208,6 +211,7 @@ public sealed partial class MainForm
             e.SuppressKeyPress = e.Handled = true;
             var text = cv.Input.Text;
             if (text.Trim().Length == 0) return;
+            if (!cv.Builders && !Commands.IsCommand(text) && !LongLineReady(text)) return;
             Remember(cv.Sent, text);
             cv.Recall = -1;
             cv.Input.Clear();
@@ -227,7 +231,7 @@ public sealed partial class MainForm
         if (cv.Group) args["group_id"] = cv.SessionId;
         else if (cv.Other != UUID.Zero) args["to"] = cv.Other.ToString();
         else args["session_id"] = cv.SessionId;
-        var r = await _ops.DoAsync("TesselIM", "send", args);
+        var r = await SendInPartsAsync(text, "TesselIM", "send", args);
         if (PersonOps.Error(r) is { } e) Answer($"Not sent: {e}");
     }
 

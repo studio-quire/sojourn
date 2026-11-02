@@ -20,14 +20,16 @@ public sealed class LLAppearance : SessionApi
             await S.Wardrobe.WearOutfitAsync(C, folder.Value, a.Bool("append", false), ct);
             return new JsonObject();
         });
-        Op("wearItems", "{items_id, replace}", async (a, ct) =>
+        Op("wearItems", "{items_id, replace} -> {attached?: [{item_id, name, point, hud}], not_yet?: [names]}: where each object went "
+            + "(its own last point, which may be a HUD's: on the screen, not the body), as the region shows it within a few seconds", async (a, ct) =>
         {
             var items = new List<InventoryItem>();
             foreach (var id in Ids(a))
                 items.Add(await S.Inventory.ItemAsync(id, ct) ?? throw new LeapError($"no item {id} in my inventory (nothing was put on)"));
             if (items.Count == 0) throw new LeapError("need items_id");
             await S.Wardrobe.WearAsync(C, items, a.Bool("replace", false), ct);
-            return new JsonObject();
+            var objects = items.Where(i => i.AssetType == AssetType.Object).ToList();
+            return objects.Count == 0 ? new JsonObject() : await S.Wardrobe.WhereAttachedAsync(C, objects, TimeSpan.FromSeconds(8), ct);
         });
         Op("detachItems", "{items_id}", async (a, ct) =>
         {

@@ -31,6 +31,18 @@ sealed class Places
     public string StatePath => Path.Combine(BaseDir, "launcher-state.json");
     public string ConsoleLog => Path.Combine(BaseDir, "logs", "launcher-console.log");
 
+    /// <summary>DEV-MODE.md, the guide for the person's own agent: beside Sojourn.exe packaged, at a public clone's root,
+    /// or where the studio's repo keeps it for tools/publish.py.</summary>
+    public string Guide
+    {
+        get
+        {
+            if (Repo == null) return Path.Combine(_here, "DEV-MODE.md");
+            var root = Path.Combine(Repo, "DEV-MODE.md");
+            return File.Exists(root) ? root : Path.Combine(Repo, "tools", "publish", "sojourn", "DEV-MODE.md");
+        }
+    }
+
     static string Dotnet()
     {
         var sdk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "dotnet-sdk", "dotnet.exe");

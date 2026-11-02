@@ -22,7 +22,7 @@ transcribes and hands it to you; your replies go on its panel, spoken if they ha
    `picked: "..."`, `pointed at: ...`, `timer: ...`, with what their pointer was on as `(that: ...)`. Speech is
    transcribed (Parakeet by default), so read for meaning. A long line arrives cut off in the notification; the whole
    line is in the monitor's output file (tail it). When the monitor expires, re-arm it at once (it picks up where it
-   left off). A `sojourn: ... has closed` line means the client is gone; a crash's stack is in Windows' Application
+   left off). A `sojourn: ... has closed` line means the client is gone (the watch waits on for the next start); a crash's stack is in Windows' Application
    log (.NET Runtime), a freeze's in `dotnet-stack report -p <pid>` (DOTNET_ROOT=%LOCALAPPDATA%\dotnet-sdk).
 4. **Act, then answer.** Drive it with `dev.py call PUMP OP key=value` (the agent API: `docs/client.md` > The agent
    API, `docs/assistant.md`), see what they see with `dev.py shot` (the panel, feed and cards over the view as the

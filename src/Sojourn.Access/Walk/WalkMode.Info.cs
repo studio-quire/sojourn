@@ -25,14 +25,48 @@ public sealed partial class WalkMode
         float speed = Speed(b);
         double heading = Bearings.Compass(0, 0, b.Vel.X, b.Vel.Y);
         string what = b.Sitting ? (b.SeatName ?? "What you're on") : b.Flying ? "Flying" : speed > 4.2f ? "Running" : "Walking";
+        // seated: what the vehicle itself shows, after (the blind tester's train has its speed and throttle as floating text)
+        var shows = b.Sitting && SeatText(b) is { } t ? $" It shows: {t}" : "";
         if (speed < 0.3f)
         {
             float climb = b.Vel.Z;
-            Line(b.Sitting ? $"{what} isn't moving." : b.Flying ? (Math.Abs(climb) > 0.3f ? $"Flying {(climb > 0 ? "up" : "down")}." : "Hovering.") : "Standing still.");
+            Line((b.Sitting ? $"{what} isn't moving." : b.Flying ? (Math.Abs(climb) > 0.3f ? $"Flying {(climb > 0 ? "up" : "down")}." : "Hovering.") : "Standing still.") + shows);
             return;
         }
-        Line($"{what}{(b.Sitting ? ":" : ",")} {SpeedWords(speed)}, to the {Bearings.Point(heading)}.");
+        Line($"{what}{(b.Sitting ? ":" : ",")} {SpeedWords(speed)}, to the {Bearings.Point(heading)}.{shows}");
     }
+
+    /// <summary>Shift+V (and `//text` with no name): what the seat shows as floating text, alone.</summary>
+    public void SeatTextLine()
+    {
+        if (Me() is not { } b) { Line("Not in a region yet."); return; }
+        if (!b.Sitting) { Line("Not seated. //text NAME reads a thing's floating text."); return; }
+        var what = b.SeatName ?? "What you're on";
+        Line(SeatText(b) is { } t ? $"{what} shows: {t}" : $"{what} shows no floating text.");
+    }
+
+    /// <summary>The floating text of the seat's linkset (llSetText on any of its parts), root first, each part's lines
+    /// joined as a sentence ("Throttle 60%, Speed 14 km/h."), parts apart by semicolons; null when none shows any.</summary>
+    public string? SeatText(Body b)
+    {
+        if (!b.Sitting || b.Linkset is not { } set || S.Region is not { } w) return null;
+        var parts = new List<(bool Root, uint Id, string Text)>();
+        foreach (var id in set)
+            if (w.Prims.TryGetValue(id, out var p) && FloatingText(p.Text) is { } t) parts.Add((p.ParentID == 0, id, t));
+        if (parts.Count == 0) return null;
+        return Sentence(string.Join("; ", parts.OrderByDescending(x => x.Root).ThenBy(x => x.Id).Select(x => x.Text).Distinct()));
+    }
+
+    /// <summary>A part's floating text as one line: its lines trimmed and joined by commas; null when there's none.</summary>
+    public static string? FloatingText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var lines = text.Replace("\r", "").Split('\n').Select(l => l.Trim().TrimEnd(',', ';')).Where(l => l.Length > 0).ToList();
+        return lines.Count == 0 ? null : string.Join(", ", lines);
+    }
+
+    /// <summary>Ends with a full stop unless it ends a sentence already.</summary>
+    public static string Sentence(string s) => s.Length > 0 && s[^1] is '.' or '!' or '?' ? s : s + ".";
 
     /// <summary>L: the region, the position, the surface underfoot.</summary>
     public void WhereLine()

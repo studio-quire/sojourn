@@ -273,7 +273,9 @@ public sealed partial class Panel
 
     // the sidecar's own results and defaults (assistant/*.py: brain.py, main.py, jobs.py, private.py, tools.py), as it
     // writes them in English; anything else in Result, Prompt or PointAsk is the assistant's own and stays as it is
-    static readonly string[] OwnWords = ["Stopped.", "Couldn't.", "Done.", "The timer is done.", "Which one?", "Point at it"];
+    static readonly string[] OwnWords = ["Stopped.", "Couldn't.", "Done.", "The timer is done.", "Which one?", "Point at it",
+        // dev mode with no agent watching yet (assistant/devrelay.py)
+        "No agent is watching yet. Start your AI agent on this PC with the sentence the launcher shows under “your agent”."];
     static readonly string[] OwnEnds =
     [
         " is done.", " paused while the assistant's provider changed; say when to carry on.", " is paused; say when to carry on.",
@@ -745,17 +747,21 @@ public sealed partial class Panel
             // what it's doing now, and (while working) which model has it: why it's quick or slow
             var f = Font(k.Regular, 14.5f);
             var mf = Font(k.Regular, 12.5f);
-            string? model = busy && s.Model is { Length: > 0 } m ? m : null;
-            float room = (y < 40 ? topRight : W - Pad) - Pad - (model != null ? Measure(mf, model) + 14 : 0);
-            var lines = Wrap(status, f, room, 2);
+            // while busy it's indented under the request, beside the dots; the model sits at the right of its first line
+            // only, so later lines take the full width
+            float x = busy ? Pad + 34 : Pad;
+            float right = (y < 40 ? topRight : W - Pad) - x;
+            string? model = busy && s.Model is { Length: > 0 } m ? Ellipsize(m, mf, right * 0.4f) : null;
+            var lines = WrapUnderKeys(status, f, right - (model != null ? Measure(mf, model) + 14 : 0), right);
+            lines = Cut(lines, f, right, 2);
             if (model != null) draw.TextRight(model, W - Pad, y + 14, mf, k.Faint);
-            foreach (var l in lines) { draw.Text(l, busy ? Pad + 34 : Pad, y + 14, f, k.Dim); y += 20; }
+            foreach (var l in lines) { draw.Text(l, x, y + 14, f, k.Dim); y += 20; }
             y += 8;
         }
         else if (busy && s.Model is { Length: > 0 } model)
         {
             var mf = Font(k.Regular, 12.5f);
-            draw.Text(model, Pad + 34, y + 12, mf, k.Faint);
+            draw.Text(Ellipsize(model, mf, (y < 40 ? topRight : W - Pad) - Pad - 34), Pad + 34, y + 12, mf, k.Faint);
             y += 22;
         }
         if (s.PointAsk is { } ask)
@@ -775,8 +781,8 @@ public sealed partial class Panel
             {
                 // how to answer, which isn't guessable (the user, 2026-10-28: they said "I'm pointing" and waited)
                 var hf = Font(k.Regular, 13.5f);
-                draw.Text(s.PointHow, Pad, y + 13, hf, k.Faint);
-                y += 22;
+                foreach (var l in Wrap(s.PointHow, hf, inner, 2)) { draw.Text(l, Pad, y + 13, hf, k.Faint); y += 19; }
+                y += 3;
             }
         }
         if (s.Result is { Length: > 0 } result)

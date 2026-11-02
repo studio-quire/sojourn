@@ -156,6 +156,32 @@ public sealed class DescribeApi : LeapApi
         return o;
     }
 
+    /// <summary>
+    /// One picture on the move, for a ride being recorded (Sojourn Access's Walk/RideRecorder): from the person's eyes,
+    /// where the region has them at the moment it's planned (on their seat, as it goes), looking along
+    /// <paramref name="forward"/> (the way they're going), 90 degrees across; taken once the place's short settling ends,
+    /// waiting for no one's look; as a JPEG (a few tens of KB, kept in memory for the length of a ride), with what's
+    /// visible in it by name. Null when no view runs or it couldn't be drawn.
+    /// </summary>
+    public async Task<JsonObject?> MovingPictureAsync(Vector3 forward, int width, CancellationToken ct)
+    {
+        if (_view is not { Running: true } || S.Client is not { } c || S.Region is not { } w0) return null;
+        int pw = Math.Clamp(width, 320, 1024), ph = pw * 9 / 16;
+        float vfov = 2 * MathF.Atan(MathF.Tan(45 * Deg) * ph / pw);
+        var fwd = forward.LengthSquared() > 1e-6f ? Vector3.Normalize(forward) : Vector3.UnitX;
+        var batch = await _view.ShootAsync((r, sim) =>
+        {
+            var w = S.World.Region(S.GridKey, sim.Handle);
+            if (w?.AvatarById(c.Self.AgentID) is not { } me) return null;
+            var at = AvatarRegionPos(w, me);
+            var eye = new Vector3(at.X, at.Y, at.Z + 0.72f);
+            return new[] { new ShotSpec("from your eyes, looking the way you were going", eye, fwd, vfov, pw, ph) { Quick = true } };
+        }, 0.6, ct);
+        if (batch is not { Shots.Count: > 0 } b || S.Region is not { } w) return null;
+        var names = await SeenNamesAsync(c, w, b, ct);
+        return Picture(c, w, b.Shots[0], names, jpeg: true);
+    }
+
     static readonly HashSet<UUID> PlainTextures = new()
     {
         new UUID("89556747-24cb-43ed-920b-47caed15465f"),   // plywood
@@ -433,10 +459,11 @@ public sealed class DescribeApi : LeapApi
 
     static string ObjectName(Primitive p) => p.Properties?.Name is { Length: > 0 } n && n != "Object" && n != "Primitive" ? n : "an unnamed object";
 
-    JsonObject Picture(GridClient c, RegionWorld w, Shot shot, Dictionary<UUID, string> names)
+    JsonObject Picture(GridClient c, RegionWorld w, Shot shot, Dictionary<UUID, string> names, bool jpeg = false)
     {
         var o = new JsonObject { ["label"] = shot.Spec.Label, ["width"] = shot.Width, ["height"] = shot.Height };
-        if (shot.Pending >= 0) o["png"] = Convert.ToBase64String(Png(shot.Rgba, shot.Width, shot.Height));
+        if (shot.Pending >= 0 && jpeg) o["jpeg"] = Convert.ToBase64String(Encode(shot.Rgba, shot.Width, shot.Height, SKEncodedImageFormat.Jpeg, 80));
+        else if (shot.Pending >= 0) o["png"] = Convert.ToBase64String(Png(shot.Rgba, shot.Width, shot.Height));
         else o["missing"] = "this picture didn't come back from the renderer (what's seen in it is still right)";
         var seen = new JsonArray();
         foreach (var s in shot.Seen.Take(14))
@@ -766,7 +793,9 @@ public sealed class DescribeApi : LeapApi
 
     static string Clip(string s, int n) => s.Length <= n ? s.Replace('\n', ' ') : s[..n].Replace('\n', ' ') + "...";
 
-    static byte[] Png(byte[] rgba, int w, int h)
+    static byte[] Png(byte[] rgba, int w, int h) => Encode(rgba, w, h, SKEncodedImageFormat.Png, 90);
+
+    static byte[] Encode(byte[] rgba, int w, int h, SKEncodedImageFormat format, int quality)
     {
         using var bmp = new SKBitmap(new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Unpremul));
         // the frame's alpha is the scene's, not a picture's: opaque
@@ -774,7 +803,7 @@ public sealed class DescribeApi : LeapApi
         for (int i = 3; i < px.Length; i += 4) px[i] = 255;
         System.Runtime.InteropServices.Marshal.Copy(px, 0, bmp.GetPixels(), Math.Min(px.Length, w * h * 4));
         using var img = SKImage.FromBitmap(bmp);
-        using var data = img.Encode(SKEncodedImageFormat.Png, 90);
+        using var data = img.Encode(format, quality);
         return data.ToArray();
     }
 

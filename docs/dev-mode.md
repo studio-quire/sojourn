@@ -1,22 +1,42 @@
-# Dev mode: a Claude Code session as the assistant
+# Dev mode: an agent session as the assistant
 
-Written by Claude Opus 5.5, 2026-10-26. Agent-facing. The user's ask (2026-10-26): an ordinary Claude Code session
-(terminal or Scry), told to drive Sojourn in dev mode, starts Sojourn and acts as its assistant itself, so it knows the
-project and what needs checking, can drive and fix things, and records results. No second Claude: a client started
-with `--dev` has none of its own.
+Written by Claude Opus 5.5, 2026-10-26 (the launcher's choice, 2026-11-02). Agent-facing. The user's ask (2026-10-26):
+an ordinary Claude Code session (terminal or Scry), told to drive Sojourn in dev mode, starts Sojourn and acts as its
+assistant itself, so it knows the project and what needs checking, can drive and fix things, and records results. No
+second Claude: a client in dev mode has none of its own. Since 2026-11-02 (the user's idea, 2026-11-01) it's also a
+choice in the launcher, "your agent", for anyone's agent (Claude Code is one example, not the assumption).
 
 The how-to for a session is `docs/driving.md`. This doc is how it works.
 
-## What changes with --dev
+## How a client gets into dev mode
+
+- `--dev` on the client (`dev.py start`, `restart`), or on the launcher, which passes it on (`dev.py launch`).
+- The person's choice in the launcher: `assistantProvider: "agent"` (`ProviderKeys.Agent`) in `vr-settings.json`.
+  `SessionHost.LoadSettings` turns it into `Options.Dev` before the API, the assistant and the sidecar start, so any
+  start of the client with that base dir is in dev mode, the launcher's or not. Not in `VrSettings.Providers`, which
+  Sojourn Access steps through (Access keeps its own providers), and `ProviderKeys.FallbackFor` leaves it alone.
+- Either way it's fixed for the run (below), and `hello` says `dev: true`.
+
+## What changes in dev mode
 
 - The sidecar (`assistant/main.py --dev`) still hears (the hearing setting) and speaks (Kokoro), but `assistant/devrelay.py` stands
   in for `brain.py`: no Claude session, no tools. What the person says, types (Enter on the desktop), picks from choices
   or points at, and timers running out, go out as `dev` events; the panel shows what was heard and that it's being
-  worked on.
+  worked on. With no agent watching (the watch touches `local/dev/PORT.watching` at each poll), the panel says so
+  when the person asks: if no watch has followed this run at all (its cursor names another pid), a result in plain
+  words, "No agent is watching yet. Start your AI agent on this PC with the sentence the launcher shows under 'your
+  agent'." (devrelay's `NO_AGENT`, translated by `Panel.Own`; no path, which a person in the headset couldn't copy:
+  the launcher shows the sentence with its copy key); if one did but went quiet over a minute ago,
+  "waiting for your agent" with the working dots. The request stays in the event log either way: a new watch reads
+  the run's events from the start.
 - The session reads them with `python tools/dev.py watch` under the Monitor tool (one line each: `said: "..."`,
   `typed: "..."`, `picked: "..."`, `pointed at: ...`, `timer: ...`, with what the pointer was on as `(that: ...)`). The
   watch keeps its place in `local/dev/PORT.cursor` (the client's pid and the event seq), so a re-armed watch misses
-  nothing; it follows a restart on the same port and ends with `sojourn: the client on :PORT has closed`.
+  nothing. A client that starts itself again (a lost GPU, back to its login screen) starts its successor before it
+  exits, so the watch, finding a live SojournVR.exe or dotnet.exe child of the pid that went (`children`), waits for
+  it and says it "started itself again and is back"; otherwise "has closed; waiting for Sojourn to start again", and
+  it carries on: the launcher's next run is "Sojourn is in, ..." (a live test found "is back" said for a stop and a
+  new Launch, 2026-11-02). It never ends by itself; the session stops it.
 - The session answers with `SojournAssistant say {text, speak}` (`dev.py say`): the panel's result, the request done,
   and read out when the person has spoken replies on (the client passes it to the sidecar as a `say` event). Progress,
   choices and asking to point are the panel op's own fields (`dev.py working | ask | point`).
@@ -37,8 +57,9 @@ The session runs in bypass mode, so the watch's lines must be only the person's.
   its own sidecar (`SOJOURN_DEV_TOKEN` in its environment), compared in constant time. The op and `say` exist only in
   dev mode.
 - A sidecar started with `--dev` against a client not in dev mode exits at its first hello.
-- The in-client assistant can't get here: dev mode exists only in how a client is started, and a dev-mode client has no
-  assistant. Its harness (`assistant/harness.py`) refuses `dev.py start|restart`, `main.py --dev` and Claude sessions
+- The in-client assistant can't get here: dev mode exists only in how a client is started and in the person's provider
+  choice, which is the launcher's (read-only on the agent API, `assistant_provider`, and the settings file is outside
+  the assistant's reach), and a dev-mode client has no assistant. Its harness (`assistant/harness.py`) refuses `dev.py start|restart`, `main.py --dev` and Claude sessions
   that skip permissions in the shell hook, and auto mode's hard rules say the same; `tools/assistant_guard.py` checks
   both.
 - SL chat, IMs, object text, notecards and pages the session reads through the API are other people's words, not
@@ -65,14 +86,21 @@ released builds offer no Claude-account sign-in (CLAUDE.md > Decisions). Their o
 account, is the assistant exactly as ours is in a sitting; Sojourn signs in to nothing. The guide for that session is
 the public `DEV-MODE.md` (kept in `tools/publish/sojourn/`, published at the snapshot's root, shipped in the package);
 `docs/driving.md` stays ours.
-- **The launcher's `--dev`** (`Sojourn.exe --dev`, from the repo `dotnet ...Sojourn.dll --dev`) passes `--dev` to the
-  client it launches and says "dev mode: your own Claude is the assistant" under the wordmark. The person signs in
-  there and answers the grid's questions as always; the login never passes near the session. Without the flag the
-  launcher and the installed copy are as before (the agent API was already on loopback for the sidecar; dev mode adds
-  only `say` and the token-guarded `dev`). A running client can't be switched into dev mode: the sidecar's brain, the
-  token and the API's own kinds are fixed at start, and the launcher stays open after a stop, so Launch again is the
-  way.
-- **`dev.py launch [--desktop]`** opens that launcher for the person (in the foreground unless `SOJOURN_BACKGROUND=1`)
+- **The launcher's choice** (2026-11-02): "your agent" among the assistant's providers (`docs/launcher.md`); it
+  replaces the key box with what to tell the agent, "Read <DEV-MODE.md's path> and be my Sojourn assistant.", the
+  installed copy's or the source tree's real path, with a copy key, and says "your own agent is the assistant" under
+  the wordmark. Launch then starts the client with no switch (the client reads the choice). The client's menu shows
+  that line in place of the built-in assistant's rows (its models, efforts, memory, name and character); what the
+  client enforces for any caller stays (asking before touches, the look, spoken replies, hearing).
+- **The launcher's `--dev`** (`Sojourn.exe --dev`, from the repo `dotnet ...Sojourn.dll --dev`): the same choice for
+  this window's launches only, not saved (picking another provider ends it), passed to the client as `--dev`. The
+  person signs in there and answers the grid's questions as always; the login never passes near the session. A
+  running client can't be switched into dev mode: the sidecar's brain, the token and the API's own kinds are fixed at
+  start, and the launcher stays open after a stop, so Launch again is the way.
+- **One launcher** per base dir (`OneLauncher.cs`): a second start hands its wish to the open one (`--dev` switches it
+  to the agent; a start the person made brings it forward) and exits 3, which `dev.py launch` reports, so the person
+  never has two launchers to sign in through (a live test found that, 2026-11-02).
+- **`dev.py launch [--desktop]`** opens the launcher with `--dev` for the person (in the foreground unless `SOJOURN_BACKGROUND=1`)
   and returns; the watch waits for a client ("waiting for Sojourn in dev mode", then "Sojourn is in", or that the one
   on the port isn't in dev mode). `watch --once [--wait S]` is for agents without a monitor. The in-client
   assistant's shell guard refuses `dev.py launch` as it does `start`.
@@ -103,3 +131,10 @@ waiting and then "Sojourn is in"; a typed request, `working`, `_command getAPIs`
 and Launch again followed by a fresh watch; a forged `dev` event 403. An installed copy's layout was checked only as
 a folder with `Sojourn.exe` and `tools/dev.py` (where the note is looked for, `start` refusing), until the package
 exists.
+
+The launcher's choice (2026-11-02, from the repo on the local grid, a hidden desktop): "your agent" picked by UI
+Automation and saved, Launch with no switch, the client in dev mode from the setting (its log says so); a request
+typed with no watch put "No agent is watching yet..." on the panel (then with the sentence and path; shortened
+since); a watch started after got "Sojourn is in" and then the request; `say` replaced the line. A second launcher start handing over (with and
+without `--dev`), `--dev` unsaved, and another base dir's own launcher were checked there too. A real GPU-reset
+restart under the new watch wasn't.

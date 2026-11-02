@@ -1,7 +1,9 @@
 """Sojourn's app icon: art/icon/sojourn.svg rendered into art/icon/sojourn.ico, the one file the launcher (Sojourn.exe),
-the VR client (SojournVR.exe's window) and the package (Velopack's Setup and shortcut) use.
+the VR client (SojournVR.exe's window) and the package (Velopack's Setup and shortcut) use; and Setup's splash,
+art/splash/sojourn-splash.svg rendered into sojourn-splash.png beside it (tools/package.py's --splashImage), with the
+icon drawn into it from the icon's SVG.
 
-  python tools/icon.py            render the .ico from the SVG (commit both)
+  python tools/icon.py            render the .ico and the splash from their SVGs (commit all four)
   python tools/icon.py png SIZE   one size as art/icon/sojourn-SIZE.png beside it, to look at
 
 To use another design, replace art/icon/sojourn.svg (the candidates are in art/icon/candidates/) and run this.
@@ -23,6 +25,12 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 SVG = ROOT / "art" / "icon" / "sojourn.svg"
 ICO = ROOT / "art" / "icon" / "sojourn.ico"
+SPLASH_SVG = ROOT / "art" / "splash" / "sojourn-splash.svg"
+SPLASH_PNG = SPLASH_SVG.with_suffix(".png")
+# the wordmark's face, as the launcher has it. Its name table calls every weight "Archivo SemiBold", so it's loaded
+# alone and the SVG's "Archivo Light" is renamed to that for resvg.
+WORDMARK_FONT = ROOT / "src" / "Sojourn.Session" / "Assets" / "Fonts" / "Archivo-Light.ttf"
+WORDMARK_FAMILY = ("Archivo Light", "Archivo SemiBold")
 SIZES = [16, 20, 24, 32, 40, 48, 64, 256]   # Windows' sizes at 100-250% scaling, and Explorer's large views
 SVG_NS = "http://www.w3.org/2000/svg"
 
@@ -98,6 +106,34 @@ def build(svg=SVG, out=ICO):
     print(f"{out.relative_to(ROOT)}: {', '.join(map(str, SIZES))} px from {svg.relative_to(ROOT)}")
 
 
+def splash_svg():
+    """The splash's SVG with the icon in it: each element carrying data-icon becomes the icon as drawn at its width."""
+    ET.register_namespace("", SVG_NS)
+    root = ET.fromstring(SPLASH_SVG.read_text(encoding="utf-8"))
+    icon_text = SVG.read_text(encoding="utf-8")
+    for slot in root.iter(f"{{{SVG_NS}}}svg"):
+        if slot.get("data-icon") is None:
+            continue
+        icon = ET.fromstring(for_size(icon_text, round(float(slot.get("width")))))
+        del slot.attrib["data-icon"]
+        slot.set("viewBox", icon.get("viewBox"))
+        slot.extend(list(icon))
+    for el in root.iter():
+        if el.get("font-family") == WORDMARK_FAMILY[0]:
+            el.set("font-family", WORDMARK_FAMILY[1])
+    return ET.tostring(root, encoding="unicode")
+
+
+def build_splash():
+    root = ET.fromstring(SPLASH_SVG.read_text(encoding="utf-8"))
+    w, h = root.get("width"), root.get("height")
+    r = subprocess.run([resvg(), "-w", w, "-h", h, "--skip-system-fonts", "--use-font-file", str(WORDMARK_FONT), "--resources-dir", str(SPLASH_SVG.parent), "-", "-c"], input=splash_svg().encode("utf-8"), capture_output=True)
+    if r.returncode or r.stderr:   # a warning is usually a font not found, which drops the wordmark
+        raise RuntimeError(r.stderr.decode(errors="replace"))
+    Image.open(io.BytesIO(r.stdout)).convert("RGB").save(SPLASH_PNG, optimize=True)
+    print(f"{SPLASH_PNG.relative_to(ROOT)}: {w}x{h} px from {SPLASH_SVG.relative_to(ROOT)} and the icon")
+
+
 def main(argv):
     if argv[:1] == ["png"] and len(argv) == 2:
         size = int(argv[1])
@@ -109,6 +145,7 @@ def main(argv):
         print(__doc__)
         return 2
     build()
+    build_splash()
     return 0
 
 

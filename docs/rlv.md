@@ -114,7 +114,8 @@ Restrictions hold for the person's own controls, the menus, the assistant, dev m
 
 The way out (`docs/safety.md`) overrides RLV and stays a sure exit (the user let that stand, 2026-11-01); and, their call
 the same day, it lifts no restrictions: they were chosen, so it stands and goes home, and the rest waits for logging
-out or `rlv` off. Camera restrictions on the desktop only and the switch in the advanced menu: also their call, as built. Pressed:
+out or `rlv` off. Camera restrictions on the desktop only: also their call, as built. The switch stays in the advanced menu (the user,
+2026-11-02: rarely toggled, and the assistant can switch it). Pressed:
 - it releases the controls scripts took, stands the person up whatever @unsit says, and asks for home whatever @tploc,
   @tplm, @tplocal, @sittp or @unsit say (it uses the protocol directly, as always, so no RLV check is in its way);
 - @standtp doesn't take them back to where they sat from;

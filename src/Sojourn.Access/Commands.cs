@@ -72,6 +72,8 @@ public sealed class Commands
                 case "touch": if (Touch != null) await Touch(string.Join(" ", rest)); return true;
                 case "switch": if (Switch != null) await Switch(string.Join(" ", rest)); return true;
                 case "stop": if (WalkMode is { } walk) walk.RequestStop(); else _say("Not in a region yet."); return true;
+                case "ride": if (Ride != null) await Ride(string.Join(" ", rest)); return true;
+                case "text": await TextAsync(string.Join(" ", rest)); return true;
                 case "outfit": if (Outfit != null) await Outfit(); return true;
                 case "upload": if (Upload != null) await Upload(AfterVerb(line)); return true;
                 case "voice": if (Voice != null) await Voice(string.Join(" ", rest)); return true;
@@ -129,6 +131,9 @@ public sealed class Commands
         ("switch", "//switch | //switch flip | //switch main | //switch branch",
             "the next rail switch and how it's set; throw it, or set it to the main line or the branch (walk mode's W and Shift+W)"),
         ("stop", "//stop", "stop: seated on something moving, it's stopped by its controls, as Space in walk mode; otherwise a walk, a follow or a route"),
+        ("ride", "//ride | //ride stop | //ride describe | //ride more",
+            "record a ride (C in walk mode): pictures every few seconds and what's around, kept on this PC; stop it (it stops by itself when you stand up or the ride stops); have the assistant tell it (Shift+C in walk mode), or tell more"),
+        ("text", "//text | //text NAME", "floating text: what you're sitting on shows (Shift+V in walk mode), or the nearest thing with that name within 30 metres"),
         ("outfit", "//outfit", "what you're wearing, by name from the worn list: clothing, attachments and where, HUDs, body parts"),
         ("upload", "//upload | //upload PATH", "upload a picture, sound, animation or model: with no path, choose the file (Control+U)"),
         ("voice", "//voice | //voice answer | //voice decline", "who's in voice and speaking, your mic; or answer or decline a call ringing"),
@@ -249,7 +254,12 @@ public sealed class Commands
         return Task.Run(async () =>
         {
             try { return await RouteAsync(target, what, stop, tpHint, walk.Token); }
-            finally { if (_heading == heading) _heading = null; }
+            finally
+            {
+                if (_heading == heading) _heading = null;
+                // (ended: nothing for walk mode's next key to cancel)
+                Interlocked.CompareExchange(ref _walk, null, walk);
+            }
         });
     }
 
@@ -316,7 +326,7 @@ public sealed class Commands
                 return r.Moved ? await WatchWalkAsync(leg, 0.8, ct, origin, (target, what)) : await WatchWalkAsync(target, near, ct, origin);
             }
             // stuck on the way: something the model hadn't (a thin post, a doorway the region won't fit): marked, planned again
-            c.Self.AutoPilotCancel();
+            CancelAutoPilot();
             if (_ops.Me() is not { } stuck || Planner == null) return false;
             var dir = Vector2.Normalize(new Vector2(leg.X - stuck.Pos.X, leg.Y - stuck.Pos.Y));
             Planner.Block(new System.Numerics.Vector2(stuck.Pos.X + dir.X * 0.7f, stuck.Pos.Y + dir.Y * 0.7f), 0.6f, TimeSpan.FromMinutes(2));
@@ -332,6 +342,9 @@ public sealed class Commands
     }
 
     static float Flat(Vector3 a, Vector3 b) => new Vector2(a.X - b.X, a.Y - b.Y).Length();
+
+    /// <summary>A point past the edge of the region whose frame it's in (a recorded route's step across a border).</summary>
+    static bool Beyond(Vector3 p) => p.X < 0 || p.X >= 256 || p.Y < 0 || p.Y >= 256;
 
     /// <summary>The avatar's position in the frame of the region with this handle (where a walk began: its target stays
     /// in that frame after a crossing), or null between regions.</summary>
@@ -361,7 +374,7 @@ public sealed class Commands
     {
         if (Planner is not { } planner) return null;
         // beyond this region's edge (a recorded route's crossing): straight, by the region's autopilot
-        if (to.X < 0 || to.X >= 256 || to.Y < 0 || to.Y >= 256) return null;
+        if (Beyond(to)) return null;
         var a = new System.Numerics.Vector2(from.X, from.Y);
         var b = new System.Numerics.Vector2(to.X, to.Y);
         if (System.Numerics.Vector2.Distance(a, b) < 2) return null;
@@ -404,7 +417,7 @@ public sealed class Commands
     /// (<paramref name="tpHint"/>). Public: the assistant's walks (MainForm.RouteAsync) come here too.</summary>
     public async Task<bool> NoWayAsync(Vector3 target, string what, string? tpHint)
     {
-        _ops.Client?.Self.AutoPilotCancel();
+        CancelAutoPilot();
         var offer = tpHint != null ? $" {tpHint} would teleport you there." : "";
         if (!TeleportFallback() || _ops.Me() is null)
         {
@@ -478,7 +491,7 @@ public sealed class Commands
     async Task<bool> WatchWalkAsync(Vector3 target, double near, CancellationToken ct, ulong origin, (Vector3 At, string What)? outOfReach = null)
     {
         long start = Environment.TickCount64, stillSince = start;
-        bool moved = false, again = false;
+        bool moved = false, again = false, pushed = false;
         var last = MeIn(origin) ?? target;
         while (!ct.IsCancellationRequested)
         {
@@ -492,7 +505,20 @@ public sealed class Commands
             if (going) { stillSince = now; moved = true; }
             var off = new Vector2(target.X - me.Pos.X, target.Y - me.Pos.Y).Length();
             long still = now - stillSince;
-            bool arrived = off <= near && still > 700, stalled = still > (moved ? 2000 : 4000), late = now - start > 60_000;
+            // a goal past the border not crossed yet: a route's next line is in the next region's frame, so it isn't done
+            // till then. The region's autopilot stops the avatar at the edge and doesn't cross it (seen on the local grid:
+            // standing there 15 s, across a second after a forward press), so stood there, it's walked across by the
+            // forward control, once
+            bool crossing = Beyond(target) && me.Region == origin;
+            if (crossing && still > 1500 && !pushed)
+            {
+                pushed = true;
+                await PushAcrossAsync(c, me.Pos, target, origin);
+                stillSince = Environment.TickCount64;
+                continue;
+            }
+            bool arrived = !crossing && off <= near && still > 700, late = now - start > 60_000;
+            bool stalled = still > (crossing ? 3000 : moved ? 2000 : 4000);
             if (stalled && !arrived && !again && me.Region != origin && off > near)
             {
                 // a crossing on the way: the new region doesn't carry the old one's autopilot on, so asked again once
@@ -504,17 +530,35 @@ public sealed class Commands
                 continue;
             }
             if (!arrived && !stalled && !late) continue;
-            if (!arrived) c.Self.AutoPilotCancel();
+            if (!arrived) CancelAutoPilot();
             if (outOfReach is { } o && off < 2.5)
             {
                 _say($"Finished walking, as near to {o.What} as the way goes: {o.What} is {_ops.Where(o.At) ?? Bearings.Metres(Flat(me.Pos, o.At))}.");
                 return true;
             }
+            bool done = arrived || off < 2.5 && !crossing;
             _say(string.Create(CultureInfo.InvariantCulture,
-                $"Finished walking, {(off < 3 ? (off < 1 ? "under a metre" : Bearings.MetresTenths(off)) : Bearings.Metres(off))} from the destination{(arrived || off < 2.5 ? "" : " (something was in the way)")}."));
-            return arrived || off < 2.5;
+                $"Finished walking, {(off < 3 ? (off < 1 ? "under a metre" : Bearings.MetresTenths(off)) : Bearings.Metres(off))} from the destination{(done ? "" : crossing ? " (it didn't cross into the next region)" : " (something was in the way)")}."));
+            return done;
         }
         return false;
+    }
+
+    /// <summary>Walks the avatar across the border by the forward control, facing the goal: held until the region
+    /// changes (3 s at most), then let go.</summary>
+    async Task PushAcrossAsync(GridClient c, Vector3 from, Vector3 target, ulong origin)
+    {
+        var mv = c.Self.Movement;
+        mv.BodyRotation = mv.HeadRotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.Atan2(target.Y - from.Y, target.X - from.X));
+        mv.AtPos = true;
+        mv.SendUpdate(true);
+        for (int i = 0; i < 30 && c.Network.CurrentSim?.Handle == origin; i++)
+        {
+            await Task.Delay(100, CancellationToken.None);
+            if (i % 2 == 1) mv.SendUpdate(false);   // (held, as a held key's flags are sent)
+        }
+        mv.AtPos = false;
+        mv.SendUpdate(true);
     }
 
     /// <summary>The person takes over by hand (walk mode's keys): a walk, a follow and a route all stop, quietly.</summary>
@@ -533,7 +577,16 @@ public sealed class Commands
         if (_walk == null) return;
         _walk.Cancel();
         _walk = null;
-        _ops.Client?.Self.AutoPilotCancel();
+        CancelAutoPilot();
+    }
+
+    /// <summary>The region's autopilot cancelled. LibreMetaverse cancels it by a press of forward (AtPos on, sent, then
+    /// off), which a vehicle whose script takes the keys hears as Up: a train's throttle opened a step by the person's
+    /// first tap after a //go (walk mode's keys stop the walk first). Seated there's no autopilot to cancel, so nothing
+    /// is sent.</summary>
+    void CancelAutoPilot()
+    {
+        if (_ops.Client is { } c && c.Self.SittingOn == 0) c.Self.AutoPilotCancel();
     }
 
     /// <summary>//beacon NAME: walk mode's beacon on the nearest person (by name) or thing (by name) to walk to; off; or where.</summary>
@@ -762,7 +815,7 @@ public sealed class Commands
         var who = _following;
         _following = null;
         _heading = null;
-        _ops.Client?.Self.AutoPilotCancel();
+        CancelAutoPilot();
         if (_ops.Client is { } c && _s.Motion.Moving) _s.Motion.StopAutoPilot(c, false);
         if (!quiet) _say($"Stopped following {who}.");
     }
@@ -901,6 +954,24 @@ public sealed class Commands
 
     /// <summary>`//switch`'s words, to walk mode's rail switches (Walk/WalkMode.Switches.cs).</summary>
     public Func<string, Task>? Switch { get; set; }
+
+    /// <summary>`//ride`'s words, to the app's ride recording (MainForm.Rides.cs).</summary>
+    public Func<string, Task>? Ride { get; set; }
+
+    /// <summary>`//text [NAME]`: the seat's floating text (as Shift+V in walk mode), or the nearest thing's with that name
+    /// within 30 m (its root's, as Objects lists it).</summary>
+    async Task TextAsync(string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0)
+        {
+            if (WalkMode is { } walk) walk.SeatTextLine(); else _say("Not in a region yet.");
+            return;
+        }
+        var hit = (await _ops.ObjectsAsync(30, 40, name)).FirstOrDefault(t => t.Name.Contains(name, StringComparison.OrdinalIgnoreCase));
+        if (hit == null) { _say($"Nothing called {name} within 30 metres."); return; }
+        _say(Walk.WalkMode.FloatingText(hit.Text) is { } text ? $"{hit.Name} shows: {Walk.WalkMode.Sentence(text)}" : $"{hit.Name} shows no floating text.");
+    }
 
     /// <summary>//upload [PATH]: the words after the verb as typed (a Windows path's backslashes and spaces kept).</summary>
     public Func<string, Task>? Upload { get; set; }

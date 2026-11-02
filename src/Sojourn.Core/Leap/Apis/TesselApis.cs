@@ -63,7 +63,7 @@ public sealed class TesselIM : SessionApi
 
     public TesselIM(AgentSession s) : base(s)
     {
-        Op("send", "send {message, to | group_id | session_id} -> {session_id}", SendAsync);
+        Op("send", "send {message, to | group_id | session_id} -> {session_id, parts when a long one went as several}", SendAsync);
         // what was said in a spell of incognito stays out of both (Agents/PrivateMode.cs), but while a seeing spell
         // lasts, and so does a conversation that only happened then
         Op("sessions", "-> {sessions: [...]}", _ => new JsonObject { ["sessions"] = new JsonArray(S.State.Ims.Values.Where(Shown).Select(Info).ToArray()) });
@@ -99,6 +99,18 @@ public sealed class TesselIM : SessionApi
         };
     }
 
+    /// <summary>One long message's parts at a time (Agents/ChatSplit.cs).</summary>
+    readonly SemaphoreSlim _turn = new(1, 1);
+
+    /// <summary>The message to the session, in parts if it's over the grid's limit, each recorded as sent.</summary>
+    async Task<JsonNode?> SendPartsAsync(ImSession s, UUID toId, string msg, Action<string> send, CancellationToken ct)
+    {
+        int parts = await ChatSplit.SendAsync(_turn, msg, part => { send(part); S.ImOut(s, toId, part); }, ct);
+        var r = new JsonObject { ["session_id"] = s.Id.ToString() };
+        if (parts > 1) r["parts"] = parts;
+        return r;
+    }
+
     async Task<JsonNode?> SendAsync(JsonObject a, CancellationToken ct)
     {
         var c = C;
@@ -114,9 +126,7 @@ public sealed class TesselIM : SessionApi
             {
                 Id = sid, Type = "p2p", OtherId = to, Name = S.Names.DisplayName(to) ?? to.ToString(),
             });
-            c.Self.InstantMessage(to, msg, sid);
-            S.ImOut(s, to, msg);
-            return new JsonObject { ["session_id"] = sid.ToString() };
+            return await SendPartsAsync(s, to, msg, part => c.Self.InstantMessage(to, part, sid), ct);
         }
         if (a.Uuid("group_id") is { } gid)
         {
@@ -131,9 +141,8 @@ public sealed class TesselIM : SessionApi
             if (!S.State.Ims.TryGetValue(sid2, out s!)) throw new LeapError("no such session");
             if (s.Type == "p2p")
             {
-                c.Self.InstantMessage(s.OtherId, msg, s.Id);
-                S.ImOut(s, s.OtherId, msg);
-                return new JsonObject { ["session_id"] = s.Id.ToString() };
+                var p2p = s;
+                return await SendPartsAsync(s, s.OtherId, msg, part => c.Self.InstantMessage(p2p.OtherId, part, p2p.Id), ct);
             }
         }
         else throw new LeapError("need to, group_id or session_id");
@@ -148,9 +157,8 @@ public sealed class TesselIM : SessionApi
             catch (Exception) { throw new LeapError("session didn't start (not sent)"); }
             finally { s.Started = null; }
         }
-        c.Self.InstantMessageGroup(s.Id, msg);
-        S.ImOut(s, s.Id, msg);
-        return new JsonObject { ["session_id"] = s.Id.ToString() };
+        var group = s;
+        return await SendPartsAsync(s, s.Id, msg, part => c.Self.InstantMessageGroup(group.Id, part), ct);
     }
 
     JsonNode? History(JsonObject a)
@@ -204,7 +212,8 @@ public sealed class TesselObjects : SessionApi
 
     public TesselObjects(AgentSession s) : base(s)
     {
-        Op("nearby", "{dist=20, limit=40, fetch=true, timeout=4, attachments=false, query?, renew? (seconds: scripted objects' names "
+        Op("nearby", "{dist=20, limit=40, fetch=true, timeout=4, attachments=false (true adds what other people wear, never HUDs; "
+            + "my own worn things are TesselAgent attachPoints), query?, renew? (seconds: scripted objects' names "
             + "older than this asked again, as a script may have renamed them; 0 all of them)} -> {objects}", NearbyAsync);
         Op("get", "{ids, fetch=true, children=false, full=false, fresh=false (ask again even if known), timeout} -> {objects, missing?}; full adds "
             + "faces: {all: colour, alpha, texture, shiny, glow, fullbright, bump, repeats, tex_offset, tex_rotation, texgen; and each face "

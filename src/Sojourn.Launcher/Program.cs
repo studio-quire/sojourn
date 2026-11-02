@@ -10,7 +10,7 @@ namespace Sojourn.Launcher;
 static class Program
 {
     [STAThread]
-    static void Main(string[] args)
+    static int Main(string[] args)
     {
         // only where Velopack installed it (its Update.exe above current\) or calls a hook: a run from the repo or a
         // plain folder leaves Velopack's shared log alone
@@ -21,6 +21,6 @@ static class Program
                 .Run();
         var app = new App();
         app.InitializeComponent();
-        app.Run();
+        return app.Run();   // (OneLauncher.HandedOver when one was already open)
     }
 }

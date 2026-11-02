@@ -85,6 +85,8 @@ public sealed class SettingsMenu : ISettingsMenu
     public Func<List<(MenuRow Row, Action<int> Act)>>? ReaderRows { get; set; }
     /// <summary>How the person shows to others (People/PeopleWiring.cs): Do Not Disturb, away, hover height, typing.</summary>
     public Func<List<(MenuRow Row, Action<int> Act)>>? PeopleRows { get; set; }
+    /// <summary>The foot of the "you" section (Login/LoginSheet.cs): log out, quit.</summary>
+    public Func<List<(MenuRow Row, Action<int> Act)>>? LeavingRows { get; set; }
     /// <summary>Safety and comfort (Control/SafetyWiring.cs): the vignette, keep me in place, aim, particles, antispam, release keys.</summary>
     public Func<List<(MenuRow Row, Action<int> Act)>>? SafetyRows { get; set; }
     /// <summary>About Sojourn (Control/AboutMenu.cs): the last section, its words above its rows (by the open group: null
@@ -510,13 +512,16 @@ public sealed class SettingsMenu : ISettingsMenu
     List<(MenuRow Row, Action<int> Act)> YouRows()
     {
         var rows = PeopleRows?.Invoke() ?? new();
-        if (_api is not { } api) return rows;
-        if (api.SwitchRow("photo_camera", "camera") is { } camera) rows.Add(camera);
-        if (api.Has("ao")) rows.Add(MenuRow.Group("AO", AoRows, api.IsOn("ao") ? "on" : ""));
-        // SojournAvatars' fixes, as the person's own press (the assistant's own calls go through the dispatcher)
-        rows.Add(Fix("skeleton", "reset", "resetSkeleton"));
-        rows.Add(Fix("attachments", "refresh", "refreshAttachments"));
-        rows.Add(Fix("animations", "resync", "resyncAnimations"));
+        if (_api is { } api)
+        {
+            if (api.SwitchRow("photo_camera", "camera") is { } camera) rows.Add(camera);
+            if (api.Has("ao")) rows.Add(MenuRow.Group("AO", AoRows, api.IsOn("ao") ? "on" : ""));
+            // SojournAvatars' fixes, as the person's own press (the assistant's own calls go through the dispatcher)
+            rows.Add(Fix("skeleton", "reset", "resetSkeleton"));
+            rows.Add(Fix("attachments", "refresh", "refreshAttachments"));
+            rows.Add(Fix("animations", "resync", "resyncAnimations"));
+        }
+        if (LeavingRows?.Invoke() is { } leaving) rows.AddRange(leaving);
         return rows;
     }
 
@@ -633,6 +638,18 @@ public sealed class SettingsMenu : ISettingsMenu
 
     static readonly string[] ModelNames = { "haiku", "sonnet", "opus" };
 
+    /// <summary>The person's own agent as the assistant (dev mode): the assistant section's words above its rows, in the
+    /// launcher's words (the about section has its own).</summary>
+    public static readonly string[] AgentText =
+    {
+        "your own agent is the assistant",
+        "An AI agent on this PC, such as Claude Code, answers in place of Sojourn's own assistant. It's chosen in the launcher.",
+    };
+
+    /// <summary>A section's own words above its rows, if it has any.</summary>
+    IReadOnlyList<string>? SectionText(string tab, string? group) =>
+        tab == "about" ? AboutText?.Invoke(group) : tab == "assistant" && group == null && _assistant.Dev ? AgentText : null;
+
     /// <summary>The provider's state from the sidecar when it isn't working (no key, not signed in, refused...), for the
     /// first model row's note; null when it works or isn't known yet.</summary>
     string? ProviderTrouble()
@@ -686,7 +703,14 @@ public sealed class SettingsMenu : ISettingsMenu
         // the model rows follow the provider chosen in the launcher: Claude's (account or key) as they are; with
         // OpenRouter its own choices, and Claude's model and effort rows only for Claude through it (another maker's
         // model takes everything itself)
-        if (_s.AssistantProvider == "openrouter")
+        if (_assistant.Dev)
+        {
+            // dev mode (the launcher's "your agent", or --dev): the person's own agent answers, so the built-in
+            // assistant's rows go (its models, efforts, memory, name and character); what the client does for any
+            // caller stays (the look, spoken replies, hearing, asking before touches); the section's words say who answers
+            rows.RemoveAll(r => r.Item1.Label is "model" or "memory" || r.Item1.Label.EndsWith(" effort"));
+        }
+        else if (_s.AssistantProvider == "openrouter")
         {
             if (_s.OpenRouterModel != "claude") rows.RemoveAll(r => r.Item1.Label == "model" || r.Item1.Label.EndsWith(" effort"));
             rows.InsertRange(0, OpenRouterRows());
@@ -696,14 +720,15 @@ public sealed class SettingsMenu : ISettingsMenu
         var hearings = VrSettings.SonioxKey() || _s.Hearing == "soniox" ? VrSettings.Hearings : VrSettings.Hearings[..2];
         rows.Add((MenuRow.Choice("hearing", hearings, Math.Max(0, Array.IndexOf(hearings, _s.Hearing))),
             i => { _s.Hearing = hearings[i]; _assistant.PrefsChanged(); }));
-        // what it remembers, cleared by the person's own two presses (the second within this menu, nothing between)
-        if (AssistantHost.MemoryKept())
+        // what it remembers, cleared by the person's own two presses (the second within this menu, nothing between);
+        // a name and a character: the built-in assistant's, so not in dev mode
+        if (!_assistant.Dev && AssistantHost.MemoryKept())
             rows.Add((new MenuRow("forget memory", _forgetArmed ? "sure?" : "clear", false),
                 _ => { if (_forgetWasArmed) _assistant.ClearMemory(); else _forgetArmed = true; }));
         // a name and a character exist once the person has asked for one; here they're switched on and off
-        if (_s.AssistantName is { } name)
+        if (!_assistant.Dev && _s.AssistantName is { } name)
             rows.Add((MenuRow.Switch($"called {name}", _s.UseAssistantName), _ => { _s.UseAssistantName = !_s.UseAssistantName; _assistant.PrefsChanged(); }));
-        if (_s.AssistantCharacter is { } character)
+        if (!_assistant.Dev && _s.AssistantCharacter is { } character)
             rows.Add((MenuRow.Switch("its character", _s.UseAssistantCharacter, note: Quote(character)),
                 _ => { _s.UseAssistantCharacter = !_s.UseAssistantCharacter; _assistant.PrefsChanged(); }));
         rows.Add((MenuRow.Switch("ask before touching others' things", _s.ConfirmTouches), _ => _s.ConfirmTouches = !_s.ConfirmTouches));
@@ -799,7 +824,7 @@ public sealed class SettingsMenu : ISettingsMenu
                 for (int page = 0; page < 8; page++)
                 {
                     var r = Panel.DrawMenu(look, tabs, section, rows, null, -1, 1.5f, 1, page, maxHeight, wide, group: group,
-                        text: tabs[section] == "about" ? AboutText?.Invoke(group) : null);
+                        text: SectionText(tabs[section], group));
                     string file = $"menu-{name}-{page + 1}";
                     PanelShots.ShotOver(dir, file, r, null, 1.5f);
                     files.Add(file + ".png");
@@ -861,7 +886,7 @@ public sealed class SettingsMenu : ISettingsMenu
             // the tip, if it's for what's drawn now (a press can have moved the menu on since)
             (int, string)? tip = tipNow is { } t && t.View == view ? (t.Spot, t.Text) : null;
             var help = _help ? (_assistant.InHeadset ? HeadsetHelp : DesktopHelp) : null;
-            var text = tabs[section] == "about" ? AboutText?.Invoke(group) : null;
+            var text = SectionText(tabs[section], group);
             var look = _panel.LookFor(InkSheet.Panel);
             int hover = _hover;
             long version = _version;

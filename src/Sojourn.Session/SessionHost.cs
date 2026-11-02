@@ -141,6 +141,14 @@ public sealed class SessionHost : IAsyncDisposable
             st.AssistantProvider = kept;
             SaveSettings();
         }
+        // the person chose their own agent as the assistant (the launcher): dev mode, as --dev starts it; fixed for the
+        // run, since the API's own kinds, the token and the sidecar's brain are set at start. The setting is read-only
+        // on the agent API and the assistant's harness keeps it from the settings file (docs/dev-mode.md)
+        if (st.AssistantProvider == Sojourn.Session.Assistant.ProviderKeys.Agent && !Options.Dev)
+        {
+            Info("assistant: the person's own agent is the assistant (their choice in the launcher): dev mode");
+            Options = Options with { Dev = true };
+        }
         AudioEngine.Chosen = hs => hs ? (st.HeadsetMicrophone, st.HeadsetSpeakers) : (st.Microphone, st.Speakers);
         foreach (var change in Options.VrOverrides) change(Settings);
     }

@@ -91,7 +91,7 @@ attach to a GitHub issue; a crash's memory dump never leaves the PC.
   event log (`local/client/state/pilot/events.jsonl`) is the viewer-like chat log it already kept. Its memory
   (`local/assistant/home`, notes about the person) holds what the person tells it, never what others said: the
   prompt says so, and auto mode's rules forbid writing others' conversations to files or sending them anywhere.
-- Dev mode (`docs/dev-mode.md`): a Claude Code session the user started stands in for the assistant, in bypass mode.
+- Dev mode (`docs/dev-mode.md`): an agent session the person started (ours: a Claude Code session in bypass mode) stands in for the assistant.
   The same lines hold, kept by `docs/driving.md` and the studio's rules instead of a harness: it acts on the
   person's requests while they're there (a human-directed account, as above) and stops when they're done; the login,
   ToS and MFA stay the person's; it never reads the password or MFA files (2.e); the confirmations are the

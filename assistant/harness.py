@@ -180,8 +180,8 @@ def settings(home: Path, work: Path, auto=True):
                 "(mfa_hash files), test accounts' passwords "
                 "(account.txt), Claude's or any program's tokens, browser or Windows credential stores, SSH keys, "
                 "the assistant sidecar's token (SOJOURN_SIDECAR_TOKEN), including by reading another process's memory.",
-                "Turning off Sojourn's incognito by any route (only the person does, by their own words, wrist or "
-                "menu), or letting itself see during it, or reading what the client kept of where the person has "
+                "Turning off Sojourn's incognito by any route (only the person does, with their own controls: "
+                "the wrist token, the menu, P), or letting itself see during it, or reading what the client kept of where the person has "
                 "been: its caches, screenshots, and pictures or videos named incognito or private in Pictures or "
                 "Videos\\Sojourn.",
                 f"Logging in to {sl} by any route of its own, or starting another viewer, client or bot (Sojourn "

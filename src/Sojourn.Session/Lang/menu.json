@@ -5614,5 +5614,21 @@
     "az": "növbəti girişdən",
     "de": "ab der nächsten Anmeldung",
     "zh-Hans": "下次登录时生效"
+  },
+  "An AI agent on this PC, such as Claude Code, answers in place of Sojourn's own assistant. It's chosen in the launcher.": {
+    "_": "settings menu > assistant, when the person chose their own AI agent in the launcher: a sentence under the section's title line 'your own agent is the assistant', above its rows (wraps over two or three lines of ~50 characters); plain, friendly; Claude Code is a name",
+    "zh": "這台電腦上的 AI 代理（例如 Claude Code）代替 Sojourn 自己的助理回答。這是在啟動器中選的。",
+    "it": "Un agente IA su questo PC, come Claude Code, risponde al posto dell'assistente di Sojourn. Si sceglie nel launcher.",
+    "es": "Un agente de IA en este PC, como Claude Code, responde en lugar del asistente propio de Sojourn. Se elige en el lanzador.",
+    "pt": "Um agente de IA neste PC, como o Claude Code, responde no lugar do assistente do Sojourn. Isso se escolhe no launcher.",
+    "ja": "このPCのAIエージェント（Claude Codeなど）が、Sojourn自身のアシスタントの代わりに答えます。ランチャーで選びます。",
+    "tr": "Bu bilgisayardaki bir yapay zekâ ajanı, örneğin Claude Code, Sojourn'un kendi asistanının yerine yanıtlar. Başlatıcıda seçilir.",
+    "fr": "Un agent IA sur ce PC, comme Claude Code, répond à la place de l'assistant de Sojourn. Cela se choisit dans le lanceur.",
+    "da": "En AI-agent på denne pc, fx Claude Code, svarer i stedet for Sojourns egen assistent. Det vælges i startprogrammet.",
+    "ru": "ИИ-агент на этом ПК, например Claude Code, отвечает вместо собственного ассистента Sojourn. Это выбирается в лаунчере.",
+    "pl": "Agent AI na tym komputerze, np. Claude Code, odpowiada zamiast asystenta Sojourn. Wybiera się to w launcherze.",
+    "az": "Bu kompüterdəki bir AI agenti, məsələn Claude Code, Sojourn-un öz köməkçisinin yerinə cavab verir. Bu, başladıcıda seçilir.",
+    "de": "Ein KI-Agent auf diesem PC, etwa Claude Code, antwortet anstelle des Assistenten von Sojourn. Das wird im Launcher gewählt.",
+    "zh-Hans": "这台电脑上的 AI 智能体（例如 Claude Code）代替 Sojourn 自己的助手回答。这是在启动器中选的。"
   }
 }

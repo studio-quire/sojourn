@@ -144,7 +144,12 @@ public sealed partial class MainForm
             : AccessOptions.AssistantInBuild ? "Describing needs the assistant, and it isn't running. "
             : "Describing needs the assistant, which this build doesn't include. ";
         _toldNoAssistant = true;
-        if (s.Of != "view") { Answer(none.Length > 0 ? none.Trim() : "Describing needs the assistant."); return; }
+        if (s.Of == "ride" && _rides?.Latest is { } ride)
+        {
+            Answer(none + "What the recording knows: " + Sojourn.Access.Walk.RideRecorder.Summary(ride));
+            return;
+        }
+        if (s.Of != "view"){ Answer(none.Length > 0 ? none.Trim() : "Describing needs the assistant."); return; }
         var r = await _ops.ReadAsync("SojournDescribe", "look", new JsonObject { ["subject"] = s.Key, ["pictures"] = false });
         if (PersonOps.Error(r) is { } e) { Answer(none + e); return; }
         var facts = r["subject"] as JsonObject ?? new();

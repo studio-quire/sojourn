@@ -38,7 +38,7 @@
 //                                                         next touch ("NAME renamed to N")
 //   cart [NAME] X Y Z                                     a cart to drive seated (default "Walk Cart"): takes the sitter's
 //                                                         movement keys, moves on forward and back, turns on left and right
-//   kart [NAME] X Y Z [facing DEG] [train SECS] [sound UUID] [throttle STEP] [endx X]
+//   kart [NAME] X Y Z [facing DEG] [train SECS] [sound UUID] [throttle STEP] [endx X] [hover 1] [lose N] [start P] [quiet 1]
 //                                                         a physical car vehicle (default "Walk Kart") for seated
 //                                                         crossings, heading east or DEG (0 east, 90 north); with train,
 //                                                         the forward key starts it driving on its own for SECS, keys or
@@ -48,7 +48,12 @@
 //                                                         into reverse, each change said ("throttle 35"); with endx, its
 //                                                         track ends once it's east of X: "sensor : No further track
 //                                                         guide detected", then twice 2 s apart while still moving
-//                                                         "no_sensor : No Guide found" (Access's stop at a track's end)
+//                                                         "no_sensor : No Guide found" (Access's stop at a track's end);
+//                                                         hover 1: shows "Throttle N%" and its speed as floating text;
+//                                                         lose N: every Nth press (forward or back) is ignored, as one
+//                                                         that never reached the script; start P: the throttle at P%
+//                                                         once sat on; quiet 1: the throttle isn't said aloud (its
+//                                                         changes always go to the visitor by llOwnerSay)
 //   switch X Y Z [CHANNEL]                                a rail switch as the SLRR standard describes one (Sojourn
 //                                                         Access's rail switches): a "Switch Stand" whose description is
 //                                                         "Walk Junction.N~Main~Walk Halt~North Station~East Yard~N",
@@ -289,8 +294,22 @@ static class Program
                     if (w.Length < 4) return "ERR tp REGION X Y Z";
                     var region = string.Join(" ", w[..^3]);
                     var at = new Vector3(float.Parse(w[^3]), float.Parse(w[^2]), float.Parse(w[^1]));
+                    var from = client.Network.CurrentSim;
                     bool ok = await client.Self.TeleportAsync(region, at);
-                    return ok ? $"arrived {client.Network.CurrentSim?.Name} {client.Self.SimPosition}" : "ERR the teleport failed";
+                    // LibreMetaverse reports a local teleport failed now and then as it arrives (the app's
+                    // AgentSession.TeleportAsync has the same check): there within 3 s, it arrived
+                    if (!ok && string.Equals(from?.Name, region, StringComparison.OrdinalIgnoreCase))
+                        for (int i = 0; i < 30 && !ok; i++)
+                        {
+                            ok = ReferenceEquals(client.Network.CurrentSim, from)
+                                && Vector2.Distance(new Vector2(client.Self.SimPosition.X, client.Self.SimPosition.Y), new Vector2(at.X, at.Y)) < 5;
+                            if (!ok) await Task.Delay(100);
+                        }
+                    if (!ok) return $"ERR the teleport failed ({client.Self.TeleportMessage})";
+                    // to another region: the position is the old region's until the new one's movement completes
+                    for (int i = 0; i < 100 && !ReferenceEquals(client.Network.CurrentSim, from) && client.Network.CurrentSim is { AgentMovementComplete: false }; i++)
+                        await Task.Delay(100);
+                    return $"arrived {client.Network.CurrentSim?.Name} {client.Self.SimPosition}";
                 }
             case "fly":
                 client.Self.Fly(rest.Trim() != "off");
@@ -576,7 +595,7 @@ static class Program
     /// "kart controls taken" when it has them.</summary>
     static async Task<string> Kart(string rest)
     {
-        const string usage = "ERR kart [NAME] X Y Z [facing DEG] [train SECS] [sound UUID] [throttle STEP] [endx X]";
+        const string usage = "ERR kart [NAME] X Y Z [facing DEG] [train SECS] [sound UUID] [throttle STEP] [endx X] [hover 1] [lose N] [start P] [quiet 1]";
         // the options after the place, in any order
         var words = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
         string Option(string key)
@@ -597,6 +616,14 @@ static class Program
         if (Option("throttle") is { } st && (!int.TryParse(st, out step) || step <= 0 || step > 100)) return usage;
         float endx = 0;
         if (Option("endx") is { } ex && !float.TryParse(ex, out endx)) return usage;
+        // hover 1: a throttle train shows its throttle and speed as floating text, as the blind tester's partner's train does
+        bool hover = Option("hover") == "1";
+        // for Access's stop: presses lost on the way (lose N), a throttle opened before the arrows (start P), and nothing
+        // said aloud of it (quiet 1)
+        int lose = 0, start = 0;
+        if (Option("lose") is { } ls && (!int.TryParse(ls, out lose) || lose < 0)) return usage;
+        if (Option("start") is { } ss && !int.TryParse(ss, out start)) return usage;
+        bool quiet = Option("quiet") == "1";
         rest = string.Join(" ", words);
         if (NameAndPos(rest, "Walk Kart") is not var (name, pos)) return usage;
         var sim = client.Network.CurrentSim;
@@ -607,8 +634,10 @@ static class Program
         var script = await UploadScript("Walk kart",
             "integer K; string LOOP = \"" + loop + "\"; integer TRAIN = " + train + "; integer ticks; "
             + "integer STEP = " + step + "; float ENDX = " + endx.ToString(System.Globalization.CultureInfo.InvariantCulture) + "; "
-            + "integer thr; integer ended; integer nags; integer nagTicks; "
+            + "integer thr; integer ended; integer nags; integer nagTicks; integer HOVER = " + (hover ? 1 : 0) + "; integer hoverTicks; "
+            + "integer LOSE = " + lose + "; integer START = " + start + "; integer QUIET = " + (quiet ? 1 : 0) + "; integer presses; "
             + "default { state_entry() { llSitTarget(<0, 0, 0.75>, ZERO_ROTATION); "
+            + "if (HOVER) llSetText(\"Throttle 0%\\nSpeed 0 km/h\", <1, 1, 1>, 1.0); else llSetText(\"\", ZERO_VECTOR, 0); "
             + "K = CONTROL_FWD | CONTROL_BACK | CONTROL_ROT_LEFT | CONTROL_ROT_RIGHT | CONTROL_LEFT | CONTROL_RIGHT; "
             + "llSetVehicleType(VEHICLE_TYPE_CAR); llSetVehicleFloatParam(VEHICLE_LINEAR_MOTOR_TIMESCALE, 0.4); "
             + "llSetVehicleFloatParam(VEHICLE_LINEAR_MOTOR_DECAY_TIMESCALE, 0.6); llSetVehicleFloatParam(VEHICLE_ANGULAR_MOTOR_TIMESCALE, 0.2); "
@@ -616,7 +645,7 @@ static class Program
             + "llSay(0, llGetObjectName() + \" ready\"); } "
             + "changed(integer c) { if (c & CHANGED_LINK) { key who = llAvatarOnSitTarget(); "
             + "if (who != NULL_KEY) { llSetStatus(STATUS_PHYSICS, TRUE); llRequestPermissions(who, PERMISSION_TAKE_CONTROLS); if (LOOP != \"\") llLoopSound(LOOP, 1.0); "
-            + "if (STEP) { thr = 0; llSetTimerEvent(0.1); } } "
+            + "if (STEP) { thr = START; if (START) llOwnerSay(\"throttle \" + (string)thr); llSetTimerEvent(0.1); } } "
             + "else { llSetStatus(STATUS_PHYSICS, FALSE); llStopSound(); if (STEP) llSetTimerEvent(0); llSay(0, \"kart empty\"); } } } "
             + "run_time_permissions(integer p) { if (p & PERMISSION_TAKE_CONTROLS) { llTakeControls(K, TRUE, FALSE); llSay(0, \"kart controls taken\"); } } "
             // a train drives on its own once started, whatever the keys (ticks of 0.1 s; the motor set again each, as it decays)
@@ -624,12 +653,16 @@ static class Program
             + "timer() { if (STEP) { llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION, <thr * 0.1, 0, 0>); "
             + "if (ENDX > 0 && !ended && llGetPos().x > ENDX) { ended = TRUE; nags = 2; nagTicks = 0; llSay(0, \"sensor : No further track guide detected\"); } "
             + "else if (ended && nags > 0 && ++nagTicks >= 20) { nagTicks = 0; if (llVecMag(llGetVel()) > 0.5) { nags--; llSay(0, \"no_sensor : No Guide found\"); } } "
+            + "if (HOVER && ++hoverTicks >= 10) { hoverTicks = 0; llSetText(\"Throttle \" + (string)thr + \"%\\nSpeed \" + (string)llRound(llVecMag(llGetVel()) * 3.6) + \" km/h\", <1, 1, 1>, 1.0); } "
             + "return; } "
             + "if (--ticks > 0) llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION, <10, 0, 0>); "
             + "else { llSetTimerEvent(0); llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION, ZERO_VECTOR); llSay(0, \"kart stopped\"); } } "
             + "control(key id, integer level, integer edge) { if (STEP) { integer was = thr; "
+            // (LSL's && evaluates both sides: a modulo by 0 would stop the script)
+            + "if (LOSE) if (level & edge & (CONTROL_FWD | CONTROL_BACK)) if (++presses % LOSE == 0) return; "
             + "if (level & edge & CONTROL_FWD) thr += STEP; if (level & edge & CONTROL_BACK) thr -= STEP; "
-            + "if (thr > 100) thr = 100; if (thr < -100) thr = -100; if (thr != was) llSay(0, \"throttle \" + (string)thr); return; } "
+            + "if (thr > 100) thr = 100; if (thr < -100) thr = -100; "
+            + "if (thr != was) { if (!QUIET) llSay(0, \"throttle \" + (string)thr); llOwnerSay(\"throttle \" + (string)thr); } return; } "
             + "if (TRAIN) { if ((level & edge & CONTROL_FWD) && ticks <= 0) { ticks = TRAIN * 10; "
             + "llSetTimerEvent(0.1); llSay(0, \"kart driving\"); } return; } "
             + "vector m = ZERO_VECTOR; if (level & CONTROL_FWD) m.x = 10; if (level & CONTROL_BACK) m.x = -5; "

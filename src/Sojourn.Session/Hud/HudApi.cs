@@ -68,13 +68,13 @@ public sealed class HudApi : LeapApi
         // what the region says is worn on HUD points; drawn: placed by the renderer (its shape and textures may still be coming)
         uint self = S.Client?.Self.LocalID ?? 0;
         var roots = w.Prims.Values.Where(p => p.ParentID == self && self != 0 && Sojourn.Render.Realtime.Hud.IsHudPoint((int)p.PrimData.AttachmentPoint)).ToList();
-        if (roots.Count > 0) await S.Objects.FetchAsync(w, roots, TimeSpan.FromSeconds(3), ct);
+        var names = await S.Objects.WornNamesAsync(w, roots, TimeSpan.FromSeconds(4), ct);
         var drawn = (await _screen.WithHudsAsync((placed, _) => placed, HudsPlaced.None, ct)).Objects;
         return new JsonObject
         {
             ["huds"] = new JsonArray(roots.Select(p => (JsonNode)new JsonObject
             {
-                ["id"] = p.ID.ToString(), ["name"] = NameOf(w, p.ID), ["point"] = ObjectViews.AttachPointName((int)p.PrimData.AttachmentPoint),
+                ["id"] = p.ID.ToString(), ["name"] = names[p.ID], ["point"] = ObjectViews.AttachPointName((int)p.PrimData.AttachmentPoint),
                 ["prims"] = S.Objects.Linkset(w, p).Count, ["drawn"] = drawn.Any(h => h.Id == p.ID),
                 ["buttons_read"] = ReadFor(p)?.Buttons.Count ?? 0,
             }).ToArray()),

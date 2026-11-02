@@ -8,7 +8,7 @@ namespace Sojourn.Client;
 /// What this run is doing, for the launcher that started it (src/Sojourn.Launcher, docs/launcher.md): with
 /// SOJOURN_STATE_FILE set, a small JSON file (pid, state, headset, detail, the session's log) rewritten when it
 /// changes. States: starting, form (the login screen), connecting, terms, code (the grid's questions, answered here by
-/// the person), failed, world, ending. A run started again (a lost GPU, back to the login screen) inherits the variable
+/// the person), failed, world, ending, quit (ending, the person having asked for the launcher to close too). A run started again (a lost GPU, back to the login screen) inherits the variable
 /// and writes its own pid, which is how the launcher follows it. With terms and code, the question goes too (the terms'
 /// kind and text, how many times a code was asked for), and whether this run takes answers from the launcher
 /// (Login/LauncherAnswers.cs: the way back is that pipe, never this file).
@@ -21,6 +21,9 @@ public static class LaunchState
     static string? _state, _detail, _question;
     static bool _headset;
     static long _nextTick;
+
+    /// <summary>Started by the launcher (it set the state file), or started again from such a run.</summary>
+    public static bool ForLauncher => FilePath != null;
 
     public static void Started(string? sessionLog)
     {

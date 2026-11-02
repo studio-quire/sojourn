@@ -60,8 +60,10 @@ first, and only then explained, behind a small toggle.
 - **Simple and advanced** (the user's call, 2026-10-29: Sojourn is assistant first, so the menu holds only what a
   person would change by hand rather than ask for; graphics are for asking, draw distance excepted): by default the
   menu shows assistant (model, memory, forget memory, ask before touching, advanced menu), incognito (all of it: by
-  hand on purpose, some of it better not said aloud), voice (mic on, in open mic), safety (a script's controls back,
-  hidden things shown again, when there are any) and view (draw distance); a section with none of those isn't shown.
+  hand on purpose, some of it better not said aloud), you (log out, quit Sojourn; 2026-11-02), voice (mic on, in open mic), safety (a script's controls back,
+  hidden things shown again, when there are any) and view (menu size and, while a menu is put somewhere, menu
+  positions · reset, the user's asks from the headset, 2026-11-02; language, draw distance, quality); a section with
+  none of those isn't shown.
   The **advanced menu** switch (last in assistant, `advanced_menu` in SojournSettings, saved) shows every row. Only the
   menu changes: the settings and the assistant's reach are the same either way. Each row's level is one letter in
   `Control/MenuGuide.cs`; the tests' presses and pictures use the whole menu.
@@ -72,7 +74,8 @@ first, and only then explained, behind a small toggle.
   its name would be cut short (haiku effort).
 - **Tips** (the user's ask, 2026-10-30: names stay minimal): the pointer (right ray, or the mouse on the desktop)
   resting 0.5 s on a row or tab shows what it does in a sentence or two, on a small raised pane of the menu's glass
-  just under it (above it at the foot), over the rows below; it goes as soon as the pointer leaves the row or a key is
+  just under it (above it at the foot), over the rows below, never over the tabs (a section of one to three rows keeps
+  room under its second row for a three-line tip, always, so it doesn't grow under the pointer); it goes as soon as the pointer leaves the row or a key is
   pressed, and crossing rows never shows one. The words are the person's, not the settings' `desc` (which is for the
   assistant): `MenuGuide`, beside each row's level, keyed by section, group and label. Drawn into the menu's own
   raster, so it follows the menu and costs a redraw only when it comes or goes.
@@ -92,7 +95,8 @@ first, and only then explained, behind a small toggle.
     from* › a switch per group (with voice and groups); *AO* › the AO, its set,
     stands, OpenCollar, LockMeister, lock its folder; then skeleton · reset, attachments · refresh, animations ·
     resync (the person's own avatar but the last, which is everyone's), run as the person's own press on
-    SojournAvatars' ops, the key showing … then done or failed;
+    SojournAvatars' ops, the key showing … then done or failed; then log out (with a login screen or the launcher) and
+    quit Sojourn, each pressed twice (`docs/client.md` > Logging in);
   - **social**: name tags, chat feed, hover text, chat bubbles, tags through walls, group titles, friend colour, hover
     tips off/0.3/0.7/1.5 s, *alerts* › mentions, keywords, sound; *radar* › chat range, draw distance, region each
     off/enter/leave/both, new accounts;
@@ -127,7 +131,7 @@ first, and only then explained, behind a small toggle.
   every page as tall as the tallest, turned by those keys or a flick of the right stick with the ray on the menu; at
   size 1 a section holds about ten rows under two strips of tabs, at 0.7 about fifteen.
 - **Checking it**: `--panel-shots` draws mock sections (`7e`-`7h`: every tab, size 0.7, a group's page, a lit group
-  row; `7i`-`7l` the tips); with `SOJOURN_TEST_MENU=1`, `SojournSettings menuShots {dir}` draws the running client's
+  row; `7i`-`7l` the tips; `7p`-`7r` the simple you section, `7s` a one-row section's tip); with `SOJOURN_TEST_MENU=1`, `SojournSettings menuShots {dir}` draws the running client's
   real menu, every section, group and page at the current size (`menu-<section>[-<group>]-<page>.png`);
   `tools/menu.py` runs both and presses 22 rows by label (`menuPress`), each read back, then puts them back;
   `--headset` takes the camera out, a picture and away in the simulator.

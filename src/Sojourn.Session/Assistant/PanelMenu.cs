@@ -47,7 +47,7 @@ public sealed partial class Panel
     /// the keys stay put. page: the one to show (clamped). group: a group's rows are shown (its name): the header is a
     /// back key with the name instead of the sections, a <see cref="KeyKind.Tab"/> for the section it's in.
     /// tip: what a row (its index) or tab (-1 - its index) does, drawn on a small pane just under it (over the rows
-    /// below; above it where there's no room below). text: a section's own words above its rows (the about section's),
+    /// below; above it, over the rows above, where there's no room below; never over the tabs). text: a section's own words above its rows (the about section's),
     /// drawn as help is when help isn't open. The raster's Spots say where each row and tab was drawn.
     /// </summary>
     public static Raster DrawMenu(PanelLook look, IReadOnlyList<string> tabs, int section, IReadOnlyList<MenuRow> rows, IReadOnlyList<string>? help,
@@ -71,7 +71,12 @@ public sealed partial class Panel
             spots.Clear();
             var draw = new Painter(c, ink, width);
             float y = LayoutMenu(draw, tabs, section, rows, help, hover, keys, spots, height, page, maxHeight, group, sectionText: text);
-            if (tip is { } t && spots.FirstOrDefault(sp => sp.Item1 == t.Target) is { Item2.Width: > 0 } at) DrawTip(draw, at.Item2, t.Target < 0, t.Text, height);
+            var rowSpots = spots.Where(sp => sp.Item1 >= 0 && sp.Item2.Width > 0).Select(sp => sp.Item2).OrderBy(r => r.Top).ToList();
+            // a short section keeps room under its second row for the longest tip: a tip above the first two rows would
+            // cover the tabs. Always, not only while a tip shows: a menu growing under the pointer would move its rows
+            if (height <= 0 && rowSpots.Count > 0) y = Math.Max(y, rowSpots[Math.Min(1, rowSpots.Count - 1)].Bottom + TipGap + TipMostHeight + TipFoot);
+            if (tip is { } t && spots.FirstOrDefault(sp => sp.Item1 == t.Target) is { Item2.Width: > 0 } at)
+                DrawTip(draw, at.Item2, t.Target < 0, t.Text, height, rowSpots.Count > 0 ? rowSpots[0].Top : 0);
             return y;
         }, MaxRasterWidth);
         GlassLight.Finish(pixels, look, layer ?? GlassLight.Layers);
@@ -87,24 +92,31 @@ public sealed partial class Panel
         Options = r.Options?.Select(o => Lang.T(o, section)).ToArray(),
     };
 
+    const float TipLine = 19.5f, TipGap = 4, TipFoot = 10;
+    const float TipMostHeight = 3 * TipLine + 16;   // three lines, as many as a tip wraps to
+
     /// <summary>The tip's pane, fitted to its words (up to three lines), from the row's label (a tab's left edge),
-    /// inside the menu.</summary>
-    static void DrawTip(Painter draw, SKRect at, bool tab, string text, float height)
+    /// inside the menu: under the row, else above it if that stays under the tabs (rowsTop), else as low as fits.</summary>
+    static void DrawTip(Painter draw, SKRect at, bool tab, string text, float height, float rowsTop)
     {
         if (height <= 0) return;   // (the measuring pass)
         var k = draw.K;
-        const float pad = 16, padX = 12, lineH = 19.5f;
+        const float pad = 16, padX = 12;
         var f = Font(k.Regular, 14.5f);
         float most = Math.Min(draw.W - 2 * pad, 380);
         var lines = Wrap(text, f, most - 2 * padX, 3);
-        float w = lines.Max(l => Measure(f, l)) + 2 * padX, h = lines.Count * lineH + 16;
+        float w = lines.Max(l => Measure(f, l)) + 2 * padX, h = lines.Count * TipLine + 16;
         float left = Math.Clamp(at.Left + (tab ? 0 : 4), pad - 6, draw.W - pad + 6 - w);
-        float top = at.Bottom + 4;
-        if (!tab && top + h > height - 10) top = at.Top - 4 - h;
+        float top = at.Bottom + TipGap;
+        if (!tab && top + h > height - TipFoot)
+        {
+            float above = at.Top - TipGap - h;
+            top = above >= rowsTop ? above : Math.Max(rowsTop, height - TipFoot - h);
+        }
         var pane = new SKRect(left, top, left + w, top + h);
         draw.Pane(pane, 12, height);
         float y = top + 21;
-        foreach (var l in lines) { draw.Text(l, left + padX, y, f, k.Text); y += lineH; }
+        foreach (var l in lines) { draw.Text(l, left + padX, y, f, k.Text); y += TipLine; }
     }
 
     static float MenuRowHeight(MenuRow r) => r.Note is { Length: > 0 } ? 62 : 50;

@@ -44,8 +44,9 @@ Neither needs an account with Studio Quire, an email address or anything else fr
   only on your requests while you're there, never on its own. Spending L$, deleting, giving things away, changing
   permissions and creating scripts always wait for your own key press or button.
 - Sojourn Access keeps the renderer running out of sight, so the assistant can look at the scene to describe it.
-- **Your own Claude Code can be the assistant** instead (Sojourn's dev mode, DEV-MODE.md): it then operates the viewer
-  for you through the same controls and confirmations.
+- **Your own AI agent can be the assistant** instead, Claude Code for instance: choose "your agent" in the launcher's
+  assistant settings (Sojourn's dev mode, DEV-MODE.md). It then operates the viewer for you through the same controls
+  and confirmations.
 - The assistant needs an AI provider you bring yourself: your own Anthropic or OpenRouter key. Without one, Sojourn is
   a viewer without the assistant.
 
@@ -107,8 +108,9 @@ from the spell is kept, and by default the assistant sees only a general picture
 Optional services you choose yourself: cloud speech recognition (Soniox, with your own key) sends your recorded voice
 there while you hold the talk button; it's off unless you turn it on.
 
-**In dev mode** (DEV-MODE.md), the assistant is your own Claude Code: what it reads from Sojourn to help you goes to
-Anthropic under your own Claude account's terms, as anything else you ask it does. Sojourn sends nothing extra.
+**With your own agent** (dev mode, DEV-MODE.md), the assistant is that agent, Claude Code for instance: what it reads
+from Sojourn to help you goes to its provider (Anthropic, for Claude Code) under your own account's terms, as anything
+else you ask it does. Sojourn sends nothing extra.
 
 **How what we hold is kept.** Logs and reports sent to Studio Quire are stored by its relay on Cloudflare, readable
 only with Studio Quire's own secret, never shared or sold, and deleted automatically after 30 days. The relay keeps no

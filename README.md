@@ -34,11 +34,13 @@ The easy way: ask your own Claude (Claude Code or a similar agent) to clone this
 `tools/setup.py`, which fetches and builds everything, and helps you through the first start. Your Second Life password,
 the grid's terms and your AI provider's key stay with you.
 
-**With your Claude subscription**: Sojourn doesn't offer signing in with a Claude account. Instead your own Claude
-Code session can be Sojourn's assistant: it starts Sojourn in **dev mode**, hears what you say or type to the
-assistant, operates the viewer for you and answers on its panel, while Sojourn itself signs in to nothing. This works
-from a build of this source and from an installed copy; ask your Claude to read [DEV-MODE.md](DEV-MODE.md) and start
-it. Otherwise the assistant runs on an Anthropic or OpenRouter key of your own.
+**With your own AI agent** (and so your Claude subscription, through Claude Code): Sojourn doesn't offer signing in
+with a Claude account. Instead an agent on your PC, such as Claude Code, can be Sojourn's assistant: choose **your
+agent** in the launcher's assistant settings and give your agent the sentence it shows there (read
+[DEV-MODE.md](DEV-MODE.md) and be your Sojourn assistant). Sojourn then starts in **dev mode**: your agent hears what
+you say or type to the assistant, operates the viewer for you and answers on its panel, while Sojourn itself signs in
+to nothing. This works from a build of this source and from an installed copy. Otherwise the assistant runs on an
+Anthropic or OpenRouter key of your own.
 
 By hand: `python tools/setup.py --check` says what's missing, and `python tools/setup.py` builds everything (BUILDING.md
 explains both). The rest of this section is the plain build without the optional parts.

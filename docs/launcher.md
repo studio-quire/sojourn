@@ -20,7 +20,15 @@ by Claude Opus 5.5, 2026-10-29 and 30. Agent-facing.
   client (the user, 2026-10-29; the headset's menu shows the model choices for whatever is chosen):
   - the provider (`assistantProvider`, as `assistant/provider.py` has them): claude (a Claude plan, offered only in runs
     from the repo, `ProviderKeys.ClaudeOffered`: released builds have no Claude-account sign-in, the user, 2026-10-30),
-    anthropic, openrouter, and relay (Studio Quire's, shown only once chosen or its token is kept);
+    anthropic, openrouter, agent ("your agent": the person's own AI agent on this PC, Claude Code or similar, as the
+    assistant; the client starts in dev mode, `docs/dev-mode.md`; the user's idea, 2026-11-01), and relay (Studio
+    Quire's, shown only once chosen or its token is kept); more than three on two rows;
+  - with **your agent**, no key box, models or auto mode: in their place a line ("An AI agent on this PC, such as
+    Claude Code, will be Sojourn's assistant. Tell it:") over the sentence to give it, "Read <DEV-MODE.md> and be my
+    Sojourn assistant.", with the real path for this copy (`Places.Guide`: beside the exe packaged, the clone's root,
+    or `tools/publish/sojourn/` in the studio's repo) and a copy key; "your own agent is the assistant" under the
+    wordmark. `--dev` shows the same for this window's launches without saving it (picking another provider ends it)
+    and passes `--dev` on; a saved choice needs no switch, as the client reads it;
   - the **key box**: paste an Anthropic or OpenRouter key or a relay token (Ctrl+V, or Enter after typing): its shape
     says which, it's kept by `ProviderKeys` (DPAPI, linked here) and that provider chosen, the box cleared; a kept
     key greys the box out as a remembered password does. Kept only from the person's
@@ -38,7 +46,9 @@ by Claude Opus 5.5, 2026-10-29 and 30. Agent-facing.
   remember choice goes with it). Its console goes to `B/logs/launcher-console.log`; no console window.
 - **While it runs**, Launch's place shows its state: starting, logging in, terms or authenticator code, in the headset or on the
   desktop, closing; the grid's terms or MFA code are answered in the card (> The grid's questions at the desk); a
-  stop key closes the client's window as the person would (ended after 20 s if it hasn't). A run that starts itself again (a lost GPU, back to its login screen) is followed. A failed login
+  stop key closes the client's window as the person would (ended after 20 s if it hasn't). A run that starts itself again (a lost GPU, back to its login screen) is followed. The headset menu's log out
+  (you, at the foot) ends the client as quitting does, an ordinary end, and Launch is back; its quit Sojourn ends the
+  client and then the launcher too (the client's last state `quit`, `ClientRun.Poll`; the user, 2026-11-02). A failed login
   stops the run and leaves the grid's reason at the foot, the form as typed. A crash leaves "stopped unexpectedly" and
   a log key (the session's log, or the console's if it died with an unhandled exception), and offers a report (> After
   a crash).
@@ -47,6 +57,11 @@ by Claude Opus 5.5, 2026-10-29 and 30. Agent-facing.
   the client's one setting, `uiLanguage` in `vr-settings.json` (`auto` or a code), applied at once, not while the client
   runs. Not a row behind the gear: that page is full with OpenRouter's rows, and someone stuck in a language they can't
   read finds a globe sooner than a row (kept so, the user, 2026-11-01). Words: `Words.cs` (> Languages).
+- **One launcher** per base dir (`OneLauncher.cs`, Claude Opus 5.5, 2026-11-02, after a person ended up with two):
+  a named mutex says one is open, and a second start hands it a line over a named pipe (CurrentUserOnly) and exits
+  with code 3: `dev` (its `--dev`) switches the open one to the agent, `front` (a start not from a Claude Code
+  session) brings it forward, its own `AllowSetForegroundWindow` letting it. Nothing else is taken. Another base dir
+  is another launcher (tests).
 - Sojourn Access isn't started from here: the two ship separately (the user, 2026-10-29: nobody would use both).
 - Base dir: `local/main` in the repo (the person's own headset settings and SL cache), `%LOCALAPPDATA%\Sojourn` packaged.
 
@@ -173,7 +188,8 @@ key set into the key box by UI Automation or typed by posted characters and Ente
 click posted on Continue, Continue invoked), then with `SOJOURN_TEST_INPUT=1` a code and the ToS answered at the
 launcher and the client in world, the code in no log. SendInput can't be checked there (it reaches only the desktop
 the person's input goes to). `tools/inputcheck` alone runs PressJudge's sequences (points, keys, characters).
-`SOJOURN_FAKE_DEVICE_LOST=6` fakes a lost GPU, to see the restarted run followed. `shots` also draws OpenRouter with
+`SOJOURN_FAKE_DEVICE_LOST=6` fakes a lost GPU, to see the restarted run followed. `shots` also draws the person's own
+agent as the assistant (`agent`, the login with its line, and `settings-agent`), OpenRouter with
 Claude's three (`settings-openrouter-claude`), a tag (`settings-openrouter`) and the list on its own
 (`settings-openrouter-list`; a popup isn't part of the view).
 
@@ -195,7 +211,8 @@ behind the glass a very light blue gradient running straight down (symmetry, als
 form, Launch is a lens of light blue, the state takes its place while running. The headset's panel and menus keep
 their clear glass (PanelLook): the worlds behind them vary too much for one colour, so colours there stay the
 person's choice of palette in the viewer (the user, same day). Archivo Light
-for the wordmark, Segoe UI Variable otherwise. Words only for names, fields and a word or two of state, but always enough to say what each thing is (the user,
+for the wordmark (Archivo's three files all name their family "Archivo SemiBold", Light being its weight 300, so the
+wordmark asks for that family at FontWeight Light; until 2026-11-02 it asked for "#Archivo Light" and was Segoe UI), Segoe UI Variable otherwise. Words only for names, fields and a word or two of state, but always enough to say what each thing is (the user,
 2026-10-30: "remember password", "authenticator code", "grid" over its choices, never a bare word left to guesswork).
 
 ## The package
@@ -233,6 +250,11 @@ releases (the user, 2026-10-29; `docs/access-app.md` > Packaging, whose bundler 
   their own shapes in the same SVG (`data-min`/`data-max`). Both exes carry it as their ApplicationIcon; the launcher's
   windows take it from the exe, the client's window from `Window/AppIcon.cs` (GLFW won't); `vpk pack --icon` gives it to
   Setup and the Add/Remove Programs entry, and Velopack's stub (the shortcut's target) copies the launcher's.
+- **The splash** (Claude Opus 5.5, 2026-11-02): Setup's window while it installs is `art/splash/sojourn-splash.png`
+  (`vpk pack --splashImage`, `--splashProgressColor #6AA8D8`); without one Velopack shows a generic progress dialog
+  with a stray OK. Rendered by `tools/icon.py` from `sojourn-splash.svg`, which takes the icon from its own SVG at
+  build time. Velopack draws it borderless at its pixel size times the display's scale (Lanczos, so 600x360 is the
+  size at 100%) and lays its bar over the bottom 12 px edge to edge, hence square corners and a faint track there.
 - **The data folder**: `%LOCALAPPDATA%\Sojourn` (`DataFolder.cs`, linked into the launcher: the launcher's and the
   client's base dir, saved accounts, keys, the OpenRouter list, the assistant's memory; Sojourn Access keeps its own
   in `Sojourn Access` but shares the keys in `Sojourn\secrets\assistant`); `SojournVR.exe` run on its

@@ -10,8 +10,10 @@ using Sojourn.Session;
 //
 //   dotnet Sojourn.SessionProbe.dll [--first F --last L --password P] [--grid URI] [--start uri:Region&x&y&z]
 //       [--port 9760] [--base DIR] [--say TEXT] [--expect TEXT] [--seconds 120] [--voice] [--sounds] [--render]
+//   dotnet Sojourn.SessionProbe.dll --answers      how a notification's response is read, without a grid (AnswerChecks.cs)
 
 var a = Args.Parse(args);
+if (a.Has("--answers")) return Sojourn.SessionProbe.AnswerChecks.Run();
 var opt = new SessionOptions
 {
     LoginUri = a.Get("--grid") ?? "http://127.0.0.1:9700/",

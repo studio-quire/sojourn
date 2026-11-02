@@ -44,9 +44,19 @@ public partial class LauncherView : UserControl
 
     public event Action? CloseRequested, MinimiseRequested;
 
-    /// <summary>Started with --dev: the client it launches is in dev mode (the person's own Claude Code session as the
-    /// assistant, docs/dev-mode.md), said under the wordmark.</summary>
-    internal bool Dev { init => DevNote.Visibility = value ? Visibility.Visible : Visibility.Collapsed; }
+    /// <summary>Started with --dev: this launch's assistant is the person's own agent, as the "your agent" choice but not
+    /// saved; picking another provider ends it (docs/dev-mode.md).</summary>
+    internal bool Dev { init { if (value) AgentFromSwitch(); } }
+
+    bool _devSwitch;   // --dev, or a later start's (OneLauncher): the agent for this launcher's launches, unsaved
+
+    /// <summary>The person's own agent as the assistant for launches from this window (--dev, here or handed over by a
+    /// second start), without changing their saved choice.</summary>
+    internal void AgentFromSwitch()
+    {
+        _devSwitch = true;
+        LoadSettings();
+    }
 
     internal LauncherView(Places places, LoginStore store, bool desktop, IReadOnlyList<string> extra)
     {
@@ -66,7 +76,7 @@ public partial class LauncherView : UserControl
         {
             if (value == "claude" && !ProviderKeys.ClaudeOffered) continue;
             var rb = new RadioButton { GroupName = "provider", Style = (Style)FindResource("Segment"), Content = ProviderWords(label), Tag = value };
-            rb.Checked += (_, _) => { if (!_loading) { _settings.Provider = value; ShowAssistant(); } };
+            rb.Checked += (_, _) => { if (!_loading) { _devSwitch = false; _settings.Provider = value; ShowAssistant(); } };
             ProviderTrack.Children.Add(rb);
         }
         // OpenRouter's list arrives off this thread (a fetch at most every 3 days, only once OpenRouter is chosen)
@@ -92,6 +102,7 @@ public partial class LauncherView : UserControl
         };
         KeyBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) { TryKeep(enter: true); e.Handled = true; } };
         ForgetKey.Click += (_, _) => ForgetTheKey();
+        CopySentence.Click += (_, _) => CopyTheSentence();
         ModelBox.LostKeyboardFocus += (_, _) => CommitModel();
         ModelBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) { CommitModel(); e.Handled = true; } };
         // a popup that doesn't stay open closes on the mouse-down over ▾ itself, before its click: that click mustn't reopen it
@@ -287,7 +298,7 @@ public partial class LauncherView : UserControl
         var g = _settings.Exists ? _settings.Graphics : "balanced";
         GfxYours.Visibility = g == "yours" ? Visibility.Visible : Visibility.Collapsed;
         (g switch { "light" => GfxLight, "balanced" => GfxBalanced, "full" => GfxFull, _ => GfxYours }).IsChecked = true;
-        var provider = _settings.Provider ?? SettingsFile.Providers[0].Value;
+        var provider = ProviderNow;
         foreach (RadioButton rb in ProviderTrack.Children) rb.IsChecked = (string)rb.Tag == provider;
         ModelBox.Text = Shown(_settings.OpenRouterModel);
         AutoSwitch.IsChecked = _settings.AutoMode;
@@ -298,27 +309,32 @@ public partial class LauncherView : UserControl
 
     // ---- the assistant: its key, OpenRouter's model and data setting ----
 
-    string ProviderNow => _settings.Provider ?? SettingsFile.Providers[0].Value;
+    string ProviderNow => _devSwitch ? ProviderKeys.Agent : _settings.Provider ?? SettingsFile.Providers[0].Value;
 
     /// <summary>The rows under the provider as they stand: the key's hint (kept or not, never the key), forgetting it,
-    /// and OpenRouter's own rows.</summary>
+    /// and OpenRouter's own rows; with the person's own agent, what to tell it in the key's place.</summary>
     void ShowAssistant()
     {
         var kind = ProviderNow;
+        bool agent = kind == ProviderKeys.Agent;
         // Studio Quire's relay is for the few the studio covers: its choice shows once it's chosen or its token is kept
-        // (a token pasted into any key box is recognised), and then the four go on two rows, as one row clips them
+        // (a token pasted into any key box is recognised); more than three choices go on two rows, as one row clips them
         bool relay = kind == "relay" || ProviderKeys.Has("relay");
         foreach (RadioButton rb in ProviderTrack.Children)
             if ((string)rb.Tag == "relay") rb.Visibility = relay ? Visibility.Visible : Visibility.Collapsed;
-        bool two = relay && ProviderKeys.ClaudeOffered;
+        bool two = ProviderTrack.Children.OfType<RadioButton>().Count(rb => rb.Visibility == Visibility.Visible) > 3;
         ProviderTrack.Rows = two ? 2 : 1;
         if (two) ProviderBorder.Height = 74;
         else ProviderBorder.ClearValue(HeightProperty);
+        DevNote.Visibility = agent ? Visibility.Visible : Visibility.Collapsed;
+        AgentBlock.Visibility = agent ? Visibility.Visible : Visibility.Collapsed;
+        if (agent) { AgentSentence.Text = Sentence; CopySentence.Content = Lang.T("copy", "button"); }
+        Switches.Visibility = agent ? Visibility.Collapsed : Visibility.Visible;   // auto mode is the built-in assistant's
         bool chosen = kind != "claude" || ProviderKeys.ClaudeOffered;
-        bool keyed = kind != "claude" || !chosen;   // none chosen: the box takes a key or token, which chooses its provider
-        bool kept = kind != "claude" && ProviderKeys.Has(kind);
+        bool keyed = !agent && (kind != "claude" || !chosen);   // none chosen: the box takes a key or token, which chooses its provider
+        bool kept = !agent && kind != "claude" && ProviderKeys.Has(kind);
         bool armed = Environment.TickCount64 - _forgetPressedAt < 4000;
-        KeyHint.Text = kind == "claude" ? Lang.T(chosen ? "API key" : "key or token")
+        KeyHint.Text = kind is "claude" or ProviderKeys.Agent ? Lang.T(chosen ? "API key" : "key or token")
             : kept ? (armed ? Lang.T(kind == "relay" ? "forget the token?" : "forget the key?") : Lang.F("{0} kept", Thing(kind))) : Thing(kind);
         // a kept key: the box greyed out and closed, as a remembered password; × (twice) forgets it and opens it again
         KeyBox.IsEnabled = !kept;
@@ -357,9 +373,27 @@ public partial class LauncherView : UserControl
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException) { kind = null; }
         KeyBox.Clear();
         if (kind == null) { Note(Say("couldn't keep the key"), null, TimeSpan.FromSeconds(8), alarm: true); return; }
+        _devSwitch = false;
         _settings.Provider = kind;
         LoadSettings();
         Note(() => Lang.F("{0} kept", Thing(kind)), null, TimeSpan.FromSeconds(8));
+    }
+
+    /// <summary>What the person tells their own agent: read the guide, at its real path for this copy, and be the
+    /// assistant.</summary>
+    string Sentence => Lang.F("Read {0} and be my Sojourn assistant.", _places.Guide);
+
+    void CopyTheSentence()
+    {
+        try
+        {
+            Clipboard.SetText(Sentence);
+            Note(Say("copied: paste it to your agent"), null, TimeSpan.FromSeconds(6));
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            Note(Say("couldn't copy: try again"), null, TimeSpan.FromSeconds(8), alarm: true);
+        }
     }
 
     /// <summary>× twice within four seconds: the provider's key deleted.</summary>
@@ -566,7 +600,8 @@ public partial class LauncherView : UserControl
         _store.HandOver(account, hash, RememberSwitch.IsChecked == true);
         hash = null;
         PassBox.Clear();
-        var failed = _run.Start(_desktop, _extra);
+        // the person's own agent: a saved choice the client reads itself; --dev's unsaved one goes on the command line
+        var failed = _run.Start(_desktop, _devSwitch ? _extra.Prepend("--dev").ToList() : _extra);
         if (failed != null)
         {
             _store.DropHandOver();

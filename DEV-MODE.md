@@ -1,8 +1,10 @@
 # Dev mode: you as Sojourn's assistant
 
 This is for an AI agent (Claude Code, or a similar agent with a shell) running on a person's Windows PC, whom the
-person has asked to be Sojourn's assistant. People reading this themselves: README.md is for you, and the short
-version is to ask your own Claude to read this file and start Sojourn in dev mode.
+person has asked to be Sojourn's assistant. Claude Code is the example below because it's what we use, but nothing here
+needs it: any agent that can run commands and read their output can do this. People reading this themselves:
+README.md is for you, and the short version is to choose "your agent" in the assistant settings of Sojourn's launcher
+and give your agent the sentence it shows.
 
 ## What dev mode is
 
@@ -12,11 +14,11 @@ assistant as usual (holding a button and speaking, or typing); Sojourn transcrib
 as a line of text. You act through Sojourn's local agent API (walking, chat, inventory, outfits, building, settings,
 search, pictures of their view) and answer on the assistant's panel, which they read in the headset or hear spoken.
 
-Sojourn itself signs in to nothing for this: no AI provider, no key, no account. You are the person's own Claude Code
-(or other agent) session, under their own account, driving a program on their own PC. That is how someone uses their
-Claude subscription with Sojourn: released builds don't offer signing in with a Claude account, so dev mode is the way,
-from an installed copy or from source. Their other choice is the built-in assistant on an Anthropic API key, an
-OpenRouter key or a Studio Quire token, chosen in the launcher's settings.
+Sojourn itself signs in to nothing for this: no AI provider, no key, no account. You are the person's own agent
+session, under their own account, driving a program on their own PC. That is how someone uses an AI subscription with
+Sojourn, a Claude plan through Claude Code for instance: released builds don't offer signing in with a Claude account,
+so their own agent is the way, from an installed copy or from source. Their other choices are the built-in assistant
+on an Anthropic API key, an OpenRouter key or a Studio Quire token, all chosen in the same place in the launcher.
 
 What it isn't:
 - **Not a bot.** You act on the person's requests while they're there and directing you. That keeps their account a
@@ -25,7 +27,8 @@ What it isn't:
   after they've gone: no timers, loops, auto-replies or scripts left to act later.
 - **Not a way around anything.** The confirmations, the login and the grid's questions work exactly as without dev
   mode (below).
-- **Not a change to Sojourn.** Dev mode is a command-line switch on the launcher and the client; nothing is patched.
+- **Not a change to Sojourn.** Dev mode is one of the launcher's assistant choices ("your agent"), or the `--dev`
+  switch on the launcher and the client; nothing is patched.
 
 ## What's yours and what's the person's
 
@@ -68,46 +71,58 @@ And while you drive:
 
   Below, `dev` stands for that command: `"<Sojourn>\python\python.exe" "<Sojourn>\dev.py"` or
   `python tools/dev.py`. In PowerShell put `&` before a quoted program path. `dev help` lists everything.
-- A way to watch a command's output as it comes: in Claude Code, the **Monitor** tool. Without one, see "Without a
-  monitor" below.
+- A way to watch a command's output as it comes: in Claude Code, the **Monitor** tool. Without one, `watch --once`
+  does the same a batch at a time ("Without a monitor" below).
 
 ## 1. Start it
+
+Usually the person has already chosen "your agent" in the launcher's settings (the gear, then assistant) and given you
+the sentence it shows. Then Sojourn starts in dev mode whenever they press Launch, and the launcher says "your own agent
+is the assistant" under its name. You needn't start anything: arm the watch (below) and tell them to sign in and press
+Launch, if they haven't.
+
+If they haven't chosen it, open the launcher for them with you as the assistant:
 
 ```
 dev launch               # the headset
 dev launch --desktop     # the monitor instead
 ```
 
-This opens Sojourn's launcher in dev mode (it says "dev mode: your own Claude is the assistant" under its name) and
-returns. Tell the person it's open: they choose or add their account, type their password, and press Launch; if the
-grid asks for its terms or a code, that comes up in the launcher for them. For the headset, Link (or SteamVR) should be
-connected first. The person can also start it themselves: `Sojourn.exe --dev` (from source,
-`dotnet src\Sojourn.Launcher\bin\Release\net10.0-windows\Sojourn.dll --dev`). After they close the viewer, the launcher
-stays open in dev mode, so Launch takes them back in.
+This opens Sojourn's launcher with "your agent" chosen for this time only (their saved choice stays as it was), and
+returns. If the launcher is already open, it's switched to you and brought to the front instead, and `dev launch` says
+so: there is only ever one launcher, so tell the person to use the one in front. They choose or add their account, type
+their password, and press Launch; if the grid asks for its terms or a code, that comes up in the launcher for them. For
+the headset, Link (or SteamVR) should be connected first. The person can also start it themselves: `Sojourn.exe --dev`
+(from source, `dotnet src\Sojourn.Launcher\bin\Release\net10.0-windows\Sojourn.dll --dev`). After they close the
+viewer, the launcher stays open the same way, so Launch takes them back in.
 
-If Sojourn is already running without dev mode, the person closes it first: dev mode is chosen when the client starts.
-`dev launch` says so.
+If Sojourn itself is already running without dev mode, the person closes it first: dev mode is chosen when the client
+starts. `dev launch` says so.
 
 ## 2. Listen
 
-Start the watch under the Monitor tool, so each thing the person says reaches you as it happens:
+Start the watch so each thing the person says reaches you as it happens:
 
 ```
 dev watch
 ```
 
-Use Python's `-u` (`python.exe -u ...\dev.py watch`) so lines aren't held back, the longest timeout the Monitor
-allows, and a description like "Sojourn: what the person says". When it times out, start it again at once: it keeps
-its place, so nothing is missed. It waits for the client, then says `sojourn: Sojourn is in, ...` once the person is in
-the world. Each line after that is the person:
+In Claude Code, run it under the Monitor tool, with Python's `-u` (`python.exe -u ...\dev.py watch`) so lines aren't
+held back, the longest timeout the Monitor allows, and a description like "Sojourn: what the person says". When it
+times out, start it again at once: it keeps its place, so nothing is missed. An agent with no such tool uses
+`dev watch --once` instead ("Without a monitor" below). It waits for the client, then says `sojourn: Sojourn is in,
+...` once the person is in the world. Each line after that is the person:
 
 - `said: "..."` spoken (transcribed on their PC: read for meaning, words may be misheard), `typed: "..."` typed,
   `picked: "..."` a choice they picked, `pointed at: ...` what they pointed at when you asked, `typed answer: "..."` a
   word you asked them to check, `timer: ...` a timer they asked for running out.
 - `(that: ...)` after a request: what their pointer or mouse was on (a name, a distance, its kind and id), for "that".
 - `incognito on ...` / `incognito off ...`: below.
-- `sojourn: the client on :9720 is back` after it restarted itself (it does after a graphics card reset), and
-  `sojourn: the client on :9720 has closed` when it's gone; the watch ends then.
+- `sojourn: the client on :9720 has closed; waiting for Sojourn to start again` when the viewer closes (the person
+  closed it, `dev stop`, or it crashed). The watch carries on: when they press Launch again, `sojourn: Sojourn is in,
+  ...` says the new run is in the world, and its words come as before.
+- `sojourn: the client on :9720 started itself again and is back` after Sojourn restarted itself (it does after a
+  graphics card reset, and when it goes back to its login screen).
 
 A long line can arrive cut off in the notification; the whole line is in the monitor's output file.
 
@@ -127,8 +142,13 @@ They're in a headset reading a small panel or hearing it: a sentence or two, pla
 unless they ask.
 
 To act:
-- `dev call PUMP OP key=value ...` runs any agent API op and prints its JSON reply (or `'{"json": "args"}'` instead of
-  key=value). The API describes itself: `dev call _command getAPIs` lists the pumps, `dev call _command getAPI
+- `dev call PUMP OP key=value ...` runs any agent API op and prints its JSON reply. For arguments key=value can't
+  carry (lists, objects), pass one JSON object **on stdin** with `-`, which works from any shell:
+  `'{"items_id": ["..."], "replace": false}' | dev call LLAppearance wearItems -`. Or put it in a UTF-8 file and pass
+  `@args.json`. JSON written as a command-line argument works in bash, but Windows PowerShell 5.1 (Windows' own, and
+  Claude Code's PowerShell tool there) strips the double quotes inside it; `dev call` then says so. In PowerShell 5.1
+  text outside ASCII piped in may come out as "?" unless `$OutputEncoding` is UTF-8: use a file for it. The API
+  describes itself: `dev call _command getAPIs` lists the pumps, `dev call _command getAPI
   api=LLAgent` one pump's ops and their arguments. Some to start with: `LLAgent getPosition`, `LLChatBar sendChat
   message=...`, `TesselAgent move`, `LLAgent requestTeleport`, `SojournSettings get` / `set` (every setting the person
   could change in the menu). An op either does what it says or fails with the reason; one that needs a confirmation
@@ -145,7 +165,8 @@ say "stop", stop.
 
 ## 4. Incognito
 
-The person can turn on incognito (from the menu, their wrist, P, or by asking you): nothing from the spell is kept.
+The person can turn on incognito from the menu, P on the desktop, or by asking you; the wrist token, shown while it's
+on, ends it. Nothing from the spell is kept.
 The watch says `incognito on (...)`. Until it says `incognito off`:
 - Unless the line says they let the assistant see, the API gives you only the general picture
   (`SojournPrivate situation`) and stand-in handles instead of names and ids: help with those.
@@ -181,8 +202,10 @@ speak it directly:
 
 ## When something's off
 
-- **The panel says "no session is watching yet"**: your watch isn't running, or ran under another folder's `dev.py`
-  than the client's. Start it.
+- **The panel says "No agent is watching yet"** when the person asks something: no watch has followed this run of
+  Sojourn, or it ran under another folder's `dev.py` than the client's. Start it: their request is still there and
+  comes to you first. "waiting for your agent" means a watch followed it before but isn't running now (between
+  `watch --once` runs, or stopped).
 - **The watch waits and nothing comes**: the person hasn't pressed Launch yet, the login failed (the launcher says
   why), or Sojourn was started without dev mode (the watch says so).
 - **Nothing they say arrives, but typing does**: speech recognition didn't load or there's no microphone; `dev log

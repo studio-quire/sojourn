@@ -146,7 +146,9 @@ public sealed class VrSettings
     /// <summary>Whose models the assistant runs on (assistant/provider.py; docs/assistant.md > Switching it on): "claude"
     /// (the Claude subscription Claude Code is signed in to here, the default), "anthropic" (the person's API key),
     /// "openrouter" (their OpenRouter key) or "relay" (a personal token for Studio Quire's relay, for people the studio
-    /// covers). The keys themselves are never here: Assistant/ProviderKeys.cs.</summary>
+    /// covers). The keys themselves are never here: Assistant/ProviderKeys.cs. Or "agent" (ProviderKeys.Agent, the
+    /// launcher's choice only): the person's own agent on this PC is the assistant and the client starts in dev mode
+    /// (SessionHost.LoadSettings; docs/dev-mode.md); not in <see cref="Providers"/>, which Sojourn Access steps through.</summary>
     public string AssistantProvider { get; set; } = "claude";
     public static readonly string[] Providers = { "claude", "anthropic", "openrouter", "relay" };
     /// <summary>The providers a person can choose in this build: without "claude" when packaged (ProviderKeys.ClaudeOffered).</summary>

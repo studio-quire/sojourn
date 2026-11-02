@@ -145,6 +145,7 @@ public sealed partial class MainForm : Form
         _cmd.WalkMode = _walk;
         _walk.Walking = () => _cmd.Heading;
         StartRouteRecording(rays);
+        StartRides();
         // sound as a map (M4): a sound per kind of thing arriving, standing in for the viewer's new-IM and alert sounds
         _earcons = new Sojourn.Access.Sound.Earcons(_set, _walk, e => _set.IsMuted(SourceOf(e)) || InFriendsBurst(e)
             || (e.Kind is FeedKind.Im or FeedKind.Group && e.Session != null && e.Session == _focusedSource));
@@ -350,6 +351,7 @@ public sealed partial class MainForm : Form
     /// is: a conversation's lines without its name while it's the one in focus; the first line of a new IM says so.</summary>
     string? Shape(FeedEntry e, string line)
     {
+        if (IsPartGoing(e)) return null;   // a long line's parts: "Sent in 3 parts." instead (MainForm.LongLines.cs)
         if (_set.MuteAll) return null;
         var source = SourceOf(e);
         if (_set.IsMuted(source)) return null;
@@ -616,7 +618,7 @@ public sealed partial class MainForm : Form
             case Keys.Alt | Keys.Shift | Keys.D4: GoInventory(second: true); return true;
             case Keys.Alt | Keys.D5: GoArea(_searchPage); return true;
             case Keys.Alt | Keys.D6: GoArea(_placesPage); return true;
-            case Keys.Alt | Keys.D7: GoArea(_objectsPage); return true;
+            case Keys.Alt | Keys.D7: GoNearby(); return true;
             case Keys.Alt | Keys.Shift | Keys.D7: GoWorn(); return true;
             case Keys.Alt | Keys.D8: GoArea(_noticesPage); return true;
             case Keys.Alt | Keys.D9: GoArea(_assistantPage); return true;

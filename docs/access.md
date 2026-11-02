@@ -238,6 +238,12 @@ and clothes named as his colours, in every picture: confident and uncheckable, t
 a picture waits for its subject's look (bakes, worn things' textures, shapes) up to 12 s on a GPU and 30 s on the
 processor, says per worn thing what hadn't loaded, and the describer names no colour for an unloaded surface, says
 which colours aren't known yet and suggests asking again (`docs/access-app.md` > Describing > A look waited for).
+Rides (2026-11-01, her waterslide wish): C in walk mode or `//ride` records one, a moment every 3 s (speed, way, climb,
+the named things and people near, objects' lines, the seat's floating text) and a picture from her eyes every few
+seconds, adaptive and skipped rather than queued on a slow PC, at most 40 kept; it ends on her word, when she stands up,
+or when the ride has been still 8 s; Shift+C has it told as a short story in order, in one lean call, nothing sent
+before she asks (`docs/access-app.md` > Walk mode > Recording a ride). Checked on the local grid on a kart past named
+markers; not yet on a real ride.
 
 **M6. Making** (L, designed with her). Uploads (image, sound, mesh, with fees confirmed). Building with her own hands:
 ScriptAble's 2009 editor design (the official editor's tab names as the vocabulary, one prim at a time, faces by
@@ -441,8 +447,8 @@ her log (sent 12:57, `local/relay-logs/tester-20261101T175707-4c467c.txt`).
   on deleting (built: the `deleted` earcon) and `//touch OBJECT` (it already existed; told her). A typed gesture
   trigger went out as text while the list played it (fixed: triggers read on demand). Wishes, not asks: a HUD's map
   described (HUDs out of sight, next build), carnival bumper cars by arrow keys (planned with her partner), and a ride
-  down a waterslide recorded and described afterwards (pictures taken during a ride, described as a sequence; not
-  started).
+  down a waterslide recorded and described afterwards (built since: M5 below, `docs/access-app.md` > Walk mode >
+  Recording a ride).
 - **Rail switches** (that evening): two wrong turns at switches on the train, backing up and resetting
   them, not knowing how to handle switches. Built after 737: a switch ahead said once with how it's set, W for the next
   one, Shift+W or `//switch` to throw it (`docs/access-app.md` > Rail switches), on the SLRR switch as the SL wiki
@@ -462,7 +468,7 @@ her log (sent 12:57, `local/relay-logs/tester-20261101T175707-4c467c.txt`).
   trains: rail switches took her the wrong way (switches built after 801 from the SLRR standard), and when the track
   runs out her train says "No further track guide detected" / "No Guide found" and strands her (an automatic stop,
   after 801). Her train is the Infinity Freight Quarry Train v1.44; her partner modded its hover text so its speed can
-  be read. "It seems like with every update, nothing breaks."
+  be read (V reads it since, after the speed; Shift+V or `//text` alone). "It seems like with every update, nothing breaks."
 - That afternoon she told other blind residents about Sojourn Access, and at least two were downloading it (through
   Tessel, 13:58 SLT). They have no relay token, so no assistant and no Send a log (it points them to the issues page);
   what they say may come through her. The user said (2026-11-01) to give everyone codes and that they'd watch the
@@ -563,6 +569,12 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   put the train in reverse; does holding Down take more than one step; what exactly does it say of its throttle, and
   anything else as the track runs out (a log's lines would do)? Is Space the right emergency key, or would she want one
   that works outside walk mode too (`//stop` works from Say)?
+- For rides (after the next build): does C in walk mode sit well for recording a ride, and Shift+C for hearing it?
+  Should a ride be told by itself when it ends rather than on asking (it isn't now: nothing is sent until she asks)?
+  Is the telling the right length (brief about 100 words; again for more)? Does the recording end when she'd expect
+  (standing up, or the ride still for 8 s), and is five minutes long enough for the rides she'd record? Does her
+  partner's train show anything in its floating text besides throttle and speed, and is it right after V's speed or
+  better only on Shift+V?
 - For following and driving: should following say less (or more) as it goes? When driving, which feedback matters:
   speed changes, heading, what's ahead, and how far ahead?
 - Does she use a braille display's keyboard, dictation, or any input other than a physical keyboard, for answering

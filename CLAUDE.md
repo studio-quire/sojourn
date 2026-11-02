@@ -17,7 +17,7 @@ Our own Second Life client, built for VR first, with a personal AI that operates
   social, land, building, inventory and the AO, the map, voice and media extras, the menus, the login screen, the
   launcher), and RLV/RLVa (2026-11-01, off by default: `docs/rlv.md`). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
 - **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01); test builds (the assistant bundled) published as releases
-  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.801 (2026-11-01); a blind
+  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.811 (2026-11-01); a blind
   tester's first session on Second Life was 2026-10-30. `docs/access.md` (plan, milestones, what testers said), `docs/access-app.md` (as built, packaging).
 - **Public source** since 2026-10-29 (`docs/publishing.md`). The VR viewer itself has no release yet; its package
   (Velopack: install, updates at the person's press, uninstall) is built and checked (`tools/package.py`,
@@ -96,9 +96,10 @@ The assistant (detail in `docs/assistant.md`):
   are chosen in the launcher (Access: Alt+0); the viewer's menu shows only that provider's models. `docs/launcher.md`.
 - **No Claude-account sign-in in released builds** (user, 2026-10-30): Anthropic's Agent SDK terms don't let
   third-party products offer claude.ai login or plan usage without approval, so packaged and public builds offer an
-  Anthropic key, OpenRouter and the studio relay only. People who want their subscription have their own Claude Code
-  drive Sojourn in dev mode, installed or from source (user, 2026-11-01; the public `DEV-MODE.md`, `docs/dev-mode.md`
-  > Outside the studio), or add the sign-in to their own copy of the source. Our own runs from the repo keep the Claude account. Bundling the SDK's Claude Code is allowed; the
+  Anthropic key, OpenRouter and the studio relay only. People who want their subscription have their own agent (Claude
+  Code, or any other) be the assistant through dev mode, chosen as "your agent" in the launcher, installed or from
+  source (user, 2026-11-01; the public `DEV-MODE.md`, `docs/dev-mode.md` > Outside the studio), or add the sign-in to
+  their own copy of the source. Our own runs from the repo keep the Claude account. Bundling the SDK's Claude Code is allowed; the
   product must not present itself as Claude Code.
 - **Its powers** (user, 2026-10-25): about as capable as Tessel at interaction, search and making things, guarded by
   permissions and Claude Code's auto mode rather than a stripped-down tool set: Claude Code's own tools, deny rules
@@ -119,8 +120,8 @@ The assistant (detail in `docs/assistant.md`):
   in incognito and get the name hints.
 - **Incognito** (user, 2026-10-27): nothing from a spell is kept; blind to specifics by default, with "let it see" (off
   by default) letting the assistant help as usual, adult content included when needed, never making NSFW content, and
-  no text assumes that use. On by the menu, the wrist, P or asking the assistant; off only by the person's own
-  controls; no trigger words; the PC's mirror blanks; no automatic start by region maturity. `docs/assistant.md` >
+  no text assumes that use. On by the menu, P on the desktop or asking the assistant; the wrist token, shown during a
+  spell, ends it (the user, 2026-11-02); off only by the person's own controls; no trigger words; the PC's mirror blanks; no automatic start by region maturity. `docs/assistant.md` >
   Incognito.
 
 ## Gotchas and rules
@@ -165,8 +166,8 @@ The assistant (detail in `docs/assistant.md`):
 - `tools/` build, run and test scripts: `tools/README.md` is the map.
 - `docs/` (Multitude's `docs/render.md` still describes the pipeline itself):
   - Running and driving: `client.md` (running, controls, agent API, architecture, local grid, gotchas), `vr.md` (the
-    headset: controls, the rig, your body, testing in the XR Simulator), `launcher.md`, `dev-mode.md` (a Claude Code
-    session as the assistant) and `driving.md` (its how-to for sittings), `sittings.md` (what they left open, checks
+    headset: controls, the rig, your body, testing in the XR Simulator), `launcher.md`, `dev-mode.md` (an agent session
+    as the assistant: the launcher's "your agent", `--dev`) and `driving.md` (its how-to for sittings), `sittings.md` (what they left open, checks
     for when there's time).
   - The assistant: `assistant.md` (the entry point: providers, hearing, Claude, permissions, memory, jobs,
     confirmations, incognito's rules), `assistant-panel.md` (the panel, the settings menu, showing things, the reader),

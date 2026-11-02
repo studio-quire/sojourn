@@ -404,7 +404,8 @@ public sealed partial class MainForm
                 // (opening one fills it, and it opens its own open folders in turn)
                 OpenAgain(p, made[..now]);
                 if (node == null && nodes.Count == 0) nodes.Add(new TreeNode("Inventory is empty, or not loaded yet. F5 to look again."));
-                var again = selected != null ? tree.Nodes.Find(selected, true).FirstOrDefault() : null;
+                // (a line with no item, as a search's count, has no name, and Find refuses an empty one)
+                var again = !string.IsNullOrEmpty(selected) ? tree.Nodes.Find(selected, true).FirstOrDefault() : null;
                 if (again != null) tree.SelectedNode = again;
                 else if (tree.SelectedNode == null && tree.Nodes.Count > 0) tree.SelectedNode = tree.Nodes[0];
             }

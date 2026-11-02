@@ -419,6 +419,36 @@ public sealed class ObjectViews
         }
     }
 
+    /// <summary>The names of my own worn things (roots on my avatar), by object id: the object's own name once its
+    /// properties are in, else the inventory item it was worn from; for any neither knows, the region is asked (its
+    /// properties, then a brief selection as the edit tool makes, since a worn object's properties don't always come
+    /// otherwise) and the item fetched from the grid. Empty only if all of that failed.</summary>
+    public async Task<Dictionary<UUID, string>> WornNamesAsync(RegionWorld w, IReadOnlyList<Primitive> roots, TimeSpan timeout, CancellationToken ct)
+    {
+        var fetched = new Dictionary<UUID, string>();
+        string Known(Primitive p)
+        {
+            if (p.Properties is { } props && props.ObjectID == p.ID && props.Name is { Length: > 0 } n) return n;
+            var item = AgentInventory.AttachItemId(p);
+            if (item == UUID.Zero) return "";
+            if (_s.Inventory.Node(item) is InventoryItem it && it.Name is { Length: > 0 } iname) return iname;
+            return fetched.TryGetValue(item, out var f) ? f : "";
+        }
+        var missing = roots.Where(p => Known(p) == "").ToList();
+        if (missing.Count > 0)
+        {
+            var half = timeout / 2;
+            if (!await FetchAsync(w, missing, half, ct))
+                await FetchFullAsync(w, missing.Where(p => Known(p) == "").ToList(), half, ct);
+            foreach (var p in missing.Where(p => Known(p) == ""))
+            {
+                var item = AgentInventory.AttachItemId(p);
+                if (item != UUID.Zero && await _s.Inventory.ItemAsync(item, ct) is { Name: { Length: > 0 } n }) fetched[item] = n;
+            }
+        }
+        return roots.ToDictionary(p => p.ID, Known);
+    }
+
     async Task ThrottleAsync(CancellationToken ct)
     {
         await _throttle.WaitAsync(ct);

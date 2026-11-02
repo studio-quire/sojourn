@@ -20,6 +20,9 @@ public sealed record ShotSpec(string Label, Vector3 Position, Vector3 Forward, f
     /// <summary>Lit as at midday when the place is dark (its sun down or low), for true colours: a person, an object,
     /// what someone wears. Pictures of the place itself keep its own light.</summary>
     public bool Daylight { get; init; }
+    /// <summary>A picture on the move (a ride being recorded): taken once the place's settling ends, without waiting for
+    /// anyone's or anything's look (by then it's somewhere else).</summary>
+    public bool Quick { get; init; }
 }
 
 /// <summary>Something a shot's grid of rays met: a person (what they wear counts as them), an object by its linkset's
@@ -122,8 +125,8 @@ public sealed partial class OffscreenRenderer
         // what it waits for besides: the subject's look, or with none (around the person) the people and things filling
         // the picture, found once the place has settled
         var watch = new List<UUID>();
-        if (spec.Subject != UUID.Zero) watch.Add(spec.Subject);
-        bool lookedAround = spec.Subject != UUID.Zero;
+        if (spec.Subject != UUID.Zero && !spec.Quick) watch.Add(spec.Subject);
+        bool lookedAround = spec.Subject != UUID.Zero || spec.Quick;
         // (judged by what this picture's frames asked for: on the processor its drawn frame alone takes seconds)
         long since = Environment.TickCount64;
         int Waiting() => watch.Sum(id => r.LoadOf(sim.Handle, id, since)?.Waiting(blurryToo: !r.TexturesHeld) ?? 0);

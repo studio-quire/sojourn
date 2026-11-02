@@ -341,7 +341,8 @@ def build(kit: Toolkit, with_escalate: bool, with_help: bool = True, only=None):
 
     @tool("wear", "Put on inventory items, each an id or the words for it (\"red shirt\"): one clear match is worn at "
           "once, several come back as candidates. Clothing replaces what's on its layer unless add is true; objects "
-          "attach (replacing what's on the point unless add).", S(["items"], items=list, add=bool))
+          "attach (replacing what's on the point unless add), each to its own last point: the result says where, and a HUD "
+          "point (hud: true) puts it on their screen, not their body, which is worth telling them.", S(["items"], items=list, add=bool))
     async def wear(args):
         try:
             ids, names = await resolve_items(args["items"])
@@ -350,8 +351,8 @@ def build(kit: Toolkit, with_escalate: bool, with_help: bool = True, only=None):
         except ApiError as e:
             return error(str(e))
         kit.did("putting on " + ", ".join(names))
-        await kit.call("LLAppearance", "wearItems", items_id=ids, replace=not args.get("add", False), wait=30)
-        return text({"worn": names})
+        r = await kit.call("LLAppearance", "wearItems", items_id=ids, replace=not args.get("add", False), wait=30)
+        return text({"worn": names, **{k: r[k] for k in ("attached", "not_yet") if isinstance(r, dict) and r.get(k)}})
 
     @tool("take_off", "Take off worn items (clothing or attachments), each an inventory id or the words for it.",
           S(["items"], items=list))

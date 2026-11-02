@@ -82,9 +82,75 @@ SYSTEM = (
 )
 
 
+# A ride the person recorded in Sojourn Access (its Walk/RideRecorder, SojournRide get): told as a story in order
+# (docs/access-app.md > Walk mode > Recording a ride). Claude Opus 5.5, 2026-11-01.
+RIDE_HOW = (
+    "This time it's a ride they recorded (a vehicle, a slide, a fairground ride, a train): moments every few seconds in "
+    "order, each with what was known then (the time from the start; speed in metres a second over the ground, which way "
+    "it was going, climbing or falling, height and distance from the start; what they rode; named things and people "
+    "near, with where from them going that way; what objects said; what the vehicle's floating text showed), and every "
+    "few seconds a picture from their own eyes looking the way they were going. Tell the ride as it happened to them, in "
+    "order, in the second person, as a short story (\"You set off down a steep blue tube, picking up speed past Red "
+    "Buoy on your right...\"), with the start, each stretch that differed (a drop, a climb, a turn, a burst of speed, a "
+    "slowing, a splash, a crossing into another region) and how it ended. These replace brief and rich above: brief is "
+    "four to seven sentences, about 100 words; rich (they asked for more) is a fuller telling stretch by stretch, adding "
+    "to what you told before rather than repeating it. Name the named things they passed by their names, in the order "
+    "they passed them; say speeds and drops as they'd feel them, with the numbers where they help (\"up to about 12 "
+    "metres a second\", \"down some 15 metres\"). What the vehicle said or showed only where it adds to the story. A "
+    "moment without a picture is told from its facts alone; never fill a gap with what might have been there. The "
+    "pictures are taken on the move and may be rough (shapes still arriving, colours not loaded): go by what's clear. "
+    "Still nothing about pictures, recordings, moments or cameras: tell what happened."
+)
+
+RIDE_SYSTEM = SYSTEM + "\n\n" + RIDE_HOW
+
+
+def _moment_line(m):
+    """One moment of a ride in words, for the model."""
+    words = [f"{m.get('at')}" + (f" in {m['region']}" if m.get("region") else "") + f": {m.get('speed_m_s')} m/s going {m.get('going')}"]
+    if m.get("climb_m_s") is not None:
+        c = m["climb_m_s"]
+        words.append(f"{'climbing' if c > 0 else 'falling'} {abs(c)} m/s")
+    words.append(f"height {m.get('height_m')} m, {m.get('from_start_m')} m from the start")
+    if m.get("riding"):
+        words.append(f"riding {m['riding']}")
+    line = ", ".join(words)
+    if m.get("near"):
+        line += "; near: " + "; ".join(m["near"])
+    if m.get("said"):
+        line += "; said: " + " | ".join(m["said"])
+    if m.get("it_shows"):
+        line += f"; its floating text now shows: {m['it_shows'].rstrip('.')}"
+    return line + "."
+
+
+def ride_parts(look, intro):
+    """A ride's moments in order, each picture after its moment's line: [("text", str) | ("jpeg", base64)]."""
+    ride = look.get("ride") or {}
+    head = {k: v for k, v in ride.items() if k != "moments"}
+    out, text = [], [intro + " " + json.dumps(head, ensure_ascii=False)]
+    for m in ride.get("moments") or []:
+        pic = m.get("picture")
+        text.append(_moment_line(m))
+        if not pic or not pic.get("jpeg"):
+            continue
+        seen = "; ".join(f"{s.get('name')} ({s.get('kind')}, {s.get('in_picture')}"
+                         + (f", {s['where']} from them" if s.get("where") else "") + ")"
+                         for s in (pic.get("seen") or [])[:8])
+        text.append(f"Picture at {m.get('at')}, {pic.get('label', '')}." + (f" In it, by name: {seen}." if seen else ""))
+        out.append(("text", "\n".join(text)))
+        out.append(("jpeg", pic["jpeg"]))
+        text = []
+    if text:
+        out.append(("text", "\n".join(text)))
+    return out
+
+
 def parts(look, intro):
-    """The pictures with their labels, then the facts: [("text", str) | ("image", base64 png)]. Takes the pictures out
-    of look (what stays is the facts)."""
+    """The pictures with their labels, then the facts: [("text", str) | ("image", base64 png) | ("jpeg", base64)].
+    Takes the pictures out of look (what stays is the facts). A ride's go in order with its moments."""
+    if "ride" in look:
+        return ride_parts(look, intro)
     out = []
     pics = look.pop("pictures", None) or []
     for i, p in enumerate(pics, 1):
@@ -119,11 +185,13 @@ def messages(look, intro, detail, before=None, words=None):
     """The Messages API's user turn for a lean call."""
     content = []
     for kind, v in parts(look, intro):
-        if kind == "image":
-            content.append({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": v}})
+        if kind in ("image", "jpeg"):
+            media = "image/jpeg" if kind == "jpeg" else "image/png"
+            content.append({"type": "image", "source": {"type": "base64", "media_type": media, "data": v}})
         else:
             content.append({"type": "text", "text": v})
-    content.append({"type": "text", "text": ask_text(detail, before, words)})
+    content.append({"type": "text", "text": ask_text(detail, before, words).replace("Describe it", "Tell the ride")
+                    if "ride" in look else ask_text(detail, before, words)})
     return [{"role": "user", "content": content}]
 
 
@@ -155,7 +223,7 @@ async def lean(look, intro, detail, before=None, words=None, quality="economy", 
     client = anthropic.AsyncAnthropic(base_url=prov.proxy.url, api_key=prov.proxy.token, max_retries=2, timeout=120)
     t0 = time.time()
     try:
-        r = await client.messages.create(model=model, max_tokens=16000, system=SYSTEM,
+        r = await client.messages.create(model=model, max_tokens=16000, system=RIDE_SYSTEM if "ride" in look else SYSTEM,
                                          messages=messages(look, intro, detail, before, words),
                                          output_config={"effort": effort}, **extra)
     except anthropic.APIStatusError as e:

@@ -13,7 +13,9 @@
     <SolidColorBrush x:Key="Coral" Color="#B85A52"/>
     <FontFamily x:Key="Ui">Segoe UI Variable Text, Segoe UI</FontFamily>
     <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
-    <FontFamily x:Key="Wordmark">pack://application:,,,/Fonts/#Archivo Light</FontFamily>
+    <!-- Archivo's files all name their family "Archivo SemiBold" (Light is weight 300 in it): the wordmark asks for that
+         family at FontWeight Light; "#Archivo Light" matched nothing and fell back to Segoe UI -->
+    <FontFamily x:Key="Wordmark">pack://application:,,,/Fonts/#Archivo SemiBold</FontFamily>
 
     <LinearGradientBrush x:Key="Rim" StartPoint="0,0" EndPoint="0,1">
         <GradientStop Color="#F2FFFFFF" Offset="0"/>
