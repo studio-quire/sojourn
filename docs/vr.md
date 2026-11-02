@@ -51,7 +51,9 @@ settings menu's ? shows the controls nothing on screen shows.
 | menu (≡) / system | the settings menu (on release); held 0.8 s, the way out: stand up and go home (`Control/WayOut.cs`; Ctrl+Shift+H on the desktop) | the system's own |
 | grip | hold to talk in voice chat (push-to-talk); with the assistant's mic tapped open, it sends what it heard first | hold to talk to the assistant; a quick tap (under 0.3 s) leaves the mic open hands-free until the next tap, which sends (`Assistant/AssistantHost.cs` > TalkPress) |
 | both grips | held together: dictate words for people (a draft on the panel to send or cancel; `docs/assistant.md` > Incognito); the assistant's mic, if tapped open, sends first | |
-| trigger | held on open ground, teleports you there (pointing to teleport) | with the pointer on: touches or sits on what it points at, presses keys on the panel, menu, feed and boards; held still on a thing, its card of what can be done with it (below); held on the panel's body, drags it (`docs/assistant-panel.md`) |
+| trigger | held on open ground, teleports you there (pointing to teleport); building by hand, reaching into a thing grabs it | with the pointer on: touches or sits on what it points at, presses keys on the panel, menu, feed and boards; held still on a thing, its card of what can be done with it (below); held on the panel's body, drags it (`docs/assistant-panel.md`); building by hand, grabs what it reaches into or points at instead of touching |
+
+While a hand holds a thing (building by hand, below), that hand's stick and its A or X are building's, nothing else's.
 
 The headset's own recentre (hold the Meta button) is the same as Y. In the mirror window: WASD/arrows, Q/E turn, Space,
 C, F, R recentres, Tab the panel, F8 the assistant's model; F3, F6, F12 as on the desktop.
@@ -126,6 +128,34 @@ C, F, R recentres, Tab the panel, F8 the assistant's model; F3, F6, F12 as on th
     so the grip asks about it too. "ask the assistant" is the talk key on the card: held, push-to-talk; tapped, the
     mic stays open and the key reads "send" (the grip's tap sends too); the card goes once the request is sent.
   - On the desktop a right click on a thing (a quick one, not a drag that steers) brings it up at the click.
+- **Building by hand** (`Building/HandBuild.cs`; the user's idea, 2026-10-30: the assistant places a thing roughly, the
+  person fine-tunes it by hand; `docs/building.md` > By hand for the rules, the network and undo). On from a thing's
+  card ("move by hand"), the assistant (it outlines the thing it hands over), or menu > moving > build by hand; off by
+  the readout's ×, the same switch, the assistant, or leaving the region. While it's on (Claude Opus 5.5, 2026-11-02,
+  fitting it around what the buttons already do; nothing changes while it's off):
+  - The pointer's ray is up as for a confirmation, whatever A says, and the right trigger grabs instead of touching or
+    sitting (as the viewer's edit tool selects instead of clicking): a hand inside something you may move (its prims'
+    boxes, 3 cm to spare) grabs it, else the ray on one grabs it from afar. Pages, touches, sits and the thing's card
+    wait. The left trigger grabs only by reaching into a thing; anywhere else it's pointing to teleport as ever.
+  - Held, it keeps the pose it had to the hand (the grip's for a reach, the ray's from afar) and moves and turns with
+    it; walking carries it. The holding hand's stick: up pushes it away along the line from the hand, down pulls it in
+    (faster the further it is), left and right turn it about the vertical (90 degrees a second at full tilt; with snap,
+    a step a flick). Its A (right) or X (left) toggles fine: from there the hand's moves and turns count a fifth, turning
+    it about itself rather than swinging it round the hand. Fine carries on to the next grab until toggled again. Let
+    go of the trigger and it's placed. Nothing else sees that stick or button meanwhile (no turning, walking, pointer
+    toggle or hiding the interface).
+  - A faint box outlines what the hand or ray would grab, a brighter one what's held or chosen (the linked set's box in
+    its root's frame, beams in the look's light; no comfort aids, and the view never moves for it).
+  - The readout (`HandBuildPainter.cs`, the panel's look like the thing's card): the thing's name and ×, where it is
+    (the region's x, y, z) and how it's turned (the edit floater's three angles), what came of the last move or why a
+    grab didn't take, a first-time hint, and keys: snap (grid and steps from `build_grid`, `build_snap_angle`), fine,
+    undo (that thing's last step). Beside the thing it's about, on the line from the eyes to a point just right of it
+    (0.45-1.2 m away), placed when the thing changes or is let go, then staying put in the world; keys take the right
+    ray while nothing's held. Hidden with the interface (X), out of sight while a confirmation waits.
+  - On the desktop: a left drag on a thing moves it across the level it was grabbed at, Shift up and down (the plane
+    facing you), the wheel turns it while held; the readout sits at the window's right; Esc ends it.
+  - `python tools/handbuild.py` checks the right hand's ray grab, both hands' reach, the stick's turn and undo in the
+    simulator.
 - **Beams** take the look's light (`PanelLook.Light`: white in glass and silver, rose in pearl, pale blue in smoke) and
   are drawn fairly opaque (the ray 0.75, other cues 0.55; the user found near-white beams read grey beside the glowing
   panel, 2026-10-28): the pointer's ray, the teleport arc, the crosshair, drag outlines and the boards', keyboard's,

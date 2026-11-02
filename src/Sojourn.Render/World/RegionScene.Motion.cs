@@ -13,6 +13,7 @@ public sealed partial class RegionScene
 {
     readonly HashSet<SceneObject> _moving = new();
     readonly List<SceneObject> _movingNow = new();
+    readonly List<uint> _heldNow = new();
 
     float Dilation => Source.HasSimulator && Source.Simulator.Stats.Dilation is > 0 and var d ? d : 1f;
     internal float RegionSize => Source.HasSimulator && Source.Simulator.SizeX > 0 ? Source.Simulator.SizeX : 256f;
@@ -30,6 +31,11 @@ public sealed partial class RegionScene
     /// <summary>Each frame, after the region's changes: everything moving placed where it is now.</summary>
     void MoveMoving()
     {
+        // what the person holds is placed every frame where their hand has it (MotionSmoother.Held.cs)
+        _heldNow.Clear();
+        _world.Motion.HeldIn(Source.Handle, _heldNow);
+        foreach (var id in _heldNow)
+            if (_objects.TryGetValue(id, out var held) && held.Placed && held.Owner == 0) _moving.Add(held);
         if (_moving.Count == 0) return;
         _movingNow.Clear();
         _movingNow.AddRange(_moving);

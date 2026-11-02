@@ -7,7 +7,7 @@ using Sojourn.Core.Leap;
 namespace Sojourn.Session.Objects;
 
 /// <summary>What the person can do with a thing in the world by their own hand, as the viewer's right-click pie offers it.</summary>
-public enum ThingDo { Sit, Stand, Touch, Buy, Pay, TakeCopy, Take, Open, About, Ask }
+public enum ThingDo { Sit, Stand, Touch, Buy, Pay, TakeCopy, Take, Open, About, Ask, Move }
 
 /// <summary>One of those, as a card or a menu lists it: a short label, and a detail beside it (a price).</summary>
 public sealed record ThingAction(ThingDo Do, string Label, string? Detail = null);
@@ -135,8 +135,9 @@ public sealed class ThingActions(AgentSession s)
     /// <summary>What can be done with it, the thing's own click action first (a vendor's buy, a chair's sit), then what
     /// it's set up for (a sale, a pay, a touch) before what any thing allows (sitting on it), then about and ask.
     /// tapTouches: a plain press already touches it, so no touch here. Labels in the person's language (a touch's or a
-    /// sit's own name, set by the thing, as it is).</summary>
-    public List<ThingAction> For(ThingFacts f, bool tapTouches, bool assistant = true)
+    /// sit's own name, set by the thing, as it is). hands: the host can move things by hand (Building/HandMove), so
+    /// what the person may move gets a key for it.</summary>
+    public List<ThingAction> For(ThingFacts f, bool tapTouches, bool assistant = true, bool hands = false)
     {
         var list = new List<ThingAction>();
         bool world = !f.Worn;
@@ -150,6 +151,8 @@ public sealed class ThingActions(AgentSession s)
         if (world && (f.Flags & PrimFlags.ObjectCopy) != 0) list.Add(new(ThingDo.TakeCopy, Lang.T("take a copy")));
         if (world && f.Mine) list.Add(new(ThingDo.Take, Lang.T("take")));
         if (world && (f.Flags & PrimFlags.InventoryEmpty) == 0 && (f.Mine || (f.Flags & PrimFlags.ObjectModify) != 0)) list.Add(new(ThingDo.Open, Lang.T("open")));
+        if (world && hands && ((f.Flags & PrimFlags.ObjectModify) != 0 || f.Mine && (f.Flags & PrimFlags.ObjectMove) != 0))
+            list.Add(new(ThingDo.Move, Lang.T("move by hand")));
         list.Add(new(ThingDo.About, Lang.T("about this")));
         if (assistant) list.Add(new(ThingDo.Ask, Lang.T("ask the assistant")));
         // its own click action leads (the viewer's left click does it; here it's the first thing on the card)

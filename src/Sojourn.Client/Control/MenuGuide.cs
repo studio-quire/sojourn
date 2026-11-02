@@ -42,6 +42,10 @@ public static class MenuGuide
         A("moving/tracking", "Your avatar's arms follow your hands. Auto lets dances and poses from things around you take over."),
         A("moving/pointer", "The ray from your right hand that touches, sits and presses. A quick press of A turns it on or off."),
         A("moving/your gaze", "What others see of where you look: your head turning toward who you look at, only the direction, or nothing."),
+        S("moving/build by hand", "Grab your things with a trigger to move and turn them: reach into one, or point at it. The × on the readout beside it ends it."),
+        A("moving/build snap", "Things you move by hand snap to a grid, and their turns to steps."),
+        A("moving/build grid", "How far apart the grid's lines are when moving things by hand."),
+        A("moving/build turn steps", "How far each step of a turn goes when moving things by hand."),
 
         // --- assistant
         S("assistant/openrouter model", "Which model OpenRouter runs. Claude keeps the usual models; another maker's model answers everything itself and may not do all Claude does. The provider and its key are set in the launcher."),

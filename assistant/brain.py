@@ -790,9 +790,34 @@ class Brain:
         if self.speaker and self.prefs.get("speak"):
             self.speaker.say(text)
 
+    async def hands(self):
+        """Building by hand, while it's on or a move by hand was made in the last ten minutes: what they hold or last
+        moved and whether the region kept it (SojournHandBuild; the VR client's only)."""
+        if self.app == "access":
+            return ""
+        try:
+            r = await asyncio.wait_for(asyncio.to_thread(self.api.cmd, "SojournHandBuild", "state", 1), 1)
+        except (ApiError, asyncio.TimeoutError):
+            return ""
+        last = r.get("last") or {}
+        recent = last and (last.get("ago_s") or 0) < 600
+        if not r.get("on") and not recent:
+            return ""
+        out = "; building by hand " + ("on" if r.get("on") else "off")
+        if (c := r.get("chosen")) and not r.get("holding"):
+            out += f" ({c.get('name')} id={c.get('id')} outlined for them)"
+        if h := r.get("holding"):
+            out += f", holding {h.get('name')} id={h.get('id')}"
+        if recent:
+            to = last.get("to") or [0, 0, 0]
+            out += (f"; they last moved {last.get('name')} id={last.get('id')} by hand {last.get('ago_s'):.0f} s ago, "
+                    f"{last.get('moved_m')} m and {last.get('turned_deg')} deg, to {to[0]:.2f},{to[1]:.2f},{to[2]:.2f} ({last.get('result')})")
+        return out
+
     async def context(self, target, jobs=True):
         """A request's context line (jobs: with the jobs and where they stand; not for a job's own notes)."""
-        where, shown = await asyncio.gather(self.where(), self.shown())
+        where, shown, hands = await asyncio.gather(self.where(), self.shown(), self.hands())
+        shown += hands
         if jobs and (js := self.jobs.summary()):
             shown += f"; jobs: {js}"
         looking = target if target and target.get("looking") else None

@@ -71,6 +71,7 @@ public sealed partial class MotionSmoother
     /// test before asking <see cref="Prim"/>.</summary>
     public bool Tracks(Primitive p)
     {
+        if (IsHeld(p)) return true;
         if (PrimMotionOff) return false;
         if (HasMotion(p)) return true;
         lock (_primLock) return _prims.ContainsKey(p.ID);
@@ -84,6 +85,7 @@ public sealed partial class MotionSmoother
 
     bool PrimMovingLocked(Primitive p)
     {
+        if (IsHeld(p)) return true;
         if (PrimMotionOff) return false;
         if (HasMotion(p)) return true;
         if (!_prims.TryGetValue(p.ID, out var t)) return false;
@@ -101,6 +103,7 @@ public sealed partial class MotionSmoother
 
     (Vector3 Pos, Quaternion Rot) PrimLocked(Primitive p, ulong region, float dilation, float regionSize)
     {
+        if (HeldPose(p) is { } held) return held;
         var rawPos = V(p.Position);
         var rotIn = Q(p.Rotation);
         var rawRot = Quaternion.Normalize(rotIn);

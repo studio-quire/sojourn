@@ -73,6 +73,10 @@ public sealed class ThingCard
 
     public bool Open => _facts != null;
 
+    /// <summary>Building by hand (Building/HandBuild.cs): what the person may move gets "move by hand", which hands it to
+    /// this and the card goes.</summary>
+    public Action<ThingFacts>? MoveByHand { get; set; }
+
     readonly record struct Global(double X, double Y, double Z)
     {
         public static Global Of(ulong region, Vector3 p)
@@ -117,7 +121,7 @@ public sealed class ThingCard
         (_openedAt, _meBefore) = (me ?? _point, me);
         _distAtOpen = me is { } m ? m.To(_point) : 0;
         (_page, _about, _amounts, _contents, _note, _working, _asking, _closeAt) = (CardPage.Main, false, null, null, null, false, false, 0);
-        _list = _actions.For(f, tapTouches);
+        _list = _actions.For(f, tapTouches, hands: MoveByHand != null);
         _placed = null;
         _armed = false;   // the trigger that opened it is still held
         Pin();
@@ -137,7 +141,7 @@ public sealed class ThingCard
     {
         if (_facts == null) return;
         _facts = f;
-        _list = _actions.For(f, _tapTouches);
+        _list = _actions.For(f, _tapTouches, hands: MoveByHand != null);
         Pin();
         Changed();
     }
@@ -352,6 +356,11 @@ public sealed class ThingCard
             }
             case ThingDo.Ask:
                 return;   // (on the press itself)
+            case ThingDo.Move:
+                _log($"thing card: {f.Name} to move by hand");
+                Close();
+                MoveByHand?.Invoke(f);
+                return;
             default:
                 Run(what, f);
                 return;

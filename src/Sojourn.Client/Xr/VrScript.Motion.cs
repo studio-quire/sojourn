@@ -11,6 +11,7 @@ namespace Sojourn.Client.Xr;
 ///   aim YAW PITCH / raim YAW PITCH (the left or right hand pointing, degrees off the room's forward: left and up
 ///   positive; stays) |
 ///   face DEG (the view turned to that heading of the region, counter-clockwise from east) | mark TEXT |
+///   lhold V / rhold V (the left or right trigger held at V through the steps after, until 0: a grab while hands move) |
 ///   lhand X Y Z S / rhand X Y Z S (the left or right controller's grip moved over S seconds to that offset from the
 ///   head in the room, held level with the fingers pointing ahead, the hand's aim with them unless aim/raim says; stays) |
 ///   panel X Y Z (the assistant's panel put at that offset from the head, facing it, as if dragged there) |
@@ -26,6 +27,7 @@ public sealed partial class VrScript
     Vector3 _headFrom, _headTo, _head;
     (float Yaw, float Pitch)? _motionAim, _motionRightAim;
     Vector3? _lhandFrom, _lhandTo, _lhand, _rhandFrom, _rhandTo, _rhand;
+    float _lhold, _rhold;
 
     /// <summary>Puts the assistant's panel somewhere in the room (position, rotation), as a drag would.</summary>
     public Action<Vector3, Quaternion>? PinPanel { get; set; }
@@ -67,6 +69,8 @@ public sealed partial class VrScript
             if (s.Op == "head") { _headFrom = _head; _headTo = new Vector3(s.Args[0], s.Args[1], s.Args[2]); }
             if (s.Op == "aim") _motionAim = (s.Args[0], s.Args[1]);
             if (s.Op == "raim") _motionRightAim = (s.Args[0], s.Args[1]);
+            if (s.Op == "lhold") _lhold = s.Args[0];
+            if (s.Op == "rhold") _rhold = s.Args[0];
             if (s.Op == "face") Pilot?.Face(s.Args[0]);
             if (s.Op == "shot") Shot?.Invoke(s.Text);
             if (s.Op == "lhand") { _lhandFrom = _lhand ?? new Vector3(s.Args[0], s.Args[1], s.Args[2]); _lhandTo = new Vector3(s.Args[0], s.Args[1], s.Args[2]); }
@@ -82,6 +86,8 @@ public sealed partial class VrScript
         int at = _motionAt >= 0 && t < _motionStepStart + Duration(steps[_motionAt]) ? _motionAt : steps.Length;
         if (at == steps.Length && _motionAt == steps.Length - 1 && !_motionDone) { _motionDone = true; _log("motion done"); }
         var c = f.Input;
+        if (_lhold > 0) c.LeftTrigger = _lhold;
+        if (_rhold > 0) c.RightTrigger = _rhold;
         if (at < steps.Length)
         {
             var s = steps[at];

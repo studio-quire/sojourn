@@ -87,6 +87,21 @@ public sealed class BuildUndo
         Push(e);
     }
 
+    /// <summary>A move by the person's hand (Session/Building/HandMove.cs): the root's placement as it is now; the
+    /// action returned records it as one undo step once the move has happened (a grab let go where it began records
+    /// nothing), so the hands and the assistant share one history.</summary>
+    public Action<string> BeforeHandMove(Primitive root)
+    {
+        if (_s.Region is not { } w) return _ => { };
+        var ps = new PrimState(root.ID, w.Handle, new HashSet<string> { "place" }, Capture(w, root));
+        return what =>
+        {
+            var e = new Entry { What = what, Kind = Kind.Edit };
+            e.Prims.Add(ps);
+            Push(e);
+        };
+    }
+
     internal void Created(Primitive root, string what)
     {
         if (Restoring.Value) return;

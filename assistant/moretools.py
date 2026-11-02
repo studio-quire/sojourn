@@ -536,7 +536,7 @@ def build_more(kit):
     # --- building ---------------------------------------------------------------------------------------------------
 
     @tool("undo", "Take back building edits, as the viewer's undo: what TesselBuild changed (modify, create, link, unlink; "
-          "materials; groups), only the parts it changed; a whole build made in one call is one step. action: undo (steps, "
+          "materials; groups) and the person's moves by hand, only the parts it changed; a whole build made in one call is one step. action: undo (steps, "
           "1 by default; what: 'that' or an id for that object's last edits), redo, history (what undo would take back, "
           "newest first). A creation is undone by deleting it, which the person confirms.",
           schema(["action"], action=["undo", "redo", "history"], steps=int, what=str))
@@ -578,6 +578,26 @@ def build_more(kit):
             if act == "recompile":
                 return text(await call("SojournBuild", "recompile", 120, target=args.get("target") or "mono", **a))
             return text(await call("SojournBuild", "removeScripts", GATED_TIMEOUT, **a))
+        except (ApiError, KeyError) as e:
+            return error(str(e))
+
+    @tool("hands", "Building by hand (the VR client): the person grabs a thing with a trigger, reaching into it or pointing at it, "
+          "moves and turns it with their hand and lets go; fine placement is theirs, by hand, after you've placed it roughly. action: "
+          "start (what: 'that', a name in view or an id: building by hand comes on with that object outlined for them to grab, "
+          "whoever owns it if they may modify it; without what, any of their own things; refused, with why, when they may not "
+          "move it), stop, state (on, what's held, their last move: where from and to, how far and how much it turned, and "
+          "whether the region kept it there). Their moves are undo steps like yours.",
+          schema(["action"], action=["start", "stop", "state"], what={"description": "'that', a name in view, or an id"}))
+    async def hands(args):
+        act = args["action"]
+        try:
+            if act == "start":
+                a = {"id": (await things(args["what"]))[0]} if args.get("what") else {}
+                kit.did("putting it in your hands")
+                return text(await call("SojournHandBuild", "start", **a))
+            if act == "stop":
+                return text(await call("SojournHandBuild", "stop"))
+            return text(await call("SojournHandBuild", "state"))
         except (ApiError, KeyError) as e:
             return error(str(e))
 
@@ -687,4 +707,4 @@ def build_more(kit):
         except ApiError as e:
             return error(str(e))
 
-    return [land, map_, people, me, group_chat, voice, ao, environment, undo, scripts, item, keep_away, sojourn]
+    return [land, map_, people, me, group_chat, voice, ao, environment, undo, scripts, hands, item, keep_away, sojourn]

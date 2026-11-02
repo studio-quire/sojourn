@@ -459,7 +459,11 @@ Write, Edit, Glob, Grep, Bash, PowerShell, WebSearch, WebFetch, Agent and the re
     turned away, moderation);
   - ao (the client AO and the pose stand; editing sets and picking a folder stay client_api's);
   - environment (the person's own sky: presets, their settings, shared, clouds);
-  - undo (history, undo, redo: "undo that" is one call), scripts (the Build menu's chores and Script Info);
+  - undo (history, undo, redo: "undo that" is one call; the person's moves by hand too), scripts (the Build menu's
+    chores and Script Info);
+  - hands (SojournHandBuild: building by hand on with a thing put in the person's hands, off, what they did; the
+    context line carries their last move by hand for ten minutes; `docs/building.md` > By hand; 2026-11-02, not yet
+    checked with typed requests);
   - item (an inventory item's picture as an image, as hud's look; favourites; thumbnails);
   - keep_away (SojournSafety: hide/unhide things, sounds and blocking them, particles, release keys, bumps);
   - sojourn (SojournRelease: about, a problem report with the person's words that they confirm, the viewer

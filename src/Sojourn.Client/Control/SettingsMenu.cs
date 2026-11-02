@@ -307,6 +307,17 @@ public sealed class SettingsMenu : ISettingsMenu
         rows.Add((MenuRow.Switch("pointer", _s.Pointer), _ => _s.Pointer = !_s.Pointer));
         // what others see of where you look (Control/Gaze.cs)
         rows.Add((MenuRow.Choice("your gaze", new[] { "eye contact", "direction", "off" }, (int)_s.Gaze), i => _s.Gaze = (GazeSharing)i));
+        // building by hand (Building/HandBuild.cs): the switch, snapping, and while it's on its grid and steps
+        if (_api is { } api && api.SwitchRow("build_by_hand", "build by hand") is { } build)
+        {
+            rows.Add(build);
+            if (api.SwitchRow("build_snap", "build snap") is { } snap) rows.Add(snap);
+            if (api.IsOn("build_snap"))
+            {
+                if (api.NumberRow("build_grid", "build grid", Sojourn.Client.Building.HandBuild.Grids, f => $"{f:0.###} m") is { } grid) rows.Add(grid);
+                if (api.NumberRow("build_snap_angle", "build turn steps", Sojourn.Client.Building.HandBuild.Angles, f => $"{f:0.#}°") is { } turns) rows.Add(turns);
+            }
+        }
         return rows;
     }
 

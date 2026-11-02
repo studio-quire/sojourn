@@ -30,8 +30,8 @@ The batches are under Closing the rest; the user's open calls under Waiting on t
   the TPV policy's remaining distributor items (an About sheet, `ViewerStats`, the download page's disclosures, a
   privacy policy). Releasing it, below.
 - **Waiting on the user** (Waiting on the user's decision): buying L$ and the Marketplace, outward-facing posts and
-  cloud translation, direct controls (B9: building by hand, an inventory board, appearance sliders, the poser), the
-  release formalities, and some smaller calls.
+  cloud translation, the rest of the direct controls (B9: an inventory board, appearance sliders, the poser; building
+  by hand's first part is built), the release formalities, and some smaller calls.
 - **Not started**: the long tail (environment editing, look settings, local textures and
   meshes, the navmesh view, the remaining preferences).
 - **Waiting on Linden Lab**: Game Control, IM history from LL's server, glTF scenes.
@@ -221,12 +221,17 @@ Covered by ops: offers, folders, outfits, wearing, giving, the Library, notecard
 
 | Open | Where | Matters | Size | Notes |
 |---|---|---|---|---|
-| Building by the person: select, grab, move, rotate and scale with handles, snap to grid, a tool board | direct | M: fine placement by hand is what a headset is good at | L | B9, the user's call. Their idea (2026-10-30): the assistant finds the thing in inventory and places it roughly, the person fine-tunes position and rotation by hand |
+| Building by hand, the rest: scaling by hand, linked parts one by one ("edit linked"), worn things, several things at once, carrying across a region border, a tool board (create, link, texture) | direct | L-M | M | B9; moving and turning is built (below) |
 | Script errors for the person (the viewer's script warnings window) | info | L-M | S | errors from the person's objects reach the assistant as LLChat debug events; the feed leaves them out |
 | Local textures and meshes (preview before upload) | op | L | M | long tail |
 | Backups, the rest: contents in backups, Collada export | op | L | S-M | `docs/building.md` |
 | The navmesh's view | info | L | S-M | long tail |
 | The glTF scene editor | op | L | M | waits on LL shipping it |
+
+Done (B9's first part, 2026-11-02, `docs/building.md` > By hand): **building by hand**: grabbing a thing by reaching or
+with the ray, moving and turning it with the hand, the stick pushing, pulling and turning it, fine moves, snapping to a
+grid and turn steps, the move sent as the viewer's move tool sends it, a readout, undo shared with the assistant's,
+and the assistant handing a thing over (the user's idea, 2026-10-30).
 
 Done (B6, `docs/building.md`): **PBR materials** applied, overridden and taken off, read back; **normal and specular
 maps, alpha mode, projector parameters, object group and deeding** (media faces in B10); **SLua's compile targets**
@@ -404,10 +409,9 @@ For any further batch:
 - **M. Menus and settings** (after each wave, M; the look is the user's call): done 2026-10-29 (every row the batches
   asked for, groups with pages of their own, then the simple menus). `docs/assistant-panel.md`. A further batch
   needs its own M pass; the missing preferences go on the API for the assistant rather than as rows.
-- **B9. Direct controls** (L each): **not started, the user's call**. Building by hand (handles, snapping, a tool
-  board), an inventory board, an appearance board of sliders beside the mirror, the poser: each a viewer floater's job
-  done the headset's way. Whether, and which, is a direction question, since Sojourn's premise is that the assistant is
-  the interface.
+- **B9. Direct controls** (L each): **building by hand built 2026-11-02** (moving and turning; `docs/building.md` > By
+  hand); left: the rest of building by hand (Building and scripting, above), an inventory board, an appearance board of
+  sliders beside the mirror, the poser: each a viewer floater's job done the headset's way, the user's call.
 
 ### R: notes for the rest, from the viewers' source (2026-10-27)
 

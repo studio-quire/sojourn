@@ -17,6 +17,50 @@ for a target, an experience kept, Lua's targets for inventory scripts); `Leap/Ap
 `Client/Building/BuildWiring.cs`. Hunks in shared files: `TesselApis.cs` (modify awaits materials and is one undo step;
 take's `separate`), `InventoryOps.cs` and `GestureOps.cs` (default permissions; Lua targets), `Program.cs` (one line).
 
+## By hand (B9's first part; Claude Opus 5.5, 2026-11-02)
+
+The user's idea (2026-10-30): the assistant finds a thing and places it roughly; the person fine-tunes where it stands
+and how it's turned by hand, which a headset is good at and voice is slow at. Code: `Session/Building/HandMove.cs` (the
+rules, the network, undo, what came of it: any host), `Session/Building/HandBuildApi.cs` (SojournHandBuild),
+`Client/Building/HandBuild.cs` (the hands, the drawing, the readout; `HandBuildPainter.cs`), the drawing's hold in
+`Render/World/MotionSmoother.Held.cs`. Controls: `docs/vr.md` > Controls > Building by hand.
+
+- **On and off**: a thing's card's "move by hand" (things the person may move), the assistant's `hands` tool
+  (SojournHandBuild `start {id?}`), menu > moving > build by hand (`build_by_hand`), and off by the readout's ×, the
+  same switch, the assistant (`stop`), Esc on the desktop, or leaving the region. Not kept between sessions.
+- **What may be moved**: the whole linked set (as the viewer's move with "edit linked parts" off; single prims of a set
+  can come later), in the region the person is in, not worn (attachments later), with modify rights, or move rights on
+  their own (a locked thing says so). Someone else's thing they may modify only once chosen on purpose (its card, the
+  assistant), never by reaching into it. RLV's `@edit`, `@editobj`, `@editworld` hold (`RlvEngine.CanEdit`), with the
+  quiet notice as for any refusal. Nothing spends. Why a grab didn't take shows on the readout.
+- **The network**, as the viewer's: held, the thing is selected (ObjectSelect; the region holds a selected physical
+  thing still) and let go of after; MultipleObjectUpdate with position, rotation and the linked flag on the root (as
+  LLSelectMgr packs it with UPD_LINKED_SETS), at most 10 a second while held and only when it moved (0.5 mm or 0.05
+  degrees), and once more on release. The official viewer today moves the selection locally while dragging and sends on
+  mouse up (its `llmaniptranslate.cpp` still says "throttle updates to 10 per second" from when it sent while dragging);
+  sending while held lets the region and anyone watching see the move as it happens. Clamped inside the region (no
+  carrying across a border; the viewer clips to the regions it can see) and under 4096 m (MAX_OBJECT_Z).
+- **Drawn where the hand has it**: while held and after, the renderer draws the root where it was put, whatever the
+  region's echoes say (the viewer's overrideObjectUpdates does the same for a selection being dragged), until the
+  region's own word matches (2 cm, a degree) or 4 s pass, then the region's word again: a refused move snaps back.
+- **What came of it** (`HandMove.Last`, SojournHandBuild `state`): placed, refused (the region kept it where it was: a
+  parcel that won't take it, a no-entry parcel, rights it didn't have), moved elsewhere, or gone (returned or deleted),
+  read from the region's updates within 3 s; the readout says the last three plainly.
+- **Undo**: each grab that moved something is one undo step ("moved NAME by hand", the placement captured at the grab:
+  `BuildUndo.BeforeHandMove`), in the same history as the assistant's edits, so "undo that" takes back a hand move and
+  the readout's undo takes back the assistant's last edit of that thing (through the dispatcher, so undoing a creation
+  still asks).
+- **Snapping** (`build_snap`, off; `build_grid`, 0.5 m, the viewer's; `build_snap_angle`, 15 degrees; kept in
+  `build-settings.json`): the root's position to the grid in the region's axes, its turn to the step in each of the edit
+  floater's three angles, and the stick's turns a step a flick. The hand moves freely underneath, so it's a grid it
+  clicks along, not a drag that sticks.
+- **The assistant**: the `hands` tool (start with a thing, stop, state); its context line says while building by hand
+  is on and, for ten minutes, what the person last moved by hand, how far, where to and whether the region kept it.
+  Not on incognito's blind allowlist (it names objects), so it runs with "let it see" as SojournBuild does.
+
+Checked in the XR Simulator on the local grid by `python tools/handbuild.py` (below). What waits for the headset and
+Second Life: how the grab and the stick feel, a parcel that refuses a move, a no-mod or locked thing, a physical one.
+
 ## Materials (MaterialOps; TesselBuild modify keys, on `face` or every face)
 
 - `pbr`: a material (inventory item or asset id) applied, `false` to take it off, or `{material?, base_color?,
@@ -155,8 +199,8 @@ history, and the script chores; `inspect` adds land impact and script info; the 
 reach it through `TesselBuild modify` and `client_api` (its description and `prompt-job.md` name them). None of
 SojournBuild is on incognito's blind allowlist: every op names objects by id and reads or changes the world. With "let
 it see" they run as usual, except that a `backup` is named as an incognito one, which the assistant's file tools never
-read (`Session/Private/Allowlist.cs`, `harness.py`). If the person builds by hand later, a Default Permissions sheet,
-undo/redo keys and a backups list are the rows that would want direct controls.
+read (`Session/Private/Allowlist.cs`, `harness.py`). Building by hand (above) has undo on its readout; a
+Default Permissions sheet, redo and a backups list are rows that might want direct controls later.
 
 ## Testing
 
@@ -168,6 +212,14 @@ as one step; two scripts listed, stopped, reset, recompiled, Lua refused, counte
 default permissions set and sent, bulk permissions on a notecard inside; a group set, a deed refused unshared and then
 pressed; two objects taken separately; a backup of a two-prim build written and restored with nothing uploaded;
 pathfinding said absent. What it makes it deletes.
+
+`python tools/handbuild.py [--dll DIR] [--keep]` (the XR Simulator and the local grid; Sojourn Shaper on :9783, base
+`local/handbuild`; refuses to start while another VR client runs): a platform high over Atelier and a tall box on it,
+building by hand started with the box chosen, then a scripted right hand grabbing it with the ray, raising it 0.2 m
+and turning it a quarter with the stick; reaching into it and moving it 0.3 m sideways; the left hand reaching in and
+lifting it 0.1 m (and no teleport from that pull). After each, where the region has it and what `state` says; the undo
+step in the history; three undos put it back. Shots of it held and after in `local/handbuild/shots`. What it makes it
+takes again.
 
 ## Checks only Second Life can do
 
