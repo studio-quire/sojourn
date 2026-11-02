@@ -46,11 +46,12 @@ drives the app by UI Automation and posted keys), with:
 
 A bot (`tools/visitor`, Access Visitor) talks, IMs, and owns scripted fixtures: a box sending menus, llTextBox,
 permission requests and offers; `facebox` (says each touch's face and surface coordinates); `treasure` (a chest whose
-unnamed lid alone has a script); `sofa` (renames itself while sat on or on a touch); `kart` (a physical LSL car) and `cart` (its script takes the sitter's keys);
+unnamed lid alone has a script); `sofa` (renames itself while sat on or on a touch); `kart` (a physical LSL car; with `throttle`, a throttle train that says its track ends past `endx`) and `cart` (its script takes the sitter's keys);
 `switch` (a rail switch as the SLRR standard has one: a "Switch Stand" whose description says Main or Branch, a touch
 part, two guide rails that swap their names and phantom; a touch or Main and Branch on its channel set it). Menus
 open on the Applications key's press (`MenuOn`), not by WinForms' ContextMenuStrip, which opens on WM_CONTEXTMENU and
-never for posted keys.
+never for posted keys. Before it logs in, whatever it owns in Atelier and Atelier East goes (an interrupted run's
+leftovers: a second fixture box obeys its words too, and every notice step then gets two of each).
 
 Two more bots, Access Palone and Access Paltwo (`PALS`; Walk's with ACCESS_ACCOUNTS), log in in Atelier Northeast
 before the app does, out of every list's way: the tester's friends (made by the first run's friends step, which they
@@ -66,8 +67,11 @@ docstring with its checks in full):
 - **the window's controls** (again after use), **Tab order**: every area's controls named with their roles; Say,
   People nearby, the history, Say; no tab strip a stop.
 - **nearby chat in / out**, **her own lines read back**, **lines cut by typing**, **an IM**: say, whisper, shout; her
-  own lines read back (and not, with the row off); lines cut by posted typing said again together after the pause,
-  once, not after Control alone; an IM's tab arriving without taking the focus, Ctrl+Tab and Ctrl+W.
+  own lines read back (and not, with the row off); lines cut by posted typing said again together after a second's
+  pause, once, not after Control alone, not one heard out before the typing, not her own; busy chat (the visitor
+  talking every second or so for 20 s while a thread posts keys every 0.15 s, a line of her own sent halfway): each
+  line said at most twice, the cut ones said again in one go after the pause, the newest three after how many there
+  were, her own read back once; an IM's tab arriving without taking the focus, Ctrl+Tab and Ctrl+W.
 - **the builders' tab** (`builders`): without ACCESS_RELAY, Control+Shift+B's tab saying how to reach us without a
   token, Enter saying it again and keeping the text. With it, on the live relay with that token (its messages deleted
   after): a reply posted before the app started said once after logging in, the introduction the first time, Enter
@@ -102,7 +106,7 @@ docstring with its checks in full):
   chosen, so the PC's devices are never played to).
 - **the quit question**: Alt+F4 asks, Escape stays.
 - **a script menu**, **a text box**, **a permission question**: answered by keys; a menu's announcement said again
-  when a key cuts it off (not when silenced by Control alone); a menu of twelve, minus and equals pressing Next and
+  when a key cuts it off (not when silenced by Control alone, nor once answered in Notices); a menu of twelve, minus and equals pressing Next and
   Back.
 - **a dance machine's menu, ignored**: the fixture's `fdance` menu, sent again after each pick: answered by 1, the
   new one picked by itself; Delete Ignore in its keys, Ignore (Delete) on its Applications menu; Delete ignores it
@@ -132,16 +136,22 @@ docstring with its checks in full):
   its place, Ctrl+Shift+G's menu with triggers as keys playing one, World > Gestures, the inventory's words, Play and
   Deactivate (its trigger then said as typed) and Activate again.
 - **placing by words**: a block rezzed "a metre to my left" (within 0.3 m, on the ground), then moved "by 50 cm up".
-- **uploads** (no renderer needed; the run sets `SOJOURN_TEST_UPLOAD_FEE` so pictures and models are confirmed at L$0
-  and animations cost L$500 on the free grid; its files made by `upload_fixtures`): a text file and a 31-second WAV
-  refused in words; Build's Upload a file showing Control+U, Escape in Windows' Open window uploading nothing; a PNG
+- **uploads** (no renderer needed; the run sets `SOJOURN_TEST_UPLOAD_FEE` so pictures and models are confirmed at L$0,
+  a sound's clips at L$10 each against a pretend balance of L$100, and animations cost L$500 on the free grid; its
+  files made by `upload_fixtures`): a text file refused in words; a 40-second FLAC (made by ffmpeg where the PC has it)
+  read by Windows and offered as 2 clips, then Escape; Build's Upload a file showing Control+U, Escape in Windows' Open window uploading nothing; a PNG
   by Control+U and the Open window (QuireUia sets its File name box and clicks Open), its size, resizing,
   see-through parts and fee said, renamed, confirmed in Notices, said and selected in the inventory; a stereo WAV by a
   folder's Upload a file here, said as stereo made mono, free, landing in that folder and selected in the tree where
   the focus is (from the inventory's tree: over a search left showing nothing new is selected, by design, so a step
   that searches clears it after, `clear_search`); a BVH refused for L$; a glTF cube by `//upload PATH`, its triangles and size, a scale of 2 said, Weigh
-  it's land impact, its confirmation cancelled (nothing in Objects) and then confirmed. It deletes what it uploaded.
-  Not reached: Second Life's real fees, its mesh upload rights, a 2048 picture.
+  it's land impact, its confirmation cancelled (nothing in Objects) and then confirmed; a 75-second WAV (a tone of its
+  own in each 29.9-second part) by `//upload PATH`, offered as 3 clips at L$10 each, L$30 in all, a length of 20 saying
+  4, renamed, with the notecard, one confirmation for the set, each clip said as it lands, the result with the new
+  folder in Sounds, the three clips and the notecard (listing them in order) in it, and each clip's asset (read from the
+  grid's `Asset.db`, decoded by ffmpeg where the PC has it) its part's tone and length. It deletes what it uploaded.
+  Not reached: Second Life's real fees, its mesh upload rights, a 2048 picture, the quiet cuts (checked on synthetic
+  notes outside the test: each fell just before an attack), a clip failing partway.
 - **two inventory panes**: Alt+4 again reading the first, Alt+Shift+4 opening the second, a search there, Ctrl+M moving
   marked notecards across, Ctrl+W closing it.
 - **incognito**: on and said, the title without the region, SojournSettings refusing it off, a line read out but not
@@ -168,6 +178,11 @@ docstring with its checks in full):
   face with each one's sound matched to its own item in the line (everything in range, not only the step's three),
   the beacon on the visitor and on a bench walked to until "Reached", a walk's destination on the beacon. It can't
   say whether they sound right.
+- **someone's own IM sound** (under a minute, no renderer needed): People nearby's Applications key, IM sound for the
+  visitor, the list on the usual sound with each sound played as Down reaches it, the ocean wave chosen and kept by
+  the visitor's key; the visitor's IM then plays it at the IM's level and not the usual bells; `//imsound` says and
+  changes it; the conversation's Applications key takes it back to the usual (which plays as Home reaches it), and the
+  visitor's next IM rings the usual bells.
 - **walk mode** (about 4 minutes; world audio to a file, `SOJOURN_VOICE_OUT_FILE`, never the speakers; walk log in
   `local/access-test/walk.log`): a seated border crossing on the visitor's `kart` (said, and a line in the history);
   a course the tester builds in
@@ -186,6 +201,12 @@ docstring with its checks in full):
   switch cue; W saying it ahead with both ways' names; Shift+W touching its stand, "Switch set to the branch, East
   Yard." and the visitor hearing the stand set, the throw's cue; `//switch`, `//switch main` (set back, heard),
   `//switch main` again ("already"); then on past both, the second said once and the first not again.
+- **stopping a vehicle** (about 2 minutes, no renderer needed): on a flat stretch of Atelier East, the visitor's `kart`
+  as a car, a held Up, then Space with Up still held: "Stopping.", "Stopped.", and it never moves back; then its kart as
+  a throttle train (`throttle 5`, on past 0 into reverse, each change said), opened 8 taps of Up (walk mode counting
+  8) and stopped by Space, again by `//stop` from Say, then opened 12 and run past the end of its track (`endx`): "Track
+  ends: stopping." with the TrackEnd cue, "Stopped.", the throttle's lines ending at 0 and never below, still, never
+  moving back, and its later "No Guide found" lines not starting another stop.
 - **recording a route** (about 2 minutes, no renderer needed): in Atelier East, north of the walk course, a wall with a
   doorway; in walk mode R starts recording, held Up walks through the doorway, taps of Right turn east, held Up walks on,
   then a `//tp` into Atelier Northeast; R's state, N's note (Backspace taking it back, N again), Shift+R's name and the

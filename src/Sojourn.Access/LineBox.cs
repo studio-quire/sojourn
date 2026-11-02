@@ -4,12 +4,23 @@ namespace Sojourn.Access;
 /// A one-line input whose Enter (with Shift or Ctrl too) reaches its KeyDown handlers before Windows turns the key into
 /// a character: handled there, the key is never translated, so the edit control never gets the carriage return it
 /// answers with the default beep (heard in the guided test of 2026-10-29). Unhandled, Enter goes on as usual (a form's
-/// default button).
+/// default button). With AppsMenu set, the Applications key, Shift+F10 and a right click show that menu instead of the
+/// edit control's own (a conversation's, MainForm.ImSounds.cs).
 /// </summary>
 public class LineBox : TextBox
 {
+    /// <summary>Shows the box's own menu in place of Windows' edit menu; null: Windows' menu.</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Action? AppsMenu { get; set; }
+
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        // on the key's press (Windows' own menu comes on its release, and never for posted keys)
+        if (AppsMenu != null && msg.Msg is WM_KEYDOWN or WM_SYSKEYDOWN && keyData is Keys.Apps or (Keys.Shift | Keys.F10))
+        {
+            AppsMenu();
+            return true;
+        }
         if (!Multiline && (keyData & Keys.KeyCode) == Keys.Enter && (keyData & Keys.Alt) == 0
             && msg.Msg is WM_KEYDOWN)
         {
@@ -21,7 +32,18 @@ public class LineBox : TextBox
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
-    const int WM_KEYDOWN = 0x0100;
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_CONTEXTMENU && AppsMenu != null)
+        {
+            // a key's (lParam -1) was shown on its press; a right click's now
+            if (m.LParam != -1) AppsMenu();
+            return;
+        }
+        base.WndProc(ref m);
+    }
+
+    const int WM_KEYDOWN = 0x0100, WM_SYSKEYDOWN = 0x0104, WM_CONTEXTMENU = 0x007B;
 }
 
 /// <summary>

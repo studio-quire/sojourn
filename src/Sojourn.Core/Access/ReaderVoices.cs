@@ -27,10 +27,12 @@ public sealed class NvdaVoice : IReaderVoice
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)] delegate int Text([MarshalAs(UnmanagedType.LPWStr)] string text);
     [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
     delegate int Ssml([MarshalAs(UnmanagedType.LPWStr)] string ssml, int symbolLevel, int priority, byte asynchronous);
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)] delegate int IsSpeakingFn(out byte speaking);
 
     readonly NoArgs _test, _cancel;
     readonly Text _speak, _braille;
     readonly Ssml? _ssml;   // 2.0: NVDA 2024.1 and later
+    readonly IsSpeakingFn? _isSpeaking;   // 3.0: NVDA 2026.3 and later
     volatile bool _noSsml;
 
     public string Name => "NVDA";
@@ -45,6 +47,7 @@ public sealed class NvdaVoice : IReaderVoice
         _speak = F<Text>("nvdaController_speakText");
         _braille = F<Text>("nvdaController_brailleMessage");
         _ssml = NativeLibrary.TryGetExport(lib, "nvdaController_speakSsml", out var s) ? Marshal.GetDelegateForFunctionPointer<Ssml>(s) : null;
+        _isSpeaking = NativeLibrary.TryGetExport(lib, "nvdaController_isSpeaking", out var sp) ? Marshal.GetDelegateForFunctionPointer<IsSpeakingFn>(sp) : null;
     }
 
     /// <summary>The controller client from the first of these folders that has it (x64 build), or null.</summary>
@@ -86,6 +89,10 @@ public sealed class NvdaVoice : IReaderVoice
         LastError = e;
         return e == 0;
     }
+
+    /// <summary>Whether NVDA is speaking now; null when it can't say (an NVDA before 2026.3 answers 1717, as does a
+    /// controller client without the call).</summary>
+    public bool? Speaking() => _isSpeaking != null && _isSpeaking(out byte b) == 0 ? b != 0 : null;
 
     public void Cancel() => _cancel();
     public void Braille(string text) => _braille(text);

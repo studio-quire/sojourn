@@ -15,13 +15,15 @@ namespace Sojourn.Access;
 /// animation its priority and loop, for a model its scale, detail levels, physics shape and textures, each with the
 /// official uploader's default. Where uploads cost L$ the fee is confirmed by the person's own key in Notices (the gate
 /// works it out and holds the upload to it); the outcome is said and the new item selected in the inventory. Through
-/// TesselAgent uploadLook, upload and uploadMesh (Core's UploadOps). Claude Opus 5.5, 2026-11-01.
+/// TesselAgent uploadLook, upload and uploadMesh (Core's UploadOps). A sound over Second Life's 30 seconds is offered
+/// as clips instead (MainForm.UploadClips.cs); MP3, FLAC, M4A and WMA are decoded by Windows first. Claude Opus 5.5,
+/// 2026-11-01.
 /// </summary>
 public sealed partial class MainForm
 {
     const string OpenFilter =
-        "Pictures, sounds, animations and models|*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.wav;*.ogg;*.bvh;*.anim;*.dae;*.gltf;*.glb;*.obj"
-        + "|Pictures (PNG, JPEG, TGA, BMP)|*.png;*.jpg;*.jpeg;*.tga;*.bmp|Sounds (WAV, Ogg)|*.wav;*.ogg"
+        "Pictures, sounds, animations and models|*.png;*.jpg;*.jpeg;*.tga;*.bmp;*.wav;*.ogg;*.mp3;*.flac;*.m4a;*.wma;*.bvh;*.anim;*.dae;*.gltf;*.glb;*.obj"
+        + "|Pictures (PNG, JPEG, TGA, BMP)|*.png;*.jpg;*.jpeg;*.tga;*.bmp|Sounds (WAV, Ogg, MP3, FLAC, M4A, WMA)|*.wav;*.ogg;*.mp3;*.flac;*.m4a;*.wma"
         + "|Animations (BVH, anim)|*.bvh;*.anim|Models (glTF, GLB, Collada, OBJ)|*.gltf;*.glb;*.dae;*.obj|Every file|*.*";
 
     bool _uploading;
@@ -57,20 +59,47 @@ public sealed partial class MainForm
             path = pick.FileName;
         }
         if (!File.Exists(path)) { Answer($"There's no file at {path}."); return; }
-        if (UploadOps.KindOf(path) == "") { Answer(UploadOps.WrongKind(path)); return; }
+        if (UploadOps.KindOf(path) == "" && !WindowsDecodes(path)) { Answer(UploadOps.WrongKind(path, SoundKinds)); return; }
+        var file = Path.GetFileName(path);
+        DecodedWav? decoded = null;
+        try
+        {
+            // a sound Second Life doesn't take as it is (MP3, FLAC ...): Windows decodes it to a WAV first
+            if (WindowsDecodes(path))
+            {
+                var decoding = DecodeToWavAsync(path);
+                if (await Task.WhenAny(decoding, Task.Delay(500)) != decoding) Reader?.Answer($"Reading {file}.", keep: false);
+                var (wav, why0) = await decoding;
+                if (wav == null) { Answer(why0!); return; }
+                decoded = wav;
+                path = wav.Path;
+            }
 
-        // what it is, read here (nothing sent); a slow one (a model with textures) says so
-        var reading = Task.Run(() => _ops.ReadAsync("TesselAgent", "uploadLook", new JsonObject { ["path"] = path }));
-        if (await Task.WhenAny(reading, Task.Delay(500)) != reading) Reader?.Answer($"Reading {Path.GetFileName(path)}.", keep: false);
-        var look = await reading;
-        if (PersonOps.Error(look) is { } why) { Answer(Plain(why)); return; }
+            // what it is, read here (nothing sent); a slow one (a model with textures, a long sound) says so
+            var ask = new JsonObject { ["path"] = path };
+            if (UploadOps.KindOf(path) == "sound") ask["clips"] = true;
+            var reading = Task.Run(() => _ops.ReadAsync("TesselAgent", "uploadLook", ask));
+            if (decoded == null && await Task.WhenAny(reading, Task.Delay(500)) != reading) Reader?.Answer($"Reading {file}.", keep: false);
+            var look = await reading;
+            if (PersonOps.Error(look) is { } why) { Answer(Plain(why)); return; }
+            if (decoded != null) Decoded(look, file, decoded);
 
-        var kind = look.Str("type") ?? "";
-        var folders = UploadFolders(kind, into);
-        using var form = new UploadForm(look, path, folders, Costs(kind), _ops.Session.BalanceKnown ? _ops.Client?.Self.Balance : null,
-            args => _ops.ReadAsync("TesselAgent", "uploadLook", args), args => _ops.ReadAsync("TesselAgent", "uploadMesh", args), Answer);
-        if (form.ShowDialog(this) != DialogResult.OK || form.Args is not { } chosen) { Reader?.Answer("Nothing uploaded.", keep: false); return; }
-        await SendUploadAsync(kind, chosen, keepTree);
+            var kind = look.Str("type") ?? "";
+            var folders = UploadFolders(kind, into);
+            if (kind == "sound" && look.Bool("too_long", false))
+            {
+                await UploadClipsAsync(look, path, file, into, folders, keepTree);
+                return;
+            }
+            using var form = new UploadForm(look, path, folders, Costs(kind), _ops.Session.Uploads.Balance,
+                args => _ops.ReadAsync("TesselAgent", "uploadLook", args), args => _ops.ReadAsync("TesselAgent", "uploadMesh", args), Answer, file);
+            if (form.ShowDialog(this) != DialogResult.OK || form.Args is not { } chosen) { Reader?.Answer("Nothing uploaded.", keep: false); return; }
+            await SendUploadAsync(kind, chosen, keepTree);
+        }
+        finally
+        {
+            if (decoded != null) TryDelete(Path.GetDirectoryName(decoded.Path)!);
+        }
     }
 
     /// <summary>Whether uploads of this kind cost L$ here (a test's pretend fee counts).</summary>
@@ -214,16 +243,19 @@ sealed class UploadForm : Form
     string? _weighed;
     double _scaleNow = 1;
     readonly System.Windows.Forms.Timer _scaleTimer = new() { Interval = 700 };
+    readonly string _file;
 
     /// <summary>The op's args once Upload is pressed.</summary>
     public JsonObject? Args { get; private set; }
 
+    /// <param name="file">the file's name as the person chose it (a sound Windows decoded goes up from a WAV of it)</param>
     public UploadForm(JsonObject look, string path, List<(string Words, UUID Id)> folders, bool costs, int? balance,
-        Func<JsonObject, Task<JsonObject>> lookAgain, Func<JsonObject, Task<JsonObject>> weigh, Action<string> say)
+        Func<JsonObject, Task<JsonObject>> lookAgain, Func<JsonObject, Task<JsonObject>> weigh, Action<string> say, string? file = null)
     {
         (_look, _path, _folders, _costs, _balance, _lookAgain, _weigh, _say) = (look, path, folders, costs, balance, lookAgain, weigh, say);
         _kind = look.Str("type") ?? "";
-        var file = Path.GetFileName(path);
+        file ??= Path.GetFileName(path);
+        _file = file;
         Name = "upload";
         Text = AccessibleName = $"Upload {file}";
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -333,7 +365,7 @@ sealed class UploadForm : Form
     List<string> Lines()
     {
         var l = _look;
-        var file = Path.GetFileName(_path);
+        var file = _file;
         var size = Bytes(l.Num("bytes", 0));
         var lines = new List<string>();
         switch (_kind)

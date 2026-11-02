@@ -34,6 +34,7 @@ public sealed partial class MainForm
         FriendItem("&Request teleport", f => _ = PersonIdOpAsync("requestTeleport", f.Id, $"Asked {f.Name} for a teleport."));
         FriendItem("P&ay...", f => _ = PayAsync(f.Id, f.Name));
         FriendItem("&Give what you copied", f => _ = GiveCopiedAsync(f.Id, f.Name));
+        SoundItem(_friendMenu, () => _friends.FocusedItem?.Tag is Friend f ? (f.Id, f.Name) : null, group: false);
         FriendItem("&End friendship", f => _ = EndFriendshipAsync(f));
         void GroupItem(string text, Action<MyGroup> act) =>
             _groupMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_groups.FocusedItem?.Tag is MyGroup g) act(g); }));
@@ -41,6 +42,7 @@ public sealed partial class MainForm
         GroupItem("&About the group", g => _ = GroupInfoAsync(g.Id, g.Name));
         GroupItem("&Wear its tag", g => _ = ActivateGroupAsync(g.Id, g.Name));
         GroupItem("&No group tag", g => _ = ActivateGroupAsync(UUID.Zero, "no group"));
+        SoundItem(_groupMenu, () => _groups.FocusedItem?.Tag is MyGroup g ? (g.Id, g.Name) : null, group: true);
         GroupItem("&Leave", g => _ = LeaveGroupAsync(g));
         KeysOn(_friendMenu, ("Send &IM", "Enter"), ("&Describe", "Control+D"));
         KeysOn(_groupMenu, ("Group &chat", "Enter"));

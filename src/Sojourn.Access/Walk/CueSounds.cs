@@ -17,7 +17,7 @@ namespace Sojourn.Access.Walk;
 /// own volume rather than the world's sounds volume. Since 2026-11-01 also a rail switch ahead and one thrown
 /// (WalkMode.Switches.cs). Written by Claude Opus 5.5, 2026-10-29.
 /// </summary>
-public sealed class CueSounds
+public sealed partial class CueSounds
 {
     public enum Cue
     {
@@ -34,6 +34,10 @@ public sealed class CueSounds
         RoutePoint,
         // a rail switch ahead; one thrown
         Switch, SwitchThrown,
+        // the vehicle says its track ends: stopping it
+        TrackEnd,
+        // a sound of its own for someone's IMs or a group's chat (CueSounds.Own.cs, Sound/ImSounds.cs)
+        ImBird, ImCricket, ImHarp, ImHeartbeat, ImHorn, ImMusicBox, ImWave, ImSleighBells, ImSteelDrum, ImChime,
     }
 
     const int Rate = 48000;
@@ -171,9 +175,15 @@ public sealed class CueSounds
             // the points moving over: a heavy clack and its lighter answer
             Cue.SwitchThrown => Mix(Len(0.3), At(0, Noise(rnd, 0.03, 0.0005, 0.008, lowPass: 3000, highPass: 300, amp: 0.4f)), At(0, Tone(240, 0.12, 0.001, 0.035, 0.32f)),
                 At(0.15, Noise(rnd, 0.02, 0.0005, 0.006, highPass: 1500, amp: 0.28f)), At(0.15, Tone(1240, 0.08, 0.0005, 0.02, 0.14f))),
+            // the track ends: urgent, unlike every other cue, three quick high-low pairs with a hard edge (odd harmonics)
+            Cue.TrackEnd => Mix(Len(0.66), At(0, Alarm(1320)), At(0.11, Alarm(990)), At(0.22, Alarm(1320)), At(0.33, Alarm(990)),
+                At(0.44, Alarm(1320)), At(0.55, Alarm(990))),
+            _ when Own(cue, rnd) is { } own => own,
             _ => Tone(440, 0.05, 0.002, 0.02, 0.2f),
         };
     }
+
+    static float[] Alarm(double hz) => Mix(Len(0.1), Tone(hz, 0.1, 0.003, 0.5, 0.3f), Tone(hz * 3, 0.1, 0.003, 0.5, 0.1f), Tone(hz * 5, 0.1, 0.003, 0.5, 0.05f));
 
     static int N(double secs) => Math.Max(1, (int)(secs * Rate));
     static float[] Len(double secs) => new float[N(secs)];

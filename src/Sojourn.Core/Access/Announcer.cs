@@ -111,7 +111,16 @@ public sealed class Announcer : IDisposable
     int _cursor = -1;   // the line last read back in the history (-1: not reading back)
     long _spoken;
 
-    sealed record Item(string Text, bool Holdable, bool Interrupt, bool Urgent, int Spell, long At, LineFrom From, bool Again = false);
+    sealed record Item(string Text, bool Holdable, bool Interrupt, bool Urgent, int Spell, long At, LineFrom From, bool Again = false,
+        AnnounceKind? Kind = null);
+
+    /// <summary>An arrival as it went to the reader: its words (as spoken), kind, whose words, when it was handed over,
+    /// and whether it was a line said again (<see cref="Say"/>'s again).</summary>
+    public sealed record SpokenLine(string Text, AnnounceKind Kind, LineFrom From, long At, bool Again);
+
+    /// <summary>Each arrival just handed to the reader (on the announcer's thread), held lines when they're read, never
+    /// one that wasn't spoken: Sojourn Access's watch on lines cut off by typing.</summary>
+    public Action<SpokenLine>? Spoke { get; set; }
 
     /// <summary>A line just spoken (on the announcer's thread): its words, whose words they are, how it came ("arrival",
     /// "answer", "urgent", "again" for one read back) and what spoke it. For the session log; never called for a line
@@ -155,19 +164,20 @@ public sealed class Announcer : IDisposable
 
     /// <summary>Something that arrived, of this kind: read in turn if the person wants that kind. keep: joins the review
     /// history (not for a line said again). from: whose words it carries; by default, as guarded as its kind allows
-    /// (chat, IMs and notices: other people's).</summary>
-    public void Say(AnnounceKind kind, string text, bool keep = true, LineFrom? from = null)
+    /// (chat, IMs and notices: other people's). again: lines said again after being cut off (logged so, and never
+    /// watched for being cut off themselves).</summary>
+    public void Say(AnnounceKind kind, string text, bool keep = true, LineFrom? from = null, bool again = false)
     {
         if (!_st.Wants(kind)) return;
         // a greeter or a game saying the same line again and again is heard once a while
-        if (kind is AnnounceKind.Objects && Repeated(text)) return;
+        if (kind is AnnounceKind.Objects && !again && Repeated(text)) return;
         Add(text, holdable: true, interrupt: false, urgent: false, keep, from ?? kind switch
         {
             AnnounceKind.Objects => LineFrom.Objects,
             AnnounceKind.Replies => LineFrom.Assistant,
             AnnounceKind.Music => LineFrom.App,
             _ => LineFrom.People,
-        });
+        }, again, kind);
     }
 
     /// <summary>The answer to the person's own key or action: cuts in. keep: joins the review history (not for saying
@@ -228,12 +238,14 @@ public sealed class Announcer : IDisposable
     /// where the reader can.</summary>
     public void Urgent(string text, LineFrom from = LineFrom.App) => Add(text, holdable: false, interrupt: false, urgent: true, from: from);
 
-    void Add(string text, bool holdable, bool interrupt, bool urgent, bool keep = true, LineFrom from = LineFrom.App)
+    void Add(string text, bool holdable, bool interrupt, bool urgent, bool keep = true, LineFrom from = LineFrom.App,
+        bool again = false, AnnounceKind? kind = null)
     {
         if (!Active || Quiet()) return;
         text = Speakable(text);
         if (text.Length == 0) return;
-        var item = new Item(text, holdable, interrupt, urgent, _private is { On: true } p ? Math.Max(1, p.Spell) : 0, Environment.TickCount64, from);
+        var item = new Item(text, holdable, interrupt, urgent, _private is { On: true } p ? Math.Max(1, p.Spell) : 0, Environment.TickCount64,
+            from, again, kind);
         lock (_lock)
         {
             if (holdable) _queue.Add(item); else _now.Enqueue(item);
@@ -422,7 +434,7 @@ public sealed class Announcer : IDisposable
     {
         while (!_stop)
         {
-            _wake.WaitOne(250);
+            _wake.WaitOne(Watching() ? 100 : 250);
             if (_stop) break;
             long now = Environment.TickCount64;
             if (now >= _detectAt) { _detectAt = now + 3000; Detect(); }
@@ -432,6 +444,7 @@ public sealed class Announcer : IDisposable
                 var voice = Voice();
                 try
                 {
+                    long sentAt = Environment.TickCount64;
                     bool said = voice?.Speak(item.Text, item.Interrupt, item.Urgent) == true;
                     if (!said && voice == _nvda && _uia != null)
                     {
@@ -446,11 +459,56 @@ public sealed class Announcer : IDisposable
                         if (item.Spell == 0 && _private is not { On: true })
                             Heard?.Invoke(item.Text, item.From, item.Again ? "again" : item.Urgent ? "urgent" : item.Holdable ? "arrival" : "answer",
                                 voice?.Name ?? "");
+                        if (item.Holdable && item.Kind is { } kind)
+                        {
+                            Interlocked.Exchange(ref _arrivedAt, sentAt);
+                            Spoke?.Invoke(new SpokenLine(item.Text, kind, item.From, sentAt, item.Again));
+                        }
                     }
                 }
                 catch (Exception e) { _log($"screen reader: {voice?.Name} failed ({e.GetType().Name})"); }
             }
+            if (Watching()) WatchSpeaking();
         }
+    }
+
+    // --- whether the reader is speaking (NVDA 2026.3+) -----------------------------------------------------------------
+
+    // NVDA's controller can say whether it's speaking (nvdaController_isSpeaking, 2026.3): while arrivals are recent it's
+    // asked every 100 ms and each quiet moment kept a while, so a line the reader fell quiet after, before any key, is
+    // known to have been heard out rather than judged by its length. Older NVDAs answer 1717 and aren't asked again.
+    long _arrivedAt = long.MinValue / 2;
+    readonly Queue<long> _quietSeen = new();
+    volatile bool _askSpeaking = true;
+
+    bool Watching() => _askSpeaking && _nvda != null && Voice() == _nvda
+        && Environment.TickCount64 - Interlocked.Read(ref _arrivedAt) < 15_000;
+
+    void WatchSpeaking()
+    {
+        bool? speaking;
+        try { speaking = _nvda!.Speaking(); }
+        catch (Exception) { speaking = null; }
+        if (speaking == null)
+        {
+            _askSpeaking = false;
+            _log("screen reader: NVDA didn't say whether it's speaking (it can from 2026.3); lines cut off by typing are judged by their length");
+            return;
+        }
+        if (speaking == true) return;
+        long now = Environment.TickCount64;
+        lock (_quietSeen)
+        {
+            _quietSeen.Enqueue(now);
+            while (_quietSeen.Count > 0 && now - _quietSeen.Peek() > 30_000) _quietSeen.Dequeue();
+        }
+    }
+
+    /// <summary>The reader was seen quiet at some moment after <paramref name="from"/> and before <paramref name="to"/>
+    /// (NVDA 2026.3 and later; always false where that can't be known).</summary>
+    public bool QuietBetween(long from, long to)
+    {
+        lock (_quietSeen) return _quietSeen.Any(t => t > from && t < to);
     }
 
     /// <summary>What to speak next: answers and confirmations first, then what arrived, unless a confirmation holds it.</summary>

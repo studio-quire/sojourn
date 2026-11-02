@@ -16,7 +16,8 @@ namespace Sojourn.Core.Agents;
 /// applies. No spending caps here (operation, not code): the confirmation gate asks the person where uploads cost
 /// (Session's Confirmations.Uploads.cs), pinning `max_cost` to the fee they were shown, which the ops then hold to.
 /// `quote` asks the price without uploading. Errors are in words a person can act on ("The sound is 42 seconds long;
-/// Second Life takes up to 30."), since Sojourn Access says them as they are.
+/// Second Life takes up to 30."), since Sojourn Access says them as they are. uploadClips cuts a longer sound into
+/// clips a scripted player plays in order (Media/SoundClips.cs), confirmed once for the whole set.
 /// </summary>
 public sealed class UploadOps
 {
@@ -38,8 +39,14 @@ public sealed class UploadOps
     public const double MaxMeshSide = 64;
 
     /// <summary>Fees to pretend on a free grid, for tests ("texture=0,sound=50"; SOJOURN_TEST_UPLOAD_FEE): uploads of
-    /// those kinds are then confirmed as spending, at that fee. Null normally.</summary>
+    /// those kinds are then confirmed as spending, at that fee. "clip=N" a sound clip's fee apart from a single sound's;
+    /// "balance=N" the L$ balance uploads are checked against (the local grid's is 0). Null normally.</summary>
     public static IReadOnlyDictionary<string, int>? TestFees { get; } = ParseFees(Environment.GetEnvironmentVariable("SOJOURN_TEST_UPLOAD_FEE"));
+
+    /// <summary>The balance uploads are checked against and said with: a test's pretend one, else the account's where
+    /// it's known.</summary>
+    public int? Balance => TestFees?.TryGetValue("balance", out var b) == true ? b
+        : _s.BalanceKnown && _s.Client is { } c ? c.Self.Balance : null;
 
     static Dictionary<string, int>? ParseFees(string? s)
     {
@@ -58,9 +65,10 @@ public sealed class UploadOps
             : MeshExt.Contains(ext) ? "mesh" : "";
     }
 
-    public static string WrongKind(string path) =>
+    /// <param name="sounds">the sound formats the caller takes (Sojourn Access has Windows decode more)</param>
+    public static string WrongKind(string path, string sounds = "WAV or Ogg") =>
         $"{Path.GetFileName(path)} isn't something Second Life takes. Uploads can be pictures (PNG, JPEG, TGA or BMP), "
-        + "sounds (WAV or Ogg), animations (BVH or anim) or models (glTF, GLB, Collada DAE or OBJ).";
+        + $"sounds ({sounds}), animations (BVH or anim) or models (glTF, GLB, Collada DAE or OBJ).";
 
     /// <summary>The fee for an upload of this kind (a picture's by its size as uploaded), as the viewer's
     /// LLAgentBenefits works it out: the account's benefits, else the grid's one upload price; 0 where neither is known
@@ -106,7 +114,9 @@ public sealed class UploadOps
     /// <summary>uploadLook: what an upload of the file would be, read here, nothing sent: its kind and size, and for a
     /// picture its size and what it'll be resized to and whether it has see-through parts, for a sound its length and
     /// channels, for an animation its length and joints, for a model its parts, faces, triangles and size; the fee
-    /// where it's known before asking the grid (a model's isn't). A file that can't be uploaded is refused in words.</summary>
+    /// where it's known before asking the grid (a model's isn't). A file that can't be uploaded is refused in words.
+    /// A sound with `clips` (or `clip_seconds`) isn't refused for its length: `clips` says how uploadClips would cut it
+    /// with the same args.</summary>
     public async Task<JsonNode?> LookAsync(JsonObject a, CancellationToken ct)
     {
         var path = Existing(a);
@@ -131,13 +141,20 @@ public sealed class UploadOps
             }
             case "sound":
             {
-                var s = await Task.Run(() => Sound(path), ct);
+                bool clips = a.Bool("clips", false) || a.Has("clip_seconds");
+                var s = await Task.Run(() => Sound(path, refuseLong: !clips), ct);
                 reply["format"] = s.Format;
                 reply["seconds"] = Math.Round(s.Seconds, 2);
                 reply["channels"] = s.Channels;
                 reply["rate"] = s.Rate;
                 reply["max_seconds"] = SoundConvert.MaxSeconds;
+                reply["too_long"] = s.Seconds > SoundConvert.MaxSeconds;
                 reply["fee"] = Fee(kind);
+                if (clips)
+                {
+                    var (_, mono) = await Task.Run(() => Decoded(path), ct);
+                    reply["clips"] = ClipsPlan(a, path, mono).Json;
+                }
                 break;
             }
             case "animation":
@@ -222,7 +239,7 @@ public sealed class UploadOps
 
     sealed record SoundFacts(string Format, int Channels, int Rate, double Seconds);
 
-    static SoundFacts Sound(string path)
+    static SoundFacts Sound(string path, bool refuseLong = true)
     {
         var data = File.ReadAllBytes(path);
         SoundFacts f;
@@ -240,8 +257,8 @@ public sealed class UploadOps
             }
         }
         catch (MediaFormatException e) { throw new LeapError(e.Message); }
-        if (f.Seconds > SoundConvert.MaxSeconds)
-            throw new LeapError($"{Path.GetFileName(path)} is {UploadWords.Seconds(f.Seconds)} long; Second Life takes sounds up to {SoundConvert.MaxSeconds:0} seconds. Trim it to {SoundConvert.MaxSeconds:0} seconds or less, then upload it.");
+        if (refuseLong && f.Seconds > SoundConvert.MaxSeconds)
+            throw new LeapError($"{Path.GetFileName(path)} is {UploadWords.Seconds(f.Seconds)} long; Second Life takes sounds up to {SoundConvert.MaxSeconds:0} seconds. Trim it to {SoundConvert.MaxSeconds:0} seconds or less, or upload it cut into clips (uploadClips).");
         if (f.Seconds <= 0) throw new LeapError($"{Path.GetFileName(path)} has no sound in it.");
         return f;
     }
@@ -513,10 +530,166 @@ public sealed class UploadOps
         return reply;
     }
 
+    // --- a long sound as clips -----------------------------------------------------------------------------------------
+
+    /// <summary>Each clip uploaded (from the op's own thread): {index, count, name, item_id}. For the person's progress.</summary>
+    public event Action<JsonObject>? ClipUploaded;
+
+    /// <summary>A clip's fee: a sound's (or a test's pretend clip fee).</summary>
+    public int ClipFee() => TestFees?.TryGetValue("clip", out var t) == true ? t : Fee("sound");
+
+    public static string ClipsNotecardName(string baseName) => $"{Cut(baseName.Trim(), NameLength - 6)} clips";
+
+    readonly object _decodedLock = new();
+    (string Key, SoundFacts Facts, float[] Mono)? _decoded;
+
+    /// <summary>A sound file read whole as mono at 44.1 kHz, the last one kept (the window's look, the gate's and the
+    /// upload read the same file in turn).</summary>
+    (SoundFacts Facts, float[] Mono) Decoded(string path)
+    {
+        var fi = new FileInfo(path);
+        var key = $"{fi.FullName}|{fi.Length}|{fi.LastWriteTimeUtc.Ticks}";
+        lock (_decodedLock)
+            if (_decoded is { } d && d.Key == key) return (d.Facts, d.Mono);
+        var facts = Sound(path, refuseLong: false);
+        float[] mono;
+        try { mono = SoundConvert.ReadMono(File.ReadAllBytes(path), Path.GetExtension(path).Equals(".wav", StringComparison.OrdinalIgnoreCase)).Mono; }
+        catch (MediaFormatException e) { throw new LeapError(e.Message); }
+        lock (_decodedLock) _decoded = (key, facts, mono);
+        return (facts, mono);
+    }
+
+    sealed record ClipPlan(List<SoundClips.Clip> Clips, List<string> Names, string Base, int Each, JsonObject Json);
+
+    /// <summary>How uploadClips cuts the file with these args: clip_seconds (29.9), cuts exact|quiet, name (the base).</summary>
+    ClipPlan ClipsPlan(JsonObject a, string path, float[] mono)
+    {
+        var secs = Math.Clamp(a.Num("clip_seconds", SoundClips.DefaultSeconds), SoundClips.MinSeconds, SoundConvert.MaxSeconds);
+        var quiet = a.Str("cuts") == "quiet";
+        var baseName = Cut(a.Str("name") is { Length: > 0 } nm ? nm.Trim() : DefaultName(path), NameLength);
+        var clips = SoundClips.Plan(mono, SoundConvert.SampleRate, secs, quiet);
+        if (clips.Count == 0) throw new LeapError($"{Path.GetFileName(path)} has no sound in it.");
+        var names = SoundClips.Names(baseName, clips.Count, NameLength);
+        var lengths = clips.Select(c => Math.Round((double)c.Length / SoundConvert.SampleRate, 2)).ToList();
+        int each = ClipFee();
+        var json = new JsonObject
+        {
+            ["count"] = clips.Count, ["clip_seconds"] = secs, ["cuts"] = quiet ? "quiet" : "exact", ["base"] = baseName,
+            ["names"] = Json.Strings(names), ["seconds"] = new JsonArray(lengths.Select(l => (JsonNode?)l).ToArray()),
+            ["shortest"] = lengths.Min(), ["longest"] = lengths.Max(), ["fee_each"] = each, ["fee"] = each * clips.Count,
+            ["notecard_name"] = ClipsNotecardName(baseName),
+        };
+        return new ClipPlan(clips, names, baseName, each, json);
+    }
+
+    /// <summary>uploadClips: a sound of any length cut into clips of at most clip_seconds (29.9 by default, so none is
+    /// refused), named "name 1" to "name N", each made mono at 44.1 kHz with a few milliseconds' fade at each cut, and
+    /// uploaded in order: into a new folder named after them (new_folder, on by default) in folder_id (the Sounds
+    /// folder by default), or straight into folder_id. notecard: a notecard beside them listing the clips in order, a
+    /// line each, as players read. The whole set's fee is confirmed once (`max_cost` the total). A clip that fails
+    /// stops the rest, said with which went up.</summary>
+    public async Task<JsonNode?> UploadClipsAsync(JsonObject a, CancellationToken ct)
+    {
+        var c = C;
+        var path = Existing(a);
+        if (Kind(a, path) != "sound") throw new LeapError($"{Path.GetFileName(path)} isn't a sound; only a sound is cut into clips.");
+        var (facts, mono) = await Task.Run(() => Decoded(path), ct);
+        var plan = ClipsPlan(a, path, mono);
+        int n = plan.Clips.Count, total = plan.Each * n;
+        var reply = new JsonObject
+        {
+            ["name"] = plan.Base, ["count"] = n, ["seconds"] = Math.Round(facts.Seconds, 2), ["cost_each"] = plan.Each, ["cost"] = total,
+            ["plan"] = plan.Json,
+        };
+        if (a.Bool("quote", false)) return reply;
+        HoldTo(a, total);
+        var into = a.Uuid("folder_id") ?? _s.Inventory.FolderFor(FolderType.Sound);
+        var folder = into;
+        bool newFolder = a.Bool("new_folder", true);
+        if (newFolder) folder = c.Inventory.CreateFolder(into, plan.Base);
+        var desc = Cut(a.Str("desc") ?? "", DescLength);
+        var d = _s.Ownership.DefaultsFor("uploads");
+        var next = a.Str("next_perms") is { } np ? PermissionMask.Move | ObjectViews.PermMask(np) : d.NextMask;
+        var perms = new Permissions((uint)PermissionMask.All, (uint)d.EveryoneMask, (uint)d.GroupMask, (uint)next, (uint)PermissionMask.All);
+        var timeout = TimeSpan.FromSeconds(a.Num("timeout", 120));
+        var made = new JsonArray();
+        for (int i = 0; i < n; i++)
+        {
+            var clip = plan.Clips[i];
+            var name = plan.Names[i];
+            string? why = null;
+            try
+            {
+                var samples = SoundClips.Cut(mono, clip, SoundConvert.SampleRate, fadeIn: i > 0, fadeOut: i < n - 1);
+                var data = await Task.Run(() => SoundConvert.EncodeMono(samples), ct);
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(timeout);
+                var r = await c.Inventory.CreateItemFromAssetAsync(data, name, desc, AssetType.Sound, InventoryType.Sound, folder, perms, cts.Token);
+                if (!r.Success) why = Failed(r.Status, r.Error, r.RawResult, tail: false);
+                else
+                {
+                    _s.Ears.Learn(r.AssetID, name);
+                    made.Add(new JsonObject
+                    {
+                        ["name"] = name, ["seconds"] = Math.Round((double)clip.Length / SoundConvert.SampleRate, 2),
+                        ["item_id"] = r.ItemID.ToString(), ["asset_id"] = r.AssetID.ToString(),
+                    });
+                    ClipUploaded?.Invoke(new JsonObject { ["index"] = i + 1, ["count"] = n, ["name"] = name, ["item_id"] = r.ItemID.ToString() });
+                }
+            }
+            catch (OperationCanceledException) { why = Failed("canceled", null, null, tail: false); }
+            catch (Exception e) when (e is not NotConnected) { why = Failed(null, e, null, tail: false); }
+            if (why == null) continue;
+            var where = Node(folder, newFolder ? plan.Base : null);
+            if (i == 0 && newFolder)
+                try { await c.Inventory.RemoveFolderAsync(folder, CancellationToken.None); } catch (Exception) { }
+            var paid = plan.Each > 0 ? $"; L${plan.Each * i} paid" : "";
+            throw new LeapError(i == 0
+                ? $"Clip 1 of {n}, {name}, didn't go up: {why} Nothing was uploaded."
+                : $"Clip {i + 1} of {n}, {name}, didn't go up: {why} {UploadWords.Clips(i)} went up, into {where}{paid}. Nothing more was uploaded.");
+        }
+        reply["clips"] = made;
+        reply["folder_id"] = folder.ToString();
+        reply["folder_name"] = Node(folder, newFolder ? plan.Base : null);
+        reply["new_folder"] = newFolder;
+        reply["parent_id"] = into.ToString();
+        reply["parent_name"] = Node(into, null);
+        reply["charged"] = total;
+        lock (_decodedLock) _decoded = null;   // (a long song's samples aren't kept once it's up)
+        if (a.Bool("notecard", false))
+        {
+            var nc = ClipsNotecardName(plan.Base);
+            try
+            {
+                var note = await _s.InventoryOps.CreateNotecardAsync(new JsonObject
+                {
+                    ["name"] = nc, ["folder_id"] = folder.ToString(), ["text"] = string.Join("\n", plan.Names) + "\n",
+                    ["desc"] = Cut($"The clips of {plan.Base}, in the order they play", DescLength),
+                }, ct);
+                reply["notecard_id"] = note.Str("item_id");
+                reply["notecard_name"] = nc;
+            }
+            catch (Exception e) when (e is not NotConnected)
+            {
+                reply["notecard_error"] = $"The notecard listing them wasn't made: {Sentence(e.Message)}";
+            }
+        }
+        return reply;
+    }
+
+    string Node(UUID id, string? fallback) => _s.Inventory.Node(id)?.Name ?? fallback ?? "your inventory";
+
     /// <summary>A model's fee: the grid's quote, or the test's pretend fee.</summary>
     static int Charged(int quoted) => TestFees?.TryGetValue("mesh", out var t) == true ? t : quoted;
 
     /// <summary>Why an upload failed, in words: the grid's own message where it gave one, the common causes said plainly.</summary>
+    /// <summary>Failed's words for one of several uploads: without its "nothing was uploaded", which the caller says.</summary>
+    static string Failed(string? status, Exception? error, LibreMetaverse.StructuredData.OSD? raw, bool tail)
+    {
+        var s = Failed(status, error, raw);
+        return tail ? s : s.Replace("; nothing was uploaded.", ".").Replace(" Nothing was uploaded.", "").Replace("Nothing was uploaded. ", "").Trim();
+    }
+
     static string Failed(string? status, Exception? error, LibreMetaverse.StructuredData.OSD? raw)
     {
         string? said = null;
@@ -541,9 +714,17 @@ public sealed class UploadOps
 }
 
 /// <summary>Numbers as a person hears them in the upload ops' words.</summary>
-static class UploadWords
+public static class UploadWords
 {
     public static string Bytes(long b) => b >= 1 << 20 ? $"{b / 1048576.0:0.#} MB".Replace(".0 ", " ") : b >= 1024 ? $"{b / 1024} KB" : $"{b} bytes";
-    public static string Seconds(double s) => s < 60 ? $"{s.ToString("0.#", CultureInfo.InvariantCulture)} seconds" : $"{(int)(s / 60)} minutes {(int)(s % 60)} seconds";
+    public static string Seconds(double s)
+    {
+        if (s < 60) return s == 1 ? "1 second" : $"{s.ToString("0.#", CultureInfo.InvariantCulture)} seconds";
+        int m = (int)(s / 60), r = (int)(s % 60);
+        var words = m == 1 ? "1 minute" : $"{m} minutes";
+        return r == 0 ? words : $"{words} {r} second{(r == 1 ? "" : "s")}";
+    }
+    /// <summary>"Clip 1", "Clips 1 and 2", "Clips 1 to 4": the first n clips.</summary>
+    public static string Clips(int n) => n switch { 1 => "Clip 1", 2 => "Clips 1 and 2", _ => $"Clips 1 to {n}" };
     public static string Metres(double m) => $"{m.ToString(m < 10 ? "0.##" : "0.#", CultureInfo.InvariantCulture)} metres";
 }

@@ -38,6 +38,7 @@
     <!-- a crash's report (CrashReport.cs): the log filtered as Sojourn Access's Send a log filters it, sent to the relay
          or saved for GitHub -->
     <Compile Include="..\Sojourn.Session\LogShare.cs" Link="Shared\LogShare.cs" />
+    <EmbeddedResource Include="..\Sojourn.Session\common-words.txt" LogicalName="common-words.txt" />
     <Compile Include="..\Sojourn.Session\LogSend.cs" Link="Shared\LogSend.cs" />
     <Compile Include="..\Sojourn.Session\Release\ProblemReport.cs" Link="Shared\ProblemReport.cs" />
     <!-- Sojourn's own words in each language (docs/languages.md): the session's catalogs, the launcher's among them -->

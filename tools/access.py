@@ -633,7 +633,11 @@ def licences(dest, build_root, src=ROOT):
               "(Apache-2.0 WITH LLVM-exception); in 'Mesa lavapipe and LLVM, in the lavapipe folder.txt'",
               "Second Life viewer parts (renderer code, Character, Textures): LGPL-2.1, Linden Research, Inc.",
               "The linden folder (LibreMetaverse's copy of the viewer's data files): see cc-by-sa-3.0.txt in it",
-              "Archivo font (Fonts): SIL Open Font License 1.1", "",
+              "Archivo font (Fonts): SIL Open Font License 1.1",
+              "SCOWL's common English words (inside SojournAccess.dll, for the log filter): Copyright 2000-2018 by Kevin "
+              "Atkinson, http://wordlist.aspell.net; permission to use, copy, modify, distribute and sell them for any "
+              "purpose is granted without fee, provided the copyright notice and this permission notice appear in all "
+              "copies and supporting documentation; provided as is, without express or implied warranty", "",
               "Where a library's licence is MIT or Apache-2.0 and its package carried no text of it, the text is in "
               "MIT.txt or Apache-2.0.txt here; the copyright is its authors', as named at its project's address."]
     shutil.copy2(files / "licences" / "Apache-2.0.txt", dest / "Apache-2.0.txt")
@@ -1218,6 +1222,14 @@ def session(run, procs):
                  "; ".join(e.get("text") or "" for e in events() if e.get("src") == "server")):
         raise Stop
 
+    # a run stopped before its cleanup leaves the visitor's things out, and a fixture box left in Atelier obeys its words
+    # on channel 7 as the new one does: two menus for one fdance, the dance step's re-sent menu beside a stranger's (it
+    # failed so, 2026-11-01). The visitor isn't on the grid elsewhere (checked before), so whatever it owns is a leftover
+    vid = visitor_id()
+    for region in (REGION, COURSE_REGION):
+        if vid and (n := clear_owned(region, vid)):
+            print(f"     ({n} of the visitor's things an earlier run left in {region} cleared)")
+
     vlog = open(OUT / "visitor" / "visitor.log", "w", encoding="utf-8")
     procs["visitor"] = subprocess.Popen(
         [str(DOTNET), str(VISITOR_DLL), "--port", str(V_PORT), "--first", VISITOR[0], "--last", VISITOR[1],
@@ -1342,9 +1354,11 @@ def session(run, procs):
         ("describing a look as it loads", lambda: describing_looks(run, nonce)),
         ("review keys and arrivals", lambda: review_and_arrivals(run, nonce)),
         ("sound as a map", lambda: sound_map(run, tester_id)),
+        ("someone's own IM sound", lambda: own_im_sound(run, tester_id)),
         ("walk mode", lambda: walk_mode(run)),
         ("distance walked", lambda: distance_walked(run)),
         ("rail switches", lambda: rail_switches(run)),
+        ("stopping a vehicle", lambda: vehicle_stop(run)),
         ("recording a route", lambda: route_recording(run)),
         ("recording a route across a border", lambda: route_crossing(run)),
     ]
@@ -1526,7 +1540,9 @@ def own_lines(run, nonce):
 
 def typed_cut(run, nonce):
     """A line arriving while she types is cut at her next key by the screen reader (NVDA's speech interrupt for typed
-    characters): said again once the keys rest, those cut together as one, once; not after Control alone silenced it."""
+    characters): said again once the keys rest a second, those cut together as one, once; not one heard out before the
+    typing, not her own, not after Control alone silenced it; in busy chat with typing all the while, no line more than
+    twice and the newest three said again after how many there were."""
     def typing(word, gap=0.15):
         for c in word:
             key(c, target="id=chatInput")
@@ -1545,30 +1561,66 @@ def typed_cut(run, nonce):
     run.check("a line nobody typed over is said once", len(times(f"calm line {nonce}", m)) == 1,
               f"{len(times(f'calm line {nonce}', m))} times")
 
+    # heard out, then typing begins: not said again
+    m = mark()
+    v(f"say heard first {nonce}")
+    run.expect("(a line before typing)", [f"heard first {nonce}"], m, 10)
+    time.sleep(2)
+    typing("abcdefghij")
+    time.sleep(2.5)
+    run.check("a line heard out before typing began isn't said again", len(times(f"heard first {nonce}", m)) == 1,
+              f"{len(times(f'heard first {nonce}', m))} times")
+    u("set id=chatInput |")
+
     # two lines cut by typing: said again together after the pause (typing on while each arrives, as she would)
-    def type_until(text, since, secs=10):
-        end = time.time() + secs
-        while time.time() < end:
-            typing("x")
-            if times(text, since):
-                return True
-        return False
+    import threading
+
+    class Typist:
+        """Keys every 0.15 s from a thread of their own, so reading the event log or the visitor's commands never pause
+        them (a pause of a second is what says cut lines again); a line of her own typed and sent when asked."""
+        def __init__(self, word="x"):
+            self.word, self.keyed, self.mine = word, [], None
+            self.stop_, self.thread = threading.Event(), threading.Thread(target=self.run)
+            self.thread.start()
+
+        def run(self):
+            while not self.stop_.is_set():
+                if self.mine:
+                    for c in self.mine:
+                        key(c, target="id=chatInput")
+                        self.keyed.append(time.time())
+                    key("enter", target="id=chatInput")
+                    self.mine = None
+                key(self.word, target="id=chatInput")
+                self.keyed.append(time.time())
+                time.sleep(0.15)
+
+        def stop(self):
+            """The last key's time, in ms."""
+            self.stop_.set()
+            self.thread.join()
+            return self.keyed[-1] * 1000
+
+        def longest(self):
+            return max((b - a for a, b in zip(self.keyed, self.keyed[1:])), default=0)
 
     m = mark()
-    typing("ab")
-    v(f"say cut one {nonce}")
-    run.check("(the first line while typing)", type_until(f"cut one {nonce}", m), "")
-    typing("cd")
-    v(f"say cut two {nonce}")
-    run.check("(the second line while typing)", type_until(f"cut two {nonce}", m), "")
-    typing("efgh")
-    last_key = time.time() * 1000
+    typist = Typist()
+    try:
+        v(f"say cut one {nonce}")
+        run.check("(the first line while typing)", wait(lambda: times(f"cut one {nonce}", m), 10), "")
+        v(f"say cut two {nonce}")
+        run.check("(the second line while typing)", wait(lambda: times(f"cut two {nonce}", m), 10), "")
+        time.sleep(0.6)
+    finally:
+        last_key = typist.stop()
     again = wait(lambda: next((e for e in said_since(m) if f"cut one {nonce}" in (e.get("text") or "")
                                and f"cut two {nonce}" in (e.get("text") or "")), None), 6)
     run.check("lines cut by typing said again together once the keys rest", again, again["text"] if again else
               " | ".join(e.get("text") or "" for e in said_since(m))[-300:])
     if again:
-        run.check("after a pause of the keys, not during them", again["t"] - last_key >= 500, f'{again["t"] - last_key:.0f} ms after the last key')
+        # (the test's clock for the last key runs a little behind the app's)
+        run.check("after a second's pause of the keys, not during them", again["t"] - last_key >= 750, f'{again["t"] - last_key:.0f} ms after the last key')
     time.sleep(2)
     run.check("and only once", len(times(f"cut two {nonce}", m)) == 2, f"{len(times(f'cut two {nonce}', m))} times in all")
     u("set id=chatInput |")
@@ -1583,6 +1635,49 @@ def typed_cut(run, nonce):
     time.sleep(2.5)
     run.check("a line silenced by Control alone isn't said again", len(times(f"hushed line {nonce}", m)) == 1,
               f"{len(times(f'hushed line {nonce}', m))} times")
+    u("set id=chatInput |")
+
+    # her own line, its read-back cut by her typing on: she wrote it, so it isn't said again
+    m = mark()
+    type_text(f"own words {nonce}", "id=chatInput")
+    wait(lambda: value_of("id=chatInput") == f"own words {nonce}", 3, 0.2)
+    key("enter", target="id=chatInput")
+    end = time.time() + 4
+    while time.time() < end:
+        typing("x")
+    time.sleep(2.5)
+    run.check("her own line cut by her typing is read back once, not again", len(times(f"own words {nonce}", m)) == 1,
+              f"{len(times(f'own words {nonce}', m))} times")
+    u("set id=chatInput |")
+
+    # busy chat: the visitor talking every second or two while she types all the while, sending a line of her own
+    # halfway; then a pause
+    m = mark()
+    lines = [f"busy {i:02d} {nonce}" for i in range(12)]
+    mine = f"busymine{nonce}"
+    typist = Typist("y")
+    try:
+        time.sleep(0.5)
+        for i, line in enumerate(lines):
+            v(f"say {line}")
+            if i == len(lines) // 2:
+                typist.mine = mine
+            time.sleep(1.0 + (i % 3) * 0.4)
+        time.sleep(1)
+    finally:
+        last_key = typist.stop()
+    longest = typist.longest()
+    time.sleep(4)
+    said = said_since(m)
+    counts = [sum((e.get("text") or "").count(t) for e in said) for t in lines]
+    agains = [e for e in said if "busy" in (e.get("text") or "") and "while you typed" in (e.get("text") or "")]
+    run.check("busy chat while typing: every line said, none more than twice", all(1 <= c <= 2 for c in counts),
+              f"times each was said: {counts}; the longest pause in the keys {longest:.2f} s")
+    run.check("those cut said again in one go after the pause, the newest three after how many",
+              len(agains) == 1 and agains[0]["t"] - last_key >= 750 and all(t in agains[0]["text"] for t in lines[-3:])
+              and f"{len(lines)} messages while you typed" in agains[0]["text"],
+              " | ".join(e["text"] for e in agains) or "none: " + " | ".join(e.get("text") or "" for e in said)[-300:])
+    run.check("her own line in busy chat read back once", len(times(mine, m)) == 1, f"{len(times(mine, m))} times")
     u("set id=chatInput |")
 
 
@@ -2425,6 +2520,26 @@ def notice_menu(run, tester_id):
         if open_newest_notice(run, ["Access Menu"]):
             key("del")
             time.sleep(0.5)
+    # cut off by going to answer it (Control+N), answered there, back in chat: not said again (a vehicle's menu was,
+    # each time, after its answer)
+    back_to_chat()
+    time.sleep(1)
+    m = mark()
+    v(f"fmenu {tester_id}")
+    if run.expect("(a menu to answer at once)", ["Access Menu"], m, NOTICE_SECS):
+        m = mark()
+        # its arrival selected it in the list, a change not hers: a key within InputJudge.Settle (0.7 s) of that is
+        # refused ("That changed just as you pressed"), so Control+N waits a little, still well inside the announcement
+        time.sleep(0.8)
+        if open_newest_notice(run, ["Access Menu"]):
+            n = visitor_n()
+            key("2")
+            run.heard_by_visitor("(answered)", lambda d: d["msg"] == "picked Green", n, 10, "picked Green")
+            back_to_chat()
+            time.sleep(2.5)
+            again = [e for e in said_since(m) if "Access Menu" in (e.get("text") or "")]
+            run.check("a notice answered in Notices isn't said again afterwards", not again,
+                      again[0]["text"] if again else "not said again")
 
 
 def notice_dance(run, tester_id):
@@ -3984,14 +4099,18 @@ def placing(run, nonce):
         back_to_chat()
 
 
-UPLOAD_FEES = "texture=0,mesh=0,animation=500"   # SOJOURN_TEST_UPLOAD_FEE: pictures and models confirmed at L$0, animations unaffordable
+# SOJOURN_TEST_UPLOAD_FEE: pictures and models confirmed at L$0, a sound's clips at L$10 each, against a pretend balance
+# of L$100 (the local grid's is 0), so animations at L$500 are unaffordable; a single sound stays free
+UPLOAD_FEES = "texture=0,mesh=0,animation=500,clip=10,balance=100"
+CLIP_TONES = (300, 500, 700)   # Hz: the 75-second fixture's tone in each of its 29.9-second clips
 
 
 def upload_fixtures(nonce):
     """The files the upload step sends, made here (no image library): a 300 by 200 PNG with see-through parts, a two
-    second stereo WAV at 48 kHz, a 31 second WAV (too long), a text file (wrong kind), a one-metre cube as glTF, and a
+    second stereo WAV at 48 kHz, a 75 second WAV (too long for one sound: clips) with a tone of its own in each clip,
+    and 40 seconds of it as FLAC where ffmpeg is on this PC, a text file (wrong kind), a one-metre cube as glTF, and a
     three-frame BVH."""
-    import base64, struct, wave, zlib
+    import array, base64, struct, wave, zlib
     d = OUT / "upload"
     d.mkdir(parents=True, exist_ok=True)
 
@@ -4013,7 +4132,16 @@ def upload_fixtures(nonce):
                 frames += one * channels
             w.writeframes(bytes(frames))
     wav(d / "Door.wav", 2, 48000, 2, 2)
-    wav(d / "Too long.wav", 31, 8000, 1, 1)
+    rate = 22050   # (made 44.1 kHz on the way up)
+    with wave.open(str(d / "Harp song.wav"), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(array.array("h", (int(8000 * math.sin(2 * math.pi * CLIP_TONES[min(2, int(i / rate / 29.9))] * i / rate))
+                                        for i in range(75 * rate))).tobytes())
+    if ffmpeg := shutil.which("ffmpeg"):
+        subprocess.run([ffmpeg, "-y", "-v", "error", "-i", str(d / "Harp song.wav"), "-t", "40", str(d / "Harp short.flac")],
+                       stdin=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
     (d / "Shopping list.txt").write_text("not a picture\n", encoding="utf-8")
 
     # a cube, 24 corners (a normal each), 12 triangles
@@ -4079,8 +4207,8 @@ def uploads(run, nonce):
     a folder's Applications key, Upload a file here, its length, stereo and conversion said, landing in that folder,
     free (no confirmation); a model by //upload PATH, its triangles and size, a scale of 2 said as 2 metres, Weigh it,
     the confirmation cancelled once (nothing uploaded) then confirmed; an animation refused before asking (L$500 over the
-    balance); a too-long sound and a text file refused in words; Build > Upload a file's key shown. What it uploaded is
-    moved into the run's folder and deleted by keys."""
+    balance); a text file refused in words; Build > Upload a file's key shown; a sound over 30 seconds offered as clips
+    (clips_upload), and a FLAC read by Windows. What it uploaded is moved into the run's folder and deleted by keys."""
     d = upload_fixtures(nonce)
     root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
     folder_name = f"Access Uploads {nonce}"
@@ -4092,10 +4220,21 @@ def uploads(run, nonce):
         m = mark()
         say_in_app(f"//upload {d / 'Shopping list.txt'}")
         run.expect("a text file: said it isn't something Second Life takes", ["isn't something Second Life takes", "pictures"], m, 8)
-        m = mark()
-        say_in_app(f"//upload {d / 'Too long.wav'}")
-        run.expect("a 31-second sound: said too long, before any window", ["31 seconds long", "up to 30 seconds"], m, 10)
-        run.check("(no upload window for it)", not find("id=uploadAbout"), "")
+        # ---- a FLAC, decoded by Windows: 40 seconds, offered as two clips; Escape uploads nothing
+        flac = d / "Harp short.flac"
+        if flac.exists():
+            say_in_app(f"//upload {flac}")
+            w = wait_focus(lambda e: e["id"] == "clipsAbout", 30)
+            about = value_of("id=clipsAbout") if w else ""
+            run.check("a 40-second FLAC: read by Windows, offered as 2 clips",
+                      all(x in about for x in ("Harp short.flac is 40 seconds long", "as 2 clips", "FLAC", "read by Windows")), about[:300] or focus_label())
+            if w:
+                m = mark()
+                key("esc")
+                run.expect("Escape there: nothing uploaded", ["Nothing uploaded"], m, 8)
+        else:
+            print("     (no ffmpeg on this PC: the FLAC check skipped)")
+        back_to_chat()
 
         # ---- the menu bar: Build > Upload a file, Control+U shown; Escape in the Open window uploads nothing
         key("alt+b")
@@ -4222,12 +4361,114 @@ def uploads(run, nonce):
                 got = wait(lambda: inv_items(objects).get(model), 10)
                 if run.check("it's in Objects", got, ""):
                     made.append(got)
+        back_to_chat()
+
+        clips_upload(run, d, nonce, made)
     finally:
         back_to_chat()
         for item in made:
             api("TesselInventory", "move", ids=[item], folder_id=folder)
         delete_by_search(run, folder_name)
         back_to_chat()
+
+
+def clips_upload(run, d, nonce, made):
+    """A 75-second sound (a harp song: Second Life takes 30 seconds) by //upload, offered as clips: the window says the
+    length, three clips of up to 29.9 seconds, their names and fees (L$10 each here, L$30 in all) and asks; a clip
+    length of 20 says four clips; renamed, with the notecard; one confirmation in Notices for the whole set; each clip
+    said as it lands, then the result with the new folder, the fee and the notecard. In Sounds a new folder named after
+    them holds the three clips and the notecard (listing them in order); each clip's asset, read from the grid's store
+    and decoded by ffmpeg where this PC has it, is the fixture's tone for that part, at most 30 seconds. The folder goes
+    into made (cleanup)."""
+    base = f"Access Clips {nonce}"
+    sounds = api("LLInventory", "getBasicFolderID", ft_name="sound")["id"]
+    say_in_app(f"//upload {d / 'Harp song.wav'}")
+    w = wait_focus(lambda e: e["id"] == "clipsAbout", 30)
+    if not run.check("a 75-second sound: the clips window, the focus in About the clips", w, label(w) if w else focus_label()):
+        return
+    about = value_of("id=clipsAbout")
+    run.check("it says the length, the clips, their names and fees, and asks",
+              all(x in about for x in ("Harp song.wav is 1 minute 15 seconds long", "3 clips of up to 29.9 seconds",
+                                       "named Harp song 1 to Harp song 3", "L$10 each, L$30 in all", "Upload them as clips?",
+                                       "made mono", "fade", "same length")), about[:500])
+    send = (find("id=clipsSend") or [{}])[0].get("name", "")
+    run.check("its Upload button says the count and total", send == "Upload as 3 clips for L$30", send)
+    tree_check(run, "the clips window", must=("clipsAbout", "clipsName", "clipsLength", "clipsCuts", "clipsFolder", "clipsNotecard", "clipsSend"))
+
+    u("setfocus id=clipsLength")
+    u("set id=clipsLength |")
+    m = mark()
+    type_text("20", "id=clipsLength")
+    run.expect("a clip length of 20: the new count said", ["4 clips of up to 20 seconds", "L$40 in all"], m, 8)
+    u("set id=clipsLength |")
+    type_text("29.9", "id=clipsLength")
+    wait(lambda: "3 clips of up to 29.9" in value_of("id=clipsAbout"), 8, 0.3)
+    run.check("the folder offered first: a new one named after them, in Sounds",
+              value_of("id=clipsFolder").startswith("A new folder named after the clips, in Sounds"), value_of("id=clipsFolder"))
+    u("setfocus id=clipsNotecard")
+    key("space")
+    run.check("(the notecard ticked)", wait(lambda: "toggle=On" in (find("id=clipsNotecard") or [{}])[0].get("raw", ""), 3, 0.2),
+              (find("id=clipsNotecard") or [{}])[0].get("raw", ""))
+    u("setfocus id=clipsName")
+    u("set id=clipsName |")
+    type_text(base, "id=clipsName")
+    wait(lambda: value_of("id=clipsName") == base and f"{base} 1 to {base} 3" in value_of("id=clipsAbout"), 5, 0.2)
+
+    m = mark()
+    key("enter", target="id=clipsName")
+    ask = f"Upload {base} as 3 clips, for L$30"
+    confirm_in_notices(run, ask, m)
+    for i in (1, 2, 3):
+        run.expect(f"clip {i} of 3 said as it lands", [f"Clip {i} of 3 uploaded"], m, 60)
+    run.expect("then the result: the clips, the new folder, the fee, the notecard",
+               [f"Uploaded {base} as 3 clips, {base} 1 to {base} 3, 1 minute 15 seconds in all, into a new folder, {base}, in Sounds",
+                "L$30 paid", f"A notecard, {base} clips, lists them in order"], m, 60)
+    asks = {e.get("text") for e in said_since(m) if f"Upload {base}" in (e.get("text") or "") and "L$" in (e.get("text") or "")}
+    run.check("one confirmation for the whole set", len(asks) == 1 and ask in next(iter(asks)), " | ".join(sorted(asks)))
+
+    folder = wait(lambda: inv_items(sounds).get(base), 10)
+    if not run.check("a new folder named after them, in Sounds", folder, ""):
+        return
+    made.append(folder)
+    want = [f"{base} {i}" for i in (1, 2, 3)] + [f"{base} clips"]
+    got = wait(lambda: (lambda r: r if all(n in r for n in want) else None)(inv_items(folder)), 15, 0.5) or inv_items(folder)
+    run.check("in it the three clips and the notecard", sorted(got) == sorted(want), sorted(got))
+    if f"{base} clips" in got:
+        text = api("TesselInventory", "readNotecard", 20, item_id=got[f"{base} clips"]).get("text", "")
+        run.check("the notecard lists the clips in order", text.split() == " ".join(want[:3]).split(), repr(text[:120]))
+    items = (api("LLInventory", "getDirectDescendants", folder_id=folder).get("items") or {}).values()
+    assets = {i.get("name"): i.get("asset_id") for i in items}
+    for i, (tone, secs) in enumerate(zip(CLIP_TONES, (29.9, 29.9, 15.2)), 1):
+        heard = asset_tone(assets.get(f"{base} {i}"))
+        if heard is None:
+            print("     (no ffmpeg on this PC: the clips' sound unchecked)")
+            break
+        length, freq = heard
+        run.check(f"clip {i}'s sound: {secs} seconds of the {tone} Hz part", abs(length - secs) < 0.05 and length <= 30 and abs(freq - tone) < tone * 0.03,
+                  f"{length:.3f} s, {freq:.0f} Hz")
+
+
+def asset_tone(asset_id):
+    """A sound asset's length in seconds and its tone (zero crossings over its middle, past the fades), read from the
+    local grid's asset store and decoded by ffmpeg; None where ffmpeg isn't on this PC, (0, 0) for no such asset."""
+    import array, sqlite3
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return None
+    db = sqlite3.connect(f"file:{ROOT / 'local' / os.environ.get('SOJOURN_GRID', 'grid') / 'bin' / 'Asset.db'}?mode=ro", uri=True)
+    try:
+        row = db.execute("select Data from assets where UUID = ?", (asset_id or "",)).fetchone()
+    finally:
+        db.close()
+    if not row:
+        return (0, 0)
+    pcm = subprocess.run([ffmpeg, "-v", "error", "-i", "pipe:0", "-f", "s16le", "-ac", "1", "-ar", "44100", "pipe:1"],
+                         input=row[0], capture_output=True, creationflags=CREATE_NO_WINDOW).stdout
+    s = array.array("h")
+    s.frombytes(pcm[:len(pcm) // 2 * 2])
+    lo, hi = len(s) // 10, len(s) - len(s) // 10
+    crossings = sum(1 for i in range(lo + 1, hi) if (s[i - 1] < 0) != (s[i] < 0))
+    return len(s) / 44100, crossings / 2 / max(1e-9, (hi - lo) / 44100)
 
 
 def two_panes(run, nonce):
@@ -4617,6 +4858,91 @@ def setting(name, value=None):
     if value is not None:
         api("SojournSettings", "set", **{name: value})
     return api("SojournSettings", "get", name=name)["settings"][name]["value"]
+
+
+def own_im_sound(run, tester_id):
+    """A sound of its own for someone's IMs (docs/access-app.md > Earcons): chosen by ear from the visitor's
+    Applications key in People nearby, each sound played as the arrows reach it; heard in place of the usual IM sound
+    when the visitor IMs; said and set by //imsound; taken back to the usual one from the conversation's own
+    Applications key, after which the visitor's IMs ring the usual bells again."""
+    visitor = visitor_id()
+    back_to_chat()
+    run.check("(nobody has a sound of their own yet)", setting("access_im_sounds") == {}, json.dumps(setting("access_im_sounds")))
+    key("shift+tab")
+    wait_focus(lambda d: d["id"] == "chatPeople" or d["type"] == "ListItem", 4)
+    # (the nearest, and the only one there: the tester's other friends are a region away)
+    on = wait(lambda: next((c for c in find("type=ListItem;focused=1") if VNAME in c["name"]), None), 15, 0.5)
+    if not run.check("(People nearby beside chat, on the visitor)", on, label(on) if on else focus_label()):
+        return
+    key("apps")
+    item = menu_open(f"IM sound for {VNAME}...")
+    if not run.check("the Applications key on a person: IM sound for them", item, "; ".join(m["name"] for m in find("type=MenuItem")) or "no menu"):
+        key("esc")
+        return
+    key("s")
+    d = wait_focus(lambda d: d["id"] == "soundList" or (d["type"] == "ListItem" and "usual" in d["name"]), 5)
+    run.check("S opens the list of sounds, on the usual one, said in use", d and "the usual IM sound, in use" in selection("id=soundList"),
+              (label(d) + " | " + selection("id=soundList")) if d else focus_label())
+    t0 = time.time()
+    picked = select_in("id=soundList", "ocean wave")
+    time.sleep(0.5)
+    heard = [c["cue"] for c in cues_since(t0) if c["cue"].startswith("Im")]
+    run.check("each sound plays as the arrows reach it", picked and heard[:7] == ["ImBird", "ImCricket", "ImHarp", "ImHeartbeat", "ImHorn",
+              "ImMusicBox", "ImWave"], f"selected {selection('id=soundList')}; played {heard}")
+    m = mark()
+    key("enter")
+    run.expect("Enter chooses it, said", [f"IMs from {VNAME}: ocean wave."], m, 5)
+    run.check("kept by the visitor's key", setting("access_im_sounds") == {visitor: "ocean wave"}, json.dumps(setting("access_im_sounds")))
+    back_to_chat()
+
+    t0 = time.time()
+    v(f"im {tester_id} a wave for you")
+    c = cue_after(t0, ("ImWave",), 10)
+    run.check("an IM from the visitor plays the ocean wave, at the IM's level", c and abs(c["level"] - 0.45) < 0.01 and c["bearing"] is None,
+              json.dumps(c) if c else f"not played; played: {[x['cue'] for x in cues_since(t0)]}")
+    run.check("and not the usual IM sound", not cues_since(t0, "EarIm"), json.dumps(cues_since(t0)))
+
+    m = mark()
+    say_in_app(f"//imsound {VNAME}")
+    run.expect("//imsound NAME says theirs", [f"IMs from {VNAME}: ocean wave."], m, 5)
+    m = mark()
+    say_in_app(f"//imsound {VNAME} harp")
+    run.expect("//imsound NAME SOUND gives them another", [f"IMs from {VNAME}: harp."], m, 5)
+    run.check("(kept)", setting("access_im_sounds") == {visitor: "harp"}, json.dumps(setting("access_im_sounds")))
+
+    # from the conversation's tab, back to the usual sound
+    key("ctrl+tab")
+    if not run.check("(the conversation's message box)", wait_focus(lambda d: d["id"] == "convInput", 4), focus_label()):
+        return
+    key("apps")
+    if not run.check("the Applications key in a conversation: IM sound for them", menu_open(f"IM sound for {VNAME}..."),
+                     "; ".join(m["name"] for m in find("type=MenuItem")) or "no menu"):
+        key("esc")
+        return
+    key("s")
+    wait_focus(lambda d: d["id"] == "soundList" or d["type"] == "ListItem", 5)
+    run.check("the list opens on the one in use", "harp, in use" in selection("id=soundList"), selection("id=soundList"))
+    t0 = time.time()
+    key("home")
+    c = cue_after(t0, ("EarIm",), 3)
+    run.check("the usual one, first, plays the IM's bells", c, json.dumps(cues_since(t0)))
+    m = mark()
+    key("enter")
+    run.expect("Enter takes it back to the usual sound", [f"IMs from {VNAME}: the usual sound."], m, 5)
+    run.check("(no longer kept)", setting("access_im_sounds") == {}, json.dumps(setting("access_im_sounds")))
+    d = wait_focus(lambda d: d["id"] == "convInput", 3)
+    run.check("the focus back in the message box", d, label(d) if d else focus_label())
+    key("ctrl+w")
+    back_to_chat()
+    t0 = time.time()
+    v(f"im {tester_id} the usual again")
+    c = cue_after(t0, ("EarIm",), 10)
+    run.check("the visitor's IMs ring the usual bells again", c and not [x for x in cues_since(t0) if x["cue"].startswith("Im")],
+              json.dumps(cues_since(t0)))
+    key("ctrl+tab")
+    if wait_focus(lambda d: d["id"] == "convInput", 4):
+        key("ctrl+w")
+    back_to_chat()
 
 
 def sound_map(run, tester_id):
@@ -5402,6 +5728,181 @@ def rail_switches(run):
             v("derez Walk Kart", timeout=15)
         except Exception:
             pass
+        clear_owned(COURSE_REGION, visitor_id())
+
+
+def vehicle_stop(run):
+    """Stopping a vehicle by its controls (Walk/WalkMode.Stop.cs; the blind tester's freight train ran off the end of its
+    track, 2026-11-01). On a flat stretch of Atelier East: the visitor's kart as a car, driven by a held Up, stopped by
+    Space with Up still held (the back control held, let go as it's nearly still: it never backs); then its kart as a
+    throttle train (each Up press 5% of 10 m/s, each Down 5% less, on past 0 into reverse), opened 8 taps and stopped by
+    Space, again by //stop from the Say box, then opened 12 taps and run past the end of its track, where it says "sensor :
+    No further track guide detected": the urgent cue, "Track ends: stopping.", "Stopped.", its throttle back at 0 and never
+    below, and it never moves back. Needs no renderer."""
+    back_to_chat()
+    m = mark()
+    say_in_app(f"//tp {COURSE_REGION}/100/60/40")
+    if not run.expect("(to Atelier East for the stops)", ["Arrived", COURSE_REGION], m, 40):
+        return
+    time.sleep(2)
+    x0, endx = 40, 125
+    xs = list(range(x0 - 5, endx + 31, 10))
+    y = None
+    tried = []
+    for yy in range(16, 200, 8):
+        hs = api("TesselAgent", "ground", points=[[x, yy] for x in xs])["heights"]
+        known = [h for h in hs if h is not None]
+        if len(known) == len(hs) and max(hs) - min(hs) < 1.2:
+            y, ground = yy, dict(zip(xs, hs))
+            break
+        tried.append(f"{yy}: {min(known):.1f}..{max(known):.1f}" if known else f"{yy}: -")
+    if not run.check("(a flat stretch of Atelier East for the stops)", y is not None, "; ".join(tried)):
+        return
+
+    def g(x):
+        return ground[min(ground, key=lambda k: abs(k - x))]
+
+    ray = api("SojournCollision", "collide", **{"from": [x0, y, g(x0) + 0.8], "dir": [1, 0, 0], "max": endx + 30 - x0})
+    if not run.check("(nothing in the way along it)", not ray.get("hit"), json.dumps(ray)):
+        return
+
+    def watch(secs, until):
+        """Walk mode's x every 0.2 s for up to secs, or until an announcement with these words: the samples."""
+        got, t_end, m_ = [], time.time() + secs, mark()
+        while time.time() < t_end:
+            got.append(walk_pos()[0])
+            if any(all(w.lower() in (e.get("text") or "").lower() for w in until) for e in said_since(m_)):
+                break
+            time.sleep(0.2)
+        return got
+
+    def still_and_forward(what, samples):
+        time.sleep(1.5)
+        a = walk_pos()[0]
+        time.sleep(1)
+        b = walk_pos()[0]
+        top = max(samples + [a, b])
+        run.check(f"{what}: still afterwards", abs(b - a) < 0.5, f"{abs(b - a):.2f} m in the last second")
+        run.check(f"{what}: never moving back", b >= top - 0.4, f"furthest {top:.1f}, now {b:.1f}")
+
+    def sit(name):
+        m_ = mark()
+        say_in_app(f"//sit {name}")
+        if not run.expect(f"the {name}'s script takes the keys", ["kart controls taken"], m_, 15):
+            return False
+        key("f3")
+        wait_focus(lambda d: d["id"] == "walkPad", 5)
+        return True
+
+    def lines_since(m_):
+        return [e.get("text") or "" for e in said_since(m_)]
+
+    try:
+        # a car: held Up, then Space with Up still held
+        v(f"tp {COURSE_REGION} {x0 + 10} {y + 8} {g(x0) + 1.5}", timeout=40)
+        time.sleep(1.5)
+        car = v(f"kart Walk Kart {x0} {y} {g(x0) + 0.4} facing 0", timeout=60)
+        if not run.check("the visitor's kart is out", car.startswith("kart"), car):
+            return
+        go_tp(run, "the tester beside the kart", x0 - 1, y - 2, g(x0) + 1.5)
+        if not sit("Walk Kart"):
+            return
+        u("keydown focus | 38")
+        time.sleep(2.5)
+        m = mark()
+        t0 = time.time()
+        key("space")
+        samples = watch(8, ["Stopped"])
+        u("keyup focus | 38")
+        lines = lines_since(m)
+        run.check("a car: Space says Stopping, then Stopped", "Stopping." in lines and "Stopped." in lines, " | ".join(lines))
+        print(f"     (the car stopped in {time.time() - t0:.1f} s, at {walk_pos()[0]:.1f})")
+        still_and_forward("a car stopped by Space", samples)
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+        say_in_app("//stand")
+        time.sleep(1.5)
+        v("derez Walk Kart", timeout=15)
+
+        # a throttle train
+        train = v(f"kart Walk Train {x0} {y} {g(x0) + 0.4} facing 0 throttle 5 endx {endx}", timeout=60)
+        if not run.check("the visitor's throttle train is out", train.startswith("kart"), train):
+            return
+        go_tp(run, "the tester beside the train", x0 - 1, y - 2, g(x0) + 1.5)
+        if not sit("Walk Train"):
+            return
+
+        def open_throttle(n):
+            m_ = mark()
+            for _ in range(n):
+                key("up")
+                time.sleep(0.45)
+            run.expect(f"(the throttle opened to {n * 5})", [f"throttle {n * 5}"], m_, 6)
+            taps = api("SojournWalk", "status").get("throttle_taps")
+            run.check(f"(walk mode counted {n} taps of Up)", taps == n, f"{taps}")
+
+        def stopped_at_zero(what, m_):
+            tl = [t for t in lines_since(m_) if "throttle" in t]
+            run.check(f"{what}: its throttle back to 0 and never below",
+                      tl and tl[-1].endswith("throttle 0") and not any("throttle -" in t for t in tl), " | ".join(tl) or "no throttle lines")
+
+        # Space
+        open_throttle(8)
+        time.sleep(2.5)
+        m = mark()
+        key("space")
+        samples = watch(13, ["Stopped"])
+        lines = lines_since(m)
+        run.check("a train: Space says Stopping, then Stopped", "Stopping." in lines and "Stopped." in lines, " | ".join(lines))
+        stopped_at_zero("a train stopped by Space", m)
+        still_and_forward("a train stopped by Space", samples)
+
+        # //stop from the Say box (out of walk mode: the stop's controls don't depend on where the focus is)
+        open_throttle(8)
+        time.sleep(1)
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+        m = mark()
+        say_in_app("//stop")
+        samples = watch(13, ["Stopped"])
+        lines = lines_since(m)
+        run.check("//stop from Say stops the train", "Stopping." in lines and "Stopped." in lines, " | ".join(lines))
+        stopped_at_zero("a train stopped by //stop", m)
+        still_and_forward("a train stopped by //stop", samples)
+
+        # the track's end
+        key("f3")
+        wait_focus(lambda d: d["id"] == "walkPad", 5)
+        print(f"     (the end of the track at x {endx}; the train at {walk_pos()[0]:.1f})")
+        m = mark()
+        open_throttle(12)
+        t0 = time.time()
+        said = walk_said(m, ["Track ends"], 30)
+        run.check("past the end of its track: \"Track ends: stopping.\"", said and said["text"] == "Track ends: stopping.",
+                  (said or {}).get("text") or " | ".join(lines_since(m))[-300:])
+        if not said:
+            return
+        at = walk_pos()[0]
+        run.check("with the urgent cue", cue_after(t0 - 5, ["TrackEnd"], 3), json.dumps(cues_since(t0 - 5)[-5:]))
+        samples = watch(13, ["Stopped"])
+        lines = lines_since(m)
+        print(f"     (said at {at:.1f}; stopped at {walk_pos()[0]:.1f})")
+        run.check("then \"Stopped.\"", "Stopped." in lines, " | ".join(lines))
+        stopped_at_zero("a train stopped at the track's end", m)
+        still_and_forward("a train stopped at the track's end", samples)
+        time.sleep(4)   # the train's "No Guide found" again, now standing: not another stop
+        run.check("said once (its later lines while standing don't stop it again)",
+                  sum(1 for t in lines_since(m) if t.startswith("Track ends")) == 1, " | ".join(lines_since(m))[-300:])
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+    finally:
+        say_in_app("//stand")
+        time.sleep(1)
+        for name in ("Walk Kart", "Walk Train"):
+            try:
+                v(f"derez {name}", timeout=15)
+            except Exception:
+                pass
         clear_owned(COURSE_REGION, visitor_id())
 
 

@@ -51,6 +51,7 @@ public sealed partial class WalkMode
         _say = say;
         Sounds = new CueSounds(host.Audio, () => S.Client?.Self.AgentID ?? UUID.Zero) { Relative = RelativeOf };
         ApplyFootsteps();
+        HookChat();
     }
 
     /// <summary>The own footsteps are ours (by surface) unless the steps cue is off or text only.</summary>
@@ -202,6 +203,7 @@ public sealed partial class WalkMode
         Track();
         if (Me() is not { } b) return;
         Listen(b);
+        StopTick(b, now);
         Drive(b, dt, now);
         Steps(b, dt);
         Distance(b, now);

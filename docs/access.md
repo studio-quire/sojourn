@@ -447,6 +447,22 @@ her log (sent 12:57, `local/relay-logs/tester-20261101T175707-4c467c.txt`).
   them, not knowing how to handle switches. Built after 737: a switch ahead said once with how it's set, W for the next
   one, Shift+W or `//switch` to throw it (`docs/access-app.md` > Rail switches), on the SLRR switch as the SL wiki
   documents it (her partner pointed to the standard); not yet checked against a real switch.
+- **The track's end** (that night): her train (an SLRR-style freight train, the throttle 5% a tap of Up or Down) says
+  in chat when its track runs out, then derails or strands her; she asked for it to just stop. Built: a line from the
+  seat or her own objects holding "no further track", "no guide found" or "track guide", while moving, sounds an urgent
+  cue, says "Track ends: stopping." and stops it by its controls (Down held, or tapped as many times as she opened the
+  throttle), never backwards; Space in walk mode and `//stop` do the same any time (`docs/access-app.md` > Stopping a
+  vehicle).
+- Later that evening (0.1.0.737, logs `tester-20261102T004558-2d699f`, `...005104-216eca`, `...015846-eec99e`): her
+  partner described in wrong colours twice, 25 minutes after arriving (others' looks never loaded on the processor
+  path; fixed in 0.1.0.801, `docs/access-app.md` > Describing); switching sound to her LG TV's own speakers over HDMI
+  played nothing though Windows opened it (cause unproven; 801 checks a switch reaches the device and names outputs by
+  kind); a fast trivia game had NVDA reading lines again, 37% of what was read (the cut-line re-say; fixed after 801).
+  Her NVDA is 2026.3 (so the "is it speaking" check applies), voice Microsoft Mark at rate 30 with rate boost. On
+  trains: rail switches took her the wrong way (switches built after 801 from the SLRR standard), and when the track
+  runs out her train says "No further track guide detected" / "No Guide found" and strands her (an automatic stop,
+  after 801). Her train is the Infinity Freight Quarry Train v1.44; her partner modded its hover text so its speed can
+  be read. "It seems like with every update, nothing breaks."
 - That afternoon she told other blind residents about Sojourn Access, and at least two were downloading it (through
   Tessel, 13:58 SLT). They have no relay token, so no assistant and no Send a log (it points them to the issues page);
   what they say may come through her. The user said (2026-11-01) to give everyone codes and that they'd watch the
@@ -543,6 +559,10 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   key that sets it to the main line and one to the branch? Did any switch on the atoll go unsaid, or say "unknown"? For
   her partner: are the atoll's switches SLRR switch stands (named "Switch Stand", Main or Branch in the description),
   and does touching the stand flip them?
+- For the track's end (after the next build): did it stop in time, before the derail? For her partner: does Down past 0
+  put the train in reverse; does holding Down take more than one step; what exactly does it say of its throttle, and
+  anything else as the track runs out (a log's lines would do)? Is Space the right emergency key, or would she want one
+  that works outside walk mode too (`//stop` works from Say)?
 - For following and driving: should following say less (or more) as it goes? When driving, which feedback matters:
   speed changes, heading, what's ahead, and how far ahead?
 - Does she use a braille display's keyboard, dictation, or any input other than a physical keyboard, for answering

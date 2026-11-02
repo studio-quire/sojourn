@@ -52,6 +52,10 @@ var log = $$"""
 10:00:26 ~words {"kind":"nearby","from":"people","id":"{{Wren}}","name":"Wren Visitor","style":"emote","text":"waves at the iguana carnival","alert":true}
 screen reader: a bare line naming Oriole
 10:00:27 info: sojourn[0] voice: Voice Smith joined; Sojourn Fan waved
+10:00:28 ~name {"id":"88888888-8888-8888-8888-888888888888","legacy":"greyling Resident","display":"Grey Lantern"}
+10:00:28 ~name {"id":"99999999-9999-9999-9999-999999999999","legacy":"amberly Resident","display":"Amber"}
+10:00:29 ~heard {"from":"assistant","how":"arrival","via":"NVDA","text":"They wear a fitted light grey top; Grey Lantern waves and Grey nods, and grey lantern bows."}
+10:00:30 ~words {"kind":"nearby","from":"me","id":"{{Me}}","name":"Juniper Tester","style":"say","text":"hi Amber, the amber lamp is lit"}
 """;
 
 int failed = 0, passed = 0;
@@ -87,6 +91,10 @@ foreach (var w in new[]
              "<bridgeAuth>(left out)</bridgeAuth>", "screen reader: a bare line naming person 3",
              // a name made of everyday or the log's own words: replaced whole, its parts left alone
              "info: sojourn[0] voice: person 4 joined; person 4 waved",
+             // a common word in a name (Grey Lantern, Amber): the word itself stays, the name capitalised doesn't, and
+             // a name of more words in any case
+             ", assistant: They wear a fitted light grey top; person 5 waves and person 5 nods, and person 5 bows.",
+             "me, nearby: hi person 6, the amber lamp is lit",
          })
     Check($"keeps \"{w}\"", text.Contains(w));
 
@@ -97,7 +105,7 @@ Check("a record of an unknown kind is left out", text.Contains("10:00:21 (a reco
 Check("a record that doesn't parse is left out", text.Contains("10:00:22 (a record that couldn't be read, left out)"));
 Check("an entry with old-style chat in it is left out", text.Contains("10:00:23 (lines of an older kind, left out)"));
 Check("no ~name records sent", !text.Contains("~name") && !text.Contains("~words") && !text.Contains("~heard"));
-Check("four people counted", res?.People == 4);
+Check("six people counted", res?.People == 6);
 
 Check("a log from before the records isn't filtered", LogShare.Filter("10:00:00 info: sojourn[0] hello\n17:04 Someone: words\n") is null);
 Check("nor one whose header names an older format", LogShare.Filter("10:00:00 ~log {\"v\":1}\n10:00:01 info: x\n") is null);

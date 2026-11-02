@@ -80,7 +80,7 @@ public sealed partial class Confirmations
                 return no ?? Unaffordable(data) ?? await AskAsync(Kind.Spend, pump, op, data, note: note);
             };
         // (an upload's fee worked out and pinned first: Confirmations.Uploads.cs)
-        if (kind is Kind.Spend && pump == "TesselAgent" && op is "upload" or "uploadMesh")
+        if (kind is Kind.Spend && pump == "TesselAgent" && op is "upload" or "uploadMesh" or "uploadClips")
             return async () => await UploadFeeAsync(op, data) ?? await AskAsync(Kind.Spend, pump, op, data);
         return kind is { } k ? () => AskAsync(k, pump, op, data) : null;
     }
@@ -141,7 +141,7 @@ public sealed partial class Confirmations
     {
         ("TesselAgent", "pay") => Kind.Spend,
         ("TesselObjects", "buy") or ("TesselGroups", "create") => Kind.Spend,
-        ("TesselAgent", "upload" or "uploadMesh") => UploadCosts(op, a) ? Kind.Spend : null,
+        ("TesselAgent", "upload" or "uploadMesh" or "uploadClips") => UploadCosts(op, a) ? Kind.Spend : null,
         ("TesselBuild", "delete" or "returnObjects" or "removeFromContents") => Kind.Delete,
         ("TesselBuild", "take") => a.Has("folder_id") && InTrash(a.Uuid("folder_id")) ? Kind.Delete : null,
         ("TesselInventory", "move") => InTrash(a.Uuid("folder_id")) ? Kind.Delete : null,
@@ -308,7 +308,7 @@ public sealed partial class Confirmations
             }
             case ("TesselGroups", "create"):
                 return (Lang.F("Create the group \"{0}\"", a.Str("name")), Join(Lang.T("On Second Life creating a group costs L$100."), Balance()));
-            case ("TesselAgent", "upload" or "uploadMesh"):
+            case ("TesselAgent", "upload" or "uploadMesh" or "uploadClips"):
                 return UploadAsk(a);
             case ("TesselBuild", "delete"):
                 return (Lang.F("Delete {0}", await ObjectsAsync(a)), Lang.T("They go to your Trash."));

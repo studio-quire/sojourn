@@ -201,9 +201,11 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   to the area and control Control+N came from, else to Say. Tab from the list reaches the notice's text, its reply box
   and its buttons ("1: Red", "Delete: Ignore").
 - Applications key (or Shift+F10, or Enter) on a person nearby: Send IM, Walk to, Face, Where, Follow, Beacon,
-  Profile, Pay..., Offer teleport, Request teleport, Always incognito with them. On a friend (Enter: an IM): Send IM,
-  Profile, Offer or Request teleport, Pay..., End friendship (confirmed). On a group (Enter: its chat, a conversation
-  tab): Group chat, About the group, Wear its tag, No group tag, Leave (the grid asks in Notices). A profile opens in
+  Profile, Pay..., Offer teleport, Request teleport, Always incognito with them, IM sound for NAME... (Earcons, below).
+  On a friend (Enter: an IM): Send IM, Profile, Offer or Request teleport, Pay..., IM sound for NAME..., End friendship
+  (confirmed). On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
+  tag, Group sound for NAME..., Leave (the grid asks in Notices). In a conversation's message box or history: IM (or
+  Group) sound for NAME..., then Cut, Copy, Paste, Select all, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
   its own window: a read-only text read line by line (name, born, partner, about, interests, picks, first life, web),
   Send IM, Pay, Give what you copied, Describe pictures, Close (Escape). Pay asks the amount, then waits for the
   person's confirmation in Notices (refused at once when it can't be afforded). Give what you copied (also on a person
@@ -343,19 +345,31 @@ the window's bottom-left corner and reads its name and its children's, so "Statu
   of a new IM says "new IM".
 - Notices in the feed's words ("Access Menu: pick one."; the first with keys in a session adds "Control N to
   answer."). A screen reader stops speaking at any key press or focus move, so a notice cut off that way before it
-  could be heard out (within a second to three, by its length) is said again once, when the keys have rested 0.7 s,
-  unless the focus went to the notices or the person silenced it with Control or Shift alone (the screen reader's own
-  keys to stop or pause speech: `RealInput.SilencedAt`).
-- Chat lines cut off by typing (`MainForm.CutLines.cs`): NVDA's "speech interrupt for typed characters" (on by
-  default) cancels all its speech at every key typed into a box, and nothing we can send survives it
+  could be heard out (within a second to three, by its length) is said again once, when the keys have rested a
+  second, unless the focus has been in the notices since (she read it there, or answered it), it no longer waits, or
+  the person silenced it with Control or Shift alone (the screen reader's own keys to stop or pause speech:
+  `RealInput.SilencedAt`).
+- Chat lines cut off by typing (`MainForm.CutLines.cs`): NVDA's "speech interrupt for typed characters" (and for
+  Enter; both on by default) cancels all its speech at every key typed into a box, and nothing we can send survives it
   (`speech.cancelSpeech` clears every priority's queue; braille messages go at the next caret move too). A blind
-  tester relies on hearing chat while she types, and turning the setting off slowed NVDA for her (2026-10-30). So a
-  line a key typed into an editable box fell within (by its estimated speaking time: 40 ms a character, 0.8-8 s,
-  queued after the one before) is said again once the keys have rested 0.7 s, lines cut together as one ("Kestrel:
-  hi. Access Visitor: hello."), each once, and not after Control alone.
+  tester relies on hearing chat while she types, and turning the setting off slowed NVDA for her (2026-10-30). So an
+  arrival (nearby, objects, IMs, group chat, the builders' tab) that a key typed into a box came into before it could
+  have been heard out is said again, once, when the keys have rested a second. Which lines: each is followed from
+  the moment the announcer hands it to the reader (`Announcer.Spoke`), queued after the ones before, for its speaking
+  time at a quick voice (30 ms a character, 0.5-10 s); the first key typed after it (`RealInput.FirstTypedAfter`)
+  cuts it if it comes within that. A guess wrong that way loses a line to review rather than saying one she heard.
+  On NVDA 2026.3 and later the reader is also asked every 100 ms whether it's speaking
+  (`nvdaController_isSpeaking`) while arrivals are recent, and a line it was seen to fall quiet after, before the key,
+  was heard out; older NVDAs say they can't, once, and the length alone decides. Never said again: her own lines (she
+  wrote them), a line already said again (logged as `again`), anything after Control alone, anything while F6 mutes.
+  Those cut in one stretch of typing are said together ("Kestrel: hi. Access Visitor: hello."); past three lines or
+  500 characters, the newest that fit, after how many there were ("12 messages while you typed, the last 3: ...";
+  Control+1 to 9 and Control+[ have them all). Before (2026-11-01), any key within a slower voice's time cut a line,
+  her own included, and the lines came back at 0.7 s pauses, between words: in a busy trivia game a third of what
+  was read was lines said again, many of them heard already, her own over and over.
 - Her own lines (said, whispered, shouted, emotes, IMs) are read back in the same words as others' (Alt+0 "My own lines
   read back", `access_read_mine`, on by default, her wish): nearby once the region echoes them, so she hears they went
-  out; IMs as they're sent (the grid echoes none).
+  out; IMs as they're sent (the grid echoes none). Each is read back once; typing on over it doesn't bring it back.
 - One-off notices (friends online, alerts, a teleport that failed) are also status lines in the nearby chat history,
   as in Radegast.
 - Friends online at login are one line (`MainForm.FriendsOnline.cs`): the grid tells of every friend online as the
@@ -400,6 +414,39 @@ sounds, which Access turns off, so a line never sounds twice. The words for each
 
 Placed ones sound a metre from the head in the speaker's direction, up to a third quieter at the edge of chat range.
 
+**Someone's own IM sound** (`Sound/ImSounds.cs`, `MainForm.ImSounds.cs`; the blind tester's wish, 2026-11-01, "purely
+cosmetic, for my way of thinking", after chasing down which IM a sound was for): a person's IMs, or a group's chat,
+can have a sound of their own in place of the IM's (or group chat's) bells, so who wrote is known before the words.
+"IM sound for NAME..." on the Applications key of a person nearby, a friend or their conversation ("Group sound for
+NAME..." on a group or its chat) opens a list, the usual sound first, the one in use said so ("harp, in use"); each
+plays as the arrows or a first letter reach it, Enter keeps it ("IMs from Kestrel: ocean wave."), Escape leaves it.
+`//imsound NAME SOUND` does the same by words (`usual` takes it back), `//imsound NAME` says theirs, `//imsound` lists
+the sounds and who has one; the name is looked for among open conversations, friends, people nearby and groups. Kept
+by their key in access-settings.json (`ImSoundFor`), so a change of name keeps it; `access_im_sounds` on the agent API
+(an object of key to sound, merged). Otherwise the IM's rules hold: its level (`earcon_im`; a group's, `earcon_group`,
+off by default, which the choosing says), nothing for the conversation you're in or a muted one, one at a time (offline
+IMs at login ring once). An IM with its own sound plays it even when it names you; a group chat line that names you
+still sounds as a mention. The list plays each at the IM's level, or medium while that kind is off.
+
+| Sound | What it is |
+|---|---|
+| bird call | two quick rising chirps and a falling call, high |
+| cricket | three short pulsed trills, high |
+| harp | a glissando up five plucked strings |
+| heartbeat | two soft low thumps, lub-dub |
+| horn | a soft brass fifth swelling and fading |
+| music box | four tiny notes, up and back |
+| ocean wave | surf swelling, brightening as it breaks, drawing back with a fizz of foam |
+| sleigh bells | two shakes of small bells |
+| steel drum | a steel pan's note with a grace note above it, then again, softer |
+| wind chime | five small chime tubes, high and out of step |
+
+Made in code (`Walk/CueSounds.Own.cs`), each from a family the other sounds don't use (bells are what's addressed to
+you, wood is menus and groups, flute friends, a breath of noise people coming and going), none of them two notes
+rising like the usual IM sound, each under half a second, and each as loud as the IM's bells (K-weighted and A-weighted
+loudness of its loudest 400 ms, averaged, within about a decibel; the high ones a decibel under). No "woodblock" (wood
+is menus and groups) and no "bell pair" (the usual IM sound is one).
+
 **Volumes**: each cue and earcon its own; `access_sounds_volume` (25-200%) all of Access's own sounds together, apart
 from the world's (`sounds_volume`) and the music (`music_volume`), so a loud club can be turned down without losing the
 cues; `volume` everything. All in Alt+0 (the numeric ones step 0, 0.15, 0.25, 0.5 ... 2, up with Enter, down with
@@ -432,10 +479,12 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//beacon NAME` / `//beacon off` / `//beacon` | a sound on the nearest person or thing by name to walk to (walk mode's beacon, below), off, or where it is |
 | `//touch NAME` / `OBJECT PART` / `NAME face DIR` | touch a thing or part by name within 10 m, on a face if given (Parts and faces, below) |
 | `//switch` / `flip` / `main` / `branch` | the next rail switch and how it's set; throw it; set it to the main line or the branch, throwing it only if it isn't already (walk mode's W and Shift+W; Rail switches, below) |
+| `//stop` | as Space in walk mode, from anywhere: seated on something moving, stop it by its controls (Stopping a vehicle, below); otherwise stop a walk, a follow or a route |
 | `//outfit` | what you're wearing, by name (Ctrl+Shift+W) |
 | `//upload` / `//upload PATH` | upload a file: the Open window, or the file at PATH (Ctrl+U; Uploading, below) |
 | `//describe [here|me|NAME|person NAME|object NAME|more]` | describe (Describing, below) |
 | `//voice` / `answer` / `decline` | who's in voice; answer or decline a call |
+| `//imsound NAME SOUND` / `NAME usual` / `NAME` / (nothing) | a sound of its own for someone's IMs or a group's chat; back to the usual; theirs; the sounds and who has one (Earcons, above) |
 | `//about` | the version, the commit, the disclaimer and the data folder |
 | `//sendlog` | send a session's log to the studio (Sending a log, below) |
 | `//help [word]` | the commands |
@@ -475,7 +524,7 @@ window and every viewer send them); the local collision model only tells you wha
 | Shift+Left / Right | a step sideways while held |
 | Page Up / Page Down | up / down: flying, rise and sink; on foot, jump and crouch |
 | Home | fly, or land ("Flying." / "Not flying: landing.") |
-| Space | stop everything: the keys, a `//go`, a follow, a route ("Stopped.") |
+| Space | stop everything: the keys, a `//go`, a follow, a route ("Stopped."); seated on something moving, stop it by its controls ("Stopping.", then "Stopped.": Stopping a vehicle, below) |
 | H | heading: "Facing northeast, 45 degrees." (Second Life's degrees, 0 east, counter-clockwise, as `//face` takes them) |
 | V | speed: "Walking, 3 m a second, to the north." / "Standing still." / seated, the vehicle's |
 | L | where: "Atelier East, 236, 52, 22, on stone." |
@@ -495,7 +544,8 @@ Seated on something, or with a script holding the movement keys, the same arrows
 ROT_LEFT and RIGHT, UP and DOWN for Page Up and Down, a tap held long enough to reach the script): a car, a horse, a
 boat, a ride's controls. H and V then say the vehicle's heading and speed, A and the warnings look ahead from it,
 leaving out its own parts. A rail switch coming up is said once with how it's set, W says the next one and Shift+W
-throws it (Rail switches, below).
+throws it (Rail switches, below). Space (or `//stop`) stops it, and a vehicle saying its track ends is stopped by itself
+(Stopping a vehicle, below).
 
 **The cues**, each a sound and a line for the screen reader (sound is never the only channel), each with its own
 setting for how it reaches you (both, text, sound or off; Alt+0 says both as "sound and text") and its sound's level
@@ -568,6 +618,40 @@ Rail Consortium's free tools follow), **not yet checked against a real switch in
 - What the first real switch should check (Tessel, or her next ride's log): the stand's name and description as
   written, which part takes the touch and whether a touch toggles, how long the description takes to change, and where
   the guide rails are.
+
+**Stopping a vehicle** (`Walk/WalkMode.Stop.cs`; Claude Opus 5.5, 2026-11-01, after the blind tester's freight train, an
+SLRR-style train driven by the arrows, ran off the end of its track and derailed or stranded her: once she had to
+teleport away and walk to where she could rez it again). Her train says so in nearby chat as the track runs out
+("sensor : No further track guide detected", then "no_sensor : No Guide found"), and she asked for it to just stop.
+- **What starts it**: Space in walk mode, or `//stop` anywhere (Say, a conversation, a route's line), while seated on
+  something moving (over 0.5 m/s); not moving, they stop walks, follows and routes as before. And by itself: a line
+  holding "no further track", "no guide found" or "track guide" (ignoring case, underscores and spacing; more phrases in
+  `walk_track_end_phrases`, a list on SojournSettings, so the assistant can add one asked; not in Alt+0) from the seat
+  (any part of its linkset, or anything with its name) or from any of the person's own objects (a train's HUD, a
+  locomotive apart from the car she sits in), aloud, to her alone (llOwnerSay, llRegionSayTo) or as an object's IM,
+  while she's seated and moving: an urgent sound (three quick high-low pairs, unlike any other cue, played whatever the
+  other cues are set to) and "Track ends: stopping.". Once only per stop (the train's later lines don't start another),
+  and nothing while standing still. Alt+0's "Track's end: stop the vehicle when it says the track ends" (`walk_track_end`,
+  on) turns this off.
+- **How it stops**, as she would: the back control (CONTROL_BACK, Down's), through the same control flags the arrows
+  send, held apart from them, so leaving walk mode, the window losing the focus or a notice arriving doesn't let go of
+  it; an arrow pressed meanwhile hands the controls back ("Stop cancelled: the keys are yours."). Held first: a car's
+  brake or reverse thrust slows it at once. Each 1.2 s the speed over that stretch is compared with the one before; not
+  15% slower (a throttle train, whose Down press takes its throttle a step down and no further), Down is tapped instead,
+  a press every 0.3 s, as many times in all as she tapped Up on this seat less the Down taps (walk mode counts them,
+  0-20: her train's throttle goes 5% a tap, so 20 is all the way), or 20 when it doesn't know. Speeds are measured from
+  where the seat goes (a moving seat's position can come only once a second, and a train's reported velocity swung 19,
+  6, 13, 8 m/s), so the judging is over the whole stretch.
+- **Never backwards**: it lets go as soon as the seat is nearly still (its velocity and its last 0.7 s both under
+  0.5 m/s), and at once if it starts moving back the way it came ("Let go: it began moving backward, at 1 metre a
+  second."); taps never go past the count, so a throttle that runs on past 0 into reverse isn't driven there unless she
+  opened it some other way than the arrows. Let go, it says "Stopped." once the last 2 s agree; if it moves off again
+  within the stop, it presses again (while taps remain).
+- **10 s at most**: then it lets go and says "Stopped." or "Couldn't stop it: it's still moving at 4 metres a second."
+  Standing up or being thrown off ends it ("You're no longer seated.").
+- What it assumes of her train, asked: whether Down past 0 reverses it, whether a held Down does more than one step, what it
+  says of its throttle (her partner's script says it in percent: reading that would beat counting taps), and what else
+  it says when the track runs out.
 
 **The collision model** (2026-10-30, so walk mode works on a PC that can't run the renderer, as the blind tester's
 couldn't): every ray here (warnings, openings, drops, the surface underfoot, the sonar, A and T, paths, placing by
@@ -705,7 +789,9 @@ animations and models, uploaded on her own (the blind tester's partner logs in a
 (on a folder in the inventory: into that folder), Build > Upload a file, a folder's Applications key > Upload a file
 here, or `//upload` (`//upload PATH` skips the Open window; the path as typed, quotes optional).
 - Windows' own Open window picks the file (screen-reader users know it), its types listed: pictures (PNG, JPEG, TGA,
-  BMP), sounds (WAV, Ogg), animations (BVH, anim), models (glTF, GLB, Collada, OBJ).
+  BMP), sounds (WAV, Ogg; MP3, FLAC, M4A and WMA decoded to a WAV first by Windows' own Media Foundation, so nothing is
+  bundled for them, and they can't be read on Windows N without its Media Feature Pack), animations (BVH, anim),
+  models (glTF, GLB, Collada, OBJ).
 - The file is read on the PC, nothing sent (`TesselAgent uploadLook`), and a window says what it is in a read-only text
   where the focus starts, a line each, the gist first: "Sunset.png: a picture, PNG, 1000 by 750 pixels, 812 KB." /
   "Second Life needs each side a power of two, at most 1024 pixels, so it'll be resized to 1024 by 512." / "It has
@@ -721,8 +807,7 @@ here, or `//upload` (`//upload PATH` skips the Open window; the path as typed, q
   and land impact, the viewer's Calculate weights and fee). Upload (Alt+U, or Enter in a one-line box; "Upload for
   L$10" where it costs), Cancel (Escape: "Nothing uploaded.").
 - Refused in words before anything is sent or asked: a file of another kind ("Shopping list.txt isn't something Second
-  Life takes. Uploads can be pictures (PNG, JPEG, TGA or BMP), ..."), a sound over 30 seconds ("Too long.wav is 31
-  seconds long; Second Life takes sounds up to 30 seconds. Trim it ..."), a picture over 8192 pixels a side or a file
+  Life takes. Uploads can be pictures (PNG, JPEG, TGA or BMP), ..."), a picture over 8192 pixels a side or a file
   over 512 MB, a model the grid would refuse (over eight faces a part, broken) or over 64 metres a side at its scale
   (with the scale that fits), too little L$ ("Not enough L$: the upload costs L$500, and your balance is L$0. Nothing
   was uploaded.").
@@ -749,6 +834,28 @@ here, or `//upload` (`//upload PATH` skips the Open window; the path as typed, q
   convex hull for physics. Not offered: levels of detail or a physics mesh from files, the viewer's decomposition,
   skin weights and joint positions as choices, "This model represents". TGA is read by our own reader
   (`Core/Media/Tga.cs`: Skia has none). Permissions are the person's Default Permissions for uploads, as before.
+- A sound over 30 seconds is offered as clips instead (`MainForm.UploadClips.cs` over Core's `uploadClips` and
+  `Media/SoundClips.cs`, 2026-11-01): a song for a scripted instrument or player, which plays consecutive clips in
+  order; cutting one by hand is hard without sight. Its window starts on the gist: "Harp song.wav is 2 minutes 14
+  seconds long, and Second Life takes sounds up to 30 seconds: it can go up as 5 clips of up to 29.9 seconds, named
+  Harp song 1 to Harp song 5, L$10 each, L$50 in all. Upload them as clips?", then the file, how it's cut, that each
+  clip is made mono at 44,100 Hz with a 5 ms fade at each cut (so it doesn't click), and the fees. Tab: Name of the
+  clips (the file's name), Clip length in seconds (29.9, so none is refused for a rounding; 1 to 30), Cuts (exactly at
+  each clip length, all the same length, for a player that starts each clip on a timer, the default; or at the
+  quietest moment in the 2 seconds before each mark, for a player that waits for each clip to end, so a cut falls
+  between notes), Into the folder (a new folder named after the clips, in the folder chosen or Sounds, by default; or
+  straight into one), Make a notecard listing the clips in order (off; a name a line, as many players read). A change
+  to the length or cuts says the new gist. Names are numbered from 01 at ten clips or more, since a player script
+  finds its clips in name order. Where uploads cost, one confirmation in Notices for the whole set: "Upload Harp song
+  as 5 clips, for L$50. L$10 each. From ..., cut into clips of up to 29.9 seconds: Harp song 1 to Harp song 5. Into a
+  new folder, Harp song, in Sounds." The gate works out the count from the file as the op will and pins the total as
+  `max_cost`, which the op holds the set to. Then each clip goes up in order, said as it lands ("Clip 3 of 5
+  uploaded."), and the outcome: "Uploaded Harp song as 5 clips, Harp song 1 to Harp song 5, 2 minutes 14 seconds in
+  all, into a new folder, Harp song, in Sounds. L$50 paid. A notecard, Harp song clips, lists them in order. Harp
+  song 1 is selected in your inventory, Alt+4." A clip that fails stops the rest: "Clip 3 of 5, Harp song 3, didn't
+  go up: ... Clips 1 and 2 went up, into Harp song; L$20 paid. Nothing more was uploaded." (a new folder left empty by
+  the first failing is removed). The assistant has the same op (`TesselAgent uploadClips`, WAV and Ogg only: the
+  Windows decoding is Access's).
 - Radegast uploads pictures (a console logging each step, the fee on its button) and meshes; Firestorm and the
   official viewer have Build > Upload, a floater per kind, the picture's shown, a sound's playable.
 
@@ -953,7 +1060,10 @@ box is people's, as is any kind not listed), `~heard` each line the screen reade
 descriptions or a route's notes, says People), `~name` each name learned (legacy, display, pseudonym; the person's own
 marked `me`). The console shows chat as before, but it's no longer in the file as plain lines. `LogShare.cs` filters (and `LogSend.cs` packs and posts, both shared with the VR client's problem and crash reports):
 other people's lines and anything not placed become "(words left out)"; names and keys of everyone the log names
-become "person N" (the order they come up) and the person's own "me"; an object's line relaying someone ("person 2:
+become "person N" (the order they come up) and the person's own "me", except that a name of one word that's a common
+English word (a display name's first word "Grey", a display name "Amber"; `common-words.txt`, SCOWL's commonest) is
+replaced only where it's capitalised as a name, so "a light grey top" stays (a log once read "light person 29 top");
+an object's line relaying someone ("person 2:
 ...") and any line repeating five words in a row of someone's left-out words (or a whole short line) are left out;
 keys, capability URLs, the Windows account's folder and public IP addresses are masked. The assistant's replies and
 what it said about people stay, names replaced. A log from before the records isn't offered. `tools/logcheck` checks
@@ -1293,7 +1403,8 @@ it).
 - **Sound as a map** (M4): `Sound/Earcons.cs` (classifies feed entries by kind, the notice's notification name on
   `FeedEntry.NoticeName`; placed toward the speaker by `WalkMode.Toward`), `Walk/WalkMode.Sound.cs` (the beacon:
   `Commands.Heading` for its own walks and follows, else `Motion.Destination` for the session's autopilot, else the
-  hand beacon; the marks), the sounds in `Walk/CueSounds.cs`. Every Access sound plays as world audio's `App` kind,
+  hand beacon; the marks), the sounds in `Walk/CueSounds.cs` (someone's own IM sounds in `CueSounds.Own.cs`, chosen
+  through `Sound/ImSounds.cs`). Every Access sound plays as world audio's `App` kind,
   whose level is `WorldSounds.AppVolume` (`access_sounds_volume`) instead of the world's sounds volume. Access turns off
   the viewer's new-conversation sound (`AudioWiring.ConversationSound`) and alert sound (`SocialWiring.AppAlertSound`).
   `SojournWalk status` has `recent` (the last 60 cues: name, ms ago, level, bearing clockwise from facing and distance
@@ -1317,8 +1428,10 @@ it).
     uploadLook`), plain-worded refusals, the viewer's biased picture sizes, TGA (`Core/Media/Tga.cs`), fees by kind and
     size from the account's benefits, `max_cost` held to, `uploadMesh`'s `lods` and `physics`, OBJ models;
     Session's `Confirmations.Uploads.cs` (the fee worked out, pinned and named before the person is asked; a model's
-    by the grid's quote). `SOJOURN_TEST_UPLOAD_FEE` ("texture=0,mesh=0,animation=500") pretends fees on a free grid
-    for the test.
+    by the grid's quote). `SOJOURN_TEST_UPLOAD_FEE` ("texture=0,mesh=0,animation=500,clip=10,balance=100") pretends
+    fees on a free grid for the test: `clip` a sound clip's fee apart from a single sound's, `balance` the L$ balance
+    uploads are checked against and said with (`UploadOps.Balance`; the local grid's is 0). `uploadClips` and
+    `uploadLook`'s `clips` (a sound of any length cut as `Media/SoundClips.cs` plans; one `max_cost` for the set).
   - For describing (M5): `OffscreenRenderer.ShootAsync` (`OffscreenRenderer.Shots.cs`: shots planned on the render
     thread, each drawn until loaded, at most 3 s, 4 rich, its pixels waited for, then the 16 x 9 grid of picks),
     `DescribeApi` registered by `SessionHost.StartDescribe` (Access only), `SessionHost.App` / `AssistantHost.App`

@@ -15,7 +15,7 @@ public sealed partial class WalkMode
     // send nothing): a short step walking, a nudge of a vehicle's steering
     readonly long[] _until = new long[8];
     readonly Dictionary<Keys, K> _pressedAs = new();
-    bool Down(K k) => _k[(int)k] || Environment.TickCount64 < _until[(int)k];
+    bool Down(K k) => _k[(int)k] || Environment.TickCount64 < _until[(int)k] || (k == K.Back && StopHolding);
     bool Held => Enumerable.Range(0, 8).Any(i => Down((K)i));
     bool HeldMove => Down(K.Fwd) || Down(K.Back) || Down(K.SideL) || Down(K.SideR);
     int Get(K k) => Down(k) ? 1 : 0;
@@ -40,7 +40,7 @@ public sealed partial class WalkMode
         Shift with Left or Right: step sideways
         Page Up and Page Down: up and down (flying, or jump and crouch)
         Home: fly or land
-        Space: stop
+        Space: stop; seated on something moving, stop it by its controls (also //stop)
         Seated on a vehicle, the arrows drive it
 
         Asking
@@ -115,6 +115,7 @@ public sealed partial class WalkMode
         {
             if (repeat || _pressedAs.ContainsKey(code)) return true;   // held: the key's repeats change nothing
             _pressedAs[code] = key;
+            CancelStop();
             TakeOver();
             _k[(int)key] = true;
             long now = Environment.TickCount64;
@@ -126,6 +127,7 @@ public sealed partial class WalkMode
                 if (!_turnSmooth && Me() is { } b && !Driving(b)) Step(key == K.TurnL ? -1 : +1, b);
             }
             if (key is K.Fwd or K.Back or K.SideL or K.SideR && !HeldMoveBefore(key)) { _moveSince = now; _toldBlocked = false; }
+            if (key is K.Fwd or K.Back && Me() is { Sitting: true }) CountThrottle(key);
             return true;
         }
         if (repeat) return code is Keys.Home or Keys.Space or Keys.H or Keys.V or Keys.L or Keys.A or Keys.S or Keys.T or Keys.D or Keys.O or Keys.B or Keys.M
@@ -133,7 +135,7 @@ public sealed partial class WalkMode
         switch (code)
         {
             case Keys.Home: ToggleFly(); return true;
-            case Keys.Space: StopAll(); return true;
+            case Keys.Space: StopKey(Me()); return true;
             case Keys.H: Heading(); return true;
             case Keys.V: SpeedLine(); return true;
             case Keys.L: WhereLine(); return true;

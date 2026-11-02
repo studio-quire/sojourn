@@ -32,7 +32,7 @@ public sealed partial class MainForm
         public int Recall = -1;
     }
 
-    static TextBox HistoryBox(string name, string accessibleName) => new()
+    static TextBox HistoryBox(string name, string accessibleName) => new LineBox
     {
         Name = name, AccessibleName = accessibleName, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
         WordWrap = true, Dock = DockStyle.Fill, MaxLength = 0, BackColor = SystemColors.Window, TabStop = true,
@@ -166,6 +166,7 @@ public sealed partial class MainForm
         cv = new Conversation { SessionId = sessionId, Title = label, Group = group, Other = other, Page = page, Input = input, History = history };
         page.Tag = cv;
         input.KeyDown += (_, e) => ConversationKey(cv, e);
+        ConversationMenu(cv);
         AddConversation(cv);
         return cv;
     }

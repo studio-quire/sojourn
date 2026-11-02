@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
+using LibreMetaverse;
 using Sojourn.Core;
 using Sojourn.Core.Agents;
 using Sojourn.Core.Leap;
@@ -8,12 +9,13 @@ using Sojourn.Core.Leap;
 namespace Sojourn.Session.Assistant;
 
 /// <summary>
-/// Uploads where they cost L$ (TesselAgent upload and uploadMesh, whoever calls): before the person is asked, the fee is
-/// worked out from the file itself (a picture by its size as uploaded) or, for a model, asked of the grid (the official
-/// uploader's "Calculate weights and fee"), and pinned on the op as `max_cost`, which the op holds to; a file that can't
-/// go up, or a fee over the balance, is refused in words without asking. What's asked names the fee and what the file
-/// becomes ("Upload Sunset, a picture, for L$10" / "Resized from 1000 by 750 to 1024 by 512 ..."), a model's land
-/// impact too. Claude Opus 5.5, 2026-11-01.
+/// Uploads where they cost L$ (TesselAgent upload, uploadMesh and uploadClips, whoever calls): before the person is
+/// asked, the fee is worked out from the file itself (a picture by its size as uploaded, a sound's clips by how many it
+/// makes) or, for a model, asked of the grid (the official uploader's "Calculate weights and fee"), and pinned on the op
+/// as `max_cost`, which the op holds to (for clips, the whole set's); a file that can't go up, or a fee over the
+/// balance, is refused in words without asking. What's asked names the fee and what the file becomes ("Upload Sunset, a
+/// picture, for L$10" / "Resized from 1000 by 750 to 1024 by 512 ..."), a model's land impact too, a sound's clips their
+/// names and folder, once for the set. Claude Opus 5.5, 2026-11-01.
 /// </summary>
 public sealed partial class Confirmations
 {
@@ -25,6 +27,7 @@ public sealed partial class Confirmations
         if (a.Bool("quote", false)) return false;
         if (_uploadsCost) return true;
         if (UploadOps.TestFees is not { } fees) return false;
+        if (op == "uploadClips") return fees.ContainsKey("clip") || fees.ContainsKey("sound");
         var kind = op == "uploadMesh" ? "mesh" : a.Str("type") ?? UploadOps.KindOf(a.Str("path") ?? "");
         return fees.ContainsKey(kind is "image" or "picture" ? "texture" : kind);
     }
@@ -57,6 +60,31 @@ public sealed partial class Confirmations
                     _ => Secs(file, look.Num("seconds", 0)),
                 };
             }
+            else if (op == "uploadClips")
+            {
+                var q = a.DeepClone().AsObject();
+                q.Remove("max_cost");
+                q["quote"] = true;
+                var r = await _s.Uploads.UploadClipsAsync(q, cts.Token) as JsonObject ?? new JsonObject();
+                var plan = r["plan"] as JsonObject ?? new JsonObject();
+                fee = r.Int("cost", 0);
+                int n = r.Int("count", 0), each = r.Int("cost_each", 0);
+                var names = plan["names"] as JsonArray;
+                string first = names?.FirstOrDefault()?.ToString() ?? "", last = names?.LastOrDefault()?.ToString() ?? "";
+                title = Lang.F("Upload {0} as {1} clips, for L${2}", r.Str("name") ?? file, n, fee);
+                detail = Join(Lang.F("L${0} each.", each), Lang.F("From {0}, {1}, cut into clips of up to {2} seconds: {3} to {4}.", file,
+                    UploadWords.Seconds(r.Num("seconds", 0)), One(plan.Num("clip_seconds", 0)), first, last));
+                if (plan.Str("cuts") == "quiet") detail = Join(detail, Lang.T("Cut at the quietest moment near each mark."));
+                var into = a.Uuid("folder_id") ?? _s.Inventory.FolderFor(FolderType.Sound);
+                var parent = _s.Inventory.Node(into)?.Name ?? Lang.T("your inventory");
+                detail = Join(detail, a.Bool("new_folder", true) ? Lang.F("Into a new folder, {0}, in {1}.", r.Str("name") ?? "", parent) : Lang.F("Into {0}.", parent));
+                if (a.Bool("notecard", false)) detail = Join(detail, Lang.F("With a notecard, {0}, listing them in order.", plan.Str("notecard_name") ?? ""));
+                a["max_cost"] = fee;
+                if (UploadBalance() is { } bal && bal < fee)
+                    return $"Not enough L$: the {n} clips cost L${fee} in all (L${each} each), and your balance is L${bal}. Nothing was uploaded.";
+                _uploadAsks.AddOrUpdate(a, Tuple.Create(title, Join(detail, UploadBalanceLine())));
+                return null;
+            }
             else
             {
                 var q = a.DeepClone().AsObject();
@@ -77,12 +105,17 @@ public sealed partial class Confirmations
         catch (NotConnected) { return "not in world; nothing was uploaded"; }
         catch (OperationCanceledException) { return "working out the fee took too long; nothing was uploaded"; }
         a["max_cost"] = fee;
-        if (_s.BalanceKnown && _s.Client is { } c && c.Self.Balance < fee)
-            return $"Not enough L$: the upload costs L${fee}, and your balance is L${c.Self.Balance}. Nothing was uploaded.";
+        if (UploadBalance() is { } balance && balance < fee)
+            return $"Not enough L$: the upload costs L${fee}, and your balance is L${balance}. Nothing was uploaded.";
         if (a.Uuid("folder_id") is { } fid && _s.Inventory.Node(fid) is { } folder) detail = Join(detail, Lang.F("Into {0}.", folder.Name));
-        _uploadAsks.AddOrUpdate(a, Tuple.Create(title, Join(detail, Balance())));
+        _uploadAsks.AddOrUpdate(a, Tuple.Create(title, Join(detail, UploadBalanceLine())));
         return null;
     }
+
+    /// <summary>The balance an upload is checked against (a test's pretend one where it sets one).</summary>
+    int? UploadBalance() => _s.Uploads.Balance;
+
+    string UploadBalanceLine() => UploadBalance() is { } b ? Lang.F("Your balance: L${0}.", b) : "";
 
     static string One(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
 

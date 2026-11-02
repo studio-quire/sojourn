@@ -3,7 +3,7 @@ using LibreMetaverse;
 namespace Sojourn.Access;
 
 /// <summary>Small modal dialogs from standard controls, each opened by the person's own key (so the focus going into
-/// them is theirs): a line of text asked for, and a person picked.</summary>
+/// them is theirs): a line of text asked for, a person picked, a sound chosen by ear.</summary>
 public static class Dialogs
 {
     /// <summary>A labelled edit box with OK and Cancel; the text, or null when cancelled or left empty (allowEmpty: ""
@@ -76,6 +76,25 @@ public static class Dialogs
         list.DoubleClick += (_, _) => Take(false);
         f.ActiveControl = list.Items.Count > 0 ? list : box;
         return f.ShowDialog(owner) == DialogResult.OK ? chosen : null;
+    }
+
+    /// <summary>
+    /// One of a list of sounds chosen by ear: each played as the selection reaches it (the arrows, a first letter), the
+    /// one in use selected and said so; Enter takes the one selected, Escape leaves it as it was. Its index, or null.
+    /// </summary>
+    public static int? ChooseSound(IWin32Window owner, string title, IReadOnlyList<string> sounds, int current, Action<int> play)
+    {
+        using var f = Frame(title);
+        var list = new ListBox { Name = "soundList", AccessibleName = "Sounds", Width = 300, Height = 220, IntegralHeight = false };
+        for (int i = 0; i < sounds.Count; i++) list.Items.Add(i == current ? $"{sounds[i]}, in use" : sounds[i]);
+        list.SelectedIndex = Math.Clamp(current, 0, sounds.Count - 1);
+        list.SelectedIndexChanged += (_, _) => { if (list.SelectedIndex >= 0) play(list.SelectedIndex); };
+        var t = Table(f, 2);
+        t.Controls.Add(new Label { Text = "&Sounds", AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top }, 0, 0);
+        t.Controls.Add(list, 1, 0);
+        t.Controls.Add(Buttons(f), 1, 1);
+        f.ActiveControl = list;
+        return f.ShowDialog(owner) == DialogResult.OK && list.SelectedIndex >= 0 ? list.SelectedIndex : null;
     }
 
     sealed record Shown(Someone P)

@@ -311,7 +311,8 @@ public static class LogShare
 
     /// <summary>A part of a name standing alone (a first name, a display name's first word), unless it's an everyday
     /// word or one of the log's own (someone called "Voice Smith" would otherwise take every "voice:" line with them):
-    /// the whole name is always replaced; alone, such a word says little about who.</summary>
+    /// the whole name is always replaced; alone, such a word says little about who. (Any other common word, whole name
+    /// or part, is replaced only where it's capitalised: <see cref="Names"/>.)</summary>
     static void Short(Person p, string word)
     {
         if (!Everyday.Contains(word)) p.Names.Add(word);
@@ -337,11 +338,13 @@ public static class LogShare
         "right", "ahead", "near", "first", "last", "next", "once", "again", "still", "well", "much", "many", "each", "every",
     };
 
-    /// <summary>Every person's names and keys, replaced by their stand-in wherever they stand as words.</summary>
+    /// <summary>Every person's names and keys, replaced by their stand-in wherever they stand as words: in any case,
+    /// except a name of one word that's a common English word (<see cref="Common"/>), replaced only where it's
+    /// capitalised as a name is ("Grey said", not "a grey top"; a name of more words always).</summary>
     sealed class Names
     {
         readonly Dictionary<string, Person> _by = new(StringComparer.OrdinalIgnoreCase);
-        readonly Regex? _re;
+        readonly Regex? _re, _capitalised;
         int _next;
         public int Used => _next;
 
@@ -353,23 +356,51 @@ public static class LogShare
                 // the same name for two people: the person's own wins, then whoever the log met first
                 foreach (var n in p.Names) if (!_by.ContainsKey(n) || p.Me) _by[n] = p;
             }
-            if (_by.Count == 0) return;
-            var alts = _by.Keys.Where(k => k.Length > 0).OrderByDescending(k => k.Length).Select(Regex.Escape);
-            _re = new Regex(@"(?<![\p{L}\p{N}_])(?:" + string.Join("|", alts) + @")(?![\p{L}\p{N}_])",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            var names = _by.Keys.Where(k => k.Length > 0).OrderByDescending(k => k.Length).ToList();
+            var words = names.Where(IsCommon).ToList();
+            var rest = names.Except(words, StringComparer.OrdinalIgnoreCase).ToList();
+            if (rest.Count > 0)
+                _re = new Regex(@"(?<![\p{L}\p{N}_])(?:" + string.Join("|", rest.Select(Regex.Escape)) + @")(?![\p{L}\p{N}_])",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            // its first letter a capital, the rest in any case
+            if (words.Count > 0)
+                _capitalised = new Regex(@"(?<![\p{L}\p{N}_])(?:"
+                    + string.Join("|", words.Select(w => Regex.Escape(char.ToUpperInvariant(w[0]).ToString()) + "(?i:" + Regex.Escape(w[1..]) + ")"))
+                    + @")(?![\p{L}\p{N}_])", RegexOptions.CultureInvariant);
         }
+
+        static bool IsCommon(string name) => name.Length > 1 && name.All(char.IsLetter) && Common.Contains(name.ToLowerInvariant());
 
         public string Replace(string text)
         {
-            if (_re is null || text.Length == 0) return text;
-            return _re.Replace(text, m =>
-            {
-                if (!_by.TryGetValue(m.Value, out var p)) return m.Value;
-                if (p.Me) return "me";
-                if (p.N == 0) p.N = ++_next;
-                return $"person {p.N}";
-            });
+            if (text.Length == 0) return text;
+            if (_re != null) text = _re.Replace(text, StandInFor);
+            if (_capitalised != null) text = _capitalised.Replace(text, StandInFor);
+            return text;
         }
+
+        string StandInFor(Match m)
+        {
+            if (!_by.TryGetValue(m.Value, out var p)) return m.Value;
+            if (p.Me) return "me";
+            if (p.N == 0) p.N = ++_next;
+            return $"person {p.N}";
+        }
+    }
+
+    /// <summary>Common English words (common-words.txt, SCOWL's commonest, embedded by each project that links this
+    /// file); none if it's missing, so every name is then replaced in any case.</summary>
+    static readonly HashSet<string> Common = LoadCommon();
+
+    static HashSet<string> LoadCommon()
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        using var s = typeof(LogShare).Assembly.GetManifestResourceStream("common-words.txt");
+        if (s is null) return set;
+        using var r = new StreamReader(s);
+        while (r.ReadLine() is { } line)
+            if (line.Length > 0 && line[0] != '#') set.Add(line.Trim());
+        return set;
     }
 
     /// <summary>Other people's words, to catch a line that repeats them (read back, quoted by the assistant, relayed by

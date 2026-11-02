@@ -55,6 +55,7 @@ public sealed partial class MainForm
         Item("Offer &teleport", p => _ = PersonOpAsync("offerTeleport", p, $"Teleport offered to {p.Name}."));
         Item("&Request teleport", p => _ = PersonOpAsync("requestTeleport", p, $"Asked {p.Name} for a teleport."));
         Item("Always in&cognito with them", p => IncognitoWith(p.Id, p.Name));
+        SoundItem(menu, () => list.FocusedItem?.Tag is PersonOps.Person p ? (p.Id, p.Name) : null, group: false);
         KeysOn(menu, ("&Describe", "Control+D"));
         MenuOn(list, menu);
         list.KeyDown += (_, e) => ListKey(list, menu, e, asked => RefreshPeople(asked, list));

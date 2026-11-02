@@ -71,9 +71,11 @@ public sealed class Commands
                 case "beacon": await BeaconAsync(rest); return true;
                 case "touch": if (Touch != null) await Touch(string.Join(" ", rest)); return true;
                 case "switch": if (Switch != null) await Switch(string.Join(" ", rest)); return true;
+                case "stop": if (WalkMode is { } walk) walk.RequestStop(); else _say("Not in a region yet."); return true;
                 case "outfit": if (Outfit != null) await Outfit(); return true;
                 case "upload": if (Upload != null) await Upload(AfterVerb(line)); return true;
                 case "voice": if (Voice != null) await Voice(string.Join(" ", rest)); return true;
+                case "imsound": if (ImSound != null) await ImSound(string.Join(" ", rest)); return true;
                 case "sendlog": SendLog?.Invoke(); return true;
                 default: _say($"No command {verb}. //help lists them."); return false;
             }
@@ -126,9 +128,12 @@ public sealed class Commands
             "touch the nearest thing or part within 10 metres with that name (an object whose only touchable part is a child: that part), on a face if given"),
         ("switch", "//switch | //switch flip | //switch main | //switch branch",
             "the next rail switch and how it's set; throw it, or set it to the main line or the branch (walk mode's W and Shift+W)"),
+        ("stop", "//stop", "stop: seated on something moving, it's stopped by its controls, as Space in walk mode; otherwise a walk, a follow or a route"),
         ("outfit", "//outfit", "what you're wearing, by name from the worn list: clothing, attachments and where, HUDs, body parts"),
         ("upload", "//upload | //upload PATH", "upload a picture, sound, animation or model: with no path, choose the file (Control+U)"),
         ("voice", "//voice | //voice answer | //voice decline", "who's in voice and speaking, your mic; or answer or decline a call ringing"),
+        ("imsound", "//imsound NAME SOUND | //imsound NAME usual | //imsound NAME | //imsound",
+            "a sound of its own for someone's IMs, or a group's chat, in place of the usual one; usual takes it back; with only a name, theirs; with nothing, the sounds and who has one"),
         ("about", "//about", "which version of Sojourn Access this is, and where your settings and logs are"),
         ("sendlog", "//sendlog", "send a session's log to Studio Quire, with a note on what happened; other people's words are left out"),
         ("help", "//help [word]", "the commands"),
@@ -906,6 +911,9 @@ public sealed class Commands
         int sp = t.IndexOfAny(new[] { ' ', '\t' });
         return sp < 0 ? "" : t[(sp + 1)..].Trim();
     }
+
+    /// <summary>`//imsound`'s words (MainForm.ImSounds.cs).</summary>
+    public Func<string, Task>? ImSound { get; set; }
 
     /// <summary>`//outfit`: what's worn by name (MainForm.Outfit.cs).</summary>
     public Func<Task>? Outfit { get; set; }

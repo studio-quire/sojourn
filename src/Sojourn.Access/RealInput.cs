@@ -51,6 +51,18 @@ public sealed class RealInput : IMessageFilter
     /// stops at each one (NVDA's "speech interrupt for typed characters", on by default).</summary>
     public static long LastTypedAt { get; private set; }
 
+    // the last few typed keys' times, on the window's thread only
+    static readonly long[] _typed = new long[32];
+    static int _typedNext;
+
+    /// <summary>The first key typed into a box after <paramref name="t"/> among the last 32, or 0 (the window's thread).</summary>
+    public static long FirstTypedAfter(long t)
+    {
+        long first = 0;
+        foreach (var k in _typed) if (k > t && (first == 0 || k < first)) first = k;
+        return first;
+    }
+
     /// <summary>When Control or Shift was last pressed and let go with no other key between: the screen reader's own keys
     /// for stopping and pausing speech, so what it was saying was silenced on purpose.</summary>
     public static long SilencedAt { get; private set; }
@@ -79,7 +91,10 @@ public sealed class RealInput : IMessageFilter
                 int vk = (int)m.WParam;
                 if (m.Msg == WM_KEYDOWN && vk is not (VK_SHIFT or VK_CONTROL) && (Control.ModifierKeys & (Keys.Control | Keys.Alt)) == 0
                     && Control.FromHandle(m.HWnd) is TextBoxBase { ReadOnly: false })
+                {
                     LastTypedAt = now;
+                    _typed[_typedNext++ % _typed.Length] = now;
+                }
                 if (vk is VK_SHIFT or VK_CONTROL) { if (((long)m.LParam & 0x40000000) == 0) _loneModifier = vk; }
                 else _loneModifier = 0;
                 var from = Source();

@@ -11,5 +11,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\src\Sojourn.Session\LogShare.cs" Link="LogShare.cs" />
+    <EmbeddedResource Include="..\..\src\Sojourn.Session\common-words.txt" LogicalName="common-words.txt" />
   </ItemGroup>
 </Project>

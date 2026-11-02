@@ -61,6 +61,34 @@ public static class SoundConvert
             resampled, src.Channels > 1, peak, rms, ogg.Length));
     }
 
+    /// <summary>A WAV or Ogg Vorbis file as Second Life's mono at 44.1 kHz (any length), and what it was.</summary>
+    public static (float[] Mono, string Format, int Channels, int Rate) ReadMono(byte[] data, bool wav)
+    {
+        float[] mono;
+        string format;
+        int channels, rate;
+        if (wav)
+        {
+            var w = Wav.Read(data);
+            (mono, format, channels, rate) = (w.Mono, $"WAV, {w.Format}", w.Channels, w.SampleRate);
+        }
+        else
+        {
+            var d = DecodeVorbis(data);
+            (mono, format, channels, rate) = (d.Samples, "Ogg Vorbis", d.SourceChannels, d.SampleRate);
+        }
+        if (rate != SampleRate) mono = Resampler.Resample(mono, rate, SampleRate);
+        return (mono, format, channels, rate);
+    }
+
+    /// <summary>Mono samples at 44.1 kHz encoded as the viewer encodes an upload (no length check: the caller's).</summary>
+    public static byte[] EncodeMono(float[] mono)
+    {
+        var m = new float[mono.Length];
+        for (int i = 0; i < m.Length; i++) m[i] = Math.Clamp(mono[i], -1f, 1f);
+        return Encode(m);
+    }
+
     /// <summary>Decodes Ogg Vorbis (any channel count, averaged to mono).</summary>
     public static DecodedSound DecodeVorbis(byte[] ogg)
     {

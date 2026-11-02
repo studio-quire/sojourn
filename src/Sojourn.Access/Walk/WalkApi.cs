@@ -43,6 +43,7 @@ public sealed class WalkApi : LeapApi
         {
             ["bearing"] = Math.Round(g.Bearing * 180 / Math.PI, 1), ["distance"] = Math.Round(g.Distance, 2), ["width"] = Math.Round(g.Width, 2),
         }).ToArray()) : null,
+        ["stopping"] = _walk.Stopping, ["throttle_taps"] = _walk.ThrottleTaps,
         ["sound"] = _walk.Sounds.Available, ["lines"] = new JsonArray(_walk.RecentLines.Select(x => (JsonNode?)x).ToArray()),
         // M4: the cues sent lately with where they were placed (degrees clockwise from facing, metres from the head),
         // the beacon's target and the marks last sounded

@@ -38,10 +38,17 @@
 //                                                         next touch ("NAME renamed to N")
 //   cart [NAME] X Y Z                                     a cart to drive seated (default "Walk Cart"): takes the sitter's
 //                                                         movement keys, moves on forward and back, turns on left and right
-//   kart [NAME] X Y Z [facing DEG] [train SECS] [sound UUID]   a physical car vehicle (default "Walk Kart") for seated
+//   kart [NAME] X Y Z [facing DEG] [train SECS] [sound UUID] [throttle STEP] [endx X]
+//                                                         a physical car vehicle (default "Walk Kart") for seated
 //                                                         crossings, heading east or DEG (0 east, 90 north); with train,
 //                                                         the forward key starts it driving on its own for SECS, keys or
-//                                                         not, as a train does; with a sound, it loops it while sat on
+//                                                         not, as a train does; with a sound, it loops it while sat on;
+//                                                         with throttle, a throttle train: each forward press opens it
+//                                                         STEP% (of 10 m/s), each back press closes it STEP%, on past 0
+//                                                         into reverse, each change said ("throttle 35"); with endx, its
+//                                                         track ends once it's east of X: "sensor : No further track
+//                                                         guide detected", then twice 2 s apart while still moving
+//                                                         "no_sensor : No Guide found" (Access's stop at a track's end)
 //   switch X Y Z [CHANNEL]                                a rail switch as the SLRR standard describes one (Sojourn
 //                                                         Access's rail switches): a "Switch Stand" whose description is
 //                                                         "Walk Junction.N~Main~Walk Halt~North Station~East Yard~N",
@@ -569,7 +576,7 @@ static class Program
     /// "kart controls taken" when it has them.</summary>
     static async Task<string> Kart(string rest)
     {
-        const string usage = "ERR kart [NAME] X Y Z [facing DEG] [train SECS] [sound UUID]";
+        const string usage = "ERR kart [NAME] X Y Z [facing DEG] [train SECS] [sound UUID] [throttle STEP] [endx X]";
         // the options after the place, in any order
         var words = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
         string Option(string key)
@@ -586,6 +593,10 @@ static class Program
         if (Option("facing") is { } fs && !float.TryParse(fs, out facing)) return usage;
         int train = 0;
         if (Option("train") is { } ts && !int.TryParse(ts, out train)) return usage;
+        int step = 0;
+        if (Option("throttle") is { } st && (!int.TryParse(st, out step) || step <= 0 || step > 100)) return usage;
+        float endx = 0;
+        if (Option("endx") is { } ex && !float.TryParse(ex, out endx)) return usage;
         rest = string.Join(" ", words);
         if (NameAndPos(rest, "Walk Kart") is not var (name, pos)) return usage;
         var sim = client.Network.CurrentSim;
@@ -595,6 +606,8 @@ static class Program
         if (facing != 0) client.Objects.SetRotation(sim, box.LocalID, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, facing * MathF.PI / 180));
         var script = await UploadScript("Walk kart",
             "integer K; string LOOP = \"" + loop + "\"; integer TRAIN = " + train + "; integer ticks; "
+            + "integer STEP = " + step + "; float ENDX = " + endx.ToString(System.Globalization.CultureInfo.InvariantCulture) + "; "
+            + "integer thr; integer ended; integer nags; integer nagTicks; "
             + "default { state_entry() { llSitTarget(<0, 0, 0.75>, ZERO_ROTATION); "
             + "K = CONTROL_FWD | CONTROL_BACK | CONTROL_ROT_LEFT | CONTROL_ROT_RIGHT | CONTROL_LEFT | CONTROL_RIGHT; "
             + "llSetVehicleType(VEHICLE_TYPE_CAR); llSetVehicleFloatParam(VEHICLE_LINEAR_MOTOR_TIMESCALE, 0.4); "
@@ -602,13 +615,22 @@ static class Program
             + "llSetVehicleFloatParam(VEHICLE_ANGULAR_MOTOR_DECAY_TIMESCALE, 0.3); llSetVehicleVectorParam(VEHICLE_LINEAR_FRICTION_TIMESCALE, <100, 0.5, 100>); "
             + "llSay(0, llGetObjectName() + \" ready\"); } "
             + "changed(integer c) { if (c & CHANGED_LINK) { key who = llAvatarOnSitTarget(); "
-            + "if (who != NULL_KEY) { llSetStatus(STATUS_PHYSICS, TRUE); llRequestPermissions(who, PERMISSION_TAKE_CONTROLS); if (LOOP != \"\") llLoopSound(LOOP, 1.0); } "
-            + "else { llSetStatus(STATUS_PHYSICS, FALSE); llStopSound(); llSay(0, \"kart empty\"); } } } "
+            + "if (who != NULL_KEY) { llSetStatus(STATUS_PHYSICS, TRUE); llRequestPermissions(who, PERMISSION_TAKE_CONTROLS); if (LOOP != \"\") llLoopSound(LOOP, 1.0); "
+            + "if (STEP) { thr = 0; llSetTimerEvent(0.1); } } "
+            + "else { llSetStatus(STATUS_PHYSICS, FALSE); llStopSound(); if (STEP) llSetTimerEvent(0); llSay(0, \"kart empty\"); } } } "
             + "run_time_permissions(integer p) { if (p & PERMISSION_TAKE_CONTROLS) { llTakeControls(K, TRUE, FALSE); llSay(0, \"kart controls taken\"); } } "
             // a train drives on its own once started, whatever the keys (ticks of 0.1 s; the motor set again each, as it decays)
-            + "timer() { if (--ticks > 0) llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION, <10, 0, 0>); "
+            // a throttle train: the motor at the throttle each tick; past ENDX the track ends, said as the blind tester's train says it
+            + "timer() { if (STEP) { llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION, <thr * 0.1, 0, 0>); "
+            + "if (ENDX > 0 && !ended && llGetPos().x > ENDX) { ended = TRUE; nags = 2; nagTicks = 0; llSay(0, \"sensor : No further track guide detected\"); } "
+            + "else if (ended && nags > 0 && ++nagTicks >= 20) { nagTicks = 0; if (llVecMag(llGetVel()) > 0.5) { nags--; llSay(0, \"no_sensor : No Guide found\"); } } "
+            + "return; } "
+            + "if (--ticks > 0) llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION, <10, 0, 0>); "
             + "else { llSetTimerEvent(0); llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION, ZERO_VECTOR); llSay(0, \"kart stopped\"); } } "
-            + "control(key id, integer level, integer edge) { if (TRAIN) { if ((level & edge & CONTROL_FWD) && ticks <= 0) { ticks = TRAIN * 10; "
+            + "control(key id, integer level, integer edge) { if (STEP) { integer was = thr; "
+            + "if (level & edge & CONTROL_FWD) thr += STEP; if (level & edge & CONTROL_BACK) thr -= STEP; "
+            + "if (thr > 100) thr = 100; if (thr < -100) thr = -100; if (thr != was) llSay(0, \"throttle \" + (string)thr); return; } "
+            + "if (TRAIN) { if ((level & edge & CONTROL_FWD) && ticks <= 0) { ticks = TRAIN * 10; "
             + "llSetTimerEvent(0.1); llSay(0, \"kart driving\"); } return; } "
             + "vector m = ZERO_VECTOR; if (level & CONTROL_FWD) m.x = 10; if (level & CONTROL_BACK) m.x = -5; "
             + "llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION, m); float t = 0; if (level & (CONTROL_ROT_LEFT | CONTROL_LEFT)) t = 1.5; "

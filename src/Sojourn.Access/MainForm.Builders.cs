@@ -247,14 +247,12 @@ public sealed partial class MainForm
                 : unsaid.Count <= 3 ? $"While Sojourn Access was closed, the builders replied {unsaid.Count} times. {words}"
                 : $"While Sojourn Access was closed, the builders replied {unsaid.Count} times; the last three: {words} Control+Shift+B has them all.";
             Reader?.Say(AnnounceKind.Ims, line, from: LineFrom.App);
-            LineSaid(entry, line);
             return;
         }
         foreach (var m in unsaid)
         {
             var line = here ? $"{Who(m)}: {m.Text}" : $"{Who(m)}, the builders: {m.Text}";
             Reader?.Say(AnnounceKind.Ims, line, from: LineFrom.App);
-            LineSaid(entry with { Name = m.By, Text = m.Text }, line);
         }
 
         static string Who(BuildersLine.Message m) => m.By.Length > 0 ? m.By : "Claude";

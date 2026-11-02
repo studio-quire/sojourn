@@ -131,7 +131,8 @@ public sealed class TesselAgent : SessionApi
         });
         Op("upload", "{path, name?, desc?, folder_id?, type?, next_perms?, max_size=1024, priority?, loop?, quote?, max_cost?, timeout=120}", (a, ct) => S.Uploads.UploadAsync(a, ct));
         Op("uploadMesh", "{path, name?, desc?, scale?, textures?, lods=true, physics=hull|box, folder_id?, quote?, max_cost?, timeout=180}", (a, ct) => S.Uploads.UploadMeshAsync(a, ct));
-        Op("uploadLook", "sojourn: {path, type?, scale?, max_size?, priority?, loop?} -> what an upload of the file would be (kind, size, a picture's size as uploaded, a sound's seconds, a model's parts and size, the fee where known), nothing sent", (a, ct) => S.Uploads.LookAsync(a, ct));
+        Op("uploadLook", "sojourn: {path, type?, scale?, max_size?, priority?, loop?, clips?, clip_seconds?, cuts?, name?} -> what an upload of the file would be (kind, size, a picture's size as uploaded, a sound's seconds, a model's parts and size, the fee where known; with clips, how uploadClips would cut a sound), nothing sent", (a, ct) => S.Uploads.LookAsync(a, ct));
+        Op("uploadClips", "sojourn: {path, name?, clip_seconds=29.9, cuts=exact|quiet, folder_id?=Sounds, new_folder=true, notecard=false, desc?, next_perms?, quote?, max_cost?, timeout=120} -> a sound of any length cut into clips of at most clip_seconds, named 'name 1'..'name N' (zero-padded from 10), uploaded in order into a new folder named after them (or folder_id itself), with a notecard listing them if asked; one confirmation for the whole set's fee", (a, ct) => S.Uploads.UploadClipsAsync(a, ct));
         Op("createWearable", "{type, name?, desc?, folder_id?, wear=true, replace=false, timeout=30} -> {item_id, worn}",
             async (a, ct) => await S.Wardrobe.CreateAsync(a, ct));
         Op("editWearable", "{item_id, textures? {slot: id} | slot + texture_id, color? [r,g,b], params? {name|id: weight}, name?, save=true}",

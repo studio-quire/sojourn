@@ -82,6 +82,8 @@ public sealed partial class MainForm
         ("walk_vehicle_volume", "Driving sounds' volume"),
         ("walk_switch", "Rail switches ahead while riding (walk mode, W)"),
         ("walk_switch_volume", "Rail switches' volume"),
+        // (the blind tester's train ran off the end of its track, 2026-11-01)
+        ("walk_track_end", "Track's end: stop the vehicle when it says the track ends"),
         ("walk_turn_step", "Degrees a tap of Left or Right turns (walk mode)"),
         ("walk_turn_rate", "Degrees a second Left or Right held turns (walk mode)"),
         ("walk_teleport_fallback", "Teleport when a walk finds no way around"),

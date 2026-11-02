@@ -35,6 +35,10 @@ contributors, Apache License 2.0, https://github.com/KhronosGroup/OpenXR-SDK. Te
 **Archivo** (`src/Sojourn.Session/Assets/Fonts/`): Copyright 2020 The Archivo Project Authors, SIL Open Font License
 1.1. Text: `src/Sojourn.Session/Assets/Fonts/Archivo-OFL.txt`.
 
+**SCOWL** (`src/Sojourn.Session/common-words.txt`, its commonest English words, embedded for the log filter):
+Copyright 2000-2018 by Kevin Atkinson, http://wordlist.aspell.net, under SCOWL's permissive notice, which heads the
+file.
+
 ## Libraries restored by NuGet when building
 
 | Package | Licence |

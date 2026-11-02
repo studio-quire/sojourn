@@ -118,6 +118,22 @@ public sealed class AccessSettings
     };
     public static readonly string[] EarconLevels = { "off", "quiet", "medium", "loud", "full" };
 
+    /// <summary>A sound of its own for someone's IMs, or a group's chat (Sound/ImSounds.cs): their key (a person's or a
+    /// group's, so it outlasts a change of name) to the sound's name. Replaced whole, never changed in place (read as IMs
+    /// arrive, set from the agent API's thread too).</summary>
+    public Dictionary<string, string> ImSoundFor { get; set; } = new();
+
+    public string? ImSoundOf(LibreMetaverse.UUID id) => ImSoundFor.TryGetValue(id.ToString(), out var s) ? s : null;
+
+    /// <summary>Someone's (or a group's) sound set, or with null the usual one again.</summary>
+    public void SetImSound(LibreMetaverse.UUID id, string? sound)
+    {
+        var all = new Dictionary<string, string>(ImSoundFor);
+        if (sound == null) all.Remove(id.ToString()); else all[id.ToString()] = sound;
+        ImSoundFor = all;
+        Save();
+    }
+
     public string EarconLevelName(string kind) => Earcons.TryGetValue(kind, out var v) ? v : EarconKinds.FirstOrDefault(k => k.Name == kind).Level ?? "off";
     /// <summary>The earcon's gain (0-1), 0 when off.</summary>
     public float EarconLevel(string kind) => Array.IndexOf(EarconLevels, EarconLevelName(kind)) is var i and > 0 ? LevelGains[i - 1] : 0;
@@ -134,6 +150,12 @@ public sealed class AccessSettings
     /// <summary>A walk with no way around what's in the way ends in a teleport there (where the region allows it).</summary>
     public bool WalkSpeed => !Walk.TryGetValue("speed", out var v) || v == "on";
     public bool WalkTeleportFallback => !Walk.TryGetValue("teleport_fallback", out var v) || v == "on";
+    /// <summary>Seated and moving, a line from the vehicle saying its track ends stops it (Walk/WalkMode.Stop.cs): on unless
+    /// turned off (the blind tester's ask, 2026-11-01).</summary>
+    public bool WalkTrackEnd => !Walk.TryGetValue("track_end", out var v) || v == "on";
+    /// <summary>The person's own phrases that mean the track ends, beside WalkMode.TrackEndPhrases. Replaced whole, never
+    /// changed in place (the network's thread reads it).</summary>
+    public List<string> TrackEndPhrases { get; set; } = new();
 
     /// <summary>Which of Access's own defaults for the session's settings (vr-settings.json, shared code with the VR client,
     /// whose defaults suit a person looking, not listening) have been put in place: 0 none yet, 1 the parcel's music at
@@ -223,6 +245,26 @@ public sealed class AccessSettings
                 + "reads it as set by announce_*; F6 mutes the words, not these): off or how loud", string.Join(", ", EarconLevels),
                 () => EarconLevelName(name), SettingsApi.Choice($"earcon_{name}", EarconLevels, i => { Earcons[name] = EarconLevels[i]; Save(); changed(); })));
         }
+        api.Add("access_im_sounds", new SettingsApi.Setting("access", "Sojourn Access: a sound of its own for someone's IMs, or a "
+            + "group's chat, in place of the usual one (at the IM's or group chat's level, earcon_im, earcon_group), by their key: "
+            + "{\"KEY\": \"ocean wave\"}. The sounds: " + Sojourn.Access.Sound.ImSounds.Names + ". Setting merges: the keys given "
+            + "change, \"usual\" takes one back to the usual sound", "an object", () => new JsonObject(ImSoundFor.Select(kv =>
+                KeyValuePair.Create(kv.Key, (JsonNode?)kv.Value))), v =>
+            {
+                if (v is not JsonObject o) return "access_im_sounds is an object: {\"KEY\": \"ocean wave\"}";
+                var all = new Dictionary<string, string>(ImSoundFor);
+                foreach (var (key, val) in o)
+                {
+                    if (!LibreMetaverse.UUID.TryParse(key, out var id) || id == LibreMetaverse.UUID.Zero) return $"access_im_sounds: {key} isn't a key";
+                    if (val is not JsonValue j || !j.TryGetValue<string>(out var words) || Sojourn.Access.Sound.ImSounds.Find(words) is not { } sound)
+                        return $"access_im_sounds: the sounds are {Sojourn.Access.Sound.ImSounds.Names}, or usual";
+                    if (sound.Length == 0) all.Remove(id.ToString()); else all[id.ToString()] = sound;
+                }
+                ImSoundFor = all;
+                Save();
+                changed();
+                return null;
+            }));
         if (audio != null) audio.AppVolume = (float)SoundsVolume;
         api.Add("access_sounds_volume", new SettingsApi.Setting("access", "Sojourn Access: the volume of its own sounds (walk cues, earcons, "
             + "the beacon) apart from the world's (sounds_volume) and music (music_volume)", string.Join(", ", SoundsVolumes),
@@ -247,6 +289,21 @@ public sealed class AccessSettings
         api.Add("walk_speed", new SettingsApi.Setting("access", "Sojourn Access: while seated on a moving vehicle, its speed said "
             + "when it settles at a new one (V says it any time)", "on, off", () => WalkSpeed,
             SettingsApi.Switch("walk_speed", on => { Walk["speed"] = on ? "on" : "off"; Save(); changed(); })));
+        api.Add("walk_track_end", new SettingsApi.Setting("access", "Sojourn Access: seated on something moving, when it says its "
+            + "track ends (a train's \"No further track guide detected\" or \"No Guide found\"), an urgent sound and \"Track ends: "
+            + "stopping.\", then it's stopped by its controls as Space in walk mode does", "on, off", () => WalkTrackEnd,
+            SettingsApi.Switch("walk_track_end", on => { Walk["track_end"] = on ? "on" : "off"; Save(); changed(); })));
+        api.Add("walk_track_end_phrases", new SettingsApi.Setting("access", "Sojourn Access: more phrases that mean a vehicle's track "
+            + "ends, beside \"" + string.Join("\", \"", Sojourn.Access.Walk.WalkMode.TrackEndPhrases) + "\" (matched within what the vehicle says, "
+            + "ignoring case); a list of words, [] for none", "a list", () => new JsonArray(TrackEndPhrases.Select(p => (JsonNode)p).ToArray()), v =>
+            {
+                if (v is not JsonArray a || a.Any(x => x is not JsonValue j || !j.TryGetValue<string>(out _)))
+                    return "walk_track_end_phrases is a list of phrases, e.g. [\"end of line\"]";
+                TrackEndPhrases = a.Select(x => x!.GetValue<string>().Trim()).Where(x => x.Length > 0).Distinct().ToList();
+                Save();
+                changed();
+                return null;
+            }));
         api.Add("walk_teleport_fallback", new SettingsApi.Setting("access", "Sojourn Access: a walk (//go, walk to, the assistant's) "
             + "with no way around what's in the way teleports there instead, where the region allows it", "on, off", () => WalkTeleportFallback,
             SettingsApi.Switch("walk_teleport_fallback", on => { Walk["teleport_fallback"] = on ? "on" : "off"; Save(); changed(); })));

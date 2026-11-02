@@ -160,7 +160,9 @@ public sealed partial class MainForm : Form
         AddVoiceSettings(host.SettingsApi);
         StartBuilders();
         _cmd.Voice = words => (Task)Invoke(() => VoiceWordsAsync(words));
+        _cmd.ImSound = words => (Task)Invoke(() => ImSoundWordsAsync(words));
         host.ScreenReader.Shape = Shape;
+        host.ScreenReader.Announcer.Spoke = Spoke;
         host.ScreenReader.WholeReplies = true;   // rich descriptions run past the announcer's length
         host.ScreenReader.Announcer.WholeAnswers = true;   // so do F1's keys, //help, a long outfit or parcel list
         host.ScreenReader.MusicMuted = () => _set.MuteAll;
@@ -355,12 +357,10 @@ public sealed partial class MainForm : Form
         {
             if (InFriendsBurst(e)) return null;   // said with the others once they stop (MainForm.FriendsOnline.cs)
             var said = Sentences(line);
-            NoticeSaid(said, LogWords.FromOf(e));
+            NoticeSaid(said, LogWords.FromOf(e), e.NoticeId);
             return said;
         }
-        var shaped = ShapeLine(e, line);
-        LineSaid(e, shaped);
-        return shaped;
+        return ShapeLine(e, line);
     }
 
     string ShapeLine(FeedEntry e, string line)
@@ -379,23 +379,23 @@ public sealed partial class MainForm : Form
 
     // --- a notice cut off --------------------------------------------------------------------------------------------
 
-    (string Text, long At, LineFrom From)? _noticeSaid;
+    (string Text, long At, LineFrom From, Guid Id)? _noticeSaid;
     bool _noticeCut;
     nint _focusWas;
     long _focusMovedAt;
 
     /// <summary>A notice just handed to the reader (the announcer's thread).</summary>
-    void NoticeSaid(string line, LineFrom from)
+    void NoticeSaid(string line, LineFrom from, Guid id)
     {
-        lock (_noticeLock) { _noticeSaid = (line, Environment.TickCount64, from); _noticeCut = false; }
+        lock (_noticeLock) { _noticeSaid = (line, Environment.TickCount64, from, id); _noticeCut = false; }
     }
 
     readonly object _noticeLock = new();
 
     /// <summary>The screen reader stops speaking at a key press or a focus move, so a notice said a moment before one is
     /// lost (the guided test: "Control N to answer." gone under Alt+1). If one came before the notice could have been
-    /// heard out, it's said again, once, when the keys have rested a moment; not when the focus went to the notices
-    /// (they read it there).</summary>
+    /// heard out, it's said again, once, when the keys have rested a second; not once the focus has been in the notices
+    /// (they read it there), nor if it no longer waits (answered there, or gone).</summary>
     void NoticeCutOff()
     {
         long now = Environment.TickCount64;
@@ -408,17 +408,17 @@ public sealed partial class MainForm : Form
             if (_noticeSaid is not { } n) return;
             from = n.From;
             // Control or Shift alone is the screen reader's own key to stop or pause speech: silenced on purpose, not lost
-            if (RealInput.SilencedAt > n.At) { _noticeSaid = null; return; }
+            if (RealInput.SilencedAt > n.At || _noticesPage.ContainsFocus) { _noticeSaid = null; return; }
             // about as long as a quick screen reader voice takes over it, at least a second and at most three
             long heard = n.At + Math.Clamp(n.Text.Length * 45L, 1000, 3000);
             long cut = Math.Max(RealInput.LastKeyAt, _focusMovedAt);
             if (!_noticeCut && cut > n.At && cut < heard) _noticeCut = true;
             if (!_noticeCut) { if (now > heard) _noticeSaid = null; return; }
-            if (now - RealInput.LastKeyAt < 700 || now - _focusMovedAt < 700) return;
+            if (now - RealInput.LastKeyAt < KeysRest || now - _focusMovedAt < KeysRest) return;
             _noticeSaid = null;
-            if (!_notices.Focused) again = n.Text;
+            if (n.Id == Guid.Empty || Host?.Session.Notify.Get(n.Id) != null) again = n.Text;
         }
-        if (again != null) Reader?.Say(AnnounceKind.Notices, again, keep: false, from);
+        if (again != null && !_set.MuteAll) Reader?.Say(AnnounceKind.Notices, again, keep: false, from, again: true);
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern nint GetFocus();
@@ -494,6 +494,7 @@ public sealed partial class MainForm : Form
         Alt or F10: the menu bar
         Control+Tab or Control+Page Down: the next conversation (IMs and group chats), with Shift or Page Up the one before
         Control+W: close a conversation
+        In a conversation, the Applications key: a sound of its own for their IMs
         Tab and Shift+Tab: between the history and where you type
         In nearby chat, Tab from Say: the history, then the people nearby
 

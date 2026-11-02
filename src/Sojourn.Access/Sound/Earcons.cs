@@ -13,7 +13,8 @@ namespace Sojourn.Access.Sound;
 /// quieter the further they are), the rest centred. Nothing for the conversation the person is in, or a source muted
 /// there (Shift+F6). In Sojourn Access these stand in for the viewer's new-IM and alert sounds (AudioWiring
 /// .ConversationSound, SocialWiring.AppAlertSound), so a line never sounds twice. Every one has its words: the line
-/// itself, read out and in its history. Written by Claude Opus 5.5, 2026-10-29.
+/// itself, read out and in its history. Someone given a sound of their own (ImSounds) rings it in place of the IM's (a
+/// group: the group chat's). Written by Claude Opus 5.5, 2026-10-29.
 /// </summary>
 public sealed class Earcons
 {
@@ -75,12 +76,16 @@ public sealed class Earcons
     public void Arrived(FeedEntry e)
     {
         if (_quiet(e)) return;
+        var own = OwnSound(e);
+        // an IM from someone given a sound of their own: that sound, even when it names you (an IM is to you anyway)
+        if (own is { Kind: "im" } && Ring(own.Value)) return;
         // a mention or keyword sounds as one, whatever chat it's in; with that kind off, as its own kind
         if (!e.Mine && e.Alert && _set.EarconLevel("mention") > 0)
         {
             if (Due(CueSounds.Cue.EarMention)) _sounds.Play(CueSounds.Cue.EarMention, _set.EarconLevel("mention"), null);
             return;
         }
+        if (own is { Kind: "group" } && Ring(own.Value)) return;
         if (Classify(e) is not { } c) return;
         float level = _set.EarconLevel(c.Kind);
         if (level <= 0 || !Due(c.Cue)) return;
@@ -91,6 +96,38 @@ public sealed class Earcons
             return;
         }
         _sounds.Play(c.Cue, level, null);
+    }
+
+    /// <summary>The sound the person gave who an IM is from, or a group's chat (ImSounds), with the kind whose level it
+    /// plays at; null for none.</summary>
+    (string Kind, CueSounds.Cue Cue)? OwnSound(FeedEntry e)
+    {
+        if (e.Mine) return null;
+        var (kind, id) = e.Kind switch
+        {
+            FeedKind.Im when e.Style != FeedStyle.Object => ("im", e.From),
+            FeedKind.Group when UUID.TryParse(e.Session, out var g) => ("group", g),
+            _ => ("", UUID.Zero),
+        };
+        return id != UUID.Zero && ImSounds.CueOf(_set.ImSoundOf(id)) is { } cue ? (kind, cue) : null;
+    }
+
+    /// <summary>Plays someone's own sound at their kind's level, one at a time with that kind's usual sound (offline IMs
+    /// from several people at login ring once); false when the kind is off, so it goes on as if they had none.</summary>
+    bool Ring((string Kind, CueSounds.Cue Cue) own)
+    {
+        float level = _set.EarconLevel(own.Kind);
+        if (level <= 0) return false;
+        if (Due(own.Kind == "im" ? CueSounds.Cue.EarIm : CueSounds.Cue.EarGroup)) _sounds.Play(own.Cue, level, null);
+        return true;
+    }
+
+    /// <summary>A sound being chosen for someone (as she moves through the list): played at the IM's (or group chat's)
+    /// level, or medium while that kind is off, so it can be heard to choose.</summary>
+    public void Try(CueSounds.Cue cue, bool group)
+    {
+        float level = _set.EarconLevel(group ? "group" : "im");
+        _sounds.Play(cue, level > 0 ? level : 0.45f, null);
     }
 
     /// <summary>The sound a setting's row stands for, to play when the person changes it (Alt+0), so each can be learned.</summary>
