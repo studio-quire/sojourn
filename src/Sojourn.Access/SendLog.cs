@@ -1,7 +1,3 @@
-using System.IO.Compression;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Sojourn.Session;
@@ -12,8 +8,8 @@ namespace Sojourn.Access;
 /// <summary>
 /// Help > Send a log (//sendlog): a session's log sent to Studio Quire through its relay with the person's Studio Quire
 /// token, with a note on what happened, other people's words left out and their names made stand-ins
-/// (Sojourn.Session/LogShare.cs). A small window of standard controls, opened by the person's own key, the focus in
-/// its note; what's sent can be read before sending; the outcome is said. Without a token it says that sending needs
+/// (Sojourn.Session/LogShare.cs; sent by LogSend.cs, which the VR client's reports share). A small window of standard
+/// controls, opened by the person's own key, the focus in its note; what's sent can be read before sending; the outcome is said. Without a token it says that sending needs
 /// one, and where problems can be reported instead. docs/access-app.md > Sending a log. Written by Claude Opus 5.5, 2026-10-31.
 /// </summary>
 public sealed partial class MainForm
@@ -40,9 +36,6 @@ public sealed partial class MainForm
 
 sealed class SendLogForm : Form
 {
-    const string RelayUrl = "https://relay.studioquire.org";
-    const int MaxBytes = 1_400_000;   // compressed, under the relay's limit (tools/relay/worker.js LOG_MAX)
-
     readonly List<LogShare.Session> _logs;
     readonly string? _current;
     readonly ILogger? _log;
@@ -174,15 +167,14 @@ sealed class SendLogForm : Form
         try
         {
             var (body, cut) = Pack(r, _note.Text.Trim());
-            var url = (Environment.GetEnvironmentVariable("SOJOURN_RELAY") is { Length: > 0 } u ? u.TrimEnd('/') : RelayUrl) + "/relay/log";
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
-            using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new ByteArrayContent(body) };
-            req.Content.Headers.ContentType = new MediaTypeHeaderValue("application/gzip");
-            req.Headers.Add("x-api-key", token);
-            req.Headers.UserAgent.ParseAdd($"SojournAccess/{AppInfo.Version}");
-            using var res = await http.SendAsync(req);
-            var answer = await res.Content.ReadAsStringAsync();
-            if (res.IsSuccessStatusCode)
+            var res = await LogSend.PostAsync(body, token, $"SojournAccess/{AppInfo.Version}");
+            if (res.Unreached is { } unreached)
+            {
+                _log?.LogWarning("sendlog: {Msg}", unreached);
+                Speak($"Not sent: Studio Quire's relay couldn't be reached ({unreached}).");
+                return;
+            }
+            if (res.Ok)
             {
                 _log?.LogInformation("sendlog: {File} sent ({Lines} lines, {Out} with words left out, {Kb} KB{Cut})", Path.GetFileName(Chosen.Path),
                     r.Lines, r.LeftOutLines, body.Length / 1024, cut ? ", cut in the middle to fit" : "");
@@ -190,19 +182,14 @@ sealed class SendLogForm : Form
                 DialogResult = DialogResult.OK;
                 return;
             }
-            var told = Message(answer);
-            _log?.LogWarning("sendlog: the relay answered {Status}: {Msg}", (int)res.StatusCode, told ?? "");
-            Speak(((int)res.StatusCode) switch
+            var told = res.Message;
+            _log?.LogWarning("sendlog: the relay answered {Status}: {Msg}", res.Status, told ?? "");
+            Speak(res.Status switch
             {
                 401 => "Studio Quire's relay didn't take your token. Nothing was sent.",
                 429 => told ?? "Too many logs sent today. Try again tomorrow.",
-                _ => $"Not sent: {told ?? $"the relay answered {(int)res.StatusCode}"}.",
+                _ => $"Not sent: {told ?? $"the relay answered {res.Status}"}.",
             });
-        }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException)
-        {
-            _log?.LogWarning("sendlog: {Msg}", e.Message);
-            Speak($"Not sent: Studio Quire's relay couldn't be reached ({(e is TaskCanceledException ? "no answer in time" : e.Message)}).");
         }
         finally
         {
@@ -211,35 +198,15 @@ sealed class SendLogForm : Form
         }
     }
 
-    static string? Message(string json)
-    {
-        try { return JsonNode.Parse(json)?["error"]?["message"]?.GetValue<string>(); }
-        catch (Exception e) when (e is JsonException or InvalidOperationException) { return null; }
-    }
-
-    /// <summary>The note and the filtered log as gzipped JSON; a log too long for the relay loses lines from its middle
-    /// (the start and the end tell most), saying so in the log.</summary>
-    (byte[] Body, bool Cut) Pack(LogShare.Result r, string note)
-    {
-        var lines = r.Text.Split('\n');
-        int keep = lines.Length;
-        while (true)
+    /// <summary>The note and the filtered log as gzipped JSON (LogSend.Pack: a log too long for the relay loses lines
+    /// from its middle, saying so in the log).</summary>
+    (byte[] Body, bool Cut) Pack(LogShare.Result r, string note) =>
+        LogSend.Pack(r.Text, text => new JsonObject
         {
-            var text = keep >= lines.Length ? r.Text
-                : string.Join('\n', lines.Take(keep / 2)) + $"\n... {lines.Length - keep} lines left out here to fit ...\n" + string.Join('\n', lines.Skip(lines.Length - keep / 2));
-            var o = new JsonObject
-            {
-                ["v"] = 1, ["app"] = $"Sojourn Access {AppInfo.Version}", ["commit"] = AppInfo.Commit,
-                ["session"] = Chosen.Started.ToString("yyyy-MM-dd HH:mm:ss"), ["current"] = Words(Chosen).StartsWith("This session"),
-                ["note"] = note, ["lines"] = r.Lines, ["left_out"] = r.LeftOutLines, ["log"] = text,
-            };
-            using var ms = new MemoryStream();
-            using (var gz = new GZipStream(ms, CompressionLevel.SmallestSize, leaveOpen: true))
-                gz.Write(Encoding.UTF8.GetBytes(o.ToJsonString(LogShare.Json)));
-            if (ms.Length <= MaxBytes || keep < 200) return (ms.ToArray(), keep < lines.Length);
-            keep = (int)(keep * 0.7);
-        }
-    }
+            ["v"] = 1, ["app"] = $"Sojourn Access {AppInfo.Version}", ["commit"] = AppInfo.Commit,
+            ["session"] = Chosen.Started.ToString("yyyy-MM-dd HH:mm:ss"), ["current"] = Words(Chosen).StartsWith("This session"),
+            ["note"] = note, ["lines"] = r.Lines, ["left_out"] = r.LeftOutLines, ["log"] = text,
+        });
 
     /// <summary>Said through the person's screen reader (the main window's announcer, which reads over any window).</summary>
     void Speak(string text) => (Owner as MainForm)?.Answer(text);

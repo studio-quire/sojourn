@@ -68,7 +68,7 @@ public static class ThingCardPainter
         if (lines.Count == 2) lines[1] = Ellipsize(lines[1], titleF, right - Pad);
         foreach (var l in lines) { draw.Text(l, Pad, y + 18, titleF, k.Text); y += 24; }
         var dimF = Font(k.Regular, 14);
-        string? sub = v.Page switch { CardPage.Pay => "pay", CardPage.Open => "inside it", _ => v.Owner };
+        string? sub = v.Page switch { CardPage.Pay => Lang.T("pay"), CardPage.Open => Lang.T("inside it"), _ => v.Owner };
         if (sub is { Length: > 0 })
         {
             draw.Text(Ellipsize(sub, dimF, (y < 48 ? right : W - Pad) - Pad), Pad, y + 15, dimF, k.Dim);
@@ -98,7 +98,7 @@ public static class ThingCardPainter
                     bool on = a.Do == ThingDo.Ask && v.Asking || a.Do == ThingDo.About && v.About;
                     draw.KeyFace(row, Math.Min(16, k.Look.Radius * 0.75f), lit(keys.Count), on ? 1.6f : 1);
                     var lf = Font(k.Regular, 16.5f);
-                    string label = a.Do == ThingDo.Ask && v.Latched ? "send" : a.Label;
+                    string label = a.Do == ThingDo.Ask && v.Latched ? Lang.T("send") : a.Label;
                     float detailW = a.Detail is { } d ? Measure(dimF, d) + 10 : 0;
                     draw.Text(Ellipsize(label, lf, row.Width - 32 - detailW), row.Left + 16, row.MidY + 6, lf, k.Text);
                     if (a.Detail is { } dt) draw.TextRight(dt, row.Right - 16, row.MidY + 5, dimF, k.Dim);
@@ -117,7 +117,7 @@ public static class ThingCardPainter
                         float x = Pad - 8 + (i % 3) * (cell + Gap);
                         if (i > 0 && i % 3 == 0) y += RowH + Gap;
                         var r = new SKRect(x, y, x + cell, y + RowH);
-                        draw.Key(r, $"L${v.Amounts[i]}", lit(keys.Count), 16.5f);
+                        draw.Key(r, Lang.F("L${0}", v.Amounts[i]), lit(keys.Count), 16.5f);
                         keys.Add(new CardKey(CardKeyKind.Amount, i, r));
                     }
                     if (v.Amounts.Count > 0) y += RowH + Gap;
@@ -131,19 +131,19 @@ public static class ThingCardPainter
                     foreach (var it in v.Contents.Take(Shown))
                     {
                         draw.Text(Ellipsize(it.Name, f, W - 2 * Pad - 70), Pad, y + 15, f, it.Copy ? k.Text : k.Dim);
-                        draw.TextRight(it.Type, W - Pad, y + 15, Font(k.Regular, 13), k.Faint);
+                        draw.TextRight(Lang.T(it.Type, "type"), W - Pad, y + 15, Font(k.Regular, 13), k.Faint);
                         y += 21;
                     }
-                    if (v.Contents.Count > Shown) { draw.Text($"and {v.Contents.Count - Shown} more", Pad, y + 15, f, k.Dim); y += 21; }
-                    if (v.Contents.Count == 0) { draw.Text("nothing", Pad, y + 15, f, k.Dim); y += 21; }
+                    if (v.Contents.Count > Shown) { draw.Text(Lang.F("and {0} more", v.Contents.Count - Shown), Pad, y + 15, f, k.Dim); y += 21; }
+                    if (v.Contents.Count == 0) { draw.Text(Lang.T("nothing"), Pad, y + 15, f, k.Dim); y += 21; }
                     y += 10;
                     int copyable = v.Contents.Count(c => c.Copy);
                     if (copyable > 0)
                     {
                         var row = new SKRect(Pad - 8, y, W - Pad + 8, y + RowH);
                         draw.KeyFace(row, Math.Min(16, k.Look.Radius * 0.75f), lit(keys.Count));
-                        draw.Text("copy to inventory", row.Left + 16, row.MidY + 6, Font(k.Regular, 16.5f), k.Text);
-                        if (copyable < v.Contents.Count) draw.TextRight($"{copyable} of {v.Contents.Count}", row.Right - 16, row.MidY + 5, dimF, k.Dim);
+                        draw.Text(Lang.T("copy to inventory"), row.Left + 16, row.MidY + 6, Font(k.Regular, 16.5f), k.Text);
+                        if (copyable < v.Contents.Count) draw.TextRight(Lang.F("{0} of {1}", copyable, v.Contents.Count), row.Right - 16, row.MidY + 5, dimF, k.Dim);
                         keys.Add(new CardKey(CardKeyKind.CopyAll, 0, row));
                         y += RowH + Gap;
                     }
@@ -163,7 +163,7 @@ public static class ThingCardPainter
         if (facts.Count == 0) { draw.Dots(Pad + 4, y + 8, 0); return y + 24; }
         foreach (var (label, value) in facts)
         {
-            draw.Text(label, Pad, y + 12, lf, k.Faint);
+            draw.Text(Lang.T(label), Pad, y + 12, lf, k.Faint);
             y += 16;
             foreach (var l in Wrap(value, vf, W - 2 * Pad, label == "description" ? 4 : 2)) { draw.Text(l, Pad, y + 15, vf, k.Text); y += 20; }
             y += 6;

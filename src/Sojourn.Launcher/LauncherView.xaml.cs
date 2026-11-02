@@ -36,7 +36,7 @@ public partial class LauncherView : UserControl
     string? _forgetArmed;
     long _forgetArmedAt;
     string? _logPath;
-    string? _failed;   // the grid said no: the run is stopped and the reason stays at the foot
+    Func<string>? _failed;   // the grid said no: the run is stopped and the reason stays at the foot
     bool _arrived;     // the run got in world, so the client kept the account (and its password if asked)
     DateTime _noteUntil = DateTime.MaxValue;
     long _forgetPressedAt = -10_000;
@@ -44,9 +44,14 @@ public partial class LauncherView : UserControl
 
     public event Action? CloseRequested, MinimiseRequested;
 
+    /// <summary>Started with --dev: the client it launches is in dev mode (the person's own Claude Code session as the
+    /// assistant, docs/dev-mode.md), said under the wordmark.</summary>
+    internal bool Dev { init => DevNote.Visibility = value ? Visibility.Visible : Visibility.Collapsed; }
+
     internal LauncherView(Places places, LoginStore store, bool desktop, IReadOnlyList<string> extra)
     {
         InitializeComponent();
+        Words.Remember(this);
         _places = places;
         _store = store;
         _settings = new SettingsFile(places.SettingsPath);
@@ -60,7 +65,7 @@ public partial class LauncherView : UserControl
         foreach (var (value, label) in SettingsFile.Providers)
         {
             if (value == "claude" && !ProviderKeys.ClaudeOffered) continue;
-            var rb = new RadioButton { GroupName = "provider", Style = (Style)FindResource("Segment"), Content = label, Tag = value };
+            var rb = new RadioButton { GroupName = "provider", Style = (Style)FindResource("Segment"), Content = ProviderWords(label), Tag = value };
             rb.Checked += (_, _) => { if (!_loading) { _settings.Provider = value; ShowAssistant(); } };
             ProviderTrack.Children.Add(rb);
         }
@@ -133,6 +138,15 @@ public partial class LauncherView : UserControl
         LaunchKey.Click += (_, _) => Launch();
         StopKey.Click += (_, _) => { _run.Stop(); ShowStatus(_run.Status); };
         LogKey.Click += (_, _) => OpenLog();
+        LanguageList.Closed += (_, _) => _languageListClosedAt = Environment.TickCount64;
+        LanguageKey.Click += (_, _) =>
+        {
+            if (LanguageList.IsOpen) LanguageList.IsOpen = false;
+            else if (Environment.TickCount64 - _languageListClosedAt > 300) ShowLanguages();
+        };
+        Loaded += (_, _) => { Lang.Changed -= LanguageChanged; Lang.Changed += LanguageChanged; };
+        Unloaded += (_, _) => Lang.Changed -= LanguageChanged;
+        StartUpdates();
         _timer.Tick += (_, _) => Tick();
 
         Reload(_store.LastId);
@@ -176,7 +190,7 @@ public partial class LauncherView : UserControl
         }
         else
         {
-            AccountName.Text = "new account";
+            AccountName.Text = Lang.T("new account");
             AccountName.Foreground = (Brush)FindResource("Dim");
             AccountGrid.Visibility = Visibility.Collapsed;
             RememberSwitch.IsChecked = false;
@@ -196,7 +210,7 @@ public partial class LauncherView : UserControl
         bool kept = _account is { Remembered: true };
         PassBox.IsEnabled = !kept;
         PassField.Opacity = kept ? 0.6 : 1;
-        PassHint.Text = kept ? "password remembered" : "password";
+        PassHint.Text = Lang.T(kept ? "password remembered" : "password");
         PassHint.Visibility = kept || PassBox.SecurePassword.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -221,7 +235,7 @@ public partial class LauncherView : UserControl
                 Style = (Style)FindResource("Key"), Content = armed ? "" : "", FontSize = armed ? 14 : 11, Margin = new Thickness(4, 0, 8, 0),
                 Foreground = armed ? (Brush)FindResource("Coral") : (Brush)FindResource("Faint"), VerticalAlignment = VerticalAlignment.Center,
             };
-            System.Windows.Automation.AutomationProperties.SetName(forget, armed ? $"Forget {a.Name}: press again" : $"Forget {a.Name}");
+            System.Windows.Automation.AutomationProperties.SetName(forget, armed ? Lang.F("Forget {0}: press again", a.Name) : Lang.F("Forget {0}", a.Name));
             forget.Click += (_, _) =>
             {
                 if (_forgetArmed == a.Id && Environment.TickCount64 - _forgetArmedAt < 4000)
@@ -261,7 +275,7 @@ public partial class LauncherView : UserControl
         AccountsPage.Visibility = _listOpen ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = _settingsOpen ? Visibility.Visible : Visibility.Collapsed;
         SettingsKey.Content = _settingsOpen ? "" : "";
-        System.Windows.Automation.AutomationProperties.SetName(SettingsKey, _settingsOpen ? "Back" : "Settings");
+        System.Windows.Automation.AutomationProperties.SetName(SettingsKey, Lang.T(_settingsOpen ? "Back" : "Settings"));
     }
 
     // ---- settings ----
@@ -304,9 +318,8 @@ public partial class LauncherView : UserControl
         bool keyed = kind != "claude" || !chosen;   // none chosen: the box takes a key or token, which chooses its provider
         bool kept = kind != "claude" && ProviderKeys.Has(kind);
         bool armed = Environment.TickCount64 - _forgetPressedAt < 4000;
-        var noun = kind == "relay" ? "token" : "key";
-        KeyHint.Text = kind == "claude" ? (chosen ? "API key" : "key or token")
-            : kept ? (armed ? $"forget the {noun}?" : $"{ProviderKeys.Thing(kind)} kept") : ProviderKeys.Thing(kind);
+        KeyHint.Text = kind == "claude" ? Lang.T(chosen ? "API key" : "key or token")
+            : kept ? (armed ? Lang.T(kind == "relay" ? "forget the token?" : "forget the key?") : Lang.F("{0} kept", Thing(kind))) : Thing(kind);
         // a kept key: the box greyed out and closed, as a remembered password; × (twice) forgets it and opens it again
         KeyBox.IsEnabled = !kept;
         KeyBox.Opacity = kept ? 0.6 : 1;
@@ -330,7 +343,7 @@ public partial class LauncherView : UserControl
         if (_keyForeign)
         {
             KeyBox.Clear();
-            Note("paste the key again", null, TimeSpan.FromSeconds(8), alarm: true);
+            Note(Say("paste the key again"), null, TimeSpan.FromSeconds(8), alarm: true);
             return;
         }
         var text = KeyBox.Password;
@@ -343,10 +356,10 @@ public partial class LauncherView : UserControl
         try { kind = ProviderKeys.Keep(text); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException) { kind = null; }
         KeyBox.Clear();
-        if (kind == null) { Note("couldn't keep the key", null, TimeSpan.FromSeconds(8), alarm: true); return; }
+        if (kind == null) { Note(Say("couldn't keep the key"), null, TimeSpan.FromSeconds(8), alarm: true); return; }
         _settings.Provider = kind;
         LoadSettings();
-        Note($"{ProviderKeys.Thing(kind)} kept", null, TimeSpan.FromSeconds(8));
+        Note(() => Lang.F("{0} kept", Thing(kind)), null, TimeSpan.FromSeconds(8));
     }
 
     /// <summary>× twice within four seconds: the provider's key deleted.</summary>
@@ -363,7 +376,7 @@ public partial class LauncherView : UserControl
         _forgetPressedAt = -10_000;
         ProviderKeys.Forget(kind);
         ShowAssistant();
-        Note($"{ProviderKeys.Thing(kind)} forgotten", null, TimeSpan.FromSeconds(8));
+        Note(() => Lang.F("{0} forgotten", Thing(kind)), null, TimeSpan.FromSeconds(8));
     }
 
     /// <summary>OpenRouter's model as typed (any id) or picked from the list; empty: Claude's three.</summary>
@@ -457,7 +470,7 @@ public partial class LauncherView : UserControl
         if (terms)
         {
             bool tos = (string?)s.Question!["kind"] == "tos";
-            TermsTitle.Text = tos ? "Terms of Service" : "From the grid";
+            ShowTermsTitle();
             TermsText.Text = (string?)s.Question["text"] is { Length: > 0 } t ? t : tos ? "lindenlab.com/tos" : "";
             AgreeSwitch.Visibility = tos ? Visibility.Visible : Visibility.Collapsed;
             AgreeSwitch.IsChecked = false;
@@ -472,6 +485,12 @@ public partial class LauncherView : UserControl
         }
         _asked = null;
         UpdateContinue();
+    }
+
+    void ShowTermsTitle()
+    {
+        if (_questionShown is { Phase: Phase.Terms } s)
+            TermsTitle.Text = Lang.T((string?)s.Question?["kind"] == "tos" ? "Terms of Service" : "From the grid");
     }
 
     void UpdateContinue()
@@ -489,7 +508,7 @@ public partial class LauncherView : UserControl
     void Answer(bool accept)
     {
         if (_questionShown is not { } s || _asked != null) return;
-        if (!RealPress.Now()) { Note("press it with the mouse or keyboard", null, TimeSpan.FromSeconds(8), alarm: true); return; }
+        if (!RealPress.Now()) { Note(Say("press it with the mouse or keyboard"), null, TimeSpan.FromSeconds(8), alarm: true); return; }
         JsonObject answer;
         if (s.Phase == Phase.Terms)
         {
@@ -504,7 +523,7 @@ public partial class LauncherView : UserControl
             answer = new JsonObject { ["code"] = code, ["remember"] = RememberComputer.IsChecked == true };
             CodeBox.Clear();
         }
-        if (!_run.Answer(answer)) { Note($"answer {(s.Headset ? "in the headset" : "in the window")}", null, TimeSpan.FromSeconds(8), alarm: true); return; }
+        if (!_run.Answer(answer)) { Note(Say(s.Headset ? "answer in the headset" : "answer in the window"), null, TimeSpan.FromSeconds(8), alarm: true); return; }
         _asked = s.Question?.ToJsonString();
         UpdateContinue();
     }
@@ -551,7 +570,7 @@ public partial class LauncherView : UserControl
         if (failed != null)
         {
             _store.DropHandOver();
-            Note(failed, null);
+            Note(() => Lang.T(failed), null);   // ours ("not built: {0}") or the system's own words
             return;
         }
         _failed = null;
@@ -588,21 +607,9 @@ public partial class LauncherView : UserControl
         StatusPill.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         Pages.IsEnabled = !running;
         Pages.Opacity = running ? 0.55 : 1;
-        SettingsKey.IsEnabled = !running;
-        string where = s.Headset ? "in the headset" : "in the window";
-        bool here = s.Answers && s.Question is not null;   // answered here as well as there
-        StatusText.Text = s.Phase switch
-        {
-            Phase.Starting => "starting",
-            Phase.Form => $"log in {where}",
-            Phase.Connecting => "logging in",
-            Phase.Terms => here ? "terms" : $"terms, {where}",
-            Phase.Code => here ? "authenticator code" : $"authenticator code, {where}",
-            Phase.Failed => $"didn't log in",
-            Phase.World => s.Headset ? "in the headset" : "on the desktop",
-            Phase.Ending => "closing",
-            _ => "",
-        };
+        SettingsKey.IsEnabled = LanguageKey.IsEnabled = !running;   // (the client saves the settings file while it runs)
+        if (running) LanguageList.IsOpen = false;
+        StatusText.Text = StatusWords(s);
         if (s.Phase == Phase.World) _arrived = true;
         ShowQuestion(s);
         bool waiting = s.Phase is Phase.Terms or Phase.Code or Phase.Form;
@@ -616,26 +623,62 @@ public partial class LauncherView : UserControl
         {
             case Phase.Failed:
                 // the reason here, the form back to fix it: the client's own sheet (Back, Try again) is for a login
-                // that fails later, in the headset
-                _failed = s.Detail ?? "didn't log in";
+                // that fails later, in the headset. The grid's reason is its own words; without one, ours
+                var reason = s.Detail;
+                _failed = reason != null ? () => reason : Say("didn't log in");
                 Note(_failed, null, alarm: true);
                 _run.Stop();
                 break;
-            case Phase.Crashed: Note(s.Detail ?? "stopped unexpectedly", s.Log, alarm: true); break;
+            case Phase.Crashed:
+                // the run's detail is ours (ClientRun: "the graphics card was reset")
+                Note(Say(s.Detail ?? "stopped unexpectedly"), s.Log, alarm: true);
+                CrashReport.Offer(this, _places, _settings, s, said => Note(said, s.Log, alarm: true));   // (CrashReportView.xaml.cs)
+                break;
             case Phase.Ended when _failed != null: Note(_failed, null, alarm: true); break;
-            case Phase.Ended: Note("ended", null, TimeSpan.FromSeconds(8)); break;
+            case Phase.Ended: Note(Say("ended"), null, TimeSpan.FromSeconds(8)); break;
             case Phase.Idle: Note(null, null); break;
             default: if (running) Note(null, null); break;
         }
     }
 
-    void Note(string? text, string? log, TimeSpan? lasts = null, bool alarm = false)
+    /// <summary>The run's state in a word or two, in the person's language.</summary>
+    static string StatusWords(RunStatus s)
+    {
+        bool here = s.Answers && s.Question is not null;   // answered here as well as there
+        return s.Phase switch
+        {
+            Phase.Starting => Lang.T("starting"),
+            Phase.Form => Lang.T(s.Headset ? "log in in the headset" : "log in in the window"),
+            Phase.Connecting => Lang.T("logging in"),
+            Phase.Terms => Lang.T(here ? "terms" : s.Headset ? "terms, in the headset" : "terms, in the window"),
+            Phase.Code => Lang.T(here ? "authenticator code" : s.Headset ? "authenticator code, in the headset" : "authenticator code, in the window"),
+            Phase.Failed => Lang.T("didn't log in"),
+            Phase.World => Lang.T(s.Headset ? "in the headset" : "on the desktop"),
+            Phase.Ending => Lang.T("closing"),
+            _ => "",
+        };
+    }
+
+    /// <summary>Words of ours for the foot, said again in the new language if it changes while they show.</summary>
+    static Func<string> Say(string english) => () => Lang.T(english);
+
+    Func<string>? _note;
+    bool _noteAlarm;
+
+    void Note(Func<string>? say, string? log, TimeSpan? lasts = null, bool alarm = false)
     {
         _logPath = log;
         _noteUntil = lasts is { } t ? DateTime.UtcNow + t : DateTime.MaxValue;
-        NoteText.Text = text ?? $"Sojourn {Places.Version}";
-        NoteText.Foreground = (Brush)FindResource(alarm ? "Coral" : "Faint");
-        LogKey.Visibility = log != null ? Visibility.Visible : Visibility.Collapsed;
+        _note = say;
+        _noteAlarm = alarm;
+        ShowNote();
+    }
+
+    void ShowNote()
+    {
+        NoteText.Text = _note?.Invoke() ?? $"Sojourn {Places.Version}";
+        NoteText.Foreground = (Brush)FindResource(_noteAlarm ? "Coral" : "Faint");
+        LogKey.Visibility = _logPath != null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void OpenLog()
@@ -664,7 +707,8 @@ public partial class LauncherView : UserControl
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
-        if (e.Key == Key.Escape && (_listOpen || _settingsOpen)) { ShowList(false); ShowSettings(false); e.Handled = true; }
+        if (e.Key == Key.Escape && LanguageList.IsOpen) { LanguageList.IsOpen = false; e.Handled = true; }
+        else if (e.Key == Key.Escape && (_listOpen || _settingsOpen)) { ShowList(false); ShowSettings(false); e.Handled = true; }
         base.OnPreviewKeyDown(e);
     }
 }

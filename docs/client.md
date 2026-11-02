@@ -370,6 +370,52 @@ the client sees as `ErrorDeviceLost`. A device loss anywhere in the frame loop e
   restarted run), for testing without resetting the driver; with `SOJOURN_FAKE_HELD=1` too, the failure reaches the
   frame loop a minute late, as when `xrWaitFrame` held it, so the watch's restart (rule 1) can be seen.
 
+## About, problem and crash reports, the viewer statistics
+
+Written by Claude Opus 5.5, 2026-11-01 (batch R; the TPV policy's side in `docs/tpv-policy.md`).
+- **About** is the settings menu's last section, in the headset and on the desktop (`Control/AboutMenu.cs`): the name,
+  version and commit, the disclaimer, who made it (the models, and the user's role, credited as Shoalstone), the
+  licence and source, support (none formal: report a problem, or GitHub issues); then **report a problem** (a page),
+  **third-party notices** (THIRD_PARTY.md embedded in the build, in the reader), **crash reports** (ask, always,
+  never) and, in the advanced menu, **MAC and disk serial in statistics**. Its words come from `SojournRelease about`
+  (`Session/Release/ReleaseApi.cs`), so the assistant's `sojourn` tool says the same. The section's words are drawn
+  above its rows as the help box is (`Panel.DrawMenu`'s `text`).
+- **A report** (`Session/Release/ProblemReport.cs`, linked into the launcher) is a session's log filtered exactly as
+  Sojourn Access's Send a log filters it (`LogShare.cs`, `docs/access-app.md` > Sending a log: nothing other people
+  said or wrote, their names and keys "person N", the person's own "me", keys, capability URLs, the Windows account's
+  folder and public addresses masked), with the person's note, and for a crash how it ended (the exit code in words)
+  and the .NET runtime's last words from the console ("Unhandled exception." or "Fatal error." and its frames), folded
+  into the log before filtering so the same filter covers them. It goes to the studio relay (`LogSend.cs`, shared
+  with Access; `kind` and `exit_code` beside Access's fields): with a Studio Quire token kept (`ProviderKeys`, the
+  launcher's key box) to `/relay/log` as Access's logs go, without one to `/relay/report`, which takes Sojourn's reports
+  from anyone within its limits (three a day from one address, fifty a day in all; the address itself isn't kept;
+  `tools/relay/README.md`; the user's ask, 2026-11-01). Either way kept 30 days. Or, the person's other choice, it's
+  saved as `reports/sojourn-<kind>-<time>.txt` in the base dir (the newest ten kept), shown in Explorer, and GitHub's
+  new-issue page opens for them to attach it.
+- **Report a problem**: the menu's page says what goes and where, reviews it in the reader, and sends it (send to
+  Studio Quire) or saves it (save for GitHub) at the person's press, the outcome under the row. With words, through
+  the assistant: `SojournRelease reportProblem {note}` waits for a confirmation on the panel (what goes and where, the
+  log's lines behind its list key) and sends only on the person's yes (a `Confirmations.Cases` entry). Refused while
+  incognito is blind.
+- **After a crash**: the launcher's window (`docs/launcher.md` > After a crash). In runs from the repo (or with
+  `SOJOURN_DUMPS=1`) a crash also leaves a minidump in the base dir's `dumps/` (the runtime's createdump, stacks and
+  modules, the newest three kept), for us to open in a debugger; it holds memory, so it never goes in a report, and
+  packaged builds make none. createdump writes no exception record on Windows and fires only for managed crashes and
+  faults on .NET's threads (a crash on a native thread such as a driver's leaves none), so the report relies on the
+  console and exit code instead (checked 2026-11-01).
+- **The viewer statistics** (`Session/Release/ViewerStats.cs`, both apps; TPV policy 2.h): as the official viewer's
+  `send_viewer_stats`, an LLSD POST to the region's ViewerStats cap once a login's region has its capabilities, every
+  300 s, and at logout (`AgentSession.BeforeLogout`, 3 s at most). `agent`: start and run time (0 before 150 s),
+  frame rate (the client's, sampled every 5 s), version "Sojourn 0.1.0.N", language, ping, regions visited, memory,
+  avatars in view (a count); `system`: OS, CPU and its MHz, RAM and free RAM, bitness, threads, GPU (name and Vulkan
+  version, maker, driver, VRAM); `stats.misc` the viewer's Vulkan line; `misc.Version`; the session id. Left out:
+  what we don't measure (download totals, packet counts, distance travelled), `ui` (Firestorm drops it too), the
+  inventory's validation, and the viewer's preferences at quit (ours aren't the viewer's). `mac_address` (the first
+  adapter's, as the viewer formats it) and `serial_number` (the MD5 of C:'s volume serial, as the viewer makes it) only
+  with `stats_hardware_ids`, off by default (the user's call, 2026-11-01: left out). `SojournRelease stats` shows the report as it would go (`send: true`
+  sends one now). Checked 2026-11-01 on the local grid: OpenSim gives no ViewerStats cap, so it says so once and sends
+  nothing; the POST itself is first exercised on Second Life (the log says `viewer stats: sent (200)`).
+
 ## The local grid
 
 `local/grid/` (gitignored) is a copy of Multitude's phase 2 render grid (`projects/multitude/local/grid-p2`) moved
@@ -443,13 +489,25 @@ lab 8300-8899; Tessel 9063, 9070, 9020, 9080.
   ignores a crossing that comes while the last is unfinished (a vehicle over two borders in seconds).
   `Agents/CrossingGuard.cs` finishes the crossing, restores the flag, lets the acknowledgement wait go at once for a
   circuit already up (crossings, and teleports into a connected neighbour), ends a stale crossing for a newer one, and
-  says a crossing that fails (notice `CrossingFailed`). All by reflection on private members: recheck them on a
-  LibreMetaverse upgrade; the guard logs "crossing into ..." when it acts. `SOJOURN_CROSSING_GUARD=0` turns the last
-  three off; with it, `SOJOURN_CROSSING_NOACK=MS` holds each crossing MS ms as the wait did. OpenSim takes a late
-  CompleteAgentMovement 40 s on and keeps the rider seated; on Second Life the train found itself without a driver
-  about 10 s in.
+  says a crossing that fails (notice `CrossingFailed`). Ending a stale crossing wasn't enough by itself: the stale
+  region's late reply then made LibreMetaverse "recover" into that region and drop the new one's circuit (the session
+  lost its region 30 s on), so the guard drops a superseded crossing's reply (for 30 s, or until the agent crosses or
+  teleports there again; TeleportWatch's handler asks it). It never asks a region again for a reply that's merely slow
+  (the viewer doesn't; OpenSim then held the agent 10 s in a second CompleteMovement and the vehicle couldn't cross
+  meanwhile), only when one came early and the machine can't be stepped by reflection. All by reflection on private
+  members: recheck them on a LibreMetaverse upgrade; the guard logs "crossing into ..." when it acts.
+  `SOJOURN_CROSSING_GUARD=0` turns the acknowledgement release and the superseding off; with it,
+  `SOJOURN_CROSSING_NOACK=MS` holds each crossing MS ms as the wait did. `SOJOURN_ARRIVAL_DELAY_MS` holds every reply
+  (the guard hears it late too), as a slow region's. OpenSim takes a late CompleteAgentMovement 40 s on and keeps the
+  rider seated; on Second Life the train found itself without a driver about 10 s in.
   `python tools/crossing.py [--sound] [--noack MS]`: a seated crossing in the visitor's kart through a console session
-  (no GPU, no window): in Atelier East, still seated, connected, and with `--sound` the kart's loop heard from the kart.
+  (no GPU, no window): in Atelier East, still seated, connected, no CrossingFailed or RegionLost notice, and with
+  `--sound` the kart's loop heard from the kart. `--corner` stages the blind tester's region corner: the kart, driving
+  itself once started as a train does, crosses from Atelier East into Northeast and about 3 s later into North, every
+  reply held 6 s so the second crossing comes while the first waits; it checks the second came then (the guard's
+  "while the last one was still ..." line, or LibreMetaverse's refusal) and that 35 s on the session is in North,
+  seated and connected. Checked 2026-11-01: guard on, passes; `--guard-off`, stuck in Northeast (LibreMetaverse
+  ignored the second crossing); before the dropped reply, the "recovery" above.
 - What a crossing leaves behind: old regions often never kill what crossed out (OpenSim crosses a ridden vehicle
   silently), and each region's store keeps its copy. Once the current region has the avatar and no crossing is under
   way, `WorldHub.SelfIn` drops the avatar's other copies with what they wear, other regions' copies of its attachments

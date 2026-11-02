@@ -128,6 +128,27 @@ Built and tested on the local grid (Testing, below). On Second Life in the heads
   canceller carries on); a chosen device that isn't connected (unplugged, Link off) falls back to automatic, logged.
   `SOJOURN_VOICE_MIC` / `SOJOURN_VOICE_SPEAKER` still override (tests). The engine and devices are shared with world
   audio (`Audio/AudioEngine.cs`): whichever starts first opens them.
+- **What each device is** (2026-11-01, after the blind tester stepped from her headset onto her TV's HDMI output,
+  named "4 - 2D HD LG TV (2- AMD High Definition Audio Device)", and heard nothing): the device list carries Windows'
+  form factor (`PKEY_AudioEndpoint_FormFactor`), said as a kind (speakers, headphones, a headset, a TV or monitor over
+  HDMI or DisplayPort, a digital output) in `SojournAudio devices` and Access, and orders the lists: speakers,
+  headphones and headsets first, displays and digital outputs last, Windows' order within. A saved name matches the
+  device again after Windows renumbers a USB one by its port ("3- EPOS" plugged in elsewhere is "4- EPOS"). The log
+  has the outputs and mics at start ("audio: outputs: ..."), and again whenever the list is asked for and has changed
+  (a TV's HDMI output comes and goes with the TV).
+- **A change is checked** (2026-11-01): `SojournSettings` speakers / microphone (Access's rows and Control+Shift+O, the
+  assistant) answer only once the shim reports the device open as asked and, for the output, taking sound
+  (`AudioEngine.CheckAsync` over `sv_device_state`, 3 s at most). With `AudioWiring.SwitchChime` (Access: its own
+  sounds' volume) a soft two-note chime plays on the new output while `sv_output_probe` captures it by WASAPI loopback:
+  sound sent but none reaching the device, with no mute or volume to explain it, counts as not playing. A device that
+  doesn't start puts the choice back and the change is refused with why ("... didn't start: another program is using it
+  exclusively, error 0x8889000a. Sound stays on ..."); one that plays but that Windows has muted or near 0% (the
+  device, or this app in the volume mixer) is kept and said so. In the shim, a device asked for that's there but won't
+  start (Activate, Initialize or Start failing) plays the default meanwhile instead of retrying in silence, and is tried
+  again at Windows' next device change. Each output opened logs its format as Windows mixes it, period, buffer, and
+  Windows' volume and mute for it and for this app, and 2 s later what it took ("render: open ...", "render: NAME took
+  2000 ms of sound in its first 2 s (0 underruns)"), so a person's log tells a device that's playing from one that
+  isn't. What happens past the driver (a TV's own volume, input or standby) loopback can't see.
 - **Devices coming and going** (2026-10-31; before it, the blind tester unplugging a headset left Access silent until
   she logged in again): the shim follows Windows itself (`audio_io.cpp`, an `IMMNotificationClient`). Automatic follows
   the default as Windows moves it (a headset unplugged, plugged back in); a device asked for by name is used while it's
@@ -257,6 +278,20 @@ restarts the grid). OpenSim 0.9.3.1's Janus service names the stock AudioBridge 
   nothing there at all (the engine runs on at 100 frames a second, no spinning, no `failed`), devices back, the
   default moving and back; `sv_audio_start` returns in under 0.1 ms and `sv_audio_stop` in ~10 ms. A real unplug or
   default change can't be made here without touching the PC's own devices.
+- `switch [A B]`: the output moved between two real outputs (Steam's virtual pair by default; never the default
+  output) while a -60 dBFS tone plays, each heard by loopback capture (`test/listen.h`): the tone arrives on the new
+  one in 15-65 ms and is gone from the old, there and back; then B refusing to start (`sv_test_device` 4) while A
+  stands in for the default: the sound stays on A, the state says why; B starting again: the sound goes to B at the
+  next device change. Each phase also prints `sv_output_probe`'s reading. Onto this PC's HDMI monitor (LG FULL HD,
+  NVIDIA) at -70 dBFS: arrived, and loopback 9.4 dB down, which is Windows' 54% volume on that output, applied in
+  software (checked 2026-11-01).
+- `session-switch`: the same through a session host (Sojourn Probe on the local grid, `SOJOURN_TEST_SWITCH_CHIME`):
+  `SojournAudio devices` kinds and order; `SojournSettings` speakers between the Steam pair, answered in ~0.8 s, the
+  chime (about -29 dBFS) on the new output only; an output refusing to start (`SOJOURN_TEST_REFUSE_SPEAKER`,
+  `SOJOURN_TEST_DEFAULT_SPEAKER`): refused with why, the choice put back, nothing reaching it.
+- `listen OUTPUT [SECONDS]`: what reaches an output (any app's sound) by loopback capture, nothing played.
+- `SOJOURN_VOICE_BUILD=dir` builds and tests the shim in a folder of its own, leaving `local/voice/build` (which the
+  csproj copies) alone while another session's tests run.
 - `devices`, `chirp [--desktop|--synthetic]`: the echo path of real devices for the headset session (a sweep to the
   Oculus headphones, the Oculus mic raw and echo-cancelled; prints the round trip and echo level); `--synthetic` checks
   the tool on a made-up echo (120 ms, -6 dB).

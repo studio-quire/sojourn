@@ -1,4 +1,5 @@
-// heapwho FILE.gcdump [TOP]: what holds a managed heap.
+// heapwho FILE.gcdump [TOP] [--path TYPE]: what holds a managed heap (--path: how each object whose type name has TYPE
+// is reached from the roots, its chain of holders, grouped).
 // A breadth-first spanning tree from the roots gives every object one parent (the first that reaches it); retained
 // bytes are summed up that tree (an approximation of dominators, PerfView's way). Printed: the types retaining most,
 // and arrays of 80 KB or more grouped by the chain of their three nearest holders' types.
@@ -6,7 +7,8 @@ using Graphs;
 using Microsoft.Diagnostics.Utilities;
 
 var dump = new GCHeapDump(args[0]);
-int top = args.Length > 1 ? int.Parse(args[1]) : 40;
+int top = args.Length > 1 && int.TryParse(args[1], out var t1) ? t1 : 40;
+string? pathOf = args.Contains("--path") ? args[Array.IndexOf(args, "--path") + 1] : null;
 var g = dump.MemoryGraph;
 int n = (int)g.NodeIndexLimit;
 var parent = new int[n];
@@ -86,3 +88,20 @@ foreach (int i in order)
 Console.WriteLine($"\nobjects of 80 KB or more, by holders (top {top}):");
 foreach (var (k, (b, c)) in chains.OrderByDescending(kv => kv.Value.Bytes).Take(top))
     Console.WriteLine($"  {b / 1048576.0,9:N1} MB {c,7:N0}  {k}");
+
+if (pathOf != null)
+{
+    var paths = new Dictionary<string, (long Bytes, int Count)>();
+    foreach (int i in order)
+    {
+        if (i == root || !Name(typeOf[i]).Contains(pathOf)) continue;
+        var parts = new List<string>();
+        for (int p = parent[i], k = 0; k < 10 && p != root; p = parent[p], k++) parts.Add(Name(typeOf[p]));
+        string key = string.Join(" <- ", parts);
+        var (b, c) = paths.GetValueOrDefault(key);
+        paths[key] = (b + retained[i], c + 1);
+    }
+    Console.WriteLine($"\nhow each {pathOf} is reached (its holders, nearest first; retained):");
+    foreach (var (k, (b, c)) in paths.OrderByDescending(kv => kv.Value.Bytes).Take(top))
+        Console.WriteLine($"  {b / 1048576.0,9:N1} MB {c,7:N0}  {k}");
+}

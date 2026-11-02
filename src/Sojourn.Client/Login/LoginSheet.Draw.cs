@@ -27,7 +27,7 @@ public sealed partial class LoginSheet
         (string? plain, string? detail) = s?.LoginFailure is { } f ? LoginWords.For(f.Key, f.Message) : (null, null);
         string who = Chosen?.Account.Name ?? (s != null ? (s.Config.Last.Equals("Resident", StringComparison.OrdinalIgnoreCase) ? s.Config.First : s.Config.LoginName) : "");
         return new Snap(stage, Interlocked.Read(ref _version), _hover, _help, _note, phase,
-            _accounts.Select(a => (a.Name, Grids.Label(a.Grid, a.GridName))).ToList(), _selected,
+            _accounts.Select(a => (a.Name, a.Grid == Grids.Beta ? Lang.T("Beta") : Grids.Label(a.Grid, a.GridName))).ToList(), _selected,
             _selected >= 0 && _selected < _accounts.Count && _accounts[_selected].Remembered, _forgetArmed,
             _user.Shown, _pass.Shown, _uri.Shown, _region.Shown, _code.Shown, focus,
             _remember, _grid, _start, _agree, _rememberComputer, _termsPage,
@@ -117,7 +117,7 @@ public sealed partial class LoginSheet
         if (!s.Help) return y;
         var k = draw.K;
         var hf = Font(k.Regular, 14);
-        var wrapped = lines.SelectMany(l => Wrap(l, hf, draw.W - 2 * Pad - 24, 4)).ToList();
+        var wrapped = lines.SelectMany(l => Wrap(Lang.T(l), hf, draw.W - 2 * Pad - 24, 4)).ToList();
         var box = new SKRect(Pad, y, draw.W - Pad, y + 14 + wrapped.Count * 20);
         draw.Recess(box, 14);
         float hy = y + 7;
@@ -277,7 +277,7 @@ public sealed partial class LoginSheet
             var pf = Font(k.Regular, 20);
             // + and its words, as the launcher's "new account"
             var af = Font(k.Regular, 16.5f);
-            const string adding = "new account";
+            var adding = Lang.T("new account");
             float aw = Measure(pf, "+") + 10 + Measure(af, adding), ax = add.MidX - aw / 2;
             draw.Text("+", ax, add.MidY + 7, pf, s.Selected < 0 ? k.Text : k.Dim);
             draw.Text(adding, ax + Measure(pf, "+") + 10, add.MidY + 6, af, s.Selected < 0 ? k.Text : k.Dim);
@@ -287,20 +287,20 @@ public sealed partial class LoginSheet
             y += 12;
         }
 
-        if (s.Selected < 0) y = FieldBox(draw, s, keys, Ids.UserField, s.User, "username", y, s.Focus == Ids.UserField);
+        if (s.Selected < 0) y = FieldBox(draw, s, keys, Ids.UserField, s.User, Lang.T("username"), y, s.Focus == Ids.UserField);
         bool kept = s.Selected >= 0 && s.SelectedRemembered && s.Pass.Length == 0;
-        y = FieldBox(draw, s, keys, Ids.PassField, kept ? "••••••••" : s.Pass, "password", y, s.Focus == Ids.PassField);
-        y = SwitchRow(draw, s, keys, Ids.Remember, "remember password", s.Remember, y);
+        y = FieldBox(draw, s, keys, Ids.PassField, kept ? "••••••••" : s.Pass, Lang.T("password"), y, s.Focus == Ids.PassField);
+        y = SwitchRow(draw, s, keys, Ids.Remember, Lang.T("remember password"), s.Remember, y);
         if (s.Selected < 0)
         {
-            y = SegmentRow(draw, s, keys, Ids.Grid, "grid", new[] { "Second Life", "Beta", "other" }, s.Grid, y);
-            if (s.Grid == 2) y = FieldBox(draw, s, keys, Ids.UriField, s.Uri, "login URI", y, s.Focus == Ids.UriField);
+            y = SegmentRow(draw, s, keys, Ids.Grid, Lang.T("grid"), new[] { "Second Life", Lang.T("Beta"), Lang.T("other") }, s.Grid, y);
+            if (s.Grid == 2) y = FieldBox(draw, s, keys, Ids.UriField, s.Uri, Lang.T("login URI"), y, s.Focus == Ids.UriField);
         }
-        y = SegmentRow(draw, s, keys, Ids.Start, "start", new[] { "last", "home", "a place" }, s.Start, y);
-        if (s.Start == 2) y = FieldBox(draw, s, keys, Ids.RegionField, s.Region, "region or SLurl", y, s.Focus == Ids.RegionField);
-        if (s.Note is { } note) y = Lines(draw, note + "?", 15, k.Accent, y, 1);
+        y = SegmentRow(draw, s, keys, Ids.Start, Lang.T("start", "login"), new[] { Lang.T("last"), Lang.T("home", "start"), Lang.T("a place") }, s.Start, y);
+        if (s.Start == 2) y = FieldBox(draw, s, keys, Ids.RegionField, s.Region, Lang.T("region or SLurl"), y, s.Focus == Ids.RegionField);
+        if (s.Note is { } note) y = Lines(draw, Lang.T(note), 15, k.Accent, y, 1);
         y += 4;
-        y = Keys(draw, s, keys, y, s.Selected >= 0 ? (Ids.Forget, s.ForgetArmed ? "sure?" : "forget account") : null, (Ids.LogIn, "Log in", true), plainWidth: 150);
+        y = Keys(draw, s, keys, y, s.Selected >= 0 ? (Ids.Forget, Lang.T(s.ForgetArmed ? "sure?" : "forget account")) : null, (Ids.LogIn, Lang.T("Log in"), true), plainWidth: 150);
         // the version, as the TPV policy asks of a login screen (1.g)
         var vf = Font(k.Regular, 12.5f);
         var version = s.About;
@@ -316,7 +316,7 @@ public sealed partial class LoginSheet
         draw.Orb(36, y + 24, s.Phase);
         draw.Text(Ellipsize(s.Who.Length > 0 ? s.Who : "Sojourn", Font(k.Semi, 17), draw.W - 90), 70, y + 30, Font(k.Semi, 17), k.Text);
         y += 62;
-        return s.Screen ? Keys(draw, s, keys, y, (Ids.Cancel, "Cancel"), null) : y;
+        return s.Screen ? Keys(draw, s, keys, y, (Ids.Cancel, Lang.T("Cancel")), null) : y;
     }
 
     const int TermsLines = 12;
@@ -326,7 +326,7 @@ public sealed partial class LoginSheet
         var k = draw.K;
         draw.Body(height);
         bool tos = s.TermsKind == "tos";
-        float y = Header(draw, s, keys, tos ? "Terms of Service" : "From the grid", close: false);
+        float y = Header(draw, s, keys, Lang.T(tos ? "Terms of Service" : "From the grid"), close: false);
         y = Help(draw, s, y, tos
             ? new[] { "the grid asks you to agree before you go on; the terms are also at lindenlab.com/tos", "no one can agree for you: only your own press counts" }
             : new[] { "the grid asks you to read this before you go on", "only your own press counts" });
@@ -347,9 +347,9 @@ public sealed partial class LoginSheet
             y += 42;
         }
         y += 6;
-        if (tos) y = SwitchRow(draw, s, keys, Ids.Agree, "I agree to the Terms of Service", s.Agree, y);
+        if (tos) y = SwitchRow(draw, s, keys, Ids.Agree, Lang.T("I agree to the Terms of Service"), s.Agree, y);
         y += 6;
-        return Keys(draw, s, keys, y, (Ids.Decline, "Decline"), (Ids.Continue, "Continue", !tos || s.Agree));
+        return Keys(draw, s, keys, y, (Ids.Decline, Lang.T("Decline")), (Ids.Continue, Lang.T("Continue"), !tos || s.Agree));
     }
 
     static string Clean(string text)
@@ -363,13 +363,13 @@ public sealed partial class LoginSheet
     {
         var k = draw.K;
         draw.Body(height);
-        float y = Header(draw, s, keys, "Authenticator code", close: false);
+        float y = Header(draw, s, keys, Lang.T("Authenticator code"), close: false);
         y = Help(draw, s, y, new[] { "the code your authenticator app shows for this account", "remember: this computer won't be asked again for 30 days" });
-        if (s.MfaAsks > 1) y = Lines(draw, "That code didn't work.", 15, k.Accent, y, 1);
+        if (s.MfaAsks > 1) y = Lines(draw, Lang.T("That code didn't work."), 15, k.Accent, y, 1);
         y = FieldBox(draw, s, keys, Ids.CodeField, s.Code, "000000", y, s.Focus == Ids.CodeField);
-        y = SwitchRow(draw, s, keys, Ids.RememberComputer, "remember this computer", s.RememberComputer, y);
+        y = SwitchRow(draw, s, keys, Ids.RememberComputer, Lang.T("remember this computer"), s.RememberComputer, y);
         y += 6;
-        return Keys(draw, s, keys, y, s.Screen ? (Ids.Cancel, "Cancel") : null, (Ids.Continue, "Continue", s.Code.Length >= 6));
+        return Keys(draw, s, keys, y, s.Screen ? (Ids.Cancel, Lang.T("Cancel")) : null, (Ids.Continue, Lang.T("Continue"), s.Code.Length >= 6));
     }
 
     static float LayoutFailed(Painter draw, Snap s, List<SheetKey> keys, float height)
@@ -378,10 +378,10 @@ public sealed partial class LoginSheet
         draw.Body(height);
         float y = Header(draw, s, keys, s.Who.Length > 0 ? s.Who : "Sojourn", close: false);
         y = Help(draw, s, y, new[] { "Back: the login screen, to change the account, grid or start", "Try again: the same login once more" });
-        y = Lines(draw, s.Plain ?? "Couldn't log in.", 16.5f, k.Text, y, 3);
+        y = Lines(draw, s.Plain ?? Lang.T("Couldn't log in."), 16.5f, k.Text, y, 3);
         if (s.Detail is { } d) y = Lines(draw, d, 14, k.Dim, y, 4);
-        if (s.WrongPassword) y = FieldBox(draw, s, keys, Ids.PassField, s.Pass, "password", y + 4, s.Focus == Ids.PassField);
+        if (s.WrongPassword) y = FieldBox(draw, s, keys, Ids.PassField, s.Pass, Lang.T("password"), y + 4, s.Focus == Ids.PassField);
         y += 6;
-        return Keys(draw, s, keys, y, s.Screen ? (Ids.Back, "Back") : null, (Ids.TryAgain, "Try again", true));
+        return Keys(draw, s, keys, y, s.Screen ? (Ids.Back, Lang.T("Back")) : null, (Ids.TryAgain, Lang.T("Try again"), true));
     }
 }

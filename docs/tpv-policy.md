@@ -27,9 +27,9 @@ Until 2026-10-29 Sojourn was for the user's own use on their own account, and we
 
 - The two are separate login fields, `channel` and `version`. The official viewer sends `channel` = "Second Life Release" (or Beta, Project...) and `version` = a bare 4-part number like `7.1.11.12345` (`lllogininstance.cpp`). LibreMetaverse's doc comment ("Second Life Release n.n.n.n" in the version) is out of date. It passes both straight through. If either is empty it substitutes `channel` = "LibreMetaverse" (`Settings.UserAgent`) and `version` = "?.?.?", with a warning. `Author`/`UserAgent` aren't sent.
 - The wiki's rules: the channel is a unique base name for the viewer, optionally with a variant (e.g. "My Viewer", "My Viewer Beta"), ASCII. It must not contain "Second Life", which is reserved for LL. The version is `major.minor.patch.build`. Policy 1.b/2.c.ii: each version needs a unique "viewer identifier" (name + variant + number), not reused from LL or another TPV, and spoofing one is prohibited. That rules out pretending to be Firestorm or the official viewer to dodge a block. 5.b: the name can't use any part of an LL mark ("Second", "Life", "SL", "Linden"), nor take the form "____ Life".
-- **What we send:** `channel` = "Sojourn", `version` = "0.1.0.0". These are set in `src/Sojourn.Session/SessionHost.cs` (the `HostConfig` initialiser, for every app on it), with the same defaults in `src/Sojourn.Core/Config/Config.cs` (`HostConfig.Channel`/`Version`), and passed to `DefaultLoginParams(..., Host.Channel, Host.Version)` in `AgentSession.cs`. A packaged Sojourn Access build sends its own number, 0.1.0.N with N the repo's commit count (`src/Sojourn.Access/AppInfo.cs`). Both comply. No listed TPV is called Sojourn (directory checked 2026-10-20). Each distributed build must stay uniquely identifiable: the VR client's package should stamp its version as Access's does. A variant like "Sojourn Dev" for local-grid builds is optional.
+- **What we send:** `channel` = "Sojourn", `version` = "0.1.0.0". These are set in `src/Sojourn.Session/SessionHost.cs` (the `HostConfig` initialiser, for every app on it), with the same defaults in `src/Sojourn.Core/Config/Config.cs` (`HostConfig.Channel`/`Version`), and passed to `DefaultLoginParams(..., Host.Channel, Host.Version)` in `AgentSession.cs`. A packaged build of either app sends its own number, 0.1.0.N with N the repo's commit count (Access's `src/Sojourn.Access/AppInfo.cs`; the VR client's `ClientOptions.Version`, stamped by `tools/package.py`, shown in the launcher's footer and on the login sheet). Both comply. No listed TPV is called Sojourn (directory checked 2026-10-20). Each distributed build stays uniquely identifiable that way. A variant like "Sojourn Dev" for local-grid builds is optional.
 - The other fields LibreMetaverse sends: `platform` "win", `platform_version`, `mac` and `id0`, both a hash of the MAC. The viewer also sends a hashed MAC, and 2.c.i forbids masking IP/MAC, so leave these alone. Don't zero them and don't route through a proxy to hide the IP.
-- 1.g (version on the login screen and in an About window): the VR client's login sheet shows the channel and version, Access's login form its version and `//about`; the agent API's `SojournRelease about` (`Session/Release/ReleaseApi.cs`) gives the name, channel, version, the disclaimer and the licence note, for the assistant and an About sheet the VR client doesn't have yet.
+- 1.g (version on the login screen and in an About window): the VR client's login sheet shows the channel and version, Access's login form its version and `//about`; the VR client's settings menu has an about section (version and commit, the disclaimer, who made it, the licence and source, support, the third-party notices: `Client/Control/AboutMenu.cs`), with the same words as the agent API's `SojournRelease about` (`Session/Release/ReleaseApi.cs`) for the assistant.
 
 ## Prohibited features (apply to us now)
 
@@ -53,8 +53,12 @@ The assistant bears on these last two, since nearby chat, IMs, names and rendere
 - Don't relay conversations anywhere else: no streams, no posts, no shared memory across projects.
 - Never surface other residents' personal info.
 
-A session's log that a tester sends us from Sojourn Access (`docs/access-app.md` > Sending a log) is filtered on
-the tester's PC first: nothing other people said or wrote goes, and their names and keys become stand-ins ("person 2").
+A session's log that a tester sends us from Sojourn Access (`docs/access-app.md` > Sending a log), and the VR
+client's problem and crash reports (`docs/client.md` > About, problem and crash reports), are filtered on the
+person's PC first: nothing other people said or wrote goes, and their names and keys become stand-ins ("person 2").
+A report goes only at the person's press (or, after a crash, by their "always" setting), to the studio relay (with
+their Studio Quire token, or without one within the relay's limits, the IP address not kept), or is saved for them to
+attach to a GitHub issue; a crash's memory dump never leaves the PC.
 
 ## Bots, scripted agents, and the assistant
 
@@ -103,7 +107,7 @@ the tester's PC first: nothing other people said or wrote goes, and their names 
 
 `Sojourn.Render` contains ports of viewer code (e.g. `Geometry/VolumeFace.cs`, "Copyright (C) 2010, Linden Research, Inc. LGPL 2.1") and ships viewer assets (avatar_lad, pixiesmall.j2c), all LGPL 2.1.
 - 3.b.iii: a TPV that is *distributed* and uses viewer source must make that source available, as LGPL 2.1 requires. Private use triggers nothing.
-- 2.h: "For Third-Party Viewers based on our source code, Developers must not omit our viewer statistics packet". Whether partly ported rendering code makes Sojourn "based on" viewer source is arguable. Today's viewer sends its stats as an HTTP POST to the region's `ViewerStats` capability (`llviewerstats.cpp`), not the old UDP packet. Not sent yet; sending a minimal, honest report is the cheap, conservative step, planned for the release (`docs/viewer-gaps.md` > Releasing it, with what the report holds and the call on leaving out the MAC address and serial).
+- 2.h: "For Third-Party Viewers based on our source code, Developers must not omit our viewer statistics packet". Whether partly ported rendering code makes Sojourn "based on" viewer source is arguable. Today's viewer sends its stats as an HTTP POST to the region's `ViewerStats` capability (`llviewerstats.cpp`), not the old UDP packet. Sent since 2026-11-01 by both apps, as a minimal, honest report: this session and PC only, what we don't measure left out, the MAC address and serial only with the person's setting, off by the user's call (2026-11-01) (`docs/client.md` > About, problem and crash reports; `docs/viewer-gaps.md` > Waiting).
 
 ## If it's ever distributed
 
@@ -113,13 +117,17 @@ What the distributor rules ask, and where we stand (checked 2026-10-31; the open
   Lab, the makers of Second Life."; support info, or a statement that there's none; surprising or unexpected
   functionality (an AI operating the client counts); non-General content; a link to a privacy policy. Drafted as the
   public repo's `docs/download.md` (from `tools/publish/sojourn/docs/download.md`) and Access's own copy in its
-  repository; the wording and the privacy policy are the user's call.
+  repository. Written by Claude Opus 5.5 at the user's word (2026-11-01: ours to write); the privacy policy is that
+  page's Privacy policy section, covering both apps and the relay.
 - Install only at the user's direction, with consent for auto-update; clean uninstall. Access's package runs from its
-  folder; Sojourn's package and updater are still to come.
+  folder. Sojourn's installs only when the person runs its Setup, offers an update in the launcher and installs it only
+  at their own press (each release's feed signed by our key), and uninstalls from Add/Remove Programs, keeping only the
+  person's own accounts, settings and the assistant's memory (`docs/launcher.md` > The package; built 2026-11-01, not
+  yet released).
 - ToS presentation (done, above), version display (done, above), an About window with accurate source info (Access has
-  `//about`; the VR client has the API's, no sheet yet).
+  `//about`; the VR client its menu's about section, 2026-11-01).
 - No Eye-in-Hand logo; follow LL's Trademark Guidelines.
 - LGPL source published: the repo is public.
-- The viewer statistics report (2.h, above): not yet.
+- The viewer statistics report (2.h, above): sent since 2026-11-01, the MAC address and serial left out by default.
 - Directory listing is optional: self-certification, a public contact channel, a public source repo and commit notices,
   accounts in good standing, and an application filed as an issue on LL's TPV GitHub repo.

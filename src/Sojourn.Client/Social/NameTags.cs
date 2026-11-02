@@ -111,6 +111,7 @@ public sealed class NameTags
             var dir = t.Head - eye;
             float d = dir.Length();
             if (d < 0.05f || d > Farthest) continue;
+            if (_s.RlvActive && !_s.Rlv.CanShowNameTag(t.Id, d)) continue;   // RLV's @shownametags
             float cos = Vector3.Dot(dir / d, fwd);
             var st = _state.TryGetValue(t.Id, out var have) ? have : (Alpha: 0f, LookedAt: -1e9);
             if (cos > MathF.Cos(LookDeg * MathF.PI / 180) || t.Id == pointed) st.LookedAt = now;
@@ -255,6 +256,10 @@ public sealed class NameTags
         lock (_asked) if (_asked.Add(id)) _resolving.Add(id);
         var user = legacy != null ? NameCache.UserName(legacy) : "";
         var info = InfoFor(id, now);
+        // RLV's @shownames: the stand-in RLVa gives them, nothing that tells who they are
+        if (_s.RlvActive && !_s.Rlv.CanShowName(id))
+            return new Variant(Sojourn.Core.Rlv.RlvEngine.Anonym(legacy ?? fallback), null, _feed.TypingNearby(id),
+                look with { TintOpacity = Math.Max(look.TintOpacity, 0.88f) }, null, Marks.None, info.Ring);
         var display = info.Pseudonym ?? names.DisplayName(id) ?? (user.Length > 0 ? user : "…");
         // the username under it only for a display name of their own (the viewer's "Display (user)"), or under the
         // name the person calls them

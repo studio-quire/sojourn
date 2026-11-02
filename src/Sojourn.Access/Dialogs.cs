@@ -6,9 +6,10 @@ namespace Sojourn.Access;
 /// them is theirs): a line of text asked for, and a person picked.</summary>
 public static class Dialogs
 {
-    /// <summary>A labelled edit box with OK and Cancel; the text, or null when cancelled or left empty. secret: a
-    /// password box (screen readers say each character as a star; paste and typing work as usual).</summary>
-    public static string? Ask(IWin32Window owner, string title, string label, string text = "", bool secret = false)
+    /// <summary>A labelled edit box with OK and Cancel; the text, or null when cancelled or left empty (allowEmpty: ""
+    /// for OK on an empty box). secret: a password box (screen readers say each character as a star; paste and typing
+    /// work as usual).</summary>
+    public static string? Ask(IWin32Window owner, string title, string label, string text = "", bool secret = false, bool allowEmpty = false)
     {
         using var f = Frame(title);
         var box = new LineBox { Name = "answer", AccessibleName = label, Text = text, Width = 360, UseSystemPasswordChar = secret };
@@ -18,7 +19,8 @@ public static class Dialogs
         t.Controls.Add(Buttons(f), 1, 1);
         box.SelectAll();
         f.ActiveControl = box;
-        return f.ShowDialog(owner) == DialogResult.OK && box.Text.Trim().Length > 0 ? box.Text.Trim() : null;
+        if (f.ShowDialog(owner) != DialogResult.OK) return null;
+        return box.Text.Trim().Length > 0 || allowEmpty ? box.Text.Trim() : null;
     }
 
     public sealed record Someone(UUID Id, string Name, string Where);

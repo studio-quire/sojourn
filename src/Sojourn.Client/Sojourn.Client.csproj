@@ -11,6 +11,8 @@
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <TieredPGO>true</TieredPGO>
+    <!-- Sojourn's icon (tools/icon.py renders it from art/icon/sojourn.svg); the window takes it from the exe (Window/AppIcon.cs) -->
+    <ApplicationIcon>..\..\art\icon\sojourn.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -41,6 +43,14 @@
     <ProjectReference Include="..\Sojourn.Core\Sojourn.Core.csproj" />
     <ProjectReference Include="..\Sojourn.Render\Sojourn.Render.csproj" />
     <ProjectReference Include="..\Sojourn.Session\Sojourn.Session.csproj" />
+  </ItemGroup>
+
+  <!-- the third-party notices the menu's about section shows (Control/AboutMenu.cs): the public repo's root
+       THIRD_PARTY.md, which this repo keeps in its publishing overlay -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\THIRD_PARTY.md" LogicalName="THIRD_PARTY.md" Condition="Exists('..\..\THIRD_PARTY.md')" />
+    <EmbeddedResource Include="..\..\tools\publish\sojourn\THIRD_PARTY.md" LogicalName="THIRD_PARTY.md"
+      Condition="!Exists('..\..\THIRD_PARTY.md') And Exists('..\..\tools\publish\sojourn\THIRD_PARTY.md')" />
   </ItemGroup>
 
   <!-- Multitude's baker layer over LibreMetaverse's: upperbody_color.tga without the viewer's nipple discs, so a

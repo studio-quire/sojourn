@@ -51,6 +51,8 @@ def secret_paths(own_slug):
     # the grid's own passwords
     out = [ROOT / "local" / "secrets", USER / "AppData" / "Local" / "Sojourn" / "secrets", ROOT / "local" / "grid",
            USER / ".ssh", USER / ".config", USER / ".docker", USER / ".cagent", USER / ".copilot", USER / ".claude.json"]
+    if os.environ.get("SOJOURN_DATA"):   # the data folder put elsewhere (DataFolder.cs)
+        out.append(Path(os.environ["SOJOURN_DATA"]) / "secrets")
     # Claude's own: credentials, settings, every other session's transcripts and the studio's memory
     for c in claude_dirs():
         out += children(c, keep=("projects",)) + children(c / "projects", keep=(own_slug,))
@@ -183,7 +185,7 @@ def settings(home: Path, work: Path, auto=True):
                 "been: its caches, screenshots, and pictures or videos named incognito or private in Pictures or "
                 "Videos\\Sojourn.",
                 f"Logging in to {sl} by any route of its own, or starting another viewer, client or bot (Sojourn "
-                "included, in dev mode too: tools/dev.py start), or using the stored login in any way.",
+                "included, in dev mode too: tools/dev.py start or launch), or using the stored login in any way.",
                 "Starting a Claude Code session or agent that skips or bypasses permissions, or changing its own "
                 "permission mode.",
                 "Answering any of the client's confirmations, the Terms of Service or MFA prompts by any route: "
@@ -214,7 +216,7 @@ SHELL_REFUSED = re.compile(
     r"winmouse|winkey|SendInput|PostMessage|SendMessage[AW]?\b|SendKeys|keybd_event|mouse_event|UIAutomation|"
     r"pyautogui|pywinauto|AutoHotkey|\bahk\b|AttachConsole|WriteConsoleInput|--password|Sojourn(VR)?\.(dll|exe)|client\.py['\"]?\s+(run|vr)|launcher\.py['\"]?\s+run|--launcher-answers|assistant\.py['\"]?\s+key|"
     # dev mode (docs/dev-mode.md): a client whose assistant is a Claude Code session in bypass mode, never the assistant's
-    r"dev\.py['\"]?\s+(start|restart)|main\.py\b.*--dev\b|dangerously-skip-permissions|bypassPermissions|"
+    r"dev\.py['\"]?\s+(start|restart|launch)|main\.py\b.*--dev\b|dangerously-skip-permissions|bypassPermissions|"
     # private mode: the sidecar's token (only the person's own words turn it off), and reading other processes' memory
     r"SIDECAR_TOKEN|ReadProcessMemory|MiniDump|procdump|\bcreatedump\b|"
     # the person's provider keys (provider.py): kept under DPAPI in the secrets folder, opened only by the sidecar; the

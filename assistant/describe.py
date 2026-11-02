@@ -16,7 +16,7 @@ import time
 from claude_agent_sdk import tool
 
 import describer
-from api import ApiError
+from api import PICTURE_WAIT, ApiError
 
 UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 THAT = {"that", "this", "it", "them", "him", "her", "pointed", "selected"}
@@ -121,7 +121,8 @@ async def _gather(kit, of, words, detail):
     subject, name = await subject_of(kit, words)
     kit.did("looking around" if subject == "here" else "looking at you" if subject == "me" else f"looking at {name or 'it'}")
     try:
-        r = await kit.call("SojournDescribe", "look", 45, subject=subject, detail=detail)
+        # (the client bounds its own wait: 26 s on a GPU, up to minutes for a first picture drawn on the processor)
+        r = await kit.call("SojournDescribe", "look", PICTURE_WAIT, subject=subject, detail=detail)
     except ApiError as e:
         if "no such API" not in str(e):
             raise

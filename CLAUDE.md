@@ -4,7 +4,7 @@
 points to stay private and aren't in this repository: what the headset sittings left open (`docs/sittings.md`), the
 board, `local/`, and the other Studio Quire projects under `projects/`. For people, start with README.md.*
 
-Working name. Our own Second Life client, built for VR first, with a personal AI that operates the client for you by voice: whatever is awkward in a headset (inventory, outfits, search, typing, building, dialogs, settings). An accessibility tool for a person who is present and in charge, not an autonomous resident like Tessel; it runs on the desktop too. Its sibling Sojourn Access, in the same codebase, makes Second Life usable without sight. Started 2026-10-20 (Claude Opus 5.5, with the user).
+Our own Second Life client, built for VR first, with a personal AI that operates the client for you by voice: whatever is awkward in a headset (inventory, outfits, search, typing, building, dialogs, settings). An accessibility tool for a person who is present and in charge, not an autonomous resident like Tessel; it runs on the desktop too. Its sibling Sojourn Access, in the same codebase, makes Second Life usable without sight. Started 2026-10-20 (Claude Opus 5.5, with the user).
 
 ## Where it stands (2026-10-31)
 
@@ -15,11 +15,13 @@ Working name. Our own Second Life client, built for VR first, with a personal AI
   assistant (voice, Claude through the agent API, confirmations, the panel, memory, jobs, incognito), voice chat, world
   audio, HUDs, media, name tags and the feed, and most of the viewer-gap batches (safety, people, rendering, avatars,
   social, land, building, inventory and the AO, the map, voice and media extras, the menus, the login screen, the
-  launcher). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
-- **Sojourn Access**: milestones M0-M5 built (2026-10-29); test builds (the assistant bundled) published as releases
-  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.718 (2026-10-31); a blind
+  launcher), and RLV/RLVa (2026-11-01, off by default: `docs/rlv.md`). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
+- **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01); test builds (the assistant bundled) published as releases
+  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.737 (2026-11-01); a blind
   tester's first session on Second Life was 2026-10-30. `docs/access.md` (plan, milestones, what testers said), `docs/access-app.md` (as built, packaging).
-- **Public source** since 2026-10-29 (`docs/publishing.md`). The VR viewer itself has no release yet.
+- **Public source** since 2026-10-29 (`docs/publishing.md`). The VR viewer itself has no release yet; its package
+  (Velopack: install, updates at the person's press, uninstall) is built and checked (`tools/package.py`,
+  `docs/launcher.md` > The package, 2026-11-01).
 - **Next**: the board's checks; the gaps left in `docs/viewer-gaps.md` (> Closing the rest) and the calls waiting on
   the user there; Access's next milestones and testers; phase 4's leaning, crouching and finger poses; an in-world
   desktop (the user wants it, 2026-10-28; not started): our own mirror of the PC's desktop or single windows (Windows'
@@ -35,8 +37,10 @@ The product:
   this account doesn't carry Tessel's scripted-agent setup.
 - **A full viewer for release** (user, 2026-10-27, 2026-10-29): every feature other viewers have that we lack gets
   closed, not only the valuable ones (`docs/viewer-gaps.md`); the release waits for most gaps, not every last one, and
-  is planned relatively soon. Free by default and open source as licences permit; paid extras possible later (such as
-  credits so the assistant works without the person's own key). Sojourn itself is a VR viewer without an
+  is planned relatively soon. Free and open source as licences permit. The name is Sojourn (the user, 2026-11-01). No
+  AI credits for the public: people bring their own Anthropic or OpenRouter key, and the studio doesn't subsidise use of
+  its open-source software (the user, 2026-11-01); the relay is only for people the studio chooses to cover. UI
+  translation is the first release's last step; the viewer directory listing follows the release (the user, 2026-11-01). Sojourn itself is a VR viewer without an
   accessibility lean; accessibility is Sojourn Access's purpose.
 - **VR-first; the desktop gets its own UI later** (user, 2026-10-27, 2026-10-29): today the desktop reuses the
   headset's panel, feed and menus and is mainly for testing. A desktop interface quite different from the headset's is
@@ -92,8 +96,9 @@ The assistant (detail in `docs/assistant.md`):
   are chosen in the launcher (Access: Alt+0); the viewer's menu shows only that provider's models. `docs/launcher.md`.
 - **No Claude-account sign-in in released builds** (user, 2026-10-30): Anthropic's Agent SDK terms don't let
   third-party products offer claude.ai login or plan usage without approval, so packaged and public builds offer an
-  Anthropic key, OpenRouter and the studio relay only; people who want their subscription have their own Claude add it
-  to their copy. Our own runs from the repo keep the Claude account. Bundling the SDK's Claude Code is allowed; the
+  Anthropic key, OpenRouter and the studio relay only. People who want their subscription have their own Claude Code
+  drive Sojourn in dev mode, installed or from source (user, 2026-11-01; the public `DEV-MODE.md`, `docs/dev-mode.md`
+  > Outside the studio), or add the sign-in to their own copy of the source. Our own runs from the repo keep the Claude account. Bundling the SDK's Claude Code is allowed; the
   product must not present itself as Claude Code.
 - **Its powers** (user, 2026-10-25): about as capable as Tessel at interaction, search and making things, guarded by
   permissions and Claude Code's auto mode rather than a stripped-down tool set: Claude Code's own tools, deny rules
@@ -169,9 +174,10 @@ The assistant (detail in `docs/assistant.md`):
   - Seeing and speed: `rendering.md` (what the renderer adds to the port), `performance.md` (measurements, busy places,
     the load governor, threads, the plan to 90 Hz).
   - Features: `social.md`, `people.md`, `hud.md`, `media.md`, `audio.md`, `voice.md`, `map.md`, `building.md`,
-    `inventory.md`, `land.md`, `safety.md`, `shared-tracking.md` (whether others see your tracking).
+    `inventory.md`, `land.md`, `safety.md`, `rlv.md` (RLV/RLVa), `shared-tracking.md` (whether others see your tracking).
   - The viewer and its rules: `viewer-gaps.md` (what we lack next to the official viewer and Firestorm, the batches
-    closing it), `tpv-policy.md`, `publishing.md`.
+    closing it), `tpv-policy.md`, `publishing.md`, `languages.md` (the
+    interface in the viewers' languages).
   - Without sight: `access.md` (Sojourn Access's plan), `access-app.md` (as built), `access-testing.md` (its scripted
     and guided tests), `screen-reader.md` (the VR client's screen reader output); research in
     `accessibility.md`, `radegast.md`.

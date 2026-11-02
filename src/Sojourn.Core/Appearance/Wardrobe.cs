@@ -214,6 +214,12 @@ public sealed class Wardrobe
 
     // ---------- wearing ----------
 
+    /// <summary>An RLV lock's refusal (docs/rlv.md), for every caller: the person's, the assistant's and RLV's own.</summary>
+    void Rlv(Func<Sojourn.Core.Rlv.RlvEngine, string?> check)
+    {
+        if (_s.RlvActive && check(_s.Rlv) is { } why) throw new LeapError(_s.RlvRefused(why)!);
+    }
+
     async Task LinkAsync(GridClient c, InventoryItem item, CancellationToken ct)
     {
         var cof = await Look.CofAsync(c, ct);
@@ -231,6 +237,10 @@ public sealed class Wardrobe
         foreach (var item in items)
         {
             if (worn.Any(w => w.ItemId == item.UUID)) continue;
+            // RLV's locks (docs/rlv.md): an object goes where it last was (its flags' low byte), replacing what's there
+            if (item.AssetType == AssetType.Object) Rlv(r => r.CanAttach(item.UUID, (int)(item.Flags & 0xFF), add: !replace));
+            else if (item.AssetType is AssetType.Bodypart or AssetType.Clothing)
+                Rlv(r => r.CanWear(item.UUID, (int)(item.Flags & 0xFF), add: !replace && !Slots.IsBodyPart((WearableType)(item.Flags & 0xFF))));
             if (item.AssetType is AssetType.Bodypart or AssetType.Clothing)
             {
                 var type = (WearableType)(item.Flags & 0xFF);
@@ -263,6 +273,7 @@ public sealed class Wardrobe
         foreach (var id in ids)
             if (!worn.Any(x => x.ItemId == id) && !Attached(c, id))
                 throw new LeapError($"{(_s.Inventory.Node(id) as InventoryItem)?.Name ?? id.ToString()} isn't worn (nothing was taken off)");
+        foreach (var id in ids) Rlv(r => r.CanTakeOff(id));
         foreach (var id in ids)
         {
             var w = worn.FirstOrDefault(x => x.ItemId == id);
@@ -292,6 +303,7 @@ public sealed class Wardrobe
     /// <summary>Attach (TesselAgent attach) with the outfit link the viewer keeps for attachments.</summary>
     public async Task AttachAsync(GridClient c, InventoryItem item, AttachmentPoint point, bool replace, CancellationToken ct)
     {
+        Rlv(r => r.CanAttach(item.UUID, point == AttachmentPoint.Default ? (int)(item.Flags & 0xFF) : (int)point, add: !replace));
         c.Appearance.Attach(item, point, replace);
         var worn = await Look.ReadWornAsync(c, ct);
         if (replace && point != AttachmentPoint.Default)
@@ -312,6 +324,7 @@ public sealed class Wardrobe
 
     public async Task DetachAsync(GridClient c, UUID itemId, CancellationToken ct)
     {
+        Rlv(r => r.CanTakeOff(itemId));
         c.Appearance.Detach(itemId);
         var worn = await Look.ReadWornAsync(c, ct);
         var links = worn.Where(x => x.ItemId == itemId).Select(x => x.LinkId).ToList();
@@ -346,6 +359,8 @@ public sealed class Wardrobe
             var off = worn.Where(w => !keep.Contains(w.ItemId) &&
                                       (w.AssetType is AssetType.Clothing or AssetType.Object ||
                                        (w.AssetType is AssetType.Bodypart && newTypes.Contains(w.Type)))).ToList();
+            // what RLV keeps on stays on, as the viewer's replace-outfit leaves locked things worn
+            if (_s.RlvActive) off = off.Where(w => w.AssetType == AssetType.Bodypart || _s.Rlv.CanTakeOff(w.ItemId) == null).ToList();
             foreach (var w in off.Where(w => w.AssetType == AssetType.Object)) c.Appearance.Detach(w.ItemId);
             if (off.Count > 0) await _s.Look.UnlinkAsync(c, off.Select(w => w.LinkId), ct);
         }

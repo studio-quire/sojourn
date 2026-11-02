@@ -38,7 +38,8 @@ typedef void (*sv_event_fn)(int64_t pc, int kind, const char* a, const char* b, 
 SV_API int sv_init(sv_log_fn log, sv_event_fn events);
 SV_API void sv_shutdown(void);
 
-// JSON array of {"id","name","default"} for capture (1) or render (0) endpoints. Returns the length needed
+// JSON array of {"id","name","default","comms","form" (Windows' EndpointFormFactor: 1 speakers, 3 headphones, 5 headset,
+// 9 a display over HDMI or DisplayPort, ...)} for capture (1) or render (0) endpoints. Returns the length needed
 // (including the terminator); writes nothing past cap.
 SV_API int sv_devices(int capture, char* buf, int cap);
 
@@ -50,10 +51,22 @@ SV_API int sv_devices(int capture, char* buf, int cap);
 // the engine runs on silence and the device opens when one appears.
 SV_API int sv_audio_start(const char* capture, const char* render);
 SV_API void sv_audio_stop(void);
+// What a direction (0 capture, 1 render) is doing now, as JSON: {spec (as asked), state ("starting", "open", "silent":
+// open but nothing moving, "failed", "lost", "file", "none"), name (the device open), error (why the device asked for
+// isn't the one open, or why nothing is), fallback (on the default because the one asked for isn't there or wouldn't
+// start), moved_ms (audio the open device has taken or given), and for the output format (its own, as Windows mixes),
+// volume and muted (Windows' for the device), app_volume and app_muted (the volume mixer's for this app; -1 not
+// known)}. Returns the length needed, as sv_devices.
+SV_API int sv_device_state(int dir, char* buf, int cap);
+// What reaches the open output: WASAPI loopback capture of it for ms (blocks that long), against what the engine sent
+// meanwhile: {heard_db, sent_db} (mean power in dBFS; -140 silence) or {error}. Loopback is what Windows mixes for the
+// device (every app's sound, after its volume where Windows applies that in software); nothing past the driver.
+SV_API int sv_output_probe(int ms, char* buf, int cap);
 // Tests: device changes, simulated. dir 0 capture / 1 render. what: 0 the stream in use is lost (as
 // AUDCLNT_E_DEVICE_INVALIDATED, its event stopping); 1 devices gone (spec "" every device of the direction, or
 // "name:part" those whose name has it); 2 the gone ones back; 3 the default moves (spec: what "" resolves to from now;
-// "" Windows' own default again).
+// "" Windows' own default again); 4 devices whose name has this part ("name:part"; "" none) refuse to start, as a
+// driver refusing the stream would.
 SV_API void sv_test_device(int dir, int what, const char* spec);
 
 // The person's mic toward residents: muted sends zeros, with a ramp of fade_ms.

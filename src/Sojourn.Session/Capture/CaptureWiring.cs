@@ -89,20 +89,20 @@ public static class CaptureWiring
                 case "toInventory":
                 {
                     var p = share.PlanInventory(a);
-                    var balance = s.BalanceKnown && s.Client is { } c ? $" Your balance: L${c.Self.Balance}." : "";
-                    return ("Save a picture to your inventory",
-                        $"\"{p.Name}\", {p.Width}x{p.Height}, from {Path.GetFileName(p.Path)}, into Photo Album. L${p.Cost} on this grid.{balance}");
+                    var balance = s.BalanceKnown && s.Client is { } c ? " " + Lang.F("Your balance: L${0}.", c.Self.Balance) : "";
+                    return (Lang.T("Save a picture to your inventory"),
+                        Lang.F("\"{0}\", {1}x{2}, from {3}, into Photo Album. L${4} on this grid.", p.Name, p.Width, p.Height, Path.GetFileName(p.Path), p.Cost) + balance);
                 }
                 case "postcard":
                 {
                     var p = share.PlanPostcard(a);
-                    return ($"Email a picture to {string.Join(", ", p.To)}",
-                        $"Subject \"{p.Subject}\". Message \"{p.Message}\". The picture {Path.GetFileName(p.Path)} ({p.Width}x{p.Height}), "
-                        + "sent by Second Life from your account's email address.");
+                    return (Lang.F("Email a picture to {0}", string.Join(", ", p.To)),
+                        Lang.F("Subject \"{0}\". Message \"{1}\". The picture {2} ({3}x{4}), sent by Second Life from your account's email address.",
+                            p.Subject, p.Message, Path.GetFileName(p.Path), p.Width, p.Height));
                 }
             }
         }
-        catch (Exception e) when (e is LeapError or NotConnected) { return ($"SojournCapture {op}", $"{e.Message}: this will likely fail."); }
+        catch (Exception e) when (e is LeapError or NotConnected) { return ($"SojournCapture {op}", Lang.F("{0}: this will likely fail.", e.Message)); }
         return ($"SojournCapture {op}", "");
     }
 }

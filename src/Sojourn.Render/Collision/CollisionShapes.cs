@@ -64,7 +64,7 @@ public sealed class CollisionShape
 /// metre-wide sphere's surface within a centimetre of the true one, at about 40% of LOD 3's triangles), meshes by their
 /// physics, else their highest LOD. Prims build on the spot (a box is microseconds, and a place's prims share a few dozen shapes);
 /// sculpt maps and meshes download nearest first, a few at once, and count once they've arrived. Shapes nobody has
-/// asked for in ten minutes are let go. Claude Opus 5.5, 2026-10-30.
+/// asked for in three minutes are let go. Claude Opus 5.5, 2026-10-30.
 /// </summary>
 public sealed class CollisionShapes
 {
@@ -79,8 +79,10 @@ public sealed class CollisionShapes
 
     /// <summary>Downloads at once (the renderer's mesh queue's eight).</summary>
     public int MaxFetches { get; set; } = 8;
-    /// <summary>How long a shape nobody asks for is kept.</summary>
-    public long IdleMs { get; set; } = 600_000;
+    /// <summary>How long a shape nobody asks for is kept. What's within reach is asked for every second
+    /// (CollisionWorld.Around), so this is only what's been left behind: on a train ten minutes of track either side
+    /// was kept (2026-11-01), three is enough to turn back.</summary>
+    public long IdleMs { get; set; } = 180_000;
     const int Lod = 2;
 
     public CollisionShapes(Action<string> log, int threads)
@@ -145,6 +147,14 @@ public sealed class CollisionShapes
         if (!shape.Busy && shape.Snapshot == null) shape.Snapshot = Detach(prim);
         _waiting.TryAdd(key, (shape, assets));
         return null;
+    }
+
+    /// <summary>Whether a shape is had (ready, or given up on), counting it as used now; false when it's still to come.</summary>
+    public bool Settled(ShapeKey key)
+    {
+        if (!_shapes.TryGetValue(key, out var shape)) return false;
+        shape.LastUsed = System.Environment.TickCount64;
+        return shape.Ready || shape.Failed;
     }
 
     /// <summary>Builds a prim's shape off the query's path (what's around, ahead of the walk).</summary>

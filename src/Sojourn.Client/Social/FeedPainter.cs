@@ -315,8 +315,9 @@ public static class FeedPainter
     static float NoticeKeys(Painter draw, NoticeForm form, Guid id, float x0, float x1, float y, FeedKey? hoverKey, List<(SKRect, FeedKey)>? keys)
     {
         var all = new List<(string? Name, string Label, FeedKeyKind Kind)>();
-        if (form.Notecard) all.Add((null, "Read", FeedKeyKind.Read));
-        all.AddRange(form.Buttons.Select(b => ((string?)b.Name, b.Label, FeedKeyKind.Answer)));
+        if (form.Notecard) all.Add((null, Lang.T("Read"), FeedKeyKind.Read));
+        // a script menu's buttons are its object's words; other notices' are ours (Core's notifications)
+        all.AddRange(form.Buttons.Select(b => ((string?)b.Name, form.Grid ? b.Label : Lang.T(b.Label), FeedKeyKind.Answer)));
         if (all.Count == 0) return 0;
         const int cols = 3;
         const float size = 13.5f, line = 16;
@@ -432,9 +433,9 @@ public static class FeedPainter
         {
             var cur = "";
             float room() => lines.Count == 0 ? width - firstIndent : width;
-            foreach (var word in para.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            foreach (var (word, spaced) in Panel.Pieces(para))   // (Chinese and Japanese break between characters)
             {
-                var next = cur.Length == 0 ? word : cur + " " + word;
+                var next = cur.Length == 0 ? word : cur + (spaced ? " " : "") + word;
                 if (Measure(font, next) <= room()) { cur = next; continue; }
                 if (cur.Length > 0) { lines.Add(cur); cur = word; }
                 else cur = word;

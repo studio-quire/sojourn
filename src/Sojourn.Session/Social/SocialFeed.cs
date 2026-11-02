@@ -373,7 +373,8 @@ public sealed class SocialFeed
             Add(FeedKind.Notice, null, null, UUID.Zero, "", msg, FeedStyle.Say, false, Life(FeedKind.Notice, msg));
             return;
         }
-        var name = source == (int)ChatSourceType.Agent ? NameOf(from, S(d, "from")) : S(d, "from");
+        // RLV's @shownames: the stand-in the session gave them, not their name
+        var name = source == (int)ChatSourceType.Agent && d["rlv_anonym"] is null ? NameOf(from, S(d, "from")) : S(d, "from");
         bool mention = Mentions(msg);
         msg = Shown(msg);
         Add(FeedKind.Nearby, null, null, from, name, msg.TrimStart(), style, mine, style == FeedStyle.Object ? ObjectLife(msg) : Life(FeedKind.Nearby, msg),
@@ -419,38 +420,82 @@ public sealed class SocialFeed
         var pay = n["payload"] as JsonObject ?? new JsonObject();
         string Sub(string k) => Plain(S(subs, k));
         string Who() => NameOf(Id(pay, "from_id"), Sub("NAME") is { Length: > 0 } nm ? nm : S(pay, "from_name"));
-        string Quote(string s) => string.IsNullOrWhiteSpace(s) ? "" : $" “{s.Trim()}”";
+        // the line after the name, with the person's message in quotes when they wrote one
+        string Says(string bare, string quoted) => Sub("MESSAGE").Trim() is { Length: > 0 } m ? Lang.F(quoted, m) : Lang.T(bare);
         (string Who, string What, double Life)? line = name switch
         {
-            "TeleportOffered" => (Who(), "offers a teleport" + Quote(Sub("MESSAGE")), 120),
-            "TeleportRequest" => (Who(), "asks for a teleport to you" + Quote(Sub("MESSAGE")), 120),
-            "OfferFriendship" or "OfferFriendshipNoMessage" => (Who(), "offers friendship" + Quote(Sub("MESSAGE")), 120),
-            "FriendshipAccepted" => (Who(), "accepted your friendship", 20),
-            "FriendshipDeclined" => (Who(), "declined your friendship", 20),
-            "UserGiveItem" => (Who(), $"gives you {S(pay, "item_name")}", 120),
-            "ObjectGiveItem" or "OwnObjectGiveItem" => (Sub("OBJECTFROMNAME"), $"gives you {S(pay, "item_name")}", 120),
-            "InventoryAccepted" => (Sub("NAME"), "took what you gave", 20),
-            "InventoryDeclined" => (Sub("NAME"), "declined what you gave", 20),
-            "FriendOnlineOffline" => (Sub("NAME"), Sub("STATUS") == "Online" ? "is online" : "is offline", 10),
+            "TeleportOffered" => (Who(), Says("offers a teleport", "offers a teleport “{0}”"), 120),
+            "TeleportRequest" => (Who(), Says("asks for a teleport to you", "asks for a teleport to you “{0}”"), 120),
+            "OfferFriendship" or "OfferFriendshipNoMessage" => (Who(), Says("offers friendship", "offers friendship “{0}”"), 120),
+            "FriendshipAccepted" => (Who(), Lang.T("accepted your friendship"), 20),
+            "FriendshipDeclined" => (Who(), Lang.T("declined your friendship"), 20),
+            "UserGiveItem" => (Who(), Lang.F("gives you {0}", S(pay, "item_name")), 120),
+            "ObjectGiveItem" or "OwnObjectGiveItem" => (Sub("OBJECTFROMNAME"), Lang.F("gives you {0}", S(pay, "item_name")), 120),
+            "InventoryAccepted" => (Sub("NAME"), Lang.T("took what you gave"), 20),
+            "InventoryDeclined" => (Sub("NAME"), Lang.T("declined what you gave"), 20),
+            "FriendOnlineOffline" => (Sub("NAME"), Lang.T(Sub("STATUS") == "Online" ? "is online" : "is offline"), 10),
             "ScriptDialog" or "ScriptDialogGroup" => (Plain(S(pay, "object_name")) is { Length: > 0 } o ? o : Plain(S(pay, "title")),
                 Dialog(n), 120),
             "GroupNotice" => (Sub("SENDER"), $"{Sub("SUBJECT")}: {Sub("MESSAGE")}", 90),
             "JoinGroup" => ("", Plain(Sub("MESSAGE")), 120),
-            "LoadWebPage" => (Plain(S(pay, "object_name")), $"offers a web page {S(pay, "url")}", 90),
+            "LoadWebPage" => (Plain(S(pay, "object_name")), Lang.F("offers a web page {0}", S(pay, "url")), 90),
             // money (Agents/Money.cs, the viewer's sentences): who paid, and how much
-            "PaymentReceived" => (Plain(S(pay, "name")) is { Length: > 0 } payer ? payer : "someone",
-                $"paid you L${I(pay, "amount")}" + (S(pay, "reason") is { Length: > 0 } why ? $" {why}" : ""), 30),
-            "PaymentSent" or "PaymentFailure" => ("", Plain(S(n, "message")), 30),
-            "DisplayNameUpdate" => (Sub("OLD_NAME"), $"is now known as {Sub("NEW_NAME")}", 20),
-            "IMNotShownNotFriend" => (Sub("NAME"), "sent an IM (only friends and groups can IM you)", 20),
-            // Firestorm's radar reports (Social/Radar.cs): who, and what range they came into or left
-            "RadarReport" => (NameOf(Id(pay, "from_id"), Sub("NAME")), S(pay, "what"), 25),
-            "InvOfferAutoAcceptUser" or "InvOfferAutoAcceptObject" => (Sub("NAME"), $"gave you {Sub("DESC")}", 30),
-            "ScriptQuestionExperience" => (Sub("OBJECTNAME"),
-                $"asks you to join {(S(pay, "experience_name") is { Length: > 0 } en ? $"the experience {en}" : "an experience")}: {Sub("QUESTIONS").Replace('\n', ',').Trim(',', ' ')}", 120),
+            "PaymentReceived" => (Plain(S(pay, "name")) is { Length: > 0 } payer ? payer : Lang.T("someone"),
+                S(pay, "reason") is { Length: > 0 } why ? Lang.F("paid you L${0} {1}", I(pay, "amount"), why) : Lang.F("paid you L${0}", I(pay, "amount")), 30),
+            "PaymentSent" or "PaymentFailure" => ("", Paid(n, pay, name == "PaymentSent"), 30),
+            "DisplayNameUpdate" => (Sub("OLD_NAME"), Lang.F("is now known as {0}", Sub("NEW_NAME")), 20),
+            "IMNotShownNotFriend" => (Sub("NAME"), Lang.T("sent an IM (only friends and groups can IM you)"), 20),
+            // Voice/CallRejects.cs
+            "VoiceCallAutoRejected" => ("", Lang.F("You turned down {0}'s call: Do Not Disturb is on.", NameOf(Id(pay, "from_id"), Sub("NAME"))), 30),
+            // Firestorm's radar reports (Social/Radar.cs): who, and what range they came into or left (its English
+            // line, which the catalog's templates match)
+            "RadarReport" => (NameOf(Id(pay, "from_id"), S(pay, "from_name") is { Length: > 0 } rn ? rn : Lang.T("Someone")), Lang.T(S(pay, "what")), 25),
+            "InvOfferAutoAcceptUser" or "InvOfferAutoAcceptObject" => (Sub("NAME"), Lang.F("gave you {0}", Sub("DESC")), 30),
+            "ScriptQuestionExperience" => (Sub("OBJECTNAME"), S(pay, "experience_name") is { Length: > 0 } en
+                ? Lang.F("asks you to join the experience {0}: {1}", en, Questions(Sub("QUESTIONS")))
+                : Lang.F("asks you to join an experience: {0}", Questions(Sub("QUESTIONS"))), 120),
+            "PlaceOffered" => ("", Lang.F("{0} offers a place: {1}", Sub("NAME") is { Length: > 0 } offerer ? offerer : Lang.T("Something"), Sub("LOCATION")), 120),
+            "CollisionAlert" => ("", Bump(Plain(S(n, "message"))), Life(FeedKind.Notice, S(n, "message"))),
+            // the client's own sentences (Core's, the session's), whole: the catalog's templates match them
+            "CouldNotTeleportReason" or "Disconnected" or "TeleportStalled" or "RegionLost" or "CrossingFailed" or "RegionRestartMinutes"
+                or "RegionRestartSeconds" or "SetDisplayNameSuccess" or "DoNotDisturbHeld" or "AntiSpamBlocked" or "TeleportViaSLAPP"
+                or "JoinGroupCanAfford" or "JoinGroupCannotAfford" or "JoinGroupNoCost" or "GroupLeaveConfirmMember" or "WayOut" or "LookAround"
+                => ("", Lang.T(Plain(S(n, "message"))), Life(FeedKind.Notice, S(n, "message"))),
             _ => null,
         };
         return line ?? ("", Plain(S(n, "message")), Life(FeedKind.Notice, S(n, "message")));
+    }
+
+    static readonly Regex MoreSince = new(@"^(.+) \((\d+) more since\)$", RegexOptions.Compiled | RegexOptions.Singleline);
+
+    /// <summary>A bump notice (Core's Safety.Bumps), with how many more came since the last one shown.</summary>
+    static string Bump(string text) =>
+        MoreSince.Match(text) is { Success: true } m ? Lang.F("{0} ({1} more since)", Lang.T(m.Groups[1].Value), m.Groups[2].Value) : Lang.T(text);
+
+    /// <summary>What a script asks to do, one permission a line (AgentSession's PermissionLines), as one list.</summary>
+    static string Questions(string lines) =>
+        string.Join(", ", lines.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(l => Lang.T(l)));
+
+    /// <summary>The person's own payment, as Money.Sentence words it (a gift's reason after a colon).</summary>
+    string Paid(JsonObject n, JsonObject pay, bool ok)
+    {
+        var who = Plain(S(pay, "name"));
+        int amount = I(pay, "amount");
+        var why = S(pay, "reason");
+        bool gift = why.Length > 0 && S(n, "message").Contains(": " + why, StringComparison.Ordinal);
+        return (ok, Id(pay, "dest_id") != UUID.Zero, why.Length > 0, gift) switch
+        {
+            (true, true, false, _) => Lang.F("You paid {0} L${1}.", who, amount),
+            (true, true, true, true) => Lang.F("You paid {0} L${1}: {2}", who, amount, why),
+            (true, true, true, false) => Lang.F("You paid {0} L${1} {2}.", who, amount, why),
+            (true, false, false, _) => Lang.F("You paid L${0}.", amount),
+            (true, false, true, _) => Lang.F("You paid L${0} {1}.", amount, why),
+            (false, true, false, _) => Lang.F("You failed to pay {0} L${1}.", who, amount),
+            (false, true, true, true) => Lang.F("You failed to pay {0} L${1}: {2}", who, amount, why),
+            (false, true, true, false) => Lang.F("You failed to pay {0} L${1} {2}.", who, amount, why),
+            (false, false, false, _) => Lang.F("You failed to pay L${0}.", amount),
+            (false, false, true, _) => Lang.F("You failed to pay L${0} {1}.", amount, why),
+        };
     }
 
     /// <summary>A script menu: its message (its buttons are keys under it on the feed).</summary>
@@ -465,7 +510,7 @@ public sealed class SocialFeed
         s = s.Replace("<nolink>", "").Replace("</nolink>", "");
         return AgentLink.Replace(s, m =>
         {
-            var name = UUID.TryParse(m.Groups[1].Value, out var id) && (Pseudonym(id) ?? _s.Names.DisplayName(id)) is { } nm ? nm : "someone";
+            var name = UUID.TryParse(m.Groups[1].Value, out var id) && (Pseudonym(id) ?? _s.Names.DisplayName(id)) is { } nm ? nm : Lang.T("someone");
             return m.Groups[2].Value.Equals("mention", StringComparison.OrdinalIgnoreCase) ? "@" + name : name;
         });
     }

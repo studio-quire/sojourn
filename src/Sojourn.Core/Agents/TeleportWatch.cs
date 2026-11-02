@@ -38,6 +38,8 @@ public sealed class TeleportWatch
     public static readonly TimeSpan AnswerWait = TimeSpan.FromSeconds(15);
     /// <summary>How long a started teleport may go without TeleportFinish or TeleportFailed.</summary>
     public static readonly TimeSpan StartedWait = TimeSpan.FromSeconds(45);
+    /// <summary>(test) SOJOURN_ARRIVAL_DELAY_MS: every arrival reply held back that long, for whatever listens (WireReply).</summary>
+    public static readonly int ArrivalDelayMs = int.TryParse(Environment.GetEnvironmentVariable("SOJOURN_ARRIVAL_DELAY_MS"), out int ms) ? ms : 0;
 
     readonly AgentSession _s;
     readonly object _lock = new();
@@ -115,6 +117,7 @@ public sealed class TeleportWatch
         c.Network.UnregisterCallback(PacketType.AgentMovementComplete, lmv);
         void Reply(object? sender, PacketReceivedEventArgs e)
         {
+            if (CrossingGuard.LateReply(c, e.Simulator)) return;   // a superseded crossing's: it would undo the newer one
             var p = (AgentMovementCompletePacket)e.Packet;
             var handle = p.Data.RegionHandle;
             DateTime finishAt;
@@ -128,10 +131,9 @@ public sealed class TeleportWatch
             lmv(sender, e);
             Complete(p);
         }
-        int delay = int.TryParse(Environment.GetEnvironmentVariable("SOJOURN_ARRIVAL_DELAY_MS"), out int ms) ? ms : 0;
         // (on the thread pool, as LibreMetaverse's was: it connects neighbours and cleans up as it goes)
-        c.Network.RegisterCallback(PacketType.AgentMovementComplete, delay <= 0 ? Reply
-            : (sender, e) => _ = Task.Delay(delay).ContinueWith(_ => Reply(sender, e)), true);
+        c.Network.RegisterCallback(PacketType.AgentMovementComplete, ArrivalDelayMs <= 0 ? Reply
+            : (sender, e) => _ = Task.Delay(ArrivalDelayMs).ContinueWith(_ => Reply(sender, e)), true);
     }
 
     void Started()

@@ -28,9 +28,20 @@ public abstract class LeapApi
     readonly Dictionary<string, (string Desc, OpHandler Run)> _ops = new();
     public IReadOnlyDictionary<string, (string Desc, OpHandler Run)> Ops => _ops;
 
-    protected void Op(string name, string desc, OpHandler run) => _ops[name] = (desc, run);
+    protected void Op(string name, string desc, OpHandler run) => _ops[name] = (desc, Rlv(name, run));
     protected void Op(string name, string desc, Func<JsonObject, JsonNode?> run) =>
-        _ops[name] = (desc, (a, _) => Task.FromResult(run(a)));
+        _ops[name] = (desc, Rlv(name, (a, _) => Task.FromResult(run(a))));
+
+    /// <summary>RLV's say over every op, for the dispatcher's callers and those that run a handler directly (a key
+    /// press, a menu, dictation): refused with why (Rlv/RlvOps.cs), and what comes back with the names and places RLV
+    /// hides replaced (docs/rlv.md).</summary>
+    OpHandler Rlv(string op, OpHandler run) => async (a, ct) =>
+    {
+        if (!S.RlvActive || Sojourn.Core.Rlv.RlvEngine.InOwnRead) return await run(a, ct);
+        if (Sojourn.Core.Rlv.RlvOps.Check(S, Name, op, a) is { } why)
+            throw new LeapError(Sojourn.Core.Rlv.RlvOps.Quiet(Name, op) ? why : S.RlvRefused(why)!);
+        return S.RlvFilterResult(await run(a, ct));
+    };
 }
 
 /// <summary>Routes /cmd requests (pump, data with op) to the emulated APIs.</summary>

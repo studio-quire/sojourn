@@ -852,6 +852,7 @@ public sealed partial class Avatars
                 if (!Visible(id)) continue;
                 // head/upper/lower carry the morph mask in a fifth component
                 var bakeSrc = assets is IBakeSource bs ? BakeSource(bs, av.ID, te) : assets;
+                if (LookHold.Active) LookHold.Hold(textures, id, LookHold.Bakes(av));
                 var t = textures.Request(id, bakeSrc, keepAux: te is TeHead or TeUpper or TeLower);
                 if (t.State == TexState.Loading) { loaded = false; pending++; }
                 // a body bake that can't be had keeps the avatar a cloud (the viewer never finishes loading it)

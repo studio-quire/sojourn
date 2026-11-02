@@ -34,6 +34,12 @@ The easy way: ask your own Claude (Claude Code or a similar agent) to clone this
 `tools/setup.py`, which fetches and builds everything, and helps you through the first start. Your Second Life password,
 the grid's terms and your AI provider's key stay with you.
 
+**With your Claude subscription**: Sojourn doesn't offer signing in with a Claude account. Instead your own Claude
+Code session can be Sojourn's assistant: it starts Sojourn in **dev mode**, hears what you say or type to the
+assistant, operates the viewer for you and answers on its panel, while Sojourn itself signs in to nothing. This works
+from a build of this source and from an installed copy; ask your Claude to read [DEV-MODE.md](DEV-MODE.md) and start
+it. Otherwise the assistant runs on an Anthropic or OpenRouter key of your own.
+
 By hand: `python tools/setup.py --check` says what's missing, and `python tools/setup.py` builds everything (BUILDING.md
 explains both). The rest of this section is the plain build without the optional parts.
 
@@ -90,7 +96,8 @@ OpenSim grid you give them.
 - `docs/access.md` and `docs/access-app.md`: Sojourn Access, the plan and as built; `docs/screen-reader.md`,
   `docs/radegast.md`, `docs/accessibility.md` for the research behind it.
 - `docs/client.md`, `docs/vr.md`, `docs/rendering.md`, `docs/performance.md`: the viewer and its renderer.
-- `docs/assistant.md`: the assistant, its confirmations and what it may and may not do.
+- `docs/assistant.md`: the assistant, its confirmations and what it may and may not do; `DEV-MODE.md`, your own
+  Claude as the assistant.
 - `docs/tpv-policy.md`: how Sojourn keeps to Linden Lab's Third Party Viewer Policy.
 - `docs/download.md`: the disclosures, support statement and privacy policy that go with any build we hand out.
 

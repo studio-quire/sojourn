@@ -4,6 +4,9 @@
 //   sv_loopback open [CAPTURE RENDER]     open the real devices (default: communications) for 2 s, silent
 //   sv_loopback devices-change CAPTURE RENDER   devices lost, gone, back and the default moving (simulated), silent
 //   sv_loopback run IN.wav OUT.wav SECONDS [--mute-at S] [--raw] [--gate-at S --gate-for S]
+//   sv_loopback listen OUTPUT [SECONDS [FREQ]]   what reaches an output (loopback capture), 50 ms levels, nothing played
+//   sv_loopback switch A B [LEVEL_DB]     a quiet tone played on output A, moved to B and back, heard on each by
+//                                         loopback capture (part of a name for each)
 // --raw turns our APM off (to check the path itself is transparent), --no-aec only its echo canceller. Prints JSON lines; tools/voice.py analyses.
 #include "../sojourn_voice.h"
 
@@ -16,7 +19,18 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
+
+#include "listen.h"
+
+static constexpr double kTone = 1031.0;   // the switch test's tone (Hz): not a round number other sounds sit on
+
+static std::string Esc(const std::string& s) {
+    std::string r;
+    for (char ch : s) r += (ch == '\\' || ch == '"') ? std::string("\\") + ch : std::string(1, ch);
+    return r;
+}
 
 static std::mutex mu;
 static int64_t pc_a = 0, pc_b = 0;
@@ -193,6 +207,107 @@ int main(int argc, char** argv) {
         sv_shutdown();
         return 0;
     }
+    if (argc >= 3 && !strcmp(argv[1], "listen")) {
+        // what reaches an output (any app's sound): 50 ms blocks of its level and a test tone's, for SECONDS
+        Listener l(argv[2], argc > 4 ? atof(argv[4]) : kTone);
+        if (!l.Start()) {
+            printf("{\"event\":\"error\",\"text\":\"%s\"}\n", l.Error().c_str());
+            return 1;
+        }
+        printf("{\"event\":\"listening\",\"name\":\"%s\",\"format\":\"%s\"}\n", Esc(l.Name()).c_str(), l.Format().c_str());
+        fflush(stdout);
+        DWORD t0 = GetTickCount(), secs = argc > 3 ? (DWORD)(atof(argv[3]) * 1000) : 5000u;
+        size_t shown = 0;
+        while (GetTickCount() - t0 < secs + 100) {
+            Sleep(50);
+            auto bs = l.Blocks();
+            for (; shown < bs.size(); shown++)
+                printf("{\"t\":%lu,\"rms_db\":%.1f,\"tone_db\":%.1f}\n", bs[shown].t - t0, bs[shown].rms_db, bs[shown].tone_db);
+            fflush(stdout);
+        }
+        return 0;
+    }
+    if (argc >= 4 && !strcmp(argv[1], "switch")) {
+        // The output moved between two real devices while a quiet tone plays (LEVEL dBFS, -60 by default), each
+        // device listened to by loopback capture: does the tone arrive on the new one and leave the old? There and
+        // back. Prints a JSON line per phase with the tone's level on each device and when it arrived and left.
+        double level_db = argc > 4 ? atof(argv[4]) : -60;
+        Listener la(argv[2], kTone), lb(argv[3], kTone);
+        if (!la.Start() || !lb.Start()) {
+            printf("{\"event\":\"error\",\"text\":\"%s %s\"}\n", Esc(la.Error()).c_str(), Esc(lb.Error()).c_str());
+            return 1;
+        }
+        printf("{\"event\":\"listening\",\"a\":\"%s\",\"a_format\":\"%s\",\"b\":\"%s\",\"b_format\":\"%s\"}\n",
+               Esc(la.Name()).c_str(), la.Format().c_str(), Esc(lb.Name()).c_str(), lb.Format().c_str());
+        sv_init(OnLog, OnEvent);
+        Sleep(600);
+        DWORD t_base = GetTickCount();
+        float base_a = la.ToneMax(t_base - 500, t_base), base_b = lb.ToneMax(t_base - 500, t_base);
+        // the tone, kept ~200 ms ahead in the shim's local stream
+        std::atomic<bool> playing{true};
+        std::thread feed([&] {
+            const int rate = 48000, chunk = 4800;
+            std::vector<int16_t> pcm(chunk);
+            double amp = std::pow(10.0, level_db / 20) * 32767, ph = 0, step = 2 * 3.14159265358979 * kTone / rate;
+            while (playing) {
+                if (sv_play_queued_ms(0) < 200) {
+                    for (auto& s : pcm) {
+                        s = (int16_t)std::lrint(std::sin(ph) * amp);
+                        ph += step;
+                    }
+                    sv_play(0, pcm.data(), chunk, rate, 1);
+                }
+                Sleep(20);
+            }
+        });
+        std::string spec_a = std::string("name:") + la.Name(), spec_b = std::string("name:") + lb.Name();
+        // a phase: the output put on `to` (by spec, or by `act`), then 1.5 s; the tone counts as there 15 dB over
+        // what was there before
+        auto phase = [&](const char* name, const std::string& spec, Listener& to, Listener& from, float base_to,
+                         float base_from, void (*act)() = nullptr) {
+            DWORD t0 = GetTickCount();
+            if (act)
+                act();
+            else
+                sv_audio_start("none", spec.c_str());
+            for (int i = 0; i < 150; i++) {
+                Drain();
+                Sleep(10);
+            }
+            DWORD t1 = GetTickCount();
+            DWORD arrived = to.FirstTone(t0, base_to + 15), left = from.LastTone(t1, base_from + 15);
+            char stats[2048], state[1024], probe[256];
+            sv_stats(stats, sizeof stats);
+            sv_device_state(1, state, sizeof state);
+            sv_output_probe(400, probe, sizeof probe);   // the shim's own check of what reaches the output
+            printf("{\"event\":\"phase\",\"phase\":\"%s\",\"to_db\":%.1f,\"from_db\":%.1f,\"arrived_ms\":%ld,"
+                   "\"left_ms\":%ld,\"state\":%s,\"probe\":%s,\"stats\":%s}\n",
+                   name, to.ToneMax(t1 - 500, t1), from.ToneMax(t1 - 500, t1),
+                   arrived ? (long)(arrived - t0) : -1L, left ? (long)left - (long)t0 : -1L, state, probe, stats);
+            fflush(stdout);
+        };
+        printf("{\"event\":\"baseline\",\"a_db\":%.1f,\"b_db\":%.1f,\"level_db\":%.1f}\n", base_a, base_b, level_db);
+        phase("onto a", spec_a, la, lb, base_a, base_b);
+        phase("a to b", spec_b, lb, la, base_b, base_a);
+        phase("b to a", spec_a, la, lb, base_a, base_b);
+        // B refusing to start (sv_test_device 4) while A stands in for Windows' default: asked for B, the sound stays
+        // on A (the default meanwhile) with the reason; then B starts again and, at Windows' next device change (the
+        // test hook wakes the thread as one would), the sound goes to B
+        sv_test_device(1, 3, spec_a.c_str());
+        sv_test_device(1, 4, spec_b.c_str());
+        phase("b refuses", spec_b, la, lb, base_a, base_b);
+        phase("b starts again", spec_b, lb, la, base_b, base_a, [] { sv_test_device(1, 4, ""); });
+        sv_test_device(1, 3, "");
+        playing = false;
+        feed.join();
+        sv_play_clear(0);
+        sv_audio_stop();
+        Drain();
+        printf("{\"event\":\"done\"}\n");
+        fflush(stdout);
+        sv_shutdown();
+        return 0;
+    }
     if (argc >= 5 && !strcmp(argv[1], "chirp")) {
         // the echo path of real devices (the headset's speakers into its own mic): a sweep played out, the mic
         // recorded, first with no processing (the echo as it is), then with the echo canceller on (what's left)
@@ -265,7 +380,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (argc < 5 || strcmp(argv[1], "run")) {
-        fprintf(stderr, "usage: sv_loopback devices | open [CAPTURE RENDER] | chirp CAPTURE RENDER DIR | run IN.wav OUT.wav SECONDS [--mute-at S] "
+        fprintf(stderr, "usage: sv_loopback devices | open [CAPTURE RENDER] | listen OUTPUT [SECONDS [FREQ]] | switch A B [LEVEL_DB] | chirp CAPTURE RENDER DIR | run IN.wav OUT.wav SECONDS [--mute-at S] "
                         "[--raw|--no-aec] [--gate-at S --gate-for S]\n");
         return 2;
     }

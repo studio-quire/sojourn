@@ -117,6 +117,8 @@ without a TeleportStart, and it drops those) and refuses to start while an earli
   `CircuitGuard` makes this rare by resending the new region's UseCircuitCode every 1.5 s until acknowledged
   (LibreMetaverse sends it once, so one lost datagram stranded a teleport; `docs/client.md` > Gotchas).
 - A second press while one is on its way says "Still on the way home".
+- Under RLV it stands and goes home whatever @unsit or @tploc say, @standtp doesn't take them back, and for 30 s no
+  script's teleport or sit does; restrictions stay held (`docs/rlv.md` > The way out).
 
 Each case is checked on the local grid (an account with no home, a home in a far region, that region taken down, its
 circuit's datagrams lost for 1.5 s and for 45 s: `SOJOURN_CIRCUIT_LOSS`).

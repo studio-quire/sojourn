@@ -77,6 +77,17 @@ public static class SettingsStandard
             + "the model, memory, touches, incognito, the mic, draw distance, a script's controls back); only the menu changes, every setting stays "
             + "yours to change either way", "on, off",
             () => N(st.AdvancedMenu), Switch("advanced_menu", on => menu.SetAdvanced(on))));
+        api.Add("language", new("view", "the language of Sojourn's own words (menus, the panel's and feed's own lines, cards, the login "
+            + "sheet, the launcher): auto follows Windows' display language; " + string.Join(", ", Lang.All.Select(l => $"{l.Code} {l.English}"))
+            + ". Your replies follow the language the person speaks to you, not this", string.Join(", ", Lang.Settings),
+            () => N(st.UiLanguage), v =>
+            {
+                var s = v.GetValueKind() == System.Text.Json.JsonValueKind.String ? v.GetValue<string>().Trim() : "";
+                if (!s.Equals("auto", StringComparison.OrdinalIgnoreCase) && Lang.Find(s) == null)
+                    return "language is one of " + string.Join(", ", Lang.Settings);
+                menu.SetLanguage(s);
+                return null;
+            }));
         api.Add("interface", new("view", "everything Sojourn draws over the world (the panel, menus, chat, cards, name tags, wrist tokens, "
             + "boards, the pointer) shown, or hidden (X or Tab, as the person does); hidden, only a confirmation shows, and replies wait until it's shown again",
             "shown, hidden", () => N(st.InterfaceHidden ? "hidden" : "shown"), Switch("interface", on => menu.SetHidden(!on))));
@@ -91,7 +102,8 @@ public static class SettingsStandard
         api.Add("spoken_replies", new("assistant", "the assistant's replies read aloud as well as shown", "on, off",
             () => N(st.SpokenReplies), Switch("spoken_replies", on => { st.SpokenReplies = on; assistant.PrefsChanged(); })));
         api.Add("hearing", new("assistant", "what hears the person: parakeet (Parakeet TDT on the CPU, faster and better on everyday words, "
-            + "names put in by a matching pass; the default), whisper (small.en on the CPU, told the names around them), or soniox "
+            + "names put in by a matching pass; the default), whisper (small.en on the CPU, told the names around them; an installed copy "
+            + "downloads its model, about 460 MB, the first time: ask the person before choosing it), or soniox "
             + "(Soniox's cloud service, streamed while they talk; needs the person's own key, Whisper standing in without it)",
             "whisper, parakeet, soniox", () => N(st.Hearing),
             Choice("hearing", VrSettings.Hearings, i => { st.Hearing = VrSettings.Hearings[i]; assistant.PrefsChanged(); })));

@@ -18,7 +18,7 @@ except ImportError:   # a packaged Sojourn Access: no local voice (main.py's NoS
     np = None
 
 HERE = Path(__file__).resolve().parent
-MODEL_DIR = __import__("paths").LOCAL / "assistant" / "kokoro"
+MODEL_DIR = __import__("paths").model_dir("kokoro", __import__("paths").LOCAL / "assistant" / "kokoro")
 MODEL = MODEL_DIR / "kokoro-v1.0.int8.onnx"
 VOICES = MODEL_DIR / "voices-v1.0.bin"
 DEFAULT_VOICE = "af_heart"

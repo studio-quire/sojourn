@@ -52,6 +52,7 @@ public sealed class Pilot
     {
         if (_session.Client is not { } c) return;
         bool fly = !c.Self.Movement.Fly;
+        if (fly && _session.RlvActive && _session.RlvRefused(_session.Rlv.CanFly()) != null) return;   // RLV's @fly
         c.Self.Fly(fly);
         c.Self.Movement.Fly = fly;
     }
@@ -94,7 +95,7 @@ public sealed class Pilot
         int strafe = (Down(Key.D) ? 1 : 0) - (Down(Key.A) ? 1 : 0);   // + = right
         int turn = (Down(Key.Q, Key.Left) ? 1 : 0) - (Down(Key.E, Key.Right) ? 1 : 0);   // + = left (counter-clockwise)
         int up = (Down(Key.Space) ? 1 : 0) - (Down(Key.C, Key.PageDown) ? 1 : 0);
-        bool run = Down(Key.ShiftLeft, Key.ShiftRight);
+        bool run = Down(Key.ShiftLeft, Key.ShiftRight) && !(_session.RlvActive && _session.Rlv.TempRunBlocked);   // (RLV's @temprun)
         bool held = forward != 0 || strafe != 0 || up != 0 || turn != 0;
         bool rotated = false;
 
@@ -120,6 +121,7 @@ public sealed class Pilot
             {
                 mv.AtPos = forward > 0; mv.AtNeg = forward < 0; mv.FastAt = forward != 0;
                 mv.LeftPos = strafe < 0; mv.LeftNeg = strafe > 0; mv.FastLeft = strafe != 0;
+                if (up > 0 && !Flying && _session.RlvActive && _session.Rlv.CanJump() != null) up = 0;   // RLV's @jump
                 mv.UpPos = up > 0; mv.UpNeg = up < 0; mv.FastUp = up != 0;
                 mv.TurnLeft = turn > 0; mv.TurnRight = turn < 0;
                 mv.YawPos = turn > 0; mv.YawNeg = turn < 0;
@@ -178,6 +180,16 @@ public sealed class Pilot
     {
         var at = SmoothedAvatar(c, sim);
         var look = new Vector3(MathF.Cos(Pitch) * MathF.Cos(Yaw), MathF.Cos(Pitch) * MathF.Sin(Yaw), MathF.Sin(Pitch));
+        float distance = Distance;
+        if (_session.RlvActive)
+        {
+            // RLV's camera limits on the desktop (docs/rlv.md > The camera): no mouselook while refused, the distance
+            // from the avatar between @setcam_avdistmin and @setcam_avdistmax (0 max: first person only)
+            var cam = _session.Rlv.Camera();
+            if (Mode == CameraMode.FirstPerson && cam.NoMouselook) Mode = CameraMode.ThirdPerson;
+            if (cam.AvDistMax is { } max && max <= 0.1f) Mode = CameraMode.FirstPerson;
+            distance = Math.Clamp(distance, cam.AvDistMin ?? 0f, Math.Max(cam.AvDistMin ?? 0f, cam.AvDistMax ?? float.MaxValue));
+        }
         if (Mode == CameraMode.FirstPerson)
         {
             var eye = at + new Vector3(0, 0, 0.72f) + new Vector3(MathF.Cos(Yaw), MathF.Sin(Yaw), 0) * 0.12f;
@@ -185,7 +197,7 @@ public sealed class Pilot
         }
         // third person: orbit behind the head at the zoom distance, kept above the ground
         var focus = at + new Vector3(0, 0, 0.55f);
-        var pos = focus - look * Distance + new Vector3(0, 0, 0.35f);
+        var pos = focus - look * distance + new Vector3(0, 0, 0.35f);
         var world = _session.World.Region(_session.GridKey, sim.Handle);
         if (world?.TerrainHeight(pos.X, pos.Y) is { } ground && pos.Z < ground + 0.4f) pos.Z = ground + 0.4f;
         var fwd = focus + look * 2.0f - pos;

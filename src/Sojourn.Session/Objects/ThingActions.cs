@@ -134,23 +134,24 @@ public sealed class ThingActions(AgentSession s)
 
     /// <summary>What can be done with it, the thing's own click action first (a vendor's buy, a chair's sit), then what
     /// it's set up for (a sale, a pay, a touch) before what any thing allows (sitting on it), then about and ask.
-    /// tapTouches: a plain press already touches it, so no touch here.</summary>
+    /// tapTouches: a plain press already touches it, so no touch here. Labels in the person's language (a touch's or a
+    /// sit's own name, set by the thing, as it is).</summary>
     public List<ThingAction> For(ThingFacts f, bool tapTouches, bool assistant = true)
     {
         var list = new List<ThingAction>();
         bool world = !f.Worn;
         if (world && f.Known && f.Sale != SaleType.Not && !f.Mine)
-            list.Add(new(ThingDo.Buy, f.Sale switch { SaleType.Copy => "buy a copy", SaleType.Contents => "buy its contents", _ => "buy" },
-                f.Price == 0 ? "free" : $"L${f.Price}"));
-        if (world && (f.Flags & PrimFlags.Money) != 0) list.Add(new(ThingDo.Pay, "pay"));
-        if ((f.Flags & PrimFlags.Touch) != 0 && !tapTouches) list.Add(new(ThingDo.Touch, f.TouchName ?? "touch"));
-        if (world && f.MySeat) list.Add(new(ThingDo.Stand, "stand up"));
-        if (world && !f.MySeat) list.Add(new(ThingDo.Sit, f.SitName ?? "sit here"));
-        if (world && (f.Flags & PrimFlags.ObjectCopy) != 0) list.Add(new(ThingDo.TakeCopy, "take a copy"));
-        if (world && f.Mine) list.Add(new(ThingDo.Take, "take"));
-        if (world && (f.Flags & PrimFlags.InventoryEmpty) == 0 && (f.Mine || (f.Flags & PrimFlags.ObjectModify) != 0)) list.Add(new(ThingDo.Open, "open"));
-        list.Add(new(ThingDo.About, "about this"));
-        if (assistant) list.Add(new(ThingDo.Ask, "ask the assistant"));
+            list.Add(new(ThingDo.Buy, Lang.T(f.Sale switch { SaleType.Copy => "buy a copy", SaleType.Contents => "buy its contents", _ => "buy" }),
+                f.Price == 0 ? Lang.T("free") : Lang.F("L${0}", f.Price)));
+        if (world && (f.Flags & PrimFlags.Money) != 0) list.Add(new(ThingDo.Pay, Lang.T("pay")));
+        if ((f.Flags & PrimFlags.Touch) != 0 && !tapTouches) list.Add(new(ThingDo.Touch, f.TouchName ?? Lang.T("touch", "thing")));
+        if (world && f.MySeat) list.Add(new(ThingDo.Stand, Lang.T("stand up")));
+        if (world && !f.MySeat) list.Add(new(ThingDo.Sit, f.SitName ?? Lang.T("sit here")));
+        if (world && (f.Flags & PrimFlags.ObjectCopy) != 0) list.Add(new(ThingDo.TakeCopy, Lang.T("take a copy")));
+        if (world && f.Mine) list.Add(new(ThingDo.Take, Lang.T("take")));
+        if (world && (f.Flags & PrimFlags.InventoryEmpty) == 0 && (f.Mine || (f.Flags & PrimFlags.ObjectModify) != 0)) list.Add(new(ThingDo.Open, Lang.T("open")));
+        list.Add(new(ThingDo.About, Lang.T("about this")));
+        if (assistant) list.Add(new(ThingDo.Ask, Lang.T("ask the assistant")));
         // its own click action leads (the viewer's left click does it; here it's the first thing on the card)
         var lead = f.Click switch { 1 => ThingDo.Sit, 2 => ThingDo.Buy, 3 => ThingDo.Pay, 4 => ThingDo.Open, _ => (ThingDo?)null };
         if (lead is { } l && list.FindIndex(a => a.Do == l) is > 0 and var i)
@@ -163,25 +164,34 @@ public sealed class ThingActions(AgentSession s)
     }
 
     /// <summary>About it, as lines for a card: owner, creator, description, land impact and prims, what a next owner may
-    /// do, the sale.</summary>
+    /// do, the sale. The labels stay English (the card translates them as it draws); the values are in the person's
+    /// language.</summary>
     public static List<(string Label, string Value)> About(ThingFacts f)
     {
         var lines = new List<(string, string)>();
-        if (f.Worn) lines.Add(("worn by", f.OwnerName ?? "someone"));
-        else if (f.OwnerName is { Length: > 0 } o) lines.Add(("owner", f.Mine ? "you" : o));
+        if (f.Worn) lines.Add(("worn by", f.OwnerName ?? Lang.T("someone")));
+        else if (f.OwnerName is { Length: > 0 } o) lines.Add(("owner", f.Mine ? Lang.T("you", "owner") : o));
         if (f.CreatorName is { Length: > 0 } cr && f.Creator != f.Owner) lines.Add(("creator", cr));
         if (f.Description is { Length: > 0 } d && d != "(No Description)") lines.Add(("description", d));
-        if (f.LandImpact is { } li) lines.Add(("land impact", f.Prims > 1 ? $"{li} · {f.Prims} prims" : li.ToString()));
+        if (f.LandImpact is { } li) lines.Add(("land impact", f.Prims > 1 ? Lang.F("{0} · {1} prims", li, f.Prims) : li.ToString()));
         else if (f.Prims > 1) lines.Add(("prims", f.Prims.ToString()));
         if (f.Known)
         {
             var p = f.NextPerms;
             var can = new[] { ((p & PermissionMask.Copy) != 0, "copy"), ((p & PermissionMask.Modify) != 0, "modify"), ((p & PermissionMask.Transfer) != 0, "transfer") }
-                .Where(x => x.Item1).Select(x => x.Item2).ToList();
-            lines.Add(("next owner", can.Count == 0 ? "no copy, modify or transfer" : string.Join(", ", can)));
+                .Where(x => x.Item1).Select(x => Lang.T(x.Item2)).ToList();
+            lines.Add(("next owner", can.Count == 0 ? Lang.T("no copy, modify or transfer") : string.Join(", ", can)));
         }
         if (f.Known && f.Sale != SaleType.Not)
-            lines.Add(("for sale", (f.Sale switch { SaleType.Copy => "a copy", SaleType.Contents => "its contents", _ => "the original" }) + (f.Price == 0 ? ", free" : $", L${f.Price}")));
+            lines.Add(("for sale", (f.Sale, f.Price == 0) switch
+            {
+                (SaleType.Copy, true) => Lang.T("a copy, free"),
+                (SaleType.Copy, false) => Lang.F("a copy, L${0}", f.Price),
+                (SaleType.Contents, true) => Lang.T("its contents, free"),
+                (SaleType.Contents, false) => Lang.F("its contents, L${0}", f.Price),
+                (_, true) => Lang.T("the original, free"),
+                (_, false) => Lang.F("the original, L${0}", f.Price),
+            }));
         return lines;
     }
 
@@ -256,17 +266,17 @@ public sealed class ThingActions(AgentSession s)
                 break;
             case ThingDo.TakeCopy:
                 r = await Own("TesselBuild", "take", new JsonObject { ["ids"] = new JsonArray(f.Root.ToString()), ["copy"] = true }, ct);
-                if (Error(r) is null) return (true, $"A copy of {f.Name} is in your inventory.");
+                if (Error(r) is null) return (true, Lang.F("A copy of {0} is in your inventory.", f.Name));
                 break;
             case ThingDo.Take:
                 r = await Own("TesselBuild", "take", new JsonObject { ["ids"] = new JsonArray(f.Root.ToString()) }, ct);
-                if (Error(r) is null) return (true, $"{f.Name} is in your inventory.");
+                if (Error(r) is null) return (true, Lang.F("{0} is in your inventory.", f.Name));
                 break;
             case ThingDo.Open:
             {
                 // the viewer's Open window's Copy to Inventory: what may be copied, into a folder named after it
                 var items = (copy ?? await ContentsAsync(f, ct)).Where(i => i.Copy).ToList();
-                if (items.Count == 0) return (false, "Nothing in it can be copied.");
+                if (items.Count == 0) return (false, Lang.T("Nothing in it can be copied."));
                 var folder = await Own("TesselInventory", "createFolder", new JsonObject { ["name"] = f.Name }, ct);
                 if (Error(folder) is { } fe) return (false, Didnt(fe));
                 int done = 0;
@@ -280,8 +290,9 @@ public sealed class ThingActions(AgentSession s)
                     if (Error(one) is { } e) last = e; else done++;
                 }
                 return done == items.Count
-                    ? (true, $"{(done == 1 ? "One item" : $"{done} items")} copied into the folder {f.Name}.")
-                    : (done > 0, $"{done} of {items.Count} copied into the folder {f.Name}" + (last != null ? $" ({last})." : "."));
+                    ? (true, done == 1 ? Lang.F("One item copied into the folder {0}.", f.Name) : Lang.F("{0} items copied into the folder {1}.", done, f.Name))
+                    : (done > 0, last != null ? Lang.F("{0} of {1} copied into the folder {2} ({3}).", done, items.Count, f.Name, last)
+                        : Lang.F("{0} of {1} copied into the folder {2}.", done, items.Count, f.Name));
             }
             default:
                 return (false, null);
@@ -291,7 +302,7 @@ public sealed class ThingActions(AgentSession s)
 
     static string? Didnt(string error) =>
         error.Contains("declined", StringComparison.OrdinalIgnoreCase) || error.Contains("cancel", StringComparison.OrdinalIgnoreCase)
-            ? null : $"Didn't work: {error}";
+            ? null : Lang.F("Didn't work: {0}", error);
 
     static string? Error(JsonObject r) => r["error"] is JsonValue v && v.TryGetValue<string>(out var e) ? e : null;
 

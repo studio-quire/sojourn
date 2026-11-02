@@ -49,6 +49,7 @@ public sealed partial class LoginSheet
         _look = look;
         _log = log;
         if (store != null) LoadAccounts();
+        Lang.Changed += Changed;
     }
 
     /// <summary>The name and version at the form's foot (TPV policy 1.g: the version on the login screen).</summary>
@@ -122,7 +123,7 @@ public sealed partial class LoginSheet
     int _grid;            // 0 Second Life, 1 Beta, 2 another by its URI
     int _start;           // 0 last, 1 home, 2 a region
     bool _forgetArmed, _help, _agree, _rememberComputer;
-    string? _note;        // what's missing, in a few words
+    string? _note;        // what's missing, as a short question ("password?")
     int _termsPage;
     Field? _focus;
     readonly Dictionary<string, string> _gridNames = new();
@@ -283,16 +284,16 @@ public sealed partial class LoginSheet
         {
             var a = _accounts[_selected];
             hash = _pass.Length > 0 ? _pass.TakeHash() : LoginStore.HashOf(a);
-            if (hash == null) { _note = "password"; _focus = _pass; return; }
+            if (hash == null) { _note = "password?"; _focus = _pass; return; }
             account = a;
         }
         else
         {
             var name = _user.Text.Trim().Replace('.', ' ').Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (name.Length is 0 or > 2) { _note = "username"; _focus = _user; return; }
+            if (name.Length is 0 or > 2) { _note = "username?"; _focus = _user; return; }
             string grid = _grid switch { 0 => Grids.Main, 1 => Grids.Beta, _ => Grids.Normalise(_uri.Text) ?? "" };
-            if (grid.Length == 0) { _note = "login URI"; _focus = _uri; return; }
-            if (_pass.Length == 0) { _note = "password"; _focus = _pass; return; }
+            if (grid.Length == 0) { _note = "login URI?"; _focus = _uri; return; }
+            if (_pass.Length == 0) { _note = "password?"; _focus = _pass; return; }
             hash = _pass.TakeHash();
             account = new SavedAccount
             {
@@ -301,7 +302,7 @@ public sealed partial class LoginSheet
             };
         }
         var start = StartOf(_start, _region.Text);
-        if (start == null) { _note = "region"; _focus = _region; return; }
+        if (start == null) { _note = "region?"; _focus = _region; return; }
         account = account with { Start = start };
         Chosen = new LoginChoice(account, hash, _remember);
         _log($"login: logging in on {Grids.Label(account.Grid, account.GridName)}{(_remember ? ", password remembered after it works" : "")}");

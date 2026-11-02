@@ -50,6 +50,14 @@ public static class Allowlist
             ["blind"] = true,
         }));
         foreach (var op in new[] { "status", "situation", "set", "draft", "always" }) p.Allow("SojournPrivate", op, Pass);
+        // RLV's hold on the person (docs/rlv.md): what's restricted, not which objects (their names can carry people's)
+        p.Allow("SojournRlv", "status", new Rule(Result: r =>
+        {
+            if (r?.DeepClone() is not JsonObject o) return r;
+            if (o["held"] is JsonArray held)
+                foreach (var h in held.OfType<JsonObject>()) { h.Remove("object"); h.Remove("name"); }
+            return o;
+        }));
 
         // settings: values are the person's own (graphics, sound, the menu's switches)
         p.Allow("SojournSettings", "get", Pass);
@@ -112,6 +120,8 @@ public static class Allowlist
             Check: (a, _) => a.ContainsKey("where") ? "where: not while incognito" : (a.ContainsKey("about") ? HandleOf(a, "about", "person") : null) ?? (a.ContainsKey("object") ? HandleOf(a, "object", "thing") : null),
             Result: r => r is JsonObject o && o["draft"] is { } d ? new JsonObject { ["draft"] = d.DeepClone() } : PrivateMode.Plain(r)));
         p.Allow("SojournReport", "send", OwnPlain);
+        // Sojourn itself: its name, version and disclaimer (a problem report is refused: it sends the session's log)
+        p.Allow("SojournRelease", "about", Pass);
 
         // pictures and videos for the person (never shown to the assistant), named as incognito ones
         p.Allow("SojournCapture", "snapshot", new Rule(Check: (a, _) => { a["name"] = "incognito"; return null; }));

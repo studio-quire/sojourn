@@ -23,6 +23,8 @@ public sealed partial class MainForm
         public required string SessionId;
         public required string Title;
         public required bool Group;
+        /// <summary>The builders' tab (MainForm.Builders.cs): messages to Studio Quire's relay, not an IM.</summary>
+        public bool Builders;
         public UUID Other;
         public required TabPage Page;
         public required TextBox Input, History;
@@ -95,14 +97,21 @@ public sealed partial class MainForm
             if (Commands.IsCommand(text)) { _ = _cmd.RunAsync(text); return; }
             var type = e.Control ? "shout" : e.Shift ? "whisper" : "normal";
             // a gesture's trigger plays it instead of being said (its replacement text, or the rest of the line, is)
-            if (Triggered(text) is { } revised) { if (revised.Length > 0) _ = SayAsync(revised, type); return; }
-            _ = SayAsync(text, type);
+            _ = SayOrPlayAsync(text, type);
         }
         else if (e.Control && e.KeyCode is Keys.Up or Keys.Down)
         {
             e.SuppressKeyPress = e.Handled = true;
             Recall(_chatInput, _chatSent, ref _chatRecall, e.KeyCode == Keys.Up ? +1 : -1);
         }
+    }
+
+    /// <summary>A line from Say: a gesture's trigger plays it instead of being said (its replacement text, or the rest
+    /// of the line, is), else the line is said.</summary>
+    async Task SayOrPlayAsync(string text, string type)
+    {
+        if (await TriggeredAsync(text) is { } revised) { if (revised.Length > 0) await SayAsync(revised, type); return; }
+        await SayAsync(text, type);
     }
 
     async Task SayAsync(string text, string type)
@@ -157,10 +166,17 @@ public sealed partial class MainForm
         cv = new Conversation { SessionId = sessionId, Title = label, Group = group, Other = other, Page = page, Input = input, History = history };
         page.Tag = cv;
         input.KeyDown += (_, e) => ConversationKey(cv, e);
-        _convs[sessionId] = cv;
+        AddConversation(cv);
+        return cv;
+    }
+
+    /// <summary>A new conversation's tab added: it waits, the focus wherever it is.</summary>
+    void AddConversation(Conversation cv)
+    {
+        _convs[cv.SessionId] = cv;
         // adding a tab keeps the one selected (and the focus wherever it is); the first one becomes the selected tab
         // of a control the person isn't in
-        _conversations.TabPages.Add(page);
+        _conversations.TabPages.Add(cv.Page);
         if (!_conversations.Visible)
         {
             _conversations.Visible = true;
@@ -169,11 +185,19 @@ public sealed partial class MainForm
             {
                 _noConversations.Dock = DockStyle.Top;
                 _noConversations.Height = 40;
-                _noConversations.Text = $"A conversation opened: {label}. Control+Tab goes to it.";
+                _noConversations.Text = $"A conversation opened: {cv.Title}. Control+Tab goes to it.";
             }
             else _noConversations.Visible = false;
         }
-        return cv;
+    }
+
+    /// <summary>The last conversation closed: the "no conversations" line again.</summary>
+    void NoConversationsShown()
+    {
+        _conversations.Visible = false;
+        _noConversations.Text = NoConversationsText;
+        _noConversations.Dock = DockStyle.Fill;
+        _noConversations.Visible = true;
     }
 
     void ConversationKey(Conversation cv, KeyEventArgs e)
@@ -187,7 +211,7 @@ public sealed partial class MainForm
             cv.Recall = -1;
             cv.Input.Clear();
             if (Commands.IsCommand(text)) { _ = _cmd.RunAsync(text); return; }
-            _ = SendImAsync(cv, text);
+            _ = cv.Builders ? SendToBuildersAsync(cv, text) : SendImAsync(cv, text);
         }
         else if (e.Control && e.KeyCode is Keys.Up or Keys.Down)
         {
@@ -219,16 +243,14 @@ public sealed partial class MainForm
     void CloseConversation()
     {
         if (_areas.SelectedTab != _conversationsPage || _conversations.SelectedTab?.Tag is not Conversation cv) { Reader?.Answer("Not in a conversation."); return; }
-        _convs.Remove(cv.SessionId);
-        _conversations.TabPages.Remove(cv.Page);
-        cv.Page.Dispose();
-        _ = _ops.DoAsync("TesselIM", "leave", new JsonObject { ["session_id"] = cv.SessionId });
-        if (_conversations.TabCount == 0)
+        if (cv.Builders) CloseBuildersTab();
+        else
         {
-            _conversations.Visible = false;
-            _noConversations.Text = NoConversationsText;
-            _noConversations.Dock = DockStyle.Fill;
-            _noConversations.Visible = true;
+            _convs.Remove(cv.SessionId);
+            _conversations.TabPages.Remove(cv.Page);
+            cv.Page.Dispose();
+            _ = _ops.DoAsync("TesselIM", "leave", new JsonObject { ["session_id"] = cv.SessionId });
+            if (_conversations.TabCount == 0) NoConversationsShown();
         }
         Reader?.Answer($"Closed {cv.Title}.");
         GoArea(_conversations.TabCount > 0 ? _conversationsPage : _chatPage);

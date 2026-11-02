@@ -31,6 +31,9 @@ public sealed partial class MainForm
         ("access_timestamps", "Times in the histories"),
         // (the blind tester asked what "answers without a physical key: refused" meant, 2026-10-31: the row says it plainly)
         ("access_answers_without_key", "Answers from a braille display, dictation or on-screen keyboard"),
+        ("access_builders", "Messages with the builders (Control+Shift+B)"),
+        // (Radegast's auto-accept, which the blind tester was used to and missed, 2026-11-01)
+        ("auto_accept_inventory", "Items given to you, kept without asking"),
         ("earcon_im", "IM sound"),
         ("earcon_mention", "Mention sound (your name or a keyword)"),
         ("earcon_menu", "Menu sound (a script menu or question)"),
@@ -43,6 +46,7 @@ public sealed partial class MainForm
         ("earcon_notice", "Other notices sound"),
         ("earcon_sent", "Your own line sent, sound"),
         ("earcon_mic", "Mic opening and closing, sound"),
+        ("earcon_deleted", "Deleting something, sound"),
         ("access_sounds_volume", "Sojourn Access's own sounds, volume"),
         ("sounds_volume", "World's sounds, volume"),
         ("music", "Parcel's music"),
@@ -69,11 +73,15 @@ public sealed partial class MainForm
         ("walk_beacon_volume", "Beacon's volume"),
         ("walk_marks", "Marks: doors, seats and touchable things (walk mode, O)"),
         ("walk_marks_volume", "Marks' volume"),
+        ("walk_route", "Route recording's points (walk mode, R)"),
+        ("walk_route_volume", "Route points' volume"),
         ("walk_follow", "Following someone: their stops and turns"),
         ("walk_distance", "Distance walked, said when you pause (walk mode)"),
         ("walk_speed", "Speed while driving, said when it changes (V asks)"),
         ("walk_vehicle", "Obstacles ahead while driving"),
         ("walk_vehicle_volume", "Driving sounds' volume"),
+        ("walk_switch", "Rail switches ahead while riding (walk mode, W)"),
+        ("walk_switch_volume", "Rail switches' volume"),
         ("walk_turn_step", "Degrees a tap of Left or Right turns (walk mode)"),
         ("walk_turn_rate", "Degrees a second Left or Right held turns (walk mode)"),
         ("walk_teleport_fallback", "Teleport when a walk finds no way around"),
@@ -100,6 +108,8 @@ public sealed partial class MainForm
             e.Handled = e.SuppressKeyPress = true;
             // incognito's off, and letting it see mid-spell, are the person's own key here, judged as it's handled
             if (IncognitoRow(name) || AnswersRow(name)) return;
+            // a device row: Enter opens the list of devices (stepping onto the next one blind isn't choosing it)
+            if (DeviceRow(name) && e.KeyCode == Keys.Enter && !e.Shift) { _ = DeviceListAsync(name, item); return; }
             if (DeviceRow(name)) { _ = NextDeviceAsync(name, e.Shift || e.KeyCode == Keys.Left ? -1 : 1); return; }
             _ = NextValueAsync(name, e.Shift || e.KeyCode == Keys.Left ? -1 : 1);
         };
@@ -286,6 +296,9 @@ public sealed partial class MainForm
         ("access_answers_without_key", "hello") => "through Windows Hello. Each such answer is asked again by face, fingerprint "
             + "or PIN; a physical keyboard's keys answer as before",
         ("access_talk_key", "f4" or "f12") => value.ToUpperInvariant(),
+        ("auto_accept_inventory", "off") => "off, each offer waits in Notices",
+        ("auto_accept_inventory", "viewer") => "notecards, textures and landmarks only",
+        ("auto_accept_inventory", "all") => "everything, a notice saying what came",
         ("speakers" or "microphone", _) => DeviceWords(name, value),
         _ => value.Replace('_', ' '),
     };

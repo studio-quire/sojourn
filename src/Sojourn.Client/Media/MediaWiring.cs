@@ -53,8 +53,8 @@ public sealed class MediaWiring : IDisposable, Sojourn.Client.Hud.HudView.IMedia
     {
         void Say(string m) => log.LogInformation("{Msg}", m);
         if (!opt.Media) { Say("media: off (--no-media)"); return null; }
-        string root = Sidecar.Root ?? AppContext.BaseDirectory;
-        string runtime = Path.Combine(root, "local", "media", "runtime");
+        // the repo's local/media/runtime (tools/media.py build), or a package's media folder beside the program
+        string runtime = Sidecar.Root is { } root ? Path.Combine(root, "local", "media", "runtime") : Path.Combine(AppContext.BaseDirectory, "media");
         if (!File.Exists(Path.Combine(runtime, "web", "sojourn_web.exe")))
             Say($"media: the helpers aren't built ({runtime}): python tools/media.py fetch, then build");
         string profile = Path.Combine(opt.BaseDir, "media", "web-profile");

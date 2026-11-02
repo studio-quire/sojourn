@@ -34,7 +34,7 @@
                     <Border x:Name="Well" CornerRadius="13" Height="42" Background="#9EFFFFFF" BorderBrush="{StaticResource Rim}" BorderThickness="1">
                         <Grid Margin="14,0">
                             <TextBlock x:Name="Hint" Text="{TemplateBinding Tag}" Foreground="{StaticResource Faint}" VerticalAlignment="Center"
-                                       IsHitTestVisible="False" Visibility="Collapsed"/>
+                                       IsHitTestVisible="False" Visibility="Collapsed" TextTrimming="CharacterEllipsis"/>
                             <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center" Focusable="False"
                                           HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
                         </Grid>
@@ -101,7 +101,10 @@
                 <ControlTemplate TargetType="RadioButton">
                     <Grid Background="Transparent">
                         <Border x:Name="Pill" CornerRadius="10" Background="Transparent" BorderThickness="1" BorderBrush="Transparent"/>
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="8,0"/>
+                        <!-- a longer word (another language's) shrinks to fit its segment rather than running over -->
+                        <Viewbox StretchDirection="DownOnly" Margin="8,0" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ContentPresenter/>
+                        </Viewbox>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -138,7 +141,11 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
-                    <StackPanel Orientation="Horizontal" Background="Transparent">
+                    <Grid Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
                         <Border x:Name="Track" Width="36" Height="20" CornerRadius="10" Background="#262B3F52" VerticalAlignment="Center">
                             <Ellipse x:Name="Bead" Width="16" Height="16" Fill="White" HorizontalAlignment="Left" Margin="2,0">
                                 <Ellipse.Effect>
@@ -146,8 +153,15 @@
                                 </Ellipse.Effect>
                             </Ellipse>
                         </Border>
-                        <ContentPresenter Margin="9,0,0,0" VerticalAlignment="Center"/>
-                    </StackPanel>
+                        <!-- a longer label (another language's) wraps under itself rather than running out of the card -->
+                        <ContentPresenter Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="TextWrapping" Value="Wrap"/>
+                                </Style>
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Track" Property="Background" Value="{StaticResource Accent}"/>
@@ -281,6 +295,7 @@
         <Setter Property="FontSize" Value="12"/>
         <Setter Property="Foreground" Value="{StaticResource Faint}"/>
         <Setter Property="Margin" Value="4,0,0,6"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
 
 </ResourceDictionary>

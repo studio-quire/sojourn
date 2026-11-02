@@ -89,6 +89,12 @@ internal sealed class DrawCtx
     List<float>? _depFactors;
     public List<float> DepFactors => _depFactors ??= new List<float>();
     public bool MaterialsWaiting;
+    /// <summary>Testing: the face being resolved is worn by an avatar whose look is held back, for this long (ms; 0: not;
+    /// World/LookHold.cs).</summary>
+    public long HoldTextures;
+    /// <summary>The avatar wearing the object being drawn or resolved (0: none), whatever its kind (a worn prim's faces
+    /// resolve with no wearer: bakes on mesh are for meshes).</summary>
+    public uint Wearer;
 
     // where the blended faces of the prim being drawn sort as a group (RegionScene.GroupDepth; NaN: each by its own key)
     public float AlphaGroup = float.NaN;

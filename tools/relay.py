@@ -16,7 +16,9 @@ put the studio's key in, make and manage personal tokens, read their spending, a
   python tools/relay.py check              end to end against the live Worker: a bad token refused, a short request
                                            and a streamed one answered and counted, count_tokens, and a cap tripping
                                            (a token of its own with a cap of a millionth of a dollar, revoked after);
-                                           then the logs: one sent, listed, fetched and deleted, and what's refused
+                                           then the logs: one sent, listed, fetched and deleted, and what's refused;
+                                           then a report without a token (POST /relay/report), deleted after; then
+                                           the messages: one sent, read by both sides, a reply, deleted after
   python tools/relay.py check --local      the parts that don't need Anthropic (tokens, usage, the logs and their
                                            limits) against this folder's Worker under `wrangler dev` on loopback, with
                                            made-up secrets and its own storage in a temporary folder: before a deploy
@@ -28,6 +30,17 @@ put the studio's key in, make and manage personal tokens, read their spending, a
   python tools/relay.py logs fetch [ID ...|--all]   saved as local/relay-logs/<token>-<id>.txt (the note and the log;
                                            --all: every one not saved yet)
   python tools/relay.py logs delete ID     one deleted from the relay (they go by themselves after 30 days)
+  python tools/relay.py messages           the conversations testers have with us (Sojourn Access's builders' tab;
+                                           docs/access.md > Who directs it): token, messages, the last, how many of
+                                           theirs since our last reply, whether that reply reached their app
+  python tools/relay.py messages read NAME [--last N]   one conversation, oldest first (every message kept, or the last N)
+  python tools/relay.py messages reply NAME [--by "Claude Opus 5.5"] (TEXT ...|--file PATH)
+                                           a reply, signed by (Claude unless given); --file for anything long or not
+                                           plain ASCII (read as UTF-8); said to them as it arrives in their app
+  python tools/relay.py messages watch [--keep] [--every SECONDS]
+                                           waits for testers' new messages and prints every one in full, then exits
+                                           (--keep: goes on); run it in the background and read all it prints
+  python tools/relay.py messages delete NAME ID   one message removed (they go by themselves after 90 days)
 
 The registry (local/secrets/studio/relay-tokens.json) holds names, hashes and caps, never tokens. Tokens and the key
 are DPAPI-encrypted for this Windows account in the format PowerShell's ConvertFrom-SecureString writes (hex, UTF-16),
@@ -309,6 +322,8 @@ def cmd_check():
         check("and its usage counted", counted and u2["requests"] >= 2, json.dumps(u2))
         if check("the admin secret is made (relay.py admin)", ADMIN_FILE.exists(), str(ADMIN_FILE.relative_to(ROOT))):
             log_checks(check, token, CHECK_TOKEN, read_secret(ADMIN_FILE), day_limit=False)
+            report_checks(check, read_secret(ADMIN_FILE), limits=False)
+            message_checks(check, token, CHECK_TOKEN, read_secret(ADMIN_FILE), None)
     finally:
         revoke(CHECK_TOKEN)
     refused = wait_until(lambda: call("GET", "/relay/usage", token)[0] == 401, 60)
@@ -390,6 +405,147 @@ def log_checks(check, token, name, secret, day_limit):
             admin_call("DELETE", f"/relay/admin/logs/{lid}", secret)
 
 
+def report_checks(check, secret, limits):
+    """Sojourn's reports without a token (POST /relay/report): one taken and listed as the anonymous book's, what isn't
+    Sojourn's refused, and with limits (the local check, where the address header can be set) three a day from one
+    address, then the day's fifty from everyone. Every report sent here is deleted again."""
+    gz = {"content-type": "application/gzip"}
+    doc = {"v": 1, "app": "Sojourn 0.1.0.0", "kind": "problem", "session": "2026-01-02 10:00:00", "note": "a check: nothing happened",
+           "log": "Sojourn session log, as sent\n10:00:01 info: sojourn[0] a check's line\n"}
+    sent = []
+
+    def send(d, address=None):
+        # the address header only under wrangler dev: Cloudflare refuses a request that brings its own (403, error 1000)
+        h = {**gz, **({"cf-connecting-ip": address} if address and limits else {})}
+        s, body, _ = call("POST", "/relay/report", "", raw=packed(d), headers=h)
+        if s == 200 and isinstance(body, dict) and body.get("id"):
+            sent.append(body["id"])
+        return s, body
+    try:
+        s, body = send(doc, "192.0.2.1")
+        ok = check("a report without a token is taken", s == 200 and isinstance(body, dict) and body.get("id"), f"{s} {body}")
+        if ok:
+            s, listed, _ = admin_call("GET", "/relay/admin/logs", secret)
+            mine = [l for l in (listed.get("logs", []) if isinstance(listed, dict) else []) if l.get("id") == body["id"]]
+            check("the admin lists it as the anonymous book's, with its kind", s == 200 and mine
+                  and mine[0].get("token") == "anonymous" and mine[0].get("kind") == "problem", f"{s} {mine}")
+        s, _ = send({**doc, "app": "Sojourn Access 0.1.0.737"}, "192.0.2.1")
+        check("a report that isn't Sojourn's is refused", s == 400, f"{s}")
+        s, _ = send({**doc, "kind": "something"}, "192.0.2.1")
+        check("a report of no known kind is refused", s == 400, f"{s}")
+        s, _ = send({**doc, "note": "n" * 4001}, "192.0.2.1")
+        check("a report's note over 4000 characters is refused", s == 400, f"{s}")
+        s, body, _ = call("POST", "/relay/report", "", raw=gzip.compress(secrets.token_bytes(1_600_000)), headers=gz, timeout=120)
+        check("a report over 1.5 MB as sent is refused", s == 413, f"{s}")
+        if limits:
+            n = 1
+            while n < 5:
+                s, body = send(doc, "192.0.2.1")
+                if s != 200:
+                    break
+                n += 1
+            check("past three a day from one address, a report is refused with a plain sentence", s == 429 and n == 3
+                  and "from one place" in body.get("error", {}).get("message", ""), f"{n} taken, then {s} {body}")
+            total, k = n, 0
+            while total < 55:
+                k += 1
+                s, body = send(doc, f"198.51.100.{k}")
+                if s != 200:
+                    break
+                total += 1
+            check("past fifty a day from everyone, a report is refused", s == 429 and total == 50
+                  and "all the reports" in body.get("error", {}).get("message", ""), f"{total} taken, then {s} {body}")
+    finally:
+        for rid in sent:
+            admin_call("DELETE", f"/relay/admin/logs/{rid}", secret)
+
+
+def message_checks(check, token, name, secret, other):
+    """The messages between a token's holder and the studio, as Sojourn Access and relay.py use them: one sent, read
+    back by the app and the admin, a reply read by the app and marked delivered, the refusals. other (the local check: a
+    second token, and the day's limit sent through): another token sees none of it, and past MSGS_A_DAY a message is
+    refused with a plain sentence. Every message sent here is deleted again."""
+    js = {"content-type": "application/json"}
+    sent = []
+
+    def write(t, text):
+        s, body, _ = call("POST", "/relay/messages", t, {"text": text}, headers=js)
+        if s == 200 and isinstance(body, dict) and body.get("id"):
+            sent.append(body["id"])
+        return s, body
+
+    def read(t, since=0):
+        s, body, _ = call("GET", f"/relay/messages?since={since}", t)
+        return s, (body.get("messages", []) if isinstance(body, dict) else [])
+    try:
+        _, before = read(token)
+        top = max((m["id"] for m in before), default=0)
+        t0 = int(time.time() * 1000) - 5000
+        s, body = write(token, "  a check's message: nothing happened  ")
+        mid = body.get("id") if isinstance(body, dict) else None
+        check("a message is taken", s == 200 and mid and body.get("kept_until"), f"{s} {body}")
+        s, got = read(token, top)
+        mine = [m for m in got if m["id"] == mid]
+        check("the app reads it back, the tester's, trimmed", s == 200 and mine and mine[0]["from"] == "tester"
+              and mine[0]["text"] == "a check's message: nothing happened", f"{s} {got}")
+        s, conv, _ = admin_call("GET", "/relay/admin/messages", secret)
+        row = next((c for c in (conv.get("conversations", []) if isinstance(conv, dict) else []) if c.get("token") == name), None)
+        check("the admin lists the conversation, with it unanswered", s == 200 and row and row.get("unanswered", 0) >= 1
+              and row.get("last_from") == "tester", f"{s} {row}")
+        s, one, _ = admin_call("GET", f"/relay/admin/messages/{name}", secret)
+        check("and reads it", s == 200 and any(m["id"] == mid for m in one.get("messages", [])), f"{s}")
+        s, new, _ = admin_call("GET", f"/relay/admin/messages?after={t0}", secret)
+        check("and the watch's query finds it, with its token", s == 200 and any(m.get("token") == name and m["id"] == mid
+              for m in new.get("messages", [])), f"{s}")
+        s, rep, _ = call("POST", f"/relay/admin/messages/{name}", "", {"text": "a check's reply", "by": "Claude (check)"},
+                         headers={**js, "authorization": f"Bearer {secret}"})
+        rid = rep.get("id") if isinstance(rep, dict) else None
+        if rid:
+            sent.append(rid)
+        check("the admin replies", s == 200 and rid and rid > mid, f"{s} {rep}")
+        s, conv, _ = admin_call("GET", f"/relay/admin/messages/{name}", secret)
+        check("the reply answers it, not yet delivered", s == 200 and conv.get("unanswered") == 0
+              and conv.get("last_reply_delivered") is False, f"{s} {conv.get('unanswered')} {conv.get('last_reply_delivered')}")
+        s, got = read(token, mid)
+        check("the app gets the reply after its message, signed", s == 200 and [(m["from"], m.get("by"), m["text"]) for m in got]
+              == [("studio", "Claude (check)", "a check's reply")], f"{s} {got}")
+        s, conv, _ = admin_call("GET", f"/relay/admin/messages/{name}", secret)
+        check("and once fetched it's delivered", conv.get("last_reply_delivered") is True, f"{conv.get('last_reply_delivered')}")
+        s, body = write(token, "my code is sqr-" + "A" * 43 + " oops")
+        _, got = read(token, rid or 0)
+        check("a token pasted into a message is left out of it", s == 200 and got and "sqr-" not in got[-1]["text"]
+              and "left out" in got[-1]["text"], f"{s} {got[-1]['text'] if got else ''}")
+        for what, text, want in [("an empty message", "   ", 400), ("one over 4000 characters", "n" * 4001, 400)]:
+            s, _ = write(token, text)
+            check(f"{what} is refused", s == want, f"{s}")
+        s, _, _ = call("POST", "/relay/messages", token, raw=b"hello", headers=js)
+        check("one that isn't JSON is refused", s == 400, f"{s}")
+        s, _ = write("sqr-" + "x" * 43, "hello")
+        check("a message from a token it doesn't know is refused", s == 401, f"{s}")
+        s, _, _ = call("GET", "/relay/admin/messages", token)
+        check("a token isn't the admin of messages", s == 401, f"{s}")
+        s, _, _ = admin_call("GET", "/relay/admin/messages/no-such-token", secret)
+        check("a conversation with no such token is a 404", s == 404, f"{s}")
+        if other:
+            s, theirs = read(other)
+            check("another token sees none of it", s == 200 and not theirs, f"{s} {theirs}")
+            n = sum(1 for m in read(token)[1] if m["from"] == "tester")
+            while n < 105:
+                s, body = write(token, f"filler {n}")
+                if s != 200:
+                    break
+                n += 1
+            check("past a hundred a day, a message is refused with a plain sentence", s == 429 and n == 100
+                  and "a day" in body.get("error", {}).get("message", ""), f"{n} taken, then {s} {body}")
+    finally:
+        for i in sent:
+            admin_call("DELETE", f"/relay/admin/messages/{name}/{i}", secret)
+        if sent:
+            s, conv, _ = admin_call("GET", f"/relay/admin/messages/{name}", secret)
+            left = [m["id"] for m in conv.get("messages", []) if m["id"] in sent] if isinstance(conv, dict) else ["?"]
+            check("(the check's messages deleted)", not left, f"{left}")
+
+
 def cmd_check_local():
     """The Worker under wrangler dev on loopback, made-up secrets, its storage in a temporary folder."""
     global URL
@@ -440,6 +596,8 @@ def cmd_check_local():
             u = usage(token)
             check("a token's usage answers", u is not None and u.get("spent_usd") == 0, json.dumps(u))
             log_checks(check, token, "local-check", secret, day_limit=True)
+            report_checks(check, secret, limits=True)
+            message_checks(check, token, "local-check", secret, other)
             # one token's logs aren't another's: the other's day is its own
             s, body, _ = call("POST", "/relay/log", other, raw=packed({"log": "x\n"}), headers={"content-type": "application/gzip"})
             check("another token's log is taken on its own count", s == 200, f"{s} {body}")
@@ -523,6 +681,103 @@ def cmd_logs(args):
     return 2
 
 
+# ---- the testers' messages to us (Sojourn Access's builders' tab) ----------------------------------------------------------
+
+TOKEN_IN_TEXT = re.compile(r"sqr-[A-Za-z0-9_\-]{20,}")
+
+
+def when(ms):
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(ms / 1000))
+
+
+def show_message(m, token=None):
+    who = f"{m.get('by') or 'Claude'} (us)" if m["from"] == "studio" else "tester"
+    print(f"--- {token + ' ' if token else ''}#{m['id']} {when(m['at'])} {who}")
+    print(TOKEN_IN_TEXT.sub("<code>", m["text"]), flush=True)
+
+
+def cmd_messages(args):
+    secret = admin_secret()
+    if not args:
+        s, body, _ = admin_call("GET", "/relay/admin/messages", secret)
+        if s != 200 or not isinstance(body, dict):
+            raise SystemExit(f"the relay answered {s}: {body}")
+        if not body.get("conversations"):
+            print("no messages")
+        for c in body.get("conversations", []):
+            delivered = {True: "; our last reply reached their app", False: "; our last reply not fetched by their app yet",
+                         None: ""}[c.get("last_reply_delivered")]
+            print(f"{c['token']}: {c['count']} messages, the last {when(c['last_at'])} from {'us' if c['last_from'] == 'studio' else 'them'}"
+                  f"; {c['unanswered']} of theirs since our last reply{delivered}")
+        return 0
+    what, rest = args[0], args[1:]
+    if what == "read" and rest:
+        s, body, _ = admin_call("GET", f"/relay/admin/messages/{rest[0]}", secret)
+        if s != 200:
+            raise SystemExit(f"the relay answered {s}: {body}")
+        msgs = body.get("messages", [])
+        if "--last" in rest:
+            msgs = msgs[-int(rest[rest.index("--last") + 1]):]
+        for m in msgs:
+            show_message(m)
+        print(f"({body.get('count', 0)} kept; {body.get('unanswered', 0)} of theirs since our last reply)")
+        return 0
+    if what == "reply" and rest:
+        name, rest = rest[0], rest[1:]
+        by, path, words = "Claude", None, []
+        i = 0
+        while i < len(rest):
+            if rest[i] in ("--by", "--file") and i + 1 < len(rest):
+                by, path = (rest[i + 1], path) if rest[i] == "--by" else (by, rest[i + 1])
+                i += 2
+                continue
+            words.append(rest[i])
+            i += 1
+        text = Path(path).read_text(encoding="utf-8") if path else " ".join(words)
+        if not text.strip():
+            raise SystemExit("nothing to send")
+        s, body, _ = call("POST", f"/relay/admin/messages/{name}", "", {"text": text, "by": by},
+                          headers={"content-type": "application/json", "authorization": f"Bearer {secret}"})
+        print(f"sent as #{body['id']}" if s == 200 else f"the relay answered {s}: {body}")
+        return 0 if s == 200 else 1
+    if what == "delete" and len(rest) == 2:
+        s, body, _ = admin_call("DELETE", f"/relay/admin/messages/{rest[0]}/{rest[1]}", secret)
+        print("deleted" if s == 200 else f"the relay answered {s}: {body}")
+        return 0 if s == 200 else 1
+    if what == "watch":
+        return watch_messages(secret, "--keep" in rest, int(rest[rest.index("--every") + 1]) if "--every" in rest else 30)
+    print(__doc__)
+    return 2
+
+
+def watch_messages(secret, keep, every):
+    """Every message newer than the start, printed in full as it's found (our own replies too, marked, so sessions see
+    each other's answers); without keep, exits once it has printed some of the testers'. A relay that can't be reached
+    is asked again at the next turn."""
+    since = int(time.time() * 1000)
+    seen = set()
+    print(f"watching testers' messages from {when(since)}, every {every} s", flush=True)
+    while True:
+        time.sleep(every)
+        try:
+            s, body, _ = admin_call("GET", f"/relay/admin/messages?after={since}", secret, timeout=30)
+        except OSError:
+            continue
+        if s != 200 or not isinstance(body, dict):
+            continue
+        theirs = 0
+        for m in body.get("messages", []):
+            k = (m["token"], m["id"])
+            if k in seen:
+                continue
+            seen.add(k)
+            show_message(m, m["token"])
+            theirs += m["from"] == "tester"
+        if theirs and not keep:
+            print(f"({theirs} new from testers; python tools/relay.py messages read NAME has the whole conversation)", flush=True)
+            return 0
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     a = sys.argv[1:]
@@ -541,6 +796,8 @@ def main():
         cmd_admin("--new" in a)
     elif a[0] == "logs":
         return cmd_logs(a[1:])
+    elif a[0] == "messages":
+        return cmd_messages(a[1:])
     elif a[0] == "token" and len(a) >= 3:
         what, name = a[1], a[2]
         if what == "new":

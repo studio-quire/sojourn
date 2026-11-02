@@ -627,8 +627,9 @@ public sealed partial class MainForm
         var ids = new HashSet<UUID>();
         var points = new Dictionary<UUID, string>();
         if (_ops?.Client is not { } c) return (ids, points);
-        if (Host!.Session.Region is { } w && w.Avatars.Values.FirstOrDefault(a => a.ID == c.Self.AgentID) is { } me)
-            foreach (var p in w.Prims.Values)
+        // (the region's prims walked in place, once a second on this page: Values would copy them all first)
+        if (Host!.Session.Region is { } w && w.AvatarById(c.Self.AgentID) is { } me)
+            foreach (var (_, p) in w.Prims)
                 if (p.ParentID == me.LocalID && AgentInventory.AttachItemId(p) is var id && id != UUID.Zero)
                 {
                     ids.Add(id);
@@ -819,6 +820,7 @@ public sealed partial class MainForm
             new("-", () => { }),
             new("New &folder", () => _ = NewFolderAsync(f)),
             new("New n&otecard", () => _ = NewNotecardAsync(p, f)),   // (Re&name has N)
+            new("&Upload a file here...", () => _ = UploadAsync(f, null), "Control+U"),
             new("&Give to...", () => _ = GiveAsync(p, new() { f })),
             new("Cu&t", () => Clip(p, cut: true), "Control+X"),
             new("&Copy", () => Clip(p, cut: false), "Control+C"),

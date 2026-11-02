@@ -22,7 +22,7 @@ static class MetaAsw
 {
     static readonly string Cli = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
         "Oculus", "Support", "oculus-diagnostics", "OculusDebugToolCLI.exe");
-    static readonly string Marker = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sojourn", "asw-off.txt");
+    static readonly string Marker = Path.Combine(Sojourn.Session.DataFolder.Root, "asw-off.txt");
     static readonly object Gate = new();
     static Action<string>? _log;
     static bool _active, _turnedOff, _hooked, _watching;

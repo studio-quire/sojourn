@@ -193,31 +193,33 @@ public sealed class MediaApi : LeapApi
             string where = i.Kind switch
             {
                 MediaItemKind.Prim when i.ObjectName is { Length: > 0 } n => Clip(n, 40),
-                MediaItemKind.Parcel => "the parcel's page",
+                MediaItemKind.Parcel => Lang.T("the parcel's page"),
                 _ => i.Player?.Title is { Length: > 0 } t && !t.StartsWith("about:") ? $"\"{Clip(t, 50)}\""
-                    : MediaUrls.Parse(i.Player?.Url ?? i.Url).Host is { Length: > 0 } h ? h : "the page",
+                    : MediaUrls.Parse(i.Player?.Url ?? i.Url).Host is { Length: > 0 } h ? h : Lang.T("the page"),
             };
             return (i.Kind, where, i.ObjectName, i.Owner, i.OpenedFrom != null);
         });
         if (seen is not var (kind, place, objectName, ownerId, popup)) return null;
         string title = op switch
         {
-            "press" when a.Str("words") is { Length: > 0 } w => $"Press \"{Clip(w, 40)}\" on {place}",
-            "press" => $"Press on {place}",
-            "type" => $"Type \"{Clip(a.Str("text") ?? "", 40)}\" into {place}",
-            "go" => $"Change {place} to {Clip(a.Str("url") ?? "", 60)}",
-            _ => $"Go {op} on {place}",
+            "press" when a.Str("words") is { Length: > 0 } w => Lang.F("Press \"{0}\" on {1}", Clip(w, 40), place),
+            "press" => Lang.F("Press on {0}", place),
+            "type" => Lang.F("Type \"{0}\" into {1}", Clip(a.Str("text") ?? "", 40), place),
+            "go" => Lang.F("Change {0} to {1}", place, Clip(a.Str("url") ?? "", 60)),
+            "back" => Lang.F("Go back on {0}", place),
+            "forward" => Lang.F("Go forward on {0}", place),
+            _ => Lang.F("Go home on {0}", place),
         };
         string owner = OwnerName(ownerId);
         string on = kind switch
         {
-            MediaItemKind.Parcel => $"This parcel's media, {owner}'s.",
-            MediaItemKind.Page when popup => $"A window opened from {objectName ?? "a page"}, owned by {owner}.",
-            MediaItemKind.Page => $"A page {objectName ?? "an object"} offered, owned by {owner}.",
-            _ => $"Owned by {owner}.",
+            MediaItemKind.Parcel => Lang.F("This parcel's media, {0}'s.", owner),
+            MediaItemKind.Page when popup => Lang.F("A window opened from {0}, owned by {1}.", objectName ?? Lang.T("a page"), owner),
+            MediaItemKind.Page => Lang.F("A page {0} offered, owned by {1}.", objectName ?? Lang.T("an object"), owner),
+            _ => Lang.F("Owned by {0}.", owner),
         };
-        string risk = op is "press" or "type" ? " A page can act on sites you're signed in to." : kind == MediaItemKind.Prim ? " Everyone nearby sees it change." : "";
-        return (title, on + risk);
+        string risk = op is "press" or "type" ? Lang.T("A page can act on sites you're signed in to.") : kind == MediaItemKind.Prim ? Lang.T("Everyone nearby sees it change.") : "";
+        return (title, risk.Length > 0 ? on + " " + risk : on);
     }
 
     static string Clip(string s, int n) => s.Length > n ? s[..n] + "..." : s;
@@ -226,12 +228,12 @@ public sealed class MediaApi : LeapApi
     /// at most, before the confirmation shows).</summary>
     string OwnerName(UUID owner)
     {
-        if (owner == UUID.Zero) return "someone else";
+        if (owner == UUID.Zero) return Lang.T("someone else");
         if (S.Names.Legacy(owner) is { } known) return known;
         if (S.Client is { } c)
             try { S.Names.ResolveAsync(c, [owner], TimeSpan.FromSeconds(2)).Wait(TimeSpan.FromSeconds(2.5)); }
             catch (Exception) { }
-        return S.Names.Legacy(owner) ?? "someone else";
+        return S.Names.Legacy(owner) ?? Lang.T("someone else");
     }
 
     // ---- playing ----

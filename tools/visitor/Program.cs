@@ -38,8 +38,17 @@
 //                                                         next touch ("NAME renamed to N")
 //   cart [NAME] X Y Z                                     a cart to drive seated (default "Walk Cart"): takes the sitter's
 //                                                         movement keys, moves on forward and back, turns on left and right
-//   kart [NAME] X Y Z [sound UUID]                        a physical car vehicle (default "Walk Kart") for seated crossings;
-//                                                         with a sound, it loops it while someone sits in it
+//   kart [NAME] X Y Z [facing DEG] [train SECS] [sound UUID]   a physical car vehicle (default "Walk Kart") for seated
+//                                                         crossings, heading east or DEG (0 east, 90 north); with train,
+//                                                         the forward key starts it driving on its own for SECS, keys or
+//                                                         not, as a train does; with a sound, it loops it while sat on
+//   switch X Y Z [CHANNEL]                                a rail switch as the SLRR standard describes one (Sojourn
+//                                                         Access's rail switches): a "Switch Stand" whose description is
+//                                                         "Walk Junction.N~Main~Walk Halt~North Station~East Yard~N",
+//                                                         1.8 m north of X Y, a touch part over it, and two guide rails
+//                                                         10 m long running east, the main one 3 m north and the branch 4.2; a
+//                                                         touch, or "Main" or "Branch" on CHANNEL (133), sets it (says
+//                                                         "switch Main" / "switch Branch")
 //   cleanup                                               take every object it rezzed in this run to its trash
 //   derez NAME                                            take every object it rezzed with that name to its trash
 //   pos | whereis | quit                                  "REGION <x, y, z> heading DEG" (as the region has it)
@@ -228,6 +237,7 @@ static class Program
             case "sofa": return await Sofa(rest);
             case "cart": return await Cart(rest);
             case "kart": return await Kart(rest);
+            case "switch": return await Switch(rest);
             case "fmenu": return Tell("menu", rest);
             case "fmenu12": return Tell("menu12", rest);
             case "fdance": return Tell("dance", rest);
@@ -555,23 +565,37 @@ static class Program
     }
 
     /// <summary>A physical kart (an LSL car vehicle) for seated border crossings: its script takes the sitter's keys,
-    /// turns physical while sat on, drives forward at up to 10 m/s and steers; "kart controls taken" when it has them.</summary>
+    /// turns physical while sat on, drives forward at up to 10 m/s and steers (or, as a train, drives itself once started);
+    /// "kart controls taken" when it has them.</summary>
     static async Task<string> Kart(string rest)
     {
-        var loop = "";
-        if (rest.IndexOf(" sound ", StringComparison.Ordinal) is var at and >= 0)
+        const string usage = "ERR kart [NAME] X Y Z [facing DEG] [train SECS] [sound UUID]";
+        // the options after the place, in any order
+        var words = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+        string Option(string key)
         {
-            loop = rest[(at + 7)..].Trim();
-            rest = rest[..at];
-            if (!UUID.TryParse(loop, out _)) return "ERR kart [NAME] X Y Z [sound UUID]";
+            int i = words.IndexOf(key);
+            if (i < 0 || i + 1 >= words.Count) return null;
+            var value = words[i + 1];
+            words.RemoveRange(i, 2);
+            return value;
         }
-        if (NameAndPos(rest, "Walk Kart") is not var (name, pos)) return "ERR kart [NAME] X Y Z [sound UUID]";
+        var loop = Option("sound") ?? "";
+        if (loop != "" && !UUID.TryParse(loop, out _)) return usage;
+        float facing = 0;
+        if (Option("facing") is { } fs && !float.TryParse(fs, out facing)) return usage;
+        int train = 0;
+        if (Option("train") is { } ts && !int.TryParse(ts, out train)) return usage;
+        rest = string.Join(" ", words);
+        if (NameAndPos(rest, "Walk Kart") is not var (name, pos)) return usage;
         var sim = client.Network.CurrentSim;
         var box = await RezBox(pos, new Vector3(2.0f, 1.2f, 0.5f));
         if (box == null) return "ERR no object came back";
         Named(box.LocalID, name);
+        if (facing != 0) client.Objects.SetRotation(sim, box.LocalID, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, facing * MathF.PI / 180));
         var script = await UploadScript("Walk kart",
-            "integer K; string LOOP = \"" + loop + "\"; default { state_entry() { llSitTarget(<0, 0, 0.75>, ZERO_ROTATION); "
+            "integer K; string LOOP = \"" + loop + "\"; integer TRAIN = " + train + "; integer ticks; "
+            + "default { state_entry() { llSitTarget(<0, 0, 0.75>, ZERO_ROTATION); "
             + "K = CONTROL_FWD | CONTROL_BACK | CONTROL_ROT_LEFT | CONTROL_ROT_RIGHT | CONTROL_LEFT | CONTROL_RIGHT; "
             + "llSetVehicleType(VEHICLE_TYPE_CAR); llSetVehicleFloatParam(VEHICLE_LINEAR_MOTOR_TIMESCALE, 0.4); "
             + "llSetVehicleFloatParam(VEHICLE_LINEAR_MOTOR_DECAY_TIMESCALE, 0.6); llSetVehicleFloatParam(VEHICLE_ANGULAR_MOTOR_TIMESCALE, 0.2); "
@@ -581,7 +605,12 @@ static class Program
             + "if (who != NULL_KEY) { llSetStatus(STATUS_PHYSICS, TRUE); llRequestPermissions(who, PERMISSION_TAKE_CONTROLS); if (LOOP != \"\") llLoopSound(LOOP, 1.0); } "
             + "else { llSetStatus(STATUS_PHYSICS, FALSE); llStopSound(); llSay(0, \"kart empty\"); } } } "
             + "run_time_permissions(integer p) { if (p & PERMISSION_TAKE_CONTROLS) { llTakeControls(K, TRUE, FALSE); llSay(0, \"kart controls taken\"); } } "
-            + "control(key id, integer level, integer edge) { vector m = ZERO_VECTOR; if (level & CONTROL_FWD) m.x = 10; if (level & CONTROL_BACK) m.x = -5; "
+            // a train drives on its own once started, whatever the keys (ticks of 0.1 s; the motor set again each, as it decays)
+            + "timer() { if (--ticks > 0) llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION, <10, 0, 0>); "
+            + "else { llSetTimerEvent(0); llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION, ZERO_VECTOR); llSay(0, \"kart stopped\"); } } "
+            + "control(key id, integer level, integer edge) { if (TRAIN) { if ((level & edge & CONTROL_FWD) && ticks <= 0) { ticks = TRAIN * 10; "
+            + "llSetTimerEvent(0.1); llSay(0, \"kart driving\"); } return; } "
+            + "vector m = ZERO_VECTOR; if (level & CONTROL_FWD) m.x = 10; if (level & CONTROL_BACK) m.x = -5; "
             + "llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_DIRECTION, m); float t = 0; if (level & (CONTROL_ROT_LEFT | CONTROL_LEFT)) t = 1.5; "
             + "if (level & (CONTROL_ROT_RIGHT | CONTROL_RIGHT)) t = -1.5; llSetVehicleVectorParam(VEHICLE_ANGULAR_MOTOR_DIRECTION, <0, 0, t>); } }");
         int mark = counter;
@@ -595,6 +624,67 @@ static class Program
                     return $"kart {name} local {box.LocalID} id {box.ID}";
         }
         return $"ERR kart {name} (local {box.LocalID}) rezzed but its script didn't say it was ready";
+    }
+
+    /// <summary>A rail switch as the Second Life Railroad's standard has one (the SL wiki's "Second Life Railroad/SLRR
+    /// Switch"): a phantom root named "Switch Stand" whose description is "Identifier~Status~Heading Name~Mainline
+    /// Name~Branch Name~channel", a part over it taking touches, and invisible guide rails, the one in use named "Guide"
+    /// and solid, the other "Alternate Guide" and phantom. Here the rails are objects of their own, set by the stand on a
+    /// private channel (the standard doesn't say how its stands reach theirs). A touch flips it; "Main" or "Branch" on
+    /// its channel (133 unless given) sets it; each change is said on channel 0 ("switch Branch") for the test.</summary>
+    static async Task<string> Switch(string rest)
+    {
+        var w = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        int channel = 133;
+        if (w.Length < 3 || !float.TryParse(w[0], out var x) || !float.TryParse(w[1], out var y) || !float.TryParse(w[2], out var z)
+            || (w.Length > 3 && !int.TryParse(w[3], out channel)))
+            return "ERR switch X Y Z [CHANNEL]";
+        var sim = client.Network.CurrentSim;
+        var stand = await RezBox(new Vector3(x, y + 1.8f, z + 0.6f), new Vector3(0.3f, 0.3f, 1.2f));
+        var touch = await RezBox(new Vector3(x, y + 1.8f, z + 0.8f), new Vector3(0.8f, 0.8f, 1.6f));
+        var main = await RezBox(new Vector3(x, y + 3, z + 0.25f), new Vector3(10f, 0.5f, 0.5f));
+        var branch = await RezBox(new Vector3(x, y + 4.2f, z + 0.25f), new Vector3(10f, 0.5f, 0.5f));
+        if (stand == null || touch == null || main == null || branch == null) return "ERR a part didn't come back";
+        Named(stand.LocalID, "Switch Stand");
+        client.Objects.SetName(sim, touch.LocalID, "Switch Touch");
+        client.Objects.SetDescription(sim, stand.LocalID, $"Walk Junction.{channel}~Main~Walk Halt~North Station~East Yard~{channel}");
+        Named(main.LocalID, "Guide");
+        Named(branch.LocalID, "Alternate Guide");
+        client.Objects.SetDescription(sim, main.LocalID, "main");
+        client.Objects.SetDescription(sim, branch.LocalID, "branch");
+        await Task.Delay(1000);
+        var guide = await UploadScript("Walk guide",
+            "string track; integer CH = " + channel + "; set(string s) { integer mine = llToLower(s) == track; "
+            + "if (mine) llSetObjectName(\"Guide\"); else llSetObjectName(\"Alternate Guide\"); llSetPrimitiveParams([PRIM_PHANTOM, !mine]); } "
+            + "default { state_entry() { track = llGetObjectDesc(); set(\"main\"); llListen(-7133 - CH, \"\", NULL_KEY, \"\"); } "
+            + "listen(integer c, string n, key id, string m) { if (llGetOwnerKey(id) == llGetOwner()) set(m); } }");
+        client.Inventory.CopyScriptToTask(main.LocalID, guide, true);
+        client.Inventory.CopyScriptToTask(branch.LocalID, guide, true);
+        var toucher = await UploadScript("Walk switch touch",
+            "default { touch_start(integer n) { llMessageLinked(LINK_ROOT, 0, \"toggle\", llDetectedKey(0)); } }");
+        client.Inventory.CopyScriptToTask(touch.LocalID, toucher, true);
+        var script = await UploadScript("Walk switch stand",
+            "string status = \"Main\"; integer CH = " + channel + "; "
+            + "set(string s) { status = s; list f = llParseStringKeepNulls(llGetObjectDesc(), [\"~\"], []); "
+            + "llSetObjectDesc(llDumpList2String(llListReplaceList(f, [s], 1, 1), \"~\")); llRegionSay(-7133 - CH, s); llSay(0, \"switch \" + s); } "
+            + "default { state_entry() { llSetPrimitiveParams([PRIM_PHANTOM, TRUE]); llListen(CH, \"\", NULL_KEY, \"\"); llSay(0, \"switch ready\"); } "
+            + "link_message(integer l, integer n, string m, key id) { if (m == \"toggle\") { if (status == \"Main\") set(\"Branch\"); else set(\"Main\"); } } "
+            + "listen(integer c, string n, key id, string m) { if (llToLower(m) == \"main\") set(\"Main\"); else if (llToLower(m) == \"branch\") set(\"Branch\"); } }");
+        int mark = counter;
+        client.Inventory.CopyScriptToTask(stand.LocalID, script, true);
+        await Task.Delay(1500);
+        // ObjectLink: the first one becomes the root
+        client.Objects.LinkPrims(sim, new List<uint> { stand.LocalID, touch.LocalID });
+        await Task.Delay(1500);
+        client.Objects.DeselectObjects(sim, new[] { stand.LocalID, touch.LocalID, main.LocalID, branch.LocalID });
+        for (int i = 0; i < 40; i++)
+        {
+            lock (heard)
+                if (heard.Any(l => l.Contains("switch ready") && int.Parse(Regex.Match(l, "\"n\":(\\d+)").Groups[1].Value) > mark))
+                    return $"switch stand {stand.ID} touch {touch.ID} main {main.ID} branch {branch.ID}";
+            await Task.Delay(250);
+        }
+        return $"ERR switch (stand {stand.ID}) rezzed but its script didn't say it was ready";
     }
 
     /// <summary>A self-naming seat, as a blind tester met one (2026-10-31: a sofa that renamed itself as people sat,

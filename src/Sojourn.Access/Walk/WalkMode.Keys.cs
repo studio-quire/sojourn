@@ -60,6 +60,17 @@ public sealed partial class WalkMode
         Doing
         T: touch what's ahead
 
+        Rail switches
+        W: the next switch and how it's set
+        Shift+W: throw it
+
+        Recording a route
+        R: start recording; while recording, how it's going
+        N: a note here, read out where the route is played (left empty, just a point)
+        Backspace: take back the last point or note
+        P: pause, or go on
+        Shift+R: stop, name it and save it as a notecard in Routes
+
         Leaving
         Escape or F3: leave walk mode
         """;
@@ -117,7 +128,8 @@ public sealed partial class WalkMode
             if (key is K.Fwd or K.Back or K.SideL or K.SideR && !HeldMoveBefore(key)) { _moveSince = now; _toldBlocked = false; }
             return true;
         }
-        if (repeat) return code is Keys.Home or Keys.Space or Keys.H or Keys.V or Keys.L or Keys.A or Keys.S or Keys.T or Keys.D or Keys.O or Keys.B or Keys.M;
+        if (repeat) return code is Keys.Home or Keys.Space or Keys.H or Keys.V or Keys.L or Keys.A or Keys.S or Keys.T or Keys.D or Keys.O or Keys.B or Keys.M
+            or Keys.R or Keys.N or Keys.P or Keys.Back or Keys.W;
         switch (code)
         {
             case Keys.Home: ToggleFly(); return true;
@@ -134,6 +146,13 @@ public sealed partial class WalkMode
             case Keys.B: BeaconLine(); return true;
             case Keys.M when shift: DistanceReset(); return true;
             case Keys.M: DistanceLine(); return true;
+            case Keys.W when shift: _ = ThrowSwitchAsync(); return true;
+            case Keys.W: _ = SwitchLineAsync(); return true;
+            case Keys.R when shift: RecordKey?.Invoke("save"); return true;
+            case Keys.R: RecordKey?.Invoke(""); return true;
+            case Keys.N: RecordKey?.Invoke("note"); return true;
+            case Keys.P: RecordKey?.Invoke("pause"); return true;
+            case Keys.Back: RecordKey?.Invoke("undo"); return true;
         }
         return false;
     }

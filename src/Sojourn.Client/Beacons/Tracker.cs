@@ -221,7 +221,8 @@ public sealed class Tracker : IDisposable
         if (d < 0.05f) return [];
         if (d > LabelAt) at = eye + to / d * LabelAt;
         float alpha = Math.Clamp(((float)dist - 3) / 3, 0.2f, 1f);
-        var text = new FloatingText.Text($"{t.Name}\n{dist:0} m", 255, 255, 255);
+        var name = t.Name is "Destination" or "(someone)" ? Lang.T(t.Name) : t.Name;
+        var text = new FloatingText.Text(name + "\n" + Lang.F("{0} m", Math.Round(dist)), 255, 255, 255);
         var list = new List<FloatingText.Want>();
         if (tags.Holds(text) || _shown == null) _shown = text;
         list.Add(new FloatingText.Want(_shown, at, MathF.Min(d, LabelAt), alpha, Over: true));

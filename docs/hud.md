@@ -3,7 +3,8 @@
 Written by Claude Opus 5.5, 2026-10-25. Agent-facing. The HUDs people wear (mesh body and head HUDs, AOs, dance and
 couples HUDs, games and meters, vendors' HUDs): drawn, touched by the person, and seen and pressed by the assistant.
 Code: `src/Sojourn.Render/Realtime/Hud.cs` and `FrameRenderer.Hud.cs`, `Frame/Renderer.Hud.cs`, `World/RegionScene.Hud.cs`,
-`Shaders/hud*.{frag,vert}`; `src/Sojourn.Client/Hud/` (HudView, HudBoard, HudApi, HudShots).
+`Shaders/hud*.{frag,vert}`; `src/Sojourn.Session/Hud/` (HudApi, the `IHudScreen` it stands on, HudScan, HudButtons,
+HudTouch: shared with Sojourn Access); `src/Sojourn.Client/Hud/` (HudView, the VR client's screen; HudBoard, HudShots).
 
 ## As the viewer has them
 
@@ -80,13 +81,21 @@ Read from secondlife/viewer (develop, 2026-10-25):
   and drags, a hold kept still or a double tap brings it up close: `HudView.IMedia`, `MediaInput.Hud*`).
 - **HUD particles**: not drawn, as in the viewer by default (its RenderHUDParticles is a debug setting, off); a HUD
   point has no frame in the world, so a HUD's particle source never emits there either.
+- **Sojourn Access** draws them out of sight (`Sojourn.Session/Offscreen/OffscreenRenderer.Hud.cs`, `docs/access-app.md`
+  > HUDs out of sight): `FrameRenderer.RenderHud` places them on a 16:9 screen and builds their draw list with no world
+  view (picks, faces), drawing only for a picture. The same SojournHud below, over its `IHudScreen`.
 - **The assistant** (`SojournHud`, the `hud` tool): `list` (what the region says is worn on HUD points, and whether it's
   drawn); `look` (a PNG of the whole HUD screen, 1280 wide, or of one HUD by name or id, up to 1024 a side and bigger than
   it shows, over a dark grey, with each HUD's and each named part's rectangle on it: parts' names come from selecting
   them, as the edit tool does); `press` (at [x, y] on a picture, the last by default; or a part's id; or words naming a
   part, optionally scoped to a HUD; `hold` seconds) with the same surface data as the person's press; `show {on}` (the
   board, or the desktop's HUDs). A press is the person's click on their own attachment, so there's no confirmation
-  (the gate's touch rule is about others' things). `requestTouch` on a HUD prim lands on it (its middle as seen, or a
+  (the gate's touch rule is about others' things). For a HUD that's one picture of buttons (its script telling them apart
+  by where it's touched): `save_buttons` keeps what a click would act on, by name and its box on a `look` picture, for
+  that look of the HUD (`HudButtons`: its parts' shapes, places and textures with their offsets, so another page is
+  another look; `hud-buttons.json` in the base folder), then `press {name}` or `{button: n, hud}` finds them and `look`
+  shows them; `faces {part}` lists a part's faces as they show (a grid of picks across it: `HudScan`), and `press {part,
+  face}` lands in the middle of one as seen. `requestTouch` on a HUD prim lands on it (its middle as seen, or a
   few points across it), so the `touch` tool with "that" works on a HUD too.
 
 ## Testing
@@ -120,6 +129,8 @@ the assistant pressing a button it was asked for by description, or "that" under
 
 ## Not done
 
+- The VR client's side of the shared SojournHud (2026-11-01: moved to Sojourn.Session, the client's `HudView` now its
+  `IHudScreen`) built but not run since; `python tools/hud.py test text` checks `look` there (it opens a window).
 - HUD particles (the viewer's are off by default too), editing HUDs (the viewer's zoom while a HUD is selected), the
   viewer's HUD hover highlight.
 - The board's size isn't a setting (drag it nearer to make it bigger).

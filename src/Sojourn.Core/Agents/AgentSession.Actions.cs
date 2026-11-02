@@ -16,6 +16,7 @@ public sealed partial class AgentSession
     {
         var c = Client;
         if (c is null) return (false, "not connected");
+        if (RlvActive && RlvRefused(RlvTeleport(c, region, pos)) is { } rlv) return (false, rlv);
         var asked = DateTime.UtcNow;
         var from = c.Network.CurrentSim;
         try

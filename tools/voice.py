@@ -8,6 +8,21 @@
                                          prints the round trip, the echo's level and what cancelling leaves
   python tools/voice.py loopback         the shim alone: two in-process peer connections, a WAV through them,
                                          checked for delay, likeness, the mute and the assistant's gate
+  python tools/voice.py switch [A B]     the output moved between two real devices while a quiet tone (-60 dBFS)
+                                         plays, each heard by WASAPI loopback capture: the tone arrives on the new
+                                         one and leaves the old, there and back; then B refusing to start (simulated):
+                                         the sound stays on the default with the reason, and goes to B when it starts.
+                                         A and B: parts of two outputs' names (Steam's two virtual ones by default,
+                                         so nothing is heard); never the default output
+  python tools/voice.py session-switch   the same through a session (src/Sojourn.SessionProbe as Sojourn Probe on the
+                                         local grid, its agent API): SojournAudio devices says what each output is,
+                                         likely ones first; SojournSettings speakers moves the sound between Steam's two
+                                         virtual outputs, checked, with the chime heard on the new one only; then an
+                                         output refusing to start: the change refused with why, the choice put back,
+                                         the sound where it was. Needs the grid; builds nothing (SOJOURN_BUILD_ROOT's
+                                         probe if set, with SOJOURN_VOICE_BUILD's shim copied in)
+  python tools/voice.py listen OUTPUT [SECONDS]  what reaches an output (any app's sound), by loopback capture: its
+                                         level each half second; nothing played
   python tools/voice.py devices-change   the shim following devices, simulated on real ones (nothing played;
                                          virtual devices where there are some): a stream lost, the device asked
                                          for gone and back, nothing there at all, the default moving; checked for
@@ -49,8 +64,10 @@ import buildenv
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "Sojourn.Voice.Native"
 OUT = ROOT / "local" / "voice"
-BUILD = OUT / "build"
-DLL = BUILD / "Release" / "sojourn_voice.dll"   # the client's csproj copies it from here
+# SOJOURN_VOICE_BUILD=dir: build and test the shim in a folder of its own (a second session's, leaving the DLL the
+# client's csproj copies untouched)
+BUILD = Path(os.environ["SOJOURN_VOICE_BUILD"]).resolve() if os.environ.get("SOJOURN_VOICE_BUILD") else OUT / "build"
+DLL = BUILD / "Release" / "sojourn_voice.dll"   # the client's csproj copies it from local/voice/build
 LOOPBACK = BUILD / "Release" / "sv_loopback.exe"
 WEBRTC = ROOT / "local" / "webrtc"
 BELOW_NORMAL = 0x00004000
@@ -1034,6 +1051,187 @@ def devices_change():
     return 0 if ok else 1
 
 
+def switch(a=None, b=None):
+    """sv_loopback switch: the output moved between two outputs, the tone heard on each by loopback capture."""
+    if build():
+        return 1
+    r = subprocess.run([str(LOOPBACK), "devices"], capture_output=True, text=True, encoding="utf-8")
+    outputs = []
+    for line in r.stdout.splitlines():
+        outputs += json.loads(line).get("render", [])
+    if a is None:
+        a, b = "Steam Streaming Speakers", "Speakers (Steam Streaming Microphone)"
+    found = {k: next((d for d in outputs if k in d["name"]), None) for k in (a, b)}
+    if not all(found.values()):
+        print(f"switch needs two outputs named like {a!r} and {b!r} (Steam's virtual pair by default)", file=sys.stderr)
+        return 1
+    if any(d["default"] for d in found.values()):
+        print("switch plays a tone: not on the default output, which someone may be listening to", file=sys.stderr)
+        return 1
+    level = -60.0
+    r = subprocess.run([str(LOOPBACK), "switch", a, b, str(level)], capture_output=True, text=True, encoding="utf-8",
+                       creationflags=BELOW_NORMAL, timeout=90)
+    events = [json.loads(line) for line in r.stdout.splitlines() if line.startswith("{")]
+    phases = {e["phase"]: e for e in events if e["event"] == "phase"}
+    names = next((e for e in events if e["event"] == "listening"), {})
+    ok = True
+
+    def check(name, cond, detail):
+        nonlocal ok
+        ok &= bool(cond)
+        print(f"{'ok  ' if cond else 'FAIL'} {name}: {detail}")
+
+    print(f"A: {names.get('a')} ({names.get('a_format')}); B: {names.get('b')} ({names.get('b_format')}); tone {level} dBFS")
+    for ph in ("onto a", "a to b", "b to a"):
+        p = phases.get(ph, {})
+        here = abs(p.get("to_db", -200) - level) <= 3 and p.get("from_db", 0) < level - 20 and 0 <= p.get("arrived_ms", -1) < 500
+        check(f"{ph}: the tone on the new output, gone from the old", here,
+              f"new {p.get('to_db')} dBFS (after {p.get('arrived_ms')} ms), old {p.get('from_db')} dBFS; {p.get('state')}")
+    p = phases.get("b refuses", {})
+    st = p.get("state", {})
+    check("B refusing to start: the sound stays on the default (A), with why", abs(p.get("to_db", -200) - level) <= 3
+          and p.get("from_db", 0) < level - 20 and st.get("fallback") and "failed 0x" in st.get("error", ""),
+          f"A {p.get('to_db')} dBFS, B {p.get('from_db')} dBFS; state {st}")
+    p = phases.get("b starts again", {})
+    st = p.get("state", {})
+    check("B starting again: the sound goes to B at Windows' next change", abs(p.get("to_db", -200) - level) <= 3
+          and p.get("from_db", 0) < level - 20 and st.get("state") == "open" and not st.get("fallback"),
+          f"B {p.get('to_db')} dBFS, A {p.get('from_db')} dBFS; state {st}")
+    if r.returncode or not any(e["event"] == "done" for e in events):
+        print(r.stdout[-2000:], r.stderr[-2000:], file=sys.stderr)
+        ok = False
+    print("switch:", "passed" if ok else "FAILED")
+    return 0 if ok else 1
+
+
+def session_switch():
+    """SojournSettings speakers through a session host, heard by loopback capture on Steam's two virtual outputs."""
+    import grid
+    if not grid.ready():
+        print("the local grid isn't up: python tools/grid.py start", file=sys.stderr)
+        return 1
+    a, b = "Speakers (Steam Streaming Speakers)", "Speakers (Steam Streaming Microphone)"
+    broot = os.environ.get("SOJOURN_BUILD_ROOT")
+    probe = (Path(broot) / "bin" / "Sojourn.SessionProbe" if broot else ROOT / "src" / "Sojourn.SessionProbe" / "bin") \
+        / "Release" / "net10.0" / "Sojourn.SessionProbe.dll"
+    if os.environ.get("SOJOURN_VOICE_BUILD"):
+        shutil.copy2(DLL, probe.parent / "sojourn_voice.dll")
+    dotnet = Path(os.environ["LOCALAPPDATA"]) / "dotnet-sdk" / "dotnet.exe"
+    grid.account("Sojourn", "Probe", "sojourn-local")
+    port = 9760
+    ok = True
+
+    def check(name, cond, detail):
+        nonlocal ok
+        ok &= bool(cond)
+        print(f"{'ok  ' if cond else 'FAIL'} {name}: {detail}")
+
+    def api(pump, op, timeout=30, **args):
+        body = json.dumps({"pump": pump, "data": {"op": op, **args}, "timeout": timeout}).encode()
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/cmd", data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout + 20) as r:
+            return json.loads(r.read())
+
+    def listening(seconds):
+        return [subprocess.Popen([str(LOOPBACK), "listen", name, str(seconds)], stdout=subprocess.PIPE, text=True,
+                                 encoding="utf-8") for name in (a, b)]
+
+    def loudest(p):
+        out, _ = p.communicate(timeout=60)
+        return max((json.loads(l)["rms_db"] for l in out.splitlines() if '"rms_db"' in l), default=-200)
+
+    def session(name, env_extra, steps):
+        base = OUT / "switch-probe" / name
+        shutil.rmtree(base, ignore_errors=True)
+        base.mkdir(parents=True)
+        (base / "vr-settings.json").write_text(json.dumps({"speakers": a}))
+        env = dict(os.environ, SOJOURN_TEST_SWITCH_CHIME="0.5", **env_extra)
+        log = open(base / "probe.log", "w", encoding="utf-8", errors="replace")
+        p = subprocess.Popen([str(dotnet), str(probe), "--first", "Sojourn", "--last", "Probe", "--port", str(port),
+                              "--base", str(base), "--sounds", "--expect", "nothing-says-this", "--seconds", "90"],
+                             cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                             creationflags=BELOW_NORMAL)
+        try:
+            for _ in range(120):
+                try:
+                    if json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=5).read()).get("connected"):
+                        break
+                except OSError:
+                    pass
+                time.sleep(0.5)
+            time.sleep(2)   # world audio starts after login
+            steps()
+        finally:
+            p.kill()
+            p.wait()
+            log.close()
+        return base / "probe.log"
+
+    def moves():
+        devs = api("SojournAudio", "devices")
+        outs = devs.get("speakers", [])
+        kinds = {d["name"]: d.get("kind") for d in outs}
+        ranks = [0 if d.get("kind") in ("speakers", "headphones", "a headset") else 2 if "TV" in (d.get("kind") or "")
+                 or "digital" in (d.get("kind") or "") else 1 for d in outs]
+        check("SojournAudio devices: what each output is, likely ones first", outs and all(k is not None for k in kinds.values())
+              and ranks == sorted(ranks), "; ".join(f"{n} ({k})" for n, k in kinds.items()))
+        check("the session starts on the output chosen", api("SojournSettings", "get", name="speakers")["settings"]["speakers"]["value"] == a,
+              api("SojournSettings", "get", name="speakers")["settings"]["speakers"]["value"])
+        for to, other in ((b, a), (a, b)):
+            ears = listening(3)
+            time.sleep(0.3)
+            t0 = time.time()
+            r = api("SojournSettings", "set", speakers=to)
+            took = time.time() - t0
+            heard_a, heard_b = loudest(ears[0]), loudest(ears[1])
+            on_to, on_other = (heard_b, heard_a) if to == b else (heard_a, heard_b)
+            check(f"onto {to}: set, checked, the chime there only", "error" not in r and on_to > -45 and on_other < -100,
+                  f"answer in {took:.1f} s {r.get('error') or ''}; loudest there {on_to:.1f} dBFS, on the other {on_other:.1f}")
+
+    def refused():
+        ears = listening(5)
+        time.sleep(0.3)
+        r = api("SojournSettings", "set", speakers=b)
+        now = api("SojournSettings", "get", name="speakers")["settings"]["speakers"]["value"]
+        heard_a, heard_b = loudest(ears[0]), loudest(ears[1])
+        err = r.get("error") or ""
+        check("an output that won't start: refused, with why, the choice put back",
+              "didn't start" in err and "exclusively" in err and "stays on" in err and now == a, f"{err!r}; speakers now {now}")
+        check("and no sound reached it", heard_b < -100, f"loudest on it {heard_b:.1f} dBFS")
+
+    log1 = session("moves", {}, moves)
+    text = log1.read_text(encoding="utf-8", errors="replace")
+    check("the log says what each output is, and what reached the new one",
+          "audio: outputs:" in text and "dBFS reached it" in text and "render: open" in text,
+          "; ".join(l.split("] ", 1)[-1][:150] for l in text.splitlines() if "reached it" in l or "render: open" in l)[:600])
+    session("refused", {"SOJOURN_TEST_REFUSE_SPEAKER": "Steam Streaming Microphone", "SOJOURN_TEST_DEFAULT_SPEAKER": a}, refused)
+    print("session-switch:", "passed" if ok else "FAILED")
+    return 0 if ok else 1
+
+
+def listen(output, seconds=5.0):
+    """sv_loopback listen: what reaches an output, its level and peak each half second."""
+    if build():
+        return 1
+    r = subprocess.run([str(LOOPBACK), "listen", output, str(seconds)], capture_output=True, text=True, encoding="utf-8",
+                       timeout=seconds + 30)
+    blocks = []
+    for line in r.stdout.splitlines():
+        e = json.loads(line)
+        if e.get("event") == "listening":
+            print(f"{e['name']} ({e['format']})")
+        elif e.get("event") == "error":
+            print(e["text"], file=sys.stderr)
+            return 1
+        elif "rms_db" in e:
+            blocks.append(e)
+    for i in range(0, len(blocks), 10):
+        part = blocks[i:i + 10]
+        loud = max(b["rms_db"] for b in part)
+        print(f"{part[0]['t'] / 1000:5.1f} s  {'silence' if loud <= -150 else f'{loud:.1f} dBFS at most'}")
+    return 0
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     cmd = sys.argv[1] if len(sys.argv) > 1 else "loopback"
@@ -1049,6 +1247,12 @@ if __name__ == "__main__":
         sys.exit(loopback())
     if cmd == "devices-change":
         sys.exit(devices_change())
+    if cmd == "switch":
+        sys.exit(switch(*sys.argv[2:4]) if len(sys.argv) >= 4 else switch())
+    if cmd == "session-switch":
+        sys.exit(session_switch())
+    if cmd == "listen" and len(sys.argv) > 2:
+        sys.exit(listen(sys.argv[2], float(sys.argv[3]) if len(sys.argv) > 3 else 5.0))
     if cmd == "roundtrip":
         sys.exit(roundtrip())
     if cmd == "scenarios":

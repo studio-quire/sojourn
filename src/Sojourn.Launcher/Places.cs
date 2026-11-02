@@ -24,7 +24,7 @@ sealed class Places
             if (Directory.Exists(Path.Combine(d.FullName, "src", "Sojourn.Client"))) { Repo = d.FullName; break; }
         BaseDir = Path.GetFullPath(baseDir ?? (Repo != null
             ? Path.Combine(Repo, "local", "main")
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sojourn")));
+            : Sojourn.Session.DataFolder.Root));
     }
 
     public string SettingsPath => Path.Combine(BaseDir, "vr-settings.json");

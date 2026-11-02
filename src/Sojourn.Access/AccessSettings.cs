@@ -25,6 +25,10 @@ public sealed class AccessSettings
     /// <summary>The person's own lines read back as they're sent (nearby once the region echoes them): a blind tester's
     /// wish, 2026-10-30, to hear that what she typed went out.</summary>
     public bool ReadMine { get; set; } = true;
+    /// <summary>The builders' tab (MainForm.Builders.cs): on, the person can write to us and our replies are fetched and
+    /// read out; off, no tab and the relay isn't asked.</summary>
+    public bool Builders { get; set; } = true;
+    public event Action? BuildersChanged;
     /// <summary>How confirmations, notices' keys, the ToS and typed answers take an answer that doesn't come from a key on
     /// a physical keyboard (a braille keyboard, Dragon, Voice Access, an on-screen keyboard, switch access): "refuse", or
     /// "hello", asking Windows Hello (face, fingerprint or PIN) and then taking it (Hello.cs). Physical keys answer either way.</summary>
@@ -74,12 +78,14 @@ public sealed class AccessSettings
         ("beacon", "both", "a beacon on where you're heading (a //go, walk to, a follow, the assistant's walk, or one you put on "
             + "someone or something; text: reaching it, or losing it)"),
         ("marks", "both", "doors, seats and touchable things around, sounding from where they are (O in walk mode)"),
+        ("route", "sound", "a tick for each point kept while recording a route (text: the step and what kept it)"),
+        ("switch", "both", "seated: a rail switch ahead, said once with how it's set (W asks, Shift+W throws it)"),
     };
     public static readonly string[] WalkModes = { "both", "text", "sound", "off" };
     public static readonly string[] WalkLevels = { "quiet", "medium", "loud", "full" };
     static readonly float[] LevelGains = { 0.2f, 0.45f, 0.7f, 1f };
     /// <summary>Cues quieter than medium unless changed: the beacon repeats all through a walk.</summary>
-    static readonly Dictionary<string, string> WalkDefaultLevels = new() { ["beacon"] = "quiet" };
+    static readonly Dictionary<string, string> WalkDefaultLevels = new() { ["beacon"] = "quiet", ["route"] = "quiet" };
 
     public string WalkMode(string cue) => Walk.TryGetValue(cue, out var v) ? v : WalkCues.FirstOrDefault(c => c.Name == cue).Mode ?? "both";
     public bool WalkText(string cue) => WalkMode(cue) is "both" or "text";
@@ -107,6 +113,8 @@ public sealed class AccessSettings
         ("notice", "off", "other notices: group notices, payments, the region's messages"),
         ("sent", "off", "your own line sent, nearby or in a conversation"),
         ("mic", "medium", "the mic opening and closing in voice chat (the talk key held and let go, an open mic unmuted and muted)"),
+        // (the blind tester's ask, 2026-11-01: "a sound when an item is deleted")
+        ("deleted", "medium", "something of yours deleted, from the inventory or the world (into the Trash)"),
     };
     public static readonly string[] EarconLevels = { "off", "quiet", "medium", "loud", "full" };
 
@@ -267,6 +275,10 @@ public sealed class AccessSettings
         api.Add("access_read_mine", new SettingsApi.Setting("access", "Sojourn Access: the person's own lines (said, whispered, shouted, "
             + "emotes, IMs) read back in the same words as others', nearby once the region has echoed them", "on, off", () => ReadMine,
             SettingsApi.Switch("access_read_mine", on => { ReadMine = on; Save(); changed(); })));
+        api.Add("access_builders", new SettingsApi.Setting("access", "Sojourn Access: the builders' tab (Control+Shift+B), where "
+            + "the person writes to the Claude sessions building Sojourn Access through Studio Quire's relay (with their token) and "
+            + "their replies are read out like an IM; off: no tab, and the relay isn't asked for replies", "on, off", () => Builders,
+            SettingsApi.Switch("access_builders", on => { Builders = on; Save(); changed(); BuildersChanged?.Invoke(); })));
         api.Add("access_timestamps",new SettingsApi.Setting("access", "Sojourn Access: a time before each line in the chat histories",
             "on, off", () => Timestamps, SettingsApi.Switch("access_timestamps", on => { Timestamps = on; Save(); changed(); })));
         api.Add("access_muted_sources", new SettingsApi.Setting("access", "Sojourn Access: conversations not read out (Shift+F6 in one); "

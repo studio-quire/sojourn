@@ -112,7 +112,7 @@ public sealed class Sidecar : IDisposable
     /// <summary>Where the sidecar keeps its things (its memory under assistant/home, scratch, settings): the repo's
     /// local/, or for a bundled one the app's data folder (the app sets <see cref="DataDir"/>; assistant/paths.py).</summary>
     public static string LocalDir => FindRoot() is { } root ? Path.Combine(root, "local")
-        : DataDir ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sojourn");
+        : DataDir ?? DataFolder.Root;
 
     /// <summary>The app's data folder, for a bundled sidecar (SessionHost sets it from its BaseDir).</summary>
     public static string? DataDir { get; set; }

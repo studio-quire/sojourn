@@ -12,7 +12,11 @@ enum Phase { Idle, Starting, Form, Connecting, Terms, Code, Failed, World, Endin
 
 /// <summary>Question: the grid's question while terms or code (terms: {kind, text}; code: {asks}); Answers: the client
 /// takes answers from here (its LauncherAnswers is open).</summary>
-sealed record RunStatus(Phase Phase, bool Headset = false, string? Detail = null, string? Log = null, JsonObject? Question = null, bool Answers = false);
+sealed record RunStatus(Phase Phase, bool Headset = false, string? Detail = null, string? Log = null, JsonObject? Question = null, bool Answers = false)
+{
+    /// <summary>A crash's exit code (CrashReport.cs).</summary>
+    public int ExitCode { get; init; }
+}
 
 /// <summary>
 /// One run of the VR client: started with the login already handed over (LoginStore.HandOver; the client logs in
@@ -62,6 +66,7 @@ sealed class ClientRun
         psi.StandardOutputEncoding = Encoding.UTF8;
         psi.StandardErrorEncoding = Encoding.UTF8;
         psi.Environment["SOJOURN_STATE_FILE"] = _places.StatePath;
+        Dumps(psi);
         try { File.Delete(_places.StatePath); } catch (Exception) { }
         Directory.CreateDirectory(Path.GetDirectoryName(_places.ConsoleLog)!);
         lock (_consoleLock)
@@ -98,7 +103,7 @@ sealed class ClientRun
         lock (_consoleLock)
         {
             try { _console?.WriteLine(line); } catch (Exception) { }
-            if (line.Contains("Unhandled exception", StringComparison.Ordinal)) _crashMarked = true;
+            if (line.Contains("Unhandled exception", StringComparison.Ordinal) || line.StartsWith("Fatal error.", StringComparison.Ordinal)) _crashMarked = true;
         }
     }
 
@@ -149,7 +154,7 @@ sealed class ClientRun
                 int code = SafeExitCode(_proc);
                 string? log = LogFor(file);
                 bool crashed = _stopAskedAt == null && (code != 0 || _crashMarked);
-                Status = crashed ? new(Phase.Crashed, Detail: code == 75 ? "the graphics card was reset" : null, Log: log) : new(Phase.Ended, Log: log);
+                Status = crashed ? new(Phase.Crashed, Detail: code == 75 ? "the graphics card was reset" : null, Log: log) { ExitCode = code } : new(Phase.Ended, Log: log);
                 lock (_consoleLock) { _console?.Dispose(); _console = null; }
                 _answers?.Dispose();
                 _answers = null;
@@ -160,6 +165,28 @@ sealed class ClientRun
         else if (file is { } st && st.Pid == _pid && _stopAskedAt == null)
             Status = new(st.Phase, st.Headset, st.Detail, st.Log, st.Question, st.Answers && _answers != null);
         return Status != before;
+    }
+
+    /// <summary>
+    /// In runs from the repo (or with SOJOURN_DUMPS=1), a crash leaves a minidump in the base dir's dumps/ (the .NET
+    /// runtime's createdump: managed crashes and native faults on .NET's threads; the newest three kept). A dump holds
+    /// memory, so other people's words can be in it: it stays on the PC and never goes in a report. For people's own
+    /// copies a dump would only take room, so packaged builds make none (docs/client.md > Problem and crash reports).
+    /// </summary>
+    void Dumps(ProcessStartInfo psi)
+    {
+        if (_places.Repo == null && Environment.GetEnvironmentVariable("SOJOURN_DUMPS") != "1") return;
+        try
+        {
+            var dir = Path.Combine(_places.BaseDir, "dumps");
+            Directory.CreateDirectory(dir);
+            foreach (var old in new DirectoryInfo(dir).GetFiles("sojourn-*.dmp").OrderByDescending(f => f.LastWriteTimeUtc).Skip(2))
+                try { old.Delete(); } catch (IOException) { }
+            psi.Environment["DOTNET_DbgEnableMiniDump"] = "1";
+            psi.Environment["DOTNET_DbgMiniDumpType"] = "1";   // stacks, threads and modules; not the heap
+            psi.Environment["DOTNET_DbgMiniDumpName"] = Path.Combine(dir, "sojourn-%p.dmp");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
     void Follow(Process next)

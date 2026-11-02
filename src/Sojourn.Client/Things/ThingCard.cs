@@ -229,7 +229,7 @@ public sealed class ThingCard
     CardView View()
     {
         var f = _facts!;
-        string? owner = f.Worn ? (f.OwnerName is { } wn ? $"worn by {wn}" : null) : f.Mine ? "yours" : f.OwnerName;
+        string? owner = f.Worn ? (f.OwnerName is { } wn ? Lang.F("worn by {0}", wn) : null) : f.Mine ? Lang.T("yours", "owner") : f.OwnerName;
         return new CardView(f.Name, owner, _page, _list, _about, ThingActions.About(f), _amounts, _contents, _note, _working,
             _asking && _assistant.Talking, _asking && _assistant.Latched, _hover, (int)(Environment.TickCount64 / 60 % 16));
     }
@@ -331,7 +331,7 @@ public sealed class ThingCard
                         if (amounts.Count == 0 && any) amounts = [1, 5, 10, 20];
                         if (suggested is { } sg && any && !amounts.Contains(sg)) amounts.Insert(0, sg);
                     }
-                    catch (Exception e) when (e is not OperationCanceledException) { amounts = []; OnMain(() => { _note = $"Couldn't ask what it takes: {e.Message}"; Changed(); }); }
+                    catch (Exception e) when (e is not OperationCanceledException) { amounts = []; OnMain(() => { _note = Lang.F("Couldn't ask what it takes: {0}", e.Message); Changed(); }); }
                     OnMain(() => { if (!ct.IsCancellationRequested) { _amounts = amounts; Changed(); } });
                 }, ct);
                 return;
@@ -374,7 +374,7 @@ public sealed class ThingCard
             (bool Ok, string? Say) r;
             try { r = await _actions.RunAsync(what, f, at, amount, copy, ct); }
             catch (OperationCanceledException) { return; }
-            catch (Exception e) { r = (false, $"Didn't work: {e.Message}"); }
+            catch (Exception e) { r = (false, Lang.F("Didn't work: {0}", e.Message)); }
             OnMain(() =>
             {
                 if (_facts == null || ct.IsCancellationRequested) return;

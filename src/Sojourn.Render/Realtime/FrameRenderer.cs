@@ -22,6 +22,9 @@ public sealed record FrameRendererOptions
     /// <summary>The geometry arenas' size as a share of the usual 4M vertices (Gpu/GeometryPool.cs): less for a renderer
     /// that holds little (out of sight); more arenas come as needed either way.</summary>
     public double GeometryArenaScale { get; init; } = 1;
+    /// <summary>Mesh assets' bytes kept to build each LOD from (World/Geometry.cs), oldest out; past it they're read from
+    /// the disk cache again.</summary>
+    public long MeshBytesBudget { get; init; } = 256L << 20;
     public ViewOptions View { get; init; } = new();
     /// <summary>Sun/moon shadows (the viewer's RenderShadowDetail >= 1).</summary>
     public bool Shadows { get; init; } = true;
@@ -328,6 +331,10 @@ public sealed partial class FrameRenderer : IDisposable
         _overlay.Mark = name => _gpu.Renderer.Profiler.Mark(name);
         _gpu.Renderer.Log = _opt.Log;
         _world.Textures.Log = _opt.Log;
+        // on the processor: textures at three sizes, none past 512 (TextureStore.FewSizes); SOJOURN_SOFTWARE_TEXTURES=as-is
+        // leaves them as on a GPU, for comparing
+        if (_gpu.Vk.Software && System.Environment.GetEnvironmentVariable("SOJOURN_SOFTWARE_TEXTURES") != "as-is")
+            (_world.Textures.FewSizes, _world.Textures.MaxDimension) = (true, 512);
         _gpu.Renderer.Profiler.FrameDone = ms => _world.Governor.Gpu(ms);
         var (vramUsed, vramBudget) = _gpu.Vk.DeviceLocalBudget();
         _opt.Log?.Invoke($"video memory: {_gpu.Vk.DeviceLocalHeapBytes >> 20} MB, this process budgeted {vramBudget >> 20} MB" +
@@ -336,6 +343,7 @@ public sealed partial class FrameRenderer : IDisposable
                          $", using {vramUsed >> 20} MB" + (LoadGovernor.TestBudget > 0 ? $"; testing with a budget of {LoadGovernor.TestBudget >> 20} MB" : "") +
                          $"; {_gpu.Bindless.MaxTextures} texture slots, {Bindless.MaxCubes} cube slots");
         _world.Geometry.Log = _opt.Log;
+        _world.Geometry.MeshBytesBudget = _opt.MeshBytesBudget;
         _world.Materials.Log = _opt.Log;
         if (_opt.Probes)
         {
@@ -358,6 +366,15 @@ public sealed partial class FrameRenderer : IDisposable
         CheckWorld();
         _world.Textures.DataOnly = !Quality.Textures;
         ApplyRegionChanges();
+        // between frames (the renderer out of sight on the processor draws only pictures, an hour apart at times) a
+        // region drawn before is kept current as a frame keeps it, else every update it sent waited in its change
+        // queue until the next picture (a ride through a busy place: without bound); one never drawn isn't indexed
+        // (its first frame reads it whole), so what it reports is let go
+        foreach (var r in _world.Regions)
+        {
+            if (!r.Synced) { if (r.Source.Changes is { IsEmpty: false } q) q.Clear(); }   // (Clear makes a new segment each time)
+            else if (r.Source.Changes != null) r.Sync(terrain: false);
+        }
         _world.BeginFrame();
         Periodic();
         // what BeginFrame staged (uploads, a shrunk texture's copy) goes to the GPU now: EndFrame counts this as a frame
@@ -383,7 +400,9 @@ public sealed partial class FrameRenderer : IDisposable
         {
             _lastEffects = now;
             double t = Particles.EffectClock.Now;
-            foreach (var r in _world.Regions) r.Effects.Observe(r.Source.Handle, r.Source.Prims, t);
+            // (a region not drawn yet isn't followed: its first frame starts it, and until then each pass was a scan of
+            // all its objects)
+            foreach (var r in _world.Regions) if (r.Synced) r.Effects.Observe(r.Source.Handle, r.Source.Prims, t);
             foreach (var e in _world.Environments) e.RefreshIfStale();
         }
         if (Stopwatch.GetElapsedTime(_lastHousekeeping, now).TotalSeconds > 2)
@@ -434,6 +453,11 @@ public sealed partial class FrameRenderer : IDisposable
         if (Stopwatch.GetElapsedTime(_memAt, now).TotalMilliseconds < 250) return;
         _memAt = now;
         var (used, budget) = _gpu.Vk.DeviceLocalBudget();
+        // on the processor our allocations are the PC's own memory, budgeted at 1 GB, and what's meant is textures shed
+        // from 512 MB: so they get half of it beyond everything else allocated (geometry arenas, targets, probes). Judged
+        // against the whole, the rest alone (0.4-0.5 GB at the blind tester's club) kept every texture held and shrunk at
+        // the top pressure with almost none resident, pictures blurred, sharper copies dropped (her log, 2026-11-01)
+        if (Software) budget = Math.Max(budget, used - Math.Min(used, TextureBytes) + budget / 2 + (1UL << 30));
         var alloc = _gpu.Vk.Allocator;
         g.Memory(used, budget, _gpu.Vk.DeviceLocalHeapBytes, alloc.TotalAllocated > alloc.TotalUsed ? alloc.TotalAllocated - alloc.TotalUsed : 0);
     }

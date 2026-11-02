@@ -247,6 +247,7 @@ public sealed class LLAgent : SessionApi
             return new JsonObject();
         }
         var p = Target(a, true) ?? throw new LeapError("requestSit could not find the sit target");
+        if (S.RlvActive && S.RlvRefused(S.Rlv.CanSit(p.ID, S.RlvObject(p.ID)?.Position)) is { } rlv) throw new LeapError(rlv);
         c.Self.RequestSit(p.ID, Vector3.Zero);   // the region's answer is taken up in AgentSession (AvatarSitResponse -> Sit)
         for (var i = 0; i < 25 && c.Self.SittingOn == 0; i++) await Task.Delay(200, ct);
         if (c.Self.SittingOn == 0) throw new LeapError("the region didn't seat me there (too far away, or no room to sit on it)");
@@ -330,6 +331,15 @@ public sealed class LLChatBar : SessionApi
             msg = m.Groups[2].Value;
         }
         var type = (a.Str("type") ?? "normal") switch { "whisper" => ChatType.Whisper, "shout" => ChatType.Shout, _ => ChatType.Normal };
+        string? rlv = null;
+        if (S.RlvActive)
+        {
+            // @sendchat, @redirchat, @chatshout..., @sendchannel (docs/rlv.md): what's left of it goes, if anything
+            var (text, toChannel, toType, why) = S.Rlv.Chat(msg, channel, type);
+            rlv = S.RlvRefused(why);
+            if (text == null) return new JsonObject { ["sent"] = false, ["rlv"] = rlv };
+            (msg, channel, type) = (text, toChannel, toType);
+        }
         if (channel < 0)
         {
             // the viewer sends negative channels as a dialog reply from itself
@@ -342,7 +352,7 @@ public sealed class LLChatBar : SessionApi
         }
         else c.Self.Chat(msg, channel, type);
         if (channel == 0 && msg.Length > 0) S.State.LastWords = msg;
-        return new JsonObject();
+        return rlv == null ? new JsonObject() : new JsonObject { ["sent"] = msg, ["rlv"] = rlv };
     }
 }
 

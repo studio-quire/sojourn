@@ -47,7 +47,7 @@ public sealed class ReaderKeys(Announcer announcer, ReaderActions actions)
         (Key.Minus, 0xBD), (Key.Equal, 0xBB),
     };
 
-    public static string? KeyName(int i) => i switch { < 9 => $"{i + 1}", 9 => "0", 10 => "minus", 11 => "equals", _ => null };
+    public static string? KeyName(int i) => i switch { < 9 => $"{i + 1}", 9 => "0", 10 => Lang.T("minus"), 11 => Lang.T("equals"), _ => null };
 
     const string Help = "Sojourn keys. Control N: the next notice waiting, with Shift the one before. On a notice, its number keys answer it, "
         + "Delete puts it away, Escape is done. Enter confirms what the assistant asks you to confirm, Escape cancels. Control R: say it again (a confirmation with every name in its list). "
@@ -77,7 +77,7 @@ public sealed class ReaderKeys(Announcer announcer, ReaderActions actions)
                 actions.LetGo();
                 return true;
             case Key.F1 when !ctrl:
-                announcer.Answer(Help, keep: false);
+                announcer.Answer(Lang.T(Help), keep: false);
                 return true;
             case Key.N when ctrl:
                 if (fresh) actions.Step(shift ? -1 : 1);

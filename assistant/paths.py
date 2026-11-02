@@ -10,6 +10,19 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent                                   # the repo, or the packaged program's folder
 PACKAGED = bool(os.environ.get("SOJOURN_LOCAL"))
 LOCAL = Path(os.environ["SOJOURN_LOCAL"]) if PACKAGED else ROOT / "local"
+# a package's models beside the program, read-only (Sojourn's own, tools/package.py: Parakeet, Kokoro, Whisper's
+# vocabulary); from the repo they're fetched into local/assistant by tools/assistant.py setup
+MODELS = ROOT / "models"
+if PACKAGED:
+    # Whisper's model is fetched from Hugging Face only when the person picks it (ears.py); it goes in the data
+    # folder's cache, which an uninstall clears, never the profile's ~/.cache
+    os.environ.setdefault("HF_HOME", str(LOCAL / "cache" / "huggingface"))
+    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+
+
+def model_dir(name, repo_dir):
+    """A model's folder: the package's models/NAME when it's there, else REPO_DIR (under local/assistant)."""
+    return MODELS / name if (MODELS / name).is_dir() else repo_dir
 
 
 def packaged_claude():

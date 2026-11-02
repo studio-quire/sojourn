@@ -16,15 +16,33 @@
     <RootNamespace>Sojourn.Launcher</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <PlatformTarget>x64</PlatformTarget>
+    <!-- Program.cs: Velopack's install, update and uninstall hooks run before WPF starts (docs/launcher.md > The package) -->
+    <StartupObject>Sojourn.Launcher.Program</StartupObject>
+    <!-- Sojourn's icon (tools/icon.py renders it from art/icon/sojourn.svg); WPF's windows take the exe's own -->
+    <ApplicationIcon>..\..\art\icon\sojourn.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- installing, updates at the person's press, uninstalling (MIT; tools/package.py packs with its vpk of the same version) -->
+    <PackageReference Include="Velopack" Version="1.2.161" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- saved accounts (DPAPI), grids, starts and the handover to the client: the session host's own file -->
     <Compile Include="..\Sojourn.Session\Login\LoginStore.cs" Link="Shared\LoginStore.cs" />
+    <Compile Include="..\Sojourn.Session\DataFolder.cs" Link="Shared\DataFolder.cs" />
     <!-- the graphics presets the headset's menu offers too, and the assistant's keys (DPAPI) -->
     <Compile Include="..\Sojourn.Session\Control\GraphicsPresets.cs" Link="Shared\GraphicsPresets.cs" />
     <Compile Include="..\Sojourn.Session\Assistant\ProviderKeys.cs" Link="Shared\ProviderKeys.cs" />
     <Compile Include="..\Sojourn.Session\Assistant\OpenRouterCatalog.cs" Link="Shared\OpenRouterCatalog.cs" />
+    <!-- a crash's report (CrashReport.cs): the log filtered as Sojourn Access's Send a log filters it, sent to the relay
+         or saved for GitHub -->
+    <Compile Include="..\Sojourn.Session\LogShare.cs" Link="Shared\LogShare.cs" />
+    <Compile Include="..\Sojourn.Session\LogSend.cs" Link="Shared\LogSend.cs" />
+    <Compile Include="..\Sojourn.Session\Release\ProblemReport.cs" Link="Shared\ProblemReport.cs" />
+    <!-- Sojourn's own words in each language (docs/languages.md): the session's catalogs, the launcher's among them -->
+    <Compile Include="..\Sojourn.Session\Lang\Lang.cs" Link="Shared\Lang.cs" />
+    <EmbeddedResource Include="..\Sojourn.Session\Lang\*.json" LogicalName="lang/%(Filename).json" />
     <!-- the wordmark: Archivo (OFL-1.1), as the panel ships it -->
     <Resource Include="..\Sojourn.Session\Assets\Fonts\Archivo-Light.ttf" Link="Fonts\Archivo-Light.ttf" />
     <Resource Include="..\Sojourn.Session\Assets\Fonts\Archivo-Regular.ttf" Link="Fonts\Archivo-Regular.ttf" />

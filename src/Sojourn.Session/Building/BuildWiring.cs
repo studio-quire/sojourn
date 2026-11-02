@@ -114,92 +114,103 @@ public static class BuildWiring
                     var list = await s.ScriptChores.RemovalAsync(a, cts.Token);
                     var objects = list.Select(x => x.Prim.ID).Distinct().Count();
                     var names = Confirmations.Listed(list.Select(x => $"\"{x.Item.Name}\"").Distinct().ToList(), 6, "script names");
-                    return ($"Remove {list.Count} script{(list.Count == 1 ? "" : "s")} from {Objects(s, a)}",
-                        list.Count == 0 ? "There are none: this will do nothing." : $"{names}, in {objects} prim{(objects == 1 ? "" : "s")}. They're deleted from the objects.");
+                    return (Lang.F(list.Count == 1 ? "Remove {0} script from {1}" : "Remove {0} scripts from {1}", list.Count, Objects(s, a)),
+                        list.Count == 0 ? Lang.T("There are none: this will do nothing.")
+                            : Lang.F(objects == 1 ? "{0}, in {1} prim. They're deleted from the objects." : "{0}, in {1} prims. They're deleted from the objects.", names, objects));
                 }
                 case "saveBack":
-                    return ($"Save {Objects(s, a)} back into the object it came from", "It replaces the item it was rezzed from in that object's contents.");
+                    return (Lang.F("Save {0} back into the object it came from", Objects(s, a)), Lang.T("It replaces the item it was rezzed from in that object's contents."));
                 case "deed":
                 {
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
                     var (roots, gid) = await s.Ownership.FreshDeedTargetAsync(a, cts.Token);
                     var why = s.Ownership.DeedRefusal(roots, gid);
-                    return ($"Deed {Names(roots)} to {s.Ownership.GroupLabel(gid)}",
-                        why is null ? "It then belongs to the group, for good: only the group can take it back or give it away." : $"This will be refused: {why}.");
+                    return (Lang.F("Deed {0} to {1}", Names(roots), Lang.T(s.Ownership.GroupLabel(gid))),
+                        why is null ? Lang.T("It then belongs to the group, for good: only the group can take it back or give it away.") : Lang.F("This will be refused: {0}.", Lang.T(why)));
                 }
                 case "group":
-                    return ($"Set the group of {Objects(s, a)} to {s.Ownership.GroupLabel(s.Ownership.GroupNamed(a))}",
-                        "What it shares with its group goes to that group's members.");
+                    return (Lang.F("Set the group of {0} to {1}", Objects(s, a), Lang.T(s.Ownership.GroupLabel(s.Ownership.GroupNamed(a)))),
+                        Lang.T("What it shares with its group goes to that group's members."));
                 case "setDefaultPerms":
                 {
                     var kind = a.Str("kind") ?? "";
                     var parts = new List<string>();
-                    if (a.Str("next_owner") is { } n) parts.Add($"next owner can: {Letters(n)}");
-                    if (a.Bool("share_with_group") is { } g) parts.Add(g ? "shared with the group" : "not shared with the group");
-                    if (a.Bool("everyone_copy") is { } e) parts.Add(e ? "anyone can copy" : "not copyable by anyone");
-                    return ($"Change the default permissions for new {kind}", string.Join("; ", parts) + ".");
+                    if (a.Str("next_owner") is { } n) parts.Add(Lang.F("next owner can: {0}", Letters(n)));
+                    if (a.Bool("share_with_group") is { } g) parts.Add(Lang.T(g ? "shared with the group" : "not shared with the group"));
+                    if (a.Bool("everyone_copy") is { } e) parts.Add(Lang.T(e ? "anyone can copy" : "not copyable by anyone"));
+                    return (Lang.T($"Change the default permissions for new {kind}"), string.Join("; ", parts) + ".");
                 }
                 case "bulkPerms":
                 {
                     var b = s.Ownership.BulkOf(a);
-                    var where = a.Uuid("folder_id") is { } f && s.Inventory.Node(f) is { } node ? $"everything in the folder \"{node.Name}\"" : $"what's inside {Objects(s, a)}";
-                    var types = a.StrList("types") is { Count: > 0 } ts ? string.Join(", ", ts) : "every kind of item";
-                    return ($"Change the permissions of {where}", $"{b.Words()} ({types}).");
+                    var types = a.StrList("types") is { Count: > 0 } ts ? string.Join(", ", ts.Select(t => Lang.T(t, "type"))) : Lang.T("every kind of item");
+                    var parts = new List<string>();
+                    if (b.Next is { } next) parts.Add(Lang.F("next owner can: {0}", Letters(ObjectViews.PermLetters(next & ~PermissionMask.Move))));
+                    if (b.Group is { } g) parts.Add(Lang.T(g ? "shared with the group" : "not shared with the group"));
+                    if (b.EveryoneCopy is { } e) parts.Add(Lang.T(e ? "anyone can copy" : "not copyable by anyone"));
+                    return (a.Uuid("folder_id") is { } f && s.Inventory.Node(f) is { } node
+                            ? Lang.F("Change the permissions of everything in the folder \"{0}\"", node.Name)
+                            : Lang.F("Change the permissions of what's inside {0}", Objects(s, a)),
+                        $"{string.Join("; ", parts)} ({types}).");
                 }
                 case "uploadMaterial":
                 {
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                     var q = await s.Materials.UploadAsync(new JsonObject { ["path"] = a.Str("path"), ["material"] = a["material"]?.DeepClone(), ["quote"] = true }, cts.Token);
-                    return ($"Upload the material {Path.GetFileName(a.Str("path") ?? "")}",
-                        $"{q.Int("textures", 0)} texture{(q.Int("textures", 0) == 1 ? "" : "s")} in it, L${q.Int("cost", 0)} on this grid. {Balance(s)}");
+                    return (Lang.F("Upload the material {0}", Path.GetFileName(a.Str("path") ?? "")),
+                        Join(Lang.F(q.Int("textures", 0) == 1 ? "{0} texture in it, L${1} on this grid." : "{0} textures in it, L${1} on this grid.", q.Int("textures", 0), q.Int("cost", 0)), Balance(s)));
                 }
                 case "restore":
                 {
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                     var q = await s.Backups.RestoreAsync(new JsonObject { ["name"] = a["name"]?.DeepClone(), ["path"] = a["path"]?.DeepClone(), ["quote"] = true }, cts.Token);
                     var up = q.Int("uploads", 0);
-                    return ($"Rebuild the backup \"{q.Str("name")}\" here ({q.Int("prims", 0)} prims)",
-                        up == 0 ? "Its textures are on this grid already: nothing is uploaded." : $"{up} texture{(up == 1 ? "" : "s")} uploaded again, L${q.Int("cost", 0)}. {Balance(s)}");
+                    return (Lang.F("Rebuild the backup \"{0}\" here ({1} prims)", q.Str("name"), q.Int("prims", 0)),
+                        up == 0 ? Lang.T("Its textures are on this grid already: nothing is uploaded.")
+                            : Join(Lang.F(up == 1 ? "{0} texture uploaded again, L${1}." : "{0} textures uploaded again, L${1}.", up, q.Int("cost", 0)), Balance(s)));
                 }
                 case "undo" or "redo":
                 {
                     var (_, title, detail) = s.Undo.Preview(op == "redo", Math.Max(1, a.Int("steps", 1)), a.Uuid("id"));
-                    return (title, detail);
+                    return (Lang.T(title), Lang.T(detail));
                 }
             }
         }
         catch (Exception e) when (e is LeapError or NotConnected or OperationCanceledException)
         {
-            return ($"SojournBuild {op}", $"{e.Message}: this will likely fail.");
+            return ($"SojournBuild {op}", Lang.F("{0}: this will likely fail.", e.Message));
         }
         return ($"SojournBuild {op}", "");
     }
 
-    static string Balance(AgentSession s) => s.BalanceKnown && s.Client is { } c ? $"Your balance: L${c.Self.Balance}." : "";
+    static string Balance(AgentSession s) => s.BalanceKnown && s.Client is { } c ? Lang.F("Your balance: L${0}.", c.Self.Balance) : "";
+
+    static string Join(params string[] parts) => string.Join(" ", parts.Where(p => p.Length > 0));
 
     static string Letters(string mct)
     {
         var words = new List<string>();
-        if (mct.Contains('M', StringComparison.OrdinalIgnoreCase)) words.Add("modify");
-        if (mct.Contains('C', StringComparison.OrdinalIgnoreCase)) words.Add("copy");
-        if (mct.Contains('T', StringComparison.OrdinalIgnoreCase)) words.Add("transfer");
-        return words.Count == 0 ? "only move" : string.Join(", ", words);
+        if (mct.Contains('M', StringComparison.OrdinalIgnoreCase)) words.Add(Lang.T("modify"));
+        if (mct.Contains('C', StringComparison.OrdinalIgnoreCase)) words.Add(Lang.T("copy"));
+        if (mct.Contains('T', StringComparison.OrdinalIgnoreCase)) words.Add(Lang.T("transfer"));
+        return words.Count == 0 ? Lang.T("only move") : string.Join(", ", words);
     }
 
-    static string Names(List<Primitive> roots) => Confirmations.Listed(roots.Select(r => $"\"{r.Properties?.Name ?? "an object"}\"").ToList(), 5, "objects");
+    static string Names(List<Primitive> roots) => Confirmations.Listed(roots.Select(r => $"\"{r.Properties?.Name ?? Lang.T("an object")}\"").ToList(), 5, "objects");
 
     /// <summary>The objects named, as the region calls them now (the confirmation shows what's there).</summary>
     static string Objects(AgentSession s, JsonObject a)
     {
         var ids = a.UuidList("ids");
         if (a.Uuid("id") is { } one && !ids.Contains(one)) ids.Add(one);
-        if (s.Region is not { } w || ids.Count == 0) return "the objects";
+        if (s.Region is not { } w || ids.Count == 0) return Lang.T("the objects");
         var roots = ids.Select(id => w.PrimById(id)).OfType<Primitive>().Select(p => s.Objects.RootOf(w, p)).DistinctBy(p => p.LocalID).ToList();
-        if (roots.Count == 0) return "objects that aren't here";
+        if (roots.Count == 0) return Lang.T("objects that aren't here");
         return Confirmations.Listed(roots.Select(r =>
         {
             var parts = s.Objects.Linkset(w, r).Count;
-            return $"\"{r.Properties?.Name ?? "an object"}\"" + (parts > 1 ? $" ({parts} parts)" : "");
+            var name = $"\"{r.Properties?.Name ?? Lang.T("an object")}\"";
+            return parts > 1 ? Lang.F("{0} ({1} parts)", name, parts) : name;
         }).ToList(), 5, "objects");
     }
 }

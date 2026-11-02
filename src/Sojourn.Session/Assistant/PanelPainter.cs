@@ -83,17 +83,18 @@ public sealed partial class Panel
     /// <summary>Text's width, with fallback faces for what the look's face lacks (FallbackText).</summary>
     internal static float Measure(SKFont font, string s) => FallbackText.Measure(font, s);
 
-    /// <summary>Greedy word wrap into at most <paramref name="maxLines"/> lines, the last ellipsised if cut.</summary>
+    /// <summary>Greedy word wrap into at most <paramref name="maxLines"/> lines, the last ellipsised if cut. Chinese and
+    /// Japanese, which have no spaces, break between any two characters, but never before closing punctuation or
+    /// after opening (<see cref="Pieces"/>).</summary>
     internal static List<string> Wrap(string text, SKFont font, float width, int maxLines)
     {
         var lines = new List<string>();
         foreach (var para in text.Replace("\r", "").Split('\n'))
         {
-            var words = para.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var cur = "";
-            foreach (var word in words)
+            foreach (var (word, spaced) in Pieces(para))
             {
-                var next = cur.Length == 0 ? word : cur + " " + word;
+                var next = cur.Length == 0 ? word : cur + (spaced ? " " : "") + word;
                 if (Measure(font, next) <= width) { cur = next; continue; }
                 if (cur.Length > 0) lines.Add(cur);
                 cur = word;
@@ -115,6 +116,59 @@ public sealed partial class Panel
         }
         return lines;
     }
+
+    /// <summary>A paragraph's pieces a line may break between, each with whether a space comes before it: words, and
+    /// each CJK character on its own, closing punctuation and the small kana kept with what's before them, opening
+    /// punctuation with what's after (kinsoku, the simple rules).</summary>
+    internal static List<(string Text, bool Spaced)> Pieces(string para)
+    {
+        var pieces = new List<(string, bool)>();
+        var sb = new System.Text.StringBuilder();
+        bool spaced = false, pendingSpace = false, lastWide = false;
+        void Flush() { if (sb.Length > 0) { pieces.Add((sb.ToString(), spaced)); sb.Clear(); } }
+        for (int i = 0; i < para.Length;)
+        {
+            int len = char.IsHighSurrogate(para[i]) && i + 1 < para.Length ? 2 : 1;
+            var ch = para.AsSpan(i, len);
+            int cp = len == 2 ? char.ConvertToUtf32(para[i], para[i + 1]) : para[i];
+            i += len;
+            if (cp == ' ') { Flush(); pendingSpace = true; lastWide = false; continue; }
+            bool wide = Wide(cp);
+            if (NoStart(cp) && (sb.Length > 0 || pieces.Count > 0) && !pendingSpace)
+            {
+                // stays with what came before, even across a break
+                if (sb.Length == 0) { var (t, s) = pieces[^1]; pieces.RemoveAt(pieces.Count - 1); sb.Append(t); spaced = s; }
+                sb.Append(ch);
+                lastWide = wide;
+                continue;
+            }
+            bool opener = NoEnd(cp);
+            if (sb.Length > 0 && !pendingSpace && (wide || lastWide) && !(sb.Length > 0 && NoEnd(LastCp(sb))))
+                Flush();   // a break may come between two characters when either is CJK
+            if (sb.Length == 0) { spaced = pendingSpace; pendingSpace = false; }
+            sb.Append(ch);
+            lastWide = wide && !opener;
+        }
+        Flush();
+        return pieces;
+    }
+
+    static int LastCp(System.Text.StringBuilder sb) =>
+        sb.Length >= 2 && char.IsLowSurrogate(sb[^1]) ? char.ConvertToUtf32(sb[^2], sb[^1]) : sb[^1];
+
+    /// <summary>Scripts written without spaces, where a line may break between characters.</summary>
+    static bool Wide(int cp) => cp is >= 0x2E80 and <= 0x9FFF or >= 0xAC00 and <= 0xD7AF or >= 0xF900 and <= 0xFAFF
+        or >= 0xFF00 and <= 0xFF60 or >= 0x20000 and <= 0x3FFFF;
+
+    /// <summary>Never at a line's start: closing punctuation, the small kana, the prolonged sound mark.</summary>
+    static bool NoStart(int cp) => cp is ')' or ']' or '}' or ',' or '.' or ':' or ';' or '!' or '?' or '%' or '…'
+        or '、' or '。' or '，' or '．' or '・' or '：' or '；' or '？' or '！' or '）' or '］' or '｝' or '」' or '』' or '】'
+        or '〕' or '〉' or '》' or '〟' or 'ー' or '々' or '〻' or 'ゝ' or 'ゞ' or 'ヽ' or 'ヾ' or '％' or '゛' or '゜'
+        or 'ぁ' or 'ぃ' or 'ぅ' or 'ぇ' or 'ぉ' or 'っ' or 'ゃ' or 'ゅ' or 'ょ' or 'ゎ' or 'ゕ' or 'ゖ'
+        or 'ァ' or 'ィ' or 'ゥ' or 'ェ' or 'ォ' or 'ッ' or 'ャ' or 'ュ' or 'ョ' or 'ヮ' or 'ヵ' or 'ヶ';
+
+    /// <summary>Never at a line's end: opening brackets and quotes.</summary>
+    static bool NoEnd(int cp) => cp is '(' or '[' or '{' or '（' or '［' or '｛' or '「' or '『' or '【' or '〔' or '〈' or '《' or '〝';
 
     internal static string Ellipsize(string text, SKFont font, float width, bool force = false)
     {

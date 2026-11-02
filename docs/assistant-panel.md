@@ -104,7 +104,11 @@ first, and only then explained, behind a small toggle.
     *avatars* › full avatars, complexity limit, avatar physics, lip sync, selection beams; sky; location line
     off/on/+ lag; *beacons* › beacons and, while on, its kinds, lines, line width, highlights, sun, moon, then
     highlight transparent, tracking beacon, tracking beep; *parcel lines* › property lines, ban lines; maturity;
-    *menus* › menus over walls, wall test, frost bias, menus on desktop.
+    *menus* › menus over walls, wall test, frost bias, menus on desktop;
+  - **about** (last, simple too): its own words above the rows (version, disclaimer, credit, licence and source,
+    support), *report a problem* › its words, review what's sent, send to Studio Quire or save for GitHub; third-party
+    notices (the reader), crash reports ask/always/never; advanced: MAC and disk serial in statistics
+    (`Control/AboutMenu.cs`; `docs/client.md` > About, problem and crash reports).
 - **Where the rows come from**: the client's own (`SettingsMenu`, `SettingsStandard`), a part's own section through
   `ISettingsMenu` (people, sound, incognito, reader, safety; media appends to sound), and the rest made by name from
   `SojournSettings` (`SettingsApi.SwitchRow`, `ChoiceRow`, `CycleRow`, `NumberRow`, `Change`: a press sets it as a
@@ -114,6 +118,8 @@ first, and only then explained, behind a small toggle.
 - **Not placed** (2026-10-29): translation (`translate_chat`, `translate_to`, `translator`: no service yet, the user's
   call), `clouds`, `mirror_resolution`, `shadow_resolution`, `money_notices`, `auto_accept_inventory`,
   `typing_animation`, `media_placed`; all on SojournSettings for the assistant.
+- **In the person's language** (`docs/languages.md`): the menu translates its words as it draws them (tabs, labels,
+  values, options, notes, help, tips), the rows keeping their English as keys; view > language picks one.
 - **Behind ?**: the controls nothing on screen shows (grip to talk, X, Y, the menu button; the seated height; the
   camera).
 - **Paging**: a section taller than the room it has (44 deg in the headset, from 2 above the eyes to the 42-below
@@ -188,7 +194,8 @@ from iOS or any design language).
   `readability` note with what would be faint, over which world and what would help, for the assistant to mention.
   Confirmations don't rely on it: they're drawn in a preset.
 - **Fonts**: Segoe UI by default, regular and semibold only (thin strokes shimmer in a headset); Archivo bundled as the
-  fallback.
+  fallback. Japanese and Chinese come from Windows' own faces by the fallback below, asked with the language's tag
+  (`docs/languages.md` > Fonts and layout).
 - **Characters the face lacks** (`Assistant/FallbackText.cs`, everything Skia draws: the panel, feed, name tags,
   bubbles, floating text, hover tips, the reader, cards, the map): emoji, symbols, "fancy" Unicode letters and other
   scripts fall back per grapheme cluster: Segoe UI Emoji for emoji (in colour, Skia draws its COLR glyphs), else the

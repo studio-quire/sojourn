@@ -278,6 +278,105 @@ At ordinary settings the caps never bind (0 MB decoded waiting at every line) an
 old build's within noise. On the main grid: the memory line should stay level at a busy place under lag; if it
 doesn't, `tools/heapwho.py` some minutes into the growth says what holds it.
 
+### Sojourn Access on a small PC
+
+The blind tester's log of 2026-11-01 (0.1.0.718, 3.5 hours, most of it seated on a train across Bellisseria's regions,
+the view on the processor; an 8 GB PC beside NVDA): the process 617 MB at login, 2.0-2.4 GB from the first ten minutes
+on; the managed heap ~2 GB, of which a full collection left ~0.7 GB in gen2 and 1.1-1.4 GB in the large object heap, up
+to 1.2 GB of it fragmented; 184 GB allocated (~15 MB/s; ~5 MB/s seated and still near ~16,600 objects, 10-30 while
+moving), 107 s of collection pauses in all. The view drew only 13 frames all session, so this was nearly all the app
+between pictures. What it was (Claude Opus 5.5; `tools/accesssoak.py` reproduces the pattern on the perf grid's places,
+`tools/alloctrace.py` and `tools/heapwho.py --path` found the holders):
+- **Whole-region scans as garbage, mostly large-object**: walk mode's `Me()`, several times a 50 ms tick, copied the
+  region's whole prim dictionary (`ConcurrentDictionary.Values` is a copy) to find the seat's linkset whenever the
+  person was seated, walk mode on or off; the collision model listed every prim within the draw distance once a second
+  (a tuple each) to keep shapes ready; the view's effect tracker rescanned, five times a second, every region no frame
+  had indexed yet, a copy of its prims each pass; the physics types' loop copied the region's prims each second; the
+  inventory's worn marks the same once a second on that page. Each grows with the objects around: on a busy SL place,
+  arrays past 85 KB many times a second, which is what fills and fragments the large object heap and brings gen2
+  collections. Now the seat's linkset is found once a second (`WalkMode.SeatLinkset`), the own avatar by its id, the
+  collision loop lists only shapes still to come and keeps its list, the scans walk the dictionaries in place, and a
+  region the view hasn't drawn isn't followed at all until it is.
+- **A change queue without bound**: a region indexed once (drawn in a picture) queued every update it sent until the
+  next frame, and on the processor that's the next picture, sometimes an hour; a frame applied at most 6,000 of them.
+  The view's ticks now apply them as frames do (`FrameRenderer.Tick`), and a region never drawn lets them go.
+- **Left regions kept alive**: the last frame's lists (the avatars' look-at scenes, a body's foot ground, a finished
+  face resolve, the probe queue) held the scenes of regions left since, each with its objects, their shapes' pick
+  copies and the region's prims, until the next frame. A scene let go now drops what it indexed (`RegionScene.Release`),
+  so what still points at it holds a shell.
+- **Caches sized for the headset**: mesh bytes held to 64 MB in the view out of sight (the client's 256: her log ended
+  at 203 MB); collision shapes left behind let go after three idle minutes, not ten (a train passes a lot of track in
+  ten); physics types answered over 20 minutes ago let go (75,000 kept by the end); each region's sky fetched and parsed
+  once a minute, not every 10 s.
+- The collision model now logs what it holds every five minutes (`collision: ... shapes (N MB)`), so the next long log
+  says how big it gets on SL.
+
+Measured on the perf grid's eight places (`tools/accesssoak.py`, the view on the processor, LP_NUM_THREADS=8, a
+description's four pictures every 5 minutes so it's drawn whole; before = the code just after 0.1.0.737):
+
+| | roaming 40 min, before | after | seated 25 min, before | after |
+|---|---|---|---|---|
+| allocated while idle between stops (`alloctrace`, 20 s) | 0.9-1.05 MB/s | 0.15-0.35 MB/s | 1.65 MB/s (`Me()` 31%, `Around` 24%, effects 14%) | 0.2 MB/s |
+| allocated over the whole run (pictures and arrivals included) | 2.0 MB/s | 2.3 MB/s | 3.2 MB/s | 2.5 MB/s |
+| live heap in a gcdump near the end | 197 MB (left regions' scenes 55 MB, shapes 43) | 101 MB (29, 13) | 125 MB | 117 MB |
+| managed heap, end (most) | 330 (436) MB | 254 (312) MB | 333 (346) MB | 234 (296) MB |
+| private bytes, end (most) | 1299 (1370) MB | 1202 (1301) MB | 1282 (1379) MB | 1145 (1279) MB |
+| collection pauses | 35 ms a minute | 27 | 34 | 28 |
+
+Our places are lighter than Bellisseria (~5,000-9,000 prims a region, no scripts moving things), so the absolute
+numbers are small; what scales with the objects around is the garbage that's gone. Over a whole roaming run the
+allocation rose a little: the route comes back to each place every nine minutes, after its shapes were let go, so they're
+built again (a train doesn't come back). Not reproduced here: SL's own update traffic (LibreMetaverse decoding each
+update, the world model's reactions), the next thing to look at if a tester's log still shows several MB/s while still.
+
+The view's own share, the open question of starting it only when needed: on the processor, unseen, it is ~700 MB of
+committed memory (private bytes 0.82 GB with it, 0.13 GB with `--no-render`, ten minutes of the same route; working set
+~0.25-0.3 GB more), most of it the Vulkan allocator's 64 MB blocks and the software driver. Starting it at the first
+picture, face list or touch would save that until then, at the cost of the first one's wait (the device, the region read
+whole, what's in view loaded, and on a processor the shaders compiled: minutes on the tester's 2400G, by her log) and
+of touches landing on a face's surface until it's up. Undecided; her sessions describe from the start. Its idle rate
+isn't the lever on the processor: it draws no frames between pictures (`idle_hz` 0 there whatever
+`access_view_rate` says); what runs between them is the tick above and, once a session, the warm-up.
+
+#### The first picture after login
+
+What the tester's logs of 2026-11-01 showed (0.1.0.718 and .737, the view on the processor): the first frame drawn in a
+session took 57-189 s, the dearest passes fullbright (74-76 s), alpha (55 s) and the reflection probe (28-41 s), then
+~1 s a frame (shadows half of it); the warm-up, 199-244 s; a description asked 20 s after the view came up got no
+pictures within its 26 s and answered from the lists ("I can't make out your look just now"), twice; one evening frame
+had 21,700 draws, 718 particles and 58 lights in view. It's compiling: lavapipe compiles each shader and each texture's
+sampling as it's first drawn and keeps nothing between sessions, and no cache can be added from outside (the pipeline
+cache it offers stores nothing; Mesa's own disk cache isn't built on Windows): `docs/access-app.md` > How it fits > On
+the processor > compiling, which has what was changed (Claude Opus 5.5).
+
+Measured with `tools/firstpicture.py` (the perf grid's Place One, Access held to four cores and their twins of this
+PC's Ryzen 5 9600X, `LP_NUM_THREADS=8`, no assistant; "before" is the code at 0.1.0.737 plus the bench's stand-in for
+an assistant being up):
+
+| | before | after |
+|---|---|---|
+| compiling in the session's first frames (drawn ms of the warm-up and any picture before it) | 7.1-7.6 s | 3.0-3.3 s (1.0-1.6 s at once, 1.7-2.0 s at 20 s) |
+| a description of yourself asked 20 s after the view came up (as the tester did), its pictures | 12.9 s | 3.9 s |
+| the same asked once the warm-up was done | 2.2 s (warm-up done 32 s after the view came up) | 2.4 s (27 s) |
+| a warm picture, 768x432 / 640x960 | 0.19-0.31 / 0.40-0.53 s | 0.09-0.15 / 0.27-0.49 s |
+
+Each change alone (the after's warm-up, compiling in its two steps): with LLVM's optimiser on, 6.8 s (so `nopt` halves
+it); with shadows, 4.3 s and 0.1 s more a warm frame. Fewer texture sizes made no difference on our grids, whose
+textures come in a few sizes (stretching each to a size of its own, `SOJOURN_TEST_TEXTURE_SIZES=1`, cost little more
+either), so its share on Second Life is reasoned, not measured: each new size compiles its sampling once per kind of
+sample a shader takes, one at a time under the driver's lock; pictures with and without it look the same to the eye.
+A new place's first picture costs a few hundred ms more here.
+
+For the tester's 2400G (Zen 1 at 3.6-3.9 GHz against Zen 5 at 5.4: about 2.5 times slower a core for LLVM, more for
+the drawing's wide vector code), going by her first frame being 27 times our Place One's: compiling about 75 s instead
+of 189, ~20 s of it in the first frame 2 s after the view is up, the rest in the warm-up from 20 s, which should end
+1.5-2 minutes after login rather than 3.5-4; a description asked in that time waits for its pictures, saying so,
+rather than answering without them; warm pictures about 0.5 s (no shadows). Not explained by our numbers: her first
+frame cost 27 times ours where her processor is about 2.5 times slower, so most of it is her places' content (and
+perhaps the processor's other users at login: the assistant's start, decoding hundreds of textures, the screen reader;
+the view's threads run below normal priority). Each picture's and warm-up step's log line now says how busy the
+processor was meanwhile and this app's share, which her next log will answer.
+
 ## Threads
 
 Since 2026-10-27 (the user: no good reason for work to be on the render thread). How the frame is laid out:

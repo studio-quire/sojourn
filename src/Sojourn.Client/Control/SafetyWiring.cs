@@ -133,6 +133,7 @@ public sealed class SafetyWiring
             }
             rows.Add((MenuRow.Switch("particles", _st.Particles), _ => { _st.Particles = !_st.Particles; Apply(); }));
             rows.Add((MenuRow.Switch("antispam", _st.Antispam), _ => { _st.Antispam = !_st.Antispam; Apply(); }));
+            if (Sojourn.Session.Rlv.RlvWiring.Current is { } rlv) rows.AddRange(rlv.Rows().Select(r => (r.Row, (Action<int>)(i => { r.Act(i); Apply(); }))));
             // the things to do, only when there's something to do them to
             if ((_s.ControlsTaken & Keys) != 0)
                 rows.Add((new MenuRow("controls a script took", "release", false), _ => { _s.Safety.ReleaseControls(); _log.LogInformation("released the controls scripts took"); }));

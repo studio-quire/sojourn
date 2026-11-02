@@ -3,7 +3,8 @@
   python tools/launcher.py build            dotnet build -c Release (seconds; the VR client builds by tools/client.py)
   python tools/launcher.py run [args...]    start it for the person (the foreground, no console), base dir local/main;
                                             args: --base-dir DIR, --desktop, and after -- the client's own
-  python tools/launcher.py shots DIR        its states drawn offscreen to PNGs over made-up accounts (no window)
+  python tools/launcher.py shots DIR        its states drawn offscreen to PNGs over made-up accounts (no window);
+                                            --lang CODE in that language, --pseudo long|cjk in a made-up one (layout)
   python tools/launcher.py check            the grid's questions answered at the launcher, on a hidden desktop against
                                             the local grid (the grid's ask faked by SOJOURN_FAKE_LOGIN_ASK); below
 
@@ -62,10 +63,10 @@ def run(args):
     return 0
 
 
-def shots(out):
+def shots(out, more):
     if build() != 0:
         return 1
-    return subprocess.run([str(DOTNET), str(DLL), "--shots", str(Path(out).resolve())], cwd=ROOT).returncode
+    return subprocess.run([str(DOTNET), str(DLL), "--shots", str(Path(out).resolve()), *more], cwd=ROOT).returncode
 
 
 # ---- check ----------------------------------------------------------------------------------------------------------
@@ -301,7 +302,7 @@ if __name__ == "__main__":
     if cmd == "run":
         sys.exit(run(sys.argv[2:]))
     if cmd == "shots" and len(sys.argv) > 2:
-        sys.exit(shots(sys.argv[2]))
+        sys.exit(shots(sys.argv[2], sys.argv[3:]))
     if cmd == "check":
         sys.exit(check_all())
     sys.exit(__doc__)

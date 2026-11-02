@@ -116,7 +116,10 @@ public sealed class CollisionWorld : IDisposable
     /// caller's thread (a background loop's); downloads go on in the background.</summary>
     public void Around(ulong region, Vector3 at, float reach)
     {
-        var wanted = new List<(float D, ShapeKey Key, Primitive Prim, IAssetSource Assets)>();
+        // (one caller, a loop once a second: the list is kept, and holds only what isn't ready, since a busy place
+        // within the draw distance is tens of thousands of prims)
+        var wanted = _wanted;
+        wanted.Clear();
         lock (_gate)
         {
             foreach (var r in _regions.Values)
@@ -124,7 +127,7 @@ public sealed class CollisionWorld : IDisposable
                 var off = Offset(region, r.World.Handle);
                 if (!r.Near(at + off, reach)) continue;
                 r.Update();
-                r.Within(at + off, reach, wanted);
+                r.Within(_shapes, at + off, reach, wanted);
             }
         }
         wanted.Sort((a, b) => a.D.CompareTo(b.D));
@@ -133,7 +136,10 @@ public sealed class CollisionWorld : IDisposable
             if (key.Kind == ShapeKind.Prim) _shapes.Prebuild(key, prim.PrimData);
             else _shapes.Get(key, prim, assets, d, buildNow: false);
         }
+        wanted.Clear();
     }
+
+    readonly List<(float D, ShapeKey Key, Primitive Prim, IAssetSource Assets)> _wanted = new();
 
     /// <summary>For the status op: regions, prims indexed and placed, shapes (ready, waiting, downloading, failed) and
     /// roughly what they hold.</summary>
@@ -545,8 +551,9 @@ public sealed class CollisionWorld : IDisposable
             }
         }
 
-        /// <summary>What's within reach of a point whose shape isn't ready, with its distance.</summary>
-        public void Within(Vector3 at, float reach, List<(float D, ShapeKey Key, Primitive Prim, IAssetSource Assets)> into)
+        /// <summary>What's within reach of a point whose shape isn't ready, with its distance (the ready ones kept, as
+        /// still wanted).</summary>
+        public void Within(CollisionShapes shapes, Vector3 at, float reach, List<(float D, ShapeKey Key, Primitive Prim, IAssetSource Assets)> into)
         {
             foreach (var cell in Cells())
             {
@@ -556,7 +563,7 @@ public sealed class CollisionWorld : IDisposable
                 foreach (var e in cell.Items)
                 {
                     float d = MathF.Max(0, Vector3.Distance(e.Pos, at) - e.Radius);
-                    if (d <= reach) into.Add((d, e.Key!.Value, e.Prim, Assets));
+                    if (d <= reach && !shapes.Settled(e.Key!.Value)) into.Add((d, e.Key!.Value, e.Prim, Assets));
                 }
             }
         }

@@ -100,7 +100,8 @@ public sealed class LocalCollision : IDisposable
 
     async Task Loop()
     {
-        long nextAround = 0;
+        long nextAround = 0, nextReport = Environment.TickCount64 + 60_000;
+        string? reported = null;
         while (!_stop)
         {
             try
@@ -114,6 +115,14 @@ public sealed class LocalCollision : IDisposable
                 if (now < nextAround) continue;
                 nextAround = now + 1000;
                 _world.Around(sim.Handle, at, Reach);
+                if (now >= nextReport)
+                {
+                    // what it holds, for a tester's log (a long ride's memory): every five minutes if it changed
+                    nextReport = now + 300_000;
+                    var st = _world.Status();
+                    var line = $"collision: {st.Regions} regions, {st.Prims} prims, {st.Shapes} shapes ({st.Bytes >> 20} MB), {Physics.Known} physics types known";
+                    if (line != reported) _log(reported = line);
+                }
             }
             catch (Exception e) when (e is not OutOfMemoryException)
             {

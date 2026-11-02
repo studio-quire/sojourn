@@ -15,12 +15,19 @@ the test couldn't see (fixed since in the test's client: Tab items, below).
   (e.g. while someone's in the headset). `ACCESS_NO_GPU=1` hides Vulkan's drivers from it
   (`VK_LOADER_DRIVERS_DISABLE=*`), as on a PC whose graphics can't run the view: it then draws on the processor with
   `local/lavapipe` (`python tools/access.py fetch-lavapipe`; the test hands it over as `SOJOURN_SOFTWARE_VULKAN`), and
-  the renderer step checks it's on llvmpipe, draws nothing and stays light while idle (CPU over 10 s), lands touches on
+  the renderer step checks it's on llvmpipe, draws nothing and stays light while idle (CPU over 10 s; with
+  `ACCESS_RELAY`, after the warm-up's first frame), lands touches on
   faces and gets the look picture (timed); the describing step prints each look's seconds. With
   `ACCESS_NO_SOFTWARE=1` as well it gives up instead: the renderer step checks it gave up without drawing and the
   collision model still meets the visitor's box, and the walk-mode step runs on the collision model alone.
   `ACCESS_SOFTWARE=1` draws on the processor with the GPU there (`SOJOURN_OFFSCREEN_SOFTWARE=1`).
 - `ACCESS_VOICE=1` (with `tools/grid.py voice up`) runs it with voice; otherwise `--no-voice`.
+- `ACCESS_RELAY=NAME` runs the app's assistant on Studio Quire's relay with that token (`access-check` is the tests';
+  kept in the run's own folder as `SOJOURN_KEYS`), not `--no-assistant`: the HUD step then has the assistant read a
+  painted panel's buttons and describe it (a few tenths of a cent); the describing step's no-assistant checks are
+  skipped; the builders' step runs on the relay (below). `ACCESS_STEPS=HUD` runs both HUD steps.
+- `SOJOURN_BUILD_ROOT=DIR` (absolute) builds and runs the app from a tree of its own, and `tools` builds the visitor
+  there too (`DIR/bin/Visitor`), so a second session can test while another run holds the usual binaries open.
 - `ACCESS_ACCOUNTS=Walk` runs it as Walk Tester and Walk Visitor on ports 10 up, so it never throws out a person's
   guided session as Access Tester; it still uses Atelier's spots, so run it while nobody's testing there. The test
   refuses to start while its tester or visitor is on the grid (two runs kick each other out).
@@ -39,7 +46,9 @@ drives the app by UI Automation and posted keys), with:
 
 A bot (`tools/visitor`, Access Visitor) talks, IMs, and owns scripted fixtures: a box sending menus, llTextBox,
 permission requests and offers; `facebox` (says each touch's face and surface coordinates); `treasure` (a chest whose
-unnamed lid alone has a script); `sofa` (renames itself while sat on or on a touch); `kart` (a physical LSL car) and `cart` (its script takes the sitter's keys). Menus
+unnamed lid alone has a script); `sofa` (renames itself while sat on or on a touch); `kart` (a physical LSL car) and `cart` (its script takes the sitter's keys);
+`switch` (a rail switch as the SLRR standard has one: a "Switch Stand" whose description says Main or Branch, a touch
+part, two guide rails that swap their names and phantom; a touch or Main and Branch on its channel set it). Menus
 open on the Applications key's press (`MenuOn`), not by WinForms' ContextMenuStrip, which opens on WM_CONTEXTMENU and
 never for posted keys.
 
@@ -59,6 +68,12 @@ docstring with its checks in full):
 - **nearby chat in / out**, **her own lines read back**, **lines cut by typing**, **an IM**: say, whisper, shout; her
   own lines read back (and not, with the row off); lines cut by posted typing said again together after the pause,
   once, not after Control alone; an IM's tab arriving without taking the focus, Ctrl+Tab and Ctrl+W.
+- **the builders' tab** (`builders`): without ACCESS_RELAY, Control+Shift+B's tab saying how to reach us without a
+  token, Enter saying it again and keeping the text. With it, on the live relay with that token (its messages deleted
+  after): a reply posted before the app started said once after logging in, the introduction the first time, Enter
+  sending ("Sent.", her words on the relay), replies posted by the admin path read in the tab without a sound and in
+  Say as an IM's with its sound, the focus staying, the reply marked delivered, Control+W and Help's item, the setting
+  off. The app asks the relay every 3 s in the test (`SOJOURN_BUILDERS_POLL`).
 - **people and objects**: bearings measured against positions; arriving before the first fill (held back 3 s), the
   list says "looking"; once filled, its own item the only one focused and the last focus event, by UI Automation and
   MSAA; the `sofa` renamed by Touch from the list: unchanged while she's in it, its new name on F5 (the item she's on,
@@ -102,11 +117,31 @@ docstring with its checks in full):
   the view), `//touch` by name, by part and by face.
 - **your HUDs**: a two-prim HUD made and worn (its script put in through the confirmation by keys); named by
   Ctrl+Shift+W and `//outfit`; Show: Your HUDs lists its parts; Enter on its button heard by its script.
+- **a HUD that's one picture of buttons**: a painted driver panel (a title and four labelled buttons, uploaded) on one
+  thin box worn at HUD Center, its script saying the face and llDetectedTouchST of each touch. SojournHud look draws it
+  out of sight (red where the brake is painted); its parts end with the reading line; its faces are only "The front,
+  face 4", Enter there heard in its middle; buttons saved as the assistant saves them (one off the panel dropped)
+  listed by name, number and place; Enter on two of them and `//touch reverse` heard where they were meant (all four
+  presses fit one way the face lies within 0.03 of ST: 0.001 measured); describing it gets its picture. With
+  `ACCESS_RELAY`: Enter on the reading line, the assistant's reply, the four labels listed, its Brake landing inside
+  the painted brake, and Control+D's description naming the buttons. Earlier runs' test HUDs still worn are taken off
+  first (they'd cover its middle). 51 of 51 with the relay on the GPU, 49 of 49 on the processor (`ACCESS_NO_GPU=1`),
+  2026-11-01.
 - **gestures**: two made and activated through the agent API; a trigger typed in Say playing its gesture (the visitor
   hears its line from her, the clap on her avatar, the trigger never said, her line read back), a replacement said in
   its place, Ctrl+Shift+G's menu with triggers as keys playing one, World > Gestures, the inventory's words, Play and
   Deactivate (its trigger then said as typed) and Activate again.
 - **placing by words**: a block rezzed "a metre to my left" (within 0.3 m, on the ground), then moved "by 50 cm up".
+- **uploads** (no renderer needed; the run sets `SOJOURN_TEST_UPLOAD_FEE` so pictures and models are confirmed at L$0
+  and animations cost L$500 on the free grid; its files made by `upload_fixtures`): a text file and a 31-second WAV
+  refused in words; Build's Upload a file showing Control+U, Escape in Windows' Open window uploading nothing; a PNG
+  by Control+U and the Open window (QuireUia sets its File name box and clicks Open), its size, resizing,
+  see-through parts and fee said, renamed, confirmed in Notices, said and selected in the inventory; a stereo WAV by a
+  folder's Upload a file here, said as stereo made mono, free, landing in that folder and selected in the tree where
+  the focus is (from the inventory's tree: over a search left showing nothing new is selected, by design, so a step
+  that searches clears it after, `clear_search`); a BVH refused for L$; a glTF cube by `//upload PATH`, its triangles and size, a scale of 2 said, Weigh
+  it's land impact, its confirmation cancelled (nothing in Objects) and then confirmed. It deletes what it uploaded.
+  Not reached: Second Life's real fees, its mesh upload rights, a 2048 picture.
 - **two inventory panes**: Alt+4 again reading the first, Alt+Shift+4 opening the second, a search there, Ctrl+M moving
   marked notecards across, Ctrl+W closing it.
 - **incognito**: on and said, the title without the region, SojournSettings refusing it off, a line read out but not
@@ -145,6 +180,19 @@ docstring with its checks in full):
   teleport, and to the visitor on the plinth as near as the way goes; following the visitor and losing it.
 - **distance walked**: three taps of Up said once as one stretch, close to how far the avatar went (the run prints the
   metres a tap), Down said "backward", M and Shift+M, nothing with `walk_distance` off.
+- **rail switches** (about 2 minutes, no renderer needed): on a flat stretch of Atelier East found first (and a ray along
+  it clear), two of the visitor's `switch` fixtures 30 m apart and its `kart` heading east toward them; seated, in walk
+  mode, a held Up: the first said once ("Switch in N metres, set to the main line, North Station.", N 25-60) with the
+  switch cue; W saying it ahead with both ways' names; Shift+W touching its stand, "Switch set to the branch, East
+  Yard." and the visitor hearing the stand set, the throw's cue; `//switch`, `//switch main` (set back, heard),
+  `//switch main` again ("already"); then on past both, the second said once and the first not again.
+- **recording a route** (about 2 minutes, no renderer needed): in Atelier East, north of the walk course, a wall with a
+  doorway; in walk mode R starts recording, held Up walks through the doorway, taps of Right turn east, held Up walks on,
+  then a `//tp` into Atelier Northeast; R's state, N's note (Backspace taking it back, N again), Shift+R's name and the
+  save said; the ticks counted (with `walk_route` both, their lines name the doorway and the turn); the notecard read:
+  its start line, a few `//go xyz` lines, one in the doorway and one at the turn, the teleport's SLurl, the note last;
+  then from the start `//route` plays it, reading its notes, and ends within 3 m of where the recording did. The
+  notecard is deleted after; the Routes folder stays.
 
 **Tab items.** QuireUia's `find` uses the managed UI Automation client (System.Windows.Automation), which leaves out a
 WinForms tab control's first and last tab items; the COM client (UIAutomationCore, what screen readers use) lists them

@@ -35,9 +35,15 @@ public sealed partial class MainForm
         // a part, or the part a face is on (a face alone is too small to describe apart from its part)
         if (_parts.Focused && _parts.FocusedItem?.Tag is Linkset.Part part) return Of(part);
         if (_faces.Focused && _faces.FocusedItem?.Tag is FaceItem face) return Of(face.Part);
+        if (_faces.Focused && _faces.FocusedItem?.Tag is HudFaceItem hudFace) return Of(hudFace.Part);
+        // a HUD's read button or its reading line: the HUD, as it shows
+        if (_parts.Focused && _parts.FocusedItem?.Tag is HudButtonItem button) return HudSubject(button.Hud, button.HudName);
+        if (_parts.Focused && _parts.FocusedItem?.Tag is ReadButtonsItem reading) return HudSubject(reading.Hud, reading.HudName);
         if (_pane.Tree.Focused && _pane.Tree.SelectedNode is InvNode { Item: InventoryItem item }) return ItemSubject(item);
         return Here;
     }
+
+    static Subject HudSubject(UUID hud, string name) => new(hud.ToString(), "view", $"your {name}", $"Describe my HUD {name}, as it shows on my screen");
 
     static Subject Of(PersonOps.Person p) => new(p.Id.ToString(), "view", p.Name, $"Describe {p.Name}, the person I picked in my People list");
     static Subject Of(PersonOps.Thing t) => new(t.Id.ToString(), "view", t.Name, $"Describe {t.Name}, the object I picked in my Objects list");
@@ -82,9 +88,21 @@ public sealed partial class MainForm
         }
         if (s.Of == "view") h.Describe?.Prepare(s.Key, detail);
         var asked = rich ? $"{s.Asked}, in detail: you've described it briefly already, so add to that." : $"{s.Asked}, briefly.";
+        // drawn on the processor and not through its warm-up yet: this picture compiles the driver's shaders first, a
+        // minute or more on a small PC, so it's said rather than left as a silence (OffscreenRenderer.Preparing)
+        var slow = s.Of == "view" && h.Offscreen?.Preparing == true
+            ? " Still preparing the view: the first one after logging in takes longer on this PC." : "";
+        long before = h.Assistant.Panel.RepliesVersion;
         Ask($"{asked} [describe key: subject={s.Key}, of={s.Of}, detail={detail}]",
             shown: rich ? $"More on {s.Words}." : $"Describe {s.Words}.",
-            said: rich ? $"More on {s.Words}." : $"Describing {s.Words}.");
+            said: (rich ? $"More on {s.Words}." : $"Describing {s.Words}.") + slow);
+        // a picture waits for its subject's look to load (up to half a minute on the processor), so a long silence is
+        // said once rather than left for her to wonder about
+        if (s.Of != "view" || slow.Length > 0) return;
+        await Task.Delay(TimeSpan.FromSeconds(10));
+        if (IsDisposed || h.Assistant.Panel.RepliesVersion != before || !h.Assistant.Panel.Read(p => p.Working)) return;
+        if (_described is { } now && now.Subject != s) return;
+        Reader?.Answer("Still waiting for the look to load before describing.", keep: false);
     }
 
     /// <summary>`//describe [here | me | more | person NAME | object NAME | NAME]`.</summary>

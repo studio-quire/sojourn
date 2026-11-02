@@ -48,23 +48,31 @@ public sealed class AccessWiring : IDisposable
             Quiet = () => inHeadset() && s.Private.On,
             // nothing others or the assistant wrote beside a new confirmation (the panel's rule): it follows once answered
             Hold = () => HoldNow(assistant),
-            Greeting = greeting ?? "Sojourn. F1 for keys.",
+            Greeting = greeting,
             Heard = LogWords.Heard,
         };
-        Actions = new ReaderActions(s, Announcer, n => NoticeText(n))
-        {
-            Gate = new PanelGate(assistant),
-            ConfirmKeys = "Enter confirms, Escape cancels.",
-            PutAwayKey = "Delete puts it away.",
-        };
+        Actions = new ReaderActions(s, Announcer, n => NoticeText(n)) { Gate = new PanelGate(assistant) };
+        _ownGreeting = greeting == null;
+        Words();
+        Lang.Changed += Words;
         if (keyName != null) Actions.KeyName = keyName;
         // while the reader reads the assistant's replies, its own voice (spoken replies) keeps quiet: one voice
         assistant.ReaderSpeaksReplies = () => Announcer.Active && St.Replies;
         Announcer.ActiveChanged += assistant.PrefsChanged;
-        s.Private.Changed += (on, _, _) => Announcer.Answer(on ? (s.Private.Sees ? "Incognito on, the assistant sees." : "Incognito on.") : "Incognito off.");
-        s.Private.SeesChanged += sees => { if (s.Private.On) Announcer.Answer(sees ? "The assistant sees." : "The assistant doesn't see."); };
+        s.Private.Changed += (on, _, _) => Announcer.Answer(Lang.T(on ? (s.Private.Sees ? "Incognito on, the assistant sees." : "Incognito on.") : "Incognito off."));
+        s.Private.SeesChanged += sees => { if (s.Private.On) Announcer.Answer(Lang.T(sees ? "The assistant sees." : "The assistant doesn't see.")); };
         _thread = new Thread(Run) { IsBackground = true, Name = "screen reader watch", Priority = ThreadPriority.BelowNormal };
         _thread.Start();
+    }
+
+    readonly bool _ownGreeting;
+
+    /// <summary>The fixed words it says, in the language in use (again when it changes).</summary>
+    void Words()
+    {
+        if (_ownGreeting) Announcer.Greeting = Lang.T("Sojourn. F1 for keys.");
+        Actions.ConfirmKeys = Lang.T("Enter confirms, Escape cancels.");
+        Actions.PutAwayKey = Lang.T("Delete puts it away.");
     }
 
     // A confirmation holds what arrives only while it's new: one missed or left waiting would otherwise leave the
@@ -84,7 +92,7 @@ public sealed class AccessWiring : IDisposable
         {
             _reminded = true;
             // outside the announcer's lock (Hold is asked inside it)
-            ThreadPool.QueueUserWorkItem(_ => Announcer.Answer("A confirmation is still waiting for your answer."));
+            ThreadPool.QueueUserWorkItem(_ => Announcer.Answer(Lang.T("A confirmation is still waiting for your answer.")));
         }
         return false;
     }
@@ -169,7 +177,7 @@ public sealed class AccessWiring : IDisposable
                 if (e.NoticeId != Guid.Empty && (!_noticesTold.Add(e.NoticeId) || Actions.FollowUp(e.NoticeId))) continue;
                 bool keys = e.NoticeId != Guid.Empty && _s.Notify.Get(e.NoticeId) is { } n && ReaderActions.Buttons(n).Count > 0;
                 var line = Join(e.Name, e.Text);
-                if (keys && !_keysHinted && St.Notices) { line += " Control N to answer."; _keysHinted = true; }
+                if (keys && !_keysHinted && St.Notices) { line += " " + Lang.T("Control N to answer."); _keysHinted = true; }
                 if (Shaped(e, line) is { } notice) Announcer.Say(AnnounceKind.Notices, notice, from: LogWords.FromOf(e));
                 continue;
             }
@@ -184,16 +192,16 @@ public sealed class AccessWiring : IDisposable
     /// <summary>Who said it first, then how and where, then the words.</summary>
     static string Line(FeedEntry e)
     {
-        var name = e.Name.Length > 0 ? e.Name : "someone";
+        var name = e.Name.Length > 0 ? e.Name : Lang.T("someone");
         return (e.Kind, e.Style) switch
         {
-            (FeedKind.Im, FeedStyle.Emote) => $"{name} {e.Text} (IM)",
-            (FeedKind.Im, _) => $"{name}, IM: {e.Text}",
+            (FeedKind.Im, FeedStyle.Emote) => Lang.F("{0} {1} (IM)", name, e.Text),
+            (FeedKind.Im, _) => Lang.F("{0}, IM: {1}", name, e.Text),
             (FeedKind.Group, FeedStyle.Emote) => $"{name} {e.Text} ({e.SessionName})",
             (FeedKind.Group, _) => $"{name}, {e.SessionName}: {e.Text}",
             (_, FeedStyle.Emote) => $"{name} {e.Text}",
-            (_, FeedStyle.Whisper) => $"{name} whispers: {e.Text}",
-            (_, FeedStyle.Shout) => $"{name} shouts: {e.Text}",
+            (_, FeedStyle.Whisper) => Lang.F("{0} whispers: {1}", name, e.Text),
+            (_, FeedStyle.Shout) => Lang.F("{0} shouts: {1}", name, e.Text),
             _ => $"{name}: {e.Text}",
         };
     }
@@ -212,7 +220,7 @@ public sealed class AccessWiring : IDisposable
     void Panel()
     {
         var (result, prompt, choices, pointAsk, typeAsk, typing, notice, draft) = _assistant.Panel.Read(p =>
-            (p.Result, p.Prompt, string.Join(". ", p.Choices.Select((c, i) => $"{i + 1}, {c.Label}")), p.PointAsk, p.TypeAsk, p.Typing, p.Notice, p.Draft));
+            (global::Sojourn.Session.Assistant.Panel.Own(p.Result), global::Sojourn.Session.Assistant.Panel.Own(p.Prompt), string.Join(". ", p.Choices.Select((c, i) => $"{i + 1}, {c.Label}")), global::Sojourn.Session.Assistant.Panel.Own(p.PointAsk), p.TypeAsk, p.Typing, p.Notice, p.Draft));
         if (!string.IsNullOrWhiteSpace(result) && result != _result)
         {
             // an answer growing (streamed) is read on from where it was
@@ -225,15 +233,15 @@ public sealed class AccessWiring : IDisposable
         var choiceWords = choices.Length > 0 ? $"{prompt} {choices}." : null;
         if (choiceWords != null && choiceWords != _choices) Announcer.Say(AnnounceKind.Replies, choiceWords.Trim());
         _choices = choiceWords;
-        var ask = pointAsk ?? (typeAsk != null ? $"{typeAsk} Typed: {typing}. Enter sends, Escape cancels." : null);
+        var ask = pointAsk ?? (typeAsk != null ? Lang.F("{0} Typed: {1}. Enter sends, Escape cancels.", typeAsk, typing) : null);
         if (ask != null && ask != _ask) Announcer.Say(AnnounceKind.Replies, ask);
         _ask = ask;
-        if (notice != null && notice != _notice) Announcer.Say(AnnounceKind.Replies, notice == "not sent" ? "Not sent." : notice);
+        if (notice != null && notice != _notice) Announcer.Say(AnnounceKind.Replies, notice == "not sent" ? Lang.T("Not sent.") : Lang.T(notice));
         _notice = notice;
         // dictated words waiting for the person: their own words, read back so they can check before sending
         if (draft is { } d && d.Seq != _draft)
-            Announcer.Answer($"Draft to {(d.To == DraftTo.Nearby ? "nearby" : d.Name ?? "the conversation")}: {d.Text}. Enter sends, Escape cancels.",
-                from: LineFrom.Me);
+            Announcer.Answer(d.To == DraftTo.Nearby ? Lang.F("Draft to nearby: {0}. Enter sends, Escape cancels.", d.Text)
+                : Lang.F("Draft to {0}: {1}. Enter sends, Escape cancels.", d.Name ?? Lang.T("the conversation"), d.Text), from: LineFrom.Me);
         _draft = draft?.Seq ?? -1;
     }
 
@@ -241,7 +249,7 @@ public sealed class AccessWiring : IDisposable
     {
         if (_music == null) return;
         var title = _music.On && _music.State == "playing" ? _music.Title : null;
-        if (!string.IsNullOrWhiteSpace(title) && title != _title && MusicMuted?.Invoke() != true) Announcer.Say(AnnounceKind.Music, $"Now playing: {title}");
+        if (!string.IsNullOrWhiteSpace(title) && title != _title && MusicMuted?.Invoke() != true) Announcer.Say(AnnounceKind.Music, Lang.F("Now playing: {0}", title));
         if (title != null) _title = title;
     }
 
@@ -293,6 +301,7 @@ public sealed class AccessWiring : IDisposable
     public void Dispose()
     {
         _stop = true;
+        Lang.Changed -= Words;
         _thread.Join(500);
         Announcer.Dispose();
     }

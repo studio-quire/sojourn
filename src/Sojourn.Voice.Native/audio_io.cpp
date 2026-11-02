@@ -5,6 +5,8 @@
 
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <audiopolicy.h>
+#include <endpointvolume.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <avrt.h>
 #include <ksmedia.h>
@@ -50,7 +52,11 @@ static std::wstring Wide(const std::string& s) {
 struct DeviceInfo {
     std::string id, name;
     bool is_default, is_comms;
+    int form = 10;   // Windows' EndpointFormFactor: 1 speakers, 3 headphones, 5 headset, 9 a display (HDMI, DisplayPort), ...
 };
+
+// PKEY_AudioEndpoint_FormFactor, spelled out (mmdeviceapi.h's needs INITGUID in one unit)
+static const PROPERTYKEY kFormFactor = {{0x1da5d803, 0xd492, 0x4edd, {0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e}}, 0};
 
 static std::vector<DeviceInfo> ListDevices(bool capture) {
     std::vector<DeviceInfo> out;
@@ -90,6 +96,8 @@ static std::vector<DeviceInfo> ListDevices(bool capture) {
             PropVariantInit(&v);
             if (SUCCEEDED(props->GetValue(PKEY_Device_FriendlyName, &v)) && v.vt == VT_LPWSTR) info.name = Utf8(v.pwszVal);
             PropVariantClear(&v);
+            if (SUCCEEDED(props->GetValue(kFormFactor, &v)) && v.vt == VT_UI4) info.form = (int)v.ulVal;
+            PropVariantClear(&v);
         }
         info.is_default = info.id == def_id;
         info.is_comms = info.id == comms_id;
@@ -107,7 +115,7 @@ std::string DeviceListJson(bool capture) {
         if (i) j += ",";
         j += "{\"id\":\"" + JsonEscape(list[i].id) + "\",\"name\":\"" + JsonEscape(list[i].name) +
              "\",\"default\":" + (list[i].is_default ? "true" : "false") +
-             ",\"comms\":" + (list[i].is_comms ? "true" : "false") + "}";
+             ",\"comms\":" + (list[i].is_comms ? "true" : "false") + ",\"form\":" + std::to_string(list[i].form) + "}";
     }
     return j + "]";
 }
@@ -136,6 +144,20 @@ static std::string DeviceId(IMMDevice* d) {
     return r;
 }
 
+// Windows numbers a USB device's endpoints by the port it's on ("Speakers (3- EPOS PC 8 USB)"), and the number
+// changes when it's plugged in elsewhere: a name asked for matches either way.
+static std::string WithoutUsbNumber(const std::string& s) {
+    std::string r;
+    for (size_t i = 0; i < s.size(); i++) {
+        r += s[i];
+        if (s[i] != '(') continue;
+        size_t j = i + 1;
+        while (j < s.size() && isdigit((unsigned char)s[j])) j++;
+        if (j > i + 1 && j + 1 < s.size() && s[j] == '-' && s[j + 1] == ' ') i = j + 1;
+    }
+    return r;
+}
+
 // Resolves a device spec to an active IMMDevice: "" the default device, "comms" the default communications device,
 // an endpoint id, or "name:substring". False if it isn't there (an id names unplugged devices too: those count as
 // not there).
@@ -157,13 +179,14 @@ static bool OpenDevice(IMMDeviceEnumerator* en, bool capture, const std::string&
     } else if (spec == "comms") {
         hr = en->GetDefaultAudioEndpoint(flow, eCommunications, out);
     } else if (spec.rfind("name:", 0) == 0) {
-        std::string want = spec.substr(5);
-        for (auto& d : ListDevices(capture)) {
-            if (d.name.find(want) != std::string::npos) {
-                hr = en->GetDevice(Wide(d.id).c_str(), out);
-                break;
-            }
-        }
+        std::string want = spec.substr(5), loose = WithoutUsbNumber(want);
+        auto list = ListDevices(capture);
+        const DeviceInfo* hit = nullptr;
+        for (auto& d : list)
+            if (!hit && d.name.find(want) != std::string::npos) hit = &d;
+        for (auto& d : list)
+            if (!hit && WithoutUsbNumber(d.name).find(loose) != std::string::npos) hit = &d;
+        if (hit) hr = en->GetDevice(Wide(hit->id).c_str(), out);
     } else {
         hr = en->GetDevice(Wide(spec).c_str(), out);
     }
@@ -372,6 +395,167 @@ private:
 // engine keeps moving on paced silence, looking again on each change Windows reports and once a second. A lost
 // device's event usually stops firing, so every wait times out and polls the stream.
 
+// What each direction is doing, for sv_device_state: a change of device is checked by it rather than assumed.
+struct DirState {
+    std::string spec;                // what it was asked for
+    std::string state = "starting";  // starting, open, silent (open, nothing moving), failed, lost, file, none
+    std::string name, error;         // the device open; why the one asked for isn't
+    bool fallback = false;           // on the default because the one asked for isn't there or won't start
+    std::string id, format;          // the open device's endpoint id; its own format (what Windows mixes into)
+    // Windows' volume and mute for the device, and for this app on it (the volume mixer's); -1: not known
+    float volume = -1, app_volume = -1;
+    bool muted = false, app_muted = false;
+};
+static std::mutex g_state_mu;
+static DirState g_state[2];
+static std::atomic<int64_t> g_moved[2];   // frames the open device has taken (render) or given (capture)
+// Tests (sv_test_device 4): devices whose name has this part fail to start, as a driver refusing the stream would.
+static std::string g_test_refuse[2];
+
+static void SetState(int dir, const char* state, const std::string& name = "", const char* error = nullptr,
+                     int fallback = -1) {
+    std::lock_guard<std::mutex> lk(g_state_mu);
+    auto& st = g_state[dir];
+    st.state = state;
+    st.name = name;
+    if (error) st.error = error;
+    if (fallback >= 0) st.fallback = fallback != 0;
+}
+
+static void NewSpec(int dir, const std::string& spec) {
+    std::lock_guard<std::mutex> lk(g_state_mu);
+    g_state[dir] = DirState{};
+    g_state[dir].spec = spec;
+    g_moved[dir] = 0;
+}
+
+std::string DeviceStateJson(int dir) {
+    dir = dir ? 1 : 0;
+    std::lock_guard<std::mutex> lk(g_state_mu);
+    auto& st = g_state[dir];
+    return "{\"spec\":\"" + JsonEscape(st.spec) + "\",\"state\":\"" + st.state + "\",\"name\":\"" + JsonEscape(st.name) +
+           "\",\"error\":\"" + JsonEscape(st.error) + "\",\"fallback\":" + (st.fallback ? "true" : "false") +
+           ",\"moved_ms\":" + std::to_string(g_moved[dir].load() * 1000 / kRate) + ",\"format\":\"" + st.format +
+           "\",\"volume\":" + std::to_string(st.volume) + ",\"muted\":" + (st.muted ? "true" : "false") +
+           ",\"app_volume\":" + std::to_string(st.app_volume) + ",\"app_muted\":" + (st.app_muted ? "true" : "false") + "}";
+}
+
+// The device's own format, as Windows mixes into it: "48000 Hz, 8 ch (mask 0x63f)".
+static std::string MixFormat(IAudioClient* client) {
+    WAVEFORMATEX* mix = nullptr;
+    if (FAILED(client->GetMixFormat(&mix)) || !mix) return "unknown";
+    char b[96];
+    DWORD mask = mix->wFormatTag == WAVE_FORMAT_EXTENSIBLE ? ((WAVEFORMATEXTENSIBLE*)mix)->dwChannelMask : 0;
+    snprintf(b, sizeof b, "%lu Hz, %u ch (mask 0x%lx)", (unsigned long)mix->nSamplesPerSec, (unsigned)mix->nChannels,
+             (unsigned long)mask);
+    CoTaskMemFree(mix);
+    return b;
+}
+
+// Windows' volume and mute for the device and for this app's stream on it, into the state.
+static void ReadVolumes(int dir, IAudioEndpointVolume* ep, ISimpleAudioVolume* app) {
+    float v = -1, av = -1;
+    BOOL m = FALSE, am = FALSE;
+    if (ep && (FAILED(ep->GetMasterVolumeLevelScalar(&v)) || FAILED(ep->GetMute(&m)))) v = -1;
+    if (app && (FAILED(app->GetMasterVolume(&av)) || FAILED(app->GetMute(&am)))) av = -1;
+    std::lock_guard<std::mutex> lk(g_state_mu);
+    auto& st = g_state[dir];
+    st.volume = v;
+    st.muted = m != FALSE;
+    st.app_volume = av;
+    st.app_muted = am != FALSE;
+}
+
+static std::string VolumeWords(int dir) {
+    std::lock_guard<std::mutex> lk(g_state_mu);
+    auto& st = g_state[dir];
+    char b[128];
+    snprintf(b, sizeof b, "Windows' volume %d%%%s, this app's %d%%%s", (int)std::lround(st.volume * 100),
+             st.muted ? " (muted)" : "", (int)std::lround(st.app_volume * 100), st.app_muted ? " (muted)" : "");
+    return b;
+}
+
+// What reaches the open output (sv_output_probe): WASAPI loopback capture of that endpoint for ms, against what this
+// engine sent meanwhile (its output level, sampled). Loopback is what Windows mixes for the device, every app's
+// sound included, after the volume where Windows applies it in software (HDMI); what happens past the driver (a TV's
+// own volume or input) it can't see.
+std::string OutputProbe(int ms) {
+    std::string id;
+    {
+        std::lock_guard<std::mutex> lk(g_state_mu);
+        if (g_state[kRender].state == "open") id = g_state[kRender].id;
+    }
+    if (id.empty()) return "{\"error\":\"no output open\"}";
+    std::string result;
+    std::thread th([&] {
+        CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        ComPtr<IMMDeviceEnumerator> en;
+        ComPtr<IMMDevice> dev;
+        ComPtr<IAudioClient> client;
+        ComPtr<IAudioCaptureClient> cap;
+        WAVEFORMATEX* mix = nullptr;
+        HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
+                                      (void**)en.put());
+        if (SUCCEEDED(hr)) hr = en->GetDevice(Wide(id).c_str(), dev.put());
+        if (SUCCEEDED(hr)) hr = dev->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)client.put());
+        if (SUCCEEDED(hr)) hr = client->GetMixFormat(&mix);
+        bool is_float = false;
+        int ch = 2, bits = 32;
+        if (SUCCEEDED(hr)) {
+            is_float = mix->wFormatTag == WAVE_FORMAT_IEEE_FLOAT ||
+                       (mix->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
+                        ((WAVEFORMATEXTENSIBLE*)mix)->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+            ch = mix->nChannels;
+            bits = mix->wBitsPerSample;
+            hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, 10000000, 0, mix, nullptr);
+            CoTaskMemFree(mix);
+        }
+        if (SUCCEEDED(hr)) hr = client->GetService(__uuidof(IAudioCaptureClient), (void**)cap.put());
+        if (SUCCEEDED(hr)) hr = client->Start();
+        if (FAILED(hr) || (!is_float && bits != 16)) {
+            char b[96];
+            snprintf(b, sizeof b, "{\"error\":\"loopback capture failed 0x%08lx\"}", (unsigned long)hr);
+            result = b;
+            CoUninitialize();
+            return;
+        }
+        double heard_sq = 0, sent_sq = 0;
+        int64_t heard_n = 0, sent_n = 0;
+        ULONGLONG t0 = GetTickCount64();
+        while (GetTickCount64() - t0 < (ULONGLONG)ms) {
+            Sleep(10);
+            float out = OutLevel();
+            sent_sq += (double)out * out;
+            sent_n++;
+            UINT32 packet = 0;
+            while (SUCCEEDED(cap->GetNextPacketSize(&packet)) && packet > 0) {
+                BYTE* data = nullptr;
+                UINT32 frames = 0;
+                DWORD flags = 0;
+                if (FAILED(cap->GetBuffer(&data, &frames, &flags, nullptr, nullptr))) break;
+                if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT))
+                    for (UINT32 i = 0; i < frames * ch; i++) {
+                        double x = is_float ? ((float*)data)[i] : ((int16_t*)data)[i] / 32768.0;
+                        heard_sq += x * x;
+                    }
+                heard_n += (int64_t)frames * ch;
+                cap->ReleaseBuffer(frames);
+            }
+        }
+        client->Stop();
+        // the loopback stream delivers nothing at all while nothing plays: that's silence over the whole time
+        int64_t expect = (int64_t)ms * 48 * ch;
+        auto db = [](double ms_) { return ms_ > 1e-14 ? 10 * std::log10(ms_) : -140.0; };
+        char b[160];
+        snprintf(b, sizeof b, "{\"heard_db\":%.1f,\"sent_db\":%.1f}", db(heard_sq / std::max(heard_n, expect / 2)),
+                 db(sent_n ? sent_sq / sent_n : 0));
+        result = b;
+        CoUninitialize();
+    });
+    th.join();
+    return result;
+}
+
 // Set (auto-reset) by Windows' endpoint notifications, a new spec, stop, and the test hook.
 static HANDLE g_wake[2] = {nullptr, nullptr};
 static void Wake(int dir) {
@@ -456,13 +640,17 @@ enum class Ended { Changed, Reopen, Lost, Missing, Carry };
 // After a wake: whether the open device is still there, and still the one to use (the default it follows moved, or
 // the device asked for is back while on the default).
 static Ended Recheck(IMMDeviceEnumerator* en, int dir, IMMDevice* dev, const std::string& id, const std::string& name,
-                     const std::string& wanted, const std::string& spec) {
+                     const std::string& wanted, const std::string& spec, bool& refused) {
     bool capture = dir == kCapture;
     DWORD state = 0;
     if (FAILED(dev->GetState(&state)) || state != DEVICE_STATE_ACTIVE || TestGone(dir, name)) return Ended::Lost;
     ComPtr<IMMDevice> d;
     std::string n;
-    if (spec != wanted && OpenDevice(en, capture, wanted, d.put(), &n)) return Ended::Reopen;
+    // a device that wouldn't start gets another try when Windows reports a change (this wake), not on a timer
+    if (spec != wanted && OpenDevice(en, capture, wanted, d.put(), &n)) {
+        refused = false;
+        return Ended::Reopen;
+    }
     if (FollowsDefault(spec) && OpenDevice(en, capture, spec, d.put(), &n) && DeviceId(d.p) != id) return Ended::Reopen;
     return Ended::Carry;
 }
@@ -479,6 +667,7 @@ static int WaitStream(HANDLE ev, int dir, bool dead) {
 static std::string Describe(const std::string& spec) { return spec.empty() ? "the default device" : spec; }
 
 static void ReportMissing(bool& reported, int dir, const std::string& what) {
+    SetState(dir, "failed", "", what.c_str());
     if (reported) return;
     reported = true;
     Log(2, std::string(dir == kCapture ? "capture" : "render") + ": no device (" + what + ")");
@@ -520,8 +709,19 @@ static void CaptureNullLoop(const Want& w) {
 }
 
 // One open-run of a WASAPI capture device, until it goes, gives way, or the spec changes.
+static bool TestRefused(int dir, const std::string& name) {
+    std::lock_guard<std::mutex> lk(g_test_mu);
+    return !g_test_refuse[dir].empty() && name.find(g_test_refuse[dir]) != std::string::npos;
+}
+
+static std::string HrText(const char* what, HRESULT hr) {
+    char b[96];
+    snprintf(b, sizeof b, ": %s failed 0x%08lx", what, (unsigned long)hr);
+    return b;
+}
+
 static Ended CaptureWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std::string& wanted,
-                              const std::string& spec, bool& reported) {
+                              const std::string& spec, bool& reported, bool& refused) {
     ComPtr<IMMDevice> dev;
     std::string name;
     if (!OpenDevice(en, true, spec, dev.put(), &name)) {
@@ -537,11 +737,10 @@ static Ended CaptureWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std:
     WAVEFORMATEXTENSIBLE fmt = FloatFormat(1);
     DWORD flags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                   AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
-    HRESULT hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 200000, 0, (WAVEFORMATEX*)&fmt, nullptr);
+    HRESULT hr = TestRefused(kCapture, name) ? AUDCLNT_E_DEVICE_IN_USE
+                 : client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 200000, 0, (WAVEFORMATEX*)&fmt, nullptr);
     if (FAILED(hr)) {
-        char b[64];
-        snprintf(b, sizeof b, ": Initialize failed 0x%08lx", (unsigned long)hr);
-        ReportMissing(reported, kCapture, name + b);
+        ReportMissing(reported, kCapture, name + HrText("Initialize", hr));
         return Ended::Missing;
     }
     HANDLE ev = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -556,6 +755,8 @@ static Ended CaptureWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std:
         return Ended::Missing;
     }
     reported = false;
+    g_moved[kCapture] = 0;
+    SetState(kCapture, "open", name, spec != wanted ? nullptr : "", spec != wanted);
     Log(1, "capture: " + name);
     Emit(0, SV_EV_DEVICE, "open", name.c_str(), 0);
 
@@ -569,7 +770,7 @@ static Ended CaptureWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std:
         int r = WaitStream(ev, kCapture, dead);
         if (w.changed()) break;
         if (r == 1) {
-            Ended e = Recheck(en, kCapture, dev.p, id, name, wanted, spec);
+            Ended e = Recheck(en, kCapture, dev.p, id, name, wanted, spec, refused);
             if (e != Ended::Carry) {
                 end = e;
                 break;
@@ -579,6 +780,7 @@ static Ended CaptureWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std:
             // Link's virtual mic opens but delivers nothing while the headset is off
             if (++timeouts == 5 && !silent) {
                 silent = true;
+                SetState(kCapture, "silent", name);
                 Log(2, "capture: no audio from " + name);
                 Emit(0, SV_EV_DEVICE, "silent", name.c_str(), 0);
             }
@@ -586,6 +788,7 @@ static Ended CaptureWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std:
             timeouts = 0;
             if (silent) {
                 silent = false;
+                SetState(kCapture, "open", name);
                 Emit(0, SV_EV_DEVICE, "open", name.c_str(), 0);
             }
         }
@@ -611,6 +814,7 @@ static Ended CaptureWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std:
             const float* f = (const float*)data;
             for (UINT32 i = 0; i < frames; i++) fifo.push_back((bf & AUDCLNT_BUFFERFLAGS_SILENT) ? 0.0f : f[i]);
             cap->ReleaseBuffer(frames);
+            g_moved[kCapture] += frames;
         }
         if (lost) {
             end = Ended::Lost;
@@ -628,6 +832,7 @@ static Ended CaptureWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std:
     CloseHandle(ev);
     if (end == Ended::Lost) {
         reported = true;   // "lost" says it; no "failed" after it while nothing's there
+        SetState(kCapture, "lost", name);
         Log(2, "capture: device lost: " + name);
         Emit(0, SV_EV_DEVICE, "lost", name.c_str(), 0);
     } else if (end == Ended::Reopen) {
@@ -663,7 +868,7 @@ static void RenderNullLoop(const Want& w) {
 }
 
 static Ended RenderWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std::string& wanted,
-                             const std::string& spec, bool& reported) {
+                             const std::string& spec, bool& reported, bool& refused) {
     ComPtr<IMMDevice> dev;
     std::string name;
     if (!OpenDevice(en, false, spec, dev.put(), &name)) {
@@ -679,11 +884,10 @@ static Ended RenderWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std::
     WAVEFORMATEXTENSIBLE fmt = FloatFormat(2);
     DWORD flags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                   AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
-    HRESULT hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 400000, 0, (WAVEFORMATEX*)&fmt, nullptr);
+    HRESULT hr = TestRefused(kRender, name) ? AUDCLNT_E_DEVICE_IN_USE
+                 : client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 400000, 0, (WAVEFORMATEX*)&fmt, nullptr);
     if (FAILED(hr)) {
-        char b[64];
-        snprintf(b, sizeof b, ": Initialize failed 0x%08lx", (unsigned long)hr);
-        ReportMissing(reported, kRender, name + b);
+        ReportMissing(reported, kRender, name + HrText("Initialize", hr));
         return Ended::Missing;
     }
     HANDLE ev = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -701,8 +905,11 @@ static Ended RenderWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std::
     }
 
     // Keep ~30 ms queued in the device: enough to ride out a late wakeup beside the renderer, little enough for
-    // voice.
-    const UINT32 target = std::min<UINT32>(buffer_frames, kFrame * 3);
+    // voice; more on a device whose period is long (two periods and a frame)
+    REFERENCE_TIME period = 0;
+    client->GetDevicePeriod(&period, nullptr);
+    const UINT32 period_frames = (UINT32)(period * kRate / 10000000);
+    const UINT32 target = std::min<UINT32>(buffer_frames, std::max<UINT32>(kFrame * 3, 2 * period_frames + kFrame));
     std::deque<float> fifo;
     float frame[kFrame * 2];
     ULONGLONG driven = GetTickCount64();   // when the engine's playout last moved
@@ -731,8 +938,30 @@ static Ended RenderWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std::
         return Ended::Missing;
     }
     reported = false;
-    Log(1, "render: " + name);
+    g_moved[kRender] = 0;
+    SetState(kRender, "open", name, spec != wanted ? nullptr : "", spec != wanted);
+    ComPtr<IAudioEndpointVolume> ep_volume;
+    ComPtr<ISimpleAudioVolume> app_volume;
+    dev->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr, (void**)ep_volume.put());
+    client->GetService(__uuidof(ISimpleAudioVolume), (void**)app_volume.put());
+    std::string format = MixFormat(client.p);
+    {
+        std::lock_guard<std::mutex> lk(g_state_mu);
+        g_state[kRender].id = id;
+        g_state[kRender].format = format;
+    }
+    ReadVolumes(kRender, ep_volume.p, app_volume.p);
+    {
+        // in the person's log (a device that's open but silent has to be told from here)
+        char b[160];
+        snprintf(b, sizeof b, "; period %.1f ms, buffer %.1f ms, kept %.1f ms; ", period / 10000.0,
+                 buffer_frames * 1000.0 / kRate, target * 1000.0 / kRate);
+        Log(2, "render: open " + name + ": " + format + b + VolumeWords(kRender));
+    }
     Emit(0, SV_EV_DEVICE, "open", name.c_str(), 1);
+    ULONGLONG opened = GetTickCount64(), volumes_read = opened;
+    int64_t glitches_at_open = g_render_glitches.load();
+    bool told = false;
     bool dead = false, stalled = false;
     int timeouts = 0;
     Ended end = Ended::Changed;
@@ -741,7 +970,7 @@ static Ended RenderWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std::
         int r = WaitStream(ev, kRender, dead);
         if (w.changed()) break;
         if (r == 1) {
-            Ended e = Recheck(en, kRender, dev.p, id, name, wanted, spec);
+            Ended e = Recheck(en, kRender, dev.p, id, name, wanted, spec, refused);
             if (e != Ended::Carry) {
                 end = e;
                 break;
@@ -757,18 +986,36 @@ static Ended RenderWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std::
             timeouts = 0;
             if (stalled) {
                 stalled = false;
+                SetState(kRender, "open", name);
                 Emit(0, SV_EV_DEVICE, "open", name.c_str(), 1);
             }
             if (padding == 0) g_render_glitches++;
         } else if (r < 0 && ++timeouts == 5 && !stalled) {
             stalled = true;
+            SetState(kRender, "silent", name);
             Log(2, "render: " + name + " takes no audio");
             Emit(0, SV_EV_DEVICE, "silent", name.c_str(), 1);
         }
         g_render_delay_ms.store((int)(lat / 10000) + (int)((padding + fifo.size() / 2) * 1000 / kRate));
-        if (padding < target && !fill(target - padding)) {
-            end = Ended::Lost;
-            break;
+        ULONGLONG now_ms = GetTickCount64();
+        if (now_ms - volumes_read >= 1000) {
+            volumes_read = now_ms;
+            ReadVolumes(kRender, ep_volume.p, app_volume.p);
+        }
+        if (!told && now_ms - opened >= 2000) {
+            told = true;
+            char b[160];
+            snprintf(b, sizeof b, " took %lld ms of sound in its first 2 s (%lld underruns); ",
+                     (long long)(g_moved[kRender].load() * 1000 / kRate),
+                     (long long)(g_render_glitches.load() - glitches_at_open));
+            Log(2, "render: " + name + b + VolumeWords(kRender));
+        }
+        if (padding < target) {
+            if (!fill(target - padding)) {
+                end = Ended::Lost;
+                break;
+            }
+            g_moved[kRender] += target - padding;
         }
         // a device that's there but takes nothing: the engine's playout runs on regardless, discarded
         if (stalled) {
@@ -782,6 +1029,7 @@ static Ended RenderWasapiRun(const Want& w, IMMDeviceEnumerator* en, const std::
     CloseHandle(ev);
     if (end == Ended::Lost) {
         reported = true;
+        SetState(kRender, "lost", name);
         Log(2, "render: device lost: " + name);
         Emit(0, SV_EV_DEVICE, "lost", name.c_str(), 1);
     } else if (end == Ended::Reopen) {
@@ -797,21 +1045,33 @@ static void WasapiLoop(const Want& w, IMMDeviceEnumerator* en, const std::string
     const char* dirname = capture ? "capture" : "render";
     DWORD task = 0;
     HANDLE mm = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task);
-    bool reported = false, away = false;
+    // refused: the device asked for is there but wouldn't start (its driver refused the stream, another app holds it
+    // exclusively): the default meanwhile, rather than silence, until Windows reports a change
+    bool reported = false, away = false, refused = false;
     while (!w.changed()) {
         std::string spec = wanted;
         if (!FollowsDefault(wanted)) {
             ComPtr<IMMDevice> d;
             std::string n;
             bool there = OpenDevice(en, capture, wanted, d.put(), &n);
-            if (!there) spec.clear();
-            if (!there && !away) Log(2, std::string(dirname) + ": " + wanted + " isn't there: the default meanwhile");
+            if (!there || refused) spec.clear();
+            if (!there && !away) {
+                Log(2, std::string(dirname) + ": " + wanted + " isn't there: the default meanwhile");
+                std::lock_guard<std::mutex> lk(g_state_mu);
+                g_state[w.dir].error = wanted.substr(wanted.rfind("name:", 0) == 0 ? 5 : 0) + " isn't connected";
+            }
             away = !there;
         }
         ULONGLONG t0 = GetTickCount64();
-        Ended e = capture ? CaptureWasapiRun(w, en, wanted, spec, reported) : RenderWasapiRun(w, en, wanted, spec, reported);
+        Ended e = capture ? CaptureWasapiRun(w, en, wanted, spec, reported, refused)
+                          : RenderWasapiRun(w, en, wanted, spec, reported, refused);
         if (e == Ended::Changed) break;
         if (e == Ended::Reopen) continue;
+        if (e == Ended::Missing && !spec.empty() && spec == wanted && !FollowsDefault(wanted)) {
+            refused = true;
+            Log(2, std::string(dirname) + ": " + wanted + " wouldn't start: the default meanwhile");
+            continue;
+        }
         // lost after a good run: straight onto what's there now (Windows has usually moved the default already);
         // lost at once, or nothing there: wait for a change, a second at most
         if (e == Ended::Lost && GetTickCount64() - t0 > 1000) continue;
@@ -833,10 +1093,13 @@ static void DirThread(Io* s, int dir) {
             gen = s->gen[dir].load();
         }
         Want w{s, dir, gen};
+        NewSpec(dir, spec);
         bool loop = spec.rfind("loop:", 0) == 0;
         if (spec == "none") {
+            SetState(dir, "none");
             dir == kCapture ? CaptureNullLoop(w) : RenderNullLoop(w);
         } else if (spec.rfind("file:", 0) == 0 || (loop && dir == kCapture)) {
+            SetState(dir, "file", spec.substr(5));
             dir == kCapture ? CaptureFileLoop(w, spec.substr(5), loop) : RenderFileLoop(w, spec.substr(5));
         } else {
             if (!en && SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
@@ -925,6 +1188,7 @@ void AudioTest(int dir, int what, const std::string& spec) {
                 break;
             case 2: g_test_gone[dir].store(false); break;
             case 3: g_test_default[dir] = spec; break;
+            case 4: g_test_refuse[dir] = spec.rfind("name:", 0) == 0 ? spec.substr(5) : spec; break;
         }
     }
     Wake(dir);

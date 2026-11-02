@@ -34,10 +34,11 @@ session, curl.
     away, the tracking beacon taken down, resetting a skeleton or refreshing attachments (their own, or a person by
     handle) and resyncing animations, hiding a thing or blocking its particles' owner by handle, bringing everything
     hidden back, release keys, away/DND status and their own autoresponse words, hover height, a 360 named
-    "incognito".
+    "incognito", Sojourn's own about (`SojournRelease about`).
 - Refused while blind: everything that reads chat, IMs, people, objects, places, notecards, pages or the view, and
   anything that needs a place or person named (teleports, giving, paying); all of SojournLand, SojournBuild,
-  SojournInventory, SojournSocial, SojournFeed; the people ops that name someone (notes, money's payers, group chat
+  SojournInventory, SojournSocial, SojournFeed; a problem report and the statistics report (`SojournRelease
+  reportProblem`: it sends the session's log; `stats`: counts of people around); the people ops that name someone (notes, money's payers, group chat
   members, display names, contact sets); SojournMap where/show at a place/state/friends; SojournBeacons track; the voice
   ops that name people (status, conference, moderation); SojournMedia's face settings; SojournSafety's lists. A new
   op is refused until it's added.

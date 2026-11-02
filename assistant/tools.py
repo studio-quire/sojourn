@@ -15,7 +15,7 @@ import time
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
-from api import ApiError
+from api import PICTURE_WAIT, ApiError
 
 GATED_TIMEOUT = 150  # the client waits up to two minutes for the person
 
@@ -159,7 +159,7 @@ def build(kit: Toolkit, with_escalate: bool, with_help: bool = True, only=None):
     async def look(args):
         kit.did("looking")
         path = os.path.join(tempfile.gettempdir(), f"sojourn-look-{os.getpid()}.png")
-        r = await kit.call("LLViewerWindow", "saveSnapshot", filename=path, width=1024, height=1024, tool="assistant")
+        r = await kit.call("LLViewerWindow", "saveSnapshot", PICTURE_WAIT, filename=path, width=1024, height=1024, tool="assistant")
         if not r.get("ok"):
             return error(r.get("error", "no picture"))
         with open(path, "rb") as f:
@@ -544,14 +544,17 @@ def build(kit: Toolkit, with_escalate: bool, with_help: bool = True, only=None):
 
     @tool("hud", "The person's HUDs (attachments worn on the screen: AO, mesh body and head HUDs, games, meters, vendors'). "
           "action: look (a picture of all of them, or of one HUD bigger with hud: its name or id; the reply gives each HUD's "
-          "and each named part's place on the picture as [x, y, w, h]); press (a click on one: at [x, y] on the last picture, "
-          "or part: a part's id, or name: words naming a part, optionally hud: which HUD; hold: seconds for touch-and-hold); "
-          "list; show / hide (the headset's HUD board, or the desktop's HUDs). Look before pressing by position; a HUD the "
-          "person points at is 'that' (its id works with press part).",
+          "and each named part's place on the picture as [x, y, w, h], and buttons read before); press (a click on one: at "
+          "[x, y] on the last picture, or part: a part's id, or name: words naming a part or a button read before, optionally "
+          "hud: which HUD; hold: seconds for touch-and-hold); save_buttons (hud, and buttons: [{name, rect: [x, y, w, h] on "
+          "the last picture of that HUD}]: what a click would act on, kept so the person can press them by name, for a HUD "
+          "that's one picture of buttons); list; show / hide (the headset's HUD board, or the desktop's HUDs). Look before "
+          "pressing by position; a HUD the person points at is 'that' (its id works with press part).",
           {"type": "object", "properties": {
-              "action": {"type": "string", "enum": ["look", "press", "list", "show", "hide"]},
+              "action": {"type": "string", "enum": ["look", "press", "save_buttons", "list", "show", "hide"]},
               "hud": {"type": "string"}, "at": {"type": "array", "items": {"type": "number"}}, "part": {"type": "string"},
-              "name": {"type": "string"}, "hold": {"type": "number"}}, "required": ["action"]})
+              "name": {"type": "string"}, "hold": {"type": "number"},
+              "buttons": {"type": "array", "items": {"type": "object"}}}, "required": ["action"]})
     async def hud(args):
         act = args["action"]
         try:
@@ -562,10 +565,14 @@ def build(kit: Toolkit, with_escalate: bool, with_help: bool = True, only=None):
                 return text(await kit.call("SojournHud", "show", on=act == "show"))
             if act == "look":
                 kit.did("looking at your HUDs")
-                r = await kit.call("SojournHud", "look", **({"hud": args["hud"]} if args.get("hud") else {}))
+                r = await kit.call("SojournHud", "look", PICTURE_WAIT, **({"hud": args["hud"]} if args.get("hud") else {}))
                 png = r.pop("png")
                 return {"content": [{"type": "image", "data": png, "mimeType": "image/png"},
                                     {"type": "text", "text": json.dumps(r, ensure_ascii=False)}]}
+            if act == "save_buttons":
+                if not args.get("hud") or not args.get("buttons"):
+                    return error("save_buttons needs hud and buttons")
+                return text(await kit.call("SojournHud", "save_buttons", 15, hud=args["hud"], buttons=args["buttons"]))
             kit.did("pressing it on your HUD")
             a = {k: args[k] for k in ("at", "part", "name", "hud", "hold") if args.get(k) not in (None, "", [])}
             return text(await kit.call("SojournHud", "press", 30, **a))

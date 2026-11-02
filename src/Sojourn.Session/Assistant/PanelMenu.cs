@@ -47,12 +47,21 @@ public sealed partial class Panel
     /// the keys stay put. page: the one to show (clamped). group: a group's rows are shown (its name): the header is a
     /// back key with the name instead of the sections, a <see cref="KeyKind.Tab"/> for the section it's in.
     /// tip: what a row (its index) or tab (-1 - its index) does, drawn on a small pane just under it (over the rows
-    /// below; above it where there's no room below). The raster's Spots say where each row and tab was drawn.
+    /// below; above it where there's no room below). text: a section's own words above its rows (the about section's),
+    /// drawn as help is when help isn't open. The raster's Spots say where each row and tab was drawn.
     /// </summary>
     public static Raster DrawMenu(PanelLook look, IReadOnlyList<string> tabs, int section, IReadOnlyList<MenuRow> rows, IReadOnlyList<string>? help,
         int hover, float scale, long version, int page = 0, float maxHeight = float.MaxValue, float wide = 1, bool? layer = null, string? group = null,
-        (int Target, string Text)? tip = null)
+        (int Target, string Text)? tip = null, IReadOnlyList<string>? text = null)
     {
+        // the person's language, as drawn: the rows keep their English (the tips and the tests find rows by it)
+        string? section0 = section >= 0 && section < tabs.Count ? tabs[section] : null;
+        tabs = tabs.Select(t => Lang.T(t)).ToList();
+        rows = rows.Select(r => Translated(r, section0)).ToList();
+        group = Lang.Tn(group);
+        help = help?.Select(Lang.T).ToList();
+        text = text?.Select(Lang.T).ToList();
+        if (tip is { } tp) tip = (tp.Target, Lang.T(tp.Text));
         var ink = Ink.For(look);
         var keys = new List<PanelKey>();
         var spots = new List<(int, SKRect)>();
@@ -61,13 +70,22 @@ public sealed partial class Panel
         {
             spots.Clear();
             var draw = new Painter(c, ink, width);
-            float y = LayoutMenu(draw, tabs, section, rows, help, hover, keys, spots, height, page, maxHeight, group);
+            float y = LayoutMenu(draw, tabs, section, rows, help, hover, keys, spots, height, page, maxHeight, group, sectionText: text);
             if (tip is { } t && spots.FirstOrDefault(sp => sp.Item1 == t.Target) is { Item2.Width: > 0 } at) DrawTip(draw, at.Item2, t.Target < 0, t.Text, height);
             return y;
         }, MaxRasterWidth);
         GlassLight.Finish(pixels, look, layer ?? GlassLight.Layers);
         return new Raster(pixels, w, h, used, keys, version, null, Array.Empty<PanelChoice>(), false, look.Frost, look.TintOpacity) { Spots = spots };
     }
+
+    /// <summary>A row's words in the language in use (a word may need its section: "yours#sound").</summary>
+    static MenuRow Translated(MenuRow r, string? section) => r with
+    {
+        Label = Lang.T(r.Label, section),
+        Value = Lang.T(r.Value, section),
+        Note = Lang.Tn(r.Note),
+        Options = r.Options?.Select(o => Lang.T(o, section)).ToArray(),
+    };
 
     /// <summary>The tip's pane, fitted to its words (up to three lines), from the row's label (a tab's left edge),
     /// inside the menu.</summary>
@@ -111,7 +129,8 @@ public sealed partial class Panel
     }
 
     static float LayoutMenu(Painter draw, IReadOnlyList<string> tabs, int section, IReadOnlyList<MenuRow> allRows, IReadOnlyList<string>? help,
-        int hover, List<PanelKey> keys, List<(int, SKRect)> spots, float height, int page, float maxHeight, string? group)
+        int hover, List<PanelKey> keys, List<(int, SKRect)> spots, float height, int page, float maxHeight, string? group,
+        IReadOnlyList<string>? sectionText = null)
     {
         var k = draw.K;
         float W = draw.W;
@@ -177,14 +196,23 @@ public sealed partial class Panel
         keys.Add(new PanelKey(KeyKind.Hide, 0, close));
         y = headerBottom + 14;
 
-        if (help is { Count: > 0 })
+        if ((help ?? sectionText) is { Count: > 0 } box0)
         {
             var hf = Font(k.Regular, 14);
-            var lines = help.SelectMany(l => Wrap(l, hf, W - 2 * pad - 24, 3)).ToList();
-            var box = new SKRect(pad, y, W - pad, y + 14 + lines.Count * 20);
+            // a section's own words: its first line (a title) in the text's ink, the rest as help is, a little air
+            // between its paragraphs
+            bool own = help == null;
+            var lines = box0.SelectMany((l, n) => Wrap(l, hf, W - 2 * pad - 24, own ? 9 : 3)
+                .Select((w, i) => (w, Head: own && n == 0, Gap: own && n > 0 && i == 0 ? 6f : 0f))).ToList();
+            var box = new SKRect(pad, y, W - pad, y + 14 + lines.Count * 20 + lines.Sum(l => l.Gap));
             draw.Recess(box, 14);
             float hy = y + 7;
-            foreach (var l in lines) { draw.Text(l, pad + 12, hy + 14, hf, k.Dim); hy += 20; }
+            foreach (var (l, head, gap) in lines)
+            {
+                hy += gap;
+                draw.Text(l, pad + 12, hy + 14, head ? Font(k.Semi, 14) : hf, head ? k.Text : k.Dim);
+                hy += 20;
+            }
             y = box.Bottom + 12;
         }
 

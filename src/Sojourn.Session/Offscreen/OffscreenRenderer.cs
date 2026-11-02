@@ -79,10 +79,21 @@ public sealed partial class OffscreenRenderer : IDisposable
     // could run it or one failed three times; SOJOURN_OFFSCREEN_SOFTWARE=1 from the start (testing on a PC with a GPU)
     string? _softwareManifest = Environment.GetEnvironmentVariable("SOJOURN_OFFSCREEN_SOFTWARE") == "1" ? SoftwareVulkan.Find() : null;
     long _threadsLoweredAt, _upAt;
-    bool _warmed;   // (on the processor: what's around drawn once ahead of any picture, per renderer: WarmUp)
-    const double WarmAfter = 20;   // seconds after it's up, the session's arrival settled
+    static readonly bool SoftwareShadows = Environment.GetEnvironmentVariable("SOJOURN_SOFTWARE_SHADOWS") == "1";
+    // on the processor, per renderer (WarmUp): 0 nothing drawn yet, 1 a first frame drawn at once, 2 what's around drawn
+    volatile int _warmStage;
+    const double WarmFirstAfter = 2, WarmAfter = 20;   // seconds after it's up: at once, then the session's arrival settled
     /// <summary>Drawing on the processor: a software Vulkan driver, since this PC's graphics couldn't run it.</summary>
     public bool Software => _r?.Software ?? _softwareManifest != null;
+    /// <summary>On the processor and not yet through its warm-up (or not yet up): a picture now pays for compiling the
+    /// driver's shaders, a minute or more on a small PC, so callers wait longer and say why.</summary>
+    public bool Preparing => Software && (_r == null || _warmStage < 2);
+
+    /// <summary>How long a batch of pictures is waited for: on a GPU twice the settling, the wait for its subjects' looks
+    /// and 20 s; on the processor five minutes while it's still preparing (a first picture on the blind tester's 2400G
+    /// took minutes), else two and the looks' wait.</summary>
+    TimeSpan PictureWait(double settle) =>
+        !Software ? TimeSpan.FromSeconds(settle * 2 + LookWait(false) + 20) : Preparing ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(settle * 2 + LookWait(true) + 120);
 
     /// <summary>Idle frames a second (0: only when a picture, touch or ray needs one; the world is still kept current).</summary>
     public double IdleHz { get; set; } = 2;
@@ -136,7 +147,10 @@ public sealed partial class OffscreenRenderer : IDisposable
         _s = session;
         _snapshots = snapshots;
         _busy = assistantBusy;
-        _assistantUp = assistantUp;
+        // SOJOURN_OFFSCREEN_SEEN=1: as if an assistant were up from the start (benches without one: tools/firstpicture.py)
+        _assistantUp = Environment.GetEnvironmentVariable("SOJOURN_OFFSCREEN_SEEN") == "1" ? () => true : assistantUp;
+        // the assistant's look waits as a description's pictures do (on a GPU its usual 8 s)
+        snapshots.Patience = () => Software ? PictureWait(SettleSeconds) : (TimeSpan?)null;
         _cacheDir = cacheDir;
         _log = log;
         _thread = new Thread(Run) { Name = "offscreen render", IsBackground = true, Priority = ThreadPriority.BelowNormal };
@@ -298,6 +312,9 @@ public sealed partial class OffscreenRenderer : IDisposable
                 ProbeCacheCount = 128,
                 // a quarter of the client's (1M vertices, 72 MB): unseen, a busy place's geometry near fits in one
                 GeometryArenaScale = 0.25,
+                // a quarter of the client's mesh bytes held too: it builds a LOD now and then, not every frame, and the
+                // bytes are on disk (a three-hour ride held 200 MB of them, on an 8 GB PC)
+                MeshBytesBudget = 64L << 20,
                 Log = m => _log(m),
             };
             FrameRenderer r;
@@ -316,6 +333,9 @@ public sealed partial class OffscreenRenderer : IDisposable
             }
             else r = new FrameRenderer(options);
             r.Quality.Mirrors = false;   // a second render of the scene per mirror in view, for nobody to see
+            // each region's sky and water asked again once a minute rather than every 10 s (the process's only renderer:
+            // a picture now and then needs them current, not each region's settings fetched and parsed six times a minute)
+            RegionEnvironment.RefreshInterval = TimeSpan.FromMinutes(1);
             // nobody watches its frame rate: loading never held back for slow frames (a processor's are seconds), only
             // video memory governed
             r.Quality.LoadGovernor = false;
@@ -325,7 +345,7 @@ public sealed partial class OffscreenRenderer : IDisposable
             if (_feed == null) _feed = new RegionFeed(_s.World, r);
             else _feed.Switch(r);
             _r = r;
-            (_upAt, _warmed) = (Stopwatch.GetTimestamp(), false);
+            (_upAt, _warmStage) = (Stopwatch.GetTimestamp(), 0);
             _everUp = true;
             _windowAt = Stopwatch.GetTimestamp();
             State = "running";
@@ -447,8 +467,10 @@ public sealed partial class OffscreenRenderer : IDisposable
         // glance at what isn't drawn yet; walk mode's rays need no renderer), nor while the assistant works (a
         // description's pictures are drawn from cameras of their own as it's asked)
         double hz = r.Software ? 0 : busy ? Math.Max(BusyHz, IdleHz) : IdleHz;
-        // but what's around drawn once when it's settled in (WarmUp): the driver compiles its shaders as it first draws
-        bool warm = r.Software && !_warmed && !_unseen && Stopwatch.GetElapsedTime(_upAt, now).TotalSeconds >= WarmAfter;
+        // but a first frame at once and what's around once it's settled in (WarmUp): the driver compiles its shaders as
+        // it first draws them
+        bool warm = r.Software && _warmStage < 2 && !_unseen
+                    && Stopwatch.GetElapsedTime(_upAt, now).TotalSeconds >= (_warmStage == 0 ? WarmFirstAfter : WarmAfter);
         bool idleDue = (hz > 0 || warm) && now >= _nextIdle;
         if (sim == null || (look == null && glance == null && !idleDue))
         {
@@ -481,7 +503,8 @@ public sealed partial class OffscreenRenderer : IDisposable
         }
         if (warm && glance == null)
         {
-            WarmUp(r, sim.Handle, eyes, fov);
+            if (_warmStage == 0) WarmFirst(r, sim.Handle, eyes, fov);
+            else WarmUp(r, sim.Handle, eyes, fov);
             return;
         }
         if (glance is var (gr, at) && gr == sim.Handle)
@@ -521,23 +544,51 @@ public sealed partial class OffscreenRenderer : IDisposable
         if (glance == null) _nextIdle = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency / Math.Max(hz, 0.05));
     }
 
+    /// <summary>On the processor, two seconds after it's up: one frame ahead from the eyes drawn at once with whatever has
+    /// arrived, so the driver compiles what every picture draws whatever is in it (the sky, the ground, water, the
+    /// reflection probe, the lighting passes) while the session is still arriving rather than in the first picture.</summary>
+    void WarmFirst(FrameRenderer r, ulong region, (Vector3 Eye, Vector3 Forward, Vector3 Avatar) eyes, float fov)
+    {
+        _warmStage = 1;
+        long t0 = Stopwatch.GetTimestamp();
+        var share = ProcessorShare.Now();
+        r.Motion.BeginFrame();
+        Render(r, new FrameRequest
+        {
+            RegionHandle = region, Position = eyes.Eye, Forward = Vector3.Normalize(eyes.Forward + new Vector3(0, 0, -0.3f)),
+            Width = 768, Height = 432, VerticalFov = fov, DrawDistance = Reach,
+        });
+        RunJobs(r);
+        _log($"the view out of sight on the processor: a first frame drawn at once, {Stopwatch.GetElapsedTime(t0).TotalSeconds:0.0} s " +
+             $"(what every picture needs compiled; {share.Since()})");
+    }
+
     /// <summary>On the processor, once a renderer has settled in: what's around drawn whole as pictures are (settled,
     /// then drawn), the four ways round from the person's eyes as a description of the place has it, their own body in
-    /// view below (nothing hidden: what avatars wear is drawn by shaders of its own), so the driver compiles
-    /// its shaders for what's here now, at below normal priority, rather than in the first description's wait (seconds
-    /// of every core on a slow PC; the driver keeps nothing between sessions).</summary>
+    /// view below (nothing hidden: what avatars wear is drawn by shaders of its own), then the person from their front
+    /// as a description of them has it, so the driver compiles its shaders for what's here now, at below normal
+    /// priority, rather than in the first description's wait (minutes of every core on a small PC; the driver keeps
+    /// nothing between sessions). Each at a picture's size, so its targets' sampling is compiled too.</summary>
     void WarmUp(FrameRenderer r, ulong region, (Vector3 Eye, Vector3 Forward, Vector3 Avatar) eyes, float fov)
     {
-        _warmed = true;
         long t0 = Stopwatch.GetTimestamp();
+        var share = ProcessorShare.Now();
         double drawn = 0;
         var right = Vector3.Cross(eyes.Forward, Vector3.UnitZ);
-        foreach (var f in new[] { eyes.Forward, right, -eyes.Forward, -right })
+        var down = new Vector3(0, 0, -0.3f);
+        var front = eyes.Avatar + eyes.Forward * 2.8f + new Vector3(0, 0, 0.35f);
+        var views = new (Vector3 At, Vector3 Dir, int W, int H, float Fov)[]
+        {
+            (eyes.Eye, eyes.Forward + down, 768, 432, fov), (eyes.Eye, right + down, 768, 432, fov),
+            (eyes.Eye, -eyes.Forward + down, 768, 432, fov), (eyes.Eye, -right + down, 768, 432, fov),
+            (front, eyes.Avatar + new Vector3(0, 0, 0.1f) - front, 640, 960, 40 * MathF.PI / 180),
+        };
+        foreach (var (at, dir, w, h, vfov) in views)
         {
             var req = new FrameRequest
             {
-                RegionHandle = region, Position = eyes.Eye, Forward = Vector3.Normalize(f + new Vector3(0, 0, -0.3f)),
-                Width = 768, Height = 432, VerticalFov = fov, DrawDistance = Reach,
+                RegionHandle = region, Position = at, Forward = Vector3.Normalize(dir),
+                Width = w, Height = h, VerticalFov = vfov, DrawDistance = Reach,
             };
             long settle = Stopwatch.GetTimestamp(), improved = settle;
             int best = int.MaxValue;
@@ -556,8 +607,9 @@ public sealed partial class OffscreenRenderer : IDisposable
             drawn += Stopwatch.GetElapsedTime(d0).TotalMilliseconds;
             RunJobs(r);
         }
+        _warmStage = 2;
         _log($"the view out of sight on the processor: what's around drawn once ahead of any picture, {Stopwatch.GetElapsedTime(t0).TotalSeconds:0.0} s " +
-             $"({drawn:0} ms of it drawing, its shaders compiled)");
+             $"({drawn:0} ms of it drawing, its shaders compiled; {share.Since()})");
     }
 
     (int W, int H) LookSize(int w, int h)
@@ -584,7 +636,12 @@ public sealed partial class OffscreenRenderer : IDisposable
         bool whole = !unseen;
         var q = r.Quality;
         q.Textures = q.Particles = q.Flexi = q.AvatarPhysics = whole;
-        q.Shadows = q.ProjectorShadows = q.Reflections = whole;
+        q.Reflections = whole;
+        // no shadows on the processor: drawing every caster into four sun cascades and a far map was half of each picture
+        // there (a tester's busy place: 3 million triangles, 0.5 s of a 1 s frame) and a share of the first one's compiling,
+        // and a description wants colours, shapes, text and looks, which sunlight without shade shows as well
+        // (SOJOURN_SOFTWARE_SHADOWS=1 keeps them, for comparing)
+        q.Shadows = q.ProjectorShadows = whole && (!r.Software || SoftwareShadows);
         bool first = _appliedTo == null, changed = first || _unseen != unseen;
         (_unseen, _appliedTo) = (unseen, r);
         if (!changed) return;

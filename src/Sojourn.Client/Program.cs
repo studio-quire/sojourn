@@ -26,6 +26,8 @@ using Vector2 = System.Numerics.Vector2;
 // Sojourn: a real-time Second Life client, VR-first. One person logs in; the world renders continuously in a window,
 // or in a headset (--vr, OpenXR) with the eyes mirrored to the window. See docs/client.md and docs/vr.md.
 var opt = ClientOptions.Parse(args);
+// Sojourn's own words in the person's language from the first sheet on (Lang.cs; the menu and the launcher change it)
+Lang.Use(opt.Language ?? VrSettings.Load(VrSettings.PathIn(opt.BaseDir)).UiLanguage);
 DeviceLoss.WaitForPrevious();   // restarted after a lost GPU: the old run lets go of the headset first
 Sojourn.Client.Login.LauncherAnswers.Start(opt.LauncherAnswers);   // before anything is started from here (it isn't inherited)
 if (opt.LoginShots != null)
@@ -47,6 +49,8 @@ var logs = sessionHost.Logs;
 var log = sessionHost.Log;
 var rlog = logs.CreateLogger("render");
 var host = sessionHost.Config;
+host.Version = ClientOptions.Version;   // a package's own number at the login (docs/tpv-policy.md)
+log.LogInformation("{Channel} {Version}{Where}", host.Channel, host.Version, ClientOptions.Packaged ? ", installed" : ", from the repo");
 var agentCfg = sessionHost.Agent;
 var chat = sessionHost.Chat;
 var registry = sessionHost.Registry;
@@ -61,6 +65,7 @@ var wopt = WindowOptions.DefaultVulkan with
 };
 using var window = Silk.NET.Windowing.Window.Create(wopt);
 window.Initialize();
+Sojourn.Client.Window.AppIcon.Apply(window);
 if (Sojourn.Client.Window.Background.On) Sojourn.Client.Window.Background.ShowWithoutFocus(window);
 if (window.VkSurface is null) throw new PlatformNotSupportedException("no Vulkan surface for this window");
 
@@ -235,6 +240,7 @@ var vrPilot = new VrPilot(session, renderer.Motion, vrSettings) { Say = m => log
 if (headset != null) regionFeed.ViewRegion = () => vrPilot.Region;
 // where you look, shown to others as the viewer's look-at (Control/Gaze.cs)
 var gaze = new Gaze(session, vrSettings) { Say = m => log.LogInformation("{Msg}", m) };
+var rlvView = new Sojourn.Client.Rlv.RlvView(session, renderer);   // RLV's vision spheres and camera limits (docs/rlv.md)
 if (sessionLog != null) log.LogInformation("this session's log: {Path}", sessionLog);
 // the field of view is the session's (LLViewerControl CameraAngle), so the menu, the agent API and the renderer agree;
 // the headset's lenses own it there
@@ -324,7 +330,9 @@ session.Api.Register(new Sojourn.Session.Control.AvatarsApi(session, renderer.Av
 // the sky in use and the person's own, parcel lines, the interest list (Control/EnvironmentWiring.cs)
 var environment = Sojourn.Client.Control.EnvironmentWiring.Start(session, renderer, vrSettings,
     () => vrSettings.Save(vrSettingsPath, m => log.LogWarning("{Msg}", m)), log);
-session.Api.Register(new Sojourn.Client.Hud.HudApi(session, hudView, () => headset != null ? hudBoard : null));
+hudView.Board = () => headset != null ? hudBoard : null;
+session.Api.Register(new Sojourn.Session.Hud.HudApi(session, hudView,
+    new Sojourn.Session.Hud.HudButtons(Path.Combine(opt.BaseDir, "hud-buttons.json"), m => log.LogInformation("{Msg}", m))));
 assistant.Pointer.HudUnder = () => headset == null ? hudView.DesktopUnder : null;
 // web pages and video on faces, parcel media and offered pages (Media/): docs/media.md
 var media = Sojourn.Client.Media.MediaWiring.Start(session, opt, renderer, assistant, vrSettings, worldAudio != null || voiceWiring?.Voice.Available == true, log);
@@ -375,7 +383,9 @@ chat.SetModel = name =>
 // the person's own screen reader (Access/; shared part in Sojourn.Core/Access): what arrives read out through it, keys for what waits
 sessionHost.StartScreenReader(window.Native?.Win32?.Hwnd ?? 0, () => headset != null, Sojourn.Client.Access.ReaderKeys.KeyName);
 var screenReader = sessionHost.ScreenReader;
-screenReader.Actions.ConfirmListKey = "Control R reads the whole list.";   // (ReaderActions.Repeat)
+void ReaderListKey() => screenReader.Actions.ConfirmListKey = Lang.T("Control R reads the whole list.");   // (ReaderActions.Repeat)
+ReaderListKey();
+Lang.Changed += ReaderListKey;
 var readerKeys = new Sojourn.Client.Access.ReaderKeys(screenReader.Announcer, screenReader.Actions);
 
 // --- input ------------------------------------------------------------------------------------------------------
@@ -614,6 +624,12 @@ settingsApi.Add("camera", new("desktop", "first person (the mouse looks) or thir
 privateUi.AddSettings(settingsApi);
 sessionHost.SettleLate(settingsMenu);   // the screen reader's, people's and the social layer's settings and menu sections
 map.Settle(settingsApi);
+// about, the last section (Control/AboutMenu.cs): version, disclaimer, source, support, problem reports; and what the
+// viewer statistics report (Release/ViewerStats.cs) takes from the renderer
+var about = new Sojourn.Client.Control.AboutMenu(sessionHost.Release, reader.Reader, settingsApi, settingsMenu.Changed, m => log.LogInformation("{Msg}", m));
+(settingsMenu.AboutRows, settingsMenu.AboutText) = (about.Rows, about.Text);
+if (sessionHost.Release.Stats is { } viewerStats)
+    (viewerStats.Fps, viewerStats.Graphics) = (() => map.Fps, () => Sojourn.Client.Control.AboutMenu.Gpu(renderer.Vk));
 if (login.FromScreen)
 {
     // log out, back to the login screen: at the foot of the "you" section
@@ -790,7 +806,7 @@ while (!window.IsClosing && !chat.QuitRequested && !(bench?.Done ?? false) && !l
         lastMouse = p;
     }
     var keys = window.IsVisible && !assistant.Typing && media?.TypingInPage != true ? kb : null;
-    fov = session.Camera.Fov;   // CameraAngle: the desktop view follows it
+    fov = rlvView.Fov(session.Camera.Fov);   // CameraAngle: the desktop view follows it (within RLV's limits)
     var pose = pilot.Update(keys, dt, fov);
     if (pose is { } gp && pilot.Mode == CameraMode.FirstPerson) gaze.Frame(gp.Region, gp.Position, gp.Forward, renderer.Heads, now, (float)dt); else gaze.Idle(now);
     voiceWiring?.DesktopFrame(pose, assistant.Talking || privateUi.Dictation.Held);
@@ -855,6 +871,7 @@ while (!window.IsClosing && !chat.QuitRequested && !(bench?.Done ?? false) && !l
     // a picture of what the person sees, menus and all (Assistant/SeenShots.cs): here they're in the eye image already
     if (assistant.Snapshots.SeenWaiting && pose != null) req = req with { SeenTo = assistant.Snapshots.TakeSeen(SeenView.Desktop(req.Overlay)) };
     double deskBefore = Stopwatch.GetElapsedTime(loopStart).TotalMilliseconds;
+    rlvView.Frame(req.RegionHandle, req.Position, now);
     var deskReq = req;
     var deskAt = now;
     double deskWaited = pipe.WaitedMs;
@@ -1126,6 +1143,7 @@ void HeadsetFrame(XrSession hs, MirrorTarget target)
     // (Assistant/SeenShots.cs)
     if (frameReq != null && assistant.Snapshots.SeenWaiting) frameReq = frameReq with { SeenTo = assistant.Snapshots.TakeSeen(hs.Seen(xf)) };
     double before = Stopwatch.GetElapsedTime(frameStart).TotalMilliseconds;
+    if (frameReq != null) rlvView.Frame(frameReq.RegionHandle, frameReq.Position, now);
     double frameNow = now, frameDt = dt, waited = pipe.WaitedMs, wakeLead = hs.WakeLeadMs;
     pipe.Post(() =>
     {

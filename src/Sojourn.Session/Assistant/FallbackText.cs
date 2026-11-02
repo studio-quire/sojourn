@@ -30,7 +30,11 @@ internal static class FallbackText
 
     static readonly ConcurrentDictionary<(SKTypeface, string), Run[]> Layouts = new();
     static readonly ConcurrentDictionary<(SKTypeface, int), bool> Covered = new();
-    static readonly ConcurrentDictionary<(SKTypeface, int), SKTypeface?> Matched = new();
+    // by the language in use too: Chinese and Japanese share characters drawn differently (Yu Gothic for Japanese,
+    // Microsoft JhengHei for the viewers' Traditional Chinese), and the system's fallback picks by the language's tag
+    static readonly ConcurrentDictionary<(SKTypeface, int, string), SKTypeface?> Matched = new();
+
+    static FallbackText() => Lang.Changed += () => Layouts.Clear();
     static readonly Dictionary<SKTypeface, SKShaper> Shapers = new();
 
     static readonly SKTypeface? Emoji = System("Segoe UI Emoji");
@@ -185,8 +189,8 @@ internal static class FallbackText
         if (Emoji != null && WantsEmoji(cluster, cp) && Has(Emoji, cp)) return Emoji;
         if (Covers(primary, cluster)) return primary;
         // symbols look for Segoe UI Symbol first; letters for the face the system pairs with the look's
-        var match = Matched.GetOrAdd((primary, cp), k =>
-            SKFontManager.Default.MatchCharacter(k.Item1.FamilyName, k.Item1.FontStyle, null, k.Item2));
+        var match = Matched.GetOrAdd((primary, cp, Lang.Current.Tag), k =>
+            SKFontManager.Default.MatchCharacter(k.Item1.FamilyName, k.Item1.FontStyle, [k.Item3], k.Item2));
         var order = Rune.GetUnicodeCategory(first) is UnicodeCategory.OtherSymbol or UnicodeCategory.MathSymbol
             or UnicodeCategory.ModifierSymbol or UnicodeCategory.OtherPunctuation ? (Symbol, match) : (match, Symbol);
         if (order.Item1 != null && Covers(order.Item1, cluster)) return order.Item1;

@@ -382,9 +382,9 @@ public static class MapPainter
         {
             case MapKey.Close: draw.GlyphKey(r, Painter.Glyph.Close, lit); return;
             case MapKey.Help: draw.GlyphKey(r, Painter.Glyph.Help, lit, v.Help); return;
-            case MapKey.Go: draw.Key(r, "Go", lit, v.Dock == MapDock.World ? 16 : 15); return;
+            case MapKey.Go: draw.Key(r, Lang.T("Go"), lit, v.Dock == MapDock.World ? 16 : 15); return;
             // a word beside Go, as Go is (the user, 2026-10-30: like keys all words or all icons); lit while tracking
-            case MapKey.Track: draw.Key(r, "Track", lit, v.Dock == MapDock.World ? 16 : 15, s.Tracking && !lit ? 1.4f : 1); return;
+            case MapKey.Track: draw.Key(r, Lang.T("Track"), lit, v.Dock == MapDock.World ? 16 : 15, s.Tracking && !lit ? 1.4f : 1); return;
         }
         bool on = key switch { MapKey.Me => v.Follow, MapKey.Sale => v.Sale, MapKey.Events => v.Events, MapKey.Track => s.Tracking, MapKey.World => s.WorldUp, _ => false };
         var c = draw.Canvas!;
@@ -489,15 +489,16 @@ public static class MapPainter
         if (p.Mark is { } mk)
             return (mk.Kind switch
             {
-                MarkKind.Crowd => mk.Count == 1 ? "1 person" : $"{mk.Count} people",
-                MarkKind.Person => p.Region?.Name ?? "someone",
+                MarkKind.Crowd => mk.Count == 1 ? Lang.T("1 person") : Lang.F("{0} people", mk.Count),
+                MarkKind.Person => p.Region?.Name ?? Lang.T("someone"),
                 _ => mk.Name is { Length: > 0 } n ? n : p.Region?.Name ?? "",
             }, mk.Kind switch
             {
-                MarkKind.LandForSale => $"L${mk.Price:N0} · {mk.Area:N0} m²{Place(p)}",
+                MarkKind.LandForSale => Lang.F("L${0} · {1} m²", mk.Price.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
+                    mk.Area.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)) + Place(p),
                 _ => Place(p).TrimStart(' ', '·'),
             });
-        return (p.Region?.Name ?? "no region here", p.Region is { } r ? $"{(int)(p.X - r.X)}, {(int)(p.Y - r.Y)} · {r.Rating}" : "");
+        return (p.Region?.Name ?? Lang.T("no region here"), p.Region is { } r ? $"{(int)(p.X - r.X)}, {(int)(p.Y - r.Y)} · {Lang.T(r.Rating, "maturity")}" : "");
     }
 
     /// <summary>What's picked (the place and what's there), or, with nothing picked, the region in the middle and the
@@ -538,7 +539,7 @@ public static class MapPainter
         void Row(Action<float, float> icon, string words)
         {
             icon(box.Left + 22, y - 5);
-            draw.Text(words, x, y, f, SKColors.White);
+            draw.Text(Lang.T(words), x, y, f, SKColors.White);
             y += 26;
         }
         Row((ix, iy) => Arrow(c, ix, iy, MathF.PI / 2, 7), "you, the way you face");

@@ -148,7 +148,8 @@ memory in a small place. **On the processor** since 2026-10-31: where no GPU can
 tenths of a second once warm on four modern cores (access-app.md > How it fits > On the processor). Left: AvatarsApi (its limits belong to one renderer, so a restart needs them carried over),
 the person's environment choices (the client's `EnvironmentWiring`), quality settings beyond rate and size (mirrors
 are off, shadows capped at 1024), stills and 360s through `CaptureWiring` (it holds a renderer, so it too needs the
-restart in mind), and HUD prims for touches.
+restart in mind). HUDs out of sight since 2026-11-01: placed and picked when asked, drawn only for a picture
+(access-app.md > How it fits > HUDs out of sight).
 
 **M1. Radegast's daily life, better** (L; `docs/access-app.md` > Using it). The first build worth showing her, with
 no Claude account needed: login with the ToS and MFA answered by her own keys; areas by Alt+number (nearby chat,
@@ -178,10 +179,14 @@ pane). The cheap wins from her list, where Sojourn already has the machinery:
   errors are read out; the cursor's line announced is left.
 - What am I wearing: from the worn list (Ctrl+Shift+W, `//outfit`, her "**Wearing:" label first) and with the
   assistant from the picture (M5) (her outfit check without sighted help).
-Limits: faces need the renderer out of sight (with `--no-render`, or on a HUD, parts are touched whole); a HUD drawn as
-one prim with button regions can't be pressed by part, a picture job for the assistant (Access doesn't draw HUDs out
-of sight yet); part numbers are ours (root first, then the order the region made them), not promised to be scripts'
-link numbers. Left: faces of HUD parts, rotating things by words, `//place` as a command, a blind tester's verdict.
+Limits: faces need the renderer out of sight (with `--no-render`, or on something worn on the body, parts are touched
+whole); part numbers are ours (root first, then the order the region made them), not promised to be scripts' link
+numbers. HUDs (2026-11-01, after the blind tester called worn things and HUDs her major problem): a HUD part's faces as
+they show on the screen, and a HUD that's one picture of buttons (a train's driver panel, games, 7Seas) has its buttons
+read off its picture by the assistant once per look of it, then listed after its parts by name and pressed where they
+are (access-app.md > Parts and faces); checked on the local grid with a painted panel, GPU and processor. Left:
+rotating things by words, `//place` as a command, HUDs on Second Life itself (mesh HUDs, many-page HUDs, how well
+the model reads busy ones), a blind tester's verdict.
 
 **M3. Moving freely** (L; `docs/access-app.md` > Walk mode). Walk mode: arrows walk and turn, a sound per step (by
 surface where known), cues for walls ahead, openings and doors (Shades of Doom, which she asked for by name in 2009),
@@ -194,8 +199,13 @@ heading, speed, where, what's ahead and doors, every cue a sound and a line with
 room kept from walls, a stuck stretch planned again, a teleport when there's no way; follow 2.5 m behind where they'll
 be; driving by the same arrows, the seated crossing said with whether the seat held. Since 2026-10-30 (after her PC
 couldn't run the renderer) every walk-mode ray comes from a collision model without a GPU, and the distance walked is
-said when the keys rest. Left: routes recorded by walking and saved as a notecard (playing them is M1's); paths across
-levels (stairs count as walls); SL's own vehicles and crossings (only the local grid's tried); the sound design and
+said when the keys rest. Since 2026-11-01 routes are recorded by walking them (R in walk mode, `//record`): however she
+moves, the walk becomes `//go xyz` lines in her and her partner's format, points kept only at turns, level changes,
+doorways walked through, region borders, teleports, seats and touches, with her own notes as lines `//route` reads out;
+saved as a notecard in Routes, playable at once (access-app.md > Walk mode > Recording a route); checked on the local
+grid by walking a turn through a doorway and teleporting into another region, then playing it back. Left: paths
+across levels (stairs count as walls); recording's defaults and words judged by a blind tester, Second Life's own
+places (landing points, busy regions), a crossing on foot recorded and replayed; SL's own vehicles and crossings (only the local grid's tried); the sound design and
 every default judged by a blind tester.
 
 **M4. Sound as a map** (M; `docs/access-app.md` > Earcons, Walk mode). Earcons per arrival kind, a beacon on a
@@ -222,13 +232,27 @@ yellow box"), and once a reply leaked the tooling ("the pictures don't show...")
 lean call, economy (Haiku 5.5 high) by default or best (Opus 5.5 low) in Alt+0, chosen on 19 local-grid captures
 replayed to Haiku, Sonnet and Opus and judged blind (`docs/assistant-cost.md`): Opus made no major errors, Haiku high
 one, its slips mostly sides and shapes. Not seen yet: the midday relighting at night, real SL places, crowds, and mesh
-clothing with prints, the case that register is for (a capture switch is ready for a sitting there).
+clothing with prints, the case that register is for (a capture switch is ready for a sitting there). On Second
+Life (2026-11-01, on the processor, at a busy club) her partner beside her was described untextured, grey-white hair
+and clothes named as his colours, in every picture: confident and uncheckable, the worst kind of error here. Since,
+a picture waits for its subject's look (bakes, worn things' textures, shapes) up to 12 s on a GPU and 30 s on the
+processor, says per worn thing what hadn't loaded, and the describer names no colour for an unloaded surface, says
+which colours aren't known yet and suggests asking again (`docs/access-app.md` > Describing > A look waited for).
 
 **M6. Making** (L, designed with her). Uploads (image, sound, mesh, with fees confirmed). Building with her own hands:
 ScriptAble's 2009 editor design (the official editor's tab names as the vocabulary, one prim at a time, faces by
 direction, shared values said once, metres and degrees, numbered choices, typed commands), plus what only a viewer
 with a renderer has: rez onto surfaces, what touches what, the assistant describing what a change did, and the
-assistant's `build` from a spec for "make me X". Land settings (About Land is already ops, `docs/land.md`).
+assistant's `build` from a spec for "make me X". Land settings (About Land is already ops, `docs/land.md`). Built
+(2026-11-01): uploads (`docs/access-app.md` > Uploading): pictures, sounds, animations and models by Control+U, Build >
+Upload a file, a folder's Upload a file here or `//upload`; what the file is and what Second Life will make of it said
+before anything is sent (a picture's pixels and resizing, a sound's length and channels, a model's triangles and size
+in metres), its name and folder asked, a model's scale, detail levels and physics offered at the official uploader's
+defaults; the fee worked out by the gate and confirmed by her own key in Notices; the result said and selected in the
+inventory; errors in words. Checked on the local grid only. Left: building with her own hands, land settings; for
+uploads, Second Life itself (real fees, an account's mesh upload rights, the large-texture price), a picture described
+by the assistant before it goes up, 2048-pixel pictures, levels of detail and physics from files, a blind tester's
+verdict.
 
 **Later.** The headset without sight (accessibility.md A8, if a tester wants VR); a mac reader if anyone asks.
 
@@ -399,11 +423,35 @@ her log (sent 12:57, `local/relay-logs/tester-20261101T175707-4c467c.txt`).
 - **Crossings**: train sounds fading in and out at crossings; at the end, a crossing into the next region lost her seat
   (the train said "Driver missing! stopping..."), the next region's connection failed, and our reconnect's login was
   refused ("Login canceled"), so she relogged and reported a crash; when the train moved again copies of her skirt and
-  her pet were left behind. Being looked into on branch `access-crossings`.
+  her pet were left behind. What was ours went into 0.1.0.737 (`docs/client.md` > crossings): LibreMetaverse's
+  minute-long wait for a UseCircuitCode acknowledgement the region never sent (the viewer sends none on a crossing),
+  a sound staying with the region its object was first heard in, copies of her attachments and the seat left in old
+  regions, and a silent relog; the region not acknowledging and dropping her seat within ~10 s was Second Life's.
+- **Memory** (her log, not her words): 2.0-2.4 GB for the whole ride on her 8 GB PC, ~2 GB of it the managed heap and
+  much of that fragmented, 107 s of collection pauses; mostly whole-region scans while seated, a change queue without
+  bound and left regions kept alive between the view's pictures. Fixed after 737 (`docs/performance.md` > Sojourn
+  Access on a small PC); her next long log says how much it moved.
 - IMs not read was her own setting (solved).
+- Evening, 0.1.0.737 (her log `tester-20261101T225505-44b38a`): the train round her atoll crossed 39 borders and the
+  seat held every time; the first picture after login still took about three minutes on her processor (warm-up 199 s),
+  sped up after (`docs/performance.md` > The first picture after login). A description from the picture worked while
+  riding ("Wow!") but framed her own train from her eyes and named her as its owner (fixed: a seat is pictured from
+  outside, she's "you"). Speed lines in m/s were ours; her partner's script says the throttle in percent. At a club the
+  "Now playing" titles kept up with the music ("My God this is great!"): wanted, so they stay on. She asked for a sound
+  on deleting (built: the `deleted` earcon) and `//touch OBJECT` (it already existed; told her). A typed gesture
+  trigger went out as text while the list played it (fixed: triggers read on demand). Wishes, not asks: a HUD's map
+  described (HUDs out of sight, next build), carnival bumper cars by arrow keys (planned with her partner), and a ride
+  down a waterslide recorded and described afterwards (pictures taken during a ride, described as a sequence; not
+  started).
+- **Rail switches** (that evening): two wrong turns at switches on the train, backing up and resetting
+  them, not knowing how to handle switches. Built after 737: a switch ahead said once with how it's set, W for the next
+  one, Shift+W or `//switch` to throw it (`docs/access-app.md` > Rail switches), on the SLRR switch as the SL wiki
+  documents it (her partner pointed to the standard); not yet checked against a real switch.
 - That afternoon she told other blind residents about Sojourn Access, and at least two were downloading it (through
   Tessel, 13:58 SLT). They have no relay token, so no assistant and no Send a log (it points them to the issues page);
-  what they say may come through her.
+  what they say may come through her. The user said (2026-11-01) to give everyone codes and that they'd watch the
+  relay's credit, handling it if it runs low: two friends' tokens (`tester-friend-1`, `-2`, $40 a month each) went
+  to Tessel to pass on; more on asking (`python tools/relay.py token new NAME --cap 40`).
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
@@ -422,13 +470,18 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Open threads (ours, not hers to answer)
 
-- The renderer out of sight could start only when needed (~550 MB less on an 8 GB PC, a second's wait on the first
-  faces list).
+- The renderer out of sight could start only when needed: on the processor, unseen, it's ~700 MB of committed memory
+  (~0.25-0.3 GB of working set), against the first picture, face list or touch waiting for it to start and, on her
+  2400G, for its shaders (minutes, by her log); `docs/performance.md` > Sojourn Access on a small PC. Undecided.
 - The assistant's prompt names the agent API's port as 9720 (`assistant/prompt-powers.md`); Access's is 9725.
 - Branch `fix/own-voice` (arrivals in Access's own voice) is WIP, not wired in.
 - Her PC's log (2026-10-31) named both chips at Vulkan 1.1.125 (driver 2.0.116, by its look a 2019 OEM driver): the view
-  now draws on the processor there. Her real seconds a picture are in her next log ("on the processor: ..."); if
-  they're too slow on the 2400G, the levers are the warm-up's reach, the picture sizes and the probe. AMD's legacy
+  now draws on the processor there. Her logs of 2026-11-01 showed a session's first frame taking 1-3 minutes of
+  compiling, then ~1 s a picture; the compiling was cut that day (`docs/performance.md` > The first picture after
+  login: about 2.5 times less, a first frame at once, no shadows, and descriptions waiting for their pictures and
+  saying so). Her next log's picture lines say how busy her processor was meanwhile. The lever left is a cache that
+  lasts: Mesa's disk cache, which llvmpipe would use for exactly this code, isn't built on Windows (upstream's
+  meson refuses it), so it would mean building lavapipe ourselves with it made to work there. AMD's legacy
   driver for Polaris and Vega (Adrenalin 26.5.2, Ryzen 2000G APUs included) would probably give her GPU Vulkan 1.3
   and faster pictures (reports mixed for Vega), an option to mention, never asked of her. Running the renderer itself
   on her driver isn't a 1.2 path: 1.1.125 predates dynamic rendering, synchronization2 and timeline semaphores, so
@@ -440,6 +493,9 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
+- Sent with 0.1.0.737 (2026-11-01): a log after her next ride, even a good one (it now records each crossing);
+  where she found the skirt and pet copies (Alt+7?); for her partner, whether his train stops a few seconds after losing
+  its driver, and whether riders in other viewers are dropped at that corner too.
 - Sent with 0.1.0.718 (2026-10-31, 23:22): does the assistant now see on her PC (pictures on the processor), and
   how long does a description take? Are Control+Shift+G (gestures), L (copy the last answer) and O (sound output)
   good keys? Should a gesture say "Playing X." each time, or stay quiet since its chat line is read back? Answers
@@ -482,6 +538,11 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 - For the beacon and the marks: is a pip from where a walk is heading useful, or noise on top of the footsteps (on,
   quiet, now)? Walking to a beacon by hand: can she tell ahead from behind (it brightens within 20 degrees ahead)? Is
   O's list (doors, seats, touchable things within 12 m, sounded one by one) the right set and range?
+- For rail switches (after the next build): is a switch said early enough ("Switch in 40 metres", up to 60 m ahead), and
+  is the main line's or branch's name from the stand useful or noise? Do W and Shift+W sit well, or would she rather a
+  key that sets it to the main line and one to the branch? Did any switch on the atoll go unsaid, or say "unknown"? For
+  her partner: are the atoll's switches SLRR switch stands (named "Switch Stand", Main or Branch in the description),
+  and does touching the stand flip them?
 - For following and driving: should following say less (or more) as it goes? When driving, which feedback matters:
   speed changes, heading, what's ahead, and how far ahead?
 - Does she use a braille display's keyboard, dictation, or any input other than a physical keyboard, for answering
@@ -501,6 +562,11 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   Tab) easy to reach, or would she rather a key on an object? Faces by direction from where she stands ("the side
   facing you", "the left side") or by the object's own sides, or numbers only? Did the sunken city's chests have
   anything we haven't modelled (a part that only works when touched on one face, a hidden part)?
+- For HUDs (2026-11-01): on the train's driver HUD, does "Read its buttons" find the controls she uses, under names she'd
+  say, and is "Brake, button 2 of 9, at the top left" the right amount? Should the buttons come before the parts on a
+  one-prim HUD (they're its only real choices), and should reading start by itself the first time she arrives at an
+  unread HUD (a cent or less each time, through her code) rather than on Enter? Which HUDs does she use most, and do any
+  change pages (each page is read once on its own)?
 - For placing by words: what does she say when she places something ("a metre to my left", "in front of me", "on the
   table")? Is resting it on whatever's under the spot right, or should it stay at the height said?
 - For the second pane: Alt+Shift+4 to open it and go there, Alt+4 back to the first, Control+M to move what's marked:
@@ -510,5 +576,11 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   want her "**Wearing:" HUD labels once this exists, or would a line for the outfit folder worn be better?
 - Incognito (Ctrl+Shift+I): would she use it at all, and is a key that turns it on easily but off only by a physical
   press the right balance for her?
+- For uploads (2026-11-01): what does she upload most (pictures for a profile or a texture, sounds for a script,
+  models), and from where (files her partner makes, downloads)? Is the window's first text the right amount, line by line
+  (a picture's pixels and resizing, a sound's length and channels, a model's size in metres)? Would she want a picture
+  described by the assistant before it goes up, or a sound played? Does Control+U sit well (the official viewer's old
+  Upload Image key)? After an upload, should the focus go to the new item in the inventory, or stay where she was with
+  it selected there (as now)?
 - Voice: does she use voice chat? Is F4 held a good talk key (Scroll Lock, Pause and F12 are choices), and would she
   want who starts speaking said by itself (off now; Ctrl+Shift+V says it on asking)?

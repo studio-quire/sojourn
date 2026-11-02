@@ -4,6 +4,7 @@ using Sojourn.Client.Control;
 using Sojourn.Core.Agents;
 using Sojourn.Render.Realtime;
 using Sojourn.Render.World;
+using Sojourn.Session.Hud;
 using Vector2 = System.Numerics.Vector2;
 using Vector3 = System.Numerics.Vector3;
 
@@ -14,10 +15,11 @@ namespace Sojourn.Client.Hud;
 /// hides them), in the headset on a board the person calls up (<see cref="HudBoard"/>); touched where the pointer lands
 /// on them, with the same surface data a click in the viewer sends (face, ST, UV, and position, normal and binormal in
 /// HUD space); and pictured for the assistant, which presses them by position on a picture or by a prim's name
-/// (<see cref="HudApi"/>). The renderer places and draws them (Sojourn.Render Realtime/Hud.cs); this keeps what's worn,
-/// the person's press and the assistant's pictures. Main thread, except what goes through <see cref="OnMain"/>.
+/// (Sojourn.Session's HudApi, over this as its <see cref="IHudScreen"/>). The renderer places and draws them (Sojourn.Render
+/// Realtime/Hud.cs); this keeps what's worn, the person's press and the assistant's pictures. Main thread, except what
+/// goes through <see cref="OnMain"/>.
 /// </summary>
-public sealed class HudView
+public sealed class HudView : IHudScreen
 {
     /// <summary>The headset board's HUD screen: 16:9, as most of the monitors HUDs are laid out on.</summary>
     public const float BoardAspect = 16f / 9f;
@@ -171,24 +173,9 @@ public sealed class HudView
     }
 
     /// <summary>A pick on one part alone, at its middle or, failing that, a few points across it.</summary>
-    public PickHit? PickPart(HudPart part)
-    {
-        var lo = new Vector2(part.Min.Y, part.Min.Z);
-        var hi = new Vector2(part.Max.Y, part.Max.Z);
-        foreach (var f in new[] { (0.5f, 0.5f), (0.3f, 0.3f), (0.7f, 0.3f), (0.3f, 0.7f), (0.7f, 0.7f), (0.5f, 0.2f), (0.5f, 0.8f), (0.2f, 0.5f), (0.8f, 0.5f) })
-        {
-            var at = new Vector2(lo.X + (hi.X - lo.X) * f.Item1, lo.Y + (hi.Y - lo.Y) * f.Item2);
-            if (PickAtHud(at, p => p.ID == part.Id) is { } h) return h;
-        }
-        return null;
-    }
+    public PickHit? PickPart(HudPart part) => Huds.PickPart((yz, only) => PickAtHud(yz, only), part);
 
-    public static TouchSurface Surface(PickHit h) => h.Surface is { } s
-        ? new TouchSurface(s.Face, L(s.ST), L(s.UV), L(h.Point), L(s.Normal), L(s.Binormal))
-        : TouchSurface.None with { Position = L(h.Point) };
-
-    static LibreMetaverse.Vector3 L(Vector3 v) => new(v.X, v.Y, v.Z);
-    static LibreMetaverse.Vector2 L(Vector2 v) => new(v.X, v.Y);
+    public static TouchSurface Surface(PickHit h) => Huds.Surface(h);
 
     // --- the person's press ------------------------------------------------------------------------------------------
 
@@ -249,70 +236,52 @@ public sealed class HudView
     TouchSurface SurfaceNow(Down d) =>
         d.Where() is { } uv && PickAt(uv, p => p.ID == d.Hit.Id) is { } h ? Surface(h) : TouchSurface.None;
 
-    // --- pictures for the assistant ----------------------------------------------------------------------------------
+    // --- for SojournHud (IHudScreen) ----------------------------------------------------------------------------------
 
-    /// <summary>A picture of a window of HUD space: its middle (y, z), half height, size in pixels.</summary>
-    public sealed record Picture(int Number, Vector2 Center, float HalfHeight, int Width, int Height, float Aspect, ulong Region)
+    /// <summary>The headset's board while there's a headset (SojournHud's show).</summary>
+    public Func<HudBoard?>? Board { get; set; }
+
+    public bool Shown => Board?.Invoke()?.Shown ?? DesktopShown;
+
+    public void Show(bool on)
     {
-        public float HalfWidth => HalfHeight * Width / Height;
-
-        /// <summary>A pixel of the picture in HUD space (y, z).</summary>
-        public Vector2 ToHud(float x, float y) =>
-            new(Center.X - (2 * x / Width - 1) * HalfWidth, Center.Y - (2 * y / Height - 1) * HalfHeight);
-
-        /// <summary>A box of HUD space as the picture's pixels (left, top, width, height), or null if it's outside.</summary>
-        public (int X, int Y, int W, int H)? Rect(Vector3 min, Vector3 max)
-        {
-            float x0 = (Center.X - max.Y) / HalfWidth * 0.5f + 0.5f, x1 = (Center.X - min.Y) / HalfWidth * 0.5f + 0.5f;
-            float y0 = (Center.Y - max.Z) / HalfHeight * 0.5f + 0.5f, y1 = (Center.Y - min.Z) / HalfHeight * 0.5f + 0.5f;
-            x0 = Math.Clamp(x0, 0, 1); x1 = Math.Clamp(x1, 0, 1); y0 = Math.Clamp(y0, 0, 1); y1 = Math.Clamp(y1, 0, 1);
-            if (x1 - x0 < 1e-4f || y1 - y0 < 1e-4f) return null;
-            return ((int)MathF.Round(x0 * Width), (int)MathF.Round(y0 * Height), (int)MathF.Round((x1 - x0) * Width), (int)MathF.Round((y1 - y0) * Height));
-        }
+        if (Board?.Invoke() is { } board) board.Show(on); else DesktopShown = on;
     }
 
-    readonly List<Picture> _pictures = new();
+    public async Task<T> WithHudsAsync<T>(Func<HudsPlaced, HudPicker, T> f, T fallback, CancellationToken ct)
+    {
+        var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        OnMain(() =>
+        {
+            try { done.TrySetResult(f(_r.Huds, (yz, only) => PickAtHud(yz, only))); }
+            catch (Exception e) { done.TrySetException(e); }
+        });
+        try { return await done.Task.WaitAsync(TimeSpan.FromSeconds(2), ct); }
+        catch (TimeoutException) { return fallback; }
+    }
+
+    readonly List<HudPicture> _pictures = new();
     int _pictureCount;
 
-    public Picture? PictureNumbered(int n) { lock (_pictures) return _pictures.LastOrDefault(p => p.Number == n); }
-    public Picture? LastPicture { get { lock (_pictures) return _pictures.LastOrDefault(); } }
+    public HudPicture? Picture(int? number)
+    {
+        lock (_pictures) return number is { } n ? _pictures.LastOrDefault(p => p.Number == n) : _pictures.LastOrDefault();
+    }
 
     /// <summary>A picture of the HUD screen (hud null) or of one HUD, over a dark grey (HUDs are made to sit over a
-    /// scene): a PNG. The window for one HUD is its box with a margin, sized so the long side is at most 1024 pixels and
-    /// small HUDs come out bigger than they show.</summary>
-    public Task<(Picture Picture, byte[] Png)?> PictureAsync(HudObject? hud, CancellationToken ct, bool transparent = false)
+    /// scene): a PNG. HudPicture.For frames it.</summary>
+    public Task<(HudPicture Picture, byte[] Png)?> PictureAsync(HudObject? hud, bool transparent, CancellationToken ct)
     {
-        var done = new TaskCompletionSource<(Picture, byte[])?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var done = new TaskCompletionSource<(HudPicture, byte[])?>(TaskCreationOptions.RunContinuationsAsynchronously);
         OnMain(() =>
         {
             var (region, aspect, objects) = _r.Huds;
             if (objects.Count == 0) { done.TrySetResult(null); return; }
-            Vector2 center;
-            float hh;
-            int w, h;
-            if (hud is { } one)
-            {
-                float my = 0.04f + (one.Max.Y - one.Min.Y) * 0.08f, mz = 0.04f + (one.Max.Z - one.Min.Z) * 0.08f;
-                float bw = one.Max.Y - one.Min.Y + 2 * my, bh = one.Max.Z - one.Min.Z + 2 * mz;
-                center = new Vector2((one.Min.Y + one.Max.Y) / 2, (one.Min.Z + one.Max.Z) / 2);
-                // small HUDs bigger than they show, and nothing past 1024 pixels a side
-                float ppu = Math.Clamp(1024 / Math.Max(bw, bh), 900, 4000);
-                ppu = Math.Min(ppu, 1024 / Math.Max(bw, bh));
-                w = Math.Max(32, (int)MathF.Round(bw * ppu));
-                h = Math.Max(32, (int)MathF.Round(bh * ppu));
-                hh = bh / 2;
-            }
-            else
-            {
-                center = Vector2.Zero;
-                hh = 0.5f;
-                w = 1280;
-                h = Math.Clamp((int)MathF.Round(1280 / aspect), 320, 1280);
-            }
-            var pic = new Picture(Interlocked.Increment(ref _pictureCount), center, hh, w, h, aspect, region);
+            var (center, hh, w, h) = HudPicture.For(hud, aspect);
+            var pic = new HudPicture(Interlocked.Increment(ref _pictureCount), center, hh, w, h, aspect, region);
             _shotWanted = new HudShot(center, hh, w, h, (rgba, pw, ph) =>
             {
-                try { done.TrySetResult((pic, Png(rgba, pw, ph, transparent))); }
+                try { done.TrySetResult((pic, HudPicture.Png(rgba, pw, ph, transparent))); }
                 catch (Exception e) { done.TrySetException(e); }
             });
             lock (_pictures)
@@ -324,29 +293,9 @@ public sealed class HudView
         return WithTimeout(done.Task, ct);
     }
 
-    static async Task<(Picture, byte[])?> WithTimeout(Task<(Picture, byte[])?> t, CancellationToken ct)
+    static async Task<(HudPicture, byte[])?> WithTimeout(Task<(HudPicture, byte[])?> t, CancellationToken ct)
     {
         try { return await t.WaitAsync(TimeSpan.FromSeconds(5), ct); }
         catch (TimeoutException) { return null; }
-    }
-
-    /// <summary>Premultiplied sRGB over a dark grey (or kept transparent), as a PNG.</summary>
-    static byte[] Png(byte[] rgba, int w, int h, bool transparent)
-    {
-        if (transparent)
-        {
-            using var bmp = new SkiaSharp.SKBitmap(new SkiaSharp.SKImageInfo(w, h, SkiaSharp.SKColorType.Rgba8888, SkiaSharp.SKAlphaType.Premul));
-            System.Runtime.InteropServices.Marshal.Copy(rgba, 0, bmp.GetPixels(), rgba.Length);
-            using var data = bmp.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
-            return data.ToArray();
-        }
-        const int grey = 46;
-        for (int i = 0; i < rgba.Length; i += 4)
-        {
-            int a = rgba[i + 3];
-            for (int c = 0; c < 3; c++) rgba[i + c] = (byte)Math.Min(255, rgba[i + c] + grey * (255 - a) / 255);
-            rgba[i + 3] = 255;
-        }
-        return Sojourn.Render.ImageCodec.EncodePng(rgba, w, h);
     }
 }

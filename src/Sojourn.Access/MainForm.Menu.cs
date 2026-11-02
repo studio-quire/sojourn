@@ -29,6 +29,7 @@ public sealed partial class MainForm
             _sitItem = Item("&Sit on the ground", null, () => _ = SitOrStandAsync()),
             _flyItem = Item("&Fly", null, ToggleFly),
             Later("Wal&k mode", "F3", ToggleWalk),
+            RouteMenu(),
             _gesturesItem = new ToolStripMenuItem("&Gestures") { Name = "menuGestures", ShortcutKeyDisplayString = "Control+Shift+G" },
             new ToolStripSeparator(),
             _awayItem = Item("&Away", null, () => _ = PresenceAsync("away")),
@@ -44,7 +45,7 @@ public sealed partial class MainForm
             new ToolStripSeparator(),
             Item("Who's in &voice", "Control+Shift+V", SayVoice),
             _micItem = Item("&Open mic", "Shift+F4", ToggleVoiceMode),
-            Item("Sound o&ut of the next device", "Control+Shift+O", () => _ = NextOutputAsync()));
+            OutputMenu());
         world.DropDownOpening += (_, _) => WorldShown();
         _gesturesItem.DropDownItems.Add(new ToolStripMenuItem("(none yet)"));   // a submenu needs an item to open
         _gesturesItem.DropDownOpening += (_, _) => FillGestures(_gesturesItem.DropDownItems);
@@ -92,10 +93,15 @@ public sealed partial class MainForm
             _timesItem.Checked = _set.Timestamps;
         };
 
+        // the official viewer's Build menu, where its uploads are; building by hand (M6) comes here too
+        Top("&Build",
+            Later("&Upload a file...", "Control+U", UploadKey));
+
         Top("&Help",
             Later("&Keys", "F1", () => ShowKeys(walk: false)),
             Item("&Slash commands", "//help", () => _ = _cmd.RunAsync("//help")),
             Later("Send a &log to Studio Quire", "//sendlog", SendLog),
+            Later("&Message the builders (Claude, at Studio Quire)", "Control+Shift+B", GoBuilders),
             Item("&About Sojourn Access", "//about", () => _ = _cmd.RunAsync("//about")));
 
         MainMenuStrip = _menu;

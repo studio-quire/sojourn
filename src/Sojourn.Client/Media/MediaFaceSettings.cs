@@ -276,22 +276,29 @@ public sealed class MediaFaceSettings
         }
         catch (Exception e) when (e is LeapError or NotConnected or OperationCanceledException)
         {
-            return (op == "remove_media" ? "Take media off a face" : "Change who may use a face's media", $"{e.Message}: this will likely fail.");
+            return (Lang.T(op == "remove_media" ? "Take media off a face" : "Change who may use a face's media"), Lang.F("{0}: this will likely fail.", e.Message));
         }
-        string where = $"{t.Name}, face {t.Face}{(t.Mine ? "" : " (not the person's own object)")}";
+        string where = t.Mine ? Lang.F("{0}, face {1}", t.Name, t.Face) : Lang.F("{0}, face {1} (not the person's own object)", t.Name, t.Face);
         if (op == "remove_media")
-            return ($"Take the media off {where}", was is null ? "It has none." : $"It shows {Clip(was.CurrentURL.Length > 0 ? was.CurrentURL : was.HomeURL)}; everyone sees it go.");
+            return (Lang.F("Take the media off {0}", where),
+                was is null ? Lang.T("It has none.") : Lang.F("It shows {0}; everyone sees it go.", Clip(was.CurrentURL.Length > 0 ? was.CurrentURL : was.HomeURL)));
         LMediaEntry now;
         try { now = Changed(was, a); }
-        catch (LeapError e) { return ($"Change the media on {where}", $"{e.Message}: this will fail."); }
+        catch (LeapError e) { return (Lang.F("Change the media on {0}", where), Lang.F("{0}: this will fail.", e.Message)); }
         var lines = new List<string>();
-        string P(MediaPermission p) => string.Join(", ", PermNames(p));
-        if (a.Has("perms_interact")) lines.Add($"Who may use it: {(was is null ? "" : P(was.InteractPermissions) + " -> ")}{P(now.InteractPermissions)}.");
-        if (a.Has("perms_control")) lines.Add($"Who may change what it shows: {(was is null ? "" : P(was.ControlPermissions) + " -> ")}{P(now.ControlPermissions)}.");
+        string P(MediaPermission p) => string.Join(", ", PermNames(p).Select(n => Lang.T(n)));
+        if (a.Has("perms_interact"))
+            lines.Add(was is null ? Lang.F("Who may use it: {0}.", P(now.InteractPermissions)) : Lang.F("Who may use it: {0} -> {1}.", P(was.InteractPermissions), P(now.InteractPermissions)));
+        if (a.Has("perms_control"))
+            lines.Add(was is null ? Lang.F("Who may change what it shows: {0}.", P(now.ControlPermissions))
+                : Lang.F("Who may change what it shows: {0} -> {1}.", P(was.ControlPermissions), P(now.ControlPermissions)));
         if (a.Has("whitelist_enable") || a.Has("whitelist"))
-            lines.Add($"Whitelist {(now.EnableWhiteList ? "on" : "off")}{(now.WhiteList.Length > 0 ? ": " + Clip(string.Join(", ", now.WhiteList)) : "")}.");
-        if (was is null) lines.Add($"New media on this face: {Clip(now.CurrentURL.Length > 0 ? now.CurrentURL : now.HomeURL)}.");
-        return ($"Change who may use the media on {where}", string.Join(" ", lines) + " Everyone nearby is affected.");
+            lines.Add(now.WhiteList.Length > 0
+                ? Lang.F(now.EnableWhiteList ? "Whitelist on: {0}." : "Whitelist off: {0}.", Clip(string.Join(", ", now.WhiteList)))
+                : Lang.T(now.EnableWhiteList ? "Whitelist on." : "Whitelist off."));
+        if (was is null) lines.Add(Lang.F("New media on this face: {0}.", Clip(now.CurrentURL.Length > 0 ? now.CurrentURL : now.HomeURL)));
+        lines.Add(Lang.T("Everyone nearby is affected."));
+        return (Lang.F("Change who may use the media on {0}", where), string.Join(" ", lines));
     }
 
     static string Clip(string s, int n = 80) => s.Length <= n ? s : s[..(n - 1)] + "…";

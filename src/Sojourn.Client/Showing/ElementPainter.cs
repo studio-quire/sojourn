@@ -311,7 +311,7 @@ public static class ElementPainter
         var k = draw.K;
         var f = Font(k.Regular, 15);
         var vf = Font(k.Regular, 13.5f);
-        string value = p.Max == 1 ? $"{Math.Round(p.Value * 100)}%" : $"{Amount(p.Value)} of {Amount(p.Max)}";
+        string value = p.Max == 1 ? $"{Math.Round(p.Value * 100)}%" : Lang.F("{0} of {1}", Amount(p.Value), Amount(p.Max));
         float yy = y;
         if (p.Label is { } label)
         {
@@ -457,7 +457,7 @@ public static class ElementPainter
 
     // --- where things are --------------------------------------------------------------------------------------------
 
-    static string Metres(int m) => m >= 1000 ? $"{m / 1000.0:0.#} km" : $"{m} m";
+    static string Metres(int m) => m >= 1000 ? Lang.F("{0} km", (m / 1000.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)) : Lang.F("{0} m", m);
 
     static float Toward(Painter draw, TowardBlock t, BlockLive live, float x0, float x1, float y)
     {
@@ -523,7 +523,8 @@ public static class ElementPainter
         var ff = Font(k.Semi, 11.5f);
         // north at the rim (the map turns with them: ahead is up)
         float na = live.North * MathF.PI / 180;
-        draw.Text("N", cx + MathF.Sin(na) * (R - 11) - Panel.Measure(ff, "N") / 2, cy - MathF.Cos(na) * (R - 11) + 4, ff, k.Faint);
+        var north = Lang.T("N", "compass");
+        draw.Text(north, cx + MathF.Sin(na) * (R - 11) - Panel.Measure(ff, north) / 2, cy - MathF.Cos(na) * (R - 11) + 4, ff, k.Faint);
         if (live.MapRadius > 0)
         {
             var sf = Font(k.Regular, 11.5f);

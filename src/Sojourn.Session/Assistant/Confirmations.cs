@@ -17,7 +17,7 @@ namespace Sojourn.Session.Assistant;
 /// default): vendors, rental boxes and tip jars once granted debit permission can take L$ that way, and the client
 /// can't tell which hold it. Only ops on the agent API are gated; the person's own hand doesn't go through here.
 /// </summary>
-public sealed class Confirmations
+public sealed partial class Confirmations
 {
     readonly AgentSession _s;
     readonly Panel _panel;
@@ -79,6 +79,9 @@ public sealed class Confirmations
                 // an amount the object wouldn't take says so first; then whether it's affordable
                 return no ?? Unaffordable(data) ?? await AskAsync(Kind.Spend, pump, op, data, note: note);
             };
+        // (an upload's fee worked out and pinned first: Confirmations.Uploads.cs)
+        if (kind is Kind.Spend && pump == "TesselAgent" && op is "upload" or "uploadMesh")
+            return async () => await UploadFeeAsync(op, data) ?? await AskAsync(Kind.Spend, pump, op, data);
         return kind is { } k ? () => AskAsync(k, pump, op, data) : null;
     }
 
@@ -138,7 +141,7 @@ public sealed class Confirmations
     {
         ("TesselAgent", "pay") => Kind.Spend,
         ("TesselObjects", "buy") or ("TesselGroups", "create") => Kind.Spend,
-        ("TesselAgent", "upload" or "uploadMesh") => _uploadsCost ? Kind.Spend : null,
+        ("TesselAgent", "upload" or "uploadMesh") => UploadCosts(op, a) ? Kind.Spend : null,
         ("TesselBuild", "delete" or "returnObjects" or "removeFromContents") => Kind.Delete,
         ("TesselBuild", "take") => a.Has("folder_id") && InTrash(a.Uuid("folder_id")) ? Kind.Delete : null,
         ("TesselInventory", "move") => InTrash(a.Uuid("folder_id")) ? Kind.Delete : null,
@@ -265,7 +268,7 @@ public sealed class Confirmations
             _panel.Update(s =>
             {
                 if (s.Confirm == pending) s.Confirm = null;
-                s.Status = yes ? $"confirmed: {title}" : $"not done: {title}";
+                s.Status = yes ? Lang.F("confirmed: {0}", title) : Lang.F("not done: {0}", title);
             });
             return yes ? null : $"the person didn't confirm ({kind.ToString().ToLowerInvariant()}: {title}); nothing was done";
         }
@@ -285,9 +288,9 @@ public sealed class Confirmations
             case ("TesselAgent", "pay"):
             {
                 var to = a.Uuid("to");
-                string who = to is { } id ? await NameAsync(id) : "nobody";
-                var desc = a.Str("desc") is { Length: > 0 } d ? $"Note: {d}" : "";
-                return ($"Pay L${a.Int("amount", 0)} to {who}", Join(desc, Balance()));
+                string who = to is { } id ? await NameAsync(id) : Lang.T("nobody");
+                var desc = a.Str("desc") is { Length: > 0 } d ? Lang.F("Note: {0}", d) : "";
+                return (Lang.F("Pay L${0} to {1}", a.Int("amount", 0), who), Join(desc, Balance()));
             }
             case ("TesselObjects", "buy"):
             {
@@ -295,80 +298,88 @@ public sealed class Confirmations
                 var props = id is { } oid ? _s.Region?.PrimById(oid)?.Properties : null;
                 // the op checks the price asked against the object's own and buys at the object's
                 var price = props?.SalePrice ?? a.Int("price", 0);
-                string what = props?.SaleType switch { SaleType.Copy => "a copy of ", SaleType.Contents => "the contents of ", _ => "" };
-                return ($"Buy {what}{await NameAsync(id)} for L${price}", Balance());
+                var name = await NameAsync(id);
+                return (props?.SaleType switch
+                {
+                    SaleType.Copy => Lang.F("Buy a copy of {0} for L${1}", name, price),
+                    SaleType.Contents => Lang.F("Buy the contents of {0} for L${1}", name, price),
+                    _ => Lang.F("Buy {0} for L${1}", name, price),
+                }, Balance());
             }
             case ("TesselGroups", "create"):
-                return ($"Create the group \"{a.Str("name")}\"", "On Second Life creating a group costs L$100. " + Balance());
+                return (Lang.F("Create the group \"{0}\"", a.Str("name")), Join(Lang.T("On Second Life creating a group costs L$100."), Balance()));
             case ("TesselAgent", "upload" or "uploadMesh"):
-                return ($"Upload {Path.GetFileName(a.Str("path") ?? "a file")}", "Uploads cost L$ on this grid. " + Balance());
+                return UploadAsk(a);
             case ("TesselBuild", "delete"):
-                return ($"Delete {await ObjectsAsync(a)}", "They go to your Trash.");
+                return (Lang.F("Delete {0}", await ObjectsAsync(a)), Lang.T("They go to your Trash."));
             case ("TesselBuild", "take"):
-                return ($"Delete {await ObjectsAsync(a)}", "Taken into your Trash.");
+                return (Lang.F("Delete {0}", await ObjectsAsync(a)), Lang.T("Taken into your Trash."));
             case ("TesselBuild", "returnObjects"):
-                return ($"Return {await ObjectsAsync(a)} to their owners", "");
+                return (Lang.F("Return {0} to their owners", await ObjectsAsync(a)), "");
             case ("TesselBuild", "removeFromContents"):
             {
                 var (obj, item) = await TaskItemAsync(a);
-                return ($"Remove {item} from inside {obj}", "It's deleted from the object.");
+                return (Lang.F("Remove {0} from inside {1}", item, obj), Lang.T("It's deleted from the object."));
             }
             case ("TesselInventory", "move"):
-                return ($"Move to Trash: {ItemNames(Ids(a))}", "");
+                return (Lang.F("Move to Trash: {0}", ItemNames(Ids(a))), "");
             case ("TesselInventory", "delete"):
             {
                 var names = ItemNames(Ids(a));
-                var worn = _s.InventoryOps.WornNote(a);
-                return a.Bool("purge", false) ? ($"Delete for good: {names}", Join("Purged items can't be recovered.", worn ?? "")) : ($"Move to Trash: {names}", worn ?? "");
+                var worn = Lang.Tn(_s.InventoryOps.WornNote(a)) ?? "";
+                return a.Bool("purge", false) ? (Lang.F("Delete for good: {0}", names), Join(Lang.T("Purged items can't be recovered."), worn)) : (Lang.F("Move to Trash: {0}", names), worn);
             }
             case ("TesselInventory", "emptyTrash"):
-                return ("Empty your Trash", "Everything in it is deleted for good.");
+                return (Lang.T("Empty your Trash"), Lang.T("Everything in it is deleted for good."));
             case ("TesselAgent", "parcelReturn"):
-                return ($"Return objects on {await ParcelAsync()} to their owners", a.Bool("others", false) ? "Everyone's but yours." : await OwnersAsync(a));
+                return (Lang.F("Return objects on {0} to their owners", await ParcelAsync()), a.Bool("others", false) ? Lang.T("Everyone's but yours.") : await OwnersAsync(a));
             case ("TesselAgent", "deletePick"):
-                return ("Delete one of your profile picks", "");
+                return (Lang.T("Delete one of your profile picks"), "");
             case ("TesselGroups", "deleteRole"):
-                return ("Delete a group role", "");
+                return (Lang.T("Delete a group role"), "");
             case ("TesselBuild", "modify") when kind == Kind.Delete:
-                return ($"Make {await ObjectsAsync(a)} temporary", Join("The region deletes temporary objects within a minute, for good (not to Trash).", PermDetail(a)));
+                return (Lang.F("Make {0} temporary", await ObjectsAsync(a)), Join(Lang.T("The region deletes temporary objects within a minute, for good (not to Trash)."), PermDetail(a)));
             case ("TesselBuild", "rez") when kind == Kind.Delete:
-                return ($"Rez {ItemName(a.Uuid("item_id"))} as a temporary object",
-                    Join("It's no-copy: it leaves your inventory, and the region deletes it within a minute, for good.", PermDetail(a)));
+                return (Lang.F("Rez {0} as a temporary object", ItemName(a.Uuid("item_id"))),
+                    Join(Lang.T("It's no-copy: it leaves your inventory, and the region deletes it within a minute, for good."), PermDetail(a)));
             case ("TesselAgent", "give"):
             {
-                string what = a.Uuid("folder_id") is { } f ? $"the folder {ItemName(f)}" : ItemName(a.Uuid("item_id"));
+                var who = await NameAsync(a.Uuid("to"));
                 var note = a.Uuid("folder_id") is { } fid ? FolderNote(fid) : NoCopyNote(a.Uuid("item_id"));
-                return ($"Give {what} to {await NameAsync(a.Uuid("to"))}", note);
+                return (a.Uuid("folder_id") is { } f ? Lang.F("Give the folder {0} to {1}", ItemName(f), who) : Lang.F("Give {0} to {1}", ItemName(a.Uuid("item_id")), who), note);
             }
             case ("TesselBuild", "addToContents") when kind == Kind.Script:
-                return ($"Put {ItemNames(ItemIds(a))} into {await NameAsync(ContentsOps.PrimId(a))} and run it", ScriptRisk);
+                return (Lang.F("Put {0} into {1} and run it", ItemNames(ItemIds(a)), await NameAsync(ContentsOps.PrimId(a))), Lang.T(ScriptRisk));
             case ("TesselBuild", "addToContents"):
-                return ($"Put {ItemNames(ItemIds(a))} into {await NameAsync(ContentsOps.PrimId(a))}", "That object isn't yours: the items become its owner's.");
+                return (Lang.F("Put {0} into {1}", ItemNames(ItemIds(a)), await NameAsync(ContentsOps.PrimId(a))), Lang.T("That object isn't yours: the items become its owner's."));
             case ("TesselGroups", "notice"):
-                return ($"Send a group notice with {ItemName(a.Uuid("item_id"))} attached", "Every member gets a copy.");
+                return (Lang.F("Send a group notice with {0} attached", ItemName(a.Uuid("item_id"))), Lang.T("Every member gets a copy."));
             case ("TesselGroups", "invite"):
-                return ($"Invite {await NameAsync(a.Uuid("to"))} to {GroupName(a.Uuid("group_id"))} in {await RoleNamesAsync(a)}",
-                    "A role can carry powers in the group, up to an owner's.");
+                return (Lang.F("Invite {0} to {1} in {2}", await NameAsync(a.Uuid("to")), GroupName(a.Uuid("group_id")), await RoleNamesAsync(a)),
+                    Lang.T("A role can carry powers in the group, up to an owner's."));
             case ("TesselBuild", _):
-                return ($"Change permissions of {await ObjectsAsync(a)}", PermDetail(a));
+                return (Lang.F("Change permissions of {0}", await ObjectsAsync(a)), PermDetail(a));
             case ("TesselInventory", "update"):
-                return ($"Change permissions of {ItemName(InventoryTarget(a))}", PermDetail(a));
+                return (Lang.F("Change permissions of {0}", ItemName(InventoryTarget(a))), PermDetail(a));
             case ("TesselAgent", "parcelSet"):
-                return ($"Change the settings of {await ParcelAsync()}", string.Join(", ", a.Select(kv => $"{kv.Key}: {Short(kv.Value)}").Where(s => !s.StartsWith("op:"))));
+                return (Lang.F("Change the settings of {0}", await ParcelAsync()), string.Join(", ", a.Select(kv => $"{kv.Key}: {Short(kv.Value)}").Where(s => !s.StartsWith("op:"))));
             case ("TesselAgent", "parcelEject"):
-                return ($"{(a.Bool("ban", false) ? "Eject and ban" : "Eject")} {await NameAsync(a.Uuid("to"))} from your parcel", "");
+            {
+                var who = await NameAsync(a.Uuid("to"));
+                return (a.Bool("ban", false) ? Lang.F("Eject and ban {0} from your parcel", who) : Lang.F("Eject {0} from your parcel", who), "");
+            }
             case ("TesselGroups", _):
-                return ($"Change group roles or settings ({op}) in {GroupName(a.Uuid("group_id"))}", string.Join(", ", a.Where(kv => kv.Key != "op").Select(kv => $"{kv.Key}: {Short(kv.Value)}")));
+                return (Lang.F("Change group roles or settings ({0}) in {1}", op, GroupName(a.Uuid("group_id"))), string.Join(", ", a.Where(kv => kv.Key != "op").Select(kv => $"{kv.Key}: {Short(kv.Value)}")));
             case ("LLAgent", "requestTouch"):
-                return ($"Touch {await NameAsync(a.Uuid("obj_uuid"))}", TouchRisk);
+                return (Lang.F("Touch {0}", await NameAsync(a.Uuid("obj_uuid"))), Lang.T(TouchRisk));
             case ("LLNotifications", "respond") when kind == Kind.Open:
             {
                 var n = _s.Notify.Resolve(a.Str("uuid")) is { } id ? _s.Notify.Get(id) : null;
                 var p = n?["payload"] as JsonObject;
                 var url = p?.Str("url") ?? "";
-                string owner = p?.Uuid("owner_id") is { } oid ? await NameAsync(oid) : "someone";
-                return ($"Open the web page {(url.Length > 90 ? url[..90] + "..." : url)}",
-                    $"Offered by {p?.Str("object_name") ?? "an object"}, owned by {owner}. The site sees your address.");
+                string owner = p?.Uuid("owner_id") is { } oid ? await NameAsync(oid) : Lang.T("someone");
+                return (Lang.F("Open the web page {0}", url.Length > 90 ? url[..90] + "..." : url),
+                    Lang.F("Offered by {0}, owned by {1}. The site sees your address.", p?.Str("object_name") ?? Lang.T("an object"), owner));
             }
             case ("LLNotifications", "respond") when kind == Kind.Touch:
             {
@@ -376,9 +387,9 @@ public sealed class Confirmations
                 var n = id is { } nid ? _s.Notify.Get(nid) : null;
                 var subs = n?["substitutions"] as JsonObject;
                 var button = id is { } bid ? _s.Notify.Choose(bid, a["response"]) : null;
-                string label = button == "!!llTextBox!!" ? "send text to" : $"press \"{button}\" on";
-                return ($"{char.ToUpperInvariant(label[0])}{label[1..]} {subs?.Str("TITLE") ?? "an object"}'s menu",
-                    $"Owned by {subs?.Str("NAME") ?? subs?.Str("GROUPNAME") ?? "someone else"}. {TouchRisk}");
+                var menu = subs?.Str("TITLE") ?? Lang.T("an object");
+                return (button == "!!llTextBox!!" ? Lang.F("Send text to {0}'s menu", menu) : Lang.F("Press \"{0}\" on {1}'s menu", button, menu),
+                    Join(Lang.F("Owned by {0}.", subs?.Str("NAME") ?? subs?.Str("GROUPNAME") ?? Lang.T("someone else")), Lang.T(TouchRisk)));
             }
             case ("LLNotifications", "respond"):
             {
@@ -386,22 +397,23 @@ public sealed class Confirmations
                 var name = n?.Str("name");
                 var subs = n?["substitutions"] as JsonObject;
                 if (name == "JoinGroupCanAfford")
-                    return ("Join the group and pay its fee", Join(n?.Str("message") ?? "", Balance()));
+                    return (Lang.T("Join the group and pay its fee"), Join(n?.Str("message") ?? "", Balance()));
+                string obj = subs?.Str("OBJECTNAME") ?? Lang.T("an object"), owner = subs?.Str("NAME") ?? Lang.T("someone");
                 if (name == "ScriptQuestionExperience")
-                    return ((n?["payload"] as JsonObject)?.Str("experience_name") is { Length: > 0 } en ? $"Join the experience \"{en}\"" : "Join an experience",
-                        $"Asked by {subs?.Str("OBJECTNAME") ?? "an object"} (owned by {subs?.Str("NAME") ?? "someone"}). Its scripts can then, wherever it runs, without asking again: "
-                        + (subs?.Str("QUESTIONS") ?? "").Replace("\n", "; ").Trim(' ', ';'));
-                return ($"Give {subs?.Str("OBJECTNAME") ?? "an object"} (owned by {subs?.Str("NAME") ?? "someone"}) permission to:",
+                    return ((n?["payload"] as JsonObject)?.Str("experience_name") is { Length: > 0 } en ? Lang.F("Join the experience \"{0}\"", en) : Lang.T("Join an experience"),
+                        Lang.F("Asked by {0} (owned by {1}). Its scripts can then, wherever it runs, without asking again: {2}", obj, owner,
+                            (subs?.Str("QUESTIONS") ?? "").Replace("\n", "; ").Trim(' ', ';')));
+                return (Lang.F("Give {0} (owned by {1}) permission to:", obj, owner),
                     subs?.Str("QUESTIONS") ?? n?.Str("message") ?? "");
             }
             case ("SojournReport", "send") when Report?.Invoke(a) is { } report:
                 return report;
             case ("ScriptEditor", "object.item.create"):
-                return ($"Put a new script \"{a.Str("name")}\" into {await NameAsync(a.Uuid("prim_id"))} and run it", ScriptRisk);
+                return (Lang.F("Put a new script \"{0}\" into {1} and run it", a.Str("name"), await NameAsync(a.Uuid("prim_id"))), Lang.T(ScriptRisk));
             case ("ScriptEditor", "object.content.save"):
             {
                 var (obj, item) = await TaskItemAsync(new JsonObject { ["id"] = a.Str("prim_id"), ["item_id"] = a.Str("item_id") });
-                return ($"Replace what's in {item} inside {obj}", ScriptRisk);
+                return (Lang.F("Replace what's in {0} inside {1}", item, obj), Lang.T(ScriptRisk));
             }
         }
         if (OtherTouches?.Invoke(pump, op, a) is { } other) return other;
@@ -410,7 +422,7 @@ public sealed class Confirmations
 
     static string Join(params string[] parts) => string.Join(" ", parts.Where(p => p.Length > 0));
 
-    string Balance() => _s.BalanceKnown && _s.Client is { } c ? $"Your balance: L${c.Self.Balance}." : "";
+    string Balance() => _s.BalanceKnown && _s.Client is { } c ? Lang.F("Your balance: L${0}.", c.Self.Balance) : "";
 
     static string Short(JsonNode? n)
     {
@@ -421,56 +433,67 @@ public sealed class Confirmations
     static string PermDetail(JsonObject a)
     {
         var parts = new List<string>();
-        if (a.Str("next_perms") is { } np) parts.Add($"next owner can: {Letters(np)}");
-        if (a.Str("everyone_perms") is { } ep) parts.Add($"everyone can: {Letters(ep)}");
-        if (a.Str("group_perms") is { } gp) parts.Add($"group can: {Letters(gp)}");
-        if (a.Has("everyone_copy")) parts.Add($"everyone can copy: {(a.Bool("everyone_copy", false) ? "yes" : "no")}");
-        if (a["sale"] is JsonObject so) parts.Add($"for sale: L${so.Int("price", 0)} ({so.Str("type") ?? "original"})");
-        else if (a["sale"] is JsonValue sv && sv.TryGetValue<bool>(out var b) && !b) parts.Add("not for sale");
+        if (a.Str("next_perms") is { } np) parts.Add(Lang.F("next owner can: {0}", Letters(np)));
+        if (a.Str("everyone_perms") is { } ep) parts.Add(Lang.F("everyone can: {0}", Letters(ep)));
+        if (a.Str("group_perms") is { } gp) parts.Add(Lang.F("group can: {0}", Letters(gp)));
+        if (a.Has("everyone_copy")) parts.Add(Lang.F("everyone can copy: {0}", Lang.T(a.Bool("everyone_copy", false) ? "yes" : "no")));
+        if (a["sale"] is JsonObject so) parts.Add(Lang.F("for sale: L${0} ({1})", so.Int("price", 0), Lang.T(so.Str("type") ?? "original", "sale")));
+        else if (a["sale"] is JsonValue sv && sv.TryGetValue<bool>(out var b) && !b) parts.Add(Lang.T("not for sale"));
         return string.Join("; ", parts);
     }
 
     static string Letters(string mct)
     {
         var words = new List<string>();
-        if (mct.Contains('M', StringComparison.OrdinalIgnoreCase)) words.Add("modify");
-        if (mct.Contains('C', StringComparison.OrdinalIgnoreCase)) words.Add("copy");
-        if (mct.Contains('T', StringComparison.OrdinalIgnoreCase)) words.Add("transfer");
-        return words.Count == 0 ? "nothing" : string.Join(", ", words);
+        if (mct.Contains('M', StringComparison.OrdinalIgnoreCase)) words.Add(Lang.T("modify"));
+        if (mct.Contains('C', StringComparison.OrdinalIgnoreCase)) words.Add(Lang.T("copy"));
+        if (mct.Contains('T', StringComparison.OrdinalIgnoreCase)) words.Add(Lang.T("transfer"));
+        return words.Count == 0 ? Lang.T("nothing") : string.Join(", ", words);
     }
 
     string NoCopyNote(UUID? itemId) =>
         itemId is { } id && _s.Inventory.Node(id) is InventoryItem it && (it.Permissions.OwnerMask & PermissionMask.Copy) == 0
-            ? "It's no-copy: it leaves your inventory." : "";
+            ? Lang.T("It's no-copy: it leaves your inventory.") : "";
 
     string FolderNote(UUID folderId)
     {
         if (_s.Client?.Inventory.Store is not { } store || !store.Contains(folderId)) return "";
         var items = store.GetContents(folderId).OfType<InventoryItem>().ToList();
         int noCopy = items.Count(i => (i.Permissions.OwnerMask & PermissionMask.Copy) == 0);
-        var s = $"{items.Count} item{(items.Count == 1 ? "" : "s")} in it" + (noCopy > 0 ? $", {noCopy} no-copy (they leave your inventory)" : "");
-        return store.GetContents(folderId).OfType<InventoryFolder>().Any() ? s + ", and the folders inside it." : s + ".";
+        bool one = items.Count == 1, folders = store.GetContents(folderId).OfType<InventoryFolder>().Any();
+        return (noCopy > 0, folders) switch
+        {
+            (false, false) => Lang.F(one ? "{0} item in it." : "{0} items in it.", items.Count),
+            (false, true) => Lang.F(one ? "{0} item in it, and the folders inside it." : "{0} items in it, and the folders inside it.", items.Count),
+            (true, false) => Lang.F(one ? "{0} item in it, {1} no-copy (they leave your inventory)." : "{0} items in it, {1} no-copy (they leave your inventory).", items.Count, noCopy),
+            (true, true) => Lang.F(one ? "{0} item in it, {1} no-copy (they leave your inventory), and the folders inside it."
+                : "{0} items in it, {1} no-copy (they leave your inventory), and the folders inside it.", items.Count, noCopy),
+        };
     }
 
-    string Renamed(UUID id, string now) =>
-        _wasNamed.TryGetValue(id, out var was) && was != now ? $" (renamed from \"{was}\" this session)" : "";
+    /// <summary>A thing's name in quotes, and what it was called before if an op renamed it this session.</summary>
+    string Quoted(UUID id, string now) =>
+        _wasNamed.TryGetValue(id, out var was) && was != now ? Lang.F("\"{0}\" (renamed from \"{1}\" this session)", now, was) : $"\"{now}\"";
 
-    string ItemName(UUID? id) => id is { } i && _s.Inventory.Node(i) is { } n ? $"\"{n.Name}\"{Renamed(i, n.Name)}" : "an item";
+    /// <summary>A quoted object's name, with its parts when it's a linkset.</summary>
+    static string WithParts(string quoted, int parts) => parts > 1 ? Lang.F("{0} ({1} parts)", quoted, parts) : quoted;
+
+    string ItemName(UUID? id) => id is { } i && _s.Inventory.Node(i) is { } n ? Quoted(i, n.Name) : Lang.T("an item");
 
     string ItemNames(List<UUID> ids) => Listed(ids.Select(i => ItemName(i)).ToList(), 6, "items");
 
     /// <summary>Names as a confirmation shows them: the first few, then "and N more". A list cut short is kept whole
-    /// for the confirmation's list key (the reader) and screen readers, as "N {what}". For the descriptions other parts
-    /// of the client add (<see cref="Cases"/>) too.</summary>
+    /// for the confirmation's list key (the reader) and screen readers, as "N {what}" (each what a catalog template,
+    /// "{0} items"). For the descriptions other parts of the client add (<see cref="Cases"/>) too.</summary>
     public static string Listed(IReadOnlyList<string> names, int shown, string what)
     {
-        if (names.Count == 0) return "nothing";
+        if (names.Count == 0) return Lang.T("nothing");
         if (names.Count <= shown) return string.Join(", ", names);
-        Gathered.Value?.Add(new ConfirmList($"{names.Count} {what}", names.ToList()));
-        return string.Join(", ", names.Take(shown)) + $" and {names.Count - shown} more";
+        Gathered.Value?.Add(new ConfirmList(Lang.F("{0} " + what, names.Count), names.ToList()));
+        return Lang.F("{0} and {1} more", string.Join(", ", names.Take(shown)), names.Count - shown);
     }
 
-    string GroupName(UUID? id) => id is { } g && _s.State.Groups.TryGetValue(g, out var grp) ? $"the group \"{grp.Name}\"" : "a group";
+    string GroupName(UUID? id) => id is { } g && _s.State.Groups.TryGetValue(g, out var grp) ? Lang.F("the group \"{0}\"", grp.Name) : Lang.T("a group");
 
     async Task<string> RoleNamesAsync(JsonObject a)
     {
@@ -480,10 +503,10 @@ public sealed class Confirmations
             var got = await _s.Api.CallAsync("TesselGroups", new JsonObject { ["op"] = "roles", ["group_id"] = a.Str("group_id") }, true, TimeSpan.FromSeconds(8), default);
             var names = ((got as JsonObject)?["roles"] as JsonArray ?? new JsonArray()).OfType<JsonObject>()
                 .Where(r => want.Contains(r.Str("role_id") ?? "")).Select(r => $"\"{r.Str("name")}\"").ToList();
-            if (names.Count == want.Count) return (names.Count == 1 ? "the role " : "the roles ") + string.Join(", ", names);
+            if (names.Count == want.Count) return Lang.F(names.Count == 1 ? "the role {0}" : "the roles {0}", string.Join(", ", names));
         }
         catch { }
-        return want.Count == 1 ? "a role" : $"{want.Count} roles";
+        return want.Count == 1 ? Lang.T("a role") : Lang.F("{0} roles", want.Count);
     }
 
     async Task<(string Object, string Item)> TaskItemAsync(JsonObject a)
@@ -492,9 +515,9 @@ public sealed class Confirmations
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var (prim, item) = await _s.Contents.ResolveAsync(a, cts.Token);
-            return (await NameAsync(prim.ID), $"\"{item.Name}\" ({AgentInventory.AssetTypeLabel(item.AssetType)})");
+            return (await NameAsync(prim.ID), $"\"{item.Name}\" ({Lang.T(AgentInventory.AssetTypeLabel(item.AssetType), "type")})");
         }
-        catch { return (await NameAsync(ContentsOps.PrimId(a)), "an item (not found: this will likely fail)"); }
+        catch { return (await NameAsync(ContentsOps.PrimId(a)), Lang.T("an item (not found: this will likely fail)")); }
     }
 
     async Task<string> ParcelAsync()
@@ -502,16 +525,16 @@ public sealed class Confirmations
         try
         {
             var got = await _s.Api.CallAsync("TesselAgent", new JsonObject { ["op"] = "parcel" }, true, TimeSpan.FromSeconds(6), default);
-            if ((got as JsonObject)?["parcel"] is JsonObject p && p.Str("name") is { Length: > 0 } n) return $"the parcel \"{n}\"";
+            if ((got as JsonObject)?["parcel"] is JsonObject p && p.Str("name") is { Length: > 0 } n) return Lang.F("the parcel \"{0}\"", n);
         }
         catch { }
-        return "this parcel";
+        return Lang.T("this parcel");
     }
 
     async Task<string> ObjectsAsync(JsonObject a)
     {
         var ids = Ids(a);
-        if (ids.Count == 0) return "a new object";
+        if (ids.Count == 0) return Lang.T("a new object");
         var names = new List<string>();
         foreach (var id in ids.Take(5)) names.Add(await NameAsync(id));
         if (ids.Count > 5) names.AddRange(await RestNamesAsync(ids.Skip(5).ToList()));
@@ -536,9 +559,9 @@ public sealed class Confirmations
         {
             if (region?.PrimById(id) is { } prim)
             {
-                string name = prim.Properties?.Name is { Length: > 0 } pn ? pn : "an object";
+                string name = prim.Properties?.Name is { Length: > 0 } pn ? pn : Lang.T("an object");
                 int parts = 1 + region.Prims.Values.Count(p => p.ParentID == prim.LocalID);
-                names.Add($"\"{name}\"{Renamed(id, name)}" + (parts > 1 ? $" ({parts} parts)" : ""));
+                names.Add(WithParts(Quoted(id, name), parts));
             }
             else names.Add(await NameAsync(id));
         }
@@ -551,20 +574,20 @@ public sealed class Confirmations
         if (a.Uuid("owner_id") is { } one) ids.Add(one);
         var names = new List<string>();
         foreach (var id in ids) names.Add(await NameAsync(id));
-        return names.Count > 0 ? "Objects of: " + string.Join(", ", names) : "";
+        return names.Count > 0 ? Lang.F("Objects of: {0}", string.Join(", ", names)) : "";
     }
 
     /// <summary>An avatar's or object's name for the person: what's in view, the name cache, or a lookup. Avatars
     /// by username (display names are anyone's choice).</summary>
     async Task<string> NameAsync(UUID? id)
     {
-        if (id is not { } uid) return "nobody";
+        if (id is not { } uid) return Lang.T("nobody");
         var region = _s.Region;
         if (region?.Avatars.Values.FirstOrDefault(av => av.ID == uid) is { } av) return av.Name;
         if (region?.PrimById(uid) is { } prim)
         {
             // asked afresh: names change (scripts, the build tools), and the person should confirm what's there now
-            string name = prim.Properties?.Name is { Length: > 0 } pn ? pn : "an object";
+            string name = prim.Properties?.Name is { Length: > 0 } pn ? pn : Lang.T("an object");
             try
             {
                 var got = await _s.Api.CallAsync("TesselObjects", new JsonObject { ["op"] = "get", ["ids"] = new JsonArray(uid.ToString()), ["fresh"] = true, ["timeout"] = 3 },
@@ -573,7 +596,7 @@ public sealed class Confirmations
             }
             catch { }
             int parts = 1 + region.Prims.Values.Count(p => p.ParentID == prim.LocalID);
-            return $"\"{name}\"{Renamed(uid, name)}" + (parts > 1 ? $" ({parts} parts)" : "");
+            return WithParts(Quoted(uid, name), parts);
         }
         if (_s.Names.Legacy(uid) is { Length: > 0 } legacy) return legacy;
         try
@@ -589,6 +612,6 @@ public sealed class Confirmations
             }
         }
         catch { }
-        return $"someone ({uid.ToString()[..8]})";
+        return Lang.F("someone ({0})", uid.ToString()[..8]);
     }
 }

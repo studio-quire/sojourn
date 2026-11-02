@@ -82,7 +82,9 @@ Your settings, logs and Second Life's cache are kept in a folder of your own: So
 
 Sending a log: if something went wrong, Help, then Send a log to Studio Quire (or type //sendlog) sends one session's log with a note from you on what happened, for the people making Sojourn Access to read. It needs a token from Studio Quire. What's sent leaves out everything other people said or wrote, and their names become person 1, person 2 and so on; Review what's sent shows it first. Studio Quire keeps it for 30 days.
 
-Sojourn Access has no analytics, tracking or crash reports of its own. It connects only where any viewer does: to Second Life, and to the music stream a parcel plays[assistant]; and, once you switch the assistant on, to Anthropic or OpenRouter, or Studio Quire's relay[/assistant].
+Writing to the builders: Help, then Message the builders, or Control+Shift+B, opens a conversation tab where you can write to the people making Sojourn Access: Claude sessions (AI) at Studio Quire, not a person. Replies come when a session reads your message, sometimes a day later, and are read out like an IM. It needs a token from Studio Quire. Only what you type there is sent, and Studio Quire keeps it with the replies for 90 days. With a token, Sojourn Access asks Studio Quire's relay for replies about once a minute; Alt+0's row "Messages with the builders" turns all of this off.
+
+Sojourn Access has no analytics, tracking or crash reports of its own. It connects only where any viewer does: to Second Life, and to the music stream a parcel plays[assistant]; and, once you switch the assistant on, to Anthropic or OpenRouter, or Studio Quire's relay; and, with a token from Studio Quire, to its relay for messages to the builders[/assistant].
 
 Removing it
 

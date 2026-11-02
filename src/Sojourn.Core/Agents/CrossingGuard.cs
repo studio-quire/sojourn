@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using LibreMetaverse;
 using LibreMetaverse.Messages.Linden;
 using LibreMetaverse.Packets;
@@ -38,10 +39,17 @@ namespace Sojourn.Core.Agents;
 /// 4. A crossing that arrives while the machine is still busy with the last one (a vehicle over a corner, two
 ///    borders seconds apart, the first region's reply slow) is ignored by it, so the agent never moves into the
 ///    region the vehicle carried it to. The guard ends the stale crossing and lets the new one begin, as the viewer
-///    simply answers the newest CrossedRegion.
+///    simply answers the newest CrossedRegion. The stale region's reply may still come after that: the new crossing
+///    started from that region, so LibreMetaverse took it for the old region refusing the agent, "recovered" into it
+///    and dropped the new region's circuit, and the session lost its region 30 s on (staged on the local grid,
+///    tools/crossing.py --corner). So for 30 s, or until the agent crosses or teleports into it again, a reply from a
+///    superseded crossing's region is dropped before LibreMetaverse sees it (<see cref="LateReply"/>, called by
+///    TeleportWatch's handler for the reply).
 /// A crossing that fails anyway (no answer for 30 s) is logged and told to the person, with what usually follows.
 /// For testing: SOJOURN_CROSSING_GUARD=0 turns 3 and 4 off; with it off, SOJOURN_CROSSING_NOACK=MS holds each crossing MS
 /// ms before it connects, as the unacknowledged wait did, so what that does to a seated crossing shows on a local grid.
+/// SOJOURN_ARRIVAL_DELAY_MS (TeleportWatch) holds every reply, heard late here too, so a second crossing can come while
+/// the first waits (4).
 /// Written by Claude Opus 5.5 (1 and 2 2026-10-21; 3 and 4 2026-11-01).
 /// </summary>
 public sealed class CrossingGuard
@@ -53,6 +61,8 @@ public sealed class CrossingGuard
     readonly ConcurrentDictionary<Simulator, bool> _up = new();   // Connect returned for it: a circuit that's up
     readonly Action<string>? _tell;
     volatile Target? _target;                                     // the newest crossing the grid asked for
+    readonly ConcurrentDictionary<IPEndPoint, long> _superseded = new();   // regions whose crossing a newer one ended, when
+    static readonly ConditionalWeakTable<GridClient, CrossingGuard> Guards = new();
 
     sealed record Target(IPEndPoint Ep, ulong Handle);
 
@@ -77,18 +87,25 @@ public sealed class CrossingGuard
     public static void Attach(GridClient c, ILogger log, Action<string>? tell = null)
     {
         var g = new CrossingGuard(c, log, tell);
+        Guards.AddOrUpdate(c, g);
         g.WrapCrossedRegion();
         // a teleport into a neighbour already connected meets the same wait (3); the catch-all handler runs on its own
         // task beside LibreMetaverse's, which is blocked in Connect meanwhile
         c.Network.RegisterEventCallback("", (name, msg, _) =>
         {
-            if (name == "TeleportFinish" && msg is TeleportFinishMessage tf) g.Release(new IPEndPoint(tf.IP, tf.Port), "teleport");
+            if (name != "TeleportFinish" || msg is not TeleportFinishMessage tf) return;
+            g._superseded.Clear();   // (a teleport's reply is never a stale crossing's)
+            g.Release(new IPEndPoint(tf.IP, tf.Port), "teleport");
         });
         c.Network.SimConnected += (_, e) => { if (e.Simulator != null) g._up[e.Simulator] = true; };
         c.Self.RegionCrossed += (_, e) => { if (e.NewSimulator == null) g.Failed(); };
         c.Network.RegisterCallback(PacketType.AgentMovementComplete, (_, e) =>
         {
-            if (e.Simulator != null) g._completeAt[e.Simulator] = Environment.TickCount64;
+            if (e.Simulator is not { } sim) return;
+            // (test) a reply held back is heard late here too, as LibreMetaverse hears it (TeleportWatch.WireReply)
+            if (TeleportWatch.ArrivalDelayMs > 0)
+                _ = Task.Delay(TeleportWatch.ArrivalDelayMs).ContinueWith(_ => g._completeAt[sim] = Environment.TickCount64);
+            else g._completeAt[sim] = Environment.TickCount64;
         }, false);
         c.Network.RegisterCallback(PacketType.RegionHandshake, (_, e) =>
         {
@@ -130,6 +147,7 @@ public sealed class CrossingGuard
                 {
                     var ep = new IPEndPoint(m.IP, m.Port);
                     _target = new Target(ep, m.RegionHandle);
+                    _superseded.TryRemove(ep, out long _);   // back into it: its reply is wanted again
                     if (On) Supersede(ep);
                     Release(ep, "crossing");
                 }
@@ -158,9 +176,25 @@ public sealed class CrossingGuard
             var state = stateField.GetValue(crossing);
             stateField.SetValue(crossing, AgentManager.CrossingState.Failed);
             (t.GetField("WorkCts")?.GetValue(crossing) as CancellationTokenSource)?.Cancel();
+            if (t.GetField("EndPoint")?.GetValue(crossing) is IPEndPoint stale) _superseded[stale] = Environment.TickCount64;
             _log.LogInformation("crossing into {Ep} while the last one was still {State}: that one ended, this one begins", ep, state);
         }
         finally { gate.Release(); }
+    }
+
+    /// <summary>4: an arrival reply (AgentMovementComplete) from a region whose crossing a newer one ended, come after
+    /// that: true (logged) when it's to be dropped, as the agent has moved on. Not once the region is current again.</summary>
+    public static bool LateReply(GridClient c, Simulator? sim)
+    {
+        if (sim == null || !Guards.TryGetValue(c, out var g) || !g._superseded.TryGetValue(sim.IPEndPoint, out long at)) return false;
+        if (Environment.TickCount64 - at > 30_000 || ReferenceEquals(c.Network.CurrentSim, sim))
+        {
+            g._superseded.TryRemove(sim.IPEndPoint, out long _);
+            return false;
+        }
+        g._log.LogInformation("crossing: {Region}'s arrival reply came after the crossing into it was ended by a newer one; dropped",
+            sim.Name is { Length: > 0 } n ? n : sim.IPEndPoint.ToString());
+        return true;
     }
 
     /// <summary>3: while Network.Connect waits for UseCircuitCode's acknowledgement on a circuit already up to the
@@ -234,14 +268,17 @@ public sealed class CrossingGuard
                             _log.LogInformation("crossing into {Region}: its arrival came before LibreMetaverse listened for it; completed the crossing", sim.Name);
                             break;
                         }
-                    }
-                    if (!resent && Environment.TickCount64 - changedAt > 2_000)
-                    {
-                        _log.LogInformation("crossing into {Region}: no arrival after 2 s; asking again", sim.Name);
-                        _completeAt.TryRemove(sim, out long _);
-                        changedAt = Environment.TickCount64;
-                        self.CompleteAgentMovement(sim);
-                        resent = true;
+                        // the machine can't be stepped here (another LibreMetaverse): a second reply finds it waiting.
+                        // Only then: a reply that's merely slow is waited for, as the viewer does; asking again made
+                        // OpenSim hold the agent 10 s in its second CompleteMovement, and a vehicle couldn't cross meanwhile
+                        if (!resent)
+                        {
+                            _log.LogInformation("crossing into {Region}: its arrival came before LibreMetaverse listened for it; asking again", sim.Name);
+                            _completeAt.TryRemove(sim, out long _);
+                            changedAt = Environment.TickCount64;
+                            self.CompleteAgentMovement(sim);
+                            resent = true;
+                        }
                     }
                 }
                 await Task.Delay(20).ConfigureAwait(false);

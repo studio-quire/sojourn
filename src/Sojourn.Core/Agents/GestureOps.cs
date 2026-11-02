@@ -311,6 +311,7 @@ public sealed class GestureOps
             asset = item.AssetUUID;
         }
         var name = item?.Name ?? "gesture";
+        if (_s.RlvActive && _s.RlvRefused(_s.Rlv.CanGesture()) is { } rlv) throw new LeapError(rlv);   // @sendgesture
         var cts = new CancellationTokenSource();
         if (!_playing.TryAdd(itemId, cts)) return name;
         _ = Task.Run(async () =>
@@ -394,7 +395,16 @@ public sealed class GestureOps
             channel = ch;
             text = m.Groups[2].Value;
         }
-        c.Self.Chat(text, channel, ChatType.Normal);
+        var type = ChatType.Normal;
+        if (_s.RlvActive)
+        {
+            // a gesture's words are the person's chat: RLV's chat restrictions hold (docs/rlv.md)
+            string? said;
+            (said, channel, type, _) = _s.Rlv.Chat(text, channel, type);
+            if (said == null) return;
+            text = said;
+        }
+        c.Self.Chat(text, channel, type);
         if (channel == 0) _s.State.LastWords = text;
     }
 
@@ -437,6 +447,27 @@ public sealed class GestureOps
             return (item, name, revised.Trim());
         }
         return null;
+    }
+
+    /// <summary>Trigger, after reading any active gesture whose asset isn't known yet (at most <paramref name="wait"/>):
+    /// the login's background read can fail or still be running, and a trigger typed then was said as text (the blind
+    /// tester's "/clap", 2026-11-01).</summary>
+    public async Task<(UUID Item, string Name, string Revised)?> TriggerAsync(string line, TimeSpan wait)
+    {
+        if (Trigger(line) is { } hit) return hit;
+        if (_s.Client is not { } c) return null;
+        var missing = c.Self.ActiveGestures.Values.Distinct().Where(a => a != UUID.Zero && !Decoded.ContainsKey(a)).ToList();
+        if (missing.Count == 0) return null;
+        using var cts = new CancellationTokenSource(wait);
+        var reads = missing.Select(a => Task.Run(async () =>
+        {
+            try { await DecodeAssetAsync(a, cts.Token); }
+            catch (Exception e) { _s.Log.LogDebug(e, "gesture asset {Asset}", a); }
+        }));
+        try { await Task.WhenAll(reads).WaitAsync(wait); } catch (TimeoutException) { }
+        int still = missing.Count(a => !Decoded.ContainsKey(a));
+        if (still > 0) _s.Log.LogInformation("gestures: {Still} of {Count} active gestures' assets not read yet; a trigger among them can't be matched", still, missing.Count);
+        return Trigger(line);
     }
 
     /// <summary>The active gestures' assets read in the background, so their triggers are known before they're typed.</summary>

@@ -199,13 +199,15 @@ public sealed class Reader
                 foreach (var l in Wrap(a, asked, width, 4)) { lines.Add(new LaidLine(y, l, true)); y += AskedLine; }
                 y += 6;
             }
-            if (Social.Links.Has(p.Text) && Social.Links.Parse(p.Text) is { Places.Count: > 0 } parsed)
+            // a reply the sidecar wrote itself (a timer done, a job stopped) in the person's language, as on the panel
+            var text = doc.Kind == ReaderKind.Replies ? Panel.Own(p.Text) ?? "" : p.Text;
+            if (Social.Links.Has(text) && Social.Links.Parse(text) is { Places.Count: > 0 } parsed)
                 foreach (var l in Social.Links.Wrap(parsed, body, width, 0, int.MaxValue))
                 {
                     lines.Add(new LaidLine(y, string.Join(' ', l.Select(w => w.Text)), false, l, parsed.Places));
                     y += Line;
                 }
-            else foreach (var l in Wrap(p.Text, body, width, int.MaxValue)) { lines.Add(new LaidLine(y, l, false)); y += Line; }
+            else foreach (var l in Wrap(text, body, width, int.MaxValue)) { lines.Add(new LaidLine(y, l, false)); y += Line; }
         }
         return new Laid(lines, dividers, y + 14);
     }
@@ -435,7 +437,7 @@ public sealed class ReaderApi : LeapApi
         if (a.Uuid("notecard") is { } item)
         {
             var r = await S.InventoryOps.ReadNotecardAsync(new JsonObject { ["item_id"] = item.ToString() }, ct);
-            var title = (string?)r["name"] ?? "Notecard";
+            var title = (string?)r["name"] ?? Lang.T("Notecard");
             var text = (string?)r["text"] ?? "";
             _reader.Show(new ReaderDoc(ReaderKind.Notecard, title, Paragraphs(text)), atEnd: false);
         }

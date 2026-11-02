@@ -58,6 +58,35 @@ they've gone (a check it was asked for, then stop). Credentials never enter the 
 and bypass permissions, so that rests on `docs/driving.md` and the studio's rules, as for any session working in this
 folder.
 
+## Outside the studio: a person's own Claude
+
+Agreed with the user 2026-11-01: dev mode is also how a person uses their Claude subscription with Sojourn, since
+released builds offer no Claude-account sign-in (CLAUDE.md > Decisions). Their own Claude Code session, on their own
+account, is the assistant exactly as ours is in a sitting; Sojourn signs in to nothing. The guide for that session is
+the public `DEV-MODE.md` (kept in `tools/publish/sojourn/`, published at the snapshot's root, shipped in the package);
+`docs/driving.md` stays ours.
+- **The launcher's `--dev`** (`Sojourn.exe --dev`, from the repo `dotnet ...Sojourn.dll --dev`) passes `--dev` to the
+  client it launches and says "dev mode: your own Claude is the assistant" under the wordmark. The person signs in
+  there and answers the grid's questions as always; the login never passes near the session. Without the flag the
+  launcher and the installed copy are as before (the agent API was already on loopback for the sidecar; dev mode adds
+  only `say` and the token-guarded `dev`). A running client can't be switched into dev mode: the sidecar's brain, the
+  token and the API's own kinds are fixed at start, and the launcher stays open after a stop, so Launch again is the
+  way.
+- **`dev.py launch [--desktop]`** opens that launcher for the person (in the foreground unless `SOJOURN_BACKGROUND=1`)
+  and returns; the watch waits for a client ("waiting for Sojourn in dev mode", then "Sojourn is in", or that the one
+  on the port isn't in dev mode). `watch --once [--wait S]` is for agents without a monitor. The in-client
+  assistant's shell guard refuses `dev.py launch` as it does `start`.
+- **From an installed copy** `dev.py` is the same file, finding its layout itself: no `src/Sojourn.Client` above it
+  means installed (`Sojourn.exe` beside it or in its parent), the dev note in the data folder (`DataFolder.Root`'s
+  `dev/`; `Sidecar.LocalDir` writes it there), and `start`/`restart` refuse (they're the repo's). It's run by the
+  package's own Python (`python\python.exe -u dev.py ...` in `%LOCALAPPDATA%\SojournViewer\current`); standard
+  library only.
+- **What the package must ship for it** (`tools/package.py` does): `dev.py` beside `Sojourn.exe` (or in a folder
+  beside it), `DEV-MODE.md`, and
+  the assistant part (`assistant/` with `devrelay.py`, the embedded Python, hearing's models): dev mode's sidecar is
+  what hears the person and passes their words on, so a package without the assistant can't do dev mode. Spoken
+  replies need Kokoro's voice too.
+
 ## Testing it
 
 On the local grid on the desktop (`dev.py start`, the watch under Monitor): a request typed into the window (posted
@@ -66,3 +95,11 @@ held T with `SOJOURN_MIC_FILE=some.wav` comes back as `said: "..."`; `dev.py res
 replies on, `say` is spoken (`SOJOURN_TTS_OUT`) and `say --quiet` isn't. Forged `sojourn`/`dev` events get 403, `dev`
 without the token or with a wrong one is refused, a normal client has no `say` op, and `main.py --dev` against it
 exits. `--sim` works the same in the XR Simulator, `shot` giving the left eye.
+
+The launcher's route (2026-11-01, from the repo on the local grid): `dev.py launch --desktop` run on a hidden desktop
+(QuireUia, as `launcher.py check` does), the account signed in there by UI Automation, the watch under Monitor
+waiting and then "Sojourn is in"; a typed request, `working`, `_command getAPIs`/`getAPI`, `say` on the panel (`shot`),
+`ask` and a pick, `watch --once` with a request and with nothing, `dev.py stop` leaving the launcher open in dev mode
+and Launch again followed by a fresh watch; a forged `dev` event 403. An installed copy's layout was checked only as
+a folder with `Sojourn.exe` and `tools/dev.py` (where the note is looked for, `start` refusing), until the package
+exists.

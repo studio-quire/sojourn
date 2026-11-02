@@ -420,6 +420,28 @@ SV_API int sv_audio_start(const char* capture, const char* render) {
 
 SV_API void sv_audio_stop(void) { AudioStop(); }
 
+float sv::OutLevel() { return g ? g->out_level.load() : 0.0f; }
+
+SV_API int sv_output_probe(int ms, char* buf, int cap) {
+    std::string j = OutputProbe(std::min(std::max(ms, 50), 5000));
+    if (buf && cap > 0) {
+        int n = std::min(cap - 1, (int)j.size());
+        memcpy(buf, j.data(), n);
+        buf[n] = 0;
+    }
+    return (int)j.size() + 1;
+}
+
+SV_API int sv_device_state(int dir, char* buf, int cap) {
+    std::string j = DeviceStateJson(dir);
+    if (buf && cap > 0) {
+        int n = std::min(cap - 1, (int)j.size());
+        memcpy(buf, j.data(), n);
+        buf[n] = 0;
+    }
+    return (int)j.size() + 1;
+}
+
 SV_API void sv_test_device(int dir, int what, const char* spec) { AudioTest(dir, what, spec ? spec : ""); }
 
 SV_API void sv_set_mute(int muted, int fade_ms) {

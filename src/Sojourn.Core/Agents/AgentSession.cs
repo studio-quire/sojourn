@@ -113,6 +113,10 @@ public sealed partial class AgentSession : IAsyncDisposable
         _wake.Release();
     }
 
+    /// <summary>What runs just before a logout the person asked for (the viewer statistics' last report:
+    /// Sojourn.Session/Release/ViewerStats.cs), each given at most 3 s.</summary>
+    public List<Func<GridClient, Task>> BeforeLogout { get; } = new();
+
     /// <summary>Logs out and stays out until asked to log in again.</summary>
     public async Task LogoutAsync()
     {
@@ -482,6 +486,10 @@ public sealed partial class AgentSession : IAsyncDisposable
     async Task LogoutClientAsync(GridClient c)
     {
         SetStatus(AgentStatus.Stopping, "logging out");
+        if (c.Network.Connected)
+            foreach (var before in BeforeLogout.ToArray())
+                try { await before(c).WaitAsync(TimeSpan.FromSeconds(3)); }
+                catch (Exception ex) { Log.LogDebug(ex, "before logout"); }
         try
         {
             if (c.Network.Connected)

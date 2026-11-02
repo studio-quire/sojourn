@@ -5,6 +5,7 @@ is put back at the end.
   python tools/menu.py [--dll DIR] [--size 0.7]   one desktop client, Sojourn Menu, on :9873 (base dir local/menu/),
                                                   SOJOURN_TEST_MENU=1 (SojournSettings menuShots and menuPress);
                                                   then Esc's layers and F2, by keys posted to its window
+                                                  (--lang de: the menu drawn in a language, docs/languages.md)
   python tools/menu.py --headset [--dll DIR]      the camera (Control/Shutter.cs) in Meta's XR Simulator,
                                                   SOJOURN_VR_SCRIPT=camera: token, out, a picture, put away; and
                                                   the headset's menu shots (local/menu/headset/)
@@ -115,7 +116,7 @@ def same(a, b):
         return str(a).lower() == str(b).lower()
 
 
-def main(dll, size):
+def main(dll, size, lang=None):
     sys.path.insert(0, str(ROOT / "tools"))
     import grid
     if "agni" in grid.URL or not grid.ready():
@@ -129,7 +130,8 @@ def main(dll, size):
     env = dict(os.environ, SOJOURN_TEST_MENU="1")
     proc = subprocess.Popen([str(DOTNET), str(Path(dll) / "SojournVR.dll"), "--first", "Sojourn", "--last", "Menu", "--password", "sojourn-local",
                              "--bridge-port", str(PORT), "--window", "640x360", "--fps", "10", "--no-assistant",
-                             "--base-dir", str(BASE / "client"), "--start", "uri:Atelier&124&112&22", "--minutes", "10"],
+                             "--base-dir", str(BASE / "client"), "--start", "uri:Atelier&124&112&22", "--minutes", "10"]
+                            + (["--lang", lang] if lang else []),
                             cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=0x00004000)
     before = None
     try:
@@ -273,5 +275,6 @@ if __name__ == "__main__":
     ap.add_argument("--dll", default=str(ROOT / "src" / "Sojourn.Client" / "bin" / "Release" / "net10.0"))
     ap.add_argument("--size", type=float, default=None)
     ap.add_argument("--headset", action="store_true")
+    ap.add_argument("--lang", default=None)   # the menu in a language (docs/languages.md); rows are still pressed by their English
     a = ap.parse_args()
-    headset(a.dll) if a.headset else main(a.dll, a.size)
+    headset(a.dll) if a.headset else main(a.dll, a.size, a.lang)

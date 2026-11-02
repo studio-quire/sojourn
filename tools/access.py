@@ -27,7 +27,8 @@
   python tools/access.py package [--dirty]
                                    the build for a tester's own PC: self-contained (no .NET needed), win-x64, with its
                                    README and licences, zipped to local/dist/SojournAccess-0.1.0.N-win-x64.zip (N the
-                                   commit count; uncommitted changes under src/ refused unless --dirty); it keeps its
+                                   commit count; built from HEAD's export, however busy the working tree is, or from
+                                   the working tree with --dirty, marked so when src/ differs); it keeps its
                                    data in %LOCALAPPDATA%\\Sojourn Access and logs in to Second Life unless run with --local
   python tools/access.py package --check [ZIP] [--keep] [--bare [--no-software]]
                                    the zip (default the newest in local/dist) unpacked in a fresh folder under %TEMP% and
@@ -92,7 +93,8 @@ APP_EXE = APP_BIN / "SojournAccess.exe"
 APP_DLL = APP_BIN / "SojournAccess.dll"
 APP_AS_EXE = False                 # the apphost can't find .NET here; dotnet + the dll it is
 QUIREUIA = ROOT / "local" / "bin" / "QuireUia" / "QuireUia.exe"
-VISITOR_DLL = ROOT / "local" / "bin" / "Visitor" / "Visitor.dll"
+VISITOR_DLL = ((Path(os.environ["SOJOURN_BUILD_ROOT"]) / "bin" / "Visitor") if os.environ.get("SOJOURN_BUILD_ROOT")
+               else ROOT / "local" / "bin" / "Visitor") / "Visitor.dll"
 OUT = ROOT / "local" / ("access-test-" + os.environ["ACCESS_ACCOUNTS"].strip().lower() if os.environ.get("ACCESS_ACCOUNTS")
                          else "access-test")   # ACCESS_ACCOUNTS (below): its own folder too
 VISITOR_HOME = ROOT / "local" / "access-visitor"   # the `visitor` command's (a person's session), apart from the test's
@@ -128,6 +130,8 @@ LAVAPIPE = ROOT / "local" / "lavapipe"
 SOFTWARE_OK = (LAVAPIPE / "lvp_icd.x86_64.json").exists() and os.environ.get("ACCESS_NO_SOFTWARE") != "1"
 SOFTWARE = SOFTWARE_OK and (NO_GPU or os.environ.get("ACCESS_SOFTWARE") == "1")   # the view expected on the processor
 VIEWLESS = NO_RENDER or (NO_GPU and not SOFTWARE)       # no pictures or faces; the collision model needs no GPU
+RELAY = os.environ.get("ACCESS_RELAY")   # a relay token's name (tools/relay.py): the app's assistant on Studio Quire's relay
+                                         # (the HUD step's reading; the describing step's no-assistant checks are skipped)
 LIST_DELAY_MS = 3000               # People's and Objects' first fills held back this long (SL's objects wait for names)
 
 Q_PORT = 9885                      # QuireUia's server
@@ -177,10 +181,10 @@ HOURS = ["twelve", "one", "two", "three", "four", "five", "six", "seven", "eight
 
 # ---- building ---------------------------------------------------------------------------------------------------------
 
-def dotnet_build(project, configuration="Release"):
+def dotnet_build(project, configuration="Release", *extra):
     """dotnet build at below-normal priority (inherited by MSBuild's nodes), two nodes, no build server."""
     p = subprocess.Popen([str(DOTNET), "build", str(project), "-c", configuration, "-m:2", "-nr:false",
-                          "-p:UseSharedCompilation=false", "-v:m", "-clp:NoSummary"],
+                          "-p:UseSharedCompilation=false", "-v:m", "-clp:NoSummary", *extra],
                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                          encoding="utf-8", errors="replace", creationflags=CREATE_NO_WINDOW | BELOW_NORMAL)
     out = p.communicate()[0]
@@ -196,7 +200,10 @@ def build():
 
 def tools():
     rc = dotnet_build(ROOT / "tools" / "quireuia" / "QuireUia.csproj")
-    return rc or dotnet_build(ROOT / "tools" / "visitor" / "Visitor.csproj")
+    # with SOJOURN_BUILD_ROOT, the visitor into that tree too (another run's visitor holds the usual one open), built
+    # even when QuireUia isn't (another run holds it open too; it rarely changes)
+    out = [f"-p:OutputPath={VISITOR_DLL.parent}{os.sep}"] if os.environ.get("SOJOURN_BUILD_ROOT") else []
+    return dotnet_build(ROOT / "tools" / "visitor" / "Visitor.csproj", "Release", *out) or rc
 
 
 # ---- the package for a tester -------------------------------------------------------------------------------------------
@@ -213,7 +220,7 @@ RID = "win-x64"
 # with the venv's claude-agent-sdk and what it needs (the SDK carries Claude Code itself, _bundled/claude.exe)
 PY_EMBED = "3.12.10"
 PY_EMBED_URL = f"https://www.python.org/ftp/python/{PY_EMBED}/python-{PY_EMBED}-embed-amd64.zip"
-PY_EMBED_SHA256 = "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3"   # python.org's MD5 matched too
+PY_EMBED_SHA256 = "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3"   # python.org's MD5 matched too; gitleaks:allow
 PY_EMBED_ZIP = DIST / "python-embed" / f"python-{PY_EMBED}-embed-amd64.zip"
 VENV_PY = ROOT / "local" / "assistant-venv" / "Scripts" / "python.exe"
 BUNDLED_DISTS = ["claude-agent-sdk", "anthropic"]   # with their dependencies (anthropic: describing's lean calls); no hearing or local voice
@@ -222,9 +229,9 @@ BUNDLED_DISTS = ["claude-agent-sdk", "anthropic"]   # with their dependencies (a
 # files taken from it checked too (fetch-lavapipe); in every package's lavapipe folder
 MESA = "26.2.5"
 MESA_URL = f"https://github.com/pal1000/mesa-dist-win/releases/download/{MESA}/mesa3d-{MESA}-release-msvc.7z"
-MESA_SHA256 = "997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2"
-LAVAPIPE_FILES = {"vulkan_lvp.dll": "cb50fd861b77743c7ab46a946af15a7af7a7e0bc697644c1e777d2784080570d",
-                  "lvp_icd.x86_64.json": "5b867ac6fe25dca5f23a3479a18333df2577542a0ac565ba34a9666af03fdd92"}
+MESA_SHA256 = "997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2"   # gitleaks:allow
+LAVAPIPE_FILES = {"vulkan_lvp.dll": "cb50fd861b77743c7ab46a946af15a7af7a7e0bc697644c1e777d2784080570d",   # gitleaks:allow
+                  "lvp_icd.x86_64.json": "5b867ac6fe25dca5f23a3479a18333df2577542a0ac565ba34a9666af03fdd92"}   # gitleaks:allow
 
 
 def fetch_lavapipe():
@@ -271,29 +278,39 @@ def git(*args):
 
 
 def package():
+    try:
+        return package_build()
+    finally:
+        shutil.rmtree(access_tree(), ignore_errors=True)
+
+
+def access_tree():
+    tag = sys.argv[sys.argv.index("--tag") + 1] if "--tag" in sys.argv[2:-1] else None
+    return ACCESS_TREE.with_name(f"{ACCESS_TREE.name}-{tag}") if tag else ACCESS_TREE
+
+
+def package_build():
     """A self-contained build in a zip under local/dist for a tester's own PC (docs/access-app.md > Packaging):
     SojournAccess.exe with the .NET runtime inside, the renderer's files, NVDA's controller client, voice and world
     audio (sojourn_voice.dll), a README for a screen-reader user and the licences. Versioned 0.1.0.N, N the commit count;
-    refuses uncommitted changes under src/ unless --dirty (then marked so in the version's commit and the zip's name)."""
+    built from HEAD exported into local/dist/access-tree, whatever the working tree holds; --dirty builds the working
+    tree instead (marked so in the version's commit and the zip's name when src/ or assistant/ differ)."""
     dirty_ok = "--dirty" in sys.argv[2:]
     lean = "--lean" in sys.argv[2:]       # without the assistant (no Python, no Claude Code: about 120 MB less)
     tag = sys.argv[sys.argv.index("--tag") + 1] if "--tag" in sys.argv[2:-1] else None
     if tag and not re.fullmatch(r"[a-z0-9][a-z0-9\-]{0,30}", tag):
         print("--tag: lowercase letters, digits and dashes")
         return 1
-    changed = git("status", "--porcelain", "--", "src", "assistant")
-    if changed and not dirty_ok:
-        print("uncommitted changes under src/ or assistant/ (a packaged build should be one commit, so its number names it):\n" + changed
-              + "\ncommit first, or --dirty for a local try")
-        return 1
+    changed = git("status", "--porcelain", "--", "src", "assistant") if dirty_ok else ""
     missing = [p for p in (NVDA_DIR / "x64" / "nvdaControllerClient.dll", NVDA_DIR / "license.txt", VOICE_DLL, WEBRTC_LICENCES,
                            *(LAVAPIPE / n for n in LAVAPIPE_FILES)) if not p.exists()]
     if missing:
         print("missing: " + ", ".join(str(p.relative_to(ROOT)) for p in missing)
               + " (python tools/screenreader.py fetch; python tools/voice.py build; python tools/access.py fetch-lavapipe)")
         return 1
-    version = f"0.1.0.{git('rev-list', '--count', 'HEAD')}"
-    commit = git("rev-parse", "--short=7", "HEAD") + ("-dirty" if changed else "")
+    head = git("rev-parse", "HEAD")   # once: another session may commit meanwhile
+    version = f"0.1.0.{git('rev-list', '--count', head)}"
+    commit = head[:7] + ("-dirty" if changed else "")
     name = f"Sojourn Access {version}"
     # --tag: a try, apart from releases (its own folder under local/dist, which `package --check` doesn't pick by itself)
     out_dir = DIST / tag if tag else DIST
@@ -304,10 +321,16 @@ def package():
     build_root = DIST / (f"build-{tag}" if tag else "build")
     shutil.rmtree(stage, ignore_errors=True)
     stage.mkdir(parents=True)
+    src = ROOT
+    if not dirty_ok:
+        # a fresh build tree too: the export's files carry the commit's time, which older outputs could look newer than
+        shutil.rmtree(build_root, ignore_errors=True)
+        src = access_tree()
+        export(head, src)
 
     print(f"publishing {name} ({commit}), self-contained {RID}")
     env = dict(os.environ, SOJOURN_BUILD_ROOT=str(build_root))
-    p = subprocess.Popen([str(DOTNET), "publish", str(APP_PROJECT), "-c", "Release", "-r", RID, "--self-contained", "true",
+    p = subprocess.Popen([str(DOTNET), "publish", str(src / APP_PROJECT.relative_to(ROOT)), "-c", "Release", "-r", RID, "--self-contained", "true",
                           "-p:PublishSingleFile=true", f"-p:Version={version}", f"-p:SourceRevisionId={commit}",
                           "-p:DebugType=embedded", "-p:SatelliteResourceLanguages=en", "-o", str(stage),
                           "-m:2", "-nr:false", "-p:UseSharedCompilation=false", "-v:m", "-clp:NoSummary"],
@@ -330,12 +353,12 @@ def package():
         shutil.copy2(LAVAPIPE / n, stage / "lavapipe" / n)
     if not (stage / "sojourn_voice.dll").exists():
         shutil.copy2(VOICE_DLL, stage)
-    readme = (PACKAGE_FILES / "README.txt").read_text(encoding="utf-8").replace("{VERSION}", version)
+    readme = (src / PACKAGE_FILES.relative_to(ROOT) / "README.txt").read_text(encoding="utf-8").replace("{VERSION}", version)
     keep, drop = ("lean", "assistant") if lean else ("assistant", "lean")   # [assistant]...[/assistant] blocks
     readme = re.sub(rf"\[{drop}\].*?\[/{drop}\]\n?", "", readme, flags=re.S)
     write_text(stage / "README.txt", re.sub(rf"\[/?{keep}\]\n?", "", readme))
-    licences(stage / "Licences", build_root)
-    if not lean and bundle_assistant(stage) != 0:
+    licences(stage / "Licences", build_root, src)
+    if not lean and bundle_assistant(stage, source=src) != 0:
         return 1
 
     expected = ["SojournAccess.exe", "nvdaControllerClient.dll", "sojourn_voice.dll", "openjp2.dll", "libSkiaSharp.dll",
@@ -356,15 +379,22 @@ def package():
     unpacked = sum(f.stat().st_size for f in stage.rglob("*") if f.is_file())
     print(f"{zip_path.relative_to(ROOT)}: {zip_path.stat().st_size / 1e6:.0f} MB ({unpacked / 1e6:.0f} MB unpacked, "
           f"{sum(1 for f in stage.rglob('*') if f.is_file())} files); the folder: {stage.relative_to(ROOT)}")
+    # the release notes name the public commit (tools/publish/access/RELEASES.md), the one made from this HEAD
+    public = None if changed else public_commit(head)
+    print(f"its source for the release notes: studio-quire/sojourn {public[:7]}" if public else
+          f"no public snapshot of {commit} yet (local/publish/map.txt): python tools/publish.py makes one before a release")
     return 0
 
 
-def bundle_assistant(stage):
+def bundle_assistant(stage, dists=None, imports=(), source=ROOT):
     """The assistant's Python side beside the program (docs/access-app.md > Packaging): python.org's embeddable CPython
     in python/, the venv's claude-agent-sdk and its dependencies in python/Lib/site-packages (Claude Code itself is the
     SDK's _bundled/claude.exe), assistant/'s code and prompts, all compiled ahead (unchecked-hash .pyc, so nothing is
     written beside the program when it runs; Sidecar.cs starts it with -B too). Then a smoke test: the embedded Python
-    imports the sidecar's modules and finds its Claude Code inside the package."""
+    imports the sidecar's modules and finds its Claude Code inside the package. dists: the venv's distributions to take
+    (BUNDLED_DISTS, Access's; Sojourn's package adds hearing and voice), imports: more modules the smoke test imports,
+    source: the tree whose assistant/ is bundled (Sojourn's package: a commit's export)."""
+    dists_wanted = dists or BUNDLED_DISTS
     import hashlib
     import zipfile
     if not VENV_PY.exists():
@@ -420,7 +450,7 @@ for k, d in seen.items():
                                "home": meta.get("Home-page") or next((u.split(", ", 1)[-1] for u in meta.get_all("Project-URL") or []), "")}
 print(json.dumps(out))
 """
-    r = subprocess.run([str(VENV_PY), "-c", walk, *BUNDLED_DISTS], capture_output=True, text=True, encoding="utf-8",
+    r = subprocess.run([str(VENV_PY), "-c", walk, *dists_wanted], capture_output=True, text=True, encoding="utf-8",
                        creationflags=CREATE_NO_WINDOW)
     if r.returncode:
         print("reading the venv's packages failed:\n" + r.stderr[-1500:])
@@ -440,7 +470,7 @@ print(json.dumps(out))
     # the sidecar: its code and prompts
     own = stage / "assistant"
     own.mkdir()
-    for f in sorted((ROOT / "assistant").iterdir()):
+    for f in sorted((source / "assistant").iterdir()):
         if f.suffix in (".py", ".md") and f.is_file():
             shutil.copy2(f, own / f.name)
 
@@ -457,6 +487,7 @@ print(json.dumps(out))
     import tempfile
     probe = ("import sys, os; sys.path.insert(0, sys.argv[1]); "
              "import main, brain, tools, moretools, describe, describer, anthropic, jobs, build, private, privatetools, harness, home, provider, paths, voice, hearing; "
+             + "".join(f"import {m}; " for m in imports) +
              "print(provider.cli()); print(paths.LOCAL)")
     with tempfile.TemporaryDirectory(prefix="sojourn-bundle-") as data:
         env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("PYTHON", "SOJOURN_", "VIRTUAL_ENV"))}
@@ -498,11 +529,56 @@ def write_text(path, text):
     path.write_bytes(text.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-8"))
 
 
-def licences(dest, build_root):
+# ---- building from a commit (Sojourn's package too) ----------------------------------------------------------------------
+
+ACCESS_TREE = DIST / "access-tree"   # package's export of HEAD (a try's: access-tree-TAG); never a junction to local/ in it
+PUBLISH_MAP = ROOT / "local" / "publish" / "map.txt"   # tools/publish.py: "<time> <repo> <public> from <private>"
+
+
+def export(commit, dest):
+    """The commit's tracked files, and nothing else, into dest (git archive), so a build of it ignores the working tree
+    (several sessions work in it at once). Its local/ stays absent: the build reads the main tree's local/ by path."""
+    import tarfile
+    shutil.rmtree(dest, ignore_errors=True)
+    dest.mkdir(parents=True)
+    # into a file, then read: streamed through a pipe, tarfile stops at the archive's end marker and git, still writing
+    # its padding, blocks on the pipe forever (2026-11-01)
+    tar = dest.with_name(dest.name + ".tar")
+    try:
+        r = subprocess.run(["git", "archive", "--format=tar", "-o", str(tar), commit], cwd=ROOT, capture_output=True,
+                           timeout=300, creationflags=CREATE_NO_WINDOW)
+        if r.returncode:
+            raise RuntimeError(f"git archive {commit} failed: {r.stderr.decode(errors='replace')[-800:]}")
+        with tarfile.open(tar) as t:
+            t.extractall(dest, filter="data")
+    finally:
+        tar.unlink(missing_ok=True)
+
+
+def publish_map():
+    """map.txt's sojourn-public lines as (public, private) full hashes, oldest first."""
+    if not PUBLISH_MAP.exists():
+        return []
+    rows = [l.split() for l in PUBLISH_MAP.read_text(encoding="utf-8").splitlines()]
+    return [(r[2], r[4]) for r in rows if len(r) == 5 and r[1] == "sojourn-public" and r[3] == "from"]
+
+
+def public_commit(private):
+    """The studio-quire/sojourn commit publish.py made from this private one (full hashes), or None."""
+    return next((pub for pub, priv in reversed(publish_map()) if priv == private), None)
+
+
+def private_commit(public):
+    """The private commit a public one (or its prefix) was made from, or None."""
+    return next((priv for pub, priv in reversed(publish_map()) if pub.startswith(public)), None)
+
+
+def licences(dest, build_root, src=ROOT):
     """The licences of what ships: our notices for the parts that need one, the texts beside them, and every NuGet
-    package with files in the package (from the publish's project.assets.json) with its licence."""
+    package with files in the package (from the publish's project.assets.json) with its licence. src: the tree built."""
     import html
     import xml.etree.ElementTree as ET
+    files = src / PACKAGE_FILES.relative_to(ROOT)
     lgpl = (NVDA_DIR / "license.txt").read_text(encoding="utf-8", errors="replace")
     write_text(dest / "NVDA Controller Client (LGPL-2.1).txt",
                "nvdaControllerClient.dll is NV Access's NVDA Controller Client from NVDA 2026.3, unmodified "
@@ -518,10 +594,10 @@ def licences(dest, build_root):
                "(github.com/secondlife/3p-webrtc-build). Its licence and those of the libraries in it follow.\n\n"
                + html.unescape(WEBRTC_LICENCES.read_text(encoding="utf-8", errors="replace")))
     write_text(dest / "OpenJPEG, openjp2.dll.txt", "openjp2.dll is OpenJPEG 2.5.3, built from its source.\n\n"
-               + (PACKAGE_FILES / "licences" / "OpenJPEG.txt").read_text(encoding="utf-8"))
-    shutil.copy2(PACKAGE_FILES / "licences" / "Mesa lavapipe.txt", dest / "Mesa lavapipe and LLVM, in the lavapipe folder.txt")
+               + (files / "licences" / "OpenJPEG.txt").read_text(encoding="utf-8"))
+    shutil.copy2(files / "licences" / "Mesa lavapipe.txt", dest / "Mesa lavapipe and LLVM, in the lavapipe folder.txt")
     write_text(dest / "Archivo font (OFL-1.1).txt",
-               (ROOT / "src" / "Sojourn.Session" / "Assets" / "Fonts" / "Archivo-OFL.txt").read_text(encoding="utf-8"))
+               (src / "src" / "Sojourn.Session" / "Assets" / "Fonts" / "Archivo-OFL.txt").read_text(encoding="utf-8"))
 
     # the NuGet packages with files in the build, and the .NET runtime packs
     assets = json.loads((build_root / "obj" / "Sojourn.Access" / "project.assets.json").read_text(encoding="utf-8"))
@@ -560,7 +636,7 @@ def licences(dest, build_root):
               "Archivo font (Fonts): SIL Open Font License 1.1", "",
               "Where a library's licence is MIT or Apache-2.0 and its package carried no text of it, the text is in "
               "MIT.txt or Apache-2.0.txt here; the copyright is its authors', as named at its project's address."]
-    shutil.copy2(PACKAGE_FILES / "licences" / "Apache-2.0.txt", dest / "Apache-2.0.txt")
+    shutil.copy2(files / "licences" / "Apache-2.0.txt", dest / "Apache-2.0.txt")
     write_text(dest / "MIT.txt", MIT)
     write_text(dest / "README.txt", "\n".join(lines) + "\n")
 
@@ -1167,10 +1243,26 @@ def session(run, procs):
                SOJOURN_OFFSCREEN_LOSE_AFTER=str(LOSE_AFTER),
                # People's and Objects' first fills held back, as Second Life's objects wait for their names
                SOJOURN_TEST_LIST_DELAY_MS=str(LIST_DELAY_MS),
-               SOJOURN_VOICE_OUT_FILE=str(HEARD), SOJOURN_WALK_LOG=str(OUT / "walk.log"))   # world audio to a file (local grid only), never the speakers
+               SOJOURN_VOICE_OUT_FILE=str(HEARD), SOJOURN_WALK_LOG=str(OUT / "walk.log"),   # world audio to a file (local grid only), never the speakers
+               SOJOURN_TEST_UPLOAD_FEE=UPLOAD_FEES)   # uploads of some kinds confirmed as spending on the free local grid
     app_args = ["--grid", GRID_URI, "--user", f"{TESTER[0]} {TESTER[1]}", "--password", PASSWORD,
                 "--start", "uri:%s&%d&%d&%d" % (REGION, *TESTER_START), "--port", API_PORT, "--base", OUT / "app",
-                "--no-assistant", "--reader", "on", "--autologin"]
+                "--reader", "on", "--autologin"]
+    if RELAY:
+        # its sidecar on the relay with that token, kept as the app keeps keys (in the run's own folder)
+        import relay as relaymod
+        sys.path.insert(0, str(ROOT / "assistant"))
+        os.environ["SOJOURN_KEYS"] = str(OUT / "keys")
+        import provider as providermod
+        providermod.save_key("relay", relaymod.read_secret(relaymod.token_file(RELAY)))
+        del os.environ["SOJOURN_KEYS"]
+        env["SOJOURN_KEYS"] = str(OUT / "keys")
+        (OUT / "app" / "vr-settings.json").write_text(json.dumps({"assistantProvider": "relay"}), encoding="utf-8")
+        env["SOJOURN_BUILDERS_POLL"] = "3"   # the builders' tab asks the relay every 3 s, not every minute
+        if builders_wanted():
+            builders_before_launch(nonce)
+    else:
+        app_args.append("--no-assistant")
     if os.environ.get("ACCESS_VOICE") != "1":
         app_args.append("--no-voice")   # voice chat is on by default; its keys' step runs with it only when asked
     if NO_RENDER:
@@ -1215,6 +1307,7 @@ def session(run, procs):
         ("her own lines read back", lambda: own_lines(run, nonce)),
         ("lines cut by typing", lambda: typed_cut(run, nonce)),
         ("an IM", lambda: im(run, nonce, tester_id)),
+        ("the builders' tab", lambda: builders(run, nonce)),
         ("people and objects", lambda: lists(run)),
         ("people beside chat, friends on Alt+2", lambda: people_beside_chat(run)),
         ("the renderer out of sight", lambda: offscreen(run)),
@@ -1231,8 +1324,10 @@ def session(run, procs):
         ("inventory", lambda: inventory(run, nonce)),
         ("every part", lambda: parts(run)),
         ("your HUDs", lambda: huds(run, nonce)),
+        ("a HUD that's one picture of buttons", lambda: hud_picture(run, nonce)),
         ("gestures", lambda: gestures(run, nonce)),
         ("placing by words", lambda: placing(run, nonce)),
+        ("uploads", lambda: uploads(run, nonce)),
         ("two inventory panes", lambda: two_panes(run, nonce)),
         ("incognito", lambda: incognito(run, nonce)),
         ("voice keys", lambda: voice_keys(run)),
@@ -1244,10 +1339,14 @@ def session(run, procs):
         ("search, profiles, pay", lambda: search_and_people(run)),
         ("more commands", lambda: more_commands(run)),
         ("describing", lambda: describing(run)),
+        ("describing a look as it loads", lambda: describing_looks(run, nonce)),
         ("review keys and arrivals", lambda: review_and_arrivals(run, nonce)),
         ("sound as a map", lambda: sound_map(run, tester_id)),
         ("walk mode", lambda: walk_mode(run)),
         ("distance walked", lambda: distance_walked(run)),
+        ("rail switches", lambda: rail_switches(run)),
+        ("recording a route", lambda: route_recording(run)),
+        ("recording a route across a border", lambda: route_crossing(run)),
     ]
     only = [w.strip() for w in os.environ.get("ACCESS_STEPS", "").split(",") if w.strip()]
     for name, step in steps:
@@ -1527,6 +1626,154 @@ def im(run, nonce, tester_id):
         run.check("Ctrl+W closes the conversation", gone, f"then {after}" if gone else "its tab is still there")
 
 
+BUILDERS_AWAY = None   # the reply posted before the app started (with ACCESS_RELAY), said once after logging in
+
+
+def builders_wanted():
+    only = [w.strip() for w in os.environ.get("ACCESS_STEPS", "").split(",") if w.strip()]
+    return not only or any(w in "the builders' tab" for w in only)
+
+
+def builders_before_launch(nonce):
+    """With ACCESS_RELAY: a reply to the token's conversation before the app starts, as if a session answered while it
+    was closed (the builders step checks it's said once after logging in)."""
+    global BUILDERS_AWAY
+    import relay as relaymod
+    BUILDERS_AWAY = f"while you were away {nonce}"
+    s, body, _ = relaymod.call("POST", f"/relay/admin/messages/{RELAY}", "", {"text": BUILDERS_AWAY, "by": "Claude (test)"},
+                               headers={"content-type": "application/json", "authorization": f"Bearer {relaymod.admin_secret()}"})
+    if s != 200:
+        print(f"     (the builders' reply before the app started: the relay answered {s} {body})")
+        BUILDERS_AWAY = None
+
+
+def builders(run, nonce):
+    """Help > Message the builders, Control+Shift+B (docs/access-app.md > Messages to the builders). Without
+    ACCESS_RELAY (no token): the tab says how to reach us instead, and Enter says it again, sending nothing. With it, on
+    the live relay with that token: a reply posted before the app started said once after logging in; the first
+    opening introduces who she's writing to; Enter sends, "Sent."; a reply posted by the admin path while she's in the
+    tab read as "Claude (test): ...", without a sound; one while she's in Say read naming the builders, with the IM's
+    sound, the focus staying; the reply marked delivered; Control+W closes the tab, the menu opens it again with the
+    whole conversation and no introduction; access_builders off refuses the key. Every message the step made is
+    deleted after."""
+    back_to_chat()
+    if not RELAY:
+        m = mark()
+        key("ctrl+shift+b")
+        d = wait_focus(lambda d: d["id"] == "convInput", 4)
+        run.check("Control+Shift+B goes to the builders' Message box", d and "builders" in d["name"], label(d) if d else focus_label())
+        run.expect("without a token, it says how to reach us instead", ["token", "Tessel", "issues"], m, 6)
+        hist = value_of("id=convHistory")
+        run.check("and its history says so too", "Tessel" in hist and "issues" in hist, hist[:160])
+        m = mark()
+        type_text(f"hello builders {nonce}")
+        key("enter")
+        run.expect("Enter there says so again, nothing sent", ["token", "Tessel"], m, 6)
+        run.check("and what she typed is kept in the box", f"hello builders {nonce}" in value_of("id=convInput"), value_of("id=convInput"))
+        u("set id=convInput |")
+        key("ctrl+w")
+        return
+
+    import relay as relaymod
+    secret = relaymod.admin_secret()
+    js = {"content-type": "application/json", "authorization": f"Bearer {secret}"}
+
+    def reply(text):
+        s, body, _ = relaymod.call("POST", f"/relay/admin/messages/{RELAY}", "", {"text": text, "by": "Claude (test)"}, headers=js)
+        return s == 200
+
+    def conversation():
+        s, body, _ = relaymod.admin_call("GET", f"/relay/admin/messages/{RELAY}", secret)
+        return body if s == 200 and isinstance(body, dict) else {}
+    try:
+        if BUILDERS_AWAY:
+            said = [e.get("text") or "" for e in said_since(0) if BUILDERS_AWAY in (e.get("text") or "")]
+            run.check("a reply that came while it was closed is said once, after logging in",
+                      len(said) == 1 and "While Sojourn Access was closed" in said[0], " | ".join(said) or "not said")
+        m = mark()
+        key("ctrl+shift+b")
+        d = wait_focus(lambda d: d["id"] == "convInput", 4)
+        run.check("Control+Shift+B goes to the builders' Message box", d and "builders" in d["name"], label(d) if d else focus_label())
+        run.expect("the first time, it says who she's writing to", ["Claude sessions", "not Tessel", "not a person", "90 days"], m, 6)
+        hist = value_of("id=convHistory")
+        run.check("the tab's history starts with that, then the conversation", hist.startswith("Messages to the builders")
+                  and (not BUILDERS_AWAY or BUILDERS_AWAY in hist), hist[:120] + " ... " + hist[-120:])
+        tabs = tab_items()
+        run.check("its tab is named for the builders", any("builders" in t for t in tabs), "; ".join(tabs))
+
+        text = f"a message to the builders {nonce}"
+        m = mark()
+        type_text(text)
+        key("enter")
+        run.expect("Enter sends it: Sent.", ["Sent."], m, 15)
+        got = wait(lambda: next((x for x in conversation().get("messages", []) if x["from"] == "tester" and x["text"] == text), None), 10)
+        run.check("the relay has her words, as she typed them", got, json.dumps(got) if got else "not on the relay")
+        run.check("and the history shows them", text in value_of("id=convHistory"), value_of("id=convHistory")[-160:])
+
+        # a reply while she's in the tab: read as in a conversation in focus, no sound
+        here = f"a reply in the tab {nonce}"
+        t0, m = time.time(), mark()
+        if run.check("(the admin path replies)", reply(here)):
+            run.expect("a reply while she's in the tab is read, signed", ["Claude (test):", here], m, 25)
+            time.sleep(1)
+            run.check("and starts no sound", not cues_since(t0, "EarIm"), json.dumps(cues_since(t0)))
+            run.check("and joins the history", here in value_of("id=convHistory"), value_of("id=convHistory")[-160:])
+
+        # one while she's typing in Say: as an IM, naming the builders, the IM's sound, the focus staying
+        back_to_chat()
+        there = f"a reply elsewhere {nonce}"
+        t0, m = time.time(), mark()
+        if run.check("(the admin path replies again)", reply(there)):
+            run.expect("a reply while she's elsewhere is read as an IM's, naming the builders", ["Claude (test), the builders", there], m, 25)
+            c = cue_after(t0, ("EarIm",), 8)
+            run.check("with the IM's sound", c, json.dumps(c) if c else f"not played; played: {[x['cue'] for x in cues_since(t0)]}")
+            f = focused()
+            run.check("the focus stays in the Say box", f and f["id"] == "chatInput", label(f) if f else "nothing")
+        conv = wait(lambda: (lambda c: c if c.get("last_reply_delivered") else None)(conversation()), 10)
+        run.check("the relay marks the reply delivered", conv, json.dumps({k: v for k, v in conversation().items() if k != "messages"}))
+
+        # closed and opened again by the menu: the whole conversation, no introduction
+        key("ctrl+shift+b")
+        wait_focus(lambda d: d["id"] == "convInput", 4)
+        key("ctrl+w")
+        time.sleep(1)
+        go_conversations()
+        time.sleep(0.5)
+        run.check("Control+W closes the builders' tab", not [t for t in tab_items() if "builders" in t], "; ".join(tab_items()))
+        back_to_chat()
+        m = mark()
+        key("alt+h")
+        if run.check("Help has Message the builders, with its key", menu_open("Message the builders (Claude, at Studio Quire)")
+                     and menu_keys("type=MenuItem;name=Message the builders (Claude, at Studio Quire)").endswith("Control+Shift+B"),
+                     menu_keys("type=MenuItem;name=Message the builders (Claude, at Studio Quire)") or focus_label()):
+            key("m")
+            d = wait_focus(lambda d: d["id"] == "convInput", 4)
+            run.check("M there opens the tab again", d and "builders" in d["name"], label(d) if d else focus_label())
+            hist = value_of("id=convHistory")
+            run.check("with the whole conversation", all(w in hist for w in (text, here, there)), hist[-200:])
+            time.sleep(1)
+            run.check("and no introduction again", not [e for e in said_since(m) if "not Tessel" in (e.get("text") or "")],
+                      " | ".join(e.get("text") or "" for e in said_since(m)))
+            key("ctrl+w")
+        back_to_chat()
+
+        # turned off
+        setting("access_builders", "off")
+        m = mark()
+        key("ctrl+shift+b")
+        run.expect("with access_builders off, the key says it's off and where to turn it on", ["turned off", "Alt+0"], m, 5)
+        setting("access_builders", "on")
+    finally:
+        try:
+            setting("access_builders", "on")
+        except Exception:
+            pass
+        made = [x["id"] for x in conversation().get("messages", []) if nonce in x["text"]]
+        for i in made:
+            relaymod.admin_call("DELETE", f"/relay/admin/messages/{RELAY}/{i}", secret)
+        back_to_chat()
+
+
 def arrived_in_list(run, area, since, is_item, settle=2.5):
     """What a screen reader is left on after arriving in a list (once it and the lists under it have filled): an item
     of that list, as Alt+3 reads its first person. The 2026-10-29 run on Second Life: Alt+7 said "Objects nearby,
@@ -1780,7 +2027,9 @@ def outfit_arriving(run, nonce):
             m = mark()
             key("ctrl+shift+w")
             said = run.expect("Control+Shift+W says it's attached", ["Attached:", name], m, 5)
-            run.check("and no longer still arriving", said and "Still arriving" not in said["text"], said["text"] if said else "")
+            # (only this one: an interrupted earlier run can leave its own fixture linked in the outfit, unattached)
+            arriving = said["text"].split("Still arriving", 1)[1].split(". ", 1)[0] if said and "Still arriving" in said["text"] else ""
+            run.check("and no longer still arriving", said and name not in arriving, said["text"] if said else "")
     finally:
         try:
             api("TesselAgent", "detach", 30, item_id=item)
@@ -2086,33 +2335,41 @@ def settings(run):
             .get("access_answers_without_key", {}).get("desc", ""))
     run.check("and so does its tip (the setting's own words)", "braille display" in desc and "leave it if you use a keyboard" in desc, desc[:160])
 
-    # the sound's device (her Radegast habit of switching headset and speakers, 2026-10-31): Alt+0 steps the default,
-    # then each device as Windows names it; Control+Shift+O the next. (The test's world audio goes to a file whatever is
-    # chosen, so the PC's own devices are never opened or played to.)
+    # the sound's device (her Radegast habit of switching headset and speakers, 2026-10-31; on 0.1.0.737 stepping blind
+    # put her on her TV's HDMI output, 2026-11-01): Enter on the Alt+0 row opens the list of devices, each said with what
+    # it is; Space steps, Shift+Space back; Control+Shift+O the next, with where it stands. (The test's world audio goes
+    # to a file whatever is chosen, so the PC's own devices are never opened or played to.)
     row = wait(lambda: find("type=ListItem;name~=Sound output: speakers or headphones"), 4)
     if run.check("Alt+0 has the sound output, the default first", row and ": the default" in row[0]["name"], label(row[0]) if row else "not listed"):
         devices = api("SojournAudio", "devices").get("speakers") or []
+        run.check("SojournAudio devices says what each is", devices and all("kind" in d for d in devices),
+                  "; ".join(f"{d['name']} ({d.get('kind')})" for d in devices))
         key("home")
         for _ in range(80):
             if "Sound output" in selection("id=settings"):
                 break
             key("down")
             time.sleep(0.1)
-        m = mark()
-        key("enter")
         first = devices[0]["name"] if devices else None
         if first:
-            run.expect("Enter on it: the first device, by its Windows name", [f"Sound output: speakers or headphones (Control+Shift+O): {first}."], m, 5)
+            key("enter")
+            item = wait(lambda: find(f"type=MenuItem;name~={first}"), 4)
+            run.check("Enter on it: the list of devices, each with what it is",
+                      item and (not devices[0].get("kind") or devices[0]["kind"] in item[0]["name"]), label(item[0]) if item else "no list")
+            m = mark()
+            key("down")
+            key("enter")
+            run.expect("a device chosen from it, said with where it stands", [f"Sound on {first}", f"2 of {len(devices) + 1}"], m, 6)
             run.check("(chosen)", setting("speakers") == first, str(setting("speakers")))
         m = mark()
-        key("shift+enter")
-        run.expect("Shift+Enter back to the default", ["the default"], m, 5)
+        key("shift+space")
+        run.expect("Shift+Space back to the default", ["the default", "1 of"], m, 6)
         run.check("(automatic again)", setting("speakers") == "auto", str(setting("speakers")))
         if first:
             back_to_chat()
             m = mark()
             key("ctrl+shift+o")
-            run.expect("Control+Shift+O: the sound on the next device, said", [f"Sound on {first}."], m, 5)
+            run.expect("Control+Shift+O: the sound on the next device, said", [f"Sound on {first}"], m, 6)
             run.check("(chosen)", setting("speakers") == first, str(setting("speakers")))
             setting("speakers", "auto")
 
@@ -2654,7 +2911,15 @@ def delete_by_search(run, name):
         time.sleep(1.2)
         key("enter")
     run.expect(f"(cleanup: {name} deleted)", [f"Deleted {name}"], m, 10)
+    clear_search()
+
+
+def clear_search():
+    """The inventory's first pane back to its tree: Control+F, Escape (clears the search). A step that searched leaves it
+    so: a search left showing changes what later steps meet (an upload isn't selected over one, by design)."""
     try:
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
         key("ctrl+f")
         key("esc", target="id=inventorySearch")
     except ToolError:
@@ -2822,6 +3087,8 @@ def describing(run):
     needs it, then what the lists know, and the keys after it only what the lists know; with the renderer out of sight, SojournDescribe's pictures aimed at
     the visitor, the fixture box and round the tester, each with what's visible in it by name."""
     back_to_chat()
+    if RELAY:
+        return   # (with the assistant: what's here is its absence)
     m = mark()
     key("ctrl+d")
     # said once a session: the parts step's describing may have had it first, so looked for since the run began
@@ -2879,6 +3146,97 @@ def describing(run):
     run.check("here: four views round the tester, the visitor among the people around",
               len(labels) == 4 and "ahead" in labels[0] and any(VNAME in s for s in r["subject"].get("people_within_30_metres", [])),
               "; ".join(labels))
+
+
+def describing_looks(run, nonce):
+    """A look waited for and said as it had loaded (docs/access-app.md > Describing): the tester wears a box and it's
+    given a moss green picture made here once worn (so its texture is first asked for by the worn box, then the
+    description), and the tester is described. Plain: the
+    picture waits for it and its look is said to have loaded, the box green in the picture (on the processor too).
+    With SOJOURN_TEST_HOLD_WORN=Tester[:SECONDS] (the app's own switch, World/LookHold.cs): for good, the box's colours
+    said not to have loaded, by name, and with ACCESS_RELAY the description says its colours aren't known; for a few
+    seconds, the picture waits them out and it's loaded. The visitor's look is said to have loaded either way."""
+    if VIEWLESS:
+        return
+    hold = os.environ.get("SOJOURN_TEST_HOLD_WORN", "")
+    # (the view's simulated GPU loss, 15 s in, over first: run alone this step comes before it)
+    wait(lambda: (lambda st: st["state"] == "running" and st["losses"] >= 1)(api("SojournView", "status")), 60, 1)
+
+    def loaded(look):
+        return "look had" in look and "hadn't" not in look
+    held_for_good = "tester" in hold.lower() and ":" not in hold
+    name = f"Access Sweater {nonce}"
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+    from PIL import Image, ImageDraw
+    pic = OUT / "sweater.png"
+    im = Image.new("RGB", (256, 256), (74, 103, 65))   # moss green, ribbed with darker stripes
+    d = ImageDraw.Draw(im)
+    for xx in range(0, 256, 16):
+        d.rectangle((xx, 0, xx + 5, 255), fill=(58, 84, 50))
+    im.save(pic)
+    up = gated(run, "the sweater's picture uploaded", "TesselAgent", "upload", 120, path=str(pic), name=f"Access Sweater picture {nonce}")
+    if not up:
+        return
+    tex = up.get("asset_id") or up.get("item_id")
+    x, y, z, _ = tester_where()
+    # (plain while it's in the world: textured there it would be drawn, and its texture loaded, before it's worn)
+    box = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y, z], scale=[0.45, 0.45, 0.45], name=name)["id"]
+    api("TesselBuild", "take", 30, ids=[box], folder_id=root)
+    item = wait(lambda: inv_items(root).get(name), 10)
+    if not run.check("(the sweater box in the inventory)", item, ""):
+        return
+    api("TesselAgent", "attach", 30, item_id=item, point="Chest")
+    try:
+        if not run.check("(and worn on the chest)", wait(lambda: attached(item), 10), ""):
+            return
+        worn = next(a["id"] for a in api("LLAgent", "getAttachedObjectsList").get("result", []) if a.get("item_id") == item)
+        api("TesselBuild", "modify", 20, id=worn, texture=tex)
+        time.sleep(1)
+        t0 = time.time()
+        r = timed_look(subject="me", detail="brief")
+        took = time.time() - t0
+        pics = r.get("pictures") or []
+        look = (pics[0].get("subject_look") or "") if pics else ""
+        print(f"     (subject_look: {look[:400]})")
+        if pics and pics[0].get("png"):
+            import base64
+            (OUT / "describe-me.png").write_bytes(base64.b64decode(pics[0]["png"]))
+            img = Image.open(OUT / "describe-me.png").convert("RGB")
+            # moss green pixels: green over red, not under blue (a dusk sky lights it bluish; an untextured box is grey)
+            green = sum(1 for p in img.getdata() if p[1] >= p[0] + 8 and p[1] >= p[2] - 2 and p[1] >= 25)
+            share = green / (img.width * img.height)
+        else:
+            share = 0
+        if held_for_good:
+            run.check("held for good: the sweater's colours said not to have loaded, by name",
+                      "hadn't fully loaded" in look and "not loaded on" in look and name in look, look[:300])
+            run.check("(and it isn't green in the picture)", share < 0.01, f"{share:.1%} green (local/access-test-walk/describe-me.png or the run's folder)")
+        else:
+            run.check(f"the picture waited for the sweater and says the look had loaded{' (held ' + hold + ')' if hold else ''}",
+                      loaded(look), f"{look[:200]}; look {took:.1f} s")
+            run.check("(the sweater is green in the picture)", share > 0.01, f"{share:.1%} of it moss green")
+        vid = visitor_id()
+        rv = timed_look(subject=vid, detail="brief")
+        vp = (rv.get("pictures") or [{}])[0]
+        run.check("the visitor's look said to have loaded", loaded(vp.get("subject_look") or ""), (vp.get("subject_look") or "none")[:200])
+        if RELAY:
+            back_to_chat()
+            m = mark()
+            t0 = time.time()
+            key("ctrl+shift+d")
+            run.expect("Control+Shift+D: describing you", ["Describing you"], m, 10)
+            said = wait(lambda: next((e for e in said_since(m) if len(e.get("text") or "") > 60
+                                      and not (e.get("text") or "").startswith("Describing")), None), 150)
+            text = (said or {}).get("text") or ""
+            print(f"     (described in {time.time() - t0:.1f} s: {text[:600]})")
+            if held_for_good:
+                run.check("the description says the sweater's colours aren't known yet, naming none for it",
+                          re.search(r"load|known|can't (tell|make out|see)|cannot|not yet", text, re.I) and "green" not in text.lower(), text[:300])
+            else:
+                run.check("the description gives the sweater's colour", re.search(r"green|olive|moss", text, re.I), text[:300])
+    finally:
+        api("TesselAgent", "detach", 30, item_id=item)
+        back_to_chat()
 
 
 def timed_look(**args):
@@ -3025,13 +3383,17 @@ def offscreen_software(run):
     run.check("the view out of sight runs on the processor (no GPU it can use)", st and st.get("software") is True and "llvmpipe" in st["device"],
               json.dumps(st) if st else json.dumps(api("SojournView", "status")))
     time.sleep(3)
+    # with the assistant up the warm-up draws one frame 2 s after it's up (OffscreenRenderer.WarmFirst), the rest at 20 s
+    if RELAY:
+        wait(lambda: any("a first frame drawn at once" in p.read_text(encoding="utf-8", errors="replace")
+                         for p in (OUT / "app" / "logs").glob("*.log")), 30, 0.5)
     p = psutil.Process(APP_PID)
     p.cpu_percent(None)
     time.sleep(10)
     cpu = p.cpu_percent(None)
     mem = p.memory_info()
     st = api("SojournView", "status")
-    run.check("idle, it draws nothing and the app stays light", st["frames"] == 0 and st["idle_hz"] == 0 and cpu < 15,
+    run.check("idle, it draws nothing and the app stays light", st["frames"] <= (1 if RELAY else 0) and st["idle_hz"] == 0 and cpu < 15,
               f"{st['frames']} frames, idle_hz {st['idle_hz']}; {cpu:.0f}% of a core over 10 s, "
               f"{mem.private / 2**20:.0f} MB private, {mem.rss / 2**20:.0f} MB working set")
     box_checks(run, rays=False)
@@ -3103,10 +3465,11 @@ def list_items(sel):
     are told by their words): objects, parts or faces."""
     names = [d["name"] for d in find("type=ListItem")]
     if sel == "id=faces":
-        return [n for n in names if ", face " in n or "faces" in n.lower() or "Faces" in n or n == "No part selected."]
+        return [n for n in names if ", face " in n or n.startswith("Face ") or "faces" in n.lower() or "Faces" in n or n == "No part selected."]
     if sel == "id=parts":
-        return [n for n in names if re.search(r"(part \d+ of \d+|^Part \d+ of |the whole object|parts\.|No object selected|isn't here)", n)]
-    return [n for n in names if not re.search(r"(part \d+ of \d+|^Part \d+ of |, face \d)", n)]
+        return [n for n in names if re.search(r"(part \d+ of \d+|^Part \d+ of |the whole object|parts\.|No object selected|isn't here|"
+                                              r"button \d+ of \d+|^Read its buttons)", n)]
+    return [n for n in names if not re.search(r"(part \d+ of \d+|^Part \d+ of |, face \d|button \d+ of \d+|^Read its buttons|^Face \d)", n)]
 
 
 def parts(run):
@@ -3292,6 +3655,257 @@ def huds(run, nonce):
         back_to_chat()
 
 
+# A HUD that's one picture of buttons (docs/access-app.md > HUDs out of sight): its regions in the picture, as fractions
+# from the left and the top (u0, v0, u1, v1), and the panel's look
+PANEL_BUTTONS = {"Brake": (0.05, 0.26, 0.47, 0.58), "Horn": (0.53, 0.26, 0.95, 0.58),
+                 "Forward": (0.05, 0.66, 0.47, 0.96), "Reverse": (0.53, 0.66, 0.95, 0.96)}
+PANEL_COLOURS = {"Brake": (200, 30, 30), "Horn": (230, 200, 40), "Forward": (40, 160, 60), "Reverse": (40, 80, 200)}
+PANEL_SCRIPT = ('default { touch_start(integer n) { vector st = llDetectedTouchST(0); llSay(0, "Access Panel touched, face " '
+                '+ (string)llDetectedTouchFace(0) + ", st " + (string)st.x + " " + (string)st.y); } }')
+
+
+def panel_picture(path):
+    """The driver panel's picture: a title readout and four labelled buttons in two rows."""
+    from PIL import Image, ImageDraw, ImageFont
+    w, h = 512, 256
+    im = Image.new("RGB", (w, h), (28, 30, 36))
+    d = ImageDraw.Draw(im)
+    try:
+        font, small = ImageFont.truetype("arialbd.ttf", 34), ImageFont.truetype("arialbd.ttf", 26)
+    except OSError:
+        font = small = ImageFont.load_default()
+    d.text((w / 2, h * 0.11), "DRIVER PANEL  SPEED 0", fill=(220, 220, 220), font=small, anchor="mm")
+    for name, (u0, v0, u1, v1) in PANEL_BUTTONS.items():
+        box = (u0 * w, v0 * h, u1 * w, v1 * h)
+        d.rounded_rectangle(box, 12, fill=PANEL_COLOURS[name], outline=(240, 240, 240), width=3)
+        d.text(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2), name.upper(), fill=(255, 255, 255) if name != "Horn" else (20, 20, 20),
+               font=font, anchor="mm")
+    im.save(path)
+
+
+def panel_touches(n, secs=10):
+    """The panel's touch reports the visitor heard after its line n: [(face, s, t)]."""
+    def look():
+        lines = v(f"heard 50 since {n}")
+        got = []
+        for l in ([] if lines == "none" else lines.splitlines()):
+            m_ = re.search(r"Access Panel touched, face (-?\d+), st ([\d.\-]+) ([\d.\-]+)", json.loads(l)["msg"])
+            if m_:
+                got.append((int(m_.group(1)), float(m_.group(2)), float(m_.group(3))))
+        return got or None
+    return wait(look, secs, 0.5) or []
+
+
+def st_orientation(pairs):
+    """Of the eight ways a face's ST can lie across the HUD (turned, mirrored), the one that fits every (meant, got)
+    pair best: (worst error, name). meant: (u, v) across the HUD from its left and top; got: the script's (s, t)."""
+    ways = {
+        "s across, t up": lambda u, v: (u, 1 - v), "s across, t down": lambda u, v: (u, v),
+        "s back, t up": lambda u, v: (1 - u, 1 - v), "s back, t down": lambda u, v: (1 - u, v),
+        "s up, t across": lambda u, v: (1 - v, u), "s down, t across": lambda u, v: (v, u),
+        "s up, t back": lambda u, v: (1 - v, 1 - u), "s down, t back": lambda u, v: (v, 1 - u),
+    }
+    best = min(((max(max(abs(f(*m)[0] - g[0]), abs(f(*m)[1] - g[1])) for m, g in pairs), k) for k, f in ways.items()), default=(9, "none"))
+    return best
+
+
+def hud_picture(run, nonce):
+    """A HUD that's one textured prim of buttons, as most game, vehicle and fishing HUDs are, its script telling them
+    apart by where it's touched: drawn out of sight, its face listed as it shows and pressed in its middle; buttons saved
+    for it (as the assistant's reading saves them) listed after its parts and pressed where they are, by Enter and by
+    //touch, each landing where it was meant (the script's llDetectedTouchST, checked against one way the face lies);
+    SojournHud look's picture and describing's picture of it. With ACCESS_RELAY, the assistant reads its buttons off
+    the picture and Brake lands inside the brake."""
+    if VIEWLESS:
+        return
+    name = f"Access Panel {nonce}"
+    # an earlier run's test HUDs still worn would cover this one's middle (worn on the same point)
+    for h in api("SojournHud", "list")["huds"]:
+        if re.match(r"Access (HUD|Panel) [0-9a-f]{6}$", h["name"]) and not h["name"].endswith(nonce):
+            api("TesselAgent", "detach", 30, object_id=h["id"])
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+    pic_path = OUT / "panel.png"
+    panel_picture(pic_path)
+    up = gated(run, "the panel's picture uploaded", "TesselAgent", "upload", 120, path=str(pic_path), name=f"Access Panel picture {nonce}")
+    if not up:
+        return
+    tex = up.get("asset_id") or up.get("item_id")
+    x, y, z, _ = tester_where()
+    # thin into the screen, 0.48 of the screen's height wide and 0.24 high: the picture's 2:1 on its front
+    panel = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y, z], scale=[0.02, 0.48, 0.24], name=name, texture=tex)["id"]
+    script = api("TesselInventory", "createScript", 60, name=f"Access Panel script {nonce}", text=PANEL_SCRIPT)
+    if not gated(run, "the panel's script put in", "TesselBuild", "addToContents", id=panel, item_id=script["item_id"]):
+        return
+    api("TesselBuild", "take", 30, ids=[panel], folder_id=root)
+    item = wait(lambda: inv_items(root).get(name), 10)
+    if not run.check("(the panel in the inventory)", item, ""):
+        return
+    api("TesselAgent", "attach", 30, item_id=item, point="HUD Center")
+    if not run.check("(and worn on HUD Center)", wait(lambda: attached(item), 10), ""):
+        return
+    pressed = []   # ((u, v) meant across the HUD, (s, t) the script said)
+    try:
+        hud_id = wait(lambda: next((h["id"] for h in api("SojournHud", "list")["huds"] if h["name"] == name and h["drawn"]), None), 15)
+        if not run.check("SojournHud list: the panel worn and placed out of sight", hud_id, json.dumps(api("SojournHud", "list"))[:300]):
+            return
+        t0 = time.time()
+        look = api("SojournHud", "look", 60, hud=hud_id)
+        took = time.time() - t0
+        import base64
+        import io
+        from PIL import Image, ImageStat
+        (OUT / "panel-look.png").write_bytes(base64.b64decode(look["png"]))
+        im = Image.open(io.BytesIO(base64.b64decode(look["png"]))).convert("RGB")
+        rect = next((h["rect"] for h in look["huds"] if h["id"] == hud_id), None)
+        run.check("SojournHud look: a picture of it out of sight, its place on the picture, not flat", rect and sum(ImageStat.Stat(im).stddev) / 3 > 20,
+                  f"{look['width']}x{look['height']}, rect {rect}, {took:.1f} s (local/access-test/panel-look.png)")
+        if rect:
+            # the brake's middle in the picture is red: the texture is on its front as drawn, upright
+            bu = PANEL_BUTTONS["Brake"]
+            px = im.getpixel((int(rect[0] + rect[2] * (bu[0] + bu[2]) / 2), int(rect[1] + rect[3] * (bu[1] + bu[3]) / 2 + rect[3] * 0.1)))
+            run.check("(its picture shows the panel's texture on its front: red where the brake is)", px[0] > 120 and px[1] < 90 and px[2] < 90, str(px))
+
+        m = mark()
+        key("alt+shift+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        if not run.check("Alt+Shift+7: the panel listed, one part, touchable", wait(lambda: find(f"type=ListItem;name~={name}, on HUD Center, 1 part, touchable"), 8),
+                         " | ".join(list_items("id=objects"))):
+            return
+        select_in("id=objects", name)
+        parts = wait(lambda: (lambda ps: ps if any("Read its buttons" in p for p in ps) else None)(list_items("id=parts")), 10) or list_items("id=parts")
+        run.check("its parts: the whole object, then a line to read its buttons", any(p.startswith(name) and "the whole object" in p for p in parts)
+                  and parts[-1].startswith("Read its buttons from its picture"), " | ".join(parts))
+        key("tab")
+        wait_focus(lambda d: d["id"] == "parts" or d["type"] == "ListItem", 3)
+        select_in("id=parts", "the whole object")
+        key("tab")
+        wait_focus(lambda d: d["id"] == "faces" or d["type"] == "ListItem", 3)
+        faces = wait(lambda: (lambda fs: fs if any(f.startswith("The front, face") for f in fs) else None)(list_items("id=faces")), 10) or list_items("id=faces")
+        run.check("Faces of it: only its front, as it shows on the screen", len(faces) == 1 and faces[0].startswith("The front, face"), " | ".join(faces))
+        if faces and faces[0].startswith("The front, face"):
+            front = int(faces[0].rsplit(" ", 1)[1])
+            n = visitor_n()
+            m = mark()
+            key("enter")
+            run.expect("Enter on the front touches it", ["Touched", "the front"], m, 10)
+            got = panel_touches(n)
+            run.check("its script says that face, in its middle", got and got[0][0] == front and abs(got[0][1] - 0.5) < 0.05 and abs(got[0][2] - 0.5) < 0.05,
+                      str(got))
+            if got:
+                pressed.append(((0.5, 0.5), got[0][1:]))
+
+        # buttons saved as the assistant's reading saves them: each region's box on the look's picture
+        if rect:
+            given = [{"name": b, "rect": [rect[0] + rect[2] * u0, rect[1] + rect[3] * v0, rect[2] * (u1 - u0), rect[3] * (v1 - v0)]}
+                     for b, (u0, v0, u1, v1) in PANEL_BUTTONS.items()]
+            given.append({"name": "Off the edge", "rect": [rect[0] + rect[2] + 40, rect[1], 20, 20]})
+            saved = api("SojournHud", "save_buttons", hud=hud_id, picture=look["picture"], buttons=given, by="the test")
+            run.check("save_buttons keeps the four, in reading order, and drops one off the panel",
+                      saved.get("buttons") == ["Brake", "Horn", "Forward", "Reverse"] and saved.get("dropped") == ["Off the edge"], json.dumps(saved))
+            back_to_chat()
+            key("alt+shift+7")
+            wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+            select_in("id=objects", name)
+            key("tab")
+            wait_focus(lambda d: d["id"] == "parts" or d["type"] == "ListItem", 3)
+            key("f5")
+            parts = wait(lambda: (lambda ps: ps if any("button 1 of 4" in p for p in ps) else None)(list_items("id=parts")), 10) or list_items("id=parts")
+            run.check("its parts then its buttons by name, number and place, and a line to read them again",
+                      "Brake, button 1 of 4, at the top left" in parts and "Reverse, button 4 of 4, at the bottom right" in parts
+                      and parts[-1].startswith("Read its buttons again"), " | ".join(parts))
+            for b in ("Horn", "Forward"):
+                if not select_in("id=parts", f"{b}, button"):
+                    run.check(f"({b} selected)", False, selected_text("id=parts"))
+                    continue
+                n = visitor_n()
+                m = mark()
+                key("enter")
+                run.expect(f"Enter on {b} presses it", [f"Pressed {b}"], m, 10)
+                got = panel_touches(n)
+                u0, v0, u1, v1 = PANEL_BUTTONS[b]
+                if run.check(f"(the panel's script heard {b})", got, str(got)):
+                    pressed.append((((u0 + u1) / 2, (v0 + v1) / 2), got[0][1:]))
+            back_to_chat()
+            n = visitor_n()
+            m = mark()
+            say_in_app("//touch reverse")
+            run.expect("//touch reverse presses the button read on the HUD (nothing nearby has the name)", ["Pressed Reverse"], m, 10)
+            got = panel_touches(n)
+            u0, v0, u1, v1 = PANEL_BUTTONS["Reverse"]
+            if run.check("(the panel's script heard Reverse)", got, str(got)):
+                pressed.append((((u0 + u1) / 2, (v0 + v1) / 2), got[0][1:]))
+            err, way = st_orientation(pressed)
+            run.check("every press landed where it was meant: one way the face lies fits them all within 0.03",
+                      len(pressed) >= 3 and err < 0.03, f"{way}, worst {err:.3f} over {len(pressed)} presses: {pressed}")
+
+        r = timed_look(subject=hud_id, detail="brief")
+        pics = r.get("pictures") or []
+        run.check("describing the HUD: its picture as it shows on the screen, and what it is",
+                  len(pics) == 1 and pics[0].get("png") and "as it shows on their screen" in pics[0].get("label", "")
+                  and "HUD" in (r.get("subject") or {}).get("what", ""), json.dumps({k: v for k, v in r.items() if k != "pictures"})[:300])
+
+        if os.environ.get("ACCESS_RELAY"):
+            hud_read_by_assistant(run, name, hud_id)
+    finally:
+        try:
+            key("alt+7")
+            time.sleep(0.5)
+            u("setfocus id=objectsShow")
+            key("up")
+        except Exception:
+            pass
+        api("TesselAgent", "detach", 30, item_id=item)
+        back_to_chat()
+
+
+def hud_read_by_assistant(run, name, hud_id):
+    """ACCESS_RELAY: the assistant reads the panel's buttons off its picture (a lean call through the relay), the parts
+    list shows them, and Enter on Brake lands inside the brake as painted (the script's ST)."""
+    api("SojournHud", "forget_buttons", hud=hud_id)
+    back_to_chat()
+    key("alt+shift+7")
+    wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+    select_in("id=objects", name)
+    key("tab")
+    wait_focus(lambda d: d["id"] == "parts" or d["type"] == "ListItem", 3)
+    key("f5")
+    if not run.check("(the reading line)", select_in("id=parts", "Read its buttons from its picture"), selected_text("id=parts")):
+        return
+    m = mark()
+    t0 = time.time()
+    key("enter")
+    run.expect("Enter on it: reading the buttons", ["Reading the buttons on", name], m, 10)
+    said = run.expect("the assistant says what it read", ["buttons on", name, "listed after its parts"], m, 120)
+    print(f"     (read in {time.time() - t0:.1f} s: {said['text'][:300] if said else '-'})")
+    parts = wait(lambda: (lambda ps: ps if any(", button 1 of" in p for p in ps) else None)(list_items("id=parts")), 10) or list_items("id=parts")
+    names = [p.split(", button")[0].lower() for p in parts if ", button " in p]
+    run.check("its buttons listed, the four labels among them", all(any(b.lower() in n for n in names) for b in PANEL_BUTTONS), " | ".join(parts))
+    key("home")
+    for _ in range(12):
+        if selected_text("id=parts").lower().startswith("brake"):
+            break
+        key("down")
+        time.sleep(0.12)
+    if not run.check("(Brake selected)", selected_text("id=parts").lower().startswith("brake"), selected_text("id=parts")):
+        return
+    n = visitor_n()
+    m = mark()
+    key("enter")
+    run.expect("Enter on Brake presses it", ["Pressed", "brake"], m, 10)
+    got = panel_touches(n)
+    u0, v0, u1, v1 = PANEL_BUTTONS["Brake"]
+    # the texture's top is the face's top: s across, t up
+    run.check("the assistant's Brake lands inside the brake as painted", got and u0 - 0.02 <= got[0][1] <= u1 + 0.02 and 1 - v1 - 0.02 <= got[0][2] <= 1 - v0 + 0.02,
+              f"{got}; the brake spans s {u0}-{u1}, t {1 - v1:.2f}-{1 - v0:.2f}")
+    # Control+D on it there: the HUD described from its picture
+    m = mark()
+    t0 = time.time()
+    key("ctrl+d")
+    run.expect("Control+D on its button: describing the HUD", ["Describing your", name], m, 10)
+    said = run.expect("the description reads its controls (Brake among them)", ["brake", "reverse"], m, 120)
+    print(f"     (described in {time.time() - t0:.1f} s)")
+
+
 def placing(run, nonce):
     """Placing by words (M2): an object from the inventory rezzed "a metre to my left" (Applications key, S), then moved
     "by 50 cm up" from Objects (Applications key, M); each where the words say, resting on the ground first."""
@@ -3366,6 +3980,253 @@ def placing(run, nonce):
     finally:
         for o in api("TesselObjects", "nearby", dist=20, query=name).get("objects", []):
             api("TesselBuild", "take", 30, ids=[o["id"]], folder_id=root)
+        clear_search()
+        back_to_chat()
+
+
+UPLOAD_FEES = "texture=0,mesh=0,animation=500"   # SOJOURN_TEST_UPLOAD_FEE: pictures and models confirmed at L$0, animations unaffordable
+
+
+def upload_fixtures(nonce):
+    """The files the upload step sends, made here (no image library): a 300 by 200 PNG with see-through parts, a two
+    second stereo WAV at 48 kHz, a 31 second WAV (too long), a text file (wrong kind), a one-metre cube as glTF, and a
+    three-frame BVH."""
+    import base64, struct, wave, zlib
+    d = OUT / "upload"
+    d.mkdir(parents=True, exist_ok=True)
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+    rows = b"".join(b"\0" + b"".join(bytes((x % 256, y % 256, 128, 255 if x < 150 else 96)) for x in range(300)) for y in range(200))
+    (d / "Sunset.png").write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 300, 200, 8, 6, 0, 0, 0))
+                                   + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+    def wav(path, secs, rate, channels, width):
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(channels)
+            w.setsampwidth(width)
+            w.setframerate(rate)
+            frames = bytearray()
+            for i in range(int(secs * rate)):
+                s = math.sin(i * 2 * math.pi * 440 / rate)
+                one = struct.pack("<h", int(s * 8000)) if width == 2 else bytes((int(128 + s * 60),))
+                frames += one * channels
+            w.writeframes(bytes(frames))
+    wav(d / "Door.wav", 2, 48000, 2, 2)
+    wav(d / "Too long.wav", 31, 8000, 1, 1)
+    (d / "Shopping list.txt").write_text("not a picture\n", encoding="utf-8")
+
+    # a cube, 24 corners (a normal each), 12 triangles
+    pos, nrm, idx = [], [], []
+    for axis in range(3):
+        for sign in (-0.5, 0.5):
+            n = [0.0, 0.0, 0.0]
+            n[axis] = 1.0 if sign > 0 else -1.0
+            u_ax, v_ax = [a for a in range(3) if a != axis]
+            base = len(pos)
+            for du, dv in ((-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)):
+                p = [0.0, 0.0, 0.0]
+                p[axis], p[u_ax], p[v_ax] = sign, du, dv
+                pos.append(p)
+                nrm.append(n)
+            idx += [base, base + 1, base + 2, base, base + 2, base + 3] if sign > 0 else [base, base + 2, base + 1, base, base + 3, base + 2]
+    blob = b"".join(struct.pack("<3f", *p) for p in pos) + b"".join(struct.pack("<3f", *n) for n in nrm) + b"".join(struct.pack("<H", i) for i in idx)
+    gltf = {
+        "asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0, "name": "Cube"}],
+        "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1}, "indices": 2}]}],
+        "buffers": [{"byteLength": len(blob), "uri": "data:application/octet-stream;base64," + base64.b64encode(blob).decode()}],
+        "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 288}, {"buffer": 0, "byteOffset": 288, "byteLength": 288},
+                        {"buffer": 0, "byteOffset": 576, "byteLength": 72}],
+        "accessors": [{"bufferView": 0, "componentType": 5126, "count": 24, "type": "VEC3", "min": [-0.5] * 3, "max": [0.5] * 3},
+                      {"bufferView": 1, "componentType": 5126, "count": 24, "type": "VEC3"},
+                      {"bufferView": 2, "componentType": 5123, "count": 36, "type": "SCALAR"}],
+    }
+    (d / "Crate.gltf").write_text(json.dumps(gltf), encoding="utf-8")
+    (d / "Wave.bvh").write_text(
+        "HIERARCHY\nROOT hip\n{\n  OFFSET 0 0 0\n  CHANNELS 6 Xposition Yposition Zposition Zrotation Xrotation Yrotation\n"
+        "  JOINT abdomen\n  {\n    OFFSET 0 3 0\n    CHANNELS 3 Zrotation Xrotation Yrotation\n    End Site\n    {\n      OFFSET 0 5 0\n    }\n  }\n}\n"
+        "MOTION\nFrames: 4\nFrame Time: 0.5\n0 40 0 0 0 0 0 0 0\n0 40 0 0 0 0 30 0 0\n0 40 0 0 0 0 -30 0 0\n0 40 0 0 0 0 0 0 0\n",
+        encoding="utf-8")
+    return d
+
+
+def upload_window(run, what, secs=20):
+    """The upload window up, the focus in its About the file; its text."""
+    w = wait_focus(lambda d: d["id"] == "uploadAbout", secs)
+    if not run.check(f"{what}: the upload window opens, the focus in About the file", w, label(w) if w else focus_label()):
+        return None
+    return value_of("id=uploadAbout")
+
+
+def open_dialog_pick(run, what, path):
+    """Windows' own Open window, as the person meets it: the path typed into its File name box, then Open."""
+    box = wait(lambda: find("id=1148;type=Edit") or find("id=1148"), 20, 0.5)
+    if not run.check(f"{what}: Windows' Open window comes up", box, focus_label()):
+        return False
+    u(f"set id=1148 | {path}")
+    time.sleep(0.3)
+    try:
+        u("click id=1;type=Button")
+    except ToolError:
+        key("enter")
+    return True
+
+
+def uploads(run, nonce):
+    """Uploading on her own (M6; docs/access-app.md > Uploading): a picture by Control+U and Windows' Open window, its
+    size and resizing and see-through parts said before anything is sent, renamed, the fee confirmed in Notices by
+    Enter (the run pretends pictures and models cost L$0: UPLOAD_FEES), said and selected in the inventory; a sound by
+    a folder's Applications key, Upload a file here, its length, stereo and conversion said, landing in that folder,
+    free (no confirmation); a model by //upload PATH, its triangles and size, a scale of 2 said as 2 metres, Weigh it,
+    the confirmation cancelled once (nothing uploaded) then confirmed; an animation refused before asking (L$500 over the
+    balance); a too-long sound and a text file refused in words; Build > Upload a file's key shown. What it uploaded is
+    moved into the run's folder and deleted by keys."""
+    d = upload_fixtures(nonce)
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+    folder_name = f"Access Uploads {nonce}"
+    folder = api("TesselInventory", "createFolder", name=folder_name, parent_id=root)["folder_id"]
+    pic, snd, model = f"Access Picture {nonce}", f"Access Sound {nonce}", f"Access Model {nonce}"
+    made = []
+    try:
+        # ---- refused in words, nothing sent
+        m = mark()
+        say_in_app(f"//upload {d / 'Shopping list.txt'}")
+        run.expect("a text file: said it isn't something Second Life takes", ["isn't something Second Life takes", "pictures"], m, 8)
+        m = mark()
+        say_in_app(f"//upload {d / 'Too long.wav'}")
+        run.expect("a 31-second sound: said too long, before any window", ["31 seconds long", "up to 30 seconds"], m, 10)
+        run.check("(no upload window for it)", not find("id=uploadAbout"), "")
+
+        # ---- the menu bar: Build > Upload a file, Control+U shown; Escape in the Open window uploads nothing
+        key("alt+b")
+        item = menu_open("Upload a file...")
+        if run.check("Alt+B opens Build, with Upload a file", item, focus_label()):
+            run.check("its key shown: Control+U", menu_keys("type=MenuItem;name=Upload a file...").endswith("Control+U"),
+                      menu_keys("type=MenuItem;name=Upload a file..."))
+            m = mark()
+            key("u")
+            if run.check("U there: Windows' Open window", wait(lambda: find("id=1148"), 20, 0.5), focus_label()):
+                key("esc")
+                run.expect("Escape there: nothing uploaded, said", ["Nothing uploaded"], m, 8)
+        back_to_chat()
+
+        # ---- a picture by Control+U from Say: the inventory shown once first, as its tree (not a search left showing,
+        # where nothing new is selected), so the new item can be selected there
+        clear_search()
+        back_to_chat()
+        m = mark()
+        key("ctrl+u")
+        if open_dialog_pick(run, "Control+U", d / "Sunset.png"):
+            about = upload_window(run, "a picture") or ""
+            run.check("it says the picture's size, what it's resized to, its see-through parts and fee",
+                      all(w in about for w in ("a picture, PNG, 300 by 200 pixels", "resized to 256 by 128", "see-through", "L$0")), about[:300])
+            key("tab")
+            if run.check("Tab: Name, the file's name in it", wait_focus(lambda d: d["id"] == "uploadName", 3) and value_of("id=uploadName") == "Sunset",
+                         f"{focus_label()}; {value_of('id=uploadName')!r}"):
+                u("set id=uploadName |")
+                type_text(pic, "id=uploadName")
+                wait(lambda: value_of("id=uploadName") == pic, 3, 0.2)
+                m = mark()
+                key("enter", target="id=uploadName")
+                confirm_in_notices(run, f"Upload {pic}, a picture, for L$0", m)
+                run.expect("Enter confirms: uploaded, said with its size and folder, selected in the inventory",
+                           [f"Uploaded {pic}, a picture, 256 by 128, into", "selected in your inventory"], m, 30)
+                textures = api("LLInventory", "getBasicFolderID", ft_name="texture")["id"]
+                got = wait(lambda: inv_items(textures).get(pic), 10)
+                if run.check("it's in Textures", got, ""):
+                    made.append(got)
+                    back = wait_focus(lambda d: d["id"] == "chatInput", 4)
+                    run.check("the focus back in Say", back, focus_label())
+                    key("alt+4")
+                    run.check("Alt+4: the new picture selected", wait(lambda: pic in selected_text("id=inventory"), 5), selected_text("id=inventory"))
+        back_to_chat()
+
+        # ---- a sound by a folder's Applications key: Upload a file here; free, into that folder, selected where she is
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        # (in the tree, not a search's list: the new item lands in the folder, opened, and is selected there; selected by
+        # UI Automation, as arrowing there passes whatever earlier runs left at the top and the folders the picture opened)
+        try:
+            u(f"select type=TreeItem;name~={folder_name}")
+        except ToolError:
+            pass
+        if run.check("(the run's folder selected in the tree)", wait(lambda: folder_name in selected_text("id=inventory"), 3), selected_text("id=inventory")):
+            key("apps")
+            if run.check("a folder's Applications key: Upload a file here, with Control+U", menu_open("Upload a file here..."),
+                         focus_label()) and menu_keys("type=MenuItem;name=Upload a file here...").endswith("Control+U"):
+                key("u")
+                if open_dialog_pick(run, "Upload a file here", d / "Door.wav"):
+                    about = upload_window(run, "a sound") or ""
+                    run.check("it says its length, stereo, made mono", all(w in about for w in ("a sound, 2 seconds, stereo", "48000 Hz", "made mono")), about[:300])
+                    run.check("the folder offered first is the one chosen", value_of("id=uploadFolder").startswith(folder_name), value_of("id=uploadFolder"))
+                    u("set id=uploadName |")
+                    type_text(snd, "id=uploadName")
+                    wait(lambda: value_of("id=uploadName") == snd, 3, 0.2)
+                    m = mark()
+                    key("enter", target="id=uploadName")
+                    run.expect("uploaded, free, said (no confirmation)", [f"Uploaded {snd}, a sound, 2 seconds, into {folder_name}"], m, 30)
+                    run.check("(no confirmation asked)", not any("Upload" in (e.get("text") or "") and "L$" in (e.get("text") or "") for e in said_since(m)), "")
+                    got = wait(lambda: inv_items(folder).get(snd), 10)
+                    if run.check("it's in the run's folder", got, ""):
+                        made.append(got)
+                    run.check("the tree's selection on it, the focus back in the tree",
+                              wait(lambda: snd in selected_text("id=inventory") and (focused() or {}).get("id") == "inventory", 6),
+                              f"{selected_text('id=inventory')}; {focus_label()}")
+        back_to_chat()
+
+        # ---- an animation refused before asking: L$500 over the balance
+        m = mark()
+        say_in_app(f"//upload {d / 'Wave.bvh'}")
+        about = upload_window(run, "an animation") or ""
+        run.check("it says its length and joints; priority and loop offered", "an animation, BVH" in about and find("id=uploadPriority") and find("id=uploadLoop"), about[:200])
+        if about:
+            m = mark()
+            key("enter")
+            run.expect("not enough L$: refused in words, nothing asked", ["Not enough L$", "L$500"], m, 15)
+
+        # ---- a model by //upload: its size, a scale of 2, Weigh it, cancelled once, then confirmed
+        say_in_app(f"//upload {d / 'Crate.gltf'}")
+        about = upload_window(run, "a model") or ""
+        run.check("it says its triangles and size", all(w in about for w in ("a model, glTF", "12 triangles", "About 1 metre along X")), about[:300])
+        if about:
+            u("setfocus id=uploadScale")
+            u("set id=uploadScale |")
+            m = mark()
+            type_text("2", "id=uploadScale")
+            run.expect("a scale of 2: the new size said", ["About 2 metres along X"], m, 8)
+            m = mark()
+            key("alt+w")
+            got = run.expect("Weigh it: the land impact said (or that the grid gave none)", ["land impact"], m, 30)
+            u("setfocus id=uploadName")
+            u("set id=uploadName |")
+            type_text(model, "id=uploadName")
+            wait(lambda: value_of("id=uploadName") == model, 3, 0.2)
+            m = mark()
+            key("enter", target="id=uploadName")
+            confirm_in_notices(run, f"Upload {model}, a model, for L$0", m, answer="esc")
+            run.expect("Escape: cancelled, nothing uploaded", ["Cancelled"], m, 10)
+            objects = api("LLInventory", "getBasicFolderID", ft_name="object")["id"]
+            time.sleep(2)
+            run.check("(nothing in Objects)", not inv_items(objects).get(model), "")
+            back_to_chat()
+            say_in_app(f"//upload {d / 'Crate.gltf'}")
+            if upload_window(run, "the model again"):
+                u("setfocus id=uploadName")
+                u("set id=uploadName |")
+                type_text(model, "id=uploadName")
+                wait(lambda: value_of("id=uploadName") == model, 3, 0.2)
+                m = mark()
+                key("enter", target="id=uploadName")
+                confirm_in_notices(run, f"Upload {model}, a model, for L$0", m)
+                run.expect("Enter: the model uploaded, said", [f"Uploaded {model}, a model, into"], m, 60)
+                got = wait(lambda: inv_items(objects).get(model), 10)
+                if run.check("it's in Objects", got, ""):
+                    made.append(got)
+    finally:
+        back_to_chat()
+        for item in made:
+            api("TesselInventory", "move", ids=[item], folder_id=folder)
+        delete_by_search(run, folder_name)
         back_to_chat()
 
 
@@ -4407,6 +5268,383 @@ def distance_walked(run):
     m = mark()
     key("esc")
     run.expect("(Escape: walk mode off)", ["Walk mode off"], m, 5)
+
+
+ROUTE_COURSE = (236, 120)          # in COURSE_REGION: the route recording's wall and doorway, well north of the walk course
+ROUTE_TP = ("Atelier Northeast", 60, 60, 30)   # where the recorded walk ends, by a teleport into another region
+
+
+SWITCH_LINE = re.compile(r"^Switch in (\d+) metres, set to the main line, North Station\.$")
+
+
+def rail_switches(run):
+    """Rail switches while riding (Walk/WalkMode.Switches.cs; the blind tester took two wrong turns on her partner's train,
+    2026-11-01). On a flat stretch of Atelier East found first, the visitor's two switches as the SLRR standard has them
+    (`switch`: a "Switch Stand" whose description says Main or Branch, a touch part, two guide rails that swap names and
+    phantom) 30 m apart, and its kart heading east toward them. Seated, in walk mode, a held Up drives: the first switch
+    said once with its setting and the switch cue; W says it ahead with both ways' names; Shift+W touches its stand and
+    says the new setting (the visitor hears the stand set); //switch, //switch main and //switch main again (already);
+    then driving on past both, the second said once and the first not again. Needs no renderer."""
+    back_to_chat()
+    m = mark()
+    say_in_app(f"//tp {COURSE_REGION}/100/60/40")
+    if not run.expect("(to Atelier East for the railway)", ["Arrived", COURSE_REGION], m, 40):
+        return
+    time.sleep(2)
+    x0, a, b = 40, 115, 145
+    xs = list(range(x0 - 5, b + 31, 10))
+    y = None
+    tried = []
+    for yy in range(16, 200, 8):
+        hs = api("TesselAgent", "ground", points=[[x, yy] for x in xs])["heights"]
+        known = [h for h in hs if h is not None]
+        if len(known) == len(hs) and max(hs) - min(hs) < 1.2:
+            y, ground = yy, dict(zip(xs, hs))
+            break
+        tried.append(f"{yy}: {min(known):.1f}..{max(known):.1f}" if known else f"{yy}: -")
+    if not run.check("(a flat stretch of Atelier East for the railway)", y is not None, "; ".join(tried)):
+        return
+
+    def g(x):
+        return ground[min(ground, key=lambda k: abs(k - x))]
+
+    print(f"     (the railway along y {y}, ground {min(ground.values()):.1f}-{max(ground.values()):.1f} m)")
+    ray = api("SojournCollision", "collide", **{"from": [x0, y, g(x0) + 0.8], "dir": [1, 0, 0], "max": b + 25 - x0})
+    if not run.check("(nothing in the kart's way along it)", not ray.get("hit"), json.dumps(ray)):
+        return
+    try:
+        made = []
+        for x, ch in ((a, 133), (b, 134)):
+            v(f"tp {COURSE_REGION} {x} {y + 8} {g(x) + 1.5}", timeout=40)
+            time.sleep(1.5)
+            made.append(v(f"switch {x} {y} {g(x)} {ch}", timeout=60))
+        if not run.check("the visitor's two switches are out, their scripts running", all(r.startswith("switch") for r in made), " | ".join(made)):
+            return
+        v(f"tp {COURSE_REGION} {x0} {y - 5} {g(x0) + 1.5}", timeout=40)
+        time.sleep(1.5)
+        kart = v(f"kart {x0} {y} {g(x0) + 0.4} facing 0", timeout=60)
+        if not run.check("the visitor's kart is out", kart.startswith("kart"), kart):
+            return
+        # between the switches, in chat range of both stands
+        v(f"tp {COURSE_REGION} {a + 15} {y + 9} {g(a) + 1.5}", timeout=40)
+        go_tp(run, "the tester beside the kart", x0 - 1, y - 2, g(x0) + 1.5)
+        m = mark()
+        say_in_app("//sit Walk Kart")
+        run.expect("//sit sits in the kart", ["Sitting on Walk Kart"], m, 10)
+        if not run.expect("the kart's script takes the keys", ["kart controls taken"], m, 15):
+            return
+        key("f3")
+        wait_focus(lambda d: d["id"] == "walkPad", 5)
+
+        # driving toward them: the first said once, in time
+        m = mark()
+        t0 = time.time()
+        u("keydown focus | 38")
+        said = walk_said(m, ["Switch in"], 8)
+        u("keyup focus | 38")
+        at = walk_pos()
+        got = SWITCH_LINE.match((said or {}).get("text") or "")
+        run.check("driving toward a switch says it once, with its setting and where the main line goes",
+                  got and 25 <= int(got[1]) <= 60, ((said or {}).get("text") or "not said") + f" (at {at[0]:.1f}, {at[1]:.1f})")
+        run.check("with the switch cue", cues_since(t0, "Switch"), json.dumps(cues_since(t0)[-5:]))
+        time.sleep(3)   # the kart coasts to a stop
+        x1 = walk_pos()[0]
+        print(f"     (said at {at[0]:.1f}; stopped at {x1:.1f}, the first switch at {a})")
+
+        m = mark()
+        key("w")
+        got = walk_said(m, ["Switch", "ahead"], 8)
+        run.check("W says it ahead, its setting and both ways' names",
+                  got and "set to the main line" in got["text"] and "branch: East Yard" in got["text"], (got or {}).get("text", "not said"))
+
+        n = visitor_n()
+        m = mark()
+        t0 = time.time()
+        key("shift+w")
+        got = walk_said(m, ["Switch set to"], 10)
+        run.check("Shift+W throws it and says the new setting", got and got["text"] == "Switch set to the branch, East Yard.",
+                  (got or {}).get("text") or " | ".join(e.get("text") or "" for e in said_since(m)))
+        run.heard_by_visitor("the stand was set by the touch", lambda d: d["msg"] == "switch Branch", n, 8, "switch Branch")
+        run.check("(the throw's cue)", cues_since(t0, "SwitchThrown"), json.dumps(cues_since(t0)[-5:]))
+
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+        m = mark()
+        say_in_app("//switch")
+        run.expect("//switch says how it's set now", ["Switch", "set to the branch"], m, 8)
+        n = visitor_n()
+        m = mark()
+        say_in_app("//switch main")
+        run.expect("//switch main sets it back", ["Switch set to the main line, North Station."], m, 10)
+        run.heard_by_visitor("(the stand back on the main line)", lambda d: d["msg"] == "switch Main", n, 8, "switch Main")
+        m = mark()
+        say_in_app("//switch main")
+        run.expect("//switch main again: it already is", ["already set to the main line"], m, 8)
+
+        # on past both: the second said once, the first not again
+        key("f3")
+        wait_focus(lambda d: d["id"] == "walkPad", 5)
+        m = mark()
+        u("keydown focus | 38")
+        wait(lambda: walk_pos()[0] > b + 8 or None, 20, 0.3)
+        u("keyup focus | 38")
+        time.sleep(2)
+        lines = [e.get("text") or "" for e in said_since(m) if (e.get("text") or "").startswith("Switch in")]
+        print(f"     (passing both, at {walk_pos()[0]:.1f}: {lines})")
+        run.check("driving on past both: the next one said once, the one passed not again",
+                  len(lines) == 1 and SWITCH_LINE.match(lines[0]), " | ".join(lines) or "none said")
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+    finally:
+        say_in_app("//stand")
+        time.sleep(1)
+        try:
+            v("derez Walk Kart", timeout=15)
+        except Exception:
+            pass
+        clear_owned(COURSE_REGION, visitor_id())
+
+
+def build_route_course(g):
+    """A wall across the way north (12 m, east-west, 2.5 m high) 5 m from the start, with a 1.4 m doorway in its middle
+    and an open door named Route Door standing beside the doorway's west side. The prims' ids."""
+    bx, by = ROUTE_COURSE
+    parts = [
+        dict(pos=[bx - 3.6, by + 5, g + 1.25], scale=[5.8, 0.2, 2.5]),
+        dict(pos=[bx + 3.6, by + 5, g + 1.25], scale=[5.8, 0.2, 2.5]),
+        dict(name="Route Door", pos=[bx - 0.75, by + 5.8, g + 1.25], scale=[0.1, 1.4, 2.4]),
+    ]
+    return [api("TesselBuild", "create", timeout=20, shape="box", **p)["id"] for p in parts]
+
+
+def route_recording(run):
+    """Recording a route by walking it (Walk/RouteRecorder.cs, MainForm.Routes.cs; docs/access-app.md > Walk mode >
+    Recording a route): in walk mode R starts recording; held Up walks north through the doorway, four taps of Right turn
+    east, held Up walks on; a teleport into another region by //tp; R says how it's going; N adds a note (Backspace takes
+    it back, N again); Shift+R asks a name and saves it in Routes. The notecard: a line saying where it starts, few
+    //go xyz lines (one in the doorway, one at the turn), the teleport as an SLurl, the note. Then from the start again,
+    //route plays it, arriving where the walk ended. The points' ticks are counted (and their lines heard, walk_route
+    both for the step). Needs no renderer."""
+    bx, by = ROUTE_COURSE
+    tester_id = api("LLAgent", "getID")["id"]
+    back_to_chat()
+    m = mark()
+    say_in_app(f"//tp {COURSE_REGION}/{bx}/{by}/25")
+    if not run.expect("(to the route course)", ["Arrived", COURSE_REGION], m, 40):
+        return
+    time.sleep(1.5)
+    g = api("TesselAgent", "ground", points=[[bx, by]])["heights"][0] or 21.0
+    if n := clear_course(tester_id):
+        print(f"     (cleared {n} object(s) a run before left in {COURSE_REGION})")
+    ids, name = [], f"Route {uuid.uuid4().hex[:6]}"
+    old_mode = setting("walk_route")
+    try:
+        ids = build_route_course(g)
+        run.check("(the wall and its doorway built)", len(ids) == 3, f"{len(ids)} prims on the ground at {g:.1f} m")
+        go_tp(run, "(at the start, south of the wall)", bx, by, g + 1.5)
+        m = mark()
+        say_in_app("//face 90")
+        run.expect("(facing north)", ["Facing", "north"], m, 8)
+        # the collision model has the wall before walking (the doorway rays need it)
+        wait(lambda: api("SojournCollision", "collide", **{"from": [bx - 2, by, g + 1], "dir": [0, 1, 0], "max": 8}).get("hit"), 30, 1)
+        setting("walk_route", "both")
+        key("f3")
+        if not run.check("(F3: walk mode)", wait_focus(lambda d: d["id"] == "walkPad", 5), focus_label()):
+            return
+        t0 = time.time()
+        m = mark()
+        key("r")
+        run.expect("R starts recording, saying the keys", ["Recording a route", "Shift+R saves"], m, 5)
+        start = api("LLAgent", "getPosition")["global"][:2]
+
+        def hold(vk, done, secs):
+            u(f"keydown focus | {vk}")
+            try:
+                return wait(done, secs, 0.1)
+            finally:
+                u(f"keyup focus | {vk}")
+                time.sleep(1.5)
+
+        through = hold(38, lambda: walk_pos()[1] > by + 9.5, 12)
+        x, y, *_ = tester_where()
+        north = y
+        run.check("held Up walks north through the doorway", through and abs(x - bx) < 0.8, f"at {x:.1f}, {y:.1f}")
+        for _ in range(4):
+            key("right")
+            time.sleep(0.35)
+        time.sleep(1)
+        on = hold(38, lambda: walk_pos()[0] > bx + 5, 12)
+        x, y, *_ = tester_where()
+        east = x
+        run.check("turned east, held Up walks on", on and y > by + 8, f"at {x:.1f}, {y:.1f}")
+        ticks = cues_since(t0, "RoutePoint")
+        heard = [e["text"] for e in said_since(m) if (e.get("text") or "").startswith("Step ")]
+        run.check("a tick for each point kept (and with text on, its line)", len(ticks) >= 2 and len(heard) == len(ticks),
+                  f"{len(ticks)} ticks; lines: {'; '.join(heard) or 'none'}")
+        run.check("a point kept in the doorway, said so", any("doorway" in h for h in heard), "; ".join(heard) or "none")
+        run.check("and one at the turn", any("turn" in h for h in heard), "; ".join(heard) or "none")
+
+        # a teleport into another region, typed in Say (recording goes on outside walk mode)
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+        m = mark()
+        say_in_app("//tp %s/%d/%d/%d" % ROUTE_TP)
+        run.expect("(a teleport into another region while recording)", ["Arrived", ROUTE_TP[0]], m, 40)
+        tick = walk_said(m, ["a teleport to", ROUTE_TP[0]], 6)
+        run.check("the teleport kept as a step", tick, tick["text"] if tick else "not said")
+        time.sleep(1)
+        end = api("LLAgent", "getPosition")["global"][:2]
+        key("f3")
+        wait_focus(lambda d: d["id"] == "walkPad", 5)
+        m = mark()
+        key("r")
+        run.expect("R while recording: how it's going", ["Recording:", "steps", "walked"], m, 5)
+
+        def note(words):
+            m = mark()
+            key("n")
+            if not run.check("N asks for a note", wait_focus(lambda d: d["id"] == "answer", 5), focus_label()):
+                return None
+            type_text(words, "id=answer")
+            wait(lambda: value_of("id=answer") == words, 3, 0.2)
+            key("enter", target="id=answer")
+            return run.expect("the note kept, said", ["Note kept", words], m, 5)
+
+        note("the end of the walk")
+        wait_focus(lambda d: d["id"] == "walkPad", 5)
+        m = mark()
+        key("back")
+        run.expect("Backspace takes the note back", ["Took back the note: the end of the walk"], m, 5)
+        note("the end of the walk")
+        wait_focus(lambda d: d["id"] == "walkPad", 5)
+        m = mark()
+        key("shift+r")
+        if not run.check("Shift+R asks the route's name", wait_focus(lambda d: d["id"] == "answer", 5), focus_label()):
+            return
+        u("set id=answer |")
+        type_text(name, "id=answer")
+        wait(lambda: value_of("id=answer") == name, 3, 0.2)
+        key("enter", target="id=answer")
+        saved = run.expect("saved in Routes, said with how to play it", [f"Saved {name}", "Routes", f"//route {name} plays it"], m, 20)
+        if not saved:
+            return
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+
+        root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+        routes = inv_items(root).get("Routes")
+        card = routes and inv_items(routes).get(name)
+        text = api("TesselInventory", "readNotecard", item_id=card).get("text", "") if card else ""
+        print("     (the notecard:\n       " + "\n       ".join(text.splitlines()) + ")")
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        gos = [tuple(float(n) for n in mm[1].split(",")) for l in lines if (mm := re.match(r"//go xyz (-?[\d.]+,-?[\d.]+(?:,-?[\d.]+)?)$", l))]
+        run.check("the notecard is in Routes", card, f"Routes {routes}; {name} {card}")
+        run.check("it starts by saying where", lines and lines[0].startswith(f"Starts in {COURSE_REGION}"), lines[0] if lines else "empty")
+        run.check("few //go xyz lines, not every step: the start, the doorway, the turn, the end", len(gos) == 4, f"{len(gos)}: {gos}")
+        run.check("none where the walk never went (past where it stopped)", all(p[1] < north + 0.6 and p[0] < east + 0.6 for p in gos),
+                  f"stopped at y {north:.1f} going north, x {east:.1f} going east: {gos}")
+        run.check("one in the doorway", any(abs(p[0] - bx) < 0.8 and abs(p[1] - (by + 5)) < 1.0 for p in gos), str(gos))
+        run.check("one at the turn", any(abs(p[0] - bx) < 1.2 and p[1] > by + 7.5 for p in gos), str(gos))
+        tp = f"//tp http://maps.secondlife.com/secondlife/{ROUTE_TP[0].replace(' ', '%20')}/"
+        run.check("the teleport as an SLurl", any(l.startswith(tp) for l in lines), tp)
+        run.check("the note as a line of its own, after the teleport", lines[-1] == "the end of the walk", lines[-1] if lines else "")
+
+        # played back from the start
+        m = mark()
+        say_in_app(f"//tp {COURSE_REGION}/{bx}/{by}/{g + 1.5:.0f}")
+        run.expect("(back to the start)", ["Arrived", COURSE_REGION], m, 40)
+        time.sleep(2)
+        m = mark()
+        say_in_app(f"//route {name}")
+        run.expect("//route plays it at once", [f"Playing {name}"], m, 15)
+        run.expect("its start read as a note", ["Note: Starts in"], m, 10)
+        done = run.expect("and finishes", [f"Route finished: {name}"], m, 120)
+        run.expect("the note read on arriving", ["Note: the end of the walk"], m, 5)
+        time.sleep(1.5)
+        here = api("LLAgent", "getPosition")["global"][:2]
+        off = math.dist(here, end)
+        run.check("where the walk ended", done and off < 3,
+                  f"{off:.1f} m from where the recording ended (it began {math.dist(start, end):.0f} m away)")
+        if not done:
+            print("     (said: " + " | ".join(e.get("text") or "" for e in said_since(m))[-1500:] + ")")
+        delete_by_search(run, name)
+    finally:
+        setting("walk_route", old_mode)
+        back_to_chat()
+        if ids:
+            clear_course(tester_id)
+        say_in_app("//tp Atelier/%d/%d/%d" % TP_TO)
+        time.sleep(5)
+
+
+def route_crossing(run):
+    """A route recorded walking across a region's border (Walk/RouteRecorder.cs: the last point before the border and
+    the first after, the one after in the coordinates of the region before, past 256) and played back by //route
+    (Commands: a //go xyz past the edge walked straight and judged arrived in the frame of the region it set out from):
+    held Up north from Atelier East into Atelier Northeast, //record save NAME, back by //tp, //route, arriving where the
+    walk ended (the ground there is flat at 21 m across the border). Needs no renderer."""
+    x0 = 236
+    back_to_chat()
+    m = mark()
+    say_in_app(f"//tp {COURSE_REGION}/{x0}/245/25")
+    if not run.expect("(to Atelier East's north edge)", ["Arrived", COURSE_REGION], m, 40):
+        return
+    time.sleep(2)
+    name = f"Route {uuid.uuid4().hex[:6]}"
+    try:
+        m = mark()
+        say_in_app("//face 90")
+        run.expect("(facing north)", ["Facing", "north"], m, 8)
+        time.sleep(1)
+        start = api("LLAgent", "getPosition")["global"]
+        m = mark()
+        say_in_app("//record")
+        run.expect("//record starts recording, saying the commands", ["Recording a route", "//record save NAME saves"], m, 5)
+        key("f3")
+        wait_focus(lambda d: d["id"] == "walkPad", 5)
+        u("keydown focus | 38")
+        try:
+            crossed = wait(lambda: api("LLAgent", "getPosition")["global"][1] > start[1] + 22, 20, 0.2)
+        finally:
+            u("keyup focus | 38")
+        time.sleep(2.5)
+        end = api("LLAgent", "getPosition")["global"]
+        # (judged once settled: just after a crossing the position can read a region's width off for a moment)
+        if not run.check("held Up walks north across the border", crossed and end[1] - start[1] > 11.5, f"{end[1] - start[1]:.1f} m north, the border 11 m on"):
+            return
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+        m = mark()
+        say_in_app(f"//record save {name}")
+        run.expect("//record save NAME saves it", [f"Saved {name}", "Routes"], m, 20)
+        root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+        routes = inv_items(root).get("Routes")
+        card = routes and inv_items(routes).get(name)
+        text = api("TesselInventory", "readNotecard", item_id=card).get("text", "") if card else ""
+        print("     (the notecard:\n       " + "\n       ".join(text.splitlines()) + ")")
+        gos = [tuple(float(n) for n in mm[1].split(",")) for l in text.splitlines()
+               if (mm := re.match(r"//go xyz (-?[\d.]+,-?[\d.]+(?:,-?[\d.]+)?)$", l.strip()))]
+        run.check("the points past the border in Atelier East's frame (over 256), the one before it under",
+                  any(p[1] > 256 for p in gos) and any(250 < p[1] <= 256 for p in gos), str(gos))
+        m = mark()
+        say_in_app(f"//tp {COURSE_REGION}/{x0}/245/25")
+        run.expect("(back to the start)", ["Arrived", COURSE_REGION], m, 40)
+        time.sleep(2)
+        m = mark()
+        say_in_app(f"//route {name}")
+        done = run.expect("//route plays it across the border to its end", [f"Route finished: {name}"], m, 90)
+        time.sleep(1.5)
+        here = api("LLAgent", "getPosition")["global"]
+        off = math.dist(here[:2], end[:2])
+        run.check("where the walk ended", done and off < 3, f"{off:.1f} m from it")
+        if not done:
+            print("     (said: " + " | ".join(e.get("text") or "" for e in said_since(m))[-1500:] + ")")
+        delete_by_search(run, name)
+    finally:
+        back_to_chat()
+        say_in_app("//record discard")   # (a recording left going by a step that stopped early)
+        say_in_app("//tp Atelier/%d/%d/%d" % TP_TO)
+        time.sleep(5)
 
 
 def walk_mode(run):

@@ -115,7 +115,7 @@ public sealed class EffectTracker
         bool first = !_started;
         _started = true;
         _seen.Clear();
-        foreach (var prim in prims.Values)
+        foreach (var (_, prim) in prims)   // (in place: a concurrent dictionary's Values is a copy of them all)
         {
             uint id = prim.LocalID;
             _seen.Add(id);

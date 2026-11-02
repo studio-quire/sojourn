@@ -34,7 +34,7 @@ public sealed class DescribeApi : LeapApi
     {
         _view = view;
         Op("look", "{subject: here | me | an avatar's or object's id, detail: brief | rich, pictures=true (false: only what the lists know)} -> {subject: what the lists know of it, "
-            + "pictures: [{label, png, width, height, seen: [{name, kind, in_picture, share, where (from the person)}], still_loading?}], "
+            + "pictures: [{label, png, width, height, seen: [{name, kind, in_picture, share, where (from the person), look? (what of it hadn't loaded)}], subject_look? (what of the subject's look had loaded)}], "
             + "around?: (here) people and objects by name and bearing, notes?}: pictures framed on the subject (a person from "
             + "their front, whole and close; an object from the person's side, a flat one face-on; here: ahead, right, behind, left)",
             LookAsync);
@@ -108,6 +108,8 @@ public sealed class DescribeApi : LeapApi
                     o["subject"] = await PersonAsync(c, w, av, ct);
                     plan = (r, sim) => AvatarPlan(r, sim, id, self: false, rich, notes);
                 }
+                else if (Hud.Huds.Mine(S, id, out var hudRoot) && hudRoot != null)
+                    return await HudLookAsync(c, w, hudRoot, detail, shoot, ct);
                 else if (w.PrimById(id) is { } prim)
                 {
                     o["subject"] = await ObjectAsync(c, w, prim, ct);
@@ -244,8 +246,18 @@ public sealed class DescribeApi : LeapApi
         if (!worn) root = S.Objects.RootOf(w, prim);
         var set = S.Objects.Linkset(w, root);
         var ids = set.Select(p => p.LocalID).ToHashSet();
-        bool Mine(Primitive p) => ids.Contains(p.LocalID);
         var c = sim.Client;
+        // what those sitting on it wear goes with it (a camera from outside a vehicle the person drives isn't stopped by
+        // their own hair): attachments' roots and their parts
+        var riders = w.Avatars.Values.Where(a => a.ParentID != 0 && ids.Contains(a.ParentID)).Select(a => a.LocalID).ToHashSet();
+        if (riders.Count > 0)
+        {
+            var theirs = w.Prims.Values.Where(p => riders.Contains(p.ParentID)).Select(p => p.LocalID).ToHashSet();
+            ids.UnionWith(theirs);
+            ids.UnionWith(w.Prims.Values.Where(p => theirs.Contains(p.ParentID)).Select(p => p.LocalID));
+        }
+        bool Mine(Primitive p) => ids.Contains(p.LocalID);
+        bool onIt = SeatedOn(c, set);
         var me = S.Motion.Position(c);
         var eye = new Vector3(me.X, me.Y, me.Z + 0.72f);
         Vector3 centre, normal = Vector3.Zero;
@@ -308,6 +320,15 @@ public sealed class DescribeApi : LeapApi
                 float rad = new Vector3(ext.X, ext.Y, ext.Z).Length() / 2;
                 half = new Vector3(rad, rad, rad);
             }
+        }
+        if (normal == Vector3.Zero && onIt)
+        {
+            // the person is on it: from outside, ahead and to the right of the way they sit (a vehicle's front three
+            // quarters), a little above, never from their own eyes inside it
+            var q = w.Prims.TryGetValue(c.Self.SittingOn, out var seat) ? c.Self.SimRotation * w.RegionRotation(seat) : c.Self.SimRotation;   // (the seat's frame)
+            var f = Facing(q);
+            var right = Vector3.Normalize(Vector3.Cross(f, Vector3.UnitZ));
+            normal = Vector3.Normalize(f * 0.6f + right * 0.8f + new Vector3(0, 0, 0.45f));
         }
         if (normal == Vector3.Zero)
         {
@@ -402,6 +423,14 @@ public sealed class DescribeApi : LeapApi
         return names;
     }
 
+    /// <summary>Someone by name, but the person themselves as that (the describer says "you", never their own name).</summary>
+    string Who(GridClient c, UUID id, string fallback) => id == c.Self.AgentID ? You : S.Names.Complete(id, fallback);
+
+    const string You = "the person themselves (you)";
+
+    /// <summary>The person sits on one of these prims (a vehicle they ride, a chair).</summary>
+    static bool SeatedOn(GridClient c, IReadOnlyCollection<Primitive> set) => c.Self.SittingOn != 0 && set.Any(p => p.LocalID == c.Self.SittingOn);
+
     static string ObjectName(Primitive p) => p.Properties?.Name is { Length: > 0 } n && n != "Object" && n != "Primitive" ? n : "an unnamed object";
 
     JsonObject Picture(GridClient c, RegionWorld w, Shot shot, Dictionary<UUID, string> names)
@@ -420,6 +449,7 @@ public sealed class DescribeApi : LeapApi
             };
             if (Pos(w, s) is { } p && Where(c, p) is { } where) e["where"] = where;
             if (s.Id == shot.Spec.Subject) e["subject"] = true;
+            else if (shot.Loads.TryGetValue(s.Id, out var seenLoad) && SeenLook(seenLoad) is { } look) e["look"] = look;
             seen.Add(e);
         }
         o["seen"] = seen;
@@ -428,8 +458,105 @@ public sealed class DescribeApi : LeapApi
         // (the person's own avatar never counts in picks: how much of the picture they fill isn't known)
         if (shot.Spec.Subject != UUID.Zero && !shot.Spec.ShowSelf) o["subject_fills"] = Share(shot.SubjectCells, shot.Cells);
         if (shot.Relit) o["lighting"] = "relit as at midday so colours show: the place itself is dark now (night or dusk), so don't describe this light as the scene's";
-        if (shot.Pending > 0) o["still_loading"] = $"{shot.Pending} things in view hadn't finished loading (textures or shapes may be missing or blurry)";
+        // what of the subject's look had arrived (the count of everything in view still loading, out to the draw
+        // distance, is the log's: on a busy place it's thousands of far things, and said here it made every picture look
+        // unfinished or none)
+        if (shot.Spec.Subject != UUID.Zero && shot.Loads.TryGetValue(shot.Spec.Subject, out var load))
+            o["subject_look"] = SubjectLook(w, load);
         return o;
+    }
+
+    // --- what of a look had loaded, in words ---------------------------------------------------------------------------
+
+    /// <summary>What of the subject's look had arrived when the picture was drawn, per thing they wear (or for an object,
+    /// its faces), so the describer names no colour of a surface drawn plain grey for want of its texture.</summary>
+    string SubjectLook(RegionWorld w, LookLoad load)
+    {
+        string who = load.Person ? "their" : "its";
+        if (load.Person && load.Drawn is null) return "they aren't drawn in this picture";
+        if (load.Drawn == "cloud")
+            return "nothing of their look had loaded yet: they show only as a loading cloud (no body, skin, hair or clothes drawn). " +
+                   "Say their look hasn't loaded yet and to ask again in a moment; describe nothing of their appearance";
+        if (load.Drawn == "jelly")
+            return "drawn as a plain one-colour stand-in (their avatar is over this viewer's complexity limit), not their real look: " +
+                   "describe no colours, skin, hair or clothes, only that they're shown as a plain figure and their rough shape and pose";
+        var notes = new List<string>();
+        if (load.BakesLoading + load.BakesMissing > 0)
+            notes.Add("their skin and body (as Second Life bakes them) hadn't loaded: skin colour and any baked-on clothing unknown");
+        var none = new List<string>(); var partly = new List<string>(); var notDrawn = new List<string>(); var blurry = new List<string>();
+        int judged = 0, lacking = 0;
+        foreach (var p in load.Parts)
+        {
+            string name = PartName(w, p.Root, load.Person);
+            int unknown = p.Loading + p.Missing;
+            if (p.ShapesWaiting > 0 && p.ShapesWaiting >= p.Prims) { notDrawn.Add(name); judged++; lacking++; continue; }
+            if (p.Faces == 0) continue;   // nothing of it in view
+            judged++;
+            if (unknown * 2 >= p.Faces) { none.Add(name); lacking++; }
+            else if (unknown > 0 || p.ShapesWaiting > 0) partly.Add(name);
+            else if (p.Blurry * 2 >= p.Faces) blurry.Add(name);
+        }
+        string List(List<string> l) => string.Join("; ", l.Take(10)) + (l.Count > 10 ? $" and {l.Count - 10} more" : "");
+        if (load.Person)
+        {
+            if (none.Count > 0) notes.Add($"colours and patterns not loaded on: {List(none)}");
+            if (partly.Count > 0) notes.Add($"partly loaded: {List(partly)}");
+            if (notDrawn.Count > 0) notes.Add($"not drawn yet (shape still arriving): {List(notDrawn)}");
+        }
+        else
+        {
+            var part = load.Parts.FirstOrDefault();
+            if (part != null && part.ShapesWaiting > 0) notes.Add($"{part.ShapesWaiting} of its {part.Prims} parts not drawn yet (shape still arriving)");
+            if (part != null && part.Loading + part.Missing > 0)
+                notes.Add($"colours not loaded on {part.Loading + part.Missing} of its {part.Faces} surfaces in view" +
+                          (lacking > 0 ? " (most of it)" : ""));
+        }
+        // blurred (memory short, or the sharper copy still on its way): colours right, fine detail not
+        string blur = load.Person ? (blurry.Count > 0 ? $"blurry on {List(blurry)}: fine print and patterns there may not show" : "")
+            : load.Parts.FirstOrDefault() is { } bp && bp.Loading + bp.Missing == 0 && bp.Blurry * 2 >= Math.Max(1, bp.Faces) ? "blurry: fine print and patterns may not show" : "";
+        if (notes.Count == 0)
+            return blur == "" ? $"{who} look had fully loaded: colours as drawn are real" : $"{who} look had loaded, colours as drawn are real, though {blur}";
+        if (blur != "") notes.Add(blur);
+        string unloaded = load.Person
+            ? "A surface whose texture hadn't loaded is drawn plain grey or white, which is not its colour: never name a colour, pattern or material for those"
+            : "Surfaces whose texture hadn't loaded are drawn plain grey or white, which is not their colour: never name a colour, pattern or material for those";
+        // most of it: a person, more than half of the things they wear in view and their body's bakes (as one) lacking
+        // their colours or not drawn; a thing, more than half its surfaces in view
+        bool most = load.Person
+            ? (lacking + (load.BakesLoading + load.BakesMissing > 0 ? 1 : 0)) * 2 > judged + (load.Bakes > 0 ? 1 : 0)
+            : load.Parts.Sum(p => p.Loading + p.Missing) * 2 > load.Parts.Sum(p => p.Faces);
+        string advice = most
+            ? $"Most of {who} look hadn't loaded: say what the shapes show ({(load.Person ? "build, pose, the cut of garments where the shapes show it" : "its shape and parts")}), say the colours aren't known yet, and suggest asking again in a moment"
+            : "Describe what had loaded as it is, and say which parts' colours aren't known yet";
+        return $"{who} look hadn't fully loaded when this was drawn: {string.Join("; ", notes)}. {unloaded}. {advice}.";
+    }
+
+    /// <summary>A thing seen in a picture whose look hadn't arrived, briefly (null: as it is).</summary>
+    static string? SeenLook(LookLoad load)
+    {
+        if (load.Person)
+            return load.Drawn switch
+            {
+                "cloud" => "their look hadn't loaded: a loading cloud, nothing of their appearance drawn",
+                "jelly" => "shown as a plain one-colour stand-in, not their real look",
+                null => null,
+                _ => load.BakesLoading > 0 || load.Faces > 0 && load.Loading * 2 >= load.Faces
+                    ? "their look hadn't loaded: drawn plain grey or white, colours unknown" : null,
+            };
+        var p = load.Parts.FirstOrDefault();
+        if (p == null || p.Faces == 0) return p is { ShapesWaiting: > 0 } ? "its shape hadn't arrived: not drawn yet" : null;
+        return p.Loading + p.Missing == 0 ? null
+            : (p.Loading + p.Missing) * 2 >= p.Faces ? "its colours hadn't loaded: drawn plain grey or white, colours unknown"
+            : "partly loaded: some of its surfaces plain grey or white, their colours unknown";
+    }
+
+    /// <summary>A worn thing by its name and where it's worn; an object's part by its name.</summary>
+    string PartName(RegionWorld w, UUID root, bool worn)
+    {
+        if (w.PrimById(root) is not { } p) return "something";
+        var name = ObjectName(p);
+        if (name == "an unnamed object") name = "an unnamed item";
+        return worn ? $"{name} (on {ObjectViews.AttachPointName((int)p.PrimData.AttachmentPoint)})" : name;
     }
 
     static string Share(int n, int of) => $"{(int)Math.Round(100.0 * n / Math.Max(1, of))}%";
@@ -502,15 +629,26 @@ public sealed class DescribeApi : LeapApi
         if (!S.Names.Has(av.ID)) await S.Names.ResolveAsync(c, new[] { av.ID }, TimeSpan.FromSeconds(2), ct);
         var o = new JsonObject { ["what"] = "a person", ["name"] = S.Names.Complete(av.ID, av.Name ?? "someone"), ["id"] = av.ID.ToString() };
         o["where"] = Where(c, AvatarRegionPos(w, av));
-        if (av.ParentID != 0 && w.Prims.TryGetValue(av.ParentID, out var seat)) o["sitting_on"] = ObjectName(S.Objects.RootOf(w, seat));
+        if (av.ParentID != 0 && w.Prims.TryGetValue(av.ParentID, out var seat)) o["sitting_on"] = SittingOn(w, seat);
         o["wearing_items_named"] = await AttachmentsAsync(w, av, ct);
         return o;
     }
 
+    /// <summary>What someone sits on, with what sitting means in Second Life: a pose ball, a dance ball or a seat that
+    /// animates them, so the picture may show them standing, dancing or lying (a tester's description reported that as a
+    /// contradiction, 2026-11-01).</summary>
+    string SittingOn(RegionWorld w, Primitive seat) =>
+        $"{ObjectName(S.Objects.RootOf(w, seat))} (sitting in Second Life's sense: on a seat, pose ball or dance ball that animates " +
+        "them, so they may look standing, dancing or lying; describe the pose the pictures show, not a contradiction)";
+
     async Task<JsonObject> MeAsync(GridClient c, RegionWorld w, CancellationToken ct)
     {
         var o = new JsonObject { ["what"] = "the person themselves: their own avatar", ["name"] = S.Names.Complete(c.Self.AgentID, c.Self.Name) };
-        if (w.AvatarById(c.Self.AgentID) is { } av) o["wearing_items_named"] = await AttachmentsAsync(w, av, ct);
+        if (w.AvatarById(c.Self.AgentID) is { } av)
+        {
+            if (av.ParentID != 0 && w.Prims.TryGetValue(av.ParentID, out var seat)) o["sitting_on"] = SittingOn(w, seat);
+            o["wearing_items_named"] = await AttachmentsAsync(w, av, ct);
+        }
         // clothing and body parts (the Current Outfit folder's links)
         var layers = new JsonArray();
         var cof = c.Inventory.FindFolderForType(FolderType.CurrentOutfit);
@@ -555,15 +693,74 @@ public sealed class DescribeApi : LeapApi
         else
         {
             o["where"] = Where(c, w.RegionPosition(root));
-            if (root.Properties is { } pr && pr.OwnerID != UUID.Zero) o["owner"] = S.Names.Complete(pr.OwnerID, "unknown");
+            if (root.Properties is { } pr && pr.OwnerID != UUID.Zero) o["owner"] = Who(c, pr.OwnerID, "unknown");
         }
         var set = S.Objects.Linkset(w, root);
         o["parts"] = set.Count;
         var s = root.Scale;
         if (set.Count == 1) o["size_metres"] = string.Create(CultureInfo.InvariantCulture, $"{s.X:0.##} x {s.Y:0.##} x {s.Z:0.##}");
-        var seated = w.Avatars.Values.Where(a => a.ParentID != 0 && set.Any(l => l.LocalID == a.ParentID)).Select(a => S.Names.Complete(a.ID, a.Name ?? "someone")).ToList();
+        var seated = w.Avatars.Values.Where(a => a.ParentID != 0 && set.Any(l => l.LocalID == a.ParentID)).Select(a => Who(c, a.ID, a.Name ?? "someone")).ToList();
         if (seated.Count > 0) o["seated_on_it"] = new JsonArray(seated.Select(n => (JsonNode)n).ToArray());
+        if (SeatedOn(c, set)) o["the_person_is_on_it"] = "they're sitting on it themselves (riding or driving it, if it moves): say so first, as 'you're riding ...'";
         if (root.Properties is { SaleType: not SaleType.Not } sp) o["for_sale"] = $"L${sp.SalePrice}";
+        return o;
+    }
+
+    /// <summary>One of the person's HUDs: no camera in the world sees it, so its picture is the HUD as it shows on
+    /// their screen, drawn bigger (OffscreenRenderer.Hud.cs), with its named parts placed on it; the facts its name,
+    /// where on the screen, its parts' names and floating text.</summary>
+    async Task<JsonObject> HudLookAsync(GridClient c, RegionWorld w, Primitive root, string detail, bool shoot, CancellationToken ct)
+    {
+        var o = new JsonObject { ["detail"] = detail };
+        var facts = await ObjectAsync(c, w, root, ct);
+        facts["what"] = "a HUD the person wears: a panel of controls or a display on their own screen, which only they see";
+        facts.Remove("worn_by");
+        var set = S.Objects.Linkset(w, root);
+        try { await S.Objects.FetchFullAsync(w, set, TimeSpan.FromSeconds(3), ct); } catch (LeapError) { }
+        string rootName = ObjectName(root);
+        var named = set.Where(p => p.LocalID != root.LocalID && p.Properties?.Name is { Length: > 0 } n && n is not ("Object" or "Primitive") && n != rootName)
+            .Select(p => p.Properties!.Name).Distinct().Take(40).ToList();
+        if (named.Count > 0) facts["named_parts"] = new JsonArray(named.Select(n => (JsonNode)n).ToArray());
+        var texts = set.Where(p => !string.IsNullOrWhiteSpace(p.Text)).Select(p => Clip(p.Text, 200)).Distinct().Take(10).ToList();
+        if (texts.Count > 0) facts["text_on_it"] = new JsonArray(texts.Select(t => (JsonNode)t).ToArray());
+        o["subject"] = facts;
+        var notes = new JsonArray();
+        var pictures = new JsonArray();
+        if (!shoot) { }
+        else if (_view is not { Running: true })
+            notes.Add(_view == null ? "this app draws no view (started without its renderer): no picture, only what the lists know"
+                : $"the view isn't running ({_view.State}): no picture, only what the lists know");
+        else
+        {
+            var placed = await _view.WithHudsAsync((p, _) => p, HudsPlaced.None, ct);
+            if (placed.Objects.FirstOrDefault(h => h.Id == root.ID) is not { } hud) notes.Add("it isn't drawn yet (its shape may still be arriving): no picture");
+            else if (await _view.PictureAsync(hud, false, ct) is not { } got) notes.Add("its picture couldn't be drawn just now");
+            else
+            {
+                var (pic, png) = got;
+                float across = 0.5f - (hud.Min.Y + hud.Max.Y) / 2 / placed.Aspect, down = 0.5f - (hud.Min.Z + hud.Max.Z) / 2;
+                var seen = new JsonArray();
+                foreach (var part in hud.Parts.Skip(1))
+                {
+                    if (w.PrimById(part.Id)?.Properties?.Name is not { Length: > 0 } n || n is "Object" or "Primitive" || n == rootName) continue;
+                    if (pic.Rect(part.Min, part.Max) is not { } r) continue;
+                    seen.Add(new JsonObject
+                    {
+                        ["name"] = n, ["kind"] = "part of the HUD",
+                        ["in_picture"] = Area((r.X + r.W / 2f) / pic.Width, (r.Y + r.H / 2f) / pic.Height),
+                        ["share"] = Share(r.W * r.H, pic.Width * pic.Height),
+                    });
+                    if (seen.Count >= 14) break;
+                }
+                pictures.Add(new JsonObject
+                {
+                    ["label"] = $"the HUD as it shows on their screen ({Hud.Huds.Where(across, down)} of it), drawn bigger, over a dark grey where it's see-through",
+                    ["png"] = Convert.ToBase64String(png), ["width"] = pic.Width, ["height"] = pic.Height, ["seen"] = seen,
+                });
+            }
+        }
+        o["pictures"] = pictures;
+        if (notes.Count > 0) o["notes"] = notes;
         return o;
     }
 

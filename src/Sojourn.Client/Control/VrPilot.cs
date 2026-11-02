@@ -515,6 +515,7 @@ public sealed partial class VrPilot
         int up = (input.A || keyUp ? 1 : 0) - (keyDown ? 1 : 0);
         if (Flying && MathF.Abs(rs.Y) > 0.5f) up = MathF.Sign(rs.Y);
         if (driving && MathF.Abs(rs.Y) > 0.5f) up = MathF.Sign(rs.Y);
+        if (up > 0 && !Flying && !sitting && !driving && _session.RlvActive && _session.Rlv.CanJump() != null) up = 0;   // RLV's @jump
         if (up > 0 && !Flying && !sitting && !driving) _jumpAt = now;
         if (Flying && _lastUp != 0 && up == 0 && !sitting && !driving)
         {
@@ -539,7 +540,7 @@ public sealed partial class VrPilot
             mv.TurnLeft = mv.TurnRight = mv.YawPos = mv.YawNeg = false;
             mv.BodyRotation = LQuaternion.CreateFromAxisAngle(LVector3.UnitZ, _bodyYaw);
             mv.HeadRotation = new LQuaternion(worldQ.X, worldQ.Y, worldQ.Z, worldQ.W);
-            bool runNow = _run && walk && _follow != Follow.Walking;
+            bool runNow = _run && walk && _follow != Follow.Walking && !(_session.RlvActive && _session.Rlv.AlwaysRunBlocked);   // (RLV's @alwaysrun)
             if (mv.AlwaysRun != runNow) mv.AlwaysRun = runNow;
             var (brake, reverse) = Brake(now, walk, up, sitting, driving, rawVel);
             mv.Stop = brake;
@@ -1107,6 +1108,7 @@ public sealed partial class VrPilot
     void ToggleFly(GridClient c)
     {
         bool fly = !c.Self.Movement.Fly;
+        if (fly && _session.RlvActive && _session.RlvRefused(_session.Rlv.CanFly()) != null) return;   // RLV's @fly
         c.Self.Fly(fly);
         c.Self.Movement.Fly = fly;
         Say?.Invoke(fly ? "flying" : "landing");

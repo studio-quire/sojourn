@@ -76,10 +76,10 @@ public sealed partial class MainForm
     /// <summary>A nearby line as it's sent: a trigger in it plays its gesture, and what's left (the replacement text, or
     /// the rest of the line) is said; null to say the line as it is. Channel lines ("/5 ...") aren't looked at, as in
     /// the viewer.</summary>
-    string? Triggered(string text)
+    async Task<string?> TriggeredAsync(string text)
     {
         if (Host?.Session is not { } s || System.Text.RegularExpressions.Regex.IsMatch(text, @"^/-?\d+(\s|$)")) return null;
-        if (s.Gestures.Trigger(text) is not { } hit) return null;
+        if (await s.Gestures.TriggerAsync(text, TimeSpan.FromSeconds(3)) is not { } hit) return null;
         Reader?.Answer($"Playing {hit.Name}.", keep: false);
         return hit.Revised;
     }

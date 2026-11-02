@@ -169,7 +169,7 @@ public static class OpenRouterCatalog
             for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
                 if (Directory.Exists(Path.Combine(d.FullName, "src", "Sojourn.Client")) && Directory.Exists(Path.Combine(d.FullName, "assistant")))
                     return Path.Combine(d.FullName, "local", "cache", "openrouter-models.json");
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sojourn", "cache", "openrouter-models.json");
+            return Path.Combine(DataFolder.Root, "cache", "openrouter-models.json");
         }
     }
 }

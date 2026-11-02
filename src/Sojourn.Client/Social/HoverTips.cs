@@ -63,7 +63,7 @@ public sealed class HoverTips
         if (worn > 0) name = name[..worn];
         name = name.Trim();
         if (Unnamed.Contains(name)) return (null, null);
-        string? price = root?.Properties is { } p && p.SaleType != SaleType.Not ? $"L${p.SalePrice}" : null;
+        string? price = root?.Properties is { } p && p.SaleType != SaleType.Not ? Lang.F("L${0}", p.SalePrice) : null;
         return (name, price);
     }
 

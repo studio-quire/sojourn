@@ -75,6 +75,8 @@ public sealed class Radar
     {
         if (_s.Client is not { Network.CurrentSim: { } cur }) { _was.Clear(); _region = 0; return; }
         if (!AnyOn) { _was.Clear(); return; }
+        // RLV's @shownearby and @shownames: no word of who comes and goes (RLVa's radar is closed for both)
+        if (_s.RlvActive && (_s.Rlv.NearbyHidden || _s.Rlv.NamesHidden)) { _was.Clear(); return; }
         var now = Now();
         // an arrival: what's there is taken as it is, and kept so for a few seconds while the region fills in
         var t = DateTime.UtcNow;

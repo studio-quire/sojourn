@@ -124,6 +124,16 @@ public sealed class VrSettings
     /// <summary>The settings menu shows every row (on), or only what a person reaches for by hand (off, the default;
     /// Control/MenuGuide.cs marks which). Only the menu changes: every setting still works, and the assistant reaches all.</summary>
     public bool AdvancedMenu { get; set; }
+    /// <summary>The language of Sojourn's own words (Lang.cs, docs/languages.md): auto (Windows' display language, when
+    /// Sojourn has it) or a code from Lang.All. The menu and the launcher both set it.</summary>
+    public string UiLanguage { get; set; } = "auto";
+    /// <summary>When the VR client crashes, the launcher's report (Release/ProblemReport.cs): ask (the default, as
+    /// Firestorm's CrashSubmitBehavior), always (sent without asking) or never.</summary>
+    public string CrashReports { get; set; } = "ask";
+    public static readonly string[] CrashReportChoices = { "ask", "always", "never" };
+    /// <summary>The viewer statistics report (Release/ViewerStats.cs) carries the MAC address and the hashed C: volume
+    /// serial, as the official viewer's does; off (the default, the user's call, 2026-11-01) leaves them out.</summary>
+    public bool StatsHardwareIds { get; set; }
     /// <summary>The right hand's pointer in the headset (Control/HandPointer.cs): on, it touches, sits and presses menus
     /// and is "that" for the assistant; off (the default), nothing is pointed at.</summary>
     public bool Pointer { get; set; }
@@ -322,6 +332,8 @@ public sealed class VrSettings
     public float VignetteStrength { get; set; } = 0.7f;
     public bool KeepInPlace { get; set; }
     public bool Antispam { get; set; }   // off, as in Firestorm (user, 2026-10-27)
+    /// <summary>RLV/RLVa (Rlv/RlvWiring.cs, docs/rlv.md): off by default as in Firestorm, from the next login.</summary>
+    public bool Rlv { get; set; }
     public bool Particles { get; set; } = true;
     public AimMode Aim { get; set; } = AimMode.Auto;
     public bool AimWithHand { get; set; }

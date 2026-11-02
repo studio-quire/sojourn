@@ -61,6 +61,32 @@ public static unsafe partial class VoiceNative
         return System.Text.Encoding.UTF8.GetString(buf, 0, Math.Max(0, n - 1));
     }
 
+    /// <summary>What a direction is doing now (sv_device_state's JSON), or null from a shim built before it.</summary>
+    public static string? DeviceState(bool capture)
+    {
+        try
+        {
+            var buf = new byte[2048];
+            int n;
+            fixed (byte* p = buf) n = sv_device_state(capture ? 0 : 1, p, buf.Length);
+            return System.Text.Encoding.UTF8.GetString(buf, 0, Math.Clamp(n - 1, 0, buf.Length - 1));
+        }
+        catch (EntryPointNotFoundException) { return null; }
+    }
+
+    /// <summary>What reaches the open output (sv_output_probe's JSON; blocks for ms), or null from an older shim.</summary>
+    public static string? OutputProbe(int ms)
+    {
+        try
+        {
+            var buf = new byte[512];
+            int n;
+            fixed (byte* p = buf) n = sv_output_probe(ms, p, buf.Length);
+            return System.Text.Encoding.UTF8.GetString(buf, 0, Math.Clamp(n - 1, 0, buf.Length - 1));
+        }
+        catch (EntryPointNotFoundException) { return null; }
+    }
+
     public static string Stats()
     {
         var buf = new byte[2048];
@@ -74,6 +100,7 @@ public static unsafe partial class VoiceNative
     [LibraryImport(Lib)] private static partial int sv_devices(int capture, byte* buf, int cap);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial int sv_audio_start(string capture, string render);
     [LibraryImport(Lib)] public static partial void sv_audio_stop();
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial void sv_test_device(int dir, int what, string spec);
     [LibraryImport(Lib)] public static partial void sv_set_mute(int muted, int fadeMs);
     [LibraryImport(Lib)] public static partial void sv_set_gate(int open, int tailMs);
     [LibraryImport(Lib)] public static partial void sv_set_tap(int enabled);
@@ -87,6 +114,8 @@ public static unsafe partial class VoiceNative
     [LibraryImport(Lib)] public static partial void sv_test_echo(int delayMs, float gain);
     [LibraryImport(Lib)] public static partial int sv_play_queued_ms(int stream);
     [LibraryImport(Lib)] private static partial int sv_stats(byte* buf, int cap);
+    [LibraryImport(Lib)] private static partial int sv_device_state(int dir, byte* buf, int cap);
+    [LibraryImport(Lib)] private static partial int sv_output_probe(int ms, byte* buf, int cap);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial long sv_pc_new(string ice);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial void sv_pc_answer(long pc, string sdp);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)] public static partial void sv_pc_send(long pc, string text);

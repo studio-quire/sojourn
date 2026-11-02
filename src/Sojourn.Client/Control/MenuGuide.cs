@@ -25,6 +25,7 @@ public static class MenuGuide
         A("screen reader", "What your screen reader reads out, if you use one."),
         A("safety", "Comfort, being pushed around, aiming, and things that flood or take over."),
         A("view", "How far and how well you see, and the menus themselves."),
+        A("about", "Sojourn's version, who made it, its source and licence, and reporting a problem."),
 
         // --- moving
         S("moving/posture", "Standing or seated. Seated, sit up straight and press Y to set your height."),
@@ -52,7 +53,7 @@ public static class MenuGuide
         A("assistant/adaptive ink", "Text turns light over dark places and dark over bright ones, so clear glass stays readable."),
         A("assistant/spoken replies", "The assistant's replies are read aloud as well as shown."),
         S("assistant/memory", "The assistant keeps notes about you between sessions. Only you can turn this on or off."),
-        A("assistant/hearing", "What turns your speech into words. Parakeet and whisper run on this PC; soniox is an online service."),
+        A("assistant/hearing", "What turns your speech into words. Parakeet and whisper run on this PC (whisper downloads its model, about 460 MB, the first time); soniox is an online service."),
         S("assistant/forget memory", "Clears everything the assistant remembers about you. Press twice to be sure."),
         A("assistant/called *", "The assistant goes by the name you gave it."),
         A("assistant/its character", "The assistant takes on the character you described."),
@@ -151,12 +152,15 @@ public static class MenuGuide
         A("safety/aim with", "Aim where you look, or with your right hand's ray."),
         A("safety/particles", "Particle effects like sparkles, smoke and fire. Off hides them all."),
         A("safety/antispam", "Blocks people and objects that flood you with messages, offers or menus."),
+        A("safety/RLV", "Lets scripts in what you wear restrict you, as roleplay collars and cuffs do. Takes effect when you next log in."),
+        S("safety/RLV restrictions", "What your RLV objects restrict now, and which object holds each."),
         S("safety/controls a script took", "Takes back the controls a script has taken over, like your movement."),
         S("safety/* hidden", "Shows again everything you've hidden from view."),
 
         // --- view
         A("view/menu size", "How big the menus and the assistant's panel are."),
         A("view/menu positions", "Brings every menu you've moved back in front of you, following you again."),
+        S("view/language", "The language of Sojourn's menus and its own words. As Windows follows your PC's display language."),
         S("view/draw distance", "How far you can see. Further shows more, but loads more and can slow things down."),
         S("view/quality", "Light, balanced or full: shadows, reflections, detail and distance set together, as in the launcher. Yours: changed by hand."),
         A("view/graphics/", "Shadows, reflections, detail and the rest of how the world is drawn."),
@@ -212,6 +216,15 @@ public static class MenuGuide
         A("view/menus/wall test", "How walls hide menus. Exact is Sojourn's own and the most precise."),
         A("view/menus/frost bias", "Fine-tunes where walls hide the blur behind menus."),
         A("view/menus/menus on desktop", "The menus show on the PC's window too."),
+
+        // --- about (Control/AboutMenu.cs)
+        S("about/report a problem/", "Send Studio Quire this session's log, with other people's words left out, or save it for GitHub."),
+        S("about/report a problem/review what's sent", "Read exactly what the report holds before it goes."),
+        S("about/report a problem/send to Studio Quire", "Sends the report with your Studio Quire token. It's kept for 30 days."),
+        S("about/report a problem/save for GitHub", "Saves the report as a file and opens GitHub's issues page on the PC, to attach it there."),
+        S("about/third-party notices", "The code, libraries and assets Sojourn uses from others, and their licences."),
+        S("about/crash reports", "If Sojourn crashes, whether the launcher asks before sending a report, sends it without asking, or never offers one."),
+        A("about/MAC and disk serial in statistics", "The statistics every viewer sends Linden Lab also carry this PC's network address and disk serial, as the official viewer's do."),
     };
 
     static (string, bool, string) S(string path, string tip) => (path, true, tip);

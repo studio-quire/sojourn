@@ -101,7 +101,7 @@ public sealed class PageView
     sealed class PageKeys(PageView v, MediaItem item) : IKeyTarget
     {
         MediaPlayer? P => item.Player is { Closed: false } p ? p : null;
-        public string Label => v._item == item ? v.Title() : "the page";
+        public string Label => v._item == item ? v.Title() : Lang.T("the page");
         public bool Alive => item.Zoomed && P != null;
         public object Owner => item;
         public void Opened() { }

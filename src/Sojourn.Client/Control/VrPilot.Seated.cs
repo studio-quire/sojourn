@@ -57,6 +57,7 @@ public sealed partial class VrPilot
         if (_standPush > 0.35)
         {
             _standPush = -1;
+            if (_session.RlvActive && _session.RlvRefused(_session.Rlv.CanStand()) != null) return;   // RLV's @unsit
             c.Self.Stand();
             Say?.Invoke("standing up");
         }

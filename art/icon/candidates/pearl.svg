@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Sojourn: Pearl. A glass world with its horizon inside, and a small pearl beside it: the companion you talk to.
+       Drawn on a 256 grid; data-min/data-max (px) choose detail per size (tools/icon.py). -->
+  <defs>
+    <clipPath id="world"><circle cx="120" cy="140" r="96"/></clipPath>
+    <linearGradient id="sky" x1="0" y1="44" x2="0" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F3F9FD"/>
+      <stop offset="1" stop-color="#A9D0EE"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="146" x2="0" y2="236" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5A9ACB"/>
+      <stop offset="1" stop-color="#244F78"/>
+    </linearGradient>
+    <linearGradient id="surface" x1="24" y1="0" x2="216" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8CC1E8"/>
+      <stop offset="0.6" stop-color="#C4E1F5"/>
+      <stop offset="1" stop-color="#8CC1E8"/>
+    </linearGradient>
+    <radialGradient id="glint" cx="86" cy="88" r="44" gradientTransform="rotate(-32 86 88) translate(86 88) scale(1 0.55) translate(-86 -88)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="depth" cx="120" cy="140" r="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0.72" stop-color="#1D3D5C" stop-opacity="0"/>
+      <stop offset="1" stop-color="#1D3D5C" stop-opacity="0.28"/>
+    </radialGradient>
+    <radialGradient id="caustic" cx="138" cy="214" r="54" gradientTransform="translate(138 214) scale(1 0.5) translate(-138 -214)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9AD3F5" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#9AD3F5" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="companion" cx="204" cy="44" r="26" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.6" stop-color="#E6EFF6"/>
+      <stop offset="1" stop-color="#B4CADB"/>
+    </radialGradient>
+  </defs>
+
+  <!-- the world -->
+  <g data-min="32">
+  <g clip-path="url(#world)">
+    <rect x="20" y="40" width="200" height="200" fill="url(#sky)"/>
+    <rect x="20" y="150" width="200" height="90" fill="url(#sea)"/>
+    <ellipse data-min="32" cx="120" cy="150" rx="96" ry="13" fill="url(#surface)"/>
+    <ellipse data-min="48" cx="138" cy="214" rx="54" ry="27" fill="url(#caustic)"/>
+    <rect data-min="32" x="20" y="40" width="200" height="200" fill="url(#depth)"/>
+    <ellipse data-min="32" cx="86" cy="88" rx="44" ry="24" transform="rotate(-32 86 88)" fill="url(#glint)"/>
+  </g>
+  <circle data-min="32" cx="120" cy="140" r="93" fill="none" stroke="#FFFFFF" stroke-opacity="0.7" stroke-width="3"/>
+  <circle cx="120" cy="140" r="96" fill="none" stroke="#2C5577" stroke-opacity="0.75" stroke-width="3"/>
+
+  <!-- the companion -->
+  <circle cx="208" cy="48" r="24" fill="url(#companion)" stroke="#4E7393" stroke-width="3"/>
+  <circle data-min="48" cx="200" cy="40" r="7" fill="#FFFFFF" fill-opacity="0.9"/>
+  </g>
+
+  <!-- 20-24 px: flat, the world smaller so the companion stands clear of it, outlines a pixel wide -->
+  <g data-min="20" data-max="24">
+    <clipPath id="small"><circle cx="112" cy="144" r="96"/></clipPath>
+    <g clip-path="url(#small)">
+      <rect x="16" y="48" width="192" height="96" fill="#C7E2F5"/>
+      <rect x="16" y="144" width="192" height="96" fill="#3F78A9"/>
+    </g>
+    <circle cx="112" cy="144" r="90.7" fill="none" stroke="#2C5577" stroke-width="10.7"/>
+    <circle cx="214" cy="42" r="32" fill="#F4F8FB"/>
+    <circle cx="214" cy="42" r="26.7" fill="none" stroke="#2C5577" stroke-width="10.7"/>
+  </g>
+
+  <!-- 16 px: on its pixel grid -->
+  <g data-max="16">
+    <clipPath id="tiny"><circle cx="104" cy="152" r="88"/></clipPath>
+    <g clip-path="url(#tiny)">
+      <rect x="16" y="64" width="176" height="96" fill="#C7E2F5"/>
+      <rect x="16" y="160" width="176" height="80" fill="#3F78A9"/>
+    </g>
+    <circle cx="104" cy="152" r="80" fill="none" stroke="#2C5577" stroke-width="16"/>
+    <circle cx="208" cy="48" r="40" fill="#F4F8FB"/>
+    <circle cx="208" cy="48" r="32" fill="none" stroke="#2C5577" stroke-width="16"/>
+  </g>
+</svg>

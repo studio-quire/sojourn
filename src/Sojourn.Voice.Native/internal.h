@@ -72,6 +72,9 @@ bool AudioStart(const std::string& capture, const std::string& render);
 void AudioStop();
 void AudioTest(int dir, int what, const std::string& spec);
 std::string DeviceListJson(bool capture);
+std::string DeviceStateJson(int dir);
+std::string OutputProbe(int ms);
+float OutLevel();   // the device mix's level after the output volume (RMS, smoothed over ~30 ms)
 
 // Peers (peer.cpp).
 webrtc::PeerConnectionFactoryInterface* Factory();

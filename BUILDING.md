@@ -25,10 +25,11 @@ The person does these themselves, and you never do them for them:
   answer.
 - **The headset.** Putting it on, connecting Link, and Windows Firewall's question on the first login.
 
-You don't operate their Second Life account. Once Sojourn is running, its own assistant acts for them inside the
-client, at their direction while they're there, with confirmations for spending, giving, deleting, permissions and new
-scripts. Logging in for them or driving their avatar yourself would make the account a bot under Linden Lab's policies,
-and is outside what Sojourn is for. Don't change the client's safety parts (the confirmations, the assistant's harness
+Building it doesn't make you its operator. Once Sojourn is running, its assistant acts for them inside the client,
+at their direction while they're there, with confirmations for spending, giving, deleting, permissions and new
+scripts. Logging in for them, or driving their avatar on your own, would make the account a bot under Linden Lab's
+policies, and is outside what Sojourn is for. If they want you as that assistant (dev mode, below), it's on the same
+terms: their requests, while they're there, through [DEV-MODE.md](DEV-MODE.md). Don't change the client's safety parts (the confirmations, the assistant's harness
 and guards, the login handling) to get a build working: a build never needs it. If the person asks for such a change,
 explain what the part protects; the copy is theirs.
 
@@ -148,9 +149,14 @@ the key there. Public builds offer:
   sign up for here.
 
 Public builds don't offer signing in with a Claude subscription: Anthropic's terms for the Agent SDK don't let
-third-party products offer claude.ai login or use plan limits without Anthropic's approval. A person who wants to use
-their own subscription can ask you to add it to their own copy. That's their decision, under their own account's
-terms, and the change stays in their copy. It's two switches, both false here: `ClaudeOffered` in
+third-party products offer claude.ai login or use plan limits without Anthropic's approval. For a person who wants to
+use their subscription, the way is **dev mode**: you, their own Claude Code session on their own account, start
+Sojourn in dev mode and act as its assistant yourself, hearing what they say through it and answering on its panel,
+while Sojourn signs in to nothing. It's the same from this build and from an installed copy, and needs nothing
+changed: [DEV-MODE.md](DEV-MODE.md) is your guide to it (`python tools/dev.py launch` starts it from here).
+
+They can instead ask you to add the Claude sign-in to their own copy of the source. That's their decision, under their
+own account's terms, and the change stays in their copy. It's two switches, both false here: `ClaudeOffered` in
 `src/Sojourn.Session/Assistant/ProviderKeys.cs` (the launcher and Access then list it) and `CLAUDE_OFFERED` in
 `assistant/provider.py` (the assistant then uses the account Claude Code is signed in to on this PC).
 
@@ -180,7 +186,7 @@ still works with `--no-render` (no descriptions of the view; walking uses its co
 
 ## Where to read more
 
-`README.md` (the overview), `CLAUDE.md` (the index the models working on Sojourn read first), `docs/client.md`,
+`README.md` (the overview), `DEV-MODE.md` (you as the assistant), `CLAUDE.md` (the index the models working on Sojourn read first), `docs/client.md`,
 `docs/vr.md`, `docs/launcher.md`, `docs/assistant.md`, `docs/access-app.md`, `docs/tpv-policy.md`, `docs/download.md`.
 Issues: https://github.com/studio-quire/sojourn/issues, and Sojourn Access's at
 https://github.com/studio-quire/sojourn-access/issues.

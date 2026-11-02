@@ -145,7 +145,7 @@ public sealed class LoginStore
         for (var d = new DirectoryInfo(Path.GetFullPath(baseDir)); d != null; d = d.Parent)
             if (d.Name == "local" && d.Parent is { } root && Directory.Exists(Path.Combine(root.FullName, "src", "Sojourn.Client")))
                 return Path.Combine(d.FullName, "secrets", "logins");
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sojourn", "secrets", "logins");
+        return Path.Combine(DataFolder.Root, "secrets", "logins");
     }
 
     sealed class FileShape

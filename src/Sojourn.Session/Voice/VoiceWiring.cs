@@ -106,13 +106,14 @@ public sealed class VoiceWiring
             (_, op, a) =>
             {
                 bool mute = a.Bool("mute", true);
-                string where = Voice.CallInfo is { } call ? $"the call with {call.With}" : $"nearby voice{(_session.Client?.Network.CurrentSim is { } sim ? $" in {sim.Name}" : "")}";
+                string where = Voice.CallInfo is { } call ? Lang.F("the call with {0}", call.With)
+                    : _session.Client?.Network.CurrentSim is { } sim ? Lang.F("nearby voice in {0}", sim.Name) : Lang.T("nearby voice");
                 if (op == "moderateAll")
                     return Task.FromResult(mute
-                        ? ($"Mute everyone's voice in {where}", Voice.CallInfo == null
+                        ? (Lang.F("Mute everyone's voice in {0}", where), Lang.T(Voice.CallInfo == null
                             ? "As a moderator: nobody else is heard by anyone, people who arrive later too, until you unmute everyone."
-                            : "As a moderator: nobody else in the call is heard until you unmute them.")
-                        : ($"Unmute everyone's voice in {where}", "As a moderator: everyone can be heard again."));
+                            : "As a moderator: nobody else in the call is heard until you unmute them."))
+                        : (Lang.F("Unmute everyone's voice in {0}", where), Lang.T("As a moderator: everyone can be heard again.")));
                 string who;
                 try
                 {
@@ -120,10 +121,10 @@ public sealed class VoiceWiring
                     a["id"] = id.ToString();   // pinned: the op acts on whom the person was shown
                     who = Moderation.NameOf(id);
                 }
-                catch (Exception e) { return Task.FromResult(($"{(mute ? "Mute" : "Unmute")} someone's voice", $"{e.Message}: this will likely fail.")); }
+                catch (Exception e) { return Task.FromResult((Lang.T(mute ? "Mute someone's voice" : "Unmute someone's voice"), Lang.F("{0}: this will likely fail.", e.Message))); }
                 return Task.FromResult(mute
-                    ? ($"Mute {who}'s voice for everyone", $"As a moderator, in {where}: nobody hears {who} until you unmute them.")
-                    : ($"Unmute {who}'s voice", $"As a moderator, in {where}: everyone can hear {who} again."));
+                    ? (Lang.F("Mute {0}'s voice for everyone", who), Lang.F("As a moderator, in {0}: nobody hears {1} until you unmute them.", where, who))
+                    : (Lang.F("Unmute {0}'s voice", who), Lang.F("As a moderator, in {0}: everyone can hear {1} again.", where, who)));
             }));
     }
 
@@ -170,12 +171,12 @@ public sealed class VoiceWiring
             {
                 p.Prompt = _ringing = call.Kind switch
                 {
-                    "group" => $"{call.Name} is calling {call.SessionName ?? "a group"}",
-                    "conference" => $"{call.Name} is calling you into a conference",
-                    _ => $"{call.Name} is calling",
+                    "group" => call.SessionName is { } group ? Lang.F("{0} is calling {1}", call.Name, group) : Lang.F("{0} is calling a group", call.Name),
+                    "conference" => Lang.F("{0} is calling you into a conference", call.Name),
+                    _ => Lang.F("{0} is calling", call.Name),
                 };
-                p.Choices.Add(new Assistant.PanelChoice("voice:answer", "answer", null));
-                p.Choices.Add(new Assistant.PanelChoice("voice:decline", "decline", null));
+                p.Choices.Add(new Assistant.PanelChoice("voice:answer", Lang.T("answer"), null));
+                p.Choices.Add(new Assistant.PanelChoice("voice:decline", Lang.T("decline"), null));
             }
             else if (p.Prompt != null && p.Prompt == _ringing) p.Prompt = null;
         });

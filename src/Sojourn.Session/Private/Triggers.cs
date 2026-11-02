@@ -229,7 +229,9 @@ public sealed class Triggers
                 // who's within chat range, every other round
                 if (round++ % 2 == 0 && _s.Online && _s.Api.ApiMap.TryGetValue("TesselAgent", out var api) && api.Ops.TryGetValue("people", out var op))
                 {
-                    var r = op.Run(new JsonObject { ["dist"] = ChatRange }, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
+                    JsonNode? r;
+                    using (Sojourn.Core.Rlv.RlvEngine.OwnRead())   // (the app's own count, not RLV's to hide: docs/rlv.md)
+                        r = op.Run(new JsonObject { ["dist"] = ChatRange }, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
                     var around = (r as JsonObject)?["people"] is JsonArray list
                         ? list.OfType<JsonObject>().Where(x => x.Uuid("id") is { } id && id != _s.AgentId)
                             .Select(x => (x.Uuid("id")!.Value, _s.Names.DisplayName(x.Uuid("id")!.Value) ?? x.Str("display_name") ?? x.Str("name") ?? "someone", x.Num("dist", 999)))

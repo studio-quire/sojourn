@@ -47,7 +47,7 @@ public static class ProviderKeys
         {
             if (Environment.GetEnvironmentVariable("SOJOURN_KEYS") is { Length: > 0 } env) return Path.GetFullPath(env);
             if (RepoRoot() is { } root) return Path.Combine(root, "local", "secrets", "assistant");
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sojourn", "secrets", "assistant");
+            return Path.Combine(DataFolder.Root, "secrets", "assistant");
         }
     }
 
@@ -98,8 +98,9 @@ public static class ProviderKeys
         return k.Kind;
     }
 
-    /// <summary>The Studio Quire token itself, for the one request the app makes with it: a log sent to the relay
-    /// (Sojourn Access's SendLog.cs), straight to the relay over HTTPS, never logged or shown. Null if none is kept or it
+    /// <summary>The Studio Quire token itself, for the requests the apps make with it straight to the relay over HTTPS,
+    /// never logged or shown: a log or report sent (Sojourn Access's SendLog.cs, the VR client's reports) and the
+    /// builders' messages (Sojourn Access's BuildersLine.cs). Null if none is kept or it
     /// can't be read. The provider keys stay the sidecar's alone.</summary>
     public static string? RelayToken()
     {

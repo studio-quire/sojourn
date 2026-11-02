@@ -40,6 +40,7 @@ public sealed class StandKey
         {
             _down = true;
             _armed = false;
+            if (_s.RlvActive && _s.RlvRefused(_s.Rlv.CanStand()) != null) return;   // RLV's @unsit (the way out still stands)
             _s.Client!.Self.Stand();
         }
     }

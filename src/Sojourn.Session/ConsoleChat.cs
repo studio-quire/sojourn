@@ -69,8 +69,18 @@ public sealed class ConsoleChat
             if (e.AudibleLevel != ChatAudibleLevel.Fully || string.IsNullOrEmpty(e.Message)) return;
             if (Sojourn.Core.Agents.AgentSession.IsBridgeTalk(e)) return;
             if (_session?.Mutes.IsMuted(e.SourceID, e.FromName, e.OwnerID) == true) return;   // blocked (TesselAgent mute)
+            // RLV: its commands are the session's, and what @recvchat or @shownames hide stays hidden here too
+            var text = e.Message;
+            var fromName = e.FromName;
+            if (_session is { RlvActive: true } rs)
+            {
+                if (e.Type == ChatType.OwnerSay && e.SourceType == ChatSourceType.Object && text.Length > 3 && text[0] == '@') return;
+                var (heard, shownFrom, _) = rs.RlvHeard(c, e, text, fromName ?? "");
+                if (heard == null) return;
+                (text, fromName) = (heard, shownFrom);
+            }
             var how = e.Type switch { ChatType.Shout => " shouts", ChatType.Whisper => " whispers", _ => "" };
-            var msg = e.Message.StartsWith("/me ") ? $"{e.FromName}{e.Message[3..]}" : $"{e.FromName}{how}: {e.Message}";
+            var msg = text.StartsWith("/me ") ? $"{fromName}{text[3..]}" : $"{fromName}{how}: {text}";
             Print(msg, e.SourceType == ChatSourceType.Object ? ConsoleColor.DarkGreen : ConsoleColor.White, chat: true);
         };
         c.Self.IM += (_, e) =>

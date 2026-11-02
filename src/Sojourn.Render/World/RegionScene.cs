@@ -207,6 +207,21 @@ public sealed partial class RegionScene
     {
         foreach (var obj in _objects.Values) { ReleaseGrass(obj); SetFaces(obj, null); }
         Terrain.Release();
+        // and its objects (their shapes' copies for picks, the prims' snapshots): a left scene can still be reachable
+        // from the last frame's lists until the next frame, which out of sight on the processor can be an hour away
+        _objects.Clear();
+        _all.Clear();
+        _children.Clear();
+        _unplaced.Clear();
+        _lights.Clear();
+        _animesh.Clear();
+        _moving.Clear();
+        _attachments.Clear();
+        _mirrors.Clear();
+        _probeVolumes = null;
+        _byId = null;
+        _cells = Array.Empty<SceneCell>();
+        _big.Objects.Clear();
     }
 
     void ReleaseGrass(SceneObject obj)
@@ -627,6 +642,7 @@ public sealed partial class RegionScene
         // meshes worn by an avatar may be rigged: their shape keeps the skin (not on a HUD, which has no skeleton); an
         // animated object's skin to its own skeleton, worn or not
         uint owner = animesh ? obj.Animesh : obj.Kind == ShapeKind.Mesh && ctx.HudPx == 0 ? obj.Owner : 0;
+        ctx.Wearer = obj.Owner;
         var kind = owner != 0 ? ShapeKind.RiggedMesh : obj.Kind;
         // rigged LOD (calcLOD): the avatar's distance and the full diagonal of its animated extents
         int RiggedLod((Vector3 Center, float Diagonal) ext)
@@ -808,7 +824,7 @@ public sealed partial class RegionScene
         var shape = job.Shape;
         if (shape.Evicted || !shape.Ready) return null;
         long materialsVersion = _world.Materials.Version;   // before: one arriving while this resolves must count
-        var ctx = new DrawCtx(job.Assets, job.Sim) { ObjArea = job.Area, Deps = new List<SceneTexture>() };
+        var ctx = new DrawCtx(job.Assets, job.Sim) { ObjArea = job.Area, Deps = new List<SceneTexture>(), Wearer = obj.Owner };
         (ctx.MediaPrim, ctx.MediaDist, ctx.MediaUsed) = (prim.LocalID, job.Distance, null);
         var gltfOverrides = job.Overrides as LibreMetaverse.GLTFMaterialOverrideCacheEntry;
         var faces = new List<CachedFace>(shape.Faces.Length);
@@ -1123,6 +1139,7 @@ public sealed partial class RegionScene
 
     static SceneTexture Tex(DrawCtx ctx, TextureStore textures, UUID id)
     {
+        if (ctx.HoldTextures > 0) LookHold.Hold(textures, id, ctx.HoldTextures);
         var t = textures.Request(id, ctx.Assets, ctx.ObjArea * ctx.TexFactor);
         if (ctx.Deps != null) { ctx.Deps.Add(t); ctx.DepFactors.Add(ctx.TexFactor); }
         return t;
@@ -1138,6 +1155,8 @@ public sealed partial class RegionScene
         int pending = 0;
         var assets = ctx.Assets;
         var textures = _world.Textures;
+        ctx.HoldTextures = LookHold.Active && (wearer != 0 ? wearer : ctx.Wearer) is var by and not 0 && Source.Avatars.TryGetValue(by, out var heldBy)
+            ? LookHold.WornBy(heldBy) : 0;
         // GLTF material (base asset + per-face override)
         AssetMaterial? gltf = null;
         var renderMaterialId = te.RenderMaterialID;
@@ -1194,6 +1213,7 @@ public sealed partial class RegionScene
             if (FaceMaterials.LegacyBump(te, fc, legacy) is var code and > 0 && BumpMaps.Source(code, te.TextureID) is { } bumpSource
                 && bumpSource != UUID.Zero)
             {
+                if (ctx.HoldTextures > 0) LookHold.Hold(textures, bumpSource, ctx.HoldTextures);
                 bump = textures.RequestBump(bumpSource, code, assets);
                 if (ctx.Deps != null) { ctx.Deps.Add(bump); ctx.DepFactors.Add(1f); }
                 if (bump.State == TexState.Loading) pending++;

@@ -1,6 +1,6 @@
 """The assistant's tools for what people ask often beyond the first set (tools.py): land, the map, people and the
-person's own account, group chat, voice, the AO, the sky, undo, scripts, an inventory item's picture, and keeping
-things out of view. Each groups one area's ops, takes words, 'that' and ids as tools.py's do, and leaves the rare ops
+person's own account, group chat, voice, the AO, the sky, undo, scripts, an inventory item's picture, keeping things
+out of view, and Sojourn itself (about, a problem report). Each groups one area's ops, takes words, 'that' and ids as tools.py's do, and leaves the rare ops
 to client_api (the op list in the instructions has them). What spends, gives, deletes or changes permissions is gated
 in the client, as everywhere; these tools only wait long enough for the person's press.
 """
@@ -665,4 +665,26 @@ def build_more(kit):
         except ApiError as e:
             return error(str(e))
 
-    return [land, map_, people, me, group_chat, voice, ao, environment, undo, scripts, item, keep_away]
+    @tool("sojourn", "Sojourn itself. action: about (its name, version, the disclaimer that it isn't Linden Lab's, who made "
+          "it, its licence, source and support: say what they asked about, in a sentence or two); report_problem (when "
+          "the person wants to report a problem with Sojourn or says it's misbehaving and wants it looked at: note, what "
+          "went wrong in their own words, nothing added; this session's log goes with it, other people's words left out "
+          "and their names made stand-ins. They confirm on the panel; it goes to Studio Quire's relay, with their Studio "
+          "Quire token if they have one. Saving it for a GitHub issue instead is the menu's: about, report a problem); stats "
+          "(the viewer statistics Sojourn sends Linden Lab, as every viewer does: what they hold).",
+          schema(["action"], action=["about", "report_problem", "stats"], note=str))
+    async def sojourn(args):
+        act = args["action"]
+        try:
+            if act == "about":
+                return text(await call("SojournRelease", "about"))
+            if act == "report_problem":
+                kit.did("asking you to confirm the report")
+                return text(await call("SojournRelease", "reportProblem", GATED_TIMEOUT, note=args.get("note") or ""))
+            if act == "stats":
+                return text(await call("SojournRelease", "stats"))
+            return error(f"unknown action {act}")
+        except ApiError as e:
+            return error(str(e))
+
+    return [land, map_, people, me, group_chat, voice, ao, environment, undo, scripts, item, keep_away, sojourn]

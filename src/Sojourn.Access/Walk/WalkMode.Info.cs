@@ -153,6 +153,7 @@ public sealed partial class WalkMode
             ["obj_uuid"] = prim.ID.ToString(), ["at"] = new JsonArray((double)at.X, (double)at.Y, (double)at.Z),
         });
         Line(PersonOps.Error(r) is { } e ? $"Couldn't touch {name}: {e}" : $"Touched {name}.");
+        if (PersonOps.Error(r) is null && name is not ("Wall" or "Something")) Touched?.Invoke(name);
     }
 
     /// <summary>D: things called door or gate within 15 m, nearest first.</summary>

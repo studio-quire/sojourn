@@ -33,17 +33,29 @@ public static class SoftwareVulkan
     }
 
     static readonly string[] Pointing = ["VK_DRIVER_FILES", "VK_ICD_FILENAMES"];
+    // LLVM's optimisation passes off for the shaders it compiles (Mesa's GALLIVM_PERF=nopt): the driver compiles each
+    // shader, and each texture's sampling, as it's first drawn, and keeps nothing between sessions (Mesa's shader cache
+    // isn't built on Windows; lavapipe's pipeline cache stores nothing), so a session's first pictures were mostly
+    // compiling. Measured (tools/firstpicture.py, 2026-11-01): a session's compiling about halved (6.8 s to 3.0 on the
+    // perf grid's Place One), and pictures once compiled as quick as before (the driver's own rasteriser and memory
+    // traffic are most of a frame). SOJOURN_SOFTWARE_OPT=1 keeps the optimiser (comparing); a GALLIVM_PERF already set
+    // is left alone.
+    const string Perf = "GALLIVM_PERF";
     // filters that would hide it too (a test hides the hardware's drivers with VK_LOADER_DRIVERS_DISABLE=*), and an
     // addition that would bring a hardware driver back beside it
     static readonly string[] Cleared = ["VK_LOADER_DRIVERS_DISABLE", "VK_LOADER_DRIVERS_SELECT", "VK_ADD_DRIVER_FILES"];
 
     /// <summary>The loader pointed at the software driver alone until disposed (around making the instance: the loader
-    /// reads its drivers then). The environment is the process's, so this is held as briefly as that.</summary>
+    /// reads its drivers then), and the driver's compiler told to skip optimising (<see cref="Perf"/>). The environment
+    /// is the process's, so this is held as briefly as that.</summary>
     public static IDisposable Use(string manifest)
     {
-        var saved = Pointing.Concat(Cleared).ToDictionary(n => n, System.Environment.GetEnvironmentVariable);
+        var saved = Pointing.Concat(Cleared).Append(Perf).ToDictionary(n => n, System.Environment.GetEnvironmentVariable);
         foreach (var n in Pointing) System.Environment.SetEnvironmentVariable(n, manifest);
         foreach (var n in Cleared) System.Environment.SetEnvironmentVariable(n, null);
+        // (read when the driver's screen is made, inside the instance and device: Mesa asks Windows for it each time)
+        if (saved[Perf] == null && System.Environment.GetEnvironmentVariable("SOJOURN_SOFTWARE_OPT") != "1")
+            System.Environment.SetEnvironmentVariable(Perf, "nopt");
         return new Restore(saved);
     }
 

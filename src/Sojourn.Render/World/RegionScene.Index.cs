@@ -78,6 +78,8 @@ public sealed partial class RegionScene
     readonly List<(Vector3 Min, Vector3 Max)> _probeChanges = new();
     bool _probeDirty = true;
     bool _indexed;
+    /// <summary>A frame has drawn it (synced it) at least once: its objects are indexed.</summary>
+    public bool Synced => _frame > 0;
     int _roundRobin;
     long _nextUnplaced, _nextReconcile;
 
@@ -86,7 +88,9 @@ public sealed partial class RegionScene
     const int MaxChangesPerFrame = 6000;
     static readonly long MaxChangeTicks = (long)(0.0015 * System.Diagnostics.Stopwatch.Frequency);
 
-    public void Sync()
+    /// <param name="terrain">its land rebuilt too if new patches came (false: a tick between frames, the land left for
+    /// the next frame that draws the region)</param>
+    public void Sync(bool terrain = true)
     {
         _frame++;
         EnsureGrid();
@@ -126,7 +130,7 @@ public sealed partial class RegionScene
             }
         }
         MoveMoving();
-        Terrain.Sync();
+        if (terrain) Terrain.Sync();
     }
 
     void EnsureGrid()
@@ -144,7 +148,7 @@ public sealed partial class RegionScene
     /// <summary>Every object against the region's dictionary: new ones added, changed ones refreshed, gone ones removed.</summary>
     void FullSync()
     {
-        foreach (var prim in Source.Prims.Values)
+        foreach (var (_, prim) in Source.Prims)
         {
             if (!_objects.TryGetValue(prim.LocalID, out var obj)) Add(prim);
             else if (Changed(obj, prim)) { Refresh(obj, prim); Place(obj); }

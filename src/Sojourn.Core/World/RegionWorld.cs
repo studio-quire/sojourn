@@ -267,7 +267,7 @@ public sealed class RegionWorld
     public Avatar? AvatarById(UUID id)
     {
         if (GlobalToLocal.TryGetValue(id, out var local) && Avatars.TryGetValue(local, out var a)) return a;
-        foreach (var av in Avatars.Values) if (av.ID == id) return av;
+        foreach (var (_, av) in Avatars) if (av.ID == id) return av;   // (Values would copy them all first)
         return null;
     }
 

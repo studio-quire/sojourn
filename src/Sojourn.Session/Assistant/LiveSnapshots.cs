@@ -16,12 +16,16 @@ public sealed class LiveSnapshots : ISnapshotProvider
     readonly ConcurrentQueue<(SnapshotRequest Req, TaskCompletionSource<SnapshotResult> Done)> _queue = new();
     readonly ConcurrentQueue<(SnapshotRequest Req, TaskCompletionSource<SnapshotResult> Done)> _seen = new();
 
+    /// <summary>How long a picture is waited for, when the renderer knows better than the usual 8 s (the view out of
+    /// sight on the processor: Offscreen/OffscreenRenderer.cs); null from it, the usual.</summary>
+    public Func<TimeSpan?>? Patience { get; set; }
+
     public Task<SnapshotResult> RenderAsync(SnapshotRequest request, CancellationToken ct)
     {
         var tcs = new TaskCompletionSource<SnapshotResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         (request.ShowUi ? _seen : _queue).Enqueue((request, tcs));
         // a picture with the menus also composites and may save a close-up on its worker
-        return tcs.Task.WaitAsync(TimeSpan.FromSeconds(request.ShowUi ? 15 : 8), ct)
+        return tcs.Task.WaitAsync(Patience?.Invoke() ?? TimeSpan.FromSeconds(request.ShowUi ? 15 : 8), ct)
             .ContinueWith(t => t.IsCompletedSuccessfully ? t.Result : new SnapshotResult(false, "no frame was rendered (minimised, or not in a region yet)"), ct);
     }
 

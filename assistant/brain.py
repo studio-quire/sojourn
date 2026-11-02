@@ -47,7 +47,7 @@ import jobs as jobmod
 import privatetools
 import provider as providermod
 import tools as toolmod
-from api import ApiError
+from api import PICTURE_WAIT, ApiError
 
 HERE = Path(__file__).resolve().parent
 IDLE_RESET = 15 * 60
@@ -102,7 +102,7 @@ def label(model):
 # covers (show, media, ...), left out of its list; and single ops a tool covers (tools.py, moretools.py), so the list
 # holds only what client_api is for and each thing has one way to it
 HIDDEN_PUMPS = {"SojournAssistant", "LLViewerWindow", "SojournShow", "SojournMedia", "SojournCapture", "SojournReport", "SojournSearch",
-                "SojournEnvironment", "SojournVoice", "SojournReader"}
+                "SojournEnvironment", "SojournVoice", "SojournReader", "SojournRelease"}
 HIDDEN_OPS = {(pump, op) for pump, ops in {
     "SojournLand": "parcel region covenant access allow unallow ban unban freeze buyPass buy set topScripts topColliders "
                    "returnObjects regionDebug terraform holdings",
@@ -818,8 +818,12 @@ class Brain:
         names = words.names(40) if words else []
         heard = (f"; names they might say (people near them, friends, places, their things, names in your memory; "
                  f"not who is here, and the words heard may misspell one): {', '.join(names)}") if names else ""
+        # the language Sojourn's own words are in (the client's setting): the replies follow the person's own words
+        lang = self.prefs.get("language")
+        lang = (f"; Sojourn's menus are in {lang}: reply in the language they use with you, in {lang} when that's unclear"
+                if lang and lang != "English" else "")
         return (f"[time {time.strftime('%H:%M')}; at {where}; "
-                f"{self.where_word()}; pointing at {pointing}{shown}{heard}]\n")
+                f"{self.where_word()}{lang}; pointing at {pointing}{shown}{heard}]\n")
 
     def where_word(self):
         return ("in Sojourn Access (no view shown; your replies go to their screen reader)" if self.app == "access"
@@ -969,6 +973,8 @@ class Brain:
             return False
         api = self.api
         subject, of, detail = key.group(1).strip(), key.group(2), key.group(3)
+        if of == "buttons":
+            return await self.read_buttons_key(request, subject, timing)
         quality = await describemod.quality(self.kit)
         model = describer.MODELS.get(quality, describer.MODELS["economy"])[0]
         api.panel(heard=request, status="describing", result=None, working=True, hearing=False, choices=[], prompt=None,
@@ -983,19 +989,24 @@ class Brain:
         if not reply:
             return False
         describemod.remember(self.kit, what, reply)
-        api.panel(result=reply, working=False, status=None)
+        self.lean_reply(request, reply, t0, timing, "describe")
+        return True
+
+    def lean_reply(self, request, reply, t0, timing, tool):
+        """A lean call's answer (describer.py) as any request's: on the panel, spoken if that's on, recorded as an
+        exchange so whichever model takes the next request knows what was said, and its timing logged."""
+        self.api.panel(result=reply, working=False, status=None)
         if self.speaker and self.prefs.get("speak"):
             self.speaker.say(reply)
-        private = bool(self.private)
         self.seq += 1
         exchange = {"seq": self.seq, "t": time.time(), "request": request, "reply": reply, "by": "describer"}
-        if private:
+        if self.private:
             self.recent_private = (self.recent_private + [exchange])[-8:]
-            return True
+            return
         self.recent = (self.recent + [exchange])[-8:]
         last = describer.LAST
         rec = {"t": round(time.time(), 1), "source": timing.get("source"), "mode": "describer", "model": last.get("model"),
-               "tools": ["describe"], "to_reply_s": round(time.time() - t0, 2) if t0 else None,
+               "tools": [tool], "to_reply_s": round(time.time() - t0, 2) if t0 else None,
                "model_s": last.get("s"), "usage": last.get("usage")}
         self.log(f"timing {rec}")
         if os.environ.get("SOJOURN_LOG_REPLIES") == "1":  # tests only
@@ -1006,6 +1017,47 @@ class Brain:
                 f.write(json.dumps(rec) + "\n")
         except OSError:
             pass
+
+    async def read_buttons_key(self, request, hud, timing):
+        """Sojourn Access's reading line in a HUD's parts list ([describe key: subject=HUD, of=buttons]): the HUD's
+        picture (SojournHud look) read in one lean call (describer.read_buttons), what a click would act on saved by name
+        and place for that look of the HUD (SojournHud save_buttons), and said. False where it can't run so (the call
+        failing): the session then does it with its hud tool, as its prompt says."""
+        api, kit = self.api, self.kit
+        quality = await describemod.quality(kit)
+        model = describer.MODELS.get(quality, describer.MODELS["economy"])[0]
+        api.panel(heard=request, status="reading its buttons", result=None, working=True, hearing=False, choices=[],
+                  prompt=None, model=label(model))
+        t0 = timing.get("speech_end") or timing.get("typed")
+        try:
+            look = await kit.call("SojournHud", "look", PICTURE_WAIT, hud=hud)
+        except ApiError as e:
+            self.lean_reply(request, f"I couldn't see that HUD: {e}.", t0, timing, "hud")
+            return True
+        name = next((h.get("name") for h in look.get("huds") or [] if h.get("id") == hud), None) or "it"
+        got = await describer.read_buttons(look, quality, log=self.log)
+        if got is None:
+            return False
+        what = (got.get("what") or "").strip().rstrip(".")
+        what = what[:1].upper() + what[1:]
+        buttons = [{"name": str(b["name"]).strip(), "rect": b["box"]} for b in got["buttons"]]
+        if buttons:
+            try:
+                saved = await kit.call("SojournHud", "save_buttons", 15, hud=hud, picture=look["picture"], buttons=buttons,
+                                       by=label(model))
+                names, dropped = saved.get("buttons") or [], saved.get("dropped") or []
+                reply = (f"{what}. " if what else "") + (
+                    f"{len(names)} button{'' if len(names) == 1 else 's'} on {name}: {', '.join(names)}."
+                    + (f" {len(dropped)} more I saw weren't on it: {', '.join(dropped)}." if dropped else "")
+                    + " They're listed after its parts." if names else f"None of the buttons I saw landed on {name}.")
+            except ApiError as e:
+                reply = f"I read its buttons but couldn't keep them: {e}."
+        else:
+            reply = f"I couldn't make out any buttons on {name}" + (f": {what}." if what else ".")
+        readouts = [str(r.get("text")).strip() for r in got.get("readouts") or [] if isinstance(r, dict) and r.get("text")]
+        if readouts:
+            reply += " It shows: " + "; ".join(readouts[:6]) + "."
+        self.lean_reply(request, reply, t0, timing, "hud")
         return True
 
     async def submit(self, request, target, timing):

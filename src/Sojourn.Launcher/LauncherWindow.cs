@@ -13,6 +13,7 @@ sealed class LauncherWindow : Window
     public LauncherWindow(LauncherView view)
     {
         Title = "Sojourn";
+        Language = Words.Language;   // (the view follows a change itself: LauncherView.Language.cs)
         Content = view;
         SizeToContent = SizeToContent.WidthAndHeight;
         ResizeMode = ResizeMode.CanMinimize;

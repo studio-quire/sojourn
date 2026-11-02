@@ -44,7 +44,8 @@ public sealed partial class MainForm
         _partMenu = new ContextMenuStrip { Name = "partMenu", AccessibleName = "Actions" };
         void PartItem(string text, Action<Linkset.Part> act) =>
             _partMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_parts.FocusedItem?.Tag is Linkset.Part p) act(p); }));
-        PartItem("&Touch", p => _ = TouchPartAsync(p, null));
+        // (on a HUD's read button or its reading line, Touch is Enter's: press it, read them)
+        _partMenu.Items.Add(new ToolStripMenuItem("&Touch", null, (_, _) => PartEnter()));
         PartItem("&Sit", p => _ = SitPartAsync(p));
         PartItem("W&here", p => Answer(p.Hud ? $"{PartName(p)} is {(OnHud(p.Root) ? "on your HUD" : "part of something you're wearing")}." : $"{PartName(p)} is {_ops.Where(L(p.Pos), full: true)}."));
         PartItem("&Describe", p => _ = DescribeAsync(Of(p)));
@@ -55,13 +56,17 @@ public sealed partial class MainForm
         _parts.SelectedIndexChanged += (_, _) => { if (_parts.FocusedItem?.Tag is Linkset.Part p && p.Id != _facesOf) _ = RefreshFacesAsync(p); };
 
         _faceMenu = new ContextMenuStrip { Name = "faceMenu", AccessibleName = "Actions" };
-        _faceMenu.Items.Add(new ToolStripMenuItem("&Touch", null, (_, _) => { if (_faces.FocusedItem?.Tag is FaceItem f) _ = TouchPartAsync(f.Part, f.Face); }));
-        _faceMenu.Items.Add(new ToolStripMenuItem("W&here", null, (_, _) => { if (_faces.FocusedItem?.Tag is FaceItem f) Answer($"{_faces.FocusedItem.Text}: {_ops.Where(L(f.Face.Point), full: true)}."); }));
+        _faceMenu.Items.Add(new ToolStripMenuItem("&Touch", null, (_, _) => FaceEnter()));
+        _faceMenu.Items.Add(new ToolStripMenuItem("W&here", null, (_, _) =>
+        {
+            if (_faces.FocusedItem?.Tag is FaceItem f) Answer($"{_faces.FocusedItem.Text}: {_ops.Where(L(f.Face.Point), full: true)}.");
+            else if (_faces.FocusedItem?.Tag is HudFaceItem hf) Answer($"{hf.Words}, on your HUD.");
+        }));
         KeysOn(_faceMenu, ("&Touch", "Enter"));
         MenuOn(_faces, _faceMenu);
         _faces.KeyDown += (_, e) =>
         {
-            if (e.KeyCode == Keys.Enter && _faces.FocusedItem?.Tag is FaceItem f) { e.Handled = e.SuppressKeyPress = true; _ = TouchPartAsync(f.Part, f.Face); }
+            if (e.KeyCode == Keys.Enter && _faces.FocusedItem?.Tag is FaceItem or HudFaceItem) { e.Handled = e.SuppressKeyPress = true; FaceEnter(); }
             else if (e.KeyCode == Keys.F5 && _parts.FocusedItem?.Tag is Linkset.Part p) { e.Handled = true; _ = RefreshFacesAsync(p, said: true); }
         };
 
@@ -100,8 +105,28 @@ public sealed partial class MainForm
 
     void PartKey(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Enter && _parts.FocusedItem?.Tag is Linkset.Part p) { e.Handled = e.SuppressKeyPress = true; _ = TouchPartAsync(p, null); }
+        if (e.KeyCode == Keys.Enter && _parts.FocusedItem?.Tag is Linkset.Part or HudButtonItem or ReadButtonsItem) { e.Handled = e.SuppressKeyPress = true; PartEnter(); }
         else if (e.KeyCode == Keys.F5 && _objects.FocusedItem?.Tag is PersonOps.Thing t) { e.Handled = true; _ = RefreshPartsAsync(t, said: true); }
+    }
+
+    /// <summary>Enter (or Touch) on the parts list: a part touched, a HUD's read button pressed, or its buttons read.</summary>
+    void PartEnter()
+    {
+        switch (_parts.FocusedItem?.Tag)
+        {
+            case Linkset.Part p: _ = TouchPartAsync(p, null); break;
+            case HudButtonItem b: _ = PressButtonAsync(b); break;
+            case ReadButtonsItem r: ReadButtons(r); break;
+        }
+    }
+
+    void FaceEnter()
+    {
+        switch (_faces.FocusedItem?.Tag)
+        {
+            case FaceItem f: _ = TouchPartAsync(f.Part, f.Face); break;
+            case HudFaceItem hf: _ = TouchHudFaceAsync(hf); break;
+        }
     }
 
     /// <summary>The selected object's parts (their names asked of the region first, a HUD's by selecting it as the edit
@@ -116,7 +141,11 @@ public sealed partial class MainForm
         var parts = await PartsOfAsync(t.Id, t.Hud, placed: !t.Hud || OnHud(t.Id));
         if (version != _partsVersion || IsDisposed) return;
         if (parts == null) { Fill(_parts, new(), $"{t.Name} isn't here any more."); return; }
-        Fill(_parts, parts.Select(p => (p.Words, p.Id.ToString(), (object)p)).ToList(), "No parts.");
+        var items = parts.Select(p => (p.Words, p.Id.ToString(), (object)p)).ToList();
+        // a HUD's buttons read off its picture, and the line that reads them
+        if (t.Hud && OnHud(t.Id)) items.AddRange(await HudButtonItemsAsync(t.Id, t.Name));
+        if (version != _partsVersion || IsDisposed) return;
+        Fill(_parts, items, "No parts.");
         if (said) Reader?.Answer(parts.Count == 1 ? "1 part." : $"{parts.Count} parts.", keep: false);
         if (_parts.FocusedItem?.Tag is Linkset.Part first && (first.Id != _facesOf || said)) _ = RefreshFacesAsync(first);
     }
@@ -146,7 +175,19 @@ public sealed partial class MainForm
         int version = ++_facesVersion;
         _facesOf = p.Id;
         _faces.AccessibleName = $"Faces of {PartName(p)}";
-        if (p.Hud) { Fill(_faces, new(), "Faces of what you wear aren't drawn here: Enter on the part touches it."); return; }
+        if (p.Hud && OnHud(p.Root) && _view != null)
+        {
+            // a HUD part's faces as they show on its screen (OffscreenRenderer.Hud.cs: placed and picked, nothing drawn)
+            Fill(_faces, new(), "Finding its faces.");
+            var shown = await HudFacesAsync(p);
+            if (version != _facesVersion || IsDisposed) return;
+            if (shown == null) { Fill(_faces, new(), "Its faces aren't known yet (not drawn): F5 here looks again."); return; }
+            Fill(_faces, shown, "None of it shows on the screen (covered, or off the edge).");
+            if (said) Reader?.Answer(shown.Count == 1 ? "1 face." : $"{shown.Count} faces.", keep: false);
+            return;
+        }
+        if (p.Hud) { Fill(_faces, new(), OnHud(p.Root) ? $"Faces need the 3D view. {ViewWords.Down(_view)} Enter on the part touches it."
+            : "Faces of what you wear on your body aren't drawn here: Enter on the part touches it."); return; }
         if (ViewWords.Gone(_view)) { Fill(_faces, new(), $"Faces need the 3D view. {ViewWords.Down(_view)} Enter on the part touches it."); return; }
         Fill(_faces, new(), "Finding its faces.");
         var set = await _view!.FacesAsync(p.Id);
@@ -234,8 +275,14 @@ public sealed partial class MainForm
         else if (w.StartsWith("face ", StringComparison.OrdinalIgnoreCase)) { Answer("//touch NAME face top: the name first."); return; }
         if (w.Length == 0) { Answer("//touch NAME, or //touch NAME face top (or front, left, a number)."); return; }
         var found = await FindPartAsync(w);
-        if (found is not { } p) { Answer($"Nothing called {w} within 10 metres."); return; }
+        if (found is null && faceWords == null && await TouchHudWordsAsync(w)) return;
+        if (found is not { } p) { Answer($"Nothing called {w} within 10 metres{(_view != null ? " or on your HUDs" : "")}."); return; }
         FaceShape? face = null;
+        if (faceWords != null && p.Hud && OnHud(p.Root) && int.TryParse(faceWords, out int hudFace))
+        {
+            await TouchHudFaceAsync(new HudFaceItem(p, hudFace, $"face {hudFace}"));
+            return;
+        }
         if (faceWords != null)
         {
             if (p.Hud || _view == null || await _view.FacesAsync(p.Id) is not { } set) { Answer($"{PartName(p)}'s faces aren't known: touching it without a face."); }
@@ -243,6 +290,7 @@ public sealed partial class MainForm
             else { Answer($"{PartName(p)} has no face {faceWords}: top, bottom, front, far, left, right, inside, or a number."); return; }
         }
         await TouchPartAsync(p, face);
+        if (!p.Hud) _route?.Touched(words.Trim());   // a route being recorded keeps the words, as //touch finds it again
     }
 
     /// <summary>A part by words: an object's name then a part's ("chest lid"), else any part or object within 10 m whose

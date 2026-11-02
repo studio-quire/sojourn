@@ -335,7 +335,8 @@ public static class DeviceLoss
             assistant.Panel.Update(p =>
             {
                 p.Heard = null;
-                p.Result = $"Sojourn restarted after the graphics card was reset at {at}." + (there ? " You're back where you were." : "");
+                p.Result = there ? Lang.F("Sojourn restarted after the graphics card was reset at {0}. You're back where you were.", at)
+                    : Lang.F("Sojourn restarted after the graphics card was reset at {0}.", at);
             });
         });
     }

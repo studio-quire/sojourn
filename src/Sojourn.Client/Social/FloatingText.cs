@@ -59,6 +59,7 @@ public sealed class FloatingText
         {
             string text = p.Text ?? "";
             if (string.IsNullOrWhiteSpace(text) || p.TextColor.A < 0.01f) continue;
+            if (_s.RlvActive && !_s.Rlv.CanShowHoverText(root, hud: false)) continue;   // RLV's @showhovertext*
             var centre = renderer.DrawnPosition(rh, p.LocalID) is { } dp ? dp + offset : (Vector3?)null;
             if (centre is not { } mid) continue;
             var at = mid + new Vector3(0, 0, p.Scale.Z * 0.6f);

@@ -67,6 +67,15 @@ public static class PanelShots
         Shot("7-settings-moving", Panel.DrawMenu(look, Tabs, 0, MovingRows, null, -1, scale, 1));
         Shot("8-settings-assistant", Panel.DrawMenu(look, Tabs, 1, AssistantRows(0), null, -1, scale, 1));
         Shot("8b-settings-help", Panel.DrawMenu(look, Tabs, 1, AssistantRows(0), HelpLines, -1, scale, 1));
+        // about, the last section (Control/AboutMenu.cs: its own words), and its report page with and without a token
+        var aboutTabs = AllTabs.Append("about").ToArray();
+        float room = 44 / UiSize.BaseDegPerPx;
+        Shot("7m-settings-about", Panel.DrawMenu(look, aboutTabs, 10, AboutRows, null, -1, scale, 1, 0, room,
+            text: Sojourn.Client.Control.AboutMenu.Lines("0.1.0.812", "3938f43")));
+        Shot("7n-settings-about-report", Panel.DrawMenu(look, aboutTabs, 10, ReportRows(true), null, -1, scale, 1, 0, room,
+            group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(true)));
+        Shot("7o-settings-about-report-no-token", Panel.DrawMenu(look, aboutTabs, 10, ReportRows(false), null, -1, scale, 1, 0, room,
+            group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(false)));
         // each preset, answering, confirming and as the settings (and how readable, by the measure the assistant's changes get)
         for (int i = 0; i < PanelLook.Presets.Count; i++)
         {
@@ -491,6 +500,21 @@ public static class PanelShots
         };
     }
 
+    static readonly MenuRow[] AboutRows =
+    {
+        new("report a problem", "", false) { Rows = () => new() },
+        new("third-party notices", "read", false),
+        MenuRow.Choice("crash reports", new[] { "ask", "always", "never" }, 0),
+        MenuRow.Switch("MAC and disk serial in statistics", false),
+    };
+
+    static MenuRow[] ReportRows(bool sent) => new[]
+    {
+        new MenuRow("review what's sent", "read", false),
+        new MenuRow("send to Studio Quire", "send", false, Note: sent ? "Report sent to Studio Quire. Thank you." : null),
+        new MenuRow("save for GitHub", "save", false),
+    };
+
     static readonly string[] Tabs = { "moving", "assistant", "voice" };
     static readonly string[] ViewTabs = { "moving", "assistant", "voice", "view" };
     static readonly string[] AllTabs = { "moving", "assistant", "incognito", "you", "social", "voice", "sound", "screen reader", "safety", "view" };
@@ -521,6 +545,7 @@ public static class PanelShots
     {
         UiSize.Row(new VrSettings()),
         new("menu positions", "reset", false),
+        new("language", "as Windows", true),
         new("draw distance", "128 m", true),
         MenuRow.Group("graphics", NoRows).Row, MenuRow.Group("avatars", NoRows).Row,
         MenuRow.Choice("sky", new[] { "region", "dawn", "noon", "dusk", "night" }, 0),
@@ -567,7 +592,7 @@ public static class PanelShots
 
     static MenuRow[] AssistantRows(int look) => new[]
     {
-        MenuRow.Switch("panel", true),
+        MenuRow.Switch("adaptive ink", false),
         MenuRow.Choice("model", new[] { "haiku", "sonnet", "opus" }, 0),
         new MenuRow("look", PanelLook.Presets[look].Preset, false) { Looks = PanelLook.Presets, Selected = look },
         MenuRow.Switch("spoken replies", false),
@@ -580,7 +605,7 @@ public static class PanelShots
     {
         "hold the right grip and speak to the assistant, or tap it to talk hands-free and tap again to send",
         "X hides everything and brings it back, held: every menu back in front · Y recentres · this menu: the left menu button",
-        "drag any menu anywhere · drop it on its outline to have it follow",
+        "drag any menu anywhere, drop it on its outline to have it follow",
         "seated: sit up straight, then press Y to set your height",
     };
 }

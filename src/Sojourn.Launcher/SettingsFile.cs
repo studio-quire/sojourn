@@ -37,6 +37,19 @@ sealed class SettingsFile
         File.Move(tmp, _path, overwrite: true);
     }
 
+    // ---- crash reports (CrashReport.cs): ask, always or never, as the menu's about section sets it ----
+
+    public string CrashReports => Read()["crashReports"] is JsonValue v && v.TryGetValue(out string? s)
+        && s is "ask" or "always" or "never" ? s : "ask";
+
+    // ---- the language of the launcher and the client (VrSettings.UiLanguage): "auto" (Windows') or a code of Lang.All ----
+
+    public string UiLanguage
+    {
+        get => Str("uiLanguage") is { } s && (s == "auto" || Sojourn.Session.Lang.Find(s) != null) ? s : "auto";
+        set => Change(o => o["uiLanguage"] = value);
+    }
+
     // ---- the headset ----
 
     public bool Seated

@@ -1,7 +1,7 @@
 <UserControl x:Class="Sojourn.Launcher.LauncherView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             Width="400" Height="660" FontFamily="{StaticResource Ui}" Foreground="{StaticResource Ink}"
+             Width="400" MinHeight="660" FontFamily="{StaticResource Ui}" Foreground="{StaticResource Ink}"
              UseLayoutRounding="True" TextOptions.TextFormattingMode="Ideal">
     <Grid>
         <!-- behind the glass: a very light blue, nothing else -->
@@ -55,6 +55,9 @@
                 <Button x:Name="CloseKey" Style="{StaticResource Key}" Content="&#xE8BB;" FontSize="10" AutomationProperties.Name="Close" IsTabStop="False"/>
             </StackPanel>
 
+            <TextBlock x:Name="DevNote" Grid.Row="1" Text="dev mode: your own Claude is the assistant" FontSize="12"
+                       Foreground="{StaticResource Faint}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,2"
+                       Visibility="Collapsed"/>
             <TextBlock Grid.Row="1" Text="Sojourn" FontFamily="{StaticResource Wordmark}" FontSize="44" HorizontalAlignment="Center"
                        Margin="0,0,0,20">
                 <TextBlock.Foreground>
@@ -108,8 +111,8 @@
 
                             <Grid x:Name="PassField">
                                 <PasswordBox x:Name="PassBox" AutomationProperties.Name="Password"/>
-                                <TextBlock x:Name="PassHint" Text="password" Foreground="{StaticResource Faint}" FontSize="15" Margin="15,0,0,0"
-                                           VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                <TextBlock x:Name="PassHint" Text="password" Foreground="{StaticResource Faint}" FontSize="15" Margin="15,0,15,0"
+                                           VerticalAlignment="Center" IsHitTestVisible="False" TextTrimming="CharacterEllipsis"/>
                             </Grid>
                             <CheckBox x:Name="RememberSwitch" Style="{StaticResource Switch}" Content="remember password" Margin="4,12,0,16"
                                       HorizontalAlignment="Left"/>
@@ -161,8 +164,8 @@
                             <!-- a key pasted here is kept encrypted (ProviderKeys) and switches to its provider; never shown back -->
                             <Grid x:Name="KeyField" Margin="0,10,0,0">
                                 <PasswordBox x:Name="KeyBox" AutomationProperties.Name="API key"/>
-                                <TextBlock x:Name="KeyHint" Text="API key" Foreground="{StaticResource Faint}" FontSize="15" Margin="15,0,0,0"
-                                           VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                <TextBlock x:Name="KeyHint" Text="API key" Foreground="{StaticResource Faint}" FontSize="15" Margin="15,0,40,0"
+                                           VerticalAlignment="Center" IsHitTestVisible="False" TextTrimming="CharacterEllipsis"/>
                                 <Button x:Name="ForgetKey" Style="{StaticResource Key}" Content="&#xE711;" FontSize="11" HorizontalAlignment="Right"
                                         Margin="0,0,4,0" Foreground="{StaticResource Faint}" Visibility="Collapsed" AutomationProperties.Name="Forget the key"/>
                             </Grid>
@@ -201,7 +204,7 @@
                     <!-- the grid's question, answered here while the client waits (terms, or the MFA code) -->
                     <StackPanel x:Name="QuestionPage" Visibility="Collapsed">
                         <StackPanel x:Name="TermsBlock">
-                            <TextBlock x:Name="TermsTitle" Text="Terms of Service" FontSize="17" FontWeight="SemiBold" Margin="4,0,0,10"/>
+                            <TextBlock x:Name="TermsTitle" Text="Terms of Service" FontSize="17" FontWeight="SemiBold" Margin="4,0,0,10" TextWrapping="Wrap"/>
                             <Border CornerRadius="13" Background="#66FFFFFF" BorderBrush="{StaticResource Rim}" BorderThickness="1" Height="250">
                                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12,10" Focusable="False">
                                     <TextBlock x:Name="TermsText" TextWrapping="Wrap" FontSize="13" Foreground="{StaticResource Dim}"/>
@@ -213,7 +216,7 @@
                             <TextBlock Style="{StaticResource Label}" Text="authenticator code"/>
                             <TextBox x:Name="CodeBox" Tag="000000" MaxLength="8" FontSize="18" AutomationProperties.Name="Authenticator code"/>
                             <TextBlock x:Name="CodeAgain" Text="that code didn't work" FontSize="12" Foreground="{StaticResource Coral}" Margin="4,6,0,0"
-                                       Visibility="Collapsed"/>
+                                       Visibility="Collapsed" TextWrapping="Wrap"/>
                             <CheckBox x:Name="RememberComputer" Style="{StaticResource Switch}" Content="remember this computer" Margin="4,14,0,0"
                                       HorizontalAlignment="Left"/>
                         </StackPanel>
@@ -248,20 +251,41 @@
                                 <DropShadowEffect x:Name="OrbGlow" Color="{StaticResource AccentColor}" Opacity="0.6" BlurRadius="10" ShadowDepth="0"/>
                             </Ellipse.Effect>
                         </Ellipse>
-                        <TextBlock x:Name="StatusText" Grid.Column="1" FontSize="16" Margin="14,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="StatusText" Grid.Column="1" FontSize="16" Margin="14,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   TextWrapping="Wrap" MaxHeight="44"/>
                         <Button x:Name="StopKey" Grid.Column="2" Style="{StaticResource Key}" Content="&#xE71A;" FontSize="13" AutomationProperties.Name="Stop"/>
                     </Grid>
                 </Grid>
             </Grid>
 
             <Grid Grid.Row="4" Margin="14,10,14,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
                 <Button x:Name="SettingsKey" Style="{StaticResource Key}" Content="&#xE713;" FontSize="15" HorizontalAlignment="Left" AutomationProperties.Name="Settings"/>
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
                     <TextBlock x:Name="NoteText" FontSize="12" Foreground="{StaticResource Faint}" VerticalAlignment="Center" MaxWidth="230"
-                               TextTrimming="CharacterEllipsis"/>
+                               TextTrimming="CharacterEllipsis" TextWrapping="Wrap" TextAlignment="Center" MaxHeight="34"/>
                     <Button x:Name="LogKey" Style="{StaticResource WordKey}" Content="log" Height="26" Foreground="{StaticResource Accent}" Margin="2,0,0,0"
                             Padding="8,0" Visibility="Collapsed" AutomationProperties.Name="Open the log"/>
+                    <Button x:Name="UpdateKey" Style="{StaticResource WordKey}" Height="26" Foreground="{StaticResource Accent}" Margin="2,0,0,0"
+                            Padding="8,0" Visibility="Collapsed"/>
                 </StackPanel>
+                <!-- the language (the launcher's and the client's, vr-settings.json's uiLanguage): a globe, findable in any
+                     language, its list above it -->
+                <Button x:Name="LanguageKey" Grid.Column="2" Style="{StaticResource Key}" Content="&#xE774;" FontSize="15" AutomationProperties.Name="language"/>
+                <Popup x:Name="LanguageList" Grid.Column="2" PlacementTarget="{Binding ElementName=LanguageKey}" Placement="Top" AllowsTransparency="True"
+                       StaysOpen="False" VerticalOffset="-6" HorizontalOffset="-256">
+                    <Border x:Name="LanguageListCard" CornerRadius="13" Background="#F5FFFFFF" BorderBrush="{StaticResource Rim}" BorderThickness="1" Padding="4"
+                            Width="290">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Label}" Text="language" Margin="14,8,14,2"/>
+                            <StackPanel x:Name="LanguageChoices"/>
+                        </StackPanel>
+                    </Border>
+                </Popup>
             </Grid>
         </Grid>
     </Grid>

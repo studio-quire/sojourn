@@ -51,10 +51,16 @@ public sealed partial class FrameRenderer
     }
 
     /// <summary>The HUDs' draw list and views for this frame, or null when there's nothing to draw.</summary>
-    HudPlan? PlanHud(FrameRequest req, int slot)
+    HudPlan? PlanHud(FrameRequest req, int slot) => PlanHud(req.Hud, slot, build: false, out _);
+
+    /// <param name="build">the draw list built even with nothing to draw (picks then land on the HUDs' surfaces, and
+    /// their textures and meshes are asked for)</param>
+    /// <param name="pending">how much of them is still loading, when built</param>
+    HudPlan? PlanHud(HudRequest? hr, int slot, bool build, out int pending)
     {
+        pending = 0;
         HudImage = null;
-        if (req.Hud is not { } h || _world.Region(h.Region) is not { } scene || !scene.Source.HasSimulator)
+        if (hr is not { } h || _world.Region(h.Region) is not { } scene || !scene.Source.HasSimulator)
         {
             Huds = HudsPlaced.None;
             return null;
@@ -65,13 +71,16 @@ public sealed partial class FrameRenderer
         Huds = new HudsPlaced(h.Region, aspect, objects);
         if (objects.Count == 0) return null;
         bool screen = h.Width > 0 && h.Height > 0;
-        if (!screen && h.Shot == null) return null;
+        if (!screen && h.Shot == null && !build) return null;
 
         var dl = _hudLists[slot % _hudLists.Length];
         dl.Clear();
+        // (the screen's height in pixels, or the shot's pixels per HUD unit; built only: as the headset board's)
         float px = Math.Max(screen ? h.Height : 0, h.Shot is { } s ? s.Height / (2 * s.HalfHeight) : 0);
-        scene.BuildHudDrawList(new ViewSetup { Position = new Vector3(-1, 0, 0), DrawDistance = 1e6f, HasWater = false, PlanarSort = true }, dl, h.Self, Point, px,
-            View with { MinPixels = 0, MinShadowPixels = 0 });
+        if (px <= 0) px = 1080;
+        pending = scene.BuildHudDrawList(new ViewSetup { Position = new Vector3(-1, 0, 0), DrawDistance = 1e6f, HasWater = false, PlanarSort = true }, dl, h.Self, Point, px,
+            View with { MinPixels = 0, MinShadowPixels = 0 }).Pending;
+        if (!screen && h.Shot == null) return null;
         float minX = objects.Min(o => o.Min.X), maxX = objects.Max(o => o.Max.X);
 
         var plan = new HudPlan { Req = h, List = dl, Screen = screen };
@@ -260,6 +269,50 @@ public sealed partial class FrameRenderer
             depth.Dispose();
             _ = Task.Run(() => want.Done(pixels, w, h));
         });
+    }
+
+    /// <summary>
+    /// The person's HUDs with no view of the world, for a renderer that shows none (Sojourn.Session's renderer out of
+    /// sight): placed in HUD space at the request's aspect (<see cref="Huds"/>), their draw list built, so picks land on
+    /// their surfaces and their textures and meshes are asked for, and unless <paramref name="planOnly"/> the request's
+    /// shot drawn and read back to its Done once the GPU is done with it (the slot's next wait, or <see cref="WaitIdle"/>).
+    /// The request's screen size is ignored. Returns how much of them is still loading. Render thread.
+    /// </summary>
+    public int RenderHud(HudRequest h, bool planOnly)
+    {
+        int slot = _slot;
+        var fr = _gpu.Frames[slot];
+        fr.Wait();
+        CheckWorld();
+        _world.Textures.DataOnly = !Quality.Textures;
+        ApplyRegionChanges();
+        _world.BeginFrame();
+        Periodic();
+        try
+        {
+            var plan = PlanHud(h with { Width = 0, Height = 0, Shot = planOnly ? null : h.Shot }, slot, build: true, out int pending);
+            WorldReleased?.Invoke();
+            if (plan == null)
+            {
+                // what loading staged goes to the GPU now (no frame records it), as a tick's does
+                if (_gpu.Uploader.HasPending) _gpu.Uploader.FlushNow();
+                return pending;
+            }
+            fr.BeginCommands();
+            var r = _gpu.Renderer;
+            r.BeginFrame(fr);
+            ulong mark = r.RecordCaptures(fr, _gpu.Uploader, plan.Bytes, arena => PrepareHud(arena, plan, Array.Empty<ViewSetup>()),
+                cmd => RecordHud(fr, cmd, null!, 0, plan));
+            Submit(fr, fr.Cmd, default, default);
+            var up = _gpu.Uploader;
+            fr.Retire.Add(() => up.Release(mark));
+            _slot = (slot + 1) % _gpu.Frames.Length;
+            return pending;
+        }
+        finally
+        {
+            _world.EndFrame();
+        }
     }
 
     /// <summary>The nearest of the person's HUD prims under a point of the HUD screen (y, z in HUD space), as the

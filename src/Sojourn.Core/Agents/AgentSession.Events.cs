@@ -108,10 +108,12 @@ public sealed partial class AgentSession
         StartBackgroundWork(c);
         Look.OnLoggedIn(c);
         PeopleLoggedIn(c);
+        RlvLoggedIn(c);
     }
 
     void OnLoggedOut()
     {
+        RlvLoggedOut();
         StopBackgroundWork();
     }
 
@@ -129,10 +131,21 @@ public sealed partial class AgentSession
     {
         if (e.Type is ChatType.StartTyping or ChatType.StopTyping) return;
         if (Ao.TakeOwnerSay(c, e)) return;   // a worn relay switching the AO (Agents/AoDriver.cs), kept out of chat
+        if (RlvTakeCommand(c, e)) return;    // RLV commands from the person's own objects (AgentSession.Rlv.cs)
         if (IsBridgeTalk(e)) return;
         if (e.AudibleLevel != ChatAudibleLevel.Fully) return;
+        // what RLV leaves of it (@recvchat, @recvemote, @shownames), before anything reads it
+        var text = e.Message ?? "";
+        string? rlvFrom = null;
+        if (RlvActive && e.Type != ChatType.Debug)
+        {
+            var (heard, shownFrom, anonym) = RlvHeard(c, e, text, e.FromName ?? "");
+            if (heard == null) return;
+            text = heard;
+            if (anonym || shownFrom != e.FromName) rlvFrom = shownFrom;
+        }
         if (e.SourceType == ChatSourceType.Agent) Private.WordsFrom?.Invoke(e.SourceID, "chat");
-        var msg = (e.Message ?? "").Replace("\t", "    ");
+        var msg = text.Replace("\t", "    ");
         var style = 0;
         if (msg.StartsWith("/me ") || msg.StartsWith("/me'"))
         {
@@ -149,8 +162,8 @@ public sealed partial class AgentSession
         // from objects you own. OpenSim's reach is wider still (both regions heard one anklet). Unknown owner: keep it.
         if (e.Type == ChatType.Debug && e.SourceType == ChatSourceType.Object
             && e.OwnerID != UUID.Zero && e.OwnerID != c.Self.AgentID) return;
-        var from = e.SourceType == ChatSourceType.Agent ? Names.Complete(e.SourceID, e.FromName) : e.FromName;
-        Events.Log("LLChat", new JsonObject
+        var from = rlvFrom ?? (e.SourceType == ChatSourceType.Agent ? Names.Complete(e.SourceID, e.FromName) : e.FromName);
+        var chat = new JsonObject
         {
             ["message"] = msg,
             ["from"] = from,
@@ -162,7 +175,9 @@ public sealed partial class AgentSession
             ["sender_slurl"] = e.SourceType == ChatSourceType.Agent ? AgentSlurl(e.SourceID) : "",
             ["owner_id"] = e.OwnerID.ToString(),
             ["position"] = Json.Arr(e.Position),
-        });
+        };
+        if (rlvFrom != null && e.SourceType == ChatSourceType.Agent) chat["rlv_anonym"] = true;   // (RLV's @shownames)
+        Events.Log("LLChat", chat);
         if (e.SourceID == c.Self.AgentID && e.Type is ChatType.Normal or ChatType.Whisper or ChatType.Shout)
             State.LastWords = e.Message;
         if (e.Type == ChatType.Debug && e.SourceType == ChatSourceType.Object)
@@ -190,6 +205,7 @@ public sealed partial class AgentSession
                 if (im.FromAgentID == me) return;     // our own group lines echoed back: the "out" event covered them
                 if (string.IsNullOrEmpty(im.Message)) return;
                 Private.WordsFrom?.Invoke(im.FromAgentID, im.Dialog == InstantMessageDialog.SessionSend ? "group" : "im");
+                if (im.Dialog == InstantMessageDialog.MessageFromAgent) im.Message = RlvImIn(c, im);   // @recvim
                 ImIn(c, im);
                 return;
             case InstantMessageDialog.MessageFromObject:
@@ -236,9 +252,11 @@ public sealed partial class AgentSession
             }
             case InstantMessageDialog.RequestTeleport:
             case InstantMessageDialog.GodLikeRequestTeleport:
+                if (im.Dialog == InstantMessageDialog.RequestTeleport && RlvLure(c, im)) return;   // @tplure, @accepttp
                 TeleportOffer(c, im);
                 return;
             case InstantMessageDialog.RequestLure:
+                if (RlvTeleportRequest(c, im)) return;   // @tprequest, @accepttprequest
                 TeleportRequest(c, im);
                 return;
             case InstantMessageDialog.GroupInvitation:
@@ -468,6 +486,8 @@ public sealed partial class AgentSession
             substitutions: new JsonObject { ["NAME_SLURL"] = AgentSlurl(im.FromAgentID), ["MESSAGE"] = im.Message, ["NAME"] = im.FromAgentName },
             respond: (button, _) =>
             {
+                // a restriction that came after the offer still holds when it's answered (RLV's @tplure)
+                if (button == "Teleport" && RlvActive && RlvRefused(Rlv.CanAcceptTeleportOffer(im.FromAgentID)) != null) return Task.CompletedTask;
                 c.Self.TeleportLureRespond(im.FromAgentID, im.IMSessionID, button == "Teleport");
                 return Task.CompletedTask;
             });
@@ -482,6 +502,7 @@ public sealed partial class AgentSession
             substitutions: new JsonObject { ["NAME_SLURL"] = AgentSlurl(im.FromAgentID), ["MESSAGE"] = im.Message, ["NAME"] = im.FromAgentName },
             respond: (button, resp) =>
             {
+                if (button == "Yes" && RlvActive && RlvRefused(Rlv.CanAcceptTeleportRequest(im.FromAgentID)) != null) return Task.CompletedTask;
                 if (button == "Yes") c.Self.SendTeleportLure(im.FromAgentID, resp.Str("message") ?? "Join me");
                 return Task.CompletedTask;
             });
@@ -615,6 +636,11 @@ public sealed partial class AgentSession
             experience = testExperience;
         if (Mutes.IsMuted(taskId, objectName)) return;
         if (Safety.Spam(Safety.Queue.Dialog, taskId, objectName)) return;   // antispam (the question names no owner id)
+        // RLV: attach and teleport taken out while locked; everything granted at once under @acceptpermission
+        var (rlvLeft, rlvGranted) = RlvQuestion(c, sim, itemId, taskId, asked, objectName);
+        if (rlvGranted) return;
+        if (rlvLeft != asked && rlvLeft == ScriptPermission.None) { c.Self.ScriptQuestionReply(sim, itemId, taskId, ScriptPermission.None); return; }
+        asked = rlvLeft;
         var questions = string.Join("\n", PermissionLines(asked));
         var payload = new JsonObject
         {

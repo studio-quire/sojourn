@@ -49,17 +49,17 @@ public static class InventoryWiring
             if (op == "removeSet")
             {
                 var set = s.Ao.SetNamed(a.Str("name") ?? throw new LeapError("need name"));
-                return ($"Remove the AO set \"{set.Name}\"", "Its folder goes to Trash. The animations it links stay where they are in your inventory.");
+                return (Lang.F("Remove the AO set \"{0}\"", set.Name), Lang.T("Its folder goes to Trash. The animations it links stay where they are in your inventory."));
             }
             var from = s.Ao.SetNamed(a.Str("set"));
             var kind = AoMotions.KindByName((a.Str("state") ?? "").Trim()) ?? throw new LeapError("no such state");
             var nodes = s.Ao.Removal(from, kind, a.Str("step"), a.Has("index") ? a.Int("index", 0) : null);
             var names = string.Join(", ", nodes.Select(n => n.Name));
-            return ($"Remove from your AO: {names}", $"From {from.Name}, {from.State(kind).Name}. Only the AO's links go; the animations stay in your inventory.");
+            return (Lang.F("Remove from your AO: {0}", names), Lang.F("From {0}, {1}. Only the AO's links go; the animations stay in your inventory.", from.Name, from.State(kind).Name));
         }
         catch (Exception e) when (e is LeapError or NotConnected)
         {
-            return ("Change your AO", $"{e.Message}: this will likely fail.");
+            return (Lang.T("Change your AO"), Lang.F("{0}: this will likely fail.", e.Message));
         }
     }
 }

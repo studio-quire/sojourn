@@ -63,13 +63,16 @@ public sealed class Commands
                 case "tp": return await TeleportAsync(rest);
                 case "status": await StatusAsync(rest); return true;
                 case "route": await RouteAsync(rest); return true;
+                case "record": if (Record != null) await Record(AfterVerb(line)); return true;
                 case "pause": return await PauseAsync(rest);
                 case "siminfo": await SimInfoAsync(); return true;
                 case "parcelinfo": await ParcelInfoAsync(); return true;
                 case "scriptinfo": await ScriptInfoAsync(); return true;
                 case "beacon": await BeaconAsync(rest); return true;
                 case "touch": if (Touch != null) await Touch(string.Join(" ", rest)); return true;
+                case "switch": if (Switch != null) await Switch(string.Join(" ", rest)); return true;
                 case "outfit": if (Outfit != null) await Outfit(); return true;
+                case "upload": if (Upload != null) await Upload(AfterVerb(line)); return true;
                 case "voice": if (Voice != null) await Voice(string.Join(" ", rest)); return true;
                 case "sendlog": SendLog?.Invoke(); return true;
                 default: _say($"No command {verb}. //help lists them."); return false;
@@ -111,6 +114,8 @@ public sealed class Commands
         ("status", "//status [doing|region|parcel|location|money|time|music]", "what you're doing, where you are, your L$, the time in Second Life, the music playing"),
         ("route", "//route NOTECARD | //route (the lines on the clipboard) | //route stop | //route resume",
             "play a route: a notecard's (or the clipboard's) // lines one at a time, each walk finished before the next, other lines read as notes"),
+        ("record", "//record | //record note WORDS | //record undo | //record pause | //record save [NAME] | //record discard",
+            "record a route by walking it (R in walk mode): start, or while recording how it's going; a note here; take back the last point; pause or go on; save it as a notecard in Routes; or throw it away"),
         ("pause", "//pause [SECONDS]", "wait (in a route: before its next line; 1 second unless said)"),
         ("siminfo", "//siminfo", "the region: its type, maturity, people, scripts, time dilation and frame rate"),
         ("parcelinfo", "//parcelinfo", "every parcel in the region: its name, area and who may enter, the one you're on first"),
@@ -119,7 +124,10 @@ public sealed class Commands
             "a sound on someone or something to walk to (by hand in walk mode, or by //go), until you reach it; off; or where it is"),
         ("touch", "//touch NAME | //touch OBJECT PART | //touch NAME face top (or bottom, front, far, left, right, inside, a number)",
             "touch the nearest thing or part within 10 metres with that name (an object whose only touchable part is a child: that part), on a face if given"),
+        ("switch", "//switch | //switch flip | //switch main | //switch branch",
+            "the next rail switch and how it's set; throw it, or set it to the main line or the branch (walk mode's W and Shift+W)"),
         ("outfit", "//outfit", "what you're wearing, by name from the worn list: clothing, attachments and where, HUDs, body parts"),
+        ("upload", "//upload | //upload PATH", "upload a picture, sound, animation or model: with no path, choose the file (Control+U)"),
         ("voice", "//voice | //voice answer | //voice decline", "who's in voice and speaking, your mic; or answer or decline a call ringing"),
         ("about", "//about", "which version of Sojourn Access this is, and where your settings and logs are"),
         ("sendlog", "//sendlog", "send a session's log to Studio Quire, with a note on what happened; other people's words are left out"),
@@ -261,7 +269,8 @@ public sealed class Commands
     async Task<bool> RouteAsync(Vector3 target, string what, double stop, string tpHint, CancellationToken ct)
     {
         if (!await StandFirstAsync(ct)) return false;
-        if (_ops.Me() is not { } me || _ops.Client is not { } c) return false;
+        if (_ops.Me() is not { } me || _ops.Client is not { } c || c.Network.CurrentSim is not { } sim) return false;
+        ulong origin = sim.Handle;   // the target's frame: a route's point past a border runs beyond 256 or below 0
         double near = Math.Max(stop, 1.2);
         var flat = new Vector2(target.X - me.Pos.X, target.Y - me.Pos.Y).Length();
         var route = await PlanAsync(me.Pos, target, ct);
@@ -272,7 +281,7 @@ public sealed class Commands
             if (_ops.Global(target) is not { } g) return false;
             c.Self.AutoPilot(g.X, g.Y, g.Z);
             _say(string.Create(CultureInfo.InvariantCulture, $"Walking {Bearings.Metres(flat)} to {what}."));
-            return await WatchWalkAsync(target, near, ct);
+            return await WatchWalkAsync(target, near, ct, origin);
         }
         var legs = r.Legs;
         // a goal out of reach (up on a stage, inside a bar): its stand-in, the nearest spot the way goes to
@@ -294,12 +303,12 @@ public sealed class Commands
             }
             if (_ops.Global(leg) is not { } g) return false;
             c.Self.AutoPilot(g.X, g.Y, g.Z);
-            var got = await LegAsync(leg, last ? (r.Moved ? 0.6 : near) : 0.5, ct);
+            var got = await LegAsync(leg, last ? (r.Moved ? 0.6 : near) : 0.5, ct, origin);
             if (got == Leg.Cancelled) return false;
             if (got == Leg.Reached)
             {
                 if (!last) continue;
-                return r.Moved ? await WatchWalkAsync(leg, 0.8, ct, (target, what)) : await WatchWalkAsync(target, near, ct);
+                return r.Moved ? await WatchWalkAsync(leg, 0.8, ct, origin, (target, what)) : await WatchWalkAsync(target, near, ct, origin);
             }
             // stuck on the way: something the model hadn't (a thin post, a doorway the region won't fit): marked, planned again
             c.Self.AutoPilotCancel();
@@ -319,6 +328,17 @@ public sealed class Commands
 
     static float Flat(Vector3 a, Vector3 b) => new Vector2(a.X - b.X, a.Y - b.Y).Length();
 
+    /// <summary>The avatar's position in the frame of the region with this handle (where a walk began: its target stays
+    /// in that frame after a crossing), or null between regions.</summary>
+    Vector3? MeIn(ulong origin)
+    {
+        if (_ops.Me() is not { } me || _ops.Client?.Network.CurrentSim is not { } sim) return null;
+        if (sim.Handle == origin) return me.Pos;
+        Utils.LongToUInts(sim.Handle, out var cx, out var cy);
+        Utils.LongToUInts(origin, out var ox, out var oy);
+        return me.Pos + new Vector3((float)((double)cx - ox), (float)((double)cy - oy), 0);
+    }
+
     /// <summary>A planned way: its waypoints (the last the goal, or its stand-in when the goal was out of reach).</summary>
     readonly record struct Route(List<System.Numerics.Vector2> Legs, bool Moved);
 
@@ -335,6 +355,8 @@ public sealed class Commands
     async Task<Route?> PlanAsync(Vector3 from, Vector3 to, CancellationToken ct)
     {
         if (Planner is not { } planner) return null;
+        // beyond this region's edge (a recorded route's crossing): straight, by the region's autopilot
+        if (to.X < 0 || to.X >= 256 || to.Y < 0 || to.Y >= 256) return null;
         var a = new System.Numerics.Vector2(from.X, from.Y);
         var b = new System.Numerics.Vector2(to.X, to.Y);
         if (System.Numerics.Vector2.Distance(a, b) < 2) return null;
@@ -353,15 +375,15 @@ public sealed class Commands
     /// <summary>A stretch on the way: until the avatar is within <paramref name="within"/> of its end (0.5 m at a corner:
     /// the next stretch starts without stopping, and a wider berth cut the corner into the wall), or it stops getting
     /// anywhere for two seconds.</summary>
-    async Task<Leg> LegAsync(Vector3 to, double within, CancellationToken ct)
+    async Task<Leg> LegAsync(Vector3 to, double within, CancellationToken ct, ulong origin)
     {
         long start = Environment.TickCount64, progressAt = start;
         double best = double.MaxValue;
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(150, CancellationToken.None);
-            if (ct.IsCancellationRequested || _ops.Me() is not { } me) return Leg.Cancelled;
-            double off = new Vector2(to.X - me.Pos.X, to.Y - me.Pos.Y).Length();
+            if (ct.IsCancellationRequested || MeIn(origin) is not { } pos) return Leg.Cancelled;
+            double off = new Vector2(to.X - pos.X, to.Y - pos.Y).Length();
             if (off <= within) return Leg.Reached;
             long now = Environment.TickCount64;
             if (off < best - 0.1) { best = off; progressAt = now; }
@@ -448,15 +470,17 @@ public sealed class Commands
 
     /// <summary>Waits for the walk to end (stopped near the target, stalled, or a minute), then says Radegast's line;
     /// walking to a stand-in for a goal out of reach (<paramref name="outOfReach"/>), how near that is to it.</summary>
-    async Task<bool> WatchWalkAsync(Vector3 target, double near, CancellationToken ct, (Vector3 At, string What)? outOfReach = null)
+    async Task<bool> WatchWalkAsync(Vector3 target, double near, CancellationToken ct, ulong origin, (Vector3 At, string What)? outOfReach = null)
     {
         long start = Environment.TickCount64, stillSince = start;
-        bool moved = false;
-        var last = _ops.Me()?.Pos ?? target;
+        bool moved = false, again = false;
+        var last = MeIn(origin) ?? target;
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(250, CancellationToken.None);
-            if (ct.IsCancellationRequested || _ops.Me() is not { } me || _ops.Client is not { } c) return false;
+            if (ct.IsCancellationRequested || _ops.Client is not { } c) return false;
+            if (MeIn(origin) is not { } pos) continue;   // (between regions a moment)
+            var me = (Pos: pos, Region: c.Network.CurrentSim?.Handle ?? origin);
             long now = Environment.TickCount64;
             bool going = c.Self.Velocity.Length() > 0.15f || Vector3.Distance(me.Pos, last) > 0.05f;
             last = me.Pos;
@@ -464,6 +488,16 @@ public sealed class Commands
             var off = new Vector2(target.X - me.Pos.X, target.Y - me.Pos.Y).Length();
             long still = now - stillSince;
             bool arrived = off <= near && still > 700, stalled = still > (moved ? 2000 : 4000), late = now - start > 60_000;
+            if (stalled && !arrived && !again && me.Region != origin && off > near)
+            {
+                // a crossing on the way: the new region doesn't carry the old one's autopilot on, so asked again once
+                again = true;
+                Utils.LongToUInts(origin, out var ox, out var oy);
+                c.Self.AutoPilot(ox + (double)target.X, oy + (double)target.Y, target.Z);
+                stillSince = now;
+                moved = false;
+                continue;
+            }
             if (!arrived && !stalled && !late) continue;
             if (!arrived) c.Self.AutoPilotCancel();
             if (outOfReach is { } o && off < 2.5)
@@ -854,8 +888,24 @@ public sealed class Commands
     /// <summary>`//describe`'s words, to the app's describing (MainForm.Describe.cs).</summary>
     public Func<string, Task>? Describe { get; set; }
 
+    /// <summary>`//record`'s words as typed, to the app's route recording (MainForm.Routes.cs).</summary>
+    public Func<string, Task>? Record { get; set; }
+
     /// <summary>`//touch`'s words, to the app's parts (MainForm.Parts.cs).</summary>
     public Func<string, Task>? Touch { get; set; }
+
+    /// <summary>`//switch`'s words, to walk mode's rail switches (Walk/WalkMode.Switches.cs).</summary>
+    public Func<string, Task>? Switch { get; set; }
+
+    /// <summary>//upload [PATH]: the words after the verb as typed (a Windows path's backslashes and spaces kept).</summary>
+    public Func<string, Task>? Upload { get; set; }
+
+    static string AfterVerb(string line)
+    {
+        var t = line.TrimStart()[2..].TrimStart();
+        int sp = t.IndexOfAny(new[] { ' ', '\t' });
+        return sp < 0 ? "" : t[(sp + 1)..].Trim();
+    }
 
     /// <summary>`//outfit`: what's worn by name (MainForm.Outfit.cs).</summary>
     public Func<Task>? Outfit { get; set; }
@@ -927,7 +977,8 @@ public sealed class Commands
                 var line = lines[i];
                 if (!IsCommand(line)) { Quoted($"Note: {line}"); continue; }
                 step++;
-                if (line.TrimStart()[2..].TrimStart().StartsWith("route", StringComparison.OrdinalIgnoreCase)) continue;
+                var verb = line.TrimStart()[2..].TrimStart();
+                if (verb.StartsWith("route", StringComparison.OrdinalIgnoreCase) || verb.StartsWith("record", StringComparison.OrdinalIgnoreCase)) continue;
                 _say($"Step {step} of {steps}.");
                 bool ok = await RunAsync(line);
                 if (stop.IsCancellationRequested) { _routeAt = (name, lines, i); _say($"Route stopped at step {step} of {steps}. //route resume does it again."); return; }

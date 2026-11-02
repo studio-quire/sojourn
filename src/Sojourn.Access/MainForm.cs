@@ -133,7 +133,9 @@ public sealed partial class MainForm : Form
         _cmd.Quote = text => Answer(text, LineFrom.People);
         _cmd.SendLog = () => BeginInvoke(() => RealInput.Ours(SendLog));
         _cmd.Touch = words => (Task)Invoke(() => TouchWordsAsync(words));
+        _cmd.Switch = words => (Task)Invoke(() => _walk.SwitchWordsAsync(words));
         _cmd.Outfit = () => (Task)Invoke(() => OutfitListAsync());
+        _cmd.Upload = words => (Task)Invoke(() => UploadWordsAsync(words));
         _cmd.Music = MusicWords;
         _cmd.TeleportFallback = () => _set.WalkTeleportFallback;
         _cmd.CueText = cue => _set.WalkText(cue);
@@ -142,6 +144,7 @@ public sealed partial class MainForm : Form
         _walkPad.Walk = _walk;
         _cmd.WalkMode = _walk;
         _walk.Walking = () => _cmd.Heading;
+        StartRouteRecording(rays);
         // sound as a map (M4): a sound per kind of thing arriving, standing in for the viewer's new-IM and alert sounds
         _earcons = new Sojourn.Access.Sound.Earcons(_set, _walk, e => _set.IsMuted(SourceOf(e)) || InFriendsBurst(e)
             || (e.Kind is FeedKind.Im or FeedKind.Group && e.Session != null && e.Session == _focusedSource));
@@ -155,6 +158,7 @@ public sealed partial class MainForm : Form
         StartVoiceKeys();
         StartDeviceWords();
         AddVoiceSettings(host.SettingsApi);
+        StartBuilders();
         _cmd.Voice = words => (Task)Invoke(() => VoiceWordsAsync(words));
         host.ScreenReader.Shape = Shape;
         host.ScreenReader.WholeReplies = true;   // rich descriptions run past the announcer's length
@@ -537,6 +541,7 @@ public sealed partial class MainForm : Form
         Control+Shift+H: teleport home
         Control+Shift+1: region info
         F3: walk mode (F1 there for its keys)
+        R in walk mode, or //record: record a route by walking it
 
         Inventory
         Enter: wear or open
@@ -547,6 +552,7 @@ public sealed partial class MainForm : Form
         Control+F: search
         Alt+Shift+4: a second pane, Alt+4 back to the first
         Control+M: move what's marked into the folder selected in the other pane
+        Control+U: upload a picture, sound, animation or model (on a folder: into it)
 
         Objects
         Tab: the selected one's parts, then a part's faces
@@ -557,9 +563,10 @@ public sealed partial class MainForm : Form
         F4 held: talk
         Shift+F4: switch to an open mic
         Control+Shift+V: who's in voice
-        Control+Shift+O: the sound out of the next device (headphones, speakers), then back to the default
+        Control+Shift+O: the sound out of the next device (headphones, speakers), then back to the default; World > Sound output lists them
 
         Other
+        Control+Shift+B: write to the builders of Sojourn Access (Claude sessions at Studio Quire)
         Control+Shift+I: incognito on and off
         //about: which version this is
         F1: this list
@@ -622,6 +629,7 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.W: if (InInventory && _pane == _pane2) CloseSecondPane(); else CloseConversation(); return true;
             case Keys.Control | Keys.N: NewestNotice(); return true;
             case Keys.Control | Keys.G: TeleportClipboard(); return true;
+            case Keys.Control | Keys.U: UploadKey(); return true;
             case Keys.Control | Keys.Shift | Keys.H: _ = HomeAsync(); return true;
             case Keys.F6: MuteAll(); return true;
             case Keys.Shift | Keys.F6: MuteSource(); return true;
@@ -644,6 +652,7 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.Shift | Keys.W: _ = OutfitListAsync(); return true;
             case Keys.Control | Keys.Shift | Keys.I: ToggleIncognito(); return true;
             case Keys.Control | Keys.Shift | Keys.V: SayVoice(); return true;
+            case Keys.Control | Keys.Shift | Keys.B: GoBuilders(); return true;
             case Keys.Escape when _walkPad.Focused: ToggleWalk(); return true;
             // on the notices, back where Control+N came from (the list's Escape on a confirmation cancels it)
             case Keys.Escape when _areas.SelectedTab == _noticesPage && ActiveControl != _noticeReply
@@ -797,7 +806,9 @@ public sealed partial class MainForm : Form
                 FocusChanged();
             });
         // cancelled by the person here: "Cancelled." was said, and the op's refusal adds nothing for them
-        return shown && ReferenceEquals(_cancelledHere, mine) ? null : r;
+        if (shown && ReferenceEquals(_cancelledHere, mine)) return null;
+        if (op == "delete" && pump is "TesselInventory" or "TesselBuild" && PersonOps.Error(r) == null) _earcons?.Deleted();
+        return r;
     }
 
     // --- the session's own events: arrivals ---------------------------------------------------------------

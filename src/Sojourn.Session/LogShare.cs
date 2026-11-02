@@ -102,8 +102,8 @@ public static class LogShare
     }
 
     /// <summary>The log's text filtered for sending; null if it's from before the records (it can't be filtered).
-    /// started: when the session began, for the first line.</summary>
-    public static Result? Filter(string log, DateTime? started = null)
+    /// started: when the session began, for the first line; app: whose log it is, for the same.</summary>
+    public static Result? Filter(string log, DateTime? started = null, string app = "Sojourn Access")
     {
         var lines = log.Replace("\r", "").Split('\n');
         if (Format(lines.FirstOrDefault()) < 2) return null;
@@ -153,7 +153,7 @@ public static class LogShare
 
         var outText = new StringBuilder();
         var head = started is { } s ? $"started {s:yyyy-MM-dd HH:mm:ss}" : "";
-        outText.Append($"Sojourn Access session log{(head.Length > 0 ? ", " + head : "")}, as sent: other people's words left out, ")
+        outText.Append($"{app} session log{(head.Length > 0 ? ", " + head : "")}, as sent: other people's words left out, ")
             .Append("their names and keys as person 1, person 2 and so on, your own as me.\n");
         int kept = 0, dropped = 0;
         void Put(string line) { outText.Append(line).Append('\n'); kept++; }

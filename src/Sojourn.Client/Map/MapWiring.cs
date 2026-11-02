@@ -87,8 +87,10 @@ public sealed class MapWiring : IDisposable
     }
 
     /// <summary>Statistics at a glance, under the world map: the region's frame rate and time dilation, the ping, people.</summary>
-    static string StatsLine(Stats st) =>
-        $"region {st.SimFps:0} fps · time {st.Dilation:0.00} · ping {st.PingMs:0} ms · {st.Agents} {(st.Agents == 1 ? "person" : "people")} · you {st.Fps:0} fps";
+    static string StatsLine(Stats st) => Lang.F(st.Agents == 1
+            ? "region {0} fps · time {1} · ping {2} ms · {3} person · you {4} fps"
+            : "region {0} fps · time {1} · ping {2} ms · {3} people · you {4} fps",
+        Math.Round(st.SimFps), st.Dilation.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture), Math.Round(st.PingMs), st.Agents, Math.Round(st.Fps));
 
     // --- the mini-map's place -----------------------------------------------------------------------------------------
 

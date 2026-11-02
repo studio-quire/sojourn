@@ -67,6 +67,14 @@ public sealed class PhysicsShapes
         return Of(p) is { } t ? (CollideAs)(byte)t : CollideAs.Unknown;
     }
 
+    /// <summary>Answers and asks long past let go: they were kept for the session, every prim of every region passed
+    /// (75,000 on a three-hour train ride). An answer is asked again after <see cref="Stale"/> anyway.</summary>
+    void Prune(long now)
+    {
+        foreach (var (id, k) in _known) if (now - k.At > 2 * Stale) _known.TryRemove(id, out _);
+        foreach (var (id, at) in _asked) if (now - at > 2 * Stale) _asked.TryRemove(id, out _);
+    }
+
     void Want(UUID id, bool urgent)
     {
         if (_unsupported) return;
@@ -88,7 +96,7 @@ public sealed class PhysicsShapes
 
     async Task Loop()
     {
-        long nextScan = 0, nextReport = 0, pauseUntil = 0;
+        long nextScan = 0, nextReport = 0, pauseUntil = 0, nextPrune = 0;
         int pause = 0, failures = 0, answered = 0;
         string? lastFailure = null;
         var near = new List<(float D, UUID Id)>();
@@ -105,7 +113,7 @@ public sealed class PhysicsShapes
                     nextScan = now + 1000;
                     var at = _around;
                     near.Clear();
-                    foreach (var p in w.Prims.Values)
+                    foreach (var (_, p) in w.Prims)   // (in place: Values would copy the region's prims each second)
                     {
                         if (p.PrimData.PCode != PCode.Prim) continue;
                         var pos = p.Position;
@@ -122,6 +130,8 @@ public sealed class PhysicsShapes
                     }
                     near.Sort((a, b) => a.D.CompareTo(b.D));
                     foreach (var (_, id) in near) Want(id, urgent: false);
+                    near.Clear();
+                    if (now >= nextPrune) { nextPrune = now + 60_000; Prune(now); }
                 }
                 if (now >= nextReport)
                 {

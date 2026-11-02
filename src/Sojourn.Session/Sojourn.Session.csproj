@@ -28,6 +28,8 @@
     <None Include="../../local/voice/build/Release/sojourn_voice.dll" Condition="Exists('../../local/voice/build/Release/sojourn_voice.dll')" CopyToOutputDirectory="PreserveNewest" Link="sojourn_voice.dll" />
     <!-- the assistant's panel: Archivo (OFL-1.1), static instances of the Lookbook's variable font -->
     <None Include="Assets\Fonts\*" CopyToOutputDirectory="PreserveNewest" Link="Fonts\%(Filename)%(Extension)" />
+    <!-- Sojourn's own words in each language (Lang/Lang.cs, docs/languages.md) -->
+    <EmbeddedResource Include="Lang\*.json" LogicalName="lang/%(Filename).json" />
   </ItemGroup>
 
   <ItemGroup>

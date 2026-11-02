@@ -129,8 +129,9 @@ public sealed class TesselAgent : SessionApi
             S.Look.Schedule(C, TimeSpan.Zero, reupload: true, "rebake");
             return new JsonObject();
         });
-        Op("upload", "{path, name?, desc?, folder_id?, type?, next_perms?, max_size=1024, quote?, timeout=120}", (a, ct) => S.Uploads.UploadAsync(a, ct));
-        Op("uploadMesh", "{path, name?, scale?, textures?, folder_id?, quote?, timeout=180}", (a, ct) => S.Uploads.UploadMeshAsync(a, ct));
+        Op("upload", "{path, name?, desc?, folder_id?, type?, next_perms?, max_size=1024, priority?, loop?, quote?, max_cost?, timeout=120}", (a, ct) => S.Uploads.UploadAsync(a, ct));
+        Op("uploadMesh", "{path, name?, desc?, scale?, textures?, lods=true, physics=hull|box, folder_id?, quote?, max_cost?, timeout=180}", (a, ct) => S.Uploads.UploadMeshAsync(a, ct));
+        Op("uploadLook", "sojourn: {path, type?, scale?, max_size?, priority?, loop?} -> what an upload of the file would be (kind, size, a picture's size as uploaded, a sound's seconds, a model's parts and size, the fee where known), nothing sent", (a, ct) => S.Uploads.LookAsync(a, ct));
         Op("createWearable", "{type, name?, desc?, folder_id?, wear=true, replace=false, timeout=30} -> {item_id, worn}",
             async (a, ct) => await S.Wardrobe.CreateAsync(a, ct));
         Op("editWearable", "{item_id, textures? {slot: id} | slot + texture_id, color? [r,g,b], params? {name|id: weight}, name?, save=true}",

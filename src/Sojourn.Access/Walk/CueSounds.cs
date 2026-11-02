@@ -14,7 +14,8 @@ namespace Sojourn.Access.Walk;
 /// the person, wood for menus and groups, a soft flute for friends, a breath of noise for people coming and going, a
 /// pluck and a blip for nearby chat), the beacon on where a walk is heading (Beacon.cs) and the marks for seats and
 /// touchable things (O in walk mode; doors keep the knock). All play as world audio's App kind, at Sojourn Access's
-/// own volume rather than the world's sounds volume. Written by Claude Opus 5.5, 2026-10-29.
+/// own volume rather than the world's sounds volume. Since 2026-11-01 also a rail switch ahead and one thrown
+/// (WalkMode.Switches.cs). Written by Claude Opus 5.5, 2026-10-29.
 /// </summary>
 public sealed class CueSounds
 {
@@ -27,6 +28,12 @@ public sealed class CueSounds
         EarNotice, EarSent, Beacon, BeaconAhead, BeaconReached, MarkSeat, MarkTouch,
         // push-to-talk's mic opening and closing
         MicOn, MicOff,
+        // something of the person's deleted (into the Trash)
+        EarDeleted,
+        // a point kept by a route being recorded
+        RoutePoint,
+        // a rail switch ahead; one thrown
+        Switch, SwitchThrown,
     }
 
     const int Rate = 48000;
@@ -153,6 +160,17 @@ public sealed class CueSounds
             // the mic: a short click, higher opening than closing (as a radio's key)
             Cue.MicOn => Mix(Len(0.04), Tone(1760, 0.035, 0.0005, 0.007, 0.28f), Noise(rnd, 0.006, 0.0002, 0.0015, highPass: 3000, amp: 0.2f)),
             Cue.MicOff => Mix(Len(0.04), Tone(1175, 0.035, 0.0005, 0.007, 0.28f), Noise(rnd, 0.006, 0.0002, 0.0015, highPass: 2000, amp: 0.2f)),
+            // deleted: a soft brush of paper and two falling wood notes, as something put away
+            Cue.EarDeleted => Mix(Len(0.32), At(0, Noise(rnd, 0.14, 0.01, 0.1, lowPass: 2500, highPass: 400, amp: 0.16f)),
+                At(0.04, Marimba(587, 0.1, 0.04, 0.26f, bright: false)), At(0.13, Marimba(392, 0.16, 0.06, 0.26f, bright: false))),
+            // a route's point kept: one small bright wooden tick, apart from the turn's noise tick and the footsteps
+            Cue.RoutePoint => Mix(Len(0.09), Marimba(1568, 0.08, 0.025, 0.3f), Tone(3136, 0.03, 0.0005, 0.008, 0.08f)),
+            // a junction: a points' clack, then one note forking into two that part, as the tracks do
+            Cue.Switch => Mix(Len(0.42), At(0, Noise(rnd, 0.02, 0.0005, 0.005, highPass: 2200, amp: 0.25f)), At(0, Tone(1850, 0.03, 0.0005, 0.008, 0.12f)),
+                At(0.03, Tone(587, 0.12, 0.004, 0.08, 0.26f)), At(0.13, Glide(587, 494, 0.28, 0.22f)), At(0.13, Glide(587, 740, 0.28, 0.22f))),
+            // the points moving over: a heavy clack and its lighter answer
+            Cue.SwitchThrown => Mix(Len(0.3), At(0, Noise(rnd, 0.03, 0.0005, 0.008, lowPass: 3000, highPass: 300, amp: 0.4f)), At(0, Tone(240, 0.12, 0.001, 0.035, 0.32f)),
+                At(0.15, Noise(rnd, 0.02, 0.0005, 0.006, highPass: 1500, amp: 0.28f)), At(0.15, Tone(1240, 0.08, 0.0005, 0.02, 0.14f))),
             _ => Tone(440, 0.05, 0.002, 0.02, 0.2f),
         };
     }

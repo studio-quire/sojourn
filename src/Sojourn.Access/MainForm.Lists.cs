@@ -137,6 +137,7 @@ public sealed partial class MainForm
     {
         var r = await _ops.DoAsync("LLAgent", op, new JsonObject { ["obj_uuid"] = t.Id.ToString() });
         Answer(PersonOps.Error(r) is { } e ? $"Didn't work: {e}" : done);
+        if (op == "requestTouch" && PersonOps.Error(r) is null && !t.Hud) _route?.Touched(t.Name);   // (a route being recorded keeps it)
     }
 
     void ListKey(ListView list, ContextMenuStrip menu, KeyEventArgs e, Func<bool, Task> refresh)

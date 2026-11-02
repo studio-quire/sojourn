@@ -28,8 +28,8 @@ The batches are under Closing the rest; the user's open calls under Waiting on t
 
 - **For the release**: Sojourn's own package (launcher and VR client, uninstall, updates with consent), crash reports,
   the TPV policy's remaining distributor items (an About sheet, `ViewerStats`, the download page's disclosures, a
-  privacy policy), UI language. Releasing it, below.
-- **Waiting on the user** (Waiting on the user's decision): RLV, buying L$ and the Marketplace, outward-facing posts and
+  privacy policy). Releasing it, below.
+- **Waiting on the user** (Waiting on the user's decision): buying L$ and the Marketplace, outward-facing posts and
   cloud translation, direct controls (B9: building by hand, an inventory board, appearance sliders, the poser), the
   release formalities, and some smaller calls.
 - **Not started**: the long tail (environment editing, look settings, local textures and
@@ -139,12 +139,14 @@ outfits (`requestSit` with no target, `move`, `stopAnimating`, `library`, `wear`
 
 | Open | Where | Matters | Size | Notes |
 |---|---|---|---|---|
-| RLV / RLVa (Firestorm's `rlv*.cpp`: consent-based restrictions scripts apply, shared #RLV folders) | op | L-M: a minority, mostly roleplay | M-L | the user's call (Waiting); the dispatcher's gate is the natural place to enforce it for every caller |
 | Game Control: the viewer's gamepad input sent to the region (GameControlData) for scripts' `game_control` events | op (the person's controls) | L until LL ships it, then M-H: VR controllers are gamepads | S-M once the message is final | an alpha viewer since 2026-09-29 (26.4), held for simulator work |
 | Media, the rest: the parcel's prevent-camera-zoom (LibreMetaverse drops the block); H.264 in pages | render | L; M for video sites | S; H.264 needs our own CEF build, L | H.264 is the user's call; `docs/media.md` > Not done |
 | Landmarks embedded in notecards offered as places | op | L | S | `docs/people.md` > Places |
 
 Done:
+- **RLV/RLVa** (2026-11-01): RLVa's command set from the person's own objects, held for every caller (the person's
+  controls, the menus, the assistant, dev mode, Access), the #RLV folder and its locks, vision spheres in each eye; the
+  way out overrides it; off by default, from the next login. `docs/rlv.md` (what's left out, the headset's adaptations).
 - **Experiences** (prompts 2026-10-25; lists, profiles, search, the region's for estate owners in B2): prompts through
   the notifications and the confirmation gate; `SojournPeople experiences` and the rest; `docs/people.md` >
   Experiences. Unchecked on SL (OpenSim has none).
@@ -265,7 +267,7 @@ Covered: balance, pay, buy objects, behind the confirmation gate.
 
 | Open | Where | Matters | Size | Notes |
 |---|---|---|---|---|
-| Preferences the viewers have and Sojourn doesn't: UI language (Releasing it), time format, name display (display names, usernames, legacy names), chat font size, cache size and clearing it, media auto-play finer than `media_autoplay` (others' attachments, HUD media, Firestorm's media filter of allowed and blocked sites), parcel music fading, sounds from collisions and gestures | op | L-M each; together what a release's settings are expected to have | S each | long tail; on the API for the assistant rather than menu rows (the simple menus). Since done: the away timeout (`away_after`), the typing animation, group titles on tags |
+| Preferences the viewers have and Sojourn doesn't: time format, name display (display names, usernames, legacy names), chat font size, cache size and clearing it, media auto-play finer than `media_autoplay` (others' attachments, HUD media, Firestorm's media filter of allowed and blocked sites), parcel music fading, sounds from collisions and gestures | op | L-M each; together what a release's settings are expected to have | S each | long tail; on the API for the assistant rather than menu rows (the simple menus). Since done: the away timeout (`away_after`), the typing animation, group titles on tags, the UI language |
 | Snapshots, the rest: the viewer's image filters and frozen-frame preview; the profile feed (Social) | op | L | S each | `docs/assistant.md` > Pictures and videos for the person |
 
 Done:
@@ -307,10 +309,7 @@ distributed.
 
 | Open | Where | Matters | Size | Notes |
 |---|---|---|---|---|
-| Sojourn's package: the launcher and the VR client in one self-contained folder, a Start menu shortcut, a clean uninstall; updates only with consent | | **H** for a release | M | `docs/launcher.md` > A package with the VR client; Access's package (`tools/access.py package`) is the model. Batch R's notes below |
-| The TPV policy's distributor items, the rest: an About sheet in the VR client, the viewer statistics report (2.h, `ViewerStats`), the download page's disclosures (the disclaimer, support, the AI operating the client), a privacy policy | info | **H** for a release (policy) | S-M | the wording and the privacy policy are the user's (Waiting) |
-| Crash reports and logs a person can send (opt-in), "report a problem" | | M | S-M | today the launcher says "stopped unexpectedly" and offers the log |
-| UI language: the panel, menus, feed and the assistant's replies in the person's language (the viewers ship 12) | info | M | S-M: the assistant already answers in the language it's spoken to; the client's own words are few | |
+| The viewer directory application (optional, wanted: the user, 2026-11-01): an issue on LL's TPV GitHub repo with the self-certification | info | M | S | filed once the first release is out |
 | The desktop's own interface, quite different from the headset's | direct | M | M | to be workshopped once VR is good; the first release is VR-first and doesn't wait on it (CLAUDE.md > Decisions) |
 
 Done:
@@ -320,8 +319,26 @@ Done:
   only with "remember this computer". Since 2026-10-29 the launcher (`Sojourn.exe`) gathers the login and answers the
   grid's terms and codes at the desk: `docs/launcher.md`.
 - **`SojournRelease about`** (R): the name, the channel and version sent at login, the disclaimer, the licence note.
+- **About, reports and the viewer statistics** (R, 2026-11-01; `docs/client.md` > About, problem and crash reports):
+  the menu's about section in the headset and on the desktop (version, disclaimer, credit, licence and source,
+  support, third-party notices); report a problem from the menu or by asking the assistant, and after a crash the
+  launcher's window (ask by default, always, never; `docs/launcher.md` > After a crash), both the log filtered as
+  Access's, sent to the studio relay (with a Studio Quire token, or without one within its limits) or saved for a
+  GitHub issue; the `ViewerStats` report (2.h), the MAC and serial left out (the user's call, 2026-11-01).
 - **LGPL source published**: the public snapshot since 2026-10-29 (`docs/publishing.md`).
 - **Sojourn Access's package** (2026-10-29): `docs/access-app.md` > Packaging.
+- **Sojourn's package** (2026-11-01): the launcher, the VR client and the assistant with hearing and spoken replies,
+  installed by Velopack (Setup, a Start menu shortcut, Add/Remove Programs, a clean uninstall that keeps the
+  person's accounts and settings), updates offered in the launcher and installed only at the person's press, each
+  release's feed signed by our key; `python tools/package.py` and its `check`; `docs/launcher.md` > The package. Not
+  yet released.
+- **UI language** (2026-11-01): the VR client's own words and the launcher in the viewers' 12 languages and Simplified Chinese besides
+  English (az, da, de, es, fr, it, pl, pt, ru, tr, ja, zh-Hans, zh-Hant), following Windows by default, a language row in the
+  menu and a globe in the launcher, `language` on SojournSettings; the assistant told the menus' language;
+  `docs/languages.md`. Sojourn Access stays English for now.
+- **The download page and privacy policy** (2026-11-01, ours to write at the user's word): the public repo's
+  `docs/download.md` (from `tools/publish/sojourn/docs/download.md`): builds, installing and removing, what's unusual,
+  support, and the privacy policy for both apps and the relay.
 - **Simpler menus** (M, 2026-10-29): simple by default, the `advanced_menu` switch shows everything, a tip on every
   row (`Control/MenuGuide.cs`).
 - **The assistant for people who aren't us**, mostly settled: the person's own provider (a Claude account, an
@@ -358,8 +375,9 @@ For any further batch:
 ### The batches (status 2026-10-31)
 
 - **R. Release** (wave 1, L): **partly built**. Done: the login screen (2026-10-28), `SojournRelease about`, the
-  launcher (2026-10-29), Access's package. Left: Sojourn's package and updater, crash reports, `ViewerStats`, the
-  About sheet, the privacy policy and disclosures (the last two the user's). Notes for the rest, below.
+  launcher (2026-10-29), Access's package, Sojourn's package and updater, the About section, problem and crash
+  reports and `ViewerStats` (2026-11-01). Left: the privacy policy and disclosures (the user's). Notes from the
+  viewers' source, below.
 - **B1. Safety and comfort** (wave 1): built 2026-10-27. `docs/safety.md`.
 - **B2. People and me** (wave 1): built 2026-10-27/28. `docs/people.md`.
 - **B3a. World rendering** (wave 1): built 2026-10-28; left: water's ripples and shallows. `docs/rendering.md`.
@@ -377,7 +395,7 @@ For any further batch:
 - **The long tail** (wave 3, each S-M, any order): **not started**. Environment editing and saving EEP items; the
   remaining look settings (exposure, tone-mapping choice, particle cap, separate LOD factors, SSR; depth of field for
   desktop pictures only); local textures and meshes; the navmesh view; terrain paint maps; the remaining preferences;
-  UI language; and, once LL ships them, glTF scenes, Game Control from the controllers, IM history from LL's service.
+  and, once LL ships them, glTF scenes, Game Control from the controllers, IM history from LL's service.
 - **A. Usable without sight**: became Sojourn Access, a separate app (the user, 2026-10-27); milestones M0-M5 built
   2026-10-29. `docs/access.md`, `docs/access-app.md`.
 - **T. The assistant** (after each wave, S-M): done 2026-10-29 for waves 1-3 (tools by area, the prompt's lines,
@@ -393,37 +411,42 @@ For any further batch:
 
 ### R: notes for the rest, from the viewers' source (2026-10-27)
 
-- **ViewerStats**: an LLSD POST to the region's `ViewerStats` cap once a region is up, then every 300 s and at quit
-  (`llviewerstats.cpp` `send_viewer_stats`): `agent`, `system` (OS, CPU, RAM, GPU, and also `mac_address` and
-  `serial_number`), `downloads`, `stats` (net, failures, misc); no other residents' data. Firestorm drops `ui`.
-  Leaving out the MAC address and serial is the user's call.
+- **ViewerStats** (built 2026-11-01; what ours holds in `docs/client.md`): an LLSD POST to the region's `ViewerStats`
+  cap once a region is up, then every 300 s and at quit (`llviewerstats.cpp` `send_viewer_stats`): `agent`, `system`
+  (OS, CPU, RAM, GPU, and also `mac_address`, the raw MAC, and `serial_number`, the MD5 of C:'s volume serial),
+  `downloads`, `stats` (net, failures, misc), `inventory`, and at quit the preferences that differ from default; no
+  other residents' data. Firestorm sends the same but for `ui` (both trees checked 2026-11-01). Ours leaves out the
+  MAC address and serial (the user, 2026-11-01).
 - **Updates**: LL's updater (Velopack, asking `update.secondlife.com/update/v1.2/{channel}/{version}/win64/...`) follows
-  `UpdaterServiceSetting` (3 automatic, 1 ask, 0 mandatory only); Firestorm has none. The plan: updates from a signed
-  manifest (ECDSA, the key kept in `local/`), installed only at the person's press.
+  `UpdaterServiceSetting` (3 automatic, 1 ask, 0 mandatory only); Firestorm has none. Ours (built 2026-11-01): Velopack
+  too, over GitHub releases whose feed carries our ECDSA signature (the key in `local/`), always "ask": offered in the
+  launcher, installed only at the person's press (`docs/launcher.md` > The package).
 - **Crash reports**: the official viewer sends BugSplat crashes without asking; Firestorm's `CrashSubmitBehavior` is
-  ask (default), always or never.
+  ask (default), always or never, which ours follows.
 - The disclaimer's wording is the policy's, in neither tree. Both viewers quit on logout and neither relogs (Sojourn
   restarts into the login screen).
 
-### Waiting on the user's decision
+### Decided, to build (the user, 2026-11-01)
 
-The board's "Calls for the viewer gaps" carries these; none blocks other work.
-- **RLV/RLVa**: restrictions a script imposes on the person's own client, by their consent. The dispatcher's gate is
-  the natural place to enforce them for every caller, the assistant included; but some restrictions (no teleport, no
-  standing, no IMs) collide with the way out, which has to stay a sure exit. Whether to build it, and whether the way
-  out overrides it.
-- **Buying L$ and the Marketplace**: real money and the person's payment details (web pages in the viewers too).
-  Whether Sojourn only opens them for the person's own hands, or the assistant may browse and fill a cart up to the
-  gate; never card data either way. The land buy floater's website preflight goes with it (`docs/land.md`).
-- **The assistant for other people**: the provider is settled (above, Releasing it); what's left is what Sojourn
-  offers a person with no provider at all, and what it costs them.
-- **Outward-facing posts** (profile feed, Flickr, Primfeed, Discord presence) and **cloud translation**: built only if
-  wanted, each the person's own press or setting.
-- **Direct controls** (B9): how much of the viewers' hands-on UI belongs in Sojourn; for building, the user's idea of
-  rough placement by the assistant and fine-tuning by hand (2026-10-30).
-- **The release itself**: its name, the disclosures, a privacy policy, the TPV directory listing. (The source is
-  public; for Access's test build the user settled on GitHub releases, unsigned, 2026-10-29.)
-- **Smaller calls**: sending PointAt and beams (your arm points at what the assistant builds or selects, as the official
-  viewer always does); an AO folder of Sojourn's own in the person's inventory or only one they pick, and the
-  OpenCollar/LockMeister relay; leaving the MAC address and serial out of `ViewerStats`; hover tips on by default and
-  contact-set colours on the glass tags; H.264 in pages (our own CEF build); push resistance by a worn script.
+In this order:
+1. **RLV/RLVa**, first: built 2026-11-01 (`docs/rlv.md`). Enforced at the dispatcher's gate for every caller, the assistant included. The way out
+   overrides it and stays a sure exit (Claude Opus 5.5's suggestion, which the user let stand).
+2. **Direct building by hand** (B9's first part): the assistant finds a thing and places it roughly, the person
+   fine-tunes position and rotation by hand in VR (their idea, 2026-10-30). The rest of B9 (an inventory board,
+   appearance sliders, the poser) later.
+3. **The Marketplace and buying L$**: the assistant may browse, search and fill a cart, and shows what it plans to buy
+   (the pages up close in the world, as media's up-close view does), with the Marketplace's normal features within its
+   reach; buying waits for the person's own press, never the assistant's. Never card data.
+
+Declined for now: outward-facing posts (profile feed, Flickr, Primfeed, Discord presence; later if anyone wants them);
+a chat translation service (the assistant translates when asked); sending PointAt and edit beams. The avatar's arm
+doesn't point at what the assistant builds or selects, for others or locally: the person isn't doing it, so it breaks
+immersion. LL's policy doesn't require sending them, and Firestorm makes sending optional.
+
+### The smaller calls (the user, 2026-11-01: the defaults as built)
+
+Sojourn makes an AO folder of its own only when the person asks for a new set; OpenCollar/LockMeister through a worn
+relay of Sojourn's own (as Firestorm's bridge; a separate job) as an option in an update after the first release; hover tips on (0.7 s); contact-set rings on the tags (a look, for a sitting); H.264
+in pages parked until it gets in the way; no push resistance beyond keep-me-in-place; and `docs/people.md`'s defaults
+(Do Not Disturb's sentence, SLurls offered only when opened, no extra confirmation for an offered teleport, Away kept
+until turned off).

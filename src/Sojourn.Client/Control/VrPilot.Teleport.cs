@@ -86,6 +86,12 @@ public sealed partial class VrPilot
         if (_tpAsked != null) return "a teleport is under way";
         double now = _clock.Elapsed.TotalSeconds;
         var local = point + RegionOffset(_region, hitRegion);   // into the hit region's own coordinates
+        if (_session.RlvActive)
+        {
+            // RLV's @tplocal, @sittp, @unsit (docs/rlv.md)
+            LibreMetaverse.Utils.LongToUInts(hitRegion, out var rx, out var ry);
+            if (_session.RlvRefused(_session.RlvTeleport(new LibreMetaverse.Vector3d(rx + (double)local.X, ry + (double)local.Y, local.Z))) is { } rlv) return rlv;
+        }
         float footDepth = FootDepth(c, sim);
         Say?.Invoke($"teleporting to where you pointed ({local.X:F0}, {local.Y:F0}, {local.Z:F0})");
         var at = local + new Vector3(0, 0, footDepth + 0.1f);

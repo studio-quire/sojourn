@@ -104,6 +104,9 @@ public sealed partial class Panel
 
     public long Version { get { lock (_lock) return _version; } }
 
+    // drawn again in a newly chosen language (its words are translated as they're drawn)
+    public Panel() => Lang.Changed += () => { lock (_lock) _version++; };
+
     /// <summary>Change what it shows. show: bring it back if the person hid it; news: it's something to read (it
     /// keeps the panel up a while), not just what the pointer is on.</summary>
     public void Update(Action<PanelState> change, bool show = true, bool news = true)
@@ -268,6 +271,22 @@ public sealed partial class Panel
     /// <summary>The orb and the dots move: 16 steps a cycle, 8 a second, while listening or working (else 0).</summary>
     public int Phase => Read(s => s.Listening || s.Working || s.Hearing || s.Dictation != PanelDictation.None) ? (int)(_clock.Elapsed.TotalSeconds * 8) % 16 : 0;
 
+    // the sidecar's own results and defaults (assistant/*.py: brain.py, main.py, jobs.py, private.py, tools.py), as it
+    // writes them in English; anything else in Result, Prompt or PointAsk is the assistant's own and stays as it is
+    static readonly string[] OwnWords = ["Stopped.", "Couldn't.", "Done.", "The timer is done.", "Which one?", "Point at it"];
+    static readonly string[] OwnEnds =
+    [
+        " is done.", " paused while the assistant's provider changed; say when to carry on.", " is paused; say when to carry on.",
+        " are paused; say when to carry on.", " stopped when the assistant restarted; ask to carry on whenever you like.",
+        ": done.", " stopped.", " failed.",
+    ];
+
+    /// <summary>A result or question in the person's language if it's one the sidecar writes itself (a timer done, a job
+    /// stopped), else as it is.</summary>
+    public static string? Own(string? text) =>
+        text is { Length: > 0 } t && (OwnWords.Contains(t) || OwnEnds.Any(e => t.EndsWith(e, StringComparison.Ordinal)) || t.Contains(". Waiting after it: "))
+            ? Lang.T(t) : text;
+
     // ---------------------------------------------------------------------------------------------------------------
     // the look
 
@@ -316,12 +335,14 @@ public sealed partial class Panel
         int phase = Phase;
         lock (_lock)
         {
+            // in the person's language as drawn: the client's and the sidecar's own words (statuses, notices, its
+            // fixed results); what the person said and the assistant's own words stay as they are
             s = new PanelState
             {
                 Heard = _s.Heard, Typing = _s.Typing, Listening = _s.Listening, Hearing = _s.Hearing, Working = _s.Working, Model = _s.Model,
-                Status = _s.Status, Result = _s.Result, Prompt = _s.Prompt, Choices = _s.Choices.ToList(), Confirm = _s.Confirm,
-                Notice = _s.Notice, Pointing = _s.Pointing, Hint = _s.Hint, Jobs = _s.Jobs, KeyboardKey = _s.KeyboardKey, PointAsk = _s.PointAsk, PointHow = _s.PointHow,
-                TypeAsk = _s.TypeAsk, HearingStarting = _s.HearingStarting,
+                Status = Lang.Tn(_s.Status), Result = Own(_s.Result), Prompt = Own(_s.Prompt), Choices = _s.Choices.ToList(), Confirm = _s.Confirm,
+                Notice = Lang.Tn(_s.Notice), Pointing = Lang.Tn(_s.Pointing), Hint = Lang.T(_s.Hint), Jobs = Lang.Tn(_s.Jobs), KeyboardKey = _s.KeyboardKey,
+                PointAsk = Own(_s.PointAsk), PointHow = Lang.T(_s.PointHow), TypeAsk = _s.TypeAsk, HearingStarting = _s.HearingStarting,
             };
             hover = _hover;
             version = _version;
@@ -332,6 +353,7 @@ public sealed partial class Panel
             history = _replies.Count > 0;
             fit = _fit;
             (prev, earlier) = Before(_s);
+            (prev, earlier) = (Own(prev), Own(earlier));
             if (prev != null) s.Result = null;   // drawn as the answer before, above the new request
         }
 
@@ -435,7 +457,7 @@ public sealed partial class Panel
     const string HearingStartsNote = "hearing is starting…";
 
     /// <summary>Where what the pointer is on starts: after the orb, or after the note that hearing is still starting.</summary>
-    static float PointingAt(Ink k, PanelState s) => s.HearingStarting ? 60 + Measure(Font(k.Regular, 15), HearingStartsNote) + 14 : 64;
+    static float PointingAt(Ink k, PanelState s) => s.HearingStarting ? 60 + Measure(Font(k.Regular, 15), Lang.T(HearingStartsNote)) + 14 : 64;
 
     static float ListeningWidth(Ink k, PanelState s)
     {
@@ -450,7 +472,7 @@ public sealed partial class Panel
         draw.Orb(32, PillH / 2, phase);
         if (s.Latched) draw.OrbLatched(32, PillH / 2);
         var f = Font(draw.K.Regular, 15);
-        if (s.HearingStarting) draw.Text(HearingStartsNote, 60, PillH / 2 + 5.4f, f, draw.K.Dim);
+        if (s.HearingStarting) draw.Text(Lang.T(HearingStartsNote), 60, PillH / 2 + 5.4f, f, draw.K.Dim);
         if (s.Pointing is { Length: > 0 } p)
         {
             float x = PointingAt(draw.K, s);
@@ -830,9 +852,9 @@ public sealed partial class Panel
             float half = (inner - 12) / 2;
             var cancel = new SKRect(Pad, y, Pad + half, y + 52);
             var ok = new SKRect(cancel.Right + 12, y, W - Pad, y + 52);
-            draw.Key(cancel, "cancel", hover == keys.Count, 16.5f);
+            draw.Key(cancel, Lang.T("cancel"), hover == keys.Count, 16.5f);
             keys.Add(new PanelKey(KeyKind.Cancel, 0, cancel));
-            draw.AccentKey(ok, "confirm", armed && hover == keys.Count, armed);
+            draw.AccentKey(ok, Lang.T("confirm"), armed && hover == keys.Count, armed);
             keys.Add(new PanelKey(KeyKind.Confirm, 0, ok));
             y += 52 + 6;
         }

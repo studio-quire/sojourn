@@ -154,6 +154,8 @@ public sealed class AssistantHost
         ["openrouter_deny_data"] = Settings.OpenRouterDenyDataCollection,
         ["auto_mode"] = Settings.AssistantAutoMode,
         ["key_stamp"] = ProviderKeys.Stamp(Settings.AssistantProvider),
+        // the language Sojourn's own words are in (an app that never chose one, Access, sends none)
+        ["language"] = Lang.Chosen ? Lang.Current.English : null,
     };
 
     /// <summary>The provider as the sidecar last found it: {kind, state (ready, offline, no_login, no_key, refused,

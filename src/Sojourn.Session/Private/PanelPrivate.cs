@@ -85,15 +85,15 @@ public sealed partial class Panel
         var c = draw.Canvas;
         if (c != null) DestGlyph(c, d.To, Pad + 9, y + 9, k.Dim);
         var wf = Font(k.Regular, 15);
-        var where = d.To == DraftTo.Nearby ? "nearby" : d.Name ?? "";
+        var where = d.To == DraftTo.Nearby ? Lang.T("nearby") : d.Name ?? "";
         draw.Text(Ellipsize(where, wf, W - 2 * Pad - 28), Pad + 26, y + 14, wf, k.Dim);
         y += 30;
         float half = (W - 2 * Pad - 12) / 2;
         var cancel = new SKRect(Pad, y, Pad + half, y + 50);
         var send = new SKRect(cancel.Right + 12, y, W - Pad, y + 50);
-        draw.Key(cancel, "cancel", hover == keys.Count, 16.5f);
+        draw.Key(cancel, Lang.T("cancel"), hover == keys.Count, 16.5f);
         keys.Add(new PanelKey(KeyKind.Draft, (int)(d.Seq * 2), cancel));
-        draw.Key(send, "send", hover == keys.Count, 16.5f);
+        draw.Key(send, Lang.T("send"), hover == keys.Count, 16.5f);
         keys.Add(new PanelKey(KeyKind.Draft, (int)(d.Seq * 2 + 1), send));
         return y + 50 + 10;
     }

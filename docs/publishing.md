@@ -15,8 +15,11 @@ GitHub noreply as committer, UTC dates):
   `tools/publish/sojourn/`.
 - `../sojourn-access-public`: `tools/publish/access/` only.
 
-`local/publish/map.txt` records which private commit each public one came from: a packaged Access build's release names
-the public commit made from the same private HEAD. Access's test builds are released on its front door (since
+`local/publish/map.txt` records which private commit each public one came from (a run whose public tree didn't change
+records the existing public HEAD for the new private one): a packaged build names the public commit made from the
+commit it was built from. Sojourn's package (`tools/package.py`) stamps it into the app (the about section, problem
+reports) and its release notes, and won't build a release without one; Access's (`tools/access.py package`) prints it
+for its release notes. Access's test builds are released on its front door (since
 2026-10-30); how, and what release notes say: `tools/publish/access/RELEASES.md` (published as it is).
 
 Pushing is by hand, to a remote named `public` (never `origin`, so the nightly backup can't publish), only after a run

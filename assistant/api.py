@@ -4,6 +4,12 @@ import urllib.error
 import urllib.request
 
 
+# How long an op that draws pictures may take (the describe tool's look, the look tool's snapshot, a HUD's picture): the
+# client bounds its own wait, 26 s on a GPU and up to minutes for a first picture drawn on the processor (a small PC
+# without a usable GPU compiles its shaders as it first draws), so this only has to be longer than any of those
+PICTURE_WAIT = 330
+
+
 class ApiError(Exception):
     pass
 

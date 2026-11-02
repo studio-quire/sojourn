@@ -73,8 +73,10 @@ public sealed unsafe class Bindless : IDisposable
         var ai = new DescriptorSetAllocateInfo { SType = StructureType.DescriptorSetAllocateInfo, DescriptorPool = Pool, DescriptorSetCount = 1, PSetLayouts = &layout };
         VulkanContext.Check(vk.Api.AllocateDescriptorSets(vk.Device, in ai, out Set), "bindless set");
 
-        // RenderAnisotropicLevel (High-Ultra: 4), which LLImageGL textures get (TFO_ANISOTROPIC)
-        float maxAniso = Math.Min(4f, vk.Properties.Limits.MaxSamplerAnisotropy);
+        // RenderAnisotropicLevel (High-Ultra: 4), which LLImageGL textures get (TFO_ANISOTROPIC); none on the processor,
+        // where each texture's sampling is code compiled for it and anisotropic sampling is several times the code and
+        // the work, for faces seen at a slant a little sharper in a picture for describing
+        float maxAniso = vk.Software ? 0 : Math.Min(4f, vk.Properties.Limits.MaxSamplerAnisotropy);
         Repeat = MakeSampler(Filter.Linear, SamplerAddressMode.Repeat, true, maxAniso);
         Clamp = MakeSampler(Filter.Linear, SamplerAddressMode.ClampToEdge, true, maxAniso);
         ClampLinearNoMip = MakeSampler(Filter.Linear, SamplerAddressMode.ClampToEdge, false, 0);

@@ -8,16 +8,17 @@ namespace Sojourn.Session.Assistant;
 /// Dev mode (--dev, docs/dev-mode.md): the Claude Code session that started the client stands in for the assistant.
 /// The sidecar still hears (Whisper) and speaks; what the person says, types, picks or points at goes out as `dev`
 /// events (SojournAssistant dev, with the sidecar's token), which tools/dev.py watch turns into lines for the session,
-/// and the session answers on the panel (SojournAssistant say, panel). Here: a note in local/dev/PORT.json saying
-/// where this client is (pid, port, base dir, log, its command line), so tools/dev.py finds it whoever started it.
+/// and the session answers on the panel (SojournAssistant say, panel). Here: a note in dev/PORT.json under the
+/// sidecar's folder (the repo's local/, or a packaged build's data folder, %LOCALAPPDATA%\Sojourn) saying where this
+/// client is (pid, port, base dir, log, its command line), so tools/dev.py finds it whoever started it (the
+/// launcher's --dev included).
 /// </summary>
 static class DevMode
 {
     public static string? Announce(SessionOptions opt, string[] args, string? sessionLog, bool vr, ILogger log)
     {
         log.LogInformation("dev mode: no assistant of its own; the person's requests go to the session driving the client (tools/dev.py watch)");
-        if (Sidecar.Root is not { } root) return null;
-        var path = Path.Combine(root, "local", "dev", $"{opt.BridgePort}.json");
+        var path = Path.Combine(Sidecar.LocalDir, "dev", $"{opt.BridgePort}.json");
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);

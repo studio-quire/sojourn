@@ -470,7 +470,7 @@ public sealed class SocialView
                     foreach (var e in entries)
                         if (FormOf(e, now) is { } f) forms[e.NoticeId] = f;
                     var names = typing.Select(id => (id, _s.Names.DisplayName(id) ?? "")).ToList();
-                    string key = $"{scale}|{fit}|{look.GetHashCode()}|{string.Join(",", entries.Select(e => e.Seq))}|{string.Join(",", typing)}|{how.Key}" +
+                    string key = $"{Lang.Code}|{scale}|{fit}|{look.GetHashCode()}|{string.Join(",", entries.Select(e => e.Seq))}|{string.Join(",", typing)}|{how.Key}" +
                                  $"|{string.Join(",", forms.Select(f => $"{f.Key}:{f.Value.Armed}:{f.Value.Buttons.Count}"))}";
                     if (key == _drawnKey) return;
                     _drawnKey = key;

@@ -40,6 +40,9 @@ public sealed class WayOut
             return;
         }
         _startedAt = Environment.TickCount64;
+        // RLV doesn't hold the way out (docs/rlv.md > The way out): it stands and goes home whatever @unsit or @tploc say,
+        // @standtp doesn't take them back, and for half a minute no script's teleport or sit does either
+        _s.RlvWayOut();
         bool seated = c.Self.SittingOn != 0;
         // a script keeping the controls (a stuck vehicle, a weapon) lets them go too: the viewer's Release Keys
         if (_s.ControlsTaken != LibreMetaverse.ScriptControlChange.None) _s.Safety.ReleaseControls();
@@ -48,6 +51,9 @@ public sealed class WayOut
         _s.Notify.Add("WayOut", "notify", seated ? "Standing up and going home" : "Going home", Notifications.None);
         _ = Task.Run(async () =>
         {
+            // (what held them, for the log: off the press's own thread, after the stand has gone out)
+            try { if (_s.RlvActive && _s.Rlv.Any) _log.LogInformation("way out under RLV: {Held}", string.Join("; ", _s.Rlv.Holders().Select(h => $"{h.Name}: {string.Join(",", h.Restrictions)}"))); }
+            catch (Exception e) { _log.LogDebug(e, "way out: RLV's holders"); }
             try { await RunAsync(c, seated); }
             catch (Exception e) { _log.LogWarning(e, "way out"); }
             finally { Volatile.Write(ref _running, 0); }

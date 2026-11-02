@@ -47,7 +47,8 @@ def read_wav(path):
     return x
 
 
-PARAKEET = __import__("paths").LOCAL / "assistant" / "parakeet" / "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
+paths = __import__("paths")
+PARAKEET = paths.model_dir("parakeet", paths.LOCAL / "assistant" / "parakeet" / "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8")
 
 
 def _norm(s):
@@ -89,7 +90,9 @@ class Ears:
 
     # --- which recogniser --------------------------------------------------------------------------------------------
 
-    def _load(self, which):
+    def _load(self, which, fetch=True):
+        """fetch=False: Whisper only if its model is already on this PC. A package fetches it (~460 MB, from Hugging Face)
+        only when the person picks whisper, never for a stand-in."""
         t = time.time()
         if which == "parakeet":
             import sherpa_onnx
@@ -100,7 +103,10 @@ class Ears:
             self.parakeet = r
         else:
             from faster_whisper import WhisperModel
-            self.whisper = WhisperModel(self.whisper_name, device="cpu", compute_type="int8", cpu_threads=self.threads)
+            if fetch and paths.PACKAGED:
+                self.log(f"whisper {self.whisper_name}: fetching its model the first time it's chosen (about 460 MB)")
+            self.whisper = WhisperModel(self.whisper_name, device="cpu", compute_type="int8", cpu_threads=self.threads,
+                                        local_files_only=not fetch)
         self._recognise(which, np.zeros(RATE // 2, dtype=np.float32))  # warm up
         self.log(f"{'parakeet tdt 0.6b v2' if which == 'parakeet' else 'whisper ' + self.whisper_name} ready in {time.time() - t:.1f}s")
 
@@ -116,30 +122,37 @@ class Ears:
             import hearing
             self._everyday = hearing.everyday(self._whisper_tokenizer())
 
-    def _set_hearing(self, which):
+    def _set_hearing(self, which, chosen=True):
         which = which if which in ("whisper", "parakeet", "soniox") else "whisper"
         if which == self.hearing:
             return
         if which == "soniox":
-            if self.whisper is None:
-                self._load("whisper")
+            if self.whisper is None and self.parakeet is None:
+                # the local stand-in: Whisper; in a package, Whisper only if the person fetched it, else Parakeet
+                try:
+                    self._load("whisper", fetch=not paths.PACKAGED)
+                except Exception as e:
+                    if not paths.PACKAGED:
+                        raise
+                    self.log(f"whisper isn't on this PC ({type(e).__name__}): parakeet stands in for soniox")
+                    self._load("parakeet")
             self.hearing = "soniox"
             import cloud
             self.notice = None if cloud.available() else "Soniox needs its key (python tools/assistant.py key --soniox); hearing with Whisper meanwhile."
             return
         if which == "parakeet" and not (PARAKEET / "encoder.int8.onnx").exists():
             self.notice = "Parakeet isn't set up (python tools/assistant.py setup); hearing with Whisper."
-            which = "whisper"
+            which, chosen = "whisper", False
             if which == self.hearing:
                 return
         try:
             if (self.parakeet if which == "parakeet" else self.whisper) is None:
-                self._load(which)
+                self._load(which, fetch=chosen or not paths.PACKAGED)
         except Exception as e:
             self.log(f"{which} didn't load: {e!r}")
             if which == "parakeet":
                 self.notice = "Parakeet didn't load; hearing with Whisper."
-                return self._set_hearing("whisper") if self.hearing is None else None
+                return self._set_hearing("whisper", chosen=False) if self.hearing is None else None
             raise
         self.hearing = which
         if self.notice and ("Parakeet" in self.notice or "Soniox" in self.notice):
@@ -297,8 +310,9 @@ class Ears:
             return self._recognise(self.hearing, audio, blind)
 
     def _recognise(self, which, audio, blind=False):
-        # (soniox streams from start(); anything else it would hear, a file say, Whisper hears)
-        if which == "parakeet":
+        # (soniox streams from start(); anything else it would hear, a file say, Whisper hears, or in a package without
+        # Whisper fetched, Parakeet)
+        if which == "parakeet" or (which == "soniox" and self.whisper is None and self.parakeet is not None):
             s = self.parakeet.create_stream()
             s.accept_waveform(RATE, audio)
             self.parakeet.decode_stream(s)
@@ -337,6 +351,10 @@ class Ears:
         tokenizer.json from the downloaded model (Whisper needn't load for it). None if it isn't on this PC."""
         if self.whisper is not None:
             return self.whisper.hf_tokenizer
+        bundled = paths.MODELS / f"whisper-{self.whisper_name}" / "tokenizer.json"   # a package's copy
+        if bundled.exists():
+            import tokenizers
+            return tokenizers.Tokenizer.from_file(str(bundled))
         try:
             import tokenizers
             from faster_whisper.utils import download_model

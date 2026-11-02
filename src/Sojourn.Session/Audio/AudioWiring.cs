@@ -45,6 +45,8 @@ public sealed class AudioWiring : IDisposable
         Music = new MusicStream(say);
         _parcel = new ParcelSound(session);
         Sounds.CanHear = _parcel.CanHear;
+        if (float.TryParse(Environment.GetEnvironmentVariable("SOJOURN_TEST_SWITCH_CHIME"), System.Globalization.CultureInfo.InvariantCulture, out var chime))
+            SwitchChime = () => chime;   // tests: the chime and its check without Sojourn Access
         _cues = new Cues(session, Sounds, _parcel.CanHear);
         Sounds.Tick = dt =>
         {
@@ -66,6 +68,7 @@ public sealed class AudioWiring : IDisposable
             return null;
         }
         AudioEngine.StartDevices(opt.LoginUri, headset, mic: false, Say);
+        Say($"audio: outputs: {AudioEngine.DeviceLine(false)}; microphones: {AudioEngine.DeviceLine(true)}");
         var a = new AudioWiring(session, st, voice is { Available: true }, Say);
         var hooked = new System.Runtime.CompilerServices.ConditionalWeakTable<LibreMetaverse.GridClient, object>();
         void Hook(LibreMetaverse.GridClient c)
@@ -165,10 +168,12 @@ public sealed class AudioWiring : IDisposable
             () => N(_st.MusicVolume), SettingsApi.Number("music_volume", 0, 2, "", f => { _st.MusicVolume = f; Apply(); })));
         api.Add("speakers", new("sound", "where everything is heard, for the desktop or the headset (whichever is in use): auto (the system's default, "
             + "the headset's own in the headset) or a device by its name (part of it will do; SojournAudio devices lists them)", "auto, a device's name",
-            () => JsonValue.Create(Device(false) ?? "auto"), v => SetDeviceByWords(false, v.ToString())));
+            () => JsonValue.Create(Device(false) ?? "auto"), v => SetDeviceByWords(false, v.ToString()))
+            { SetAsync = (v, ct) => SetDeviceCheckedAsync(false, v.ToString(), ct) });
         if (_voiceOwnsEngine)
             api.Add("microphone", new("sound", "the mic voice chat and the assistant hear, for the desktop or the headset: auto or a device by its name",
-                "auto, a device's name", () => JsonValue.Create(Device(true) ?? "auto"), v => SetDeviceByWords(true, v.ToString())));
+                "auto, a device's name", () => JsonValue.Create(Device(true) ?? "auto"), v => SetDeviceByWords(true, v.ToString()))
+                { SetAsync = (v, ct) => SetDeviceCheckedAsync(true, v.ToString(), ct) });
     }
 
     // ---- the devices: chosen apart for the desktop and the headset ----
@@ -209,9 +214,55 @@ public sealed class AudioWiring : IDisposable
     {
         var names = new List<string?> { null };
         names.AddRange(AudioEngine.List(mic).Select(d => (string?)d.Name));
-        int i = names.IndexOf(Device(mic));
+        int i = names.IndexOf(Device(mic) is { } n ? AudioEngine.Find(mic, n) ?? n : null);
         return names[((i < 0 ? 0 : i) + (dir < 0 ? -1 : 1) + names.Count) % names.Count];
     }
+
+    /// <summary>The setting's change through the agent API (Sojourn Access's rows and Control+Shift+O, the assistant):
+    /// the device chosen, then checked (AudioEngine.CheckAsync); one that doesn't start puts the choice back as it was
+    /// and is refused with why, so "set" never answers for a device that isn't playing.</summary>
+    async Task<string?> SetDeviceCheckedAsync(bool mic, string words, CancellationToken ct)
+    {
+        var before = Device(mic);
+        if (SetDeviceByWords(mic, words) is { } refused) return refused;
+        var check = await AudioEngine.CheckAsync(mic, ct);
+        LastNote = null;
+        if (check.Ok && !mic && check.Device != null && SwitchChime?.Invoke() is > 0 and var gain)
+        {
+            // what Windows passes on to the device, while a chime plays there: sound sent but none reaching the
+            // device (and no mute or volume to explain it) means it isn't playing, whatever Windows said
+            var probe = AudioEngine.ProbeAsync(700);
+            AudioEngine.Chime(gain);
+            var quiet = AudioEngine.State(false)?.Quiet;
+            if (await probe is var (heard, sent))
+            {
+                _say($"audio: {check.Device}: {heard:0.0} dBFS reached it, {sent:0.0} sent{(quiet != null ? $" ({quiet})" : "")}");
+                if (sent > -70 && heard < sent - 40 && quiet == null)
+                    check = new(false, check.Device, "Windows passed none of the sound on to it");
+            }
+            LastNote = quiet;
+        }
+        if (check.Ok)
+        {
+            _say($"audio: {(mic ? "microphone" : "speakers")} now {check.Device ?? Device(mic) ?? "the default"}");
+            return null;
+        }
+        var chosen = Device(mic) ?? "the default device";
+        _say($"audio: {chosen} didn't start ({check.Why}); back to {before ?? "the default"}");
+        SetDevice(mic, before);
+        var back = await AudioEngine.CheckAsync(mic, CancellationToken.None);
+        var now = back.Ok ? back.Device ?? before ?? "the default device" : null;
+        return $"{chosen} didn't start: {check.Why}. " +
+               (now != null ? $"{(mic ? "The microphone stays" : "Sound stays")} on {now}." : $"Going back didn't start either: {back.Why}.");
+    }
+
+    /// <summary>The gain of a chime played on a newly chosen output, which also lets the change be checked by what
+    /// reaches the device (null or 0: none; Sojourn Access gives its own sounds' volume).</summary>
+    public Func<float>? SwitchChime { get; set; }
+
+    /// <summary>After an output change that went through: why it may still be silent (Windows has it muted, say), or
+    /// null.</summary>
+    public string? LastNote { get; private set; }
 
     string? SetDeviceByWords(bool mic, string words)
     {
@@ -235,7 +286,8 @@ public sealed class AudioWiring : IDisposable
     /// <summary>The devices there are and which are in use, for SojournAudio.</summary>
     public JsonObject DevicesStatus()
     {
-        JsonArray Of(bool mic) => new(AudioEngine.List(mic).Select(d => (JsonNode)new JsonObject { ["name"] = d.Name, ["default"] = d.Default }).ToArray());
+        JsonArray Of(bool mic) => new(AudioEngine.List(mic).Select(d =>
+            (JsonNode)new JsonObject { ["name"] = d.Name, ["default"] = d.Default, ["kind"] = d.Kind }).ToArray());
         return new JsonObject
         {
             ["for"] = AudioEngine.Headset ? "the headset" : "the desktop",
@@ -297,7 +349,8 @@ public sealed class AudioApi : LeapApi
             _ => audio.Status());
         Op("sources", "-> {sources: [...]}: every sound source tracked, playing or waiting (muted, cutoff, distance, channel)",
             _ => new JsonObject { ["sources"] = audio.Sounds.Sources() });
-        Op("devices", "-> {for, speakers: [{name, default}], microphones: [...], chosen_speakers, chosen_microphone}: the audio devices "
-            + "Windows has; choose with SojournSettings speakers / microphone", _ => audio.DevicesStatus());
+        Op("devices", "-> {for, speakers: [{name, default, kind}], microphones: [...], chosen_speakers, chosen_microphone}: the audio "
+            + "devices Windows has (kind: speakers, headphones, a headset, a TV or monitor, ...), likely ones first; choose with "
+            + "SojournSettings speakers / microphone", _ => audio.DevicesStatus());
     }
 }

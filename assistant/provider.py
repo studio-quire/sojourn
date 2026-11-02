@@ -78,6 +78,8 @@ def keys_dir():
         return Path(d)
     if (ROOT / "src" / "Sojourn.Client").is_dir():
         return ROOT / "local" / "secrets" / "assistant"
+    if d := os.environ.get("SOJOURN_DATA"):   # the data folder put elsewhere (DataFolder.cs: the package's check)
+        return Path(d) / "secrets" / "assistant"
     return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "Sojourn" / "secrets" / "assistant"
 
 

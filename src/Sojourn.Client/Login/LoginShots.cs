@@ -21,7 +21,7 @@ public sealed partial class LoginSheet
         {
             ("form", Base(Stage.Form)),
             ("form-new", Base(Stage.Form) with { Selected = -1, User = "Ada Lovelace", Pass = "•••••••••", Focus = 11, Remember = false, Grid = 2, Uri = "http://127.0.0.1:9700/", Start = 2, Region = "Atelier/128/118/26" }),
-            ("form-help", Base(Stage.Form) with { Help = true, Note = "password" }),
+            ("form-help", Base(Stage.Form) with { Help = true, Note = "password?" }),
             ("connecting", Base(Stage.Connecting)),
             ("tos", Base(Stage.Terms) with { TermsKind = "tos", TermsText = tos }),
             ("tos-agreed", Base(Stage.Terms) with { TermsKind = "tos", TermsText = tos, Agree = true, Hover = 51 }),

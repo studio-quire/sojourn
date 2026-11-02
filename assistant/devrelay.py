@@ -6,11 +6,9 @@ passes here (a `say` event) to be read out when the person has spoken replies on
 """
 import os
 import time
-from pathlib import Path
 
 from api import ApiError
-
-ROOT = Path(__file__).resolve().parents[1]
+from paths import LOCAL   # the repo's local/, or a packaged build's data folder: where the client's dev note is
 
 
 class DevRelay:
@@ -24,7 +22,7 @@ class DevRelay:
     def watched(self):
         """Whether a session is watching (tools/dev.py watch touches this file at every poll)."""
         try:
-            return time.time() - (ROOT / "local" / "dev" / f"{self.port}.watching").stat().st_mtime < 60
+            return time.time() - (LOCAL / "dev" / f"{self.port}.watching").stat().st_mtime < 60
         except OSError:
             return False
 

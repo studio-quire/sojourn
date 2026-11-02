@@ -70,7 +70,7 @@ public sealed partial class WalkMode
     {
         if (S.Client is not { Network.CurrentSim: { } sim } c) return null;
         var w = S.Region;
-        var av = w?.Avatars.Values.FirstOrDefault(a => a.ID == c.Self.AgentID);
+        var av = w?.AvatarById(c.Self.AgentID);
         float half = av is { Scale.Z: > 1f and < 3.5f } ? av.Scale.Z / 2 : 0.95f;
         // the seat as the current region has the avatar: Self.SittingOn keeps the old region's local id after a
         // crossing until a full update for the avatar comes, so the seat wasn't found and the listener jumped
@@ -78,8 +78,7 @@ public sealed partial class WalkMode
         if (seatId != 0 && w != null && av != null && w.Prims.TryGetValue(seatId, out var seat))
         {
             var root = S.Objects.RootOf(w, seat);
-            var set = new HashSet<uint> { root.LocalID };
-            foreach (var p in w.Prims.Values) if (p.ParentID == root.LocalID) set.Add(p.LocalID);
+            var set = SeatLinkset(w, root.LocalID);
             var at = w.RegionPosition(av);
             var rot = w.RegionRotation(av);
             var name = root.Properties?.Name is { Length: > 0 } n && n != "Object" ? n : null;
@@ -98,6 +97,21 @@ public sealed partial class WalkMode
             pos = V(c.Self.SimPosition) + new Vector3(vel.X, vel.Y, 0) * Math.Min(1.5f, (now - _rawAt) / 1000f);
         }
         return new Body(sim.Handle, sim.Name, pos, pos.Z - half, YawOf(c.Self.Movement.BodyRotation), vel, c.Self.Movement.Fly, false, null, null);
+    }
+
+    sealed record SeatSet(Sojourn.Core.World.RegionWorld World, uint Root, long At, HashSet<uint> Set);
+    SeatSet? _seatSet;
+
+    /// <summary>The seat's linkset (its root and children), found again at most once a second: Me() runs several times
+    /// a tick, and a scan of a busy region's prims each time (seated on a train for hours) was the app's largest garbage.</summary>
+    HashSet<uint> SeatLinkset(Sojourn.Core.World.RegionWorld w, uint root)
+    {
+        long now = Environment.TickCount64;
+        if (_seatSet is { } k && k.World == w && k.Root == root && now - k.At < 1000) return k.Set;
+        var set = new HashSet<uint> { root };
+        foreach (var (id, p) in w.Prims) if (p.ParentID == root) set.Add(id);
+        _seatSet = new SeatSet(w, root, now, set);
+        return set;
     }
 
     LVector3 _raw;
@@ -121,7 +135,7 @@ public sealed partial class WalkMode
     {
         if (S.Client is not { } c) return;
         var raw = c.Self.SimPosition;
-        if (S.Region is { } w && w.Avatars.Values.FirstOrDefault(a => a.ID == c.Self.AgentID) is { } av && (av.ParentID != 0 || c.Self.SittingOn != 0))
+        if (S.Region is { } w && w.AvatarById(c.Self.AgentID) is { } av && (av.ParentID != 0 || c.Self.SittingOn != 0))
             raw = w.RegionPosition(av);
         long now = Environment.TickCount64;
         if (raw == _raw) return;
@@ -194,7 +208,28 @@ public sealed partial class WalkMode
         Probe(b, now);
         Crossing(b, now);
         BeaconTick(b, now);
+        SwitchTick(b, now);
+        Recorder?.Tick(Reported(b), now);
     }
+
+    /// <summary>The body where the region last said it is, standing (not carried on by its velocity, which runs a second
+    /// or two past a stop and back: a route recorded from it kept turns that were never walked); seated, as it is.</summary>
+    public Body Reported(Body b)
+    {
+        if (b.Sitting || S.Client is not { } c) return b;
+        var r = V(c.Self.SimPosition);
+        return b with { Pos = r, Feet = b.Feet + (r.Z - b.Pos.Z) };
+    }
+
+    /// <summary>A route being recorded (RouteRecorder), fed each tick.</summary>
+    public RouteRecorder? Recorder { get; set; }
+    /// <summary>Recording keys (R, Shift+R, P, N, Backspace) as `//record`'s words, for the window (it asks names and notes).</summary>
+    public Action<string>? RecordKey { get; set; }
+    /// <summary>Something touched by T, by its name (a route being recorded keeps it).</summary>
+    public event Action<string>? Touched;
+
+    /// <summary>A route's point kept: its tick, and its line where the route cue's text is on.</summary>
+    public void PointCue(string text) => Cue("route", CueSounds.Cue.RoutePoint, text);
 
     /// <summary>World audio and voice hear from the avatar's head, facing where it faces (Access has no camera of its
     /// own; without this nothing placed in the world played at all).</summary>

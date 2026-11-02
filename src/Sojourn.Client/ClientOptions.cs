@@ -58,12 +58,37 @@ public sealed record ClientOptions : SessionOptions
     public string? PanelShots { get; init; }
     /// <summary>Draw the login sheet's stages to PNGs in this folder and quit (Login/LoginShots.cs).</summary>
     public string? LoginShots { get; init; }
+    /// <summary>The language for this run, over the saved one (--lang de: Lang.cs; the shots in each language).</summary>
+    public string? Language { get; init; }
+
+    /// <summary>An installed copy (tools/package.py): no repo above the program. The launcher passes everything it means;
+    /// run on its own it defaults to %LOCALAPPDATA%\Sojourn and the login screen.</summary>
+    public static bool Packaged { get; } = !RepoAbove();
+
+    static bool RepoAbove()
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
+            if (Directory.Exists(Path.Combine(d.FullName, "src", "Sojourn.Client"))) return true;
+        return false;
+    }
+
+    /// <summary>The version the login sends and the login screen shows (docs/tpv-policy.md > Channel and version): a
+    /// package's 0.1.0.N, N the repo's commit count, stamped by tools/package.py; a build in the repo is 0.1.0.0.</summary>
+    public static string Version
+    {
+        get
+        {
+            var v = typeof(ClientOptions).Assembly.GetName().Version;
+            return v is { Major: 0 } ? $"{v.Major}.{v.Minor}.{Math.Max(0, v.Build)}.{Math.Max(0, v.Revision)}" : "0.1.0.0";
+        }
+    }
 
     ClientOptions WithVr(Action<VrSettings> change) => this with { VrOverrides = VrOverrides.Append(change).ToArray() };
 
     public static ClientOptions Parse(string[] args)
     {
-        var o = new ClientOptions();
+        // an installed copy run on its own: the person's data folder and the login screen, as the launcher would start it
+        var o = Packaged ? new ClientOptions { BaseDir = Sojourn.Session.DataFolder.Root, Login = true } : new ClientOptions();
         for (int i = 0; i < args.Length; i++)
         {
             string Next() => i + 1 < args.Length ? args[++i] : throw new ArgumentException($"{args[i]} needs a value");
@@ -134,6 +159,7 @@ public sealed record ClientOptions : SessionOptions
                 case "--voice-unmuted": o = o with { VoiceUnmuted = true }; break;
                 case "--panel-shots": o = o with { PanelShots = Path.GetFullPath(Next()) }; break;
                 case "--login-shots": o = o with { LoginShots = Path.GetFullPath(Next()) }; break;
+                case "--lang": o = o with { Language = Next() }; break;
                 case "--quest-eyes": o = o with { QuestEyes = true, Stereo = true, EyeSize = o.EyeSize ?? (2064, 2208) }; break;
                 default: throw new ArgumentException($"unknown option {args[i]}");
             }

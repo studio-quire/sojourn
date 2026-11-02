@@ -106,6 +106,19 @@ public sealed class TextureStore : IDisposable
     readonly SemaphoreSlim _decodeGate;
     readonly CancellationTokenSource _cts = new();
     public int MaxDimension { get; set; } = 2048;
+    /// <summary>Drawing on the processor (Mesa's lavapipe): every texture goes up square at one of three sizes
+    /// (<see cref="FewSize"/>). lavapipe compiles each texture's sampling as code of its own for its size and mip count,
+    /// the first time a shader samples it (under one lock, so on one core), and keeps none of it between sessions; on
+    /// Second Life textures come in dozens of shapes. (Reasoned more than measured: our test grids' textures share a few
+    /// sizes; docs/performance.md > The first picture after login.) Only the copy that's drawn: what's kept for the
+    /// processor (sculpt maps) stays as it came.</summary>
+    public bool FewSizes { get; set; }
+    // SOJOURN_TEST_TEXTURE_SIZES=1: each texture stretched to a size of its own (16-1024 a side, by its id) before that,
+    // standing in for Second Life's variety on a test grid whose textures share a few sizes (tools/firstpicture.py)
+    static readonly bool VarySizesForTest = System.Environment.GetEnvironmentVariable("SOJOURN_TEST_TEXTURE_SIZES") == "1";
+
+    /// <summary>The size a texture this big goes up at with <see cref="FewSizes"/>: 64, 256 or 512 square.</summary>
+    public static int FewSize(int w, int h) => Math.Max(w, h) switch { <= 64 => 64, <= 256 => 256, _ => 512 };
     public ulong ResidentBytes { get; private set; }
 
     // video memory (Realtime/LoadGovernor.cs sets these): textures held at what they have, and how far those on screen
@@ -179,7 +192,7 @@ public sealed class TextureStore : IDisposable
             List<SceneTexture> held;
             lock (_deferred) { held = _deferred.ToList(); _deferred.Clear(); }
             foreach (var t in held)
-                if (t.State != TexState.Ready && !t.KeepCpu) StartLoad(t);
+                if (t.State != TexState.Ready && !t.KeepCpu) LoadWhole(t);
         }
     }
     volatile bool _dataOnly;
@@ -189,6 +202,15 @@ public sealed class TextureStore : IDisposable
     /// <summary>A whole load (not the scheduler's), or held for later while only data loads.</summary>
     void LoadWhole(SceneTexture tex)
     {
+        long now = System.Environment.TickCount64;
+        if (Held(tex, now) && _held.TryGetValue(HeldKey(tex), out long until))
+        {
+            Volatile.Write(ref tex.WholeLoad, 1);
+            if (until != long.MaxValue)
+                _ = Task.Delay(TimeSpan.FromMilliseconds(until - now + 50), _cts.Token)
+                    .ContinueWith(_ => { if (tex.State != TexState.Ready) LoadWhole(tex); }, TaskContinuationOptions.OnlyOnRanToCompletion);
+            return;
+        }
         if (_dataOnly && !tex.KeepCpu)
         {
             Volatile.Write(ref tex.WholeLoad, 1);   // (a whole-load source asking again doesn't start it either)
@@ -336,6 +358,28 @@ public sealed class TextureStore : IDisposable
         return Math.Max(want, Math.Min(want + extra, cap));
     }
 
+    /// <summary>How many levels below what its screen area wants (memory's shedding aside) a streamed texture is drawn
+    /// at: 0 when it's sharp enough, or not resident, or loaded whole. Each level halves both sides, so 2 or more is a
+    /// quarter of the detail or less (describing: colours right, fine print and patterns blurred).</summary>
+    internal int LevelsShort(SceneTexture t)
+    {
+        if (t.State != TexState.Ready || t.Discard < 0 || !Ranged(t) || t.FullWidth <= 0 || t.KeepCpu) return 0;
+        return Math.Max(0, t.Discard - J2c.WantedLevel(t.FullWidth, t.FullHeight, t.Area, t.Levels, MaxDimension));
+    }
+
+    // --- testing: one avatar's look held back (SOJOURN_TEST_HOLD_LOOK, World/LookHold.cs) ---------------------------
+
+    readonly ConcurrentDictionary<UUID, long> _held = new();
+
+    /// <summary>Testing: a texture not to be fetched or loaded for <paramref name="ms"/> from the first time it's held
+    /// (long.MaxValue: for good). Called before the texture is first asked for.</summary>
+    internal void Hold(UUID id, long ms) =>
+        _held.TryAdd(id, ms == long.MaxValue ? long.MaxValue : System.Environment.TickCount64 + ms);
+
+    static UUID HeldKey(SceneTexture t) => t.BumpCode != 0 ? t.SourceId : t.Id;
+
+    bool Held(SceneTexture t, long now) => !_held.IsEmpty && _held.TryGetValue(HeldKey(t), out long until) && now < until;
+
     /// <summary>The level a streamed texture is fetched and decoded at next: what's wanted, except for one with nothing
     /// on screen yet whose wanted size wouldn't fit a frame's upload budget. That one first comes in small enough to go
     /// up at once (a quarter of the budget: 256x256 at the governor's last level) and is sharpened afterwards like any
@@ -380,7 +424,7 @@ public sealed class TextureStore : IDisposable
     // again every pass until the upload came, under lag several times over, each pass a file read and a decode)
     bool NeedsWork(SceneTexture t, long now) =>
         t.Busy == 0 && t.Source != null && t.State != TexState.Missing && now - t.LastUsed < 3000 && now >= t.RetryAt && Ranged(t)
-        && (!_dataOnly || t.KeepCpu)
+        && (!_dataOnly || t.KeepCpu) && !Held(t, now)
         && (t.Pending == null || Want(t, now) > t.PendingDiscard)
         && (t.Discard < 0 || (!HoldGrowth && Want(t, now) < t.Discard) || (t.KeepCpu && t.Rgba == null));
 
@@ -636,14 +680,30 @@ public sealed class TextureStore : IDisposable
         // back faces through their front, sorted per face without depth)
         tex.IsAlphaMask = tex.BumpCode == 0 && (nc == 2 || nc >= 4) && (!hasAlpha || AnalyzeAlphaMask(rgba, w, h));
         tex.PendingDiscard = discard + extra;
+        // what goes up to be drawn (the pixels kept for the processor stay as they are)
+        var up = rgba;
+        int uw = w, uh = h;
+        if (VarySizesForTest)
+        {
+            int hash = tex.Id.GetHashCode() & 0x7fffffff;
+            (up, uw, uh) = (Resample(up, uw, uh, 16 << (hash % 7), 16 << (hash / 7 % 7)), 16 << (hash % 7), 16 << (hash / 7 % 7));
+        }
+        if (FewSizes && FewSize(uw, uh) is var few && (few != uw || few != uh))
+            (up, uw, uh) = (Resample(up, uw, uh, few, few), few, few);
+        if (!ReferenceEquals(up, rgba))
+        {
+            if (pooled) System.Buffers.ArrayPool<byte>.Shared.Return(rgba);
+            pooled = false;
+            if (!tex.KeepCpu) rgba = null!;
+        }
         // handed over under the texture's lock: a decode can finish again before the render thread took the last one
         lock (tex)
         {
             TakePending(tex);
             tex.PendingPooled = pooled;
-            (tex.PendingWidth, tex.PendingHeight) = (w, h);
-            tex.Pending = rgba;
-            Interlocked.Add(ref _pendingBytes, (long)w * h * 4);
+            (tex.PendingWidth, tex.PendingHeight) = (uw, uh);
+            tex.Pending = up;
+            Interlocked.Add(ref _pendingBytes, (long)uw * uh * 4);
         }
         if (tex.KeepCpu) tex.Rgba = rgba;
     }
@@ -659,6 +719,33 @@ public sealed class TextureStore : IDisposable
     }
 
     public static byte[] HalveRgba(byte[] src, int w, int h) => Halve(src, w, h);
+
+    /// <summary>RGBA8 to another size: each new pixel the average of the source pixels under it (a box filter, so
+    /// halving is <see cref="Halve"/>'s 2x2 and growing repeats pixels), wrapping nothing.</summary>
+    static byte[] Resample(byte[] src, int w, int h, int nw, int nh)
+    {
+        var dst = new byte[nw * nh * 4];
+        double sx = (double)w / nw, sy = (double)h / nh;
+        Span<int> sum = stackalloc int[4];
+        for (int y = 0; y < nh; y++)
+        {
+            int y0 = Math.Min(h - 1, (int)(y * sy)), y1 = Math.Max(y0 + 1, Math.Min(h, (int)Math.Ceiling((y + 1) * sy)));
+            for (int x = 0; x < nw; x++)
+            {
+                int x0 = Math.Min(w - 1, (int)(x * sx)), x1 = Math.Max(x0 + 1, Math.Min(w, (int)Math.Ceiling((x + 1) * sx)));
+                sum.Clear();
+                for (int yy = y0; yy < y1; yy++)
+                for (int xx = x0; xx < x1; xx++)
+                {
+                    int i = (yy * w + xx) * 4;
+                    sum[0] += src[i]; sum[1] += src[i + 1]; sum[2] += src[i + 2]; sum[3] += src[i + 3];
+                }
+                int n = (y1 - y0) * (x1 - x0), o = (y * nw + x) * 4;
+                for (int c = 0; c < 4; c++) dst[o + c] = (byte)((sum[c] + n / 2) / n);
+            }
+        }
+        return dst;
+    }
 
     static byte[] Halve(byte[] src, int w, int h)
     {

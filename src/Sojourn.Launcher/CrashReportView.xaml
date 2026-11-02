@@ -1,0 +1,87 @@
+<UserControl x:Class="Sojourn.Launcher.CrashReportView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="400" MinHeight="600" FontFamily="{StaticResource Ui}" Foreground="{StaticResource Ink}"
+             UseLayoutRounding="True" TextOptions.TextFormattingMode="Ideal">
+    <!-- After a crash (CrashReport.cs): what happened, a note, what a report holds, and the person's choice. The
+         launcher's look: light blue behind clear glass, the accent only on what acts. -->
+    <Grid>
+        <Rectangle>
+            <Rectangle.Fill>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#E2F0FB" Offset="0"/>
+                    <GradientStop Color="#EDF5FC" Offset="0.45"/>
+                    <GradientStop Color="#F6FAFD" Offset="1"/>
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Button x:Name="CloseKey" Style="{StaticResource Key}" Content="&#xE8BB;" FontSize="10" AutomationProperties.Name="Close"
+                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,6,0" IsTabStop="False"/>
+
+            <StackPanel Grid.Row="1" Margin="30,0,30,18">
+                <TextBlock x:Name="Title" Text="Sojourn stopped unexpectedly" FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock x:Name="How" FontSize="12.5" Foreground="{StaticResource Faint}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <Grid Grid.Row="2" Margin="24,0,24,24" VerticalAlignment="Top">
+                <Border CornerRadius="24" Background="#85FFFFFF">
+                    <Border.Effect>
+                        <DropShadowEffect Color="{StaticResource InkColor}" Opacity="0.10" BlurRadius="36" ShadowDepth="10" Direction="270"/>
+                    </Border.Effect>
+                </Border>
+                <Border CornerRadius="24" BorderBrush="{StaticResource Rim}" BorderThickness="1" Padding="18">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Label}" Text="what happened (optional)"/>
+                        <TextBox x:Name="NoteBox" AutomationProperties.Name="What happened" AcceptsReturn="True" TextWrapping="Wrap"
+                                 MaxLength="4000" Tag="what you were doing when it stopped">
+                            <TextBox.Template>
+                                <ControlTemplate TargetType="TextBox">
+                                    <Border x:Name="Well" CornerRadius="13" Height="96" Background="#9EFFFFFF" BorderBrush="{StaticResource Rim}" BorderThickness="1">
+                                        <Grid Margin="14,10">
+                                            <TextBlock x:Name="Hint" Text="{TemplateBinding Tag}" Foreground="{StaticResource Faint}" IsHitTestVisible="False"
+                                                       Visibility="Collapsed" TextWrapping="Wrap"/>
+                                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False" HorizontalScrollBarVisibility="Disabled"
+                                                          VerticalScrollBarVisibility="Auto"/>
+                                        </Grid>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="Text" Value="">
+                                            <Setter TargetName="Hint" Property="Visibility" Value="Visible"/>
+                                        </Trigger>
+                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                            <Setter TargetName="Well" Property="BorderBrush" Value="#B3468AB9"/>
+                                            <Setter TargetName="Well" Property="Background" Value="#D9FFFFFF"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </TextBox.Template>
+                        </TextBox>
+
+                        <TextBlock x:Name="WhatsSent" FontSize="12.5" Foreground="{StaticResource Dim}" TextWrapping="Wrap" Margin="4,14,4,16"
+                                   LineHeight="18"/>
+
+                        <Button x:Name="SendKey" Style="{StaticResource Launch}" Height="48" Content="send report" AutomationProperties.Name="Send report"/>
+                        <!-- one line; longer words (another language's) make it smaller rather than break it -->
+                        <Viewbox StretchDirection="DownOnly" HorizontalAlignment="Center" Margin="0,8,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="ReviewKey" Style="{StaticResource WordKey}" Content="review"/>
+                                <Button x:Name="SaveKey" Style="{StaticResource WordKey}" Content="save instead"/>
+                                <Button x:Name="SkipKey" Style="{StaticResource WordKey}" Content="not now"/>
+                            </StackPanel>
+                        </Viewbox>
+                        <TextBlock x:Name="Outcome" FontSize="12.5" Foreground="{StaticResource Faint}" TextWrapping="Wrap" TextAlignment="Center"
+                                   Margin="4,10,4,0" Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

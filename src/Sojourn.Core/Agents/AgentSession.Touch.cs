@@ -44,6 +44,7 @@ public sealed partial class AgentSession
     {
         if (Client is not { } c || SimFor(c, region) is not { } sim) return;
         sim.ObjectsPrimitives.TryGetValue(localId, out var prim);
+        if (RlvActive && prim != null && RlvRefused(RlvTouch(prim.ID)) != null) return;
         c.Network.SendPacket(new ObjectGrabPacket
         {
             AgentData = { AgentID = c.Self.AgentID, SessionID = c.Self.SessionID },
@@ -96,6 +97,13 @@ public sealed partial class AgentSession
     /// <summary>Sit on a prim of a region, at a point of it (the viewer sends the click's offset from the prim, in its
     /// frame, so a seat without a sit target seats you near where you clicked).</summary>
     public void SendSit(ulong region, UUID id, Vector3 offset)
+    {
+        if (RlvActive && RlvRefused(Rlv.CanSit(id, _rlvHost().Object(id)?.Position)) != null) return;
+        SendSitUnchecked(region, id, offset);
+    }
+
+    /// <summary>A sit RLV has already allowed (its own @sit force).</summary>
+    internal void SendSitUnchecked(ulong region, UUID id, Vector3 offset)
     {
         if (Client is not { } c || SimFor(c, region) is not { } sim) return;
         c.Network.SendPacket(new AgentRequestSitPacket

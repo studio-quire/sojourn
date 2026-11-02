@@ -73,6 +73,7 @@ public sealed class Situation
         // the client's own read of its ops, not a caller's: private mode's gate is for callers
         if (!_s.Api.ApiMap.TryGetValue(pump, out var api) || !api.Ops.TryGetValue(op, out var h)) return null;
         if (api.NeedsSession && !_s.Online) return null;
+        using var own = Sojourn.Core.Rlv.RlvEngine.OwnRead();   // (and not RLV's to refuse: the client's own count)
         try { return await h.Run(new JsonObject(), ct).WaitAsync(TimeSpan.FromSeconds(1.5), ct); }
         catch (Exception) { return null; }
     }

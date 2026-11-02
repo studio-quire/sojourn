@@ -81,12 +81,13 @@ public sealed class ReportApi : LeapApi
     /// <summary>What the person is shown before a send: everything that goes to Linden Lab.</summary>
     public static (string Title, string Detail) Describe(Draft d)
     {
-        string who = d.Object != UUID.Zero ? $"\"{d.ObjectName}\"{(d.OwnerName.Length > 0 ? $" (owned by {d.OwnerName})" : "")}"
-            : d.Abuser != UUID.Zero ? d.AbuserName : "what happened";
+        string title = d.Object != UUID.Zero
+            ? d.OwnerName.Length > 0 ? Lang.F("Report \"{0}\" (owned by {1}) to Linden Lab", d.ObjectName, d.OwnerName) : Lang.F("Report \"{0}\" to Linden Lab", d.ObjectName)
+            : d.Abuser != UUID.Zero ? Lang.F("Report {0} to Linden Lab", d.AbuserName) : Lang.T("Report what happened to Linden Lab");
         var detail = new List<string> { d.CategoryLabel, $"\"{d.Summary}\"" };
         if (d.Details.Length > 0) detail.Add(d.Details);
-        detail.Add(d.Picture != null ? "With a picture of your view from when you asked." : "No picture.");
-        return ($"Report {who} to Linden Lab", string.Join("\n", detail));
+        detail.Add(Lang.T(d.Picture != null ? "With a picture of your view from when you asked." : "No picture."));
+        return (title, string.Join("\n", detail));
     }
 
     async Task<((int Value, string Label)[] List, string Source)> CategoriesAsync(CancellationToken ct)

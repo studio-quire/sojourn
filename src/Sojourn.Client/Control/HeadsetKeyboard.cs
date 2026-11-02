@@ -293,9 +293,9 @@ public sealed class HeadsetKeyboard
         var look = _look();
         int lit1 = _right.On ? _right.Key : -1, lit2 = _left.On ? _left.Key : -1;
         int flash = Environment.TickCount64 < _flashUntil ? _flash : -1;
-        string state = $"{t.Label}|{_symbols}|{_shift}|{_caps}|{lit1}|{lit2}|{flash}";
+        string state = $"{t.Label}|{Lang.Code}|{_symbols}|{_shift}|{_caps}|{lit1}|{lit2}|{flash}";
         if (_drawn is not { } d || !ReferenceEquals(d.Look, look) || d.State != state)
-            _drawn = d = (look, state, Picture(look, t.Label, i => i == lit1 || i == lit2, flash, Raster));
+            _drawn = d = (look, state, Picture(look, Lang.T(t.Label), i => i == lit1 || i == lit2, flash, Raster));
         return (d.Image, _pos, _rot, WidthM);
     }
 

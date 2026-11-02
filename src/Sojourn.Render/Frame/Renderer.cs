@@ -1412,6 +1412,7 @@ public sealed unsafe partial class Renderer : IDisposable
             ldrSlot = rt.HdrSlot;
         }
         Profiler.Mark("cas");
+        ldrSlot = RecordSpheres(cmd, rt, ldrSlot);   // RLV's vision spheres (Renderer.Spheres.cs), before glow
         rt.Glow.Transition(cmd, ImageLayout.ColorAttachmentOptimal);
         _push.I1 = (uint)ldrSlot;
         _push.I2 = (uint)GlowNoiseSlot;
@@ -1827,6 +1828,7 @@ public sealed unsafe partial class Renderer : IDisposable
         DisposeWater();
         DisposeParcelLines();
         DisposeBeacons();
+        DisposeSpheres();
         _vk.Api.DestroyPipelineLayout(_vk.Device, Layout, null);
     }
 }

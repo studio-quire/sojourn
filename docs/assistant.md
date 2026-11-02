@@ -430,7 +430,7 @@ TTS speech (Kokoro, several voices) through Sojourn's own capture chain or a hea
 `tools.py`: look, describe (Sojourn Access's; the description written in one lean call, `describer.py`, and handed
 back whole: `docs/assistant-cost.md`), capture (pictures and videos saved for the person), animations (what's
 animating them; stop it), nearby, inspect (with `costs`: land impact and Script Info), find_items, wear, take_off, say, message, recent_chat,
-go, sit, stand, touch, hud (the person's HUDs: pictures, presses by point, part or name, the board; `docs/hud.md`),
+go, sit, stand, touch, hud (the person's HUDs: pictures, presses by point, part or name, buttons read off a HUD's picture saved by name, the board; `docs/hud.md`),
 media (pages and video on faces, the parcel's and offered pages: read, press, type, navigate, play, a picture, up
 close, a face's settings, configure and remove_media; `docs/media.md`), search (> Search), pay, report (> Reporting
 abuse), give, buy, remove_objects, dialogs, answer_dialog, ask_choice, confirm_text (> How it fits together), show
@@ -461,7 +461,9 @@ Write, Edit, Glob, Grep, Bash, PowerShell, WebSearch, WebFetch, Agent and the re
   - environment (the person's own sky: presets, their settings, shared, clouds);
   - undo (history, undo, redo: "undo that" is one call), scripts (the Build menu's chores and Script Info);
   - item (an inventory item's picture as an image, as hud's look; favourites; thumbnails);
-  - keep_away (SojournSafety: hide/unhide things, sounds and blocking them, particles, release keys, bumps).
+  - keep_away (SojournSafety: hide/unhide things, sounds and blocking them, particles, release keys, bumps);
+  - sojourn (SojournRelease: about, a problem report with the person's words that they confirm, the viewer
+    statistics; 2026-11-01, not yet checked with typed requests).
 - Checked with typed requests (quick mode, Haiku medium): each area's everyday asks ("who owns this land?", "is it me
   or the region that's lagging?", "turn my AO on", "make it sunset", "undo that", "mute X's voice", "what does the
   covenant here say?", "reset my skeleton"...) went to the tool meant in one call, 3.5-7 s. client_api's description

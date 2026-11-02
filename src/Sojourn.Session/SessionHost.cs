@@ -68,6 +68,8 @@ public sealed class SessionHost : IAsyncDisposable
     public Recorder Recorder { get; private set; } = null!;
     public CaptureApi Capture { get; private set; } = null!;
     public ReportApi Reports { get; private set; } = null!;
+    /// <summary>SojournRelease: About, the viewer statistics report, problem reports.</summary>
+    public ReleaseApi Release { get; private set; } = null!;
     public AccessWiring ScreenReader { get; private set; } = null!;
     public SettingsApi SettingsApi { get; private set; } = null!;
     /// <summary>The renderer out of sight, for an app that shows no view (<see cref="StartOffscreen"/>).</summary>
@@ -152,6 +154,7 @@ public sealed class SessionHost : IAsyncDisposable
         // the draw distance is the session's (LLViewerControl RenderFarClip), so the menu, the agent API and the
         // renderer agree
         Session.Camera.SetFarClip(Settings.DrawDistance);
+        Session.RlvWanted = Settings.Rlv;   // RLV for the logins to come (Rlv/RlvWiring.cs), before the first
         Chat.Session = Session;
         Chat.Start();
     }
@@ -241,7 +244,14 @@ public sealed class SessionHost : IAsyncDisposable
         if (renderer != null) CaptureWiring.Start(Session, Assistant, renderer, Capture, UploadsCost, Log);
         Reports = new ReportApi(Session, Assistant.Snapshots);
         Session.Api.Register(Reports);
-        Session.Api.Register(new ReleaseApi(Session));   // About: channel, version, disclaimer (docs/tpv-policy.md)
+        // About, the viewer statistics report and problem reports (docs/tpv-policy.md, docs/client.md > Problem and crash reports)
+        Release = new ReleaseApi(Session)
+        {
+            BaseDir = Options.BaseDir, LogPath = SessionLogPath,
+            Stats = new ViewerStats(Session, () => Settings.StatsHardwareIds, Logs.CreateLogger("stats")),
+        };
+        Session.Api.Register(Release);
+        Assistant.Confirmations.Cases.Add(Release.Confirmation());
         Assistant.Confirmations.Report = a => Reports.Find(a) is { } d ? ReportApi.Describe(d) : null;
     }
 
@@ -265,6 +275,8 @@ public sealed class SessionHost : IAsyncDisposable
         InventoryWiring.Start(Session, Assistant, SettingsApi, Log);
         // building (Building/BuildWiring.cs): SojournBuild, its confirmations, PBR ids and face counts from the renderer
         BuildWiring.Start(Session, Assistant, UploadsCost, Log);
+        // RLV (Rlv/RlvWiring.cs): its switch, SojournRlv, the feed's word when something's refused
+        Sojourn.Session.Rlv.RlvWiring.Start(Session, Settings, SettingsApi, Log);
     }
 
     /// <summary>The screen reader's, people's and the social layer's settings (and their menu sections, if the app
@@ -274,6 +286,7 @@ public sealed class SessionHost : IAsyncDisposable
         ScreenReader.Settle(menu, SettingsApi);
         People.Settle(menu, SettingsApi);
         Social.Settle(SettingsApi);
+        ReleaseApi.Settle(SettingsApi, Settings, launcher: App == null);   // crash reports are the VR client's launcher's
     }
 
     public void RegisterSettings() => Session.Api.Register(SettingsApi);
@@ -341,12 +354,18 @@ public sealed class SessionHost : IAsyncDisposable
             Path.Combine(Options.BaseDir, "cache", "render"), m => rlog.LogInformation("{Msg}", m), Collision?.Physics);
         configure?.Invoke(view);
         Sojourn.Core.Rendering.Snapshots.Provider = Assistant.Snapshots;
-        Session.FindTouchSurface = view.FindTouchAsync;
-        Session.FindFaceSurface = view.FindFaceAsync;
+        // the person's HUDs (Hud/, OffscreenRenderer.Hud.cs): touched by part, face or a button read off their picture
+        Session.FindTouchSurface = Sojourn.Session.Hud.HudTouch.Touches(Session, view, view.FindTouchAsync);
+        Session.FindFaceSurface = Sojourn.Session.Hud.HudTouch.Faces(Session, view, view.FindFaceAsync);
+        HudButtons = new Sojourn.Session.Hud.HudButtons(Path.Combine(Options.BaseDir, "hud-buttons.json"), m => rlog.LogInformation("{Msg}", m));
+        Session.Api.Register(new Sojourn.Session.Hud.HudApi(Session, view, HudButtons));
         Session.Api.Register(new ViewApi(Session, view));
         view.Start();
         return view;
     }
+
+    /// <summary>Buttons read off the person's HUDs' pictures, kept per look (Hud/HudButtons.cs), with the renderer out of sight.</summary>
+    public Sojourn.Session.Hud.HudButtons? HudButtons { get; private set; }
 
     /// <summary>What describing needs (Offscreen/DescribeApi.cs, SojournDescribe): pictures aimed at a subject from the
     /// renderer out of sight, when there is one; textures, profile pictures and the facts without.</summary>
@@ -385,6 +404,7 @@ public sealed class SessionHost : IAsyncDisposable
                 Step("people", () => People?.Dispose());
                 Step("land", () => Land?.Dispose());
             }));
+        Release?.Stats?.Dispose();   // (its last report went with the logout)
         if (Bridge != null) await Bridge.DisposeAsync();
         Bridge = null;
     }

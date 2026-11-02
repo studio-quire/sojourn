@@ -111,6 +111,9 @@ public sealed class MapBoard : IDisposable
     /// picked on it let go.</summary>
     public void Show(bool on)
     {
+        // RLV's @showworldmap and @showminimap (docs/rlv.md)
+        if (on && _s.RlvActive && _s.RlvRefused(_isWorld ? _s.Rlv.Check("showworldmap", "the world map") : _s.Rlv.Check("showminimap", "the minimap")) != null)
+            on = false;
         if (on && !Shown)
         {
             _place = true;
@@ -180,7 +183,7 @@ public sealed class MapBoard : IDisposable
         _map.Want(w, s, e, n, people: _view.Mpp <= 8);
         bool worldUp = WorldUp?.Invoke() == true;
         string meKey = me is { } q ? $"{Math.Round(q.X / _view.Mpp)},{Math.Round(q.Y / _view.Mpp)},{MathF.Round(q.Heading * 12)}" : "";
-        string key = $"{_view}|{meKey}|{scale}|{layer}|{_look().GetHashCode()}|{Tracking?.Invoke()}|{worldUp}";
+        string key = $"{Lang.Code}|{_view}|{meKey}|{scale}|{layer}|{_look().GetHashCode()}|{Tracking?.Invoke()}|{worldUp}";
         long now = Environment.TickCount64;
         if (key == _drawnKey && !_dirty && now - _drawnAt < 2000) return;   // (every 2 s anyway: people move)
         if (Interlocked.CompareExchange(ref _drawing, 1, 0) != 0) return;

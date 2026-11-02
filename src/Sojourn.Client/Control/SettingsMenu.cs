@@ -87,6 +87,10 @@ public sealed class SettingsMenu : ISettingsMenu
     public Func<List<(MenuRow Row, Action<int> Act)>>? PeopleRows { get; set; }
     /// <summary>Safety and comfort (Control/SafetyWiring.cs): the vignette, keep me in place, aim, particles, antispam, release keys.</summary>
     public Func<List<(MenuRow Row, Action<int> Act)>>? SafetyRows { get; set; }
+    /// <summary>About Sojourn (Control/AboutMenu.cs): the last section, its words above its rows (by the open group: null
+    /// the section's own, or the report's page).</summary>
+    public Func<List<(MenuRow Row, Action<int> Act)>>? AboutRows { get; set; }
+    public Func<string?, IReadOnlyList<string>?>? AboutText { get; set; }
     /// <summary>The headset's menus' placements: while any is put somewhere, the view section has a key bringing them all back.</summary>
     public MenuPlaces? Places { get; set; }
     /// <summary>SojournSettings: rows for settings other parts register (the social layer, the AO, avatars, the map,
@@ -148,6 +152,18 @@ public sealed class SettingsMenu : ISettingsMenu
         Save();
         Interlocked.Increment(ref _version);
         _say($"{model} effort: {effort}");
+    }
+
+    /// <summary>The language of Sojourn's own words, from the menu or the agent API ("auto" or a code): at once, saved,
+    /// and the assistant told (it answers in the language it's spoken to, and in this one when that's unclear).</summary>
+    public void SetLanguage(string setting)
+    {
+        _s.UiLanguage = Lang.Find(setting)?.Code ?? "auto";
+        Lang.Use(_s.UiLanguage);
+        Save();
+        _assistant.PrefsChanged();
+        Interlocked.Increment(ref _version);
+        _say($"language: {_s.UiLanguage} ({Lang.Current.English})");
     }
 
     public void CycleAssistantModel() => SetAssistantModel(NextModel(_s.AssistantModel), announce: true);
@@ -257,6 +273,7 @@ public sealed class SettingsMenu : ISettingsMenu
         if (ReaderRows != null) sections.Add(("screen reader", ReaderRows()));   // the screen reader's (the tabs are crowded)
         if (SafetyRows != null) sections.Add(("safety", SafetyRows()));
         if (DrawDistance != null) sections.Add(("view", ViewRows()));
+        if (AboutRows != null) sections.Add(("about", AboutRows()));
         return sections;
     }
 
@@ -299,6 +316,11 @@ public sealed class SettingsMenu : ISettingsMenu
         var rows = new List<(MenuRow, Action<int>)>();
         // how big the headset's sheets are, this menu included (Assistant/UiSize.cs)
         if (_assistant.InHeadset) rows.Add((UiSize.Row(_s), i => UiSize.Set(_s, UiSize.Steps[i])));
+        // the language of the menus and Sojourn's own words: as Windows, then each by its own name
+        var languages = Lang.Settings;
+        int lang = Math.Max(0, Array.IndexOf(languages, _s.UiLanguage));
+        rows.Add((new MenuRow("language", lang == 0 ? "as Windows" : Lang.Find(languages[lang])!.Name, true),
+            d => SetLanguage(languages[(lang + (d < 0 ? -1 : 1) + languages.Length) % languages.Length])));
         // while any menu is put somewhere: every one back to following, in front (X held does the same)
         if (_assistant.InHeadset && Places is { AnyPut: true } places) rows.Add((new MenuRow("menu positions", "reset", false), _ => places.Reset()));
         rows.Add((new MenuRow("draw distance", $"{DrawDistance!():0} m", true), d => SetDrawDistance?.Invoke(Step(VrSettings.DrawDistances, DrawDistance!(), d))));
@@ -776,7 +798,8 @@ public sealed class SettingsMenu : ISettingsMenu
             foreach (var (name, section, rows, group) in pages)
                 for (int page = 0; page < 8; page++)
                 {
-                    var r = Panel.DrawMenu(look, tabs, section, rows, null, -1, 1.5f, 1, page, maxHeight, wide, group: group);
+                    var r = Panel.DrawMenu(look, tabs, section, rows, null, -1, 1.5f, 1, page, maxHeight, wide, group: group,
+                        text: tabs[section] == "about" ? AboutText?.Invoke(group) : null);
                     string file = $"menu-{name}-{page + 1}";
                     PanelShots.ShotOver(dir, file, r, null, 1.5f);
                     files.Add(file + ".png");
@@ -838,6 +861,7 @@ public sealed class SettingsMenu : ISettingsMenu
             // the tip, if it's for what's drawn now (a press can have moved the menu on since)
             (int, string)? tip = tipNow is { } t && t.View == view ? (t.Spot, t.Text) : null;
             var help = _help ? (_assistant.InHeadset ? HeadsetHelp : DesktopHelp) : null;
+            var text = tabs[section] == "about" ? AboutText?.Invoke(group) : null;
             var look = _panel.LookFor(InkSheet.Panel);
             int hover = _hover;
             long version = _version;
@@ -845,7 +869,7 @@ public sealed class SettingsMenu : ISettingsMenu
             {
                 try
                 {
-                    var r = Panel.DrawMenu(look, tabs, section, rows, help, hover, scale, version, page, maxHeight, wide, group: group, tip: tip);
+                    var r = Panel.DrawMenu(look, tabs, section, rows, help, hover, scale, version, page, maxHeight, wide, group: group, tip: tip, text: text);
                     _latest = new Drawn(new OverlayImage(r.Rgba, r.Width, r.Height, Interlocked.Increment(ref _imageVersion), r.Frost, r.Edge), r, view);
                 }
                 finally { _drawing = false; }

@@ -49,10 +49,10 @@ public sealed class WristLine
     /// <summary>Redraw if what it says changed. stats: the meter's numbers (null: none).</summary>
     public OverlayImage? Picture(Stats? stats, PanelLook look, float scale, bool layer, bool lit, float minW = 0)
     {
-        if (!On || Where.Now(_s) is not { } l) { Location = null; return null; }
+        if (!On || (_s.RlvActive && _s.Rlv.LocationHidden) || Where.Now(_s) is not { } l) { Location = null; return null; }   // (RLV's @showloc)
         Location = l;
         var st = Meter ? stats : null;
-        string key = $"{l.Key}|{st?.Key}|{scale}|{layer}|{lit}|{minW}|{look.GetHashCode()}";
+        string key = $"{Lang.Code}|{l.Key}|{st?.Key}|{scale}|{layer}|{lit}|{minW}|{look.GetHashCode()}";
         if (key != _key || _image == null)
         {
             _key = key;
