@@ -160,7 +160,8 @@ MAX_TABS = 25                      # Tab stops walked before calling the order e
 NAMED_TYPES = {"Edit", "Document", "Button", "CheckBox", "RadioButton", "ComboBox", "List", "Tree", "Tab", "TabItem",
                "Slider", "Spinner", "DataGrid", "Table", "Hyperlink", "MenuItem", "SplitButton"}
 # the contract's controls (AutomationId = WinForms Name) and the UIA types that would be right for them
-ROLES = {"chatInput": {"Edit"}, "chatHistory": {"Edit", "Document"}, "chatPeople": {"List", "DataGrid", "Table"}, "conversations": {"Tab"},
+ROLES = {"buildCommand": {"Edit"}, "buildRows": {"List", "DataGrid", "Table"}, "buildTab": {"ComboBox"}, "buildFaces": {"List", "DataGrid", "Table"},
+         "chatInput": {"Edit"}, "chatHistory": {"Edit", "Document"}, "chatPeople": {"List", "DataGrid", "Table"}, "conversations": {"Tab"},
          "convInput": {"Edit"}, "convHistory": {"Edit", "Document"}, "people": {"List", "DataGrid", "Table"},
          "objects": {"List", "DataGrid", "Table"}, "notices": {"List", "DataGrid", "Table"},
          "noticeText": {"Edit", "Document"}, "noticeReply": {"Edit"}, "noticeIgnore": {"Button"},
@@ -1355,6 +1356,7 @@ def session(run, procs):
         ("a HUD that's one picture of buttons", lambda: hud_picture(run, nonce)),
         ("gestures", lambda: gestures(run, nonce)),
         ("placing by words", lambda: placing(run, nonce)),
+        ("building with her own hands", lambda: building(run, nonce)),
         ("uploads", lambda: uploads(run, nonce)),
         ("two inventory panes", lambda: two_panes(run, nonce)),
         ("incognito", lambda: incognito(run, nonce)),
@@ -3783,6 +3785,164 @@ def parts(run):
             run.heard_by_visitor("(face 0, says its script)", lambda d: "chest lid touched" in d["msg"] and d["msg"].endswith("face 0"), n, 10, "face 0")
     finally:
         v(f"derez {CHEST}")
+
+
+def build_cmd(text):
+    """A command typed into the build editor's command box and sent with Enter, as the person would."""
+    if (focused() or {}).get("id") != "buildCommand":
+        key("ctrl+b")
+        wait_focus(lambda d: d["id"] == "buildCommand", 3)
+    u("set id=buildCommand |")
+    type_text(text, "id=buildCommand")
+    wait(lambda: value_of("id=buildCommand") == text, 3, 0.2)
+    key("enter", target="id=buildCommand")
+
+
+def building(run, nonce):
+    """Building with her own hands (M6; a 2009 editor design for blind builders): Control+B's editor, by typed commands
+    in the official editor's words and by its settings list's keys, on prims it makes. A box made 2 metres ahead set
+    down on the ground and named; its size, hollow and colour by commands, each said back once the region shows it; a
+    face picked by direction (from the prim's own volume, so with the renderer off too) and made full bright, all sides
+    then saying the one face apart; a tab's settings read by its name; Right and Left on Phantom in the settings list;
+    moved by words and said floating above the ground; turned and undone; temporary cancelled at the confirmation; a
+    cylinder made beside it, linked and unlinked; the faces list by direction; both deleted through the confirmation."""
+    box, leg = f"Access Build {nonce}", f"Access Leg {nonce}"
+
+    def one(name):
+        os_ = api("TesselObjects", "nearby", dist=20, query=name).get("objects") or []
+        return os_[0] if os_ else None
+
+    try:
+        build_leftovers()
+        back_to_chat()
+        m = mark()
+        key("ctrl+b")
+        f = wait_focus(lambda d: d["id"] == "buildCommand", 5)
+        run.check("Control+B: the build editor, the focus in its command box", f, label(f) if f else focus_label())
+        run.expect("it says it's the editor", ["Build"], m, 6)
+        tree_check(run, "the build editor", must=("buildCommand", "buildRows", "buildTab", "buildFaces"))
+        x, y, z, heading = tester_where()
+        m = mark()
+        build_cmd("new box 2 metres ahead")
+        if not run.expect("new box: made, set down, and it's the one being edited", ["Made a box", "2 metres ahead", "Editing it"], m, 25):
+            print(f"     (the command box holds {value_of('id=buildCommand')!r}; {focus_label()})")
+        m = mark()
+        build_cmd(f"name {box}")
+        run.expect("name: said back once the region has it", [f"Name: {box}"], m, 10)
+        o = wait(lambda: one(box), 6)
+        if not run.check("(it's out, by its new name)", o, ""):
+            return
+        h = math.radians(heading)
+        want = (x + 2 * math.sin(h), y + 2 * math.cos(h))
+        ground = api("TesselAgent", "ground", points=[o["pos"][:2]])["heights"][0]
+        run.check("2 metres ahead of her (within 0.3 m)", math.dist(o["pos"][:2], want) < 0.3,
+                  f"at {o['pos'][0]:.2f}, {o['pos'][1]:.2f}; wanted {want[0]:.2f}, {want[1]:.2f}")
+        run.check("its underside on the ground (not floating)", abs(o["pos"][2] - 0.25 - ground) < 0.1,
+                  f"bottom {o['pos'][2] - 0.25:.2f}, ground {ground:.2f}")
+        m = mark()
+        build_cmd("where")
+        run.expect("where: resting on the ground", ["resting on"], m, 8)
+        m = mark()
+        build_cmd("size 1 1 0.2")
+        run.expect("size 1 1 0.2: said back", ["Size: 1 by 1 by 0.2 metres"], m, 10)
+        sc = wait(lambda: (lambda o: o if o and abs(o["scale"][2] - 0.2) < 0.01 else None)(one(box)), 5)
+        run.check("its size in the region", sc, json.dumps(one(box) and one(box)["scale"]))
+        m = mark()
+        build_cmd("hollow 50")
+        run.expect("hollow 50: said back in percent", ["Hollow: 50 percent"], m, 10)
+        m = mark()
+        build_cmd("colour red")
+        run.expect("colour red: said once for every side", ["Colour: red (255, 0, 0), all sides"], m, 10)
+        m = mark()
+        build_cmd("face top")
+        run.expect("face top: picked by direction, with its number (no picture needed)", ["Face: the top, face 0"], m, 6)
+        m = mark()
+        build_cmd("fullbright on")
+        run.expect("fullbright on: on that face", ["Full bright: on"], m, 10)
+        m = mark()
+        build_cmd("all sides")
+        run.expect("all sides", ["All sides"], m, 5)
+        m = mark()
+        build_cmd("fullbright")
+        run.expect("all sides: the one face that differs said apart", ["Full bright: off on", "on on the top, face 0"], m, 6)
+        m = mark()
+        build_cmd("object")
+        run.expect("a tab's name reads its settings", ["Object:", "Where:", "Hollow: 50 percent", "Size Z: 0.2 metres"], m, 10)
+        # the settings list by keys: Tab from the command box, Right and Left on Phantom
+        key("tab")
+        if run.check("Tab: the settings list, named for the tab and the prim",
+                     wait_focus(lambda d: d["id"] == "buildRows" or d["type"] == "ListItem", 4)
+                     and any(d["name"] == f"Object settings of {box}" for d in find("id=buildRows")), focus_label()):
+            if run.check("(Phantom selected)", select_in("id=buildRows", "Phantom: off", 30), selected_text("id=buildRows")):
+                m = mark()
+                key("right")
+                run.expect("Right on Phantom turns it on, said back", ["Phantom: on"], m, 10)
+                run.check("the row says so", wait(lambda: "Phantom: on" in selected_text("id=buildRows"), 4), selected_text("id=buildRows"))
+                m = mark()
+                key("left")
+                run.expect("Left turns it off again", ["Phantom: off"], m, 10)
+        z0 = one(box)["pos"][2]
+        m = mark()
+        build_cmd("move by 50 cm up")
+        run.expect("move by 50 cm up: its position, then floating above the ground", ["Position:", "centimetres above"], m, 12)
+        up = wait(lambda: (lambda o: o["pos"][2] if o and o["pos"][2] - z0 > 0.4 else None)(one(box)), 5)
+        run.check("half a metre higher", up and abs(up - z0 - 0.5) < 0.05, f"from {z0:.2f} to {up}")
+        m = mark()
+        build_cmd("turn 90")
+        run.expect("turn 90: its rotation said in degrees", ["Rotation:", "90 degrees"], m, 12)
+        m = mark()
+        build_cmd("undo")
+        run.expect("undo takes the turn back", ["Undone"], m, 15)
+        m = mark()
+        build_cmd("rotation z")
+        run.expect("(its rotation back at 0)", ["Rotation Z: 0 degrees"], m, 6)
+        # temporary deletes it within a minute: the person's confirmation first; Escape there changes nothing
+        m = mark()
+        build_cmd("temporary on")
+        confirm_in_notices(run, "temporary", m, answer="esc")
+        run.expect("Escape at the confirmation: cancelled", ["Cancelled"], m, 8)
+        o = one(box)
+        run.check("still not temporary", o and "temp" not in json.dumps(o.get("flags", "")).lower(), json.dumps(o and o.get("flags")))
+        # a second prim, linked to the first and apart again
+        m = mark()
+        build_cmd("new cylinder a metre to my left")
+        run.expect("new cylinder: made beside her", ["Made a cylinder"], m, 25)
+        build_cmd(f"name {leg}")
+        wait(lambda: one(leg), 8)
+        m = mark()
+        build_cmd(f"link {box}")
+        run.expect("link NAME: linked, said with how many parts", ["Linked", "2 parts"], m, 15)
+        m = mark()
+        build_cmd("unlink")
+        run.expect("unlink: apart again", ["Unlinked all 2 parts"], m, 15)
+        m = mark()
+        build_cmd(f"edit {box}")
+        run.expect("edit NAME: that one", [f"Editing {box}"], m, 10)
+        faces = wait(lambda: (lambda ns: ns if any(n.startswith("The top, face 0") for n in ns) else None)(
+            [d["name"] for d in find("type=ListItem")]), 6)
+        run.check("its faces listed by direction ('The top, face 0', 'All sides')", faces and any(n.startswith("All sides") for n in faces),
+                  " | ".join((faces or [d["name"] for d in find("type=ListItem")])[:12]))
+        for name in (leg, box):
+            m = mark()
+            build_cmd(f"edit {name}")
+            run.expect(f"(editing {name})", [f"Editing {name}"], m, 10)
+            m = mark()
+            build_cmd("delete")
+            confirm_in_notices(run, "Trash", m)
+            run.expect(f"delete: {name} deleted after her confirmation", ["Deleted"], m, 10)
+        gone = wait(lambda: not one(box) and not one(leg), 8)
+        run.check("both gone from the world", gone, "still there")
+    finally:
+        build_leftovers()
+
+
+def build_leftovers():
+    """The build step's prims still out (this run's or an interrupted one's), taken back into the inventory: a delete by
+    the agent API would wait for the person's confirmation."""
+    for name in ("Access Build ", "Access Leg "):
+        for o in api("TesselObjects", "nearby", dist=40, query=name).get("objects", []):
+            if o.get("name", "").startswith(name):
+                api("TesselBuild", "take", 30, ids=[o["id"]])
 
 
 HUD_SCRIPT = 'default { touch_start(integer n) { llSay(0, "Access HUD pressed, link " + (string)llDetectedLinkNumber(0)); } }'

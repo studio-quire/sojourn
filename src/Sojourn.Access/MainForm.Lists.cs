@@ -87,6 +87,7 @@ public sealed partial class MainForm
         Item("W&here", t => Answer(t.Hud ? $"{t.Name} is worn {t.Text}." : $"{t.Name} is {_ops.Where(t.Pos, full: true)}.{(string.IsNullOrWhiteSpace(t.Text) ? "" : $" Its sign says: {t.Text}")}"));
         Item("&Parts", _ => _parts.Focus());
         Item("&Move...", t => _ = MoveByWordsAsync(t));
+        Item("&Edit (build)", t => EditThing(t.Id));
         // the person's own things back out of the world (the blind tester found no way to delete what she'd rezzed, 2026-11-01)
         Item("Ta&ke into your inventory", t => _ = TakeThingAsync(t));
         Item("De&lete", t => _ = DeleteThingAsync(t));
@@ -101,7 +102,7 @@ public sealed partial class MainForm
                 i.Visible = hud ? i.Text is "&Touch" or "&Describe" or "W&here" or "&Parts" or "&Refresh"
                     : mine || i.Text is not ("Ta&ke into your inventory" or "De&lete");
         };
-        KeysOn(_objectMenu, ("&Describe", "Control+D"), ("&Parts", "Tab"), ("De&lete", "Delete"), ("&Refresh", "F5"));
+        KeysOn(_objectMenu, ("&Describe", "Control+D"), ("&Parts", "Tab"), ("&Edit (build)", "Control+B"), ("De&lete", "Delete"), ("&Refresh", "F5"));
         MenuOn(_objects, _objectMenu);
         _objects.KeyDown += (_, e) => ListKey(_objects, _objectMenu, e, RefreshObjects);
         _objects.KeyDown += (_, e) =>

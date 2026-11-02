@@ -76,6 +76,7 @@ public sealed class Commands
                 case "text": await TextAsync(string.Join(" ", rest)); return true;
                 case "outfit": if (Outfit != null) await Outfit(); return true;
                 case "upload": if (Upload != null) await Upload(AfterVerb(line)); return true;
+                case "build": if (Build != null) await Build(AfterVerb(line)); return true;
                 case "voice": if (Voice != null) await Voice(string.Join(" ", rest)); return true;
                 case "imsound": if (ImSound != null) await ImSound(string.Join(" ", rest)); return true;
                 case "sendlog": SendLog?.Invoke(); return true;
@@ -135,6 +136,8 @@ public sealed class Commands
             "record a ride (C in walk mode): pictures every few seconds and what's around, kept on this PC; stop it (it stops by itself when you stand up or the ride stops); have the assistant tell it (Shift+C in walk mode), or tell more"),
         ("text", "//text | //text NAME", "floating text: what you're sitting on shows (Shift+V in walk mode), or the nearest thing with that name within 30 metres"),
         ("outfit", "//outfit", "what you're wearing, by name from the worn list: clothing, attachments and where, HUDs, body parts"),
+        ("build", "//build | //build COMMAND (hollow 50, colour red, new box, undo, help)",
+            "the build editor (Control+B), or one of its commands on what you're editing"),
         ("upload", "//upload | //upload PATH", "upload a picture, sound, animation or model: with no path, choose the file (Control+U)"),
         ("voice", "//voice | //voice answer | //voice decline", "who's in voice and speaking, your mic; or answer or decline a call ringing"),
         ("imsound", "//imsound NAME SOUND | //imsound NAME usual | //imsound NAME | //imsound",
@@ -982,6 +985,9 @@ public sealed class Commands
         int sp = t.IndexOfAny(new[] { ' ', '\t' });
         return sp < 0 ? "" : t[(sp + 1)..].Trim();
     }
+
+    /// <summary>`//build`'s words as typed, to the build editor (MainForm.Build.cs).</summary>
+    public Func<string, Task>? Build { get; set; }
 
     /// <summary>`//imsound`'s words (MainForm.ImSounds.cs).</summary>
     public Func<string, Task>? ImSound { get; set; }

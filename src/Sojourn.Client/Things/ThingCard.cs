@@ -19,14 +19,14 @@ namespace Sojourn.Client.Things;
 /// what applies to that thing (Session/Objects/ThingActions: sit, stand, touch, buy with its price, pay, take a copy,
 /// take, open, about this, ask the assistant), each through the same ops and confirmations as ever.
 ///
-/// Where: over the thing, not where the other menus sit (the user): in the headset its own quad layer on the line from
-/// the eyes to the point pressed, a little in front of it (no nearer than 0.45 m, no further than 1.4 m, at the panel's
-/// angular size), hanging from just above the point, turned to face you; then it stays put in the world, as a menu does
-/// (the user, 2026-10-31). Desktop: at the click, flat over the view.
+/// Where (the user, 2026-11-02, after it first came up over the thing and stayed there): as the other menus, its own
+/// quad layer that follows the head lazily, resting right of the panel where the view cards go (above building's
+/// readout when that's up), draggable by any part of it but its keys, back in its place when X is held; see
+/// <see cref="Placement"/>. Desktop: at the click, flat over the view.
 ///
 /// When it goes (the user: open it, forget about it, do something else, and it closes): its ×; a press anywhere off it;
 /// a view cut (a teleport); moving 2 m from where it opened unless you've come at least a metre closer to the thing; the
-/// thing gone from view; the pointer turned off. Turning the head alone leaves it. While a confirmation waits, or the
+/// thing gone from view. Turning the head carries it along, as a menu. While a confirmation waits, or the
 /// interface is hidden, it's out of sight and takes no ray.
 ///
 /// While it's up the thing is "that" for the assistant whenever the pointer is on nothing else (Pointer.Pinned), so
@@ -49,6 +49,7 @@ public sealed class ThingCard
         _assistant = assistant;
         _look = look;
         _log = log;
+        Placement = new PanelPlacement("thing card", (anchor, yaw, _, size) => PanelPlacement.RightOfPanel(anchor, yaw, size, Below?.Invoke()));
     }
 
     // --- what it's about ---------------------------------------------------------------------------------------------
@@ -122,7 +123,7 @@ public sealed class ThingCard
         _distAtOpen = me is { } m ? m.To(_point) : 0;
         (_page, _about, _amounts, _contents, _note, _working, _asking, _closeAt) = (CardPage.Main, false, null, null, null, false, false, 0);
         _list = _actions.For(f, tapTouches, hands: MoveByHand != null);
-        _placed = null;
+        _place = true;
         _armed = false;   // the trigger that opened it is still held
         Pin();
         Changed();
@@ -399,14 +400,18 @@ public sealed class ThingCard
 
     // --- the headset -----------------------------------------------------------------------------------------------
 
-    const float Near = 0.45f, Far = 1.4f;
-    bool _armed = true, _onCard;
+    /// <summary>Where it floats (the user, 2026-11-02: like the other menus): following the head lazily with the panel,
+    /// resting in the column right of it where the view cards go (above building's readout when that's there), or where
+    /// the person dragged it, kept between sessions as "thing card"; X held brings it back with the others. Placed
+    /// afresh each time it opens.</summary>
+    public readonly PanelPlacement Placement;
+
+    /// <summary>A sheet resting below it in the column (building's readout), its size; null: none.</summary>
+    public Func<Vector2?>? Below { get; set; }
+
+    bool _armed = true, _onCard, _place, _dragging;
     Vector3 _pos;
     Quaternion _rot = Quaternion.Identity;
-    /// <summary>Where it was put on opening, in the region's frame: its centre and the eyes it faced then. It stays there
-    /// as the person moves, as a menu does (the user, 2026-10-31: following the thing wasn't needed, since moving off
-    /// closes it anyway).</summary>
-    (ulong Region, Vector3 Pos, Vector3 Eyes)? _placed;
     Vector2 _size;
     (Vector3 From, Vector3 To)? _beam;
 
@@ -414,80 +419,69 @@ public sealed class ThingCard
     public bool RightOn { get; private set; }
 
     /// <summary>Each headset frame, with the boards' hands (the pointer's right, while it's on): places it, reads the ray
-    /// and trigger. pointer: the pointer is on. hidden: a confirmation waits or the interface is hidden. cut: the view
-    /// moved to a new spot this frame.</summary>
-    public void Headset(XrControllers boards, VrPilot pilot, Vector3 head, (Vector3 Pos, Quaternion Rot, Vector2 Size)? panel,
-        bool pointer, bool hidden, bool focused, bool cut)
+    /// and trigger (a key's press, or a drag by the rest of it). besidePanel: the panel's resting place while it shows and
+    /// follows. hidden: a confirmation waits or the interface is hidden. cut: the view moved to a new spot this frame.</summary>
+    public void Headset(XrControllers boards, VrPilot pilot, Vector3 head, Quaternion headRot, (Vector3 Pos, Quaternion Rot, Vector2 Size)? panel,
+        PanelPlacement.Leader? besidePanel, bool hidden, bool focused, bool cut, float dt)
     {
         RightOn = false;
         _beam = null;
         _shown = null;
         Tick(cut);
-        if (_facts is not { } f) return;
+        if (_facts is null) { EndCardDrag(cancel: true); return; }
         // the pointer going off leaves it up (the user: letting go of A closed it); its keys wait for the ray again
-        if (hidden || pilot.Region == 0) { _armed = false; _hover = -1; return; }
+        if (hidden || pilot.Region == 0) { _armed = false; _hover = -1; _onCard = false; EndCardDrag(cancel: true); return; }
         if (Picture(UiSize.Raster, Sojourn.Session.Assistant.GlassLight.Layers) is not { } d) return;
-
-        // placed once, on the line from the eyes to where it was pressed, a little in front of it, hanging from just above
-        // the point; then it stays there in the world
-        if (_placed is not { } pl0 || pl0.Region != pilot.Region || _size == default)
-        {
-            var anchor = pilot.RegionToRoom(_point.In(pilot.Region));
-            var to = anchor - head;
-            float dist = to.Length();
-            float at = Math.Clamp(dist - 0.15f, Near, Far);
-            var mpp = UiSize.MetresPerPx(at);
-            _size = d.Logical * mpp;
-            var p = head + (dist > 1e-3f ? to / dist : -Vector3.UnitZ) * at;
-            var rot = PanelPlacement.Facing(head, p);
-            var up = Vector3.Transform(Vector3.UnitY, rot);
-            var pos = p + up * (at * MathF.Tan(2 * MathF.PI / 180) - _size.Y / 2);
-            _placed = (pilot.Region, pilot.RoomToRegion(pos), pilot.RoomToRegion(head));
-        }
-        else if (d.Logical.X > 0 && MathF.Abs(_size.Y - _size.X * d.Logical.Y / d.Logical.X) > 1e-4f)
-        {
-            // grown or shrunk (about opened): its top edge stays where it is
-            var grown = new Vector2(_size.X, _size.X * d.Logical.Y / d.Logical.X);
-            var upNow = Vector3.Transform(Vector3.UnitY, _rot);
-            var moved = pilot.RoomToRegion(pilot.RegionToRoom(pl0.Pos) - upNow * ((grown.Y - _size.Y) / 2));
-            _placed = pl0 with { Pos = moved };
-            _size = grown;
-        }
-        var placed = _placed!.Value;
-        _pos = pilot.RegionToRoom(placed.Pos);
-        _rot = PanelPlacement.Facing(pilot.RegionToRoom(placed.Eyes), _pos);
+        if (_place) { Placement.Place(); _place = false; }
+        if (d.Logical.X > 0) _size = d.Logical * UiSize.MetresPerPx(PanelPlacement.Distance);
+        (_pos, _rot) = Placement.Update(head, headRot, _size, dt, frozen: _onCard || _down != null || _dragging, leader: besidePanel);
+        Vector3? from = boards.RightAimPos;
+        Vector3? dir = boards.RightAim is { } q ? Vector3.Transform(-Vector3.UnitZ, q) : null;
+        if (_dragging && from is { } df && dir is { } dd && Placement.Drag(df, dd)) (_pos, _rot) = Placement.Pose;
         _shown = (d.Image, _pos, _rot, _size.X);
 
         CardKey? key = null;
+        float hitT = 0;
         _onCard = false;
-        if (focused && boards.RightAim is { } q && boards.RightAimPos is { } from)
+        if (focused && from is { } o && dir is { } u)
         {
-            var dir = Vector3.Transform(-Vector3.UnitZ, q);
-            float panelT = panel is { } pl && PanelPlacement.Hit(from, dir, pl.Pos, pl.Rot, pl.Size, out var pt, out _) ? pt : float.MaxValue;
-            if (PanelPlacement.Hit(from, dir, _pos, _rot, _size, out float t, out var local) && t < panelT)
+            float panelT = panel is { } pl && PanelPlacement.Hit(o, u, pl.Pos, pl.Rot, pl.Size, out var pt, out _) ? pt : float.MaxValue;
+            if (PanelPlacement.Hit(o, u, _pos, _rot, _size, out float t, out var local) && (t < panelT || _dragging))
             {
                 _onCard = true;
+                hitT = t;
                 var px = new Vector2((local.X / _size.X + 0.5f) * d.Logical.X, (0.5f - local.Y / _size.Y) * d.Logical.Y);
-                key = KeyAt(d, px);
-                _beam = (from, from + dir * t);
+                if (!_dragging) key = KeyAt(d, px);
+                _beam = (o, o + u * t);
             }
         }
-        RightOn = _onCard || _down != null;
+        RightOn = _onCard || _down != null || _dragging;
         int hover = key is { } hk ? d.Keys.IndexOf(hk) : -1;
         if (hover != _hover) { _hover = hover; Changed(); }
-        if (!focused) { _armed = false; return; }
+        if (!focused) { _armed = false; EndCardDrag(cancel: true); return; }
         float trigger = boards.RightTrigger;
         if (trigger < 0.35f)
         {
-            if (_down != null) PressUp(key);
+            if (_dragging) EndCardDrag(cancel: false);
+            else if (_down != null) PressUp(key);
             _armed = true;
         }
         else if (trigger > 0.6f && _armed)
         {
             _armed = false;
-            // a press anywhere off it is the person doing something else: it goes (and the press does that thing)
-            if (_onCard) PressDown(key); else Why("a press elsewhere");
+            // a press anywhere off it is the person doing something else: it goes (and the press does that thing); on it
+            // off its keys, a drag to put it somewhere
+            if (!_onCard) Why("a press elsewhere");
+            else if (key != null) PressDown(key);
+            else if (from is { } go && dir is { } gu) { Placement.Grab(go, gu, hitT); _dragging = true; }
         }
+    }
+
+    void EndCardDrag(bool cancel)
+    {
+        if (!_dragging) return;
+        _dragging = false;
+        if (cancel) Placement.CancelGrab(); else Placement.Drop();
     }
 
     static CardKey? KeyAt(Drawn d, Vector2 px)
@@ -502,9 +496,11 @@ public sealed class ThingCard
     public (string Key, OverlayImage Image, Vector3 Pos, Quaternion Rot, float Width)? Layer() =>
         _shown is { } s ? ("thing card", s.Image, s.Pos, s.Rot, s.Width) : null;
 
-    /// <summary>The ray's cue while it's on the card: a beam to where it lands, and a small dot there.</summary>
+    /// <summary>The ray's cue while it's on the card: a beam to where it lands, and a small dot there; and its resting
+    /// place's outline while it's dragged.</summary>
     public OverlayScene? Decorate(OverlayScene? scene, Func<Vector3, Vector3> roomToRegion)
     {
+        if (Placement.Dragging) scene = (scene ?? new OverlayScene()) with { Beams = (scene?.Beams ?? []).Concat(Placement.Outline(roomToRegion)).ToArray() };
         if (_beam is not { } b || _shown == null) return scene;
         var a = roomToRegion(b.From);
         var c = roomToRegion(b.To);

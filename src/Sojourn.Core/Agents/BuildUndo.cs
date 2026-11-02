@@ -44,6 +44,9 @@ public sealed class BuildUndo
     internal sealed class Entry
     {
         public required string What;
+        /// <summary>A batch's one edit in its own words ("changed rot on Table"), said in place of the batch's when the
+        /// step turned out to touch a single prim.</summary>
+        public string? Single;
         public required Kind Kind;
         public DateTime At = DateTime.UtcNow;
         public readonly List<PrimState> Prims = new();
@@ -62,6 +65,7 @@ public sealed class BuildUndo
         return new Done(() =>
         {
             Open.Value = null;
+            if (e.Prims.Count == 1 && e.Single is { } one) e.What = one;
             if (e.Prims.Count > 0) Push(e);
         });
     }
@@ -80,6 +84,7 @@ public sealed class BuildUndo
             // the first time this prim is touched in the step is what it goes back to
             if (open.Prims.FirstOrDefault(x => x.Id == p.ID) is { } had) had.Parts.UnionWith(set);
             else open.Prims.Add(ps);
+            open.Single ??= what;
             return;
         }
         var e = new Entry { What = what, Kind = Kind.Edit };

@@ -328,6 +328,7 @@ direct.Holding = things.Prefetch;
 // building by hand: a tap selects one of the person's things, its gizmo moves and turns it (Building/HandBuild.cs, docs/building.md > By hand)
 var handBuild = new Sojourn.Client.Building.HandBuild(session, renderer, () => assistant.Panel.LookFor(InkSheet.Cards), vrSettingsPath, m => log.LogInformation("{Msg}", m));
 things.MoveByHand = handBuild.Choose;
+things.Below = () => handBuild.Resting;   // (a thing's card rests above building's readout, right of the panel)
 direct.Builds = handBuild.Claims;
 direct.BuildTap = handBuild.Tapped;
 direct.Elsewhere = handBuild.Elsewhere;
@@ -695,6 +696,8 @@ if (headset != null)
     if (media != null) menuPlaces.Add(media.View.Placement);
     menuPlaces.Add(map.World.Placement);
     menuPlaces.Add(map.Mini.Placement);
+    menuPlaces.Add(handBuild.Placement);
+    menuPlaces.Add(things.Placement);
     showing.Places = menuPlaces;
     settingsMenu.Places = menuPlaces;
     menuPlaces.PlacesChanged += settingsMenu.Changed;   // (its reset key shows while any is put somewhere)
@@ -713,7 +716,7 @@ bool panelInEyes = Environment.GetEnvironmentVariable("SOJOURN_PANEL_IN_EYES") =
 var selfTest = Environment.GetEnvironmentVariable("SOJOURN_SELF_TEST") is { Length: > 0 } stMode ? stMode : null;
 var vrScript = VrScript.FromEnvironment(m => log.LogInformation("{Msg}", m));
 if (vrScript != null) (vrScript.Hud, vrScript.Media, vrScript.Pilot) = (hudBoard, media, vrPilot);
-if (vrScript != null) vrScript.HandlePoint = handBuild.HandlePoint;   // (tools/handbuild.py aims at the gizmo's handles)
+if (vrScript != null) (vrScript.HandlePoint, vrScript.ReadoutPoint) = (handBuild.HandlePoint, handBuild.ReadoutPoint);   // (tools/handbuild.py aims at the gizmo's handles and the readout)
 if (vrScript != null) (vrScript.Keyboard, vrScript.Assistant, vrScript.PanelPlane) = (keyboard, assistant, () => vrPanelPlane);
 if (vrScript != null) vrScript.Hands = hands;
 if (vrScript != null) vrScript.Map = map;
@@ -1043,11 +1046,14 @@ void HeadsetFrame(XrSession hs, MirrorTarget target)
     // (a confirmation's own list shows above it, whatever else is hidden)
     reader.Headset(xf.Input, (xf.Eyes[0].Position + xf.Eyes[1].Position) * 0.5f, xf.Eyes[0].Orientation, vrPanelPlane,
         !reader.Reader.Lists(assistant.Panel.Read(p => p.Confirm)) && (assistant.Confirmations.Pending || uiHidden), hs.Focused, hs, (float)dt);
-    things.Headset(boardInput, vrPilot, (xf.Eyes[0].Position + xf.Eyes[1].Position) * 0.5f, vrPanelPlane, hands.On, assistant.Confirmations.Pending || uiHidden, hs.Focused, hs.ViewCut);
+    // (a thing's card and building's readout rest right of the panel, keeping their place by it while it shows)
+    var besidePanel = vrPanelWasVisible ? (vrMenuShown ? menuPlacement : vrPlacement).AsLeader : null;
+    things.Headset(boardInput, vrPilot, (xf.Eyes[0].Position + xf.Eyes[1].Position) * 0.5f, xf.Eyes[0].Orientation, vrPanelPlane, besidePanel,
+        assistant.Confirmations.Pending || uiHidden, hs.Focused, hs.ViewCut, (float)dt);
     // building by hand: its gizmo and the handle under the right ray (HeadsetAssistant weighs it against the menus), its readout
     handBuild.Aim(xf.Input, vrPilot, (xf.Eyes[0].Position + xf.Eyes[1].Position) * 0.5f, hands.On, uiBlocked);
     handBuild.Readout(boardInput, vrPilot, (xf.Eyes[0].Position + xf.Eyes[1].Position) * 0.5f,
-        xf.Eyes[0].Orientation, vrPanelPlane, assistant.Confirmations.Pending || uiHidden, hs.Focused);
+        xf.Eyes[0].Orientation, vrPanelPlane, besidePanel, assistant.Confirmations.Pending || uiHidden, hs.Focused, (float)dt);
     var overlay = HeadsetAssistant(hs, xf, (float)dt);
     // the world's own touch and sit: the pointer's hand, while it points out there freely (HeadsetAssistant decides)
     var worldInput = hands.World(xf.Input, vrWorldHand);

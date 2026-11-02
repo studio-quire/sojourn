@@ -745,7 +745,28 @@ public sealed class BuildOps
             },
         };
         c.Network.SendPacket(pkt, sim);
-        return await Await(pending, ct, "timed out waiting for the new object");
+        return await Await(pending, ct, "timed out waiting for the new object", ParcelClosed(c, sim, pos));
+    }
+
+    /// <summary>"no building on this parcel" when the parcel at pos is known and its settings shut me out, as the
+    /// viewer's allowAgentBuild reads them (owner, anyone, the parcel's group, a group owner's create power). Only a
+    /// hint: estate managers and other rights the region knows of can still build, so the request goes anyway.</summary>
+    string? ParcelClosed(GridClient c, Simulator sim, Vector3 pos)
+    {
+        Parcel? p = null;
+        try
+        {
+            int local = c.Parcels.GetParcelLocalID(sim, pos);
+            if (local != 0) sim.Parcels.TryGetValue(local, out p);
+        }
+        catch { }
+        if (p == null) return null;
+        var me = c.Self.AgentID;
+        if (p.OwnerID == UUID.Zero || p.OwnerID == me || (p.Flags & ParcelFlags.CreateObjects) != 0) return null;
+        var group = c.Self.ActiveGroup;
+        if ((p.Flags & ParcelFlags.CreateGroupObjects) != 0 && group != UUID.Zero && p.GroupID == group) return null;
+        if (_s.State.Groups.TryGetValue(p.OwnerID, out var owner) && (owner.Powers & GroupPowers.AllowRez) != 0) return null;
+        return $"no building on this parcel ({p.Name})";
     }
 
     public async Task<JsonObject> DuplicateAsync(JsonObject a, CancellationToken ct)
@@ -766,7 +787,7 @@ public sealed class BuildOps
             ObjectData = new[] { new ObjectDuplicatePacket.ObjectDataBlock { ObjectLocalID = root.LocalID } },
         };
         c.Network.SendPacket(pkt, sim);
-        return await Await(pending, ct, "timed out waiting for the copy");
+        return await Await(pending, ct, "timed out waiting for the copy", ParcelClosed(c, sim, pending.WantPos));
     }
 
     public async Task<JsonObject> RezAsync(JsonObject a, CancellationToken ct)
@@ -804,12 +825,13 @@ public sealed class BuildOps
             },
         };
         c.Network.SendPacket(pkt, sim);
-        if (copyable) return await Await(pending, ct, "timed out waiting for the rezzed object");
+        var closed = ParcelClosed(c, sim, pos);
+        if (copyable) return await Await(pending, ct, "timed out waiting for the rezzed object", closed);
         // a no-copy item leaves my inventory when rezzed; the region doesn't say so, so the local view must forget it
         // (else it's listed twice and a second rez of it waits for nothing)
         try
         {
-            var r = await Await(pending, ct, "timed out waiting for the rezzed object");
+            var r = await Await(pending, ct, "timed out waiting for the rezzed object", closed);
             c.Inventory.Store?.RemoveNodeFor(item);
             return r;
         }
@@ -826,23 +848,38 @@ public sealed class BuildOps
         }
     }
 
-    async Task<JsonObject> Await(PendingCreate pending, CancellationToken ct, string timeoutMsg)
+    /// <summary>Waits for the object a request makes. A refusal comes as an alert, not as an answer to the request: an
+    /// alert after the request ends the wait once the object has had a moment more to show (an unrelated alert then
+    /// costs nothing but that moment), so a refusal comes back in about a second rather than at the timeout.</summary>
+    async Task<JsonObject> Await(PendingCreate pending, CancellationToken ct, string timeoutMsg, string? closed = null)
     {
-        var since = DateTime.UtcNow.AddSeconds(-1);
-        try
+        var deadline = pending.Asked + TimeSpan.FromSeconds(15);
+        DateTime? alerted = null;
+        while (true)
         {
-            var prim = await pending.Done.Task.WaitAsync(TimeSpan.FromSeconds(15), ct);
+            var left = deadline - DateTime.UtcNow;
+            if (alerted is { } t) left = TimeSpan.FromTicks(Math.Min(left.Ticks, (t + AlertGrace - DateTime.UtcNow).Ticks));
+            if (left <= TimeSpan.Zero) break;
+            try { return Made(await pending.Done.Task.WaitAsync(TimeSpan.FromMilliseconds(Math.Min(left.TotalMilliseconds, 100)), ct)); }
+            catch (TimeoutException) { }
+            if (alerted == null && _s.State.LastAlert is { } a && a.T >= pending.Asked) alerted = a.T;
+        }
+        // claimed under this lock (OnCreateSelected, Sweep): gone from the list means it's been claimed and is finishing
+        bool waiting;
+        lock (_s.State.PendingCreates) waiting = _s.State.PendingCreates.Remove(pending);
+        if (!waiting) return Made(await pending.Done.Task.WaitAsync(TimeSpan.FromSeconds(30), ct));
+        var msg = _s.State.LastAlert is { } al && al.T >= pending.Asked ? $"the region said: {al.Message}" : timeoutMsg;
+        throw new LeapError(closed != null ? $"{closed}; {msg}" : msg);
+
+        JsonObject Made(Primitive prim)
+        {
             var r = new JsonObject { ["id"] = prim.ID.ToString(), ["local_id"] = prim.LocalID };
             if (pending.ModifyError is { } err) r["modify_error"] = $"made, but its settings weren't all applied: {err}";
             return r;
         }
-        catch (TimeoutException)
-        {
-            lock (_s.State.PendingCreates) _s.State.PendingCreates.Remove(pending);
-            // a refusal arrives as an alert, not as an answer to the request
-            throw new LeapError(_s.State.LastAlert is { } al && al.T >= since ? $"{timeoutMsg}; the region said: {al.Message}" : timeoutMsg);
-        }
     }
+
+    static readonly TimeSpan AlertGrace = TimeSpan.FromSeconds(1.5);
 
     /// <summary>A full update with create-selected for one of my roots: give it to the oldest waiting request.</summary>
     internal void OnCreateSelected(GridClient c, Primitive p)
@@ -871,7 +908,8 @@ public sealed class BuildOps
             var now = DateTime.UtcNow;
             foreach (var pc in _s.State.PendingCreates.ToArray())
             {
-                if (now - pc.Asked > TimeSpan.FromSeconds(15)) { _s.State.PendingCreates.Remove(pc); continue; }
+                // a lost waiter's (Await takes its own out at 15 s, so this never races it)
+                if (now - pc.Asked > TimeSpan.FromSeconds(25)) { _s.State.PendingCreates.Remove(pc); continue; }
                 if (now - pc.Asked < TimeSpan.FromSeconds(0.5)) continue;
                 var p = w.Prims.Values.FirstOrDefault(x => x.ParentID == 0 && Mine(x) && !x.IsAttachment
                     && !pc.Before.Contains(x.LocalID) && !_s.State.Claimed.Contains(x.LocalID)

@@ -9,21 +9,22 @@ public readonly record struct ReadoutHit(ReadoutKey Key, SKRect Rect);
 
 /// <summary>What building by hand's readout shows, as one snapshot (drawn off the main thread). Pos and Euler are the
 /// selected root's place in the region and its turn as the edit floater gives it (null: nothing selected). Snap: its
-/// words when on ("grid 0.5 m · turns 15°"). Line: what came of a move, what the handle under the ray does, or what to
-/// do here; Strong: the first two (in the text's ink rather than dim).</summary>
+/// words when on ("grid 0.5 m · turns 15°"). Line: what the key under the pointer does, what came of a move, what the
+/// handle under the ray does, or a hint; Strong: all but the hint (in the text's ink rather than dim).</summary>
 public sealed record ReadoutView(string Title, System.Numerics.Vector3? Pos, System.Numerics.Vector3? Euler, string? Snap, bool Fine, bool Local,
     bool CanUndo, string Line, bool Strong, int Hover);
 
 /// <summary>
 /// Draws building by hand's readout in the panel's look, as a small sheet of the client's own (Things/ThingCardPainter's
 /// manner): the thing's name with × (done) at the top right, where it is and how it's turned in the edit floater's
-/// numbers, a line saying what's going on, then four keys in two rows: snap and fine, local axes and undo. Each key a
-/// switch lit while on. Nothing in the accent.
+/// numbers, a line saying what's going on (or what the key under the pointer does), then four keys in two rows: snap
+/// and fine moves, the axes and undo, each saying how it stands and lit while on. Nothing in the accent.
 /// </summary>
 public static class HandBuildPainter
 {
     public const float W = 260;
     const float Pad = 14, RowH = 36, Gap = 6;
+    const int LineRows = 3;
 
     public static (byte[] Px, int Width, int Height, float Scale, List<ReadoutHit> Keys) Draw(ReadoutView v,
         Sojourn.Session.Assistant.PanelLook look, float scale, bool layer)
@@ -80,12 +81,12 @@ public static class HandBuildPainter
                 draw.Text(deg[i].ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "°", Pad + i * col + 12, y + 14, numF, k.Dim);
             y += 20;
         }
-        if (v.Line.Length > 0)
-        {
-            y += 2;
-            foreach (var l in Wrap(v.Line, dimF, W - 2 * Pad, 3)) { draw.Text(l, Pad, y + 14, dimF, v.Strong ? k.Text : k.Dim); y += 18; }
-        }
-        y += 8;
+        // the line: three lines' room whatever it says, so the keys under it stay put as it changes (pointing at a key
+        // puts what it does here)
+        y += 2;
+        float lineEnd = y + LineRows * 18;
+        foreach (var l in Wrap(v.Line, dimF, W - 2 * Pad, LineRows)) { draw.Text(l, Pad, y + 14, dimF, v.Strong ? k.Text : k.Dim); y += 18; }
+        y = lineEnd + 8;
 
         float cell = (W - 2 * (Pad - 6) - Gap) / 2;
         int n = 0;
@@ -93,22 +94,26 @@ public static class HandBuildPainter
         {
             float x = Pad - 6 + (n % 2) * (cell + Gap);
             var r = new SKRect(x, y, x + cell, y + RowH);
+            // (a long label in a long language gets a smaller size rather than running off the key)
+            float size = 15;
+            while (size > 10.5f && Measure(Font(k.Regular, size), label) > cell - 14) size -= 0.5f;
             if (enabled)
             {
-                draw.Key(r, label, lit(keys.Count), 15, on ? 1.6f : 1);
+                draw.Key(r, label, lit(keys.Count), size, on ? 1.6f : 1);
                 keys.Add(new ReadoutHit(key, r));
             }
             else
             {
                 draw.KeyFace(r, Math.Min(r.Height / 2, k.Look.Radius * 0.8f), false, 0.5f);
-                var f = Font(k.Regular, 15);
-                draw.Text(label, r.MidX - Measure(f, label) / 2, r.MidY + 15 * 0.36f, f, k.Faint);
+                var f = Font(k.Regular, size);
+                draw.Text(label, r.MidX - Measure(f, label) / 2, r.MidY + size * 0.36f, f, k.Faint);
             }
             if (++n % 2 == 0) y += RowH + Gap;
         }
-        Key(ReadoutKey.Snap, Lang.T("snap", "building"), v.Snap != null);
-        Key(ReadoutKey.Fine, Lang.T("fine", "building"), v.Fine);
-        Key(ReadoutKey.Local, Lang.T("local", "building"), v.Local);
+        // each says how it stands (the user, 2026-11-02: the bare words didn't explain themselves)
+        Key(ReadoutKey.Snap, v.Snap != null ? Lang.T("snap: on", "building") : Lang.T("snap: off", "building"), v.Snap != null);
+        Key(ReadoutKey.Fine, v.Fine ? Lang.T("fine moves: on", "building") : Lang.T("fine moves: off", "building"), v.Fine);
+        Key(ReadoutKey.Local, v.Local ? Lang.T("its own axes", "building") : Lang.T("world axes", "building"), v.Local);
         Key(ReadoutKey.Undo, Lang.T("undo", "building"), false, v.CanUndo);
         y -= Gap;
         if (v.Snap is { } s)

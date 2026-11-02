@@ -50,7 +50,8 @@ public sealed partial class MainForm
         PartItem("W&here", p => Answer(p.Hud ? $"{PartName(p)} is {(OnHud(p.Root) ? "on your HUD" : "part of something you're wearing")}." : $"{PartName(p)} is {_ops.Where(L(p.Pos), full: true)}."));
         PartItem("&Describe", p => _ = DescribeAsync(Of(p)));
         PartItem("&Faces", p => { _faces.Focus(); });
-        KeysOn(_partMenu, ("&Touch", "Enter"), ("&Describe", "Control+D"), ("&Faces", "Tab"));
+        PartItem("&Edit this part (build)", p => { if (!p.Hud) EditThing(p.Id); else Answer("Worn things are edited once they're out in the world."); });
+        KeysOn(_partMenu, ("&Touch", "Enter"), ("&Describe", "Control+D"), ("&Faces", "Tab"), ("&Edit this part (build)", "Control+B"));
         MenuOn(_parts, _partMenu);
         _parts.KeyDown += (_, e) => PartKey(e);
         _parts.SelectedIndexChanged += (_, _) => { if (_parts.FocusedItem?.Tag is Linkset.Part p && p.Id != _facesOf) _ = RefreshFacesAsync(p); };

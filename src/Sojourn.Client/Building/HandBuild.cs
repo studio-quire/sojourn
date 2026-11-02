@@ -58,8 +58,10 @@ public sealed class HandBuildSettings
 /// pair to drag it across that plane, a ring per axis to turn it about that axis, and an orb in the middle to drag it
 /// freely; the ray passes through the thing to reach them, and the one it's on lights up. Each drag is one move by
 /// hand (Session/Building/HandMove: the network, undo, what came of it), drawn where it's put until the region agrees.
-/// The readout, a small sheet near the person (not the thing), says what's selected, where it is and how it's turned,
-/// what the handle under the ray does, and carries the keys: snap, fine (moves a fifth as far), local axes, undo, and ×.
+/// The readout, a small sheet that follows the head as the other menus do (resting right of the panel, draggable, brought
+/// back by X held), says what's selected, where it is and how it's turned, what the handle under the ray does, and
+/// carries the keys: snap, fine moves (a fifth as far), the axes (the region's or its own), undo, and ×; the pointer on
+/// a key puts what it does in the readout's line.
 /// Main thread. Claude Opus 5.5, 2026-11-02.
 /// </summary>
 public sealed class HandBuild
@@ -129,7 +131,6 @@ public sealed class HandBuild
     long _settleUntil;
     ulong _region;
     long _version;
-    UUID _shownSel;              // the selection the readout was last placed for
     bool _wasOn, _pointerBefore;
     long _checkedAt;
 
@@ -154,7 +155,6 @@ public sealed class HandBuild
             (_note, _signs) = (null, null);
             _moves.Clear();
             _shown = null;
-            _placed = null;
             Changed();
             return;
         }
@@ -624,16 +624,41 @@ public sealed class HandBuild
             title = _s.Region?.PrimById(sel)?.Properties?.Name is { Length: > 0 } n ? n : _drag?.G.Name ?? Lang.T("an object");
             (pos, euler) = (p.Pos, HandMove.Euler(p.Rot));
         }
-        string? snap = Settings.Snap ? Lang.F("grid {0} m · turns {1}°", Settings.Grid.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture),
-            Settings.Angle.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)) : null;
-        // the line: what came of things, else what the handle under the ray does, else what to do here
-        string line = _note ?? (_hot is { } h ? Does(h)
-            : sel == UUID.Zero ? Lang.T("Tap one of your things to move it.")
-            : Lang.T("Drag an arrow to move it, a ring to turn it, the middle to move it freely."));
-        bool strong = _note != null || _hot != null;
+        string grid = Settings.Grid.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        string angle = Settings.Angle.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+        string? snap = Settings.Snap ? Lang.F("grid {0} m · turns {1}°", grid, angle) : null;
         var undoOn = sel != UUID.Zero && _moves.GetValueOrDefault(sel) > 0;
+        // the line (the user, 2026-11-02: the keys explained there): what the key under the pointer does, unless it was
+        // just pressed and has something to say; else what came of things, what the handle under the ray does, or a
+        // short hint
+        var keys = _latest?.Keys;
+        ReadoutKey? hovered = _hoverKey >= 0 && keys != null && _hoverKey < keys.Count ? keys[_hoverKey].Key : null;
+        string? about = hovered is { } hk && !(_pressedHere && _note != null) ? About(hk, Settings.Snap, _fine, Settings.Local, grid, angle) : null;
+        string line = about ?? _note ?? (_hot is { } h ? Does(h)
+            : sel == UUID.Zero ? Lang.T("Tap one of your things to move it.")
+            : Lang.T("Point at a key to see what it does."));
+        bool strong = about != null || _note != null || _hot != null;
         return new ReadoutView(title, pos, euler, snap, _fine, Settings.Local, undoOn, line, strong, _hoverKey);
     }
+
+    /// <summary>What a key of the readout does, as things stand (its line while the pointer is on it).</summary>
+    internal static string About(ReadoutKey key, bool snap, bool fine, bool local, string grid, string angle) => key switch
+    {
+        ReadoutKey.Done => Lang.T("Stop building by hand."),
+        ReadoutKey.Snap => snap
+            ? Lang.F("Snap is on: moves go in {0} m steps, turns in {1}° steps. Press to move freely.", grid, angle)
+            : Lang.F("Snap is off. Press to move in {0} m steps and turn in {1}° steps.", grid, angle),
+        ReadoutKey.Fine => fine
+            ? Lang.T("Fine moves are on: a drag goes a fifth as far. Press for full moves.")
+            : Lang.T("Press for fine moves: a drag goes a fifth as far, for small adjustments."),
+        ReadoutKey.Local => local
+            ? Lang.T("The handles turn with the thing, along its own axes. Press for the region's axes.")
+            : Lang.T("The handles follow the region's axes: x east, y north, z up. Press for the thing's own axes."),
+        ReadoutKey.Undo => Lang.T("Undo the last move or turn of this thing."),
+        _ => "",
+    };
+
+    bool _pressedHere;   // the key under the pointer was pressed (its note, if any, shows in place of what it does)
 
     Drawn? Picture(float scale, bool layer)
     {
@@ -662,6 +687,8 @@ public sealed class HandBuild
 
     void Press(ReadoutKey key)
     {
+        _pressedHere = true;
+        if (key != ReadoutKey.Undo) _note = null;
         switch (key)
         {
             case ReadoutKey.Done:
@@ -711,168 +738,119 @@ public sealed class HandBuild
         });
     }
 
-    // Where the readout sits (Claude Opus 5.5, 2026-11-02, after the user found one beside the thing confusing, as it
-    // stayed behind when the thing moved and then jumped to it, and it sat partly behind the panel): near the person, at
-    // 0.6 m, nearer than the panel ever is by default (1.1 m), so where they overlap it's in front. Placed from where the
-    // person is, toward the selected thing: just under its gizmo, clear of its reach (or beside it if that's too low, or
-    // if a panel pulled in close would cover it there); with nothing selected, low and to the left of the gaze. Placed
-    // when building comes on or another thing is selected, and again only when it's left well out of view or behind
-    // (turned 70 degrees from it, or 2 m walked); never during a drag, and it never follows the thing.
-    const float ReadoutAt = 0.6f, Aside = 20 * MathF.PI / 180, Below = 24 * MathF.PI / 180;
-    (ulong Region, Vector3 Pos, Vector3 Eyes)? _placed;
+    // Where the readout sits (the user, 2026-11-02, after two tries at placing it by the thing and then near the person:
+    // like every other menu): it follows the head lazily with the panel (PanelPlacement), resting in the column right of
+    // the panel and the settings menu where the view cards go, its bottom 30 degrees below the eyes; the trigger held on
+    // it (off its keys) and moved puts it somewhere, kept between sessions as "building readout"; X held brings it back
+    // with the other menus. It comes up afresh each time building comes on.
+    public readonly PanelPlacement Placement = new("building readout", (anchor, yaw, _, size) => PanelPlacement.RightOfPanel(anchor, yaw, size));
     Vector2 _size;
-    Quaternion _rot = Quaternion.Identity;
     (OverlayImage Image, Vector3 Pos, Quaternion Rot, float Width)? _shown;
     (Vector3 From, Vector3 To)? _beam;
     ReadoutKey? _down;
-    bool _keysArmed;
-    long _awaySince;
+    bool _keysArmed, _visible, _onSheet, _dragging;
 
     /// <summary>The right ray is on the readout this frame (the panel, boards and world behind wait).</summary>
     public bool RightOn { get; private set; }
 
+    /// <summary>Its size (metres) while it's up and resting in the column right of the panel: a thing's card rests above
+    /// it there.</summary>
+    public Vector2? Resting => _shown != null && Placement.FollowingYaw != null ? _size : null;
+
     /// <summary>Each headset frame, with the boards' hands (the pointer's right while it's on): places the readout,
-    /// reads the ray and trigger on its keys. hidden: a confirmation waits or the interface is hidden.</summary>
+    /// reads the ray and trigger on its keys, and drags it by its body. besidePanel: the panel's resting place while it
+    /// shows and follows. hidden: a confirmation waits or the interface is hidden.</summary>
     public void Readout(XrControllers boards, VrPilot pilot, Vector3 head, Quaternion headRot, (Vector3 Pos, Quaternion Rot, Vector2 Size)? panel,
-        bool hidden, bool focused)
+        PanelPlacement.Leader? besidePanel, bool hidden, bool focused, float dt)
     {
         RightOn = false;
         _beam = null;
         _shown = null;
         _desktop = false;
-        if (!_m.On || hidden || pilot.Region == 0) { _keysArmed = false; _hoverKey = -1; return; }
-        if (Picture(UiSize.Raster, Sojourn.Session.Assistant.GlassLight.Layers) is not { } d) return;
-        var gaze = Vector3.Transform(-Vector3.UnitZ, headRot);
-        bool place = _placed is not { } pl0 || pl0.Region != pilot.Region || _shownSel != _m.Selected;
-        if (!place && _drag == null && _placed is { } pl1)
+        if (!_m.On) _visible = false;
+        if (!_m.On || hidden || pilot.Region == 0)
         {
-            var at = pilot.RegionToRoom(pl1.Pos);
-            var to = at - head;
-            bool away = Vector3.Distance(pilot.RegionToRoom(pl1.Eyes), head) > 2
-                || to.Length() > 0.05f && Vector3.Dot(Vector3.Normalize(to), gaze) < MathF.Cos(70 * MathF.PI / 180);
-            long now = Environment.TickCount64;
-            if (!away) _awaySince = 0;
-            else if (_awaySince == 0) _awaySince = now;
-            else if (now - _awaySince > 1200) place = true;
+            _keysArmed = false;
+            _hoverKey = -1;
+            _onSheet = false;
+            EndSheetDrag(cancel: true);
+            return;
         }
-        if (place) Place(d, pilot, head, headRot, panel);
-        var placed = _placed!.Value;
-        if (d.Logical.X > 0) _size = d.Logical * UiSize.MetresPerPx(ReadoutAt);
-        // (kept by its top edge, which stays where it was put as it grows or shrinks)
-        var topEdge = pilot.RegionToRoom(placed.Pos);
-        _rot = PanelPlacement.Facing(pilot.RegionToRoom(placed.Eyes), topEdge);
-        var centre = topEdge - Vector3.Transform(Vector3.UnitY, _rot) * (_size.Y / 2);
-        _shown = (d.Image, centre, _rot, _size.X);
+        if (Picture(UiSize.Raster, Sojourn.Session.Assistant.GlassLight.Layers) is not { } d) return;
+        _roomToRegion ??= pilot.RoomToRegion;
+        if (!_visible) { Placement.Place(); _visible = true; }
+        if (d.Logical.X > 0) _size = d.Logical * UiSize.MetresPerPx(PanelPlacement.Distance);
+        var (pos, rot) = Placement.Update(head, headRot, _size, dt, frozen: _onSheet || _down != null || _dragging, leader: besidePanel);
+        Vector3? from = boards.RightAimPos;
+        Vector3? dir = boards.RightAim is { } q ? Vector3.Transform(-Vector3.UnitZ, q) : null;
+        if (_dragging && from is { } df && dir is { } dd && Placement.Drag(df, dd)) (pos, rot) = Placement.Pose;
+        _shown = (d.Image, pos, rot, _size.X);
         ReadoutHit? key = null;
-        bool on = false;
-        if (focused && _drag == null && boards.RightAim is { } q && boards.RightAimPos is { } from)
+        float hitT = 0;
+        _onSheet = false;
+        if (focused && _drag == null && from is { } o && dir is { } u)
         {
-            var dir = Vector3.Transform(-Vector3.UnitZ, q);
-            float panelT = panel is { } pl && PanelPlacement.Hit(from, dir, pl.Pos, pl.Rot, pl.Size, out var pt, out _) ? pt : float.MaxValue;
-            if (PanelPlacement.Hit(from, dir, centre, _rot, _size, out float t, out var local) && t < panelT)
+            float panelT = panel is { } pl && PanelPlacement.Hit(o, u, pl.Pos, pl.Rot, pl.Size, out var pt, out _) ? pt : float.MaxValue;
+            if (PanelPlacement.Hit(o, u, pos, rot, _size, out float t, out var local) && t < panelT || _dragging && PanelPlacement.Hit(o, u, pos, rot, _size, out t, out local))
             {
-                on = true;
+                _onSheet = true;
+                hitT = t;
                 var px = new Vector2((local.X / _size.X + 0.5f) * d.Logical.X, (0.5f - local.Y / _size.Y) * d.Logical.Y);
-                foreach (var k in d.Keys) if (k.Rect.Contains(px.X, px.Y)) key = k;
-                _beam = (from, from + dir * t);
+                if (!_dragging) foreach (var k in d.Keys) if (k.Rect.Contains(px.X, px.Y)) key = k;
+                _beam = (o, o + u * t);
             }
         }
-        RightOn = on || _down != null;
+        RightOn = _onSheet || _down != null || _dragging;
         int hover = key is { } hk ? d.Keys.IndexOf(hk) : -1;
-        if (hover != _hoverKey) { _hoverKey = hover; Changed(); }
-        if (!focused) { _keysArmed = false; return; }
+        if (hover != _hoverKey) { _hoverKey = hover; _pressedHere = false; Changed(); }
+        if (!focused) { _keysArmed = false; EndSheetDrag(cancel: true); return; }
         float trigger = boards.RightTrigger;
         if (trigger < 0.35f)
         {
-            if (_down is { } dk && key is { } k2 && k2.Key == dk) Press(dk);
+            if (_dragging) EndSheetDrag(cancel: false);
+            else if (_down is { } dk && key is { } k2 && k2.Key == dk) Press(dk);
             _down = null;
             _keysArmed = true;
         }
         else if (trigger > 0.6f && _keysArmed)
         {
             _keysArmed = false;
-            if (on) { _down = key?.Key; _armed = false; }
-        }
-    }
-
-    void Place(Drawn d, VrPilot pilot, Vector3 head, Quaternion headRot, (Vector3 Pos, Quaternion Rot, Vector2 Size)? panel)
-    {
-        _shownSel = _m.Selected;
-        _awaySince = 0;
-        _size = d.Logical * UiSize.MetresPerPx(ReadoutAt);
-        const float Deg = MathF.PI / 180;
-        // the way it's placed from: the selected thing's middle, else where they're looking
-        var look = Vector3.Transform(-Vector3.UnitZ, headRot);
-        float gizmo = 0;   // how far the gizmo reaches round the thing, seen from here (radians)
-        if (_m.Selected != UUID.Zero && _frame is { } gf)
-        {
-            var to = pilot.RegionToRoom(gf.Centre) - head;
-            if (to.LengthSquared() > 0.01f)
+            if (_onSheet)
             {
-                look = Vector3.Normalize(to);
-                gizmo = MathF.Atan2(GizmoFrame.HeadTo * gf.R, to.Length());
+                _armed = false;
+                // on a key it's that key's press; on the rest of the sheet, a drag to put it somewhere
+                if (key is { } pk) _down = pk.Key;
+                else if (from is { } go && dir is { } gu) { Placement.Grab(go, gu, hitT); _dragging = true; }
             }
         }
-        var flat = new Vector3(look.X, 0, look.Z);
-        flat = flat.LengthSquared() > 1e-4f ? Vector3.Normalize(flat) : -Vector3.UnitZ;
-        float pitch = MathF.Asin(Math.Clamp(look.Y, -1, 1));
-        float halfW = MathF.Atan2(_size.X / 2, ReadoutAt), halfH = MathF.Atan2(_size.Y / 2, ReadoutAt);
-        Vector3 At(float yaw, float pt)
-        {
-            // (yaw about the room's up, + to the left)
-            var dir = Vector3.Transform(flat, Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw));
-            pt = Math.Clamp(pt, -70 * Deg, 30 * Deg);
-            return head + (dir * MathF.Cos(pt) + Vector3.UnitY * MathF.Sin(pt)) * ReadoutAt;
-        }
-        bool Clear(Vector3 at) => !(panel is { } pl && Covers(pl, head, at));
-        // with a thing selected: just under its gizmo, else beside it to the left or right, a little low; with nothing
-        // selected, low and to the left of the gaze
-        var tries = new List<Vector3>();
-        if (gizmo > 0)
-        {
-            float under = pitch - gizmo - halfH - 3 * Deg, aside = gizmo + halfW + 3 * Deg;
-            if (under > -55 * Deg) tries.Add(At(0, under));
-            tries.Add(At(aside, pitch - 10 * Deg));
-            tries.Add(At(-aside, pitch - 10 * Deg));
-            tries.Add(At(0, under));
-        }
-        else
-        {
-            tries.Add(At(Aside, pitch - Below));
-            tries.Add(At(-Aside, pitch - Below));
-        }
-        var pos = tries.FirstOrDefault(Clear, tries[0]);
-
-        // (kept by its top edge: the middle given here is moved down by half its height when shown)
-        _placed = (pilot.Region, pilot.RoomToRegion(pos + Vector3.Transform(Vector3.UnitY, PanelPlacement.Facing(head, pos)) * (_size.Y / 2)), pilot.RoomToRegion(head));
     }
 
-    /// <summary>Whether the panel is nearer than a readout at this point and over it, seen from the head.</summary>
-    bool Covers((Vector3 Pos, Quaternion Rot, Vector2 Size) panel, Vector3 head, Vector3 at)
+    Func<Vector3, Vector3>? _roomToRegion;
+
+    /// <summary>A point on the readout as it was last shown, in the region: across and down from its top left (0-1).
+    /// For the simulator's test to aim at (VrScript's rreadout).</summary>
+    public Vector3? ReadoutPoint(float u, float v)
     {
-        var dir = at - head;
-        float dist = dir.Length();
-        if (dist < 1e-3f) return false;
-        dir /= dist;
-        var right = Vector3.Normalize(Vector3.Cross(dir, Vector3.UnitY));
-        var up = Vector3.Cross(right, dir);
-        // its corners and middle: any of them behind the panel
-        foreach (var (x, y) in new[] { (0f, 0f), (-0.5f, 0f), (0.5f, 0f), (-0.5f, -1f), (0.5f, -1f) })
-        {
-            var p = at + right * (x * _size.X) + up * (y * _size.Y);
-            var u = Vector3.Normalize(p - head);
-            if (PanelPlacement.Hit(head, u, panel.Pos, panel.Rot, panel.Size, out float t, out _) && t < (p - head).Length()) return true;
-        }
-        return false;
+        if (_shown is not { } s || _roomToRegion is not { } toRegion) return null;
+        var p = s.Pos + Vector3.Transform(new Vector3((u - 0.5f) * _size.X, (0.5f - v) * _size.Y, 0), s.Rot);
+        return toRegion(p);
+    }
+
+    void EndSheetDrag(bool cancel)
+    {
+        if (!_dragging) return;
+        _dragging = false;
+        if (cancel) Placement.CancelGrab(); else Placement.Drop();
     }
 
     /// <summary>Its layer this frame (Map/MapWiring.HeadsetScene puts it up with the boards').</summary>
     public (string Key, OverlayImage Image, Vector3 Pos, Quaternion Rot, float Width)? Layer() =>
         _shown is { } s ? ("building readout", s.Image, s.Pos, s.Rot, s.Width) : null;
 
-    /// <summary>The ray's cue while it's on the readout.</summary>
+    /// <summary>The ray's cue while it's on the readout, and its resting place's outline while it's dragged.</summary>
     public OverlayScene? Decorate(OverlayScene? scene, Func<Vector3, Vector3> roomToRegion)
     {
+        if (Placement.Dragging) scene = (scene ?? new OverlayScene()) with { Beams = (scene?.Beams ?? []).Concat(Placement.Outline(roomToRegion)).ToArray() };
         if (_beam is not { } b || _shown == null) return scene;
         var a = roomToRegion(b.From);
         var c = roomToRegion(b.To);
@@ -947,7 +925,7 @@ public sealed class HandBuild
     {
         if (!_m.On || _latest is not { } d) return;
         int hover = DeskKey(px) is { } k ? d.Keys.IndexOf(k) : -1;
-        if (hover != _hoverKey) { _hoverKey = hover; Changed(); }
+        if (hover != _hoverKey) { _hoverKey = hover; _pressedHere = false; Changed(); }
     }
 
     /// <summary>A left press on the readout: true if it was on it.</summary>

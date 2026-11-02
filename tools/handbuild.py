@@ -2,7 +2,8 @@
 Atelier with a tall box, a small cube and a seat on it (the seat another account's, by a console session as Sojourn
 Echo, so it isn't the tester's to move). Building by hand on through SojournHandBuild with nothing selected and the
 pointer on, then a scripted right hand: a tap on the box selects it; its x arrow, z arrow, x ring, z ring, xy square
-and middle orb each dragged; a tap on the cube selects that instead; a tap on the sky lets it go (the platform would
+and middle orb each dragged; a tap on the cube selects that instead; the readout's snap key under the ray, the readout
+dragged by its title (put somewhere) and X held (every menu back); a tap on the sky lets it go (the platform would
 be selected: it's the tester's own); a tap on the seat sits on it (a tap on what isn't yours is the world's, as ever). After each drag: where the region has the box and
 how it's turned, against what that drag means; at the end undo puts it back where it began. What it makes it takes
 again.
@@ -12,7 +13,9 @@ again.
 Runs as Sojourn Shaper (its own account, base dir local/handbuild, agent API :9783), and Sojourn Echo through the
 session probe (no GPU, :9764). One client on the GPU at a time: it refuses to start while another SojournVR is running.
 Shots (eyes and the mirror with the menus) go to local/handbuild/shots: hb-arrow.png (the pointer on the x arrow),
-hb-ring.png (dragging the x ring), hb-after.png (seated, nothing selected).
+hb-ring.png (dragging the x ring), hb-readout-key.png (the ray on the snap key: the line says what it does),
+hb-readout-moved.png and hb-readout-back.png (dragged up, then back after X held), hb-after.png (seated, nothing
+selected).
 """
 import json
 import math
@@ -64,6 +67,12 @@ def routine():
             steps.append("shot hb-ring")   # (while still held)
         steps += ["wait 0.3", "rhold 0", "wait 4"]
     steps += ["mark tap cube", f"rat {CUBE[0]} {CUBE[1]} {CUBE[2]}", "wait 1", "rtrig 1 0.15", "wait 2",
+              # the readout, a menu like the others: the pointer on its snap key (the line says what it does), a drag by
+              # its title to put it somewhere, and X held bringing it back
+              "mark readout key", "rreadout 0.27 0.70", "wait 1.5", "shot hb-readout-key",
+              "mark readout drag", "rreadout 0.45 0.07", "wait 1", "rhold 1", "wait 0.3", "rslide 0 0 0.25 1", "wait 0.3",
+              "rhold 0", "wait 1.5", "shot hb-readout-moved",
+              "mark menus back", "press x 1.2", "wait 2.5", "shot hb-readout-back",
               "mark tap sky", f"rat {SKY[0]} {SKY[1]} {SKY[2]}", "wait 1", "rtrig 1 0.15", "wait 2",
               "mark tap seat", f"rat {SEAT[0]} {SEAT[1]} {SEAT[2] + 0.2}", "wait 1", "rtrig 1 0.15", "wait 4", "shot hb-after",
               "mark done", "wait 60"]
@@ -339,6 +348,9 @@ def main():
 
         st = state_at("tap sky")
         check("a tap on the cube selects it instead", ((st or {}).get("selected") or {}).get("id") == cube, (st or {}).get("selected"))
+        log = console()
+        check("the readout dragged by its title is put somewhere", "building readout: put somewhere" in log)
+        check("X held brings the menus back", "menus: all following again" in log)
         st = state_at("tap seat")
         check("a tap on the sky lets it go", not (st or {}).get("selected"), (st or {}).get("selected"))
         st = state_at("done")

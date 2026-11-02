@@ -60,8 +60,9 @@ public sealed partial class MainForm : Form
         BuildNotices();
         BuildAssistant();
         BuildSettings();
+        BuildBuild();
         BuildMenu();
-        _areas.TabPages.AddRange(new[] { _chatPage, _conversationsPage, _peoplePage, _inventoryPage, _searchPage, _placesPage, _objectsPage, _noticesPage, _assistantPage, _settingsPage });
+        _areas.TabPages.AddRange(new[] { _chatPage, _conversationsPage, _peoplePage, _inventoryPage, _searchPage, _placesPage, _objectsPage, _noticesPage, _assistantPage, _settingsPage, _buildPage });
         _statusStrip.Items.Add(_where);
         Controls.Add(_areas);
         Controls.Add(_walkPad);
@@ -136,6 +137,7 @@ public sealed partial class MainForm : Form
         _cmd.Switch = words => (Task)Invoke(() => _walk.SwitchWordsAsync(words));
         _cmd.Outfit = () => (Task)Invoke(() => OutfitListAsync());
         _cmd.Upload = words => (Task)Invoke(() => UploadWordsAsync(words));
+        _cmd.Build = words => (Task)Invoke(() => BuildWordsAsync(words));
         _cmd.Music = MusicWords;
         _cmd.TeleportFallback = () => _set.WalkTeleportFallback;
         _cmd.CueText = cue => _set.WalkText(cue);
@@ -557,6 +559,16 @@ public sealed partial class MainForm : Form
         Control+M: move what's marked into the folder selected in the other pane
         Control+U: upload a picture, sound, animation or model (on a folder: into it)
 
+        Building
+        Control+B: the build editor, on what's selected in Objects, its parts or faces (else what you edited last)
+        In it, type a tab's name (general, object, features, texture, content), or a setting and its value: hollow 50, colour red
+        help in its command box: the build commands; new box makes one
+        Tab: its settings, then the tab, then the faces
+        On a setting, Enter changes it, Right and Left step it; F5 reads them again
+        undo takes back the last change
+        Escape: back where Control+B came from
+        //build and a command, from any input
+
         Objects
         Tab: the selected one's parts, then a part's faces
         Enter: touch
@@ -633,6 +645,7 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.N: NewestNotice(); return true;
             case Keys.Control | Keys.G: TeleportClipboard(); return true;
             case Keys.Control | Keys.U: UploadKey(); return true;
+            case Keys.Control | Keys.B: GoBuild(); return true;   // the official viewer's Build
             case Keys.Control | Keys.Shift | Keys.H: _ = HomeAsync(); return true;
             case Keys.F6: MuteAll(); return true;
             case Keys.Shift | Keys.F6: MuteSource(); return true;
@@ -657,6 +670,7 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.Shift | Keys.V: SayVoice(); return true;
             case Keys.Control | Keys.Shift | Keys.B: GoBuilders(); return true;
             case Keys.Escape when _walkPad.Focused: ToggleWalk(); return true;
+            case Keys.Escape when _areas.SelectedTab == _buildPage && _buildPage.ContainsFocus: BuildBack(); return true;
             // on the notices, back where Control+N came from (the list's Escape on a confirmation cancels it)
             case Keys.Escape when _areas.SelectedTab == _noticesPage && ActiveControl != _noticeReply
                                   && !(_notices.Focused && Selected()?.Confirm != null):
@@ -746,7 +760,8 @@ public sealed partial class MainForm : Form
         : page == _objectsPage ? _objects
         : page == _noticesPage ? _notices
         : page == _assistantPage ? _assistantInput
-        : page == _settingsPage ? _settingsList : null;
+        : page == _settingsPage ? _settingsList
+        : page == _buildPage ? _buildCommand : null;
 
     /// <summary>Ctrl+Tab: nearby chat and the conversations as one ring, as Radegast's tabs.</summary>
     void Ring(int dir)

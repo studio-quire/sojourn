@@ -186,6 +186,9 @@ public static class PanelShots
         Map.MapShots.Write(dir, bg, scale);
         Control.HeadsetKeyboard.WriteShots(dir, bg, scale);
         Private.PrivateShots.Write(dir, bg, scale);
+        Building.HandBuildShots.Write(dir, bg, scale,
+            () => { var p = new Panel { Fit = UiSize.Fit }; p.Update(States().First(x => x.Name == "4-answer").State); return p.Draw(UiSize.Raster); },
+            () => Panel.DrawMenu(new PanelLook(), Tabs, 0, MovingRows, null, -1, UiSize.Raster, 1, wide: UiSize.Wide, quit: true));
 
         // a page of them all, to look through in a browser
         var figures = Directory.GetFiles(dir, "*.png").Select(Path.GetFileName).Where(n => n != "view.png").Order()

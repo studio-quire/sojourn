@@ -115,15 +115,17 @@ C, F, R recentres, Tab the panel, F8 the assistant's model; F3, F6, F12 as on th
   Its own click action leads. Buy and pay go through the dispatcher's gate, so the confirmation waits for the
   person's press as everywhere (the card steps aside while it's up); the rest is the person's own hand, as the
   trigger's touch and sit are.
-  - Over the thing pressed, not where the menus sit (the user): its own quad layer on the line from the eyes to the
-    point, 0.15 m in front of it but between 0.45 and 1.4 m away, at the panel's angular size, hanging from just above
-    the point and facing you; placed once, then it stays put in the world as a menu does (the user, 2026-10-31: following
-    the thing wasn't needed, since moving off closes it).
+  - A menu like the others (the user, 2026-11-02; at first it came up over the thing and stayed there): its own quad
+    layer at the panel's distance and angular size, following the head lazily (`PanelPlacement`), resting right of the
+    panel where the view cards go (`PanelPlacement.RightOfPanel`), its bottom 30 degrees below the eyes; with building's
+    readout up it rests on top of that, rising above the eyes as far as it must. The trigger held on it (off its keys)
+    and moved puts it somewhere, kept between sessions ("thing card" in `menuPlaces`); X held brings it back. Placed
+    afresh each time it opens.
   - It goes when you forget it (the user's intended feel): its ×, a pull anywhere off it (which goes on to do that
     thing), a teleport or any view cut, moving 2 m from where it opened unless you've come at least a metre closer to
-    the thing, the thing leaving view. Turning the head leaves it, and so does the pointer going off (letting go of A
-    held for it: the user, 2026-10-31); its keys wait for the ray. Out of sight while a
-    confirmation waits or X hides the interface.
+    the thing, the thing leaving view. Turning the head carries it along; the pointer going off leaves it up (letting go
+    of A held for it: the user, 2026-10-31); its keys wait for the ray. Out of sight while a confirmation waits or X
+    hides the interface.
   - While it's up the thing is "that" for the assistant whenever the pointer is on nothing else (`Pointer.Pinned`),
     so the grip asks about it too. "ask the assistant" is the talk key on the card: held, push-to-talk; tapped, the
     mic stays open and the key reads "send" (the grip's tap sends too); the card goes once the request is sent.
@@ -145,23 +147,25 @@ C, F, R recentres, Tab the panel, F8 the assistant's model; F3, F6, F12 as on th
     **orb** in the middle moves it freely (at the distance it was grabbed, so walking or reaching carries it). The
     handle under the ray lights; let go and it's placed. The rest of the controller is as ever: the sticks walk and
     turn, the left trigger points to teleport, the grips talk.
-  - **The readout's keys** (with the ray and trigger): snap (moves to the grid and turns to steps; sizes in the menu),
-    fine (drags count a fifth), local (the handles follow the thing's own axes instead of the region's), undo (the
-    last step on the selected thing), × (building off). Its line says what the handle under the ray does, or what to
-    do next; nothing relies on a hint that goes away.
+  - **The readout's keys** (with the ray and trigger), each saying how it stands: "snap: on/off" (moves to the grid
+    and turns to steps; sizes in the menu), "fine moves: on/off" (drags count a fifth), "world axes" or "its own axes"
+    (the handles follow the region's axes or the thing's), undo (the last step on the selected thing), × (building
+    off). The pointer on a key puts what it does, as things stand, in the readout's line (the user's ask, 2026-11-02);
+    otherwise the line says what came of a move or what the handle under the ray does.
   - **Straighten or reset a rotation** by asking the assistant ("straighten it", "level it"): no button for it (the
     user's call).
   - The handles (`docs/building.md` > By hand): in the axis colours (x red, y green, z blue), drawn over the world at
     the thing's middle, sized to it within 5 to 12 degrees of view, rings' far halves dimmer, an arrow pointing at the
     eye faded and not takeable. No comfort aids, and the view never moves for them.
   - The readout (`HandBuildPainter.cs`, the panel's look like the thing's card): the thing's name, where it is and how
-    it's turned, the line, the keys. It sits near the person, not the thing (Claude Opus 5.5, 2026-11-02, after the
-    user found one beside the thing confusing and partly behind the panel): 0.6 m away, nearer than the panel's 1.1 m
-    so it's in front wherever they overlap, placed toward the selected thing just under the reach of its handles (beside
-    them if that's too low or a panel pulled close would cover it), or low and to the left of the gaze with nothing
-    selected. It's placed when building comes on or another thing is selected, and again only when it's been left well
-    out of view (70 degrees) or 2 m behind, never during a drag, and it never follows the thing. Hidden with the
-    interface (X), out of sight while a confirmation waits.
+    it's turned, the line, the keys. A menu like the others (the user, 2026-11-02, after a readout beside the thing and
+    then one placed near the person): at the panel's distance and angular size, following the head lazily
+    (`PanelPlacement`), resting right of the panel and the settings menu where the view cards go, its bottom 30 degrees
+    below the eyes, keeping its place by the panel while that shows; the trigger held on it (off its keys) and moved
+    puts it somewhere, kept between sessions ("building readout" in `menuPlaces`); X held brings it back. Placed afresh
+    each time building comes on. Hidden with the interface (X), out of sight while a confirmation waits.
+    `--panel-shots` draws its states (`hb-readout-*`, some in German) and both sheets where they rest beside the panel
+    and the settings menu at each menu size (`view-hb-*`), printing a check that they rest clear of them.
   - On the desktop the same handles under the mouse: a click on one of your things selects it, a left drag on a handle
     drags it, a click elsewhere lets it go and does what it does; the readout sits at the window's right; Esc ends it.
   - `python tools/handbuild.py` checks it in the simulator: a tap selecting, each handle dragged and measured, another

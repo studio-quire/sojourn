@@ -253,8 +253,10 @@ lenses. Two ways it sits, switched by hand with no words:
   with the person in view (its place in the column right of the panel; a card put somewhere leaves the column, dropped
   on the column's next place it goes back; the ray stops at view cards, and their bodies take a drag, not a touch
   through to the world), the reader (above the panel; by its title strip), the HUD board and a page up close (above
-  it; by their strips and margins), the keyboard (low and near; by its strip). The feed and the cards keep their places
-  beside the panel while it shows and follows (a `Leader`: its heading and anchor), and follow on their own otherwise;
+  it; by their strips and margins), the keyboard (low and near; by its strip), building by hand's readout and a thing's
+  card (since 2026-11-02, the user's ask: in the column right of the panel, the card on top of the readout when both
+  are up; by any part but their keys; `docs/vr.md`). The feed, the cards, the readout and a thing's card keep their
+  places beside the panel while it shows and follows (a `Leader`: its heading and anchor), and follow on their own otherwise;
   the reader, the boards and the keyboard follow on their own (they sit above or below the panel, so they never cover
   it whatever the heading). The boards are carried past 40 deg, the keyboard past 35 (wide sheets: looking at a HUD in
   a corner shouldn't move the board). Hidden by a confirmation or X, a sheet comes back placed afresh (the HUD board

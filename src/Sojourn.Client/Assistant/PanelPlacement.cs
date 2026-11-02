@@ -7,13 +7,13 @@ namespace Sojourn.Client.Assistant;
 /// Where one of the headset's menus floats, in the room's space (OpenXR: y up, -z forward). Every sheet the person sees
 /// has one (the user, 2026-10-28: every menu follows your head until you move it, as the panel did): the assistant's
 /// panel (with confirmations), the settings menu, the chat feed, each card shown with the person, the reader, the HUD
-/// board, the page board and the keyboard. Two ways each can sit:
+/// board, the page board, the keyboard, building by hand's readout and a thing's card. Two ways each can sit:
 /// - Following (the default): body-anchored with a lazy follow. Placed where you face when it appears, it holds still
 ///   while you look around it (reading, leaning in, glancing at someone doesn't move it); turn or step past that range
 ///   and it's carried along at the range's edge, continuously, rather than gliding back to the middle (user,
 ///   2026-10-26), so it sits wherever the head leaves it (<see cref="Leash"/>). Where it rests is its own
-///   (<see cref="RestPose"/>): the panel low in view, the feed left of it and the cards right of it, the reader and the
-///   boards above it, the keyboard low and near. A sheet beside the panel follows the panel's heading and anchor while
+///   (<see cref="RestPose"/>): the panel low in view, the feed left of it and the cards right of it (building's readout
+///   and a thing's card too, <see cref="RightOfPanel"/>), the reader and the boards above it, the keyboard low and near. A sheet beside the panel follows the panel's heading and anchor while
 ///   the panel shows and follows (<see cref="Leader"/>), so the two never drift into each other; on its own otherwise.
 /// - Put somewhere: the person drags it (trigger held on its body or strip) and lets go; it stays there in the room
 ///   (which the stick carries along, so it stays with you as you walk). It shows there whenever it comes up while that
@@ -324,6 +324,21 @@ public sealed class PanelPlacement
         float lowest = -42 * Deg + half, highest = 4 * Deg - half;
         pitch = lowest <= highest ? Math.Clamp(pitch, lowest, highest) : (lowest + highest) / 2;
         return Toward(anchor, yaw, pitch, Distance);
+    }
+
+    /// <summary>A sheet in the column right of the panel and the settings menu (as wide as it), where the view cards go:
+    /// edge to edge with them, its bottom 30 degrees below the eyes, growing upward to 2 above them. below: a sheet
+    /// already resting there (its size): this goes on top of it, rising above the eyes as far as it must (a thing's card
+    /// over building's readout: a next column out was past the edge of the left eye's view). Building by hand's readout
+    /// and a thing's card rest here.</summary>
+    public static (Vector3, Quaternion) RightOfPanel(Vector3 anchor, float yaw, Vector2 size, Vector2? below = null)
+    {
+        float left = UiSize.PanelHalfYaw + UiSize.BesideGapDeg * Deg;
+        float h = 2 * MathF.Atan(size.Y / 2 / Distance);
+        float pitch = below is { } b
+            ? -30 * Deg + 2 * MathF.Atan(b.Y / 2 / Distance) + 1.2f * Deg + h / 2
+            : MathF.Min(-30 * Deg + h / 2, 2 * Deg - h / 2);
+        return Toward(anchor, yaw - left - UiSize.HalfYaw(size.X), pitch, Distance);
     }
 
     /// <summary>A sheet <paramref name="distance"/> from the anchor at a heading and a pitch (its middle), turned to face

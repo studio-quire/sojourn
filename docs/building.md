@@ -62,7 +62,8 @@ maths, no drawing), `Client/Building/HandBuild.cs` (selection, the gizmo drawn, 
     by frame; seen nearly edge-on, the ray's travel along the ring's tangent at the grab, over the ring's radius. Far
     halves are drawn dimmer.
   - **the orb** in the middle: dragging it moves the thing freely, the point grabbed riding the ray at the distance it
-    was grabbed at (a lever from the hand: a hand reaching into the orb carries it one to one). It doesn't turn it.
+    was grabbed at (a lever from the hand: a hand reaching into the orb carries it one to one). It only moves, never
+    turns it (the user, 2026-11-02: keep it that way).
   - The ray passes through the thing to reach them. Under the ray a handle lights and thickens; during a drag the
     others fade and the dragged one shows its line (an arrow's axis right across, a ring's start and now). Their size
     follows the thing's (rings 15% outside its box) within 5 to 12 degrees of view, so they hug a small thing nearby and
@@ -95,11 +96,17 @@ maths, no drawing), `Client/Building/HandBuild.cs` (selection, the gizmo drawn, 
   still asks).
 - **The readout** (`HandBuildPainter.cs`, the panel's look like the thing's card): the selected thing's name and ×
   (done), where it is (the region's x, y, z, each axis letter in its colour) and how it's turned (the edit floater's
-  three angles), a line saying what's going on (what came of the last move or why a tap didn't select; else what the
-  handle under the ray does, "move along x", "turn around z"; else what to do: "Tap one of your things to move it.",
-  "Drag an arrow to move it, a ring to turn it, the middle to move it freely."), and four keys, each a switch lit while
-  on: snap (its grid and steps under the keys while on), fine, local, undo. Near the person, not the thing (where and
-  why: `docs/vr.md` > Building by hand).
+  three angles), a line, and four keys, each saying how it stands and lit while on: "snap: on/off" (its grid and steps
+  under the keys while on), "fine moves: on/off", "world axes" or "its own axes", undo. The line (three lines' room
+  always, so the keys never shift under the pointer) says what the key under the pointer does as things stand ("Snap
+  is off. Press to move in 0.5 m steps and turn in 15° steps.": the user's ask, 2026-11-02, the bare words having
+  explained nothing), else what came of the last move or why a tap didn't select, else what the handle under the ray
+  does ("move along x", "turn around z"), else "Point at a key to see what it does." ("Tap one of your things to move
+  it." with nothing selected). The handles need no line of their own: the user found them self-explanatory. A menu
+  like the others (where: `docs/vr.md` > Building by hand).
+- **The user's verdicts** (2026-11-02, in the headset): the handles feel good (arrows, squares, rings and orb: hitting
+  them and the directions they drag); the orb stays move-only; straightening a tilted box puts its rotation back to 0
+  and keeps where it is.
 - **Straightening is the assistant's** (the user, 2026-11-02: no reset button): SojournHandBuild `straighten {id,
   level?}` sets the rotation back to none (the edit floater's 0, 0, 0), or with level only takes out the tilt, keeping
   the heading; the whole linked set turns about its middle so it stays where it is; one undo step ("straightened NAME",
@@ -114,8 +121,8 @@ Checked in the XR Simulator on the local grid by `python tools/handbuild.py`: a 
 dragged and measured against what it means (an arrow 0.3 m along its axis and nowhere else, a ring by the angle the aim
 swept, the square across its plane, the orb on the ray at its distance), another thing selected by a tap, a tap on the
 sky letting go, someone else's thing not selected by a tap (and sat on, when its click action reaches the client:
-two runs in six on 2026-11-02, the last included), undo back to the start, straighten and level. What waits for the headset and Second Life: how the handles feel and
-whether they're easy to hit, the readout's place, a parcel that refuses a move, a no-mod or locked thing, a physical
+two runs in six on 2026-11-02, the last included), undo back to the start, straighten and level. What waits for the headset and Second Life: the readout and the card as
+menus (their places, dragging, X held), a parcel that refuses a move, a no-mod or locked thing, a physical
 one; the desktop's handles under the mouse are built but not yet run. On the local grid a click action set by one
 client often never reaches another's, and a colour change clears it even in its maker's (TesselBuild with colour and
 click action together, or a colour after it; seen 2026-11-02, not yet looked into: whether it's OpenSim's updates or

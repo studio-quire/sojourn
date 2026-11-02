@@ -29,6 +29,7 @@ public sealed partial class MainForm
     /// <summary>What Control+D means where the focus is.</summary>
     Subject SelectedSubject()
     {
+        if (BuildDescribeSubject() is { } building) return building;   // (in the build editor: what's being edited)
         if (PeopleFocused?.FocusedItem?.Tag is PersonOps.Person p) return Of(p);
         if (_friends.Focused && _friends.FocusedItem?.Tag is Friend f) return Of(f);
         if (_objects.Focused && _objects.FocusedItem?.Tag is PersonOps.Thing t) return Of(t);

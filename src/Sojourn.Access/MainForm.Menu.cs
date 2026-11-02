@@ -94,8 +94,13 @@ public sealed partial class MainForm
             _timesItem.Checked = _set.Timestamps;
         };
 
-        // the official viewer's Build menu, where its uploads are; building by hand (M6) comes here too
+        // the official viewer's Build menu: its editor (Control+B, as the viewer's Build) and its uploads
         Top("&Build",
+            Later("&Edit (the build editor)", "Control+B", GoBuild),
+            Later("&New box, 2 metres ahead", "new box", () => { GoBuild(); _ = BuildCommandAsync("new box"); }),
+            Item("Undo the last build chan&ge", "undo", () => _ = BuildCommandAsync("undo")),
+            Item("Build &commands", "help", () => Answer(BuildHelp)),
+            new ToolStripSeparator(),
             Later("&Upload a file...", "Control+U", UploadKey));
 
         Top("&Help",

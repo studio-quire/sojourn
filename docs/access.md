@@ -255,10 +255,25 @@ Upload a file, a folder's Upload a file here or `//upload`; what the file is and
 before anything is sent (a picture's pixels and resizing, a sound's length and channels, a model's triangles and size
 in metres), its name and folder asked, a model's scale, detail levels and physics offered at the official uploader's
 defaults; the fee worked out by the gate and confirmed by her own key in Notices; the result said and selected in the
-inventory; errors in words. Checked on the local grid only. Left: building with her own hands, land settings; for
-uploads, Second Life itself (real fees, an account's mesh upload rights, the large-texture price), a picture described
-by the assistant before it goes up, 2048-pixel pictures, levels of detail and physics from files, a blind tester's
-verdict.
+inventory; errors in words. Checked on the local grid only. Building with her own hands (2026-11-02, a first version
+for her and her partner to react to; `docs/access-app.md` > Building): the Build area on Control+B, one prim at a time:
+a command box taking the editor's tab names and settings as words ("object", "hollow 50", "face top", "fullbright on",
+"new box 2 metres ahead", "move by 20 cm up", "turn 90", "link Table", "undo"), a settings list per tab (Enter changes
+a row, Right and Left step it) and a faces list; General, Object, Features and Texture's rows as the official editor
+has them (permissions, sale, click action; physical, temporary, phantom, position, size, rotation in degrees,
+material, type and each type's shape rows; flexible path, light, physics shape; texture, colour by name or numbers,
+transparency, glow, full bright, shininess 0-3, bumpiness 0-17, mapping, repeats, offset, rotation), Content (listed,
+add, remove, copy out, scripts run or stopped); faces by direction from the prim's own volume, so without the renderer
+too; a value every face shares said once; each change said back once the region shows it; where it is with what it
+rests on and touches, by the collision model's rays and the prims' boxes, no picture; new prims set down on what's
+under the spot; linking and unlinking; undo in one history with the assistant's; permissions, a sale, temporary and
+deleting through her confirmation; `look` (Control+D there) has the assistant describe it. Checked on the local grid
+by the hidden-desktop step, with and without the renderer. Left: land settings; for building, Second Life itself, the
+rows left out (locked, force, projectors, reflection probes, PBR materials, repeats per metre, flip), a whole linked
+set or several prims at once, copying one prim's settings to another, the assistant saying what a change did by
+itself (now on asking), and every word and default judged by her and her partner; for uploads, Second Life itself
+(real fees, an account's mesh upload rights, the large-texture price), a picture described by the assistant before it
+goes up, 2048-pixel pictures, levels of detail and physics from files, a blind tester's verdict.
 
 **Later.** The headset without sight (accessibility.md A8, if a tester wants VR); a mac reader if anyone asks.
 
@@ -614,5 +629,21 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   described by the assistant before it goes up, or a sound played? Does Control+U sit well (the official viewer's old
   Upload Image key)? After an upload, should the focus go to the new item in the inventory, or stay where she was with
   it selected there (as now)?
+- For building (after the next build), to her and her partner (his 2009 design is what it's built on):
+  - Typing commands ("hollow 50", "face top") or browsing the settings list: which does she reach for, and is Control+B
+    a good key (the official viewer's Build)?
+  - Faces by direction from her ("the top, face 0", "the side facing you") change as she walks round; would she rather
+    the prim's own sides (his "plusx") or the compass ("the north side")? All three are taken when typed.
+  - Is "Full bright: off on 6 sides; on on the top, face 0" the right way to say what differs between faces?
+  - Numbered choices: shininess and bumpiness are numbered from 0 as scripts number them (his post numbered shininess 1
+    to 4): which?
+  - Is a change said back right ("Hollow: 50 percent."), and after a move or resize is "resting on the ground;
+    touching Wall" what she wants to hear, too much, or too little?
+  - Resizing keeps the middle where it was (as the sighted editor does), so a box resting on the floor floats or sinks
+    and is said so: should a resting prim keep its underside where it is instead?
+  - For her partner: what would he add or change first (the rows left out are locked, flexible force, projectors,
+    reflection probes, PBR materials, repeats per metre, flip), and should editing a whole linked object at once come
+    before anything else?
+  - Should the assistant say what a change did to the look by itself, or only on "look" (as now: each costs a call)?
 - Voice: does she use voice chat? Is F4 held a good talk key (Scroll Lock, Pause and F12 are choices), and would she
   want who starts speaking said by itself (off now; Ctrl+Shift+V says it on asking)?

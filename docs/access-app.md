@@ -144,6 +144,8 @@ Alt+number; Radegast's numbers where Radegast has the same area.
 
 Pressing the Alt+number of the area you're in reads it again ("Inventory: Red Dress, skirt, worn.").
 
+One more area has no Alt+number: Build, the build editor, on Control+B (Building, below).
+
 ### The menu bar
 
 `MainForm.Menu.cs`; Alt or F10, then the arrows, or Alt+W, V, R, B, H for a menu. It's there for finding out what exists,
@@ -153,8 +155,9 @@ items, incognito, region info, parcels in this region, status, what you're weari
 me, who's in voice, open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
 Friends among them, the second inventory pane, the newest notice, Conversations, the conversation ring, closing one),
 Read-out (mute all, mute this conversation, times, arrivals, Recent messages: the last nine as items with their
-Control+numbers, then back, forward, oldest, newest, mark, copy, copy the assistant's last answer), Build (upload a
-file, Control+U: the official viewer's Build menu, where building by hand is to come) and Help (keys, the slash
+Control+numbers, then back, forward, oldest, newest, mark, copy, copy the assistant's last answer), Build (the
+official viewer's Build menu: the build editor, Control+B; a new box; undo the last build change; the build
+commands; upload a file, Control+U) and Help (keys, the slash
 commands, send a log, message the builders, about).
 
 - Each item shows its key beside it (`ShortcutKeyDisplayString`, which UI Automation gives screen readers as the item's
@@ -297,6 +300,8 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   devices, below).
 - Ctrl+U: upload a picture, sound, animation or model, into the folder the focus is on in the inventory or the kind's
   own (Uploading, below).
+- Ctrl+B: the build editor, on what's selected in Objects, its parts or faces, else what was edited last (Building,
+  below); Escape there goes back.
 - Ctrl+Shift+T: times in the chat histories ("[14:05] Kestrel: hi", from the next line) or not.
 - F3: walk mode (below); F3 or Escape again leaves it. R there, or `//record` anywhere, records a route by walking it
   (Walk mode > Recording a route); C there, or `//ride`, records a ride to hear it told after (Walk mode > Recording a
@@ -511,6 +516,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//text` / `//text NAME` | floating text: what you're sitting on shows (walk mode's Shift+V), or the nearest thing within 30 m with that name in its name ("Ride Train shows: Throttle 30%, Speed 11 km/h.") |
 | `//outfit` | what you're wearing, by name (Ctrl+Shift+W) |
 | `//upload` / `//upload PATH` | upload a file: the Open window, or the file at PATH (Ctrl+U; Uploading, below) |
+| `//build` / `//build COMMAND` | the build editor (Ctrl+B), or one of its commands on what's being edited, from any input (Building, below) |
 | `//describe [here|me|NAME|person NAME|object NAME|more]` | describe (Describing, below) |
 | `//voice` / `answer` / `decline` | who's in voice; answer or decline a call |
 | `//imsound NAME SOUND` / `NAME usual` / `NAME` / (nothing) | a sound of its own for someone's IMs or a group's chat; back to the usual; theirs; the sounds and who has one (Earcons, above) |
@@ -992,6 +998,90 @@ here, or `//upload` (`//upload PATH` skips the Open window; the path as typed, q
 - Radegast uploads pictures (a console logging each step, the fee on its button) and meshes; Firestorm and the
   official viewer have Build > Upload, a floater per kind, the picture's shown, a sound's playable.
 
+### Building
+
+M6's second part (Claude Opus 5.5, 2026-11-02; `MainForm.Build.cs`, `BuildRows.cs`, `BuildShapes.cs`, over Core's
+`BuildOps`, `BuildUndo` and `ContentsOps`): building with her own hands, prim by prim, from a 2009
+design for a blind builder's editor (`docs/access.md` > M6): the official editor's tab names
+and settings as the words, so blind and sighted builders share them; one prim at a time; faces by direction; a value
+every face shares said once ("all sides"); metres and degrees, never quaternions; numbered choices; any setting
+reachable by typing, with a list to browse. A first version for her and her partner to react to.
+- **The Build area**: Control+B (the official viewer's Build key), Build > Edit, Objects' or a part's Applications key
+  > Edit, or `//build`; it has no Alt+number (all ten are taken). Control+B on an object in Objects edits its root; on a
+  part, that part; on a face, that part with that face picked; elsewhere, what was edited last. Arriving says what's
+  edited: "Editing Table top, part 2 of Table: a box 1.2 by 0.8 by 0.05 metres; 2 metres, one o'clock; resting on Leg."
+  (the first time also how to start). Escape goes back where Control+B came from. Tab order: the command box, the
+  settings list, Tab (the editor's five tabs, a list), the faces list. While the area shows, the prim is selected as the
+  viewer's edit tool selects it (so the region sends its properties as they change) and let go of when she leaves.
+- **Typed commands** (the command box; Enter runs, Control+Up and Down bring back earlier ones; `//build COMMAND` from
+  Say or any input): a tab's name (`general`, `object`, `features`, `texture`, `content`) reads that tab's settings and
+  shows it in the list; a setting's name and a value changes it (`name Table top`, `hollow 50`, `phantom on`, `material
+  glass`, `colour red`, `transparency 50`, `shininess 2`, `bump bricks`, `fullbright on`, `light on`, `light radius 5`,
+  `position z 25`, `rotation z 90`, `path cut 0 0.5`, `twist 0 90`, `next owner copy off`, `for sale 10 copy`); a
+  setting's name alone says it. Besides: `face top` (or bottom, front, far, left, right, inside, north, `plusx` as that design
+  wrote it, a number) and `all sides`; `new box` / `new cylinder 2 metres ahead` (any of box, cylinder, prism, sphere,
+  torus, tube, ring, cone, pyramid; where in Placing by words' terms, 2 metres ahead unless said); `move a metre to my
+  left`, `move by 20 cm up`, `move to 128 64 25`; `size 1 1 0.2` or `size 0.5`; `scale 2`; `turn 90` (left,
+  counter-clockwise from above, Second Life's positive), `turn 45 right`, `turn 90 around x`; `where` (and `what`);
+  `look` (the assistant describes it, as Control+D there does); `duplicate` (beside it to her right, or `duplicate by
+  2 m left`), `delete`, `take` (the whole object; a part's delete says to unlink first); `link NAME` (another of hers
+  joined to this one, this one's root staying the root), `unlink`; `edit NAME`, `part 2`, `root`, `next`, `previous`;
+  in Content `add NAME` (from her inventory), `remove NAME`, `copy NAME`; `undo [N]`, `redo`; `help`; `done`.
+- **The settings list**: the tab chosen, a row each, named "Object settings of Table" ("Texture settings of Table, the
+  top, face 0"). Rows read "Hollow: 50 percent", "Phantom: off", "Bumpiness: 5 bricks", "Colour: red (255, 0, 0), all
+  sides". Enter changes one: a switch turns, a choice opens its numbered list (the one it has checked), anything else
+  opens a box with the value as it is. Right and Left (Space and Shift+Space too) step it: a number by its step
+  (position 0.1 m, size 0.05 m, rotations 15 degrees, hollow 5%, transparency 10%, glow 0.05...), a choice to the next
+  or previous, a switch turned. F5 reads them again. A row that's still the same row keeps its place as its words
+  change, so a change never moves her. Content's rows are what's inside ("Door, script, running"): Enter on a script
+  runs or stops it, Delete removes an item (confirmed).
+- **What's on each tab**, the editor's own rows: General: name, description, creator, owner, group, share with group,
+  anyone can move and copy, for sale (a price and original, copy or contents, or no), next owner can modify, copy and
+  transfer, when left-clicked (0 touch ... 8 nothing). Object: where (below), physical, temporary, phantom, position X
+  (east), Y (north) and Z (height) in the region, size X, Y and Z, rotation X, Y and Z in degrees as the editor shows
+  them, material (0 stone ... 6 rubber), building block type (0 box ... 6 ring; a mesh or sculpt says so), and the
+  shape's rows as the editor shows them for that type: path cut, hollow (percent), twist (degrees), taper, top shear,
+  slice (straight paths), dimple (a sphere), hole size, profile cut, radius, revolutions and skew (torus, tube, ring).
+  On a straight path the editor's Path cut is the profile's begin and end and Slice the path's; the rows follow it, so
+  "path cut 0 0.5" does what the sighted editor's spinners would. Features: flexible path with softness, gravity,
+  drag, wind and tension; light with its colour, intensity, radius and falloff; physics shape type. Texture: the face
+  (or all sides), texture (plywood, blank, transparent, or a texture in her inventory by name; one not in her
+  inventory is said so), colour (a name or 0-255 numbers, said as the nearest of 29 names: "close to orange (240, 130,
+  20)"), transparency, glow, full bright, shininess (0-3), bumpiness (0-17, the editor's order, as scripts number
+  them), mapping, repeats, texture rotation, offset.
+- **Faces**: the faces list has "All sides (7 faces)" then each face by direction from where she is, with its number
+  ("The top, face 0", "The side facing you, face 2", Parts and faces' words). They come from the prim's own volume,
+  built on the processor as the viewer builds it (`VolumeBuilder`, the port of llvolume.cpp), so they're there with no
+  picture, on her PC too; a sculpted prim is one face; a mesh's directions need the renderer to have drawn it, and until
+  then its faces are listed by number. Picking one (Down, or Enter, which also opens Texture) makes Texture's rows that
+  face's; with all sides, a value every face shares is said once ("Colour: red, all sides") and one that differs apart
+  ("Full bright: off on 6 sides; on on the top, face 0"). A change on all sides goes to every face, each keeping its own
+  other half of a pair it doesn't share (repeats, offset).
+- **Said back**: a change goes through `TesselBuild modify` and is said once the region shows it ("Hollow: 50
+  percent."), or "Sent; Second Life hasn't shown the change yet." after 3 s. Moving, sizing, turning and changing the
+  type also say where it is now. A refusal is the region's or the op's words in her terms ("You can't edit Table: you
+  don't have modify rights on it"). Opening someone else's object reads it and says "It isn't yours to change."
+- **Where it is, what it rests on, what it touches** (`where`, the Object tab's first row, and after each placement):
+  "2 metres, twelve o'clock; resting on the ground; touching Wall". Under it: rays straight down from the middle of its
+  underside and near its corners in the collision model (its own shape below counts: a cup on a table's top), the
+  nearest within 3 cm "resting on", further "65 centimetres above"; below the terrain, "sunk 10 centimetres into the
+  ground". Against it: other prims' boxes (not avatars or worn things) within a centimetre, by the separating-axis test,
+  "touching" for plain boxes, else "close against ... (by the outer boxes)", since a sphere's or a hollow's box is
+  bigger than it; an overlap says how deep ("5 centimetres into Wall"). No picture needed.
+- **New prims** are half a metre each way, set down with their underside on what's under the spot (a floating
+  rez in Radegast, the smallest first test), named Object until she names them, and become
+  what's edited ("Made a box, half a metre each way, 2 metres ahead. Editing it."). Resizing keeps the middle where it
+  was, as the viewer's editor does, so a resized box can end up floating or sunk; it's said.
+- **Her confirmation** (Notices, as everywhere): permissions (share, anyone can, next owner), a sale, temporary on (the
+  region deletes it within a minute), delete, removing from Content, adding a new script, and an undo that deletes what
+  was made. Undo and redo are `SojournBuild undo` and `redo`, one history with the assistant's edits and the headset's
+  hand moves; each command or row change is one step, said by what it changed ("Undone: changed rotation on Table.").
+- **Not yet**: locked (no op), the flexible path's force, a light's projector and the newer reflection probe, PBR
+  materials (all are `TesselBuild modify` keys the assistant uses, so it's rows only), repeats per metre, the texture's
+  flip, align media; editing a whole linked set at once (as the viewer's Edit linked off: here it's always one prim,
+  the root moving the whole); editing something worn; copying settings from one prim to another; selecting several
+  prims. Second Life itself (only the local grid is checked), and the blind tester's and her partner's verdict.
+
 ### Incognito
 
 M1; `MainForm.Incognito.cs` over Session's Private/, the VR client's rules (`docs/assistant.md` > Incognito).
@@ -1249,7 +1339,8 @@ it).
   `MainForm.Describe.cs` (describing), `MainForm.Parts.cs` and `Linkset.cs` (parts and faces), `MainForm.Huds.cs` (HUD faces and buttons), `MainForm.Place.cs` and
   `PlaceWords.cs` (placing by words), `MainForm.Outfit.cs`, `MainForm.Incognito.cs`, `MainForm.Voice.cs`,
   `MainForm.Menu.cs` (the menu bar), `MainForm.Builders.cs` and `BuildersLine.cs` (the builders' tab and its relay
-  calls), `MainForm.Upload.cs` (uploading and its window), `MainForm.Gestures.cs`, `MainForm.FriendsOnline.cs` (friends online at login as
+  calls), `MainForm.Upload.cs` (uploading and its window), `MainForm.Build.cs`, `BuildRows.cs` and
+  `BuildShapes.cs` (the build editor; its settings' words; faces and contacts without a picture), `MainForm.Gestures.cs`, `MainForm.FriendsOnline.cs` (friends online at login as
   one line), `MainForm.Devices.cs` (sound devices), `MainForm.CutLines.cs` (lines cut by typing), `EditorForm.cs` (notecards and
   scripts), `Dialogs.cs` (a line asked for; a person picked), `Commands.cs` (the `//` set), `PersonOps.cs` (the
   person's own actions through the ops; where people and things are), `Bearings.cs` (clock faces, compass, SLurls),

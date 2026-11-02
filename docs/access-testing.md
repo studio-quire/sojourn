@@ -140,6 +140,14 @@ docstring with its checks in full):
   its place, Ctrl+Shift+G's menu with triggers as keys playing one, World > Gestures, the inventory's words, Play and
   Deactivate (its trigger then said as typed) and Activate again.
 - **placing by words**: a block rezzed "a metre to my left" (within 0.3 m, on the ground), then moved "by 50 cm up".
+- **building with her own hands** (about 2 minutes; the faces need no renderer, so it runs the same with
+  `ACCESS_NO_RENDER=1`): Control+B's editor and its controls named; by typed commands, a box made 2 metres ahead with
+  its underside on the ground, named, sized, hollowed and coloured, each said back once the region shows it; `face top`
+  by direction and full bright on it, then all sides saying that face apart; `object` reading its tab; Right and Left on
+  Phantom in the settings list; moved by 50 cm up (half a metre higher, said floating above the ground), turned 90 and
+  undone; temporary cancelled at its confirmation (still not temporary); a cylinder made a metre to her left, linked to
+  the box and unlinked; the faces list by direction; both deleted through the confirmation. Leftovers of an
+  interrupted run (named Access Build or Access Leg) are taken into the inventory first and last.
 - **uploads** (no renderer needed; the run sets `SOJOURN_TEST_UPLOAD_FEE` so pictures and models are confirmed at L$0,
   a sound's clips at L$10 each against a pretend balance of L$100, and animations cost L$500 on the free grid; its
   files made by `upload_fixtures`): a text file refused in words; a 40-second FLAC (made by ffmpeg where the PC has it)

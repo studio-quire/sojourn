@@ -27,7 +27,8 @@ Standard library only.
                                        object (on the command line; `-` from stdin, which survives any shell, PowerShell
                                        5.1's quote stripping included; `@file` from a UTF-8 file) or key=value ...
                                        (`call _command getAPIs` lists the pumps, `call _command getAPI api=PUMP` a
-                                       pump's ops; docs/client.md)
+                                       pump's ops; docs/client.md); it waits for the op's own answer (up to 300 s, or
+                                       --timeout S)
   python dev.py info | list | stop
 
 From the source tree only (the studio's sittings: the local grid, or Second Life with a stored password):
@@ -154,8 +155,19 @@ class Api:
             raw = resp.read()
         return json.loads(raw) if raw else None
 
-    def cmd(self, pump, op, wait_s=15, **args):   # wait_s: ops take a "wait" argument of their own
-        r = self.req("/cmd", {"pump": pump, "data": {"op": op, **args}, "timeout": wait_s}, timeout=wait_s + 140)
+    def cmd(self, pump, op, wait_s=15, **args):   # wait_s: how long the API gives the op (ops have waits of their own)
+        try:
+            r = self.req("/cmd", {"pump": pump, "data": {"op": op, **args}, "timeout": wait_s}, timeout=wait_s + 140)
+        except urllib.error.HTTPError as e:
+            if e.code == 504:
+                raise RuntimeError(f"{pump} {op} hadn't finished after {wait_s:g} s (it may still be running in the "
+                                   f"client; --timeout S gives it longer)") from e
+            body = e.read().decode("utf-8", "replace")
+            try:
+                body = json.loads(body).get("error") or body
+            except (ValueError, AttributeError):
+                pass
+            raise RuntimeError(f"HTTP {e.code}: {body}") from e
         if isinstance(r, dict) and r.get("error"):
             raise RuntimeError(str(r["error"]))
         return r
@@ -635,9 +647,15 @@ def main():
         ap.add_argument("pump")
         ap.add_argument("op")
         ap.add_argument("args", nargs="*")
-        ap.add_argument("--timeout", type=float, default=15)
+        ap.add_argument("--timeout", type=float)
         a = ap.parse_args(argv)
-        r = Api(a.port or default_port()).cmd(a.pump, a.op, a.timeout, **parse_args_kv(a.args))
+        args = parse_args_kv(a.args)
+        # an op's own waits (its "timeout" argument, or built in: up to 180 s) always end before this, so a slow op
+        # comes back with its own answer, never the API's "timeout"
+        if a.timeout is None:
+            own = max((v for k, v in args.items() if k in ("timeout", "wait") and isinstance(v, (int, float))), default=0)
+            a.timeout = max(300, own + 60)
+        r = Api(a.port or default_port()).cmd(a.pump, a.op, a.timeout, **args)
         return out(json.dumps(r, indent=1, ensure_ascii=False))
     if cmd == "launch":
         ap.add_argument("--desktop", action="store_true")

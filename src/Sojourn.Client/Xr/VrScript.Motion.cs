@@ -14,7 +14,9 @@ namespace Sojourn.Client.Xr;
 ///   lhold V / rhold V (the left or right trigger held at V through the steps after, until 0: a grab while hands move) |
 ///   rat X Y Z (the right hand aimed at that point of the region from wherever it is; stays, until raim) |
 ///   rhandle K A (the right hand aimed at building by hand's gizmo, K 0 the middle, 1 an arrow, 2 a plane square, 3 a
-///   ring, A its axis 0-2: where that handle is as the step begins; stays) | rslide DX DY DZ S (what the right hand aims at
+///   ring, A its axis 0-2: where that handle is as the step begins; stays) | rreadout U V (the right hand aimed at building's
+///   readout, U and V across and down it from its top left, 0-1, where it is as the step begins; stays) |
+///   rslide DX DY DZ S (what the right hand aims at
 ///   slides that far through the region over S seconds: a drag) |
 ///   lhand X Y Z S / rhand X Y Z S (the left or right controller's grip moved over S seconds to that offset from the
 ///   head in the room, held level with the fingers pointing ahead, the hand's aim with them unless aim/raim says; stays) |
@@ -36,6 +38,8 @@ public sealed partial class VrScript
 
     /// <summary>Building by hand's gizmo: a point of a handle in the region (kind 0-3, axis), for rhandle.</summary>
     public Func<int, int, Vector3?>? HandlePoint { get; set; }
+    /// <summary>Building by hand's readout: a point on it in the region (across, down from its top left), for rreadout.</summary>
+    public Func<float, float, Vector3?>? ReadoutPoint { get; set; }
 
     /// <summary>Puts the assistant's panel somewhere in the room (position, rotation), as a drag would.</summary>
     public Action<Vector3, Quaternion>? PinPanel { get; set; }
@@ -83,6 +87,12 @@ public sealed partial class VrScript
                 _rTarget = HandlePoint?.Invoke((int)s.Args[0], (int)s.Args[1]);
                 _motionRightAim = null;
                 _log($"motion: the handle is at {(_rTarget is { } ht ? ht.ToString() : "nowhere")}");
+            }
+            if (s.Op == "rreadout")
+            {
+                _rTarget = ReadoutPoint?.Invoke(s.Args[0], s.Args[1]);
+                _motionRightAim = null;
+                _log($"motion: the readout's point is at {(_rTarget is { } rp ? rp.ToString() : "nowhere")}");
             }
             if (s.Op == "rslide" && _rTarget is { } rt) (_rSlideFrom, _rSlideTo) = (rt, rt + new Vector3(s.Args[0], s.Args[1], s.Args[2]));
             if (s.Op == "lhold") _lhold = s.Args[0];
