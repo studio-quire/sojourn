@@ -85,8 +85,10 @@ public sealed class SettingsMenu : ISettingsMenu
     public Func<List<(MenuRow Row, Action<int> Act)>>? ReaderRows { get; set; }
     /// <summary>How the person shows to others (People/PeopleWiring.cs): Do Not Disturb, away, hover height, typing.</summary>
     public Func<List<(MenuRow Row, Action<int> Act)>>? PeopleRows { get; set; }
-    /// <summary>The foot of the "you" section (Login/LoginSheet.cs): log out, quit.</summary>
-    public Func<List<(MenuRow Row, Action<int> Act)>>? LeavingRows { get; set; }
+    /// <summary>The quit key in the top bar (Login/LoginSheet.cs), once confirmed: logged out, back where the person
+    /// started. QuitWhere: where that is, as the confirmation says it.</summary>
+    public Action? Quit { get; set; }
+    public Func<string>? QuitWhere { get; set; }
     /// <summary>Safety and comfort (Control/SafetyWiring.cs): the vignette, keep me in place, aim, particles, antispam, release keys.</summary>
     public Func<List<(MenuRow Row, Action<int> Act)>>? SafetyRows { get; set; }
     /// <summary>About Sojourn (Control/AboutMenu.cs): the last section, its words above its rows (by the open group: null
@@ -174,19 +176,20 @@ public sealed class SettingsMenu : ISettingsMenu
 
     public void Toggle()
     {
-        Open = !Open; _down = null; _forgetArmed = false; _restOn = Nowhere; _tip = null; Used(); Interlocked.Increment(ref _version);
+        Open = !Open; _down = null; _forgetArmed = false; _quitAsk = false; _restOn = Nowhere; _tip = null; Used(); Interlocked.Increment(ref _version);
         _say(Open ? "settings menu open" : "settings menu closed");
     }
 
-    /// <summary>Esc on the desktop with the menu open: its help put away, else out of a group to the page it was opened
-    /// from, else the menu closed.</summary>
+    /// <summary>Esc on the desktop with the menu open: the quit question cancelled, its help put away, else out of a
+    /// group to the page it was opened from, else the menu closed.</summary>
     public void Back()
     {
         if (!Open) return;
         Used();
         _restOn = Nowhere;
         _tip = null;
-        if (_help) _help = false;
+        if (_quitAsk) _quitAsk = false;
+        else if (_help) _help = false;
         else if (_group != null)
         {
             _say($"settings menu: back from {_group}");
@@ -532,7 +535,6 @@ public sealed class SettingsMenu : ISettingsMenu
             rows.Add(Fix("attachments", "refresh", "refreshAttachments"));
             rows.Add(Fix("animations", "resync", "resyncAnimations"));
         }
-        if (LeavingRows?.Invoke() is { } leaving) rows.AddRange(leaving);
         return rows;
     }
 
@@ -805,6 +807,7 @@ public sealed class SettingsMenu : ISettingsMenu
     };
 
     bool _help;
+    bool _quitAsk;   // the quit key's question is open in the rows' place
 
     int _page;          // the section's page of rows (UiSize: a smaller menu fits more a page)
     float _maxHeight, _wide = 1;
@@ -835,7 +838,7 @@ public sealed class SettingsMenu : ISettingsMenu
                 for (int page = 0; page < 8; page++)
                 {
                     var r = Panel.DrawMenu(look, tabs, section, rows, null, -1, 1.5f, 1, page, maxHeight, wide, group: group,
-                        text: SectionText(tabs[section], group));
+                        text: SectionText(tabs[section], group), quit: Quit != null);
                     string file = $"menu-{name}-{page + 1}";
                     PanelShots.ShotOver(dir, file, r, null, 1.5f);
                     files.Add(file + ".png");
@@ -898,6 +901,8 @@ public sealed class SettingsMenu : ISettingsMenu
             (int, string)? tip = tipNow is { } t && t.View == view ? (t.Spot, t.Text) : null;
             var help = _help ? (_assistant.InHeadset ? HeadsetHelp : DesktopHelp) : null;
             var text = SectionText(tabs[section], group);
+            string? quitAsk = _quitAsk && Quit != null ? QuitWhere?.Invoke() ?? "" : null;
+            bool quit = Quit != null;
             var look = _panel.LookFor(InkSheet.Panel);
             int hover = _hover;
             long version = _version;
@@ -905,7 +910,8 @@ public sealed class SettingsMenu : ISettingsMenu
             {
                 try
                 {
-                    var r = Panel.DrawMenu(look, tabs, section, rows, help, hover, scale, version, page, maxHeight, wide, group: group, tip: tip, text: text);
+                    var r = Panel.DrawMenu(look, tabs, section, rows, help, hover, scale, version, page, maxHeight, wide, group: group, tip: tip, text: text,
+                        quit: quit, quitAsk: quitAsk);
                     _latest = new Drawn(new OverlayImage(r.Rgba, r.Width, r.Height, Interlocked.Increment(ref _imageVersion), r.Frost, r.Edge), r, view);
                 }
                 finally { _drawing = false; }
@@ -954,12 +960,15 @@ public sealed class SettingsMenu : ISettingsMenu
         if (TipFor(on.Spot) is { } text) _tip = (on.View, on.Spot, text);
     }
 
-    /// <summary>What a row on screen (its index) or tab (-1 - its index) does.</summary>
+    internal const string QuitTip = "Logs you out and closes Sojourn, back where you started it.";
+
+    /// <summary>What a row on screen (its index), tab (-1 - its index) or the quit key does.</summary>
     string? TipFor(int spot)
     {
         var sections = Sections();
         if (sections.Count == 0) return null;
         int section = Math.Clamp(_section, 0, sections.Count - 1);
+        if (spot == Panel.QuitSpot) return QuitTip;
         if (spot < 0) return -1 - spot < sections.Count ? MenuGuide.Tip(sections[-1 - spot].Name, null, null) : null;
         var rows = RowsOf(sections[section].Rows);
         return spot < rows.Count ? MenuGuide.Tip(sections[section].Name, _group, rows[spot].Row) : null;
@@ -1006,6 +1015,10 @@ public sealed class SettingsMenu : ISettingsMenu
         if (k.Kind != d.Kind || k.Index != d.Index || l.Raster.Version != d.Version) return;
         if (k.Kind == KeyKind.Hide) { Close(); return; }
         if (k.Kind == KeyKind.Help) { _help = !_help; Interlocked.Increment(ref _version); return; }
+        // the quit key asks first, in the rows' place; its quit and cancel keys answer
+        if (k.Kind == KeyKind.Quit) { _quitAsk = !_quitAsk; Interlocked.Increment(ref _version); return; }
+        if (k.Kind == KeyKind.Cancel) { _quitAsk = false; Interlocked.Increment(ref _version); return; }
+        if (k.Kind == KeyKind.Confirm && _quitAsk) { _quitAsk = false; _say("settings menu: quit"); Close(); Quit?.Invoke(); return; }
         if (l.Raster.Version != _version) return;   // the menu changed under the press
         if (k.Kind == KeyKind.Tab)
         {
@@ -1014,6 +1027,7 @@ public sealed class SettingsMenu : ISettingsMenu
             _section = k.Index;
             _group = null;
             _forgetArmed = false;
+            _quitAsk = false;
             Interlocked.Increment(ref _version);
             return;
         }

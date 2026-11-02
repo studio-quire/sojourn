@@ -41,9 +41,10 @@ public sealed partial class WalkMode
         float speed = Speed(b), moveYaw = MoveYaw(b);
         float look = b.Sitting ? Math.Clamp(speed * 1.5f + 2f, 3f, 30f) : Math.Clamp(speed * 1.0f + 1.2f, 1.8f, 6f);
         Vector3 At(float z) => new(b.Pos.X, b.Pos.Y, z);
+        // ahead as far again as the warning looks: what's met there has its name asked before it's warned of
         var rays = new List<(Vector3, Vector3, float)>
         {
-            (At(knee), Dir(moveYaw), look), (At(chest), Dir(moveYaw), look),
+            (At(knee), Dir(moveYaw), look * 2), (At(chest), Dir(moveYaw), look * 2),
             (At(knee), Dir(b.Yaw + MathF.PI / 2), 6), (At(chest), Dir(b.Yaw + MathF.PI / 2), 6),
             (At(knee), Dir(b.Yaw - MathF.PI / 2), 6), (At(chest), Dir(b.Yaw - MathF.PI / 2), 6),
             (At(chest), -Vector3.UnitZ, 2.6f),
@@ -113,7 +114,9 @@ public sealed partial class WalkMode
 
         // a warning before a bump (walking or driving)
         string cue = b.Sitting ? "vehicle" : "walls";
-        if (moving && (On || b.Sitting) && Nearer(h[0], h[1]) is { } hit && hit.Distance <= look)
+        var front = Nearer(h[0], h[1]);
+        if (front is { Avatar: false } far && far.Distance > look) KnowName(far);
+        if (moving && (On || b.Sitting) && front is { } hit && hit.Distance <= look)
         {
             var key = (hit.Avatar ? "a" : "p") + RootId(hit);
             if (key != _warnedKey || now - _warnedAt > 4000)
@@ -218,16 +221,20 @@ public sealed partial class WalkMode
     /// one, else "Wall" for something upright and "Something" otherwise.</summary>
     string Obstacle(CollideHit h)
     {
+        if (h.Avatar) return S.Region is { } w && w.Avatars.TryGetValue(h.LocalId, out var av) && av.Name is { Length: > 0 } n ? n : "Someone";
+        return KnowName(h) ?? (MathF.Abs(h.Normal.Z) < 0.5f ? "Wall" : "Something");
+    }
+
+    /// <summary>The part's or its object's own name, else null, its names asked for (once).</summary>
+    string? KnowName(CollideHit h)
+    {
         var w = S.Region;
-        if (h.Avatar) return w != null && w.Avatars.TryGetValue(h.LocalId, out var av) && av.Name is { Length: > 0 } n ? n : "Someone";
-        if (w != null && w.Prims.TryGetValue(h.LocalId, out var p))
-        {
-            if (p.Properties?.Name is { } own && !Unnamed.Contains(own.Trim())) return own.Trim();
-            var root = S.Objects.RootOf(w, p);
-            if (root.Properties?.Name is { } rn && !Unnamed.Contains(rn.Trim())) return rn.Trim();
-            RequestNames(w, p, root);
-        }
-        return MathF.Abs(h.Normal.Z) < 0.5f ? "Wall" : "Something";
+        if (w == null || !w.Prims.TryGetValue(h.LocalId, out var p)) return null;
+        if (p.Properties?.Name is { } own && !Unnamed.Contains(own.Trim())) return own.Trim();
+        var root = S.Objects.RootOf(w, p);
+        if (root.Properties?.Name is { } rn && !Unnamed.Contains(rn.Trim())) return rn.Trim();
+        RequestNames(w, p, root);
+        return null;
     }
 
     readonly HashSet<uint> _askedNames = new();
@@ -237,6 +244,7 @@ public sealed partial class WalkMode
     void RequestNames(Sojourn.Core.World.RegionWorld w, Primitive part, Primitive root)
     {
         if (!_askedNames.Add(part.LocalID)) return;
+        Log($"names asked for {part.LocalID} (root {root.LocalID})");
         var both = part.LocalID == root.LocalID ? new[] { root } : new[] { part, root };
         _ = S.Objects.FetchAsync(w, both, TimeSpan.FromSeconds(3), CancellationToken.None);
     }

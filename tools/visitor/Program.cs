@@ -393,8 +393,17 @@ static class Program
 
     static async Task<string> Rez(string rest)
     {
-        if (NameAndPos(rest, null) is not var (name, pos)) return "ERR rez NAME X Y Z";
-        var prim = await RezBox(pos, new Vector3(0.5f));
+        // rez NAME X Y Z [size SX SY SZ]: a box, half a metre by default
+        var scale = new Vector3(0.5f);
+        if (rest.IndexOf(" size ", StringComparison.Ordinal) is var at and >= 0)
+        {
+            var s = rest[(at + 6)..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (s.Length != 3) return "ERR rez NAME X Y Z size SX SY SZ";
+            scale = new Vector3(float.Parse(s[0]), float.Parse(s[1]), float.Parse(s[2]));
+            rest = rest[..at];
+        }
+        if (NameAndPos(rest, null) is not var (name, pos)) return "ERR rez NAME X Y Z [size SX SY SZ]";
+        var prim = await RezBox(pos, scale);
         if (prim == null) return "ERR no object came back";
         var sim = client.Network.CurrentSim;
         Named(prim.LocalID, name);

@@ -197,6 +197,9 @@ docstring with its checks in full):
   teleporting; a club on one floor slab over the ground there (walls, a door, tables, a bar, a stage up three steps, a
   plinth with none): `//go person` from a sofa stands up and walks up the steps to the visitor on the stage, no
   teleport, and to the visitor on the plinth as near as the way goes; following the visitor and losing it.
+- **walk mode's warning, its name not in** (under a minute): Second Life sends no names with objects, and the tester's
+  own new prims bring theirs, so the visitor puts a Green Gate (`rez NAME X Y Z size SX SY SZ`) on open ground in
+  Atelier East and a held Up toward it must be warned of by name ("Green Gate, 4 metres."), not "Wall".
 - **distance walked**: three taps of Up said once as one stretch, close to how far the avatar went (the run prints the
   metres a tap), Down said "backward", M and Shift+M, nothing with `walk_distance` off.
 - **rail switches** (about 2 minutes, no renderer needed): on a flat stretch of Atelier East found first (and a ray along
@@ -227,7 +230,8 @@ docstring with its checks in full):
   its start line, a few `//go xyz` lines, one in the doorway and one at the turn, the teleport's SLurl, the note last;
   then from the start `//route` plays it, reading its notes, and ends within 3 m of where the recording did. The
   notecard is deleted after; the Routes folder stays.
-- **recording a ride** (about 2 minutes; pictures need the renderer, the telling `ACCESS_RELAY`): on a flat stretch of
+- **recording a ride** (about 2 minutes; pictures and the telling need `ACCESS_RELAY` and the renderer: the app takes
+  pictures only for an assistant to tell, so without the relay the step checks it says so and takes none): on a flat stretch of
   Atelier East, three named markers 4 m north of the way east and the visitor's throttle train (`kart ... throttle 10
   hover 1`, its floating text "Throttle N%" and "Speed N km/h"); seated, V and Shift+V say what it shows, `//text` too;
   C starts recording, three taps of Up open it to 3 m/s, V adds "It shows: Throttle 30%", H answers within a second

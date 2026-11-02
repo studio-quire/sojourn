@@ -221,17 +221,21 @@ Covered by ops: offers, folders, outfits, wearing, giving, the Library, notecard
 
 | Open | Where | Matters | Size | Notes |
 |---|---|---|---|---|
-| Building by hand, the rest: scaling by hand, linked parts one by one ("edit linked"), worn things, several things at once, carrying across a region border, a tool board (create, link, texture) | direct | L-M | M | B9; moving and turning is built (below) |
+| Building by hand, the rest: scaling by hand (LLManipScale's handles), linked parts one by one ("edit linked"), worn things, several things at once, carrying across a region border, a tool board (create, link, texture) | direct | L-M | M | B9; moving and turning is built (below) |
 | Script errors for the person (the viewer's script warnings window) | info | L-M | S | errors from the person's objects reach the assistant as LLChat debug events; the feed leaves them out |
 | Local textures and meshes (preview before upload) | op | L | M | long tail |
 | Backups, the rest: contents in backups, Collada export | op | L | S-M | `docs/building.md` |
 | The navmesh's view | info | L | S-M | long tail |
 | The glTF scene editor | op | L | M | waits on LL shipping it |
 
-Done (B9's first part, 2026-11-02, `docs/building.md` > By hand): **building by hand**: grabbing a thing by reaching or
-with the ray, moving and turning it with the hand, the stick pushing, pulling and turning it, fine moves, snapping to a
-grid and turn steps, the move sent as the viewer's move tool sends it, a readout, undo shared with the assistant's,
-and the assistant handing a thing over (the user's idea, 2026-10-30).
+Done (B9's first part, 2026-11-02, `docs/building.md` > By hand): **building by hand**, the second design after the
+user's first try: a tap selects one of your things, and the viewer's manipulators done for a ray (LLManipTranslate's
+arrows and plane squares, LLManipRotate's rings, in world or local axes, with its grid snapping), plus a middle handle
+to move it freely; fine moves, the move sent as the viewer's move tool sends it, a readout near the person, undo shared
+with the assistant's, and the assistant selecting a thing for them and straightening it (the user's idea, 2026-10-30).
+The desktop has the same handles under the mouse. Not done from the manipulators: the rotate tool's free trackball and
+camera-facing roll ring (the middle handle and the rings cover it), the snap guide's ruler and ticks, a reference grid
+(the viewer's third ruler mode), and the translate tool's snapping only while over its guide (here a switch).
 
 Done (B6, `docs/building.md`): **PBR materials** applied, overridden and taken off, read back; **normal and specular
 maps, alpha mode, projector parameters, object group and deeding** (media faces in B10); **SLua's compile targets**
@@ -409,8 +413,8 @@ For any further batch:
 - **M. Menus and settings** (after each wave, M; the look is the user's call): done 2026-10-29 (every row the batches
   asked for, groups with pages of their own, then the simple menus). `docs/assistant-panel.md`. A further batch
   needs its own M pass; the missing preferences go on the API for the assistant rather than as rows.
-- **B9. Direct controls** (L each): **building by hand built 2026-11-02** (moving and turning; `docs/building.md` > By
-  hand); left: the rest of building by hand (Building and scripting, above), an inventory board, an appearance board of
+- **B9. Direct controls** (L each): **building by hand built 2026-11-02** (moving and turning by the viewer's handles,
+  reworked the same day to the user's design; `docs/building.md` > By hand); left: the rest of building by hand (Building and scripting, above), an inventory board, an appearance board of
   sliders beside the mirror, the poser: each a viewer floater's job done the headset's way, the user's call.
 
 ### R: notes for the rest, from the viewers' source (2026-10-27)
@@ -435,7 +439,7 @@ For any further batch:
 In this order:
 1. **RLV/RLVa**, first: built 2026-11-01 (`docs/rlv.md`). Enforced at the dispatcher's gate for every caller, the assistant included. The way out
    overrides it and stays a sure exit (Claude Opus 5.5's suggestion, which the user let stand).
-2. **Direct building by hand** (B9's first part; in the first release, the user's call on 2026-11-02): the assistant finds a thing and places it roughly, the person
+2. **Direct building by hand** (B9's first part; in the first release, the user's call on 2026-11-02): after their first try (2026-11-02), selection by tapping, axis arrows and rotation rings for precise moves, a centre handle for free moves, and resetting rotation by asking the assistant; the assistant finds a thing and places it roughly, the person
    fine-tunes position and rotation by hand in VR (their idea, 2026-10-30). The rest of B9 (an inventory board,
    appearance sliders, the poser) later.
 3. **The Marketplace and buying L$**: the assistant may browse, search and fill a cart, and shows what it plans to buy

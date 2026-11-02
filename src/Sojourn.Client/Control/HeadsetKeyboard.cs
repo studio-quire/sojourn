@@ -18,7 +18,7 @@ namespace Sojourn.Client.Control;
 /// desktop's keyboard sends it, so nothing typed is logged or kept (a password typed into a page by the person goes
 /// only to the page; the assistant reads fields without their values), and the assistant's request shows on its panel
 /// as on the desktop. Never while a confirmation waits: hidden then, taking no ray, so no key press can land on one.
-/// Placed as a desk keyboard: in front, low (36 degrees below the eyes, 0.55 m away), tilted to face you, following the
+/// Placed as a desk keyboard: in front, low (36 degrees below the eyes, 0.65 m away), tilted to face you, following the
 /// head lazily as every menu does, or put somewhere by dragging its strip (<see cref="PanelPlacement"/>); either hand's
 /// ray and trigger type, a held ⌫ repeats; letters, shift (twice: caps), a symbols layer, ×.
 /// Written by Claude Opus 5.5, 2026-10-26.
@@ -26,7 +26,7 @@ namespace Sojourn.Client.Control;
 public sealed class HeadsetKeyboard
 {
     const float LogicalW = 720, Pad = 12, Strip = 46, KeyH = 56, Gap = 6, Raster = 1.4f;
-    const float Distance = 0.55f, DownDeg = 36, WidthM = 0.5f;
+    const float Distance = 0.65f, DownDeg = 36, WidthM = 0.59f;   // 0.55 m felt too close (the user, 2026-11-02): same angular size, further
     static readonly float Unit = (LogicalW - 2 * Pad - 10 * Gap) / 11;
     static readonly float LogicalH = Strip + 4 * KeyH + 3 * Gap + Pad;
     static readonly SKRect CloseKey = new(LogicalW - Pad - 34, 6, LogicalW - Pad, 40);

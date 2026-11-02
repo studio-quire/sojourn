@@ -791,7 +791,8 @@ class Brain:
             self.speaker.say(text)
 
     async def hands(self):
-        """Building by hand, while it's on or a move by hand was made in the last ten minutes: what they hold or last
+        """Building by hand, while it's on or a move by hand was made in the last ten minutes: what's selected (the
+        thing with the arrows and rings, "it" when they say "straighten it"), what they're dragging, what they last
         moved and whether the region kept it (SojournHandBuild; the VR client's only)."""
         if self.app == "access":
             return ""
@@ -804,10 +805,10 @@ class Brain:
         if not r.get("on") and not recent:
             return ""
         out = "; building by hand " + ("on" if r.get("on") else "off")
-        if (c := r.get("chosen")) and not r.get("holding"):
-            out += f" ({c.get('name')} id={c.get('id')} outlined for them)"
+        if (c := r.get("selected")) and not r.get("holding"):
+            out += f" ({c.get('name')} id={c.get('id')} selected, its handles on it)"
         if h := r.get("holding"):
-            out += f", holding {h.get('name')} id={h.get('id')}"
+            out += f", dragging {h.get('name')} id={h.get('id')} by a handle"
         if recent:
             to = last.get("to") or [0, 0, 0]
             out += (f"; they last moved {last.get('name')} id={last.get('id')} by hand {last.get('ago_s'):.0f} s ago, "

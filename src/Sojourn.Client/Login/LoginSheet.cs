@@ -59,11 +59,11 @@ public sealed partial class LoginSheet
     public bool FromScreen => _store != null;
     /// <summary>The login screen's choice, once the person pressed Log in.</summary>
     public LoginChoice? Chosen { get; set; }
-    /// <summary>The person asked to leave for the login screen (Back, Cancel, log out): the client restarts into it.</summary>
+    /// <summary>The person asked to leave for the login screen (Back, Cancel, quit): the client restarts into it.</summary>
     public bool Leaving { get; private set; }
     /// <summary>Esc or × on the form: quit.</summary>
     public bool Quit { get; private set; }
-    /// <summary>The account to show selected on the login screen after a restart (Back, log out).</summary>
+    /// <summary>The account to show selected on the login screen after a restart (Back, quit).</summary>
     public SavedAccount? Account => Chosen?.Account;
 
     /// <summary>Follows the session's login (after the form, or from the command line).</summary>
@@ -100,41 +100,22 @@ public sealed partial class LoginSheet
     /// <summary>Showing (the main loop's panel and the pointer give way to it).</summary>
     public bool Active => !Leaving && !Closing && Current != null;
 
-    /// <summary>Started by the launcher, which stays open while the client runs (LaunchState): logging out closes the
+    /// <summary>Started by the launcher, which stays open while the client runs (LaunchState): quitting closes the
     /// client and the person is back at the launcher.</summary>
     public bool LauncherRun { get; init; }
-    /// <summary>The client closes and nothing starts again here: logged out in a launcher run, or quit.</summary>
+    /// <summary>The client closes and nothing starts again here: quit in a launcher run or a command-line login.</summary>
     public bool Closing { get; private set; }
-    /// <summary>Quit in a launcher run: the launcher closes too (LaunchState's "quit").</summary>
-    public bool QuitAll { get; private set; }
 
-    long _logoutArmedAt = -10_000, _quitArmedAt = -10_000;
+    /// <summary>Where quitting leaves the person, as the menu's confirmation says it (English; the menu translates).</summary>
+    public string QuitWhere => LauncherRun ? "You'll be back at the launcher." : FromScreen ? "You'll be back at the login screen."
+        : "Sojourn closes.";
 
-    /// <summary>The settings menu's row (the "you" section, runs with a login screen or the launcher): log out, back to
-    /// where the person logged in, a second press within four seconds to be sure.</summary>
-    public (MenuRow Row, Action<int> Act) LogOutRow()
+    /// <summary>The menu's quit key, confirmed: logged out and back at the launcher, or at the login screen in a run
+    /// started there (the client restarts into it), or, after a command-line login, closed.</summary>
+    public void QuitSession()
     {
-        bool armed = Environment.TickCount64 - _logoutArmedAt < 4000;
-        return (new MenuRow("log out", armed ? "sure?" : "out", false), _ =>
-        {
-            if (Environment.TickCount64 - _logoutArmedAt >= 4000) { _logoutArmedAt = Environment.TickCount64; return; }
-            if (LauncherRun) { Closing = true; _log("login: the person logged out, back to the launcher"); }
-            else { Leaving = true; _log("login: the person logged out"); }
-        });
-    }
-
-    /// <summary>The "you" section's last row: Sojourn closes (the launcher too, in a launcher run), a second press
-    /// within four seconds to be sure.</summary>
-    public (MenuRow Row, Action<int> Act) QuitRow()
-    {
-        bool armed = Environment.TickCount64 - _quitArmedAt < 4000;
-        return (new MenuRow("quit Sojourn", armed ? "sure?" : "close", false), _ =>
-        {
-            if (Environment.TickCount64 - _quitArmedAt >= 4000) { _quitArmedAt = Environment.TickCount64; return; }
-            Closing = true;
-            QuitAll = LauncherRun;
-            _log(LauncherRun ? "the person quit Sojourn, the launcher too" : "the person quit Sojourn");
-        });
+        if (!LauncherRun && FromScreen) { Leaving = true; _log("login: the person quit, back to the login screen"); }
+        else { Closing = true; _log(LauncherRun ? "login: the person quit, back to the launcher" : "login: the person quit"); }
     }
 
     // ---- the form's state ----

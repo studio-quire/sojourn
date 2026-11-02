@@ -11,7 +11,6 @@ using Sojourn.Render.Realtime;
 using Sojourn.Render.World;
 using Sojourn.Session.Building;
 using Sojourn.Session.Control;
-using Matrix4x4 = System.Numerics.Matrix4x4;
 using Quaternion = System.Numerics.Quaternion;
 using Vector2 = System.Numerics.Vector2;
 using Vector3 = System.Numerics.Vector3;
@@ -20,12 +19,14 @@ using Vector4 = System.Numerics.Vector4;
 namespace Sojourn.Client.Building;
 
 /// <summary>The person's building-by-hand choices, kept in build-settings.json beside vr-settings.json. Snapping off
-/// by default (placing by hand is free); when on, the viewer's grid (0.5 m) and 15 degree turns.</summary>
+/// by default; when on, the viewer's grid (0.5 m) and 15 degree turns. The gizmo's axes the region's (world) by
+/// default, as the viewer's ruler mode.</summary>
 public sealed class HandBuildSettings
 {
     public bool Snap { get; set; }
     public float Grid { get; set; } = 0.5f;
     public float Angle { get; set; } = 15;
+    public bool Local { get; set; }
 
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.Never };
 
@@ -47,22 +48,19 @@ public sealed class HandBuildSettings
 }
 
 /// <summary>
-/// Building by hand in the headset and on the desktop (the user's idea, 2026-10-30: the assistant places a thing
-/// roughly, the person fine-tunes it by hand; docs/vr.md > Controls > Building by hand, docs/building.md > By hand).
-/// The rules, the network and undo are Session/Building/HandMove's; this is the hands, the drawing and the readout.
+/// Building by hand in the headset and on the desktop (docs/vr.md > Controls > Building by hand, docs/building.md > By
+/// hand). The second design (the user's, after their first try on 2026-11-02): everything through things you can see
+/// and drag in the world, the controller's buttons and sticks keeping their usual jobs.
 ///
-/// On (the thing's card's "move by hand", the assistant, menu > moving > build by hand): the pointer's ray is up as for
-/// a confirmation, and the triggers grab instead of touching. A hand inside something the person may move (its prims'
-/// boxes, 3 cm to spare) grabs it with that hand's trigger (the left too, before pointing to teleport); the right ray on
-/// one grabs it from afar. Held, it keeps the pose it had to the hand (the grip's for a reach, the ray's from afar):
-/// it moves and turns with the hand, walking carries it. The holding hand's stick pushes it away or pulls it in (up,
-/// down; faster the further it is) and turns it about the vertical (left, right; with snap, a step a flick); its A or X
-/// toggles fine, where the hand's moves and turns count a fifth from there. Let go of the trigger and it's placed.
-/// While held it's drawn where the hand has it (MotionSmoother.Held) until the region confirms it or 4 s pass.
-///
-/// What's grabbable under the hand or ray gets a faint box, what's held or chosen a brighter one; the readout (a small
-/// sheet beside the thing, placed when it changes, then staying put in the world as the card does) gives where it is,
-/// how it's turned, what came of the move, and snap, fine, undo and × (done). Main thread. Claude Opus 5.5, 2026-11-02.
+/// While it's on, a tap of the pointer on a thing the person may move selects it (a still hold still brings up its
+/// card); a tap anywhere else lets it go and does what that tap always does. The pointer turned off lets it go too.
+/// The selected thing carries the gizmo (Gizmo.cs): an arrow per axis to drag it along that axis only, a square per
+/// pair to drag it across that plane, a ring per axis to turn it about that axis, and an orb in the middle to drag it
+/// freely; the ray passes through the thing to reach them, and the one it's on lights up. Each drag is one move by
+/// hand (Session/Building/HandMove: the network, undo, what came of it), drawn where it's put until the region agrees.
+/// The readout, a small sheet near the person (not the thing), says what's selected, where it is and how it's turned,
+/// what the handle under the ray does, and carries the keys: snap, fine (moves a fifth as far), local axes, undo, and ×.
+/// Main thread. Claude Opus 5.5, 2026-11-02.
 /// </summary>
 public sealed class HandBuild
 {
@@ -75,9 +73,8 @@ public sealed class HandBuild
     public readonly HandBuildSettings Settings;
     readonly ConcurrentQueue<Action> _main = new();
 
-    /// <summary>Fine: the hand's moves and turns count this much.</summary>
+    /// <summary>Fine: moves and turns count this much.</summary>
     const float FineScale = 0.2f;
-    const float ReachMargin = 0.03f;
 
     public HandBuild(AgentSession s, FrameRenderer renderer, Func<Sojourn.Session.Assistant.PanelLook> look, string vrSettingsPath, Action<string> log)
     {
@@ -94,11 +91,16 @@ public sealed class HandBuild
 
     public HandMove Move => _m;
     public bool On => _m.On;
-    public bool Holding => _held != null || _desk != null;
+    public bool Dragging => _drag != null;
+
+    /// <summary>The headset's pointer: whether it's on, and turning it on (a thing handed over by the assistant comes
+    /// with the pointer to work it). Unset on the desktop.</summary>
+    public Func<bool>? PointerOn { get; set; }
+    public Action? PointerUp { get; set; }
 
     void Save() => Settings.Save(_path, _log);
 
-    /// <summary>The thing's card's "move by hand": building by hand on, with it chosen.</summary>
+    /// <summary>The thing's card's "move by hand": building by hand on, with it selected.</summary>
     public void Choose(Sojourn.Session.Objects.ThingFacts f)
     {
         var (root, why) = _m.May(f.Region, f.Id, chosen: true, tell: true);
@@ -110,7 +112,6 @@ public sealed class HandBuild
             return;
         }
         _m.Start(root.ID, "the thing's card");
-        Focus(root.ID);
     }
 
     /// <summary>The menu's and the API's switch.</summary>
@@ -121,24 +122,18 @@ public sealed class HandBuild
 
     // --- what's going on --------------------------------------------------------------------------------------------
 
-    UUID _focus;                 // what the readout is about: the last grabbed, else the chosen
-    string? _note;               // what came of the last grab or move
-    bool _grabbedOnce;           // the hint goes once something's been grabbed
+    string? _note;               // what came of the last move, or why a tap didn't select
     readonly Dictionary<UUID, int> _moves = new();   // hand moves this time on, for the readout's undo
     UUID _settling;              // let go, drawn where it was put until the region says
+    (Vector3 Pos, Quaternion Rot) _settlePose;
     long _settleUntil;
     ulong _region;
     long _version;
-    bool _placeReadout = true;
+    UUID _shownSel;              // the selection the readout was last placed for
+    bool _wasOn, _pointerBefore;
+    long _checkedAt;
 
     void Changed() => _version++;
-
-    void Focus(UUID id)
-    {
-        if (_focus != id) _placeReadout = true;
-        _focus = id;
-        Changed();
-    }
 
     void Note(string? note)
     {
@@ -146,23 +141,27 @@ public sealed class HandBuild
         Changed();
     }
 
+    bool _onBefore;
+    UUID _selBefore;
+
     void OnChanged()
     {
         if (!_m.On)
         {
-            // (HandMove let go of what was held as it stopped)
-            if (_held is { } h) _r.Motion.LetGo(h.G.Root.ID);
-            if (_desk is { } d) _r.Motion.LetGo(d.G.Root.ID);
-            _held = null;
-            _desk = null;
+            (_onBefore, _selBefore) = (false, UUID.Zero);
+            EndDrag();
             if (_settling != UUID.Zero) { _r.Motion.LetGo(_settling); _settling = UUID.Zero; }
-            (_focus, _note, _grabbedOnce, _placeReadout) = (UUID.Zero, null, false, true);
+            (_note, _signs) = (null, null);
             _moves.Clear();
             _shown = null;
+            _placed = null;
             Changed();
             return;
         }
-        if (_focus == UUID.Zero && _m.Chosen != UUID.Zero) Focus(_m.Chosen);
+        // building just turned on, or something selected for them (the card, the assistant): the pointer comes on to
+        // work it (it stays the person's switch after)
+        if ((!_onBefore || _m.Selected != _selBefore && _m.Selected != UUID.Zero) && PointerOn is { } p && !p()) PointerUp?.Invoke();
+        (_onBefore, _selBefore) = (true, _m.Selected);
         if (_m.Last is { } last && last.Id == _settling && last.Result != "moving")
         {
             _r.Motion.LetGo(_settling);
@@ -187,11 +186,26 @@ public sealed class HandBuild
         _ => why,
     };
 
-    /// <summary>Every frame (headset or desktop), first: what came back, a region left behind, a let-go's time up.</summary>
-    void Tick()
+    void Select(UUID root, string by)
+    {
+        if (root != _m.Selected) { _note = null; _signs = null; }
+        _m.Select(root, by);
+        Changed();
+    }
+
+    void Deselect(string why)
+    {
+        EndDrag();
+        if (_m.Selected != UUID.Zero) Select(UUID.Zero, why);
+    }
+
+    /// <summary>Every frame (headset or desktop), first: what came back, a region left behind, a let-go's time up, a
+    /// selection that's gone or may no longer be moved, the pointer turned off.</summary>
+    void Tick(bool? pointer)
     {
         while (_main.TryDequeue(out var a)) a();
-        if (!_m.On) return;
+        if (!_m.On) { _wasOn = false; return; }
+        if (!_wasOn) { _wasOn = true; _pointerBefore = pointer ?? true; }
         ulong here = _s.Client?.Network.CurrentSim?.Handle ?? 0;
         if (_region != 0 && here != _region) { _region = here; _m.Stop("left the region"); return; }
         _region = here;
@@ -200,187 +214,120 @@ public sealed class HandBuild
             _r.Motion.LetGo(_settling);
             _settling = UUID.Zero;
         }
+        // the pointer turned off lets the selection go (the user, 2026-11-02)
+        if (pointer is { } pn)
+        {
+            if (_pointerBefore && !pn) Deselect("the pointer off");
+            _pointerBefore = pn;
+        }
+        long now = Environment.TickCount64;
+        if (_m.Selected != UUID.Zero && _drag == null && now - _checkedAt > 250)
+        {
+            _checkedAt = now;
+            var (root, why) = _m.May(here, _m.Selected, chosen: false);
+            if (root == null)
+            {
+                Deselect("it can't be moved now");
+                Note(Why(why));
+            }
+        }
     }
 
-    // --- holding ------------------------------------------------------------------------------------------------------
+    // --- the gizmo ----------------------------------------------------------------------------------------------------
 
-    enum Hand { Left, Right }
-
-    sealed class Held
+    sealed class Drag
     {
+        public required GizmoDrag D;
         public required HandMove.Grab G;
-        public required Hand Hand;
-        public required bool Ray;
-        // the anchor: the hand's frame and the object's pose when it last changed mode (region frame)
-        public Vector3 Pa, Oa;
-        public Quaternion Ha, Ra;
-        public bool Fine;
         public Vector3 Pos;
-        public Quaternion Rot = Quaternion.Identity;
-        public bool Flicked;
+        public Quaternion Rot;
+        public float T;   // how far along the ray the handle is (the beam ends there)
+        public Vector3 From, Last;   // where the ray began, at the press and now
     }
 
-    Held? _held;
-    XrControllers _raw;
-    bool _faceBefore, _leftArmed = true, _rightArmed = true, _blocked;
-    Vector2 _heldStick;
-    bool _faceDown;
+    static string F(Vector3 v) => $"{v.X:0.00}, {v.Y:0.00}, {v.Z:0.00}";
 
-    /// <summary>The start of a headset frame, before anything else reads the controllers: while a hand holds something
-    /// its stick and its A or X are building's (nothing walks, turns, or toggles the pointer or the interface), and the
-    /// left trigger that grabbed is never pointing to teleport's.</summary>
-    public XrControllers Take(XrControllers c, VrPilot pilot)
+    Drag? _drag;
+    GizmoFrame? _frame;
+    Vector3? _signs;
+    GizmoHandle? _hot;      // the handle under the ray
+    float _hotT;
+    UUID _hoverThing;       // a thing the ray is on that a tap would select
+    Vector3 _eye;
+
+    /// <summary>Where a root is drawn: where a drag has it, where it was let go (until the region agrees), else where
+    /// the region has it.</summary>
+    (Vector3 Pos, Quaternion Rot)? Pose(UUID rootId)
     {
-        Tick();
-        _raw = c;
-        if (!_m.On) { _held = null; return c; }
-        if (c.LeftTrigger < 0.35f) _leftArmed = true;
-        if (c.RightTrigger < 0.35f) _rightArmed = true;
-        if (_held is { } h)
-        {
-            if (h.Hand == Hand.Right)
-            {
-                (_heldStick, _faceDown) = (c.RightStick, c.A);
-                c.RightStick = default;
-                c.A = false;
-            }
-            else
-            {
-                (_heldStick, _faceDown) = (c.LeftStick, c.X);
-                c.LeftStick = default;
-                c.X = false;
-                c.LeftTrigger = 0;
-            }
-            return c;
-        }
-        // the left hand reaching into something and pulling its trigger grabs it (pointing to teleport never sees it)
-        if (!_blocked && _leftArmed && c.LeftTrigger > 0.6f && c.LeftHandPos is { } lp && c.LeftHand is { } lq && pilot.Region != 0)
-        {
-            _leftArmed = false;
-            if (Reach(pilot.RoomToRegion(lp)) is { } root && Grab(root, pilot.Region, Hand.Left, ray: false, pilot.RoomToRegion(lp), ToRegion(pilot, lq)))
-                c.LeftTrigger = 0;
-        }
-        return c;
+        if (_drag is { } d && d.G.Root.ID == rootId) return (d.Pos, d.Rot);
+        if (_settling == rootId) return _settlePose;
+        if (_s.Region is not { } w || w.PrimById(rootId) is not { } root) return null;
+        var p = w.RegionPosition(root);
+        var q = w.RegionRotation(root);
+        return (new Vector3(p.X, p.Y, p.Z), Quaternion.Normalize(new Quaternion(q.X, q.Y, q.Z, q.W)));
     }
 
-    /// <summary>Takes hold of a prim's thing, if the person may move it. Returns whether it's held.</summary>
-    bool Grab(Primitive prim, ulong region, Hand hand, bool ray, Vector3 handPos, Quaternion handRot)
+    /// <summary>The selected thing's gizmo this frame, from the eye (held as it was while a drag goes on).</summary>
+    GizmoFrame? FrameNow(Vector3 eye)
     {
-        var (root, why) = _m.May(region, prim.ID, chosen: false, tell: true);
-        if (root == null)
-        {
-            Note(Why(why));
-            return false;
-        }
+        if (_drag is { } d) return d.D.Frame with { Centre = _m.Centre(d.G.Root.ID, d.Pos, d.Rot) };
+        if (_m.Selected == UUID.Zero || Pose(_m.Selected) is not { } pose || _m.Bounds(_m.Selected) is not { } b) return null;
+        var centre = _m.Centre(_m.Selected, pose.Pos, pose.Rot);
+        var f = GizmoFrame.Make(centre, Settings.Local ? pose.Rot : Quaternion.Identity, (b.Max - b.Min).Length() / 2, eye, _signs);
+        _signs = f.Signs;
+        return f;
+    }
+
+    GizmoSnap? SnapNow => Settings.Snap ? new GizmoSnap(Math.Max(0.001f, Settings.Grid), Math.Max(0.1f, Settings.Angle) * MathF.PI / 180, !Settings.Local) : null;
+
+    bool _fine;
+
+    /// <summary>A drag of the handle under the ray begins (the ray from o along u, region frame).</summary>
+    bool BeginDrag(Vector3 o, Vector3 u)
+    {
+        if (_frame is not { } f || _hot is not { } h || _m.Selected == UUID.Zero) return false;
+        var (root, why) = _m.May(_s.Client?.Network.CurrentSim?.Handle ?? 0, _m.Selected, chosen: false, tell: true);
+        if (root == null) { Note(Why(why)); return false; }
         if (_settling != UUID.Zero) { _r.Motion.LetGo(_settling); _settling = UUID.Zero; }
         var g = _m.Begin(root);
-        _held = new Held
-        {
-            G = g, Hand = hand, Ray = ray, Pa = handPos, Ha = handRot, Oa = g.From, Ra = g.FromRot, Pos = g.From, Rot = g.FromRot, Fine = _fineNext,
-        };
-        _faceBefore = true;   // (a face button already down isn't a press)
-        _grabbedOnce = true;
+        _drag = new Drag { D = new GizmoDrag(h, f, g.From, g.FromRot, o, u, _hotT), G = g, Pos = g.From, Rot = g.FromRot, T = _hotT, From = o };
+        _log($"building by hand: dragging its {h.Kind.ToString().ToLowerInvariant()}{(h.Kind == GizmoKind.Free ? "" : " " + AxisName[h.Axis])} "
+            + $"({(Settings.Local ? "local" : "world")}{(_fine ? ", fine" : "")}{(Settings.Snap ? ", snap" : "")}), the ray from {F(o)} {_hotT:0.00} m");
         _moves.TryAdd(root.ID, 0);
         Note(null);
-        Focus(root.ID);
-        _r.Motion.Hold(root.ID, region, root.LocalID, g.From, g.FromRot);
+        _r.Motion.Hold(root.ID, g.Region, root.LocalID, g.From, g.FromRot);
         return true;
     }
 
-    /// <summary>The held thing this frame: from the hand, the stick and fine, snapped if snapping, to the region and
-    /// drawn there. Let go once its trigger is.</summary>
-    void Carry(Held h, VrPilot pilot, float dt)
+    void UpdateDrag(Vector3 o, Vector3 u)
     {
-        var c = _raw;
-        float trigger = h.Hand == Hand.Right ? c.RightTrigger : c.LeftTrigger;
-        var frame = HandFrame(c, pilot, h.Hand, h.Ray);
-        if (trigger < 0.35f || frame is null)
-        {
-            Release(h);
-            return;
-        }
-        var (p, q) = frame.Value;
-        var (pos, rot) = Follow(h, p, q);
-        bool rebase = false;
-        // fine: A (right) or X (left), on the press
-        if (_faceDown && !_faceBefore)
-        {
-            // (from where the hand has it now, unsnapped: the anchor is the free pose)
-            h.Fine = _fineNext = !h.Fine;
-            rebase = true;
-            Changed();
-        }
-        _faceBefore = _faceDown;
-        // the stick: up pushes it away along the line from the hand (the hand's own way when it's in the hand), down
-        // pulls it in; left and right turn it about the vertical
-        var st = _heldStick;
-        if (MathF.Abs(st.Y) > 0.2f)
-        {
-            var away = pos - p;
-            float dist = away.Length();
-            var dir = dist > 0.1f ? away / dist : Vector3.Normalize(AimForward(c, pilot, h.Hand));
-            float rate = MathF.Sign(st.Y) * (MathF.Abs(st.Y) - 0.2f) / 0.8f * (0.3f + 1.0f * dist);
-            float step = rate * dt;
-            if (dist + step < 0.05f) step = 0.05f - dist;
-            pos += dir * step;
-            rebase = true;
-        }
-        float yaw = 0;
-        if (Settings.Snap)
-        {
-            if (!h.Flicked && MathF.Abs(st.X) > 0.6f) { h.Flicked = true; yaw = -MathF.Sign(st.X) * Settings.Angle * MathF.PI / 180; }
-            else if (MathF.Abs(st.X) < 0.3f) h.Flicked = false;
-        }
-        else if (MathF.Abs(st.X) > 0.2f) yaw = -MathF.Sign(st.X) * (MathF.Abs(st.X) - 0.2f) / 0.8f * MathF.PI / 2 * dt;
-        if (yaw != 0)
-        {
-            rot = Quaternion.Normalize(Quaternion.CreateFromAxisAngle(Vector3.UnitZ, yaw) * rot);
-            rebase = true;
-        }
-        if (rebase) (h.Pa, h.Ha, h.Oa, h.Ra) = (p, q, pos, rot);
-        var (sp, sr) = Settings.Snap ? Snap(pos, rot) : (pos, rot);
-        bool edge = _m.AtEdge(sp);
-        (h.Pos, h.Rot) = _m.Move(h.G, sp, sr);
-        _r.Motion.Hold(h.G.Root.ID, h.G.Region, h.G.Root.LocalID, h.Pos, h.Rot);
+        if (_drag is not { } d) return;
+        d.Last = o;
+        var (pos, rot) = d.D.Update(o, u, _fine ? FineScale : 1, SnapNow);
+        bool edge = _m.AtEdge(pos);
+        (d.Pos, d.Rot) = _m.Move(d.G, pos, rot);
+        _r.Motion.Hold(d.G.Root.ID, d.G.Region, d.G.Root.LocalID, d.Pos, d.Rot);
+        // (the beam stays on the handle as it goes)
+        var c = _m.Centre(d.G.Root.ID, d.Pos, d.Rot);
+        d.T = Math.Max(0.05f, Vector3.Dot(c - o, Vector3.Normalize(u)));
         if (edge && _note == null) Note(Lang.T("At the region's edge."));
         else if (!edge && _note == Lang.T("At the region's edge.")) Note(null);
         Changed();
     }
 
-    static Vector3 AimForward(XrControllers c, VrPilot pilot, Hand hand)
+    /// <summary>Let go: drawn where it was put until the region says (or 4 s); one that didn't move goes back to the
+    /// region's word at once.</summary>
+    void EndDrag()
     {
-        var aim = hand == Hand.Right ? c.RightAim : c.LeftAim;
-        return aim is { } a ? pilot.RoomDirToRegion(Vector3.Transform(-Vector3.UnitZ, a)) : Vector3.UnitX;
-    }
-
-    /// <summary>The object's pose from the hand's: kept as it was to the hand since the anchor, or in fine, the hand's
-    /// moves and turns since then at a fifth (turning about the object, not swinging it round the hand).</summary>
-    static (Vector3 Pos, Quaternion Rot) Follow(Held h, Vector3 p, Quaternion q)
-    {
-        var delta = Quaternion.Normalize(q * Quaternion.Inverse(h.Ha));
-        if (h.Fine)
-        {
-            var small = Quaternion.Normalize(Quaternion.Slerp(Quaternion.Identity, delta, FineScale));
-            return (h.Oa + (p - h.Pa) * FineScale, Quaternion.Normalize(small * h.Ra));
-        }
-        return (p + Vector3.Transform(h.Oa - h.Pa, delta), Quaternion.Normalize(delta * h.Ra));
-    }
-
-    void Release(Held h)
-    {
-        _held = null;
-        LetGo(h.G, h.Pos, h.Rot);
-        _placeReadout = true;
-    }
-
-    /// <summary>Let go (a hand or the mouse): drawn where it was put until the region says (or 4 s); one that didn't
-    /// move goes back to the region's word at once.</summary>
-    void LetGo(HandMove.Grab g, Vector3 pos, Quaternion rot)
-    {
-        _m.End(g, pos, rot);
+        if (_drag is not { } d) return;
+        _drag = null;
+        var g = d.G;
+        if (Vector3.Distance(d.Last, d.From) > 0.05f) _log($"building by hand: the ray's start moved {F(d.Last - d.From)} during the drag");
+        _m.End(g, d.Pos, d.Rot);
         if (_m.Last is { } l && l.Id == g.Root.ID && l.Result == "moving" && (DateTime.UtcNow - l.At).TotalSeconds < 1)
         {
             _settling = g.Root.ID;
+            _settlePose = (d.Pos, d.Rot);
             _settleUntil = Environment.TickCount64 + 4000;
             _moves[g.Root.ID] = _moves.GetValueOrDefault(g.Root.ID) + 1;
         }
@@ -388,182 +335,264 @@ public sealed class HandBuild
         Changed();
     }
 
-    /// <summary>Snapped: the position to the grid in the region's axes, the turn to the step in each of the edit
-    /// floater's angles.</summary>
-    (Vector3, Quaternion) Snap(Vector3 pos, Quaternion rot)
+    /// <summary>The handle the ray is on (none while blocked), the frame worked out from the eye.</summary>
+    void Hover(Vector3 eye, Vector3? o, Vector3? u, bool live)
     {
-        float g = Math.Max(0.001f, Settings.Grid);
-        var sp = new Vector3(MathF.Round(pos.X / g) * g, MathF.Round(pos.Y / g) * g, MathF.Round(pos.Z / g) * g);
-        float a = Math.Max(0.1f, Settings.Angle) * MathF.PI / 180;
-        new LibreMetaverse.Quaternion(rot.X, rot.Y, rot.Z, rot.W).GetEulerAngles(out float roll, out float pitch, out float yaw);
-        float R(float x) => MathF.Round(x / a) * a;
-        var q = LibreMetaverse.Quaternion.CreateFromEulers(R(roll), R(pitch), R(yaw));
-        return (sp, Quaternion.Normalize(new Quaternion(q.X, q.Y, q.Z, q.W)));
+        _eye = eye;
+        _frame = FrameNow(eye);
+        var before = _hot;
+        if (_drag is { } d) (_hot, _hotT) = (d.D.Handle, d.T);
+        else if (live && _frame is { } f && o is { } ro && u is { } ru && Gizmo.Hit(f, ro, ru) is { } h) (_hot, _hotT) = (h.Handle, h.T);
+        else _hot = null;
+        if (before != _hot) Changed();
     }
 
-    /// <summary>A hand's frame in the region: the grip for a reach, the ray for a grab from afar.</summary>
-    static (Vector3, Quaternion)? HandFrame(XrControllers c, VrPilot pilot, Hand hand, bool ray)
+    /// <summary>A point on a handle of the gizmo now, in the region (kind 0 the middle, 1 an arrow, 2 a plane square, 3 a
+    /// ring; axis 0-2): for the simulator's test to aim at (VrScript's rhandle). A ring's point is off the axes, on the
+    /// side nearer the eye.</summary>
+    public Vector3? HandlePoint(int kind, int axis)
     {
-        var (pos, rot) = hand == Hand.Right ? (ray ? c.RightAimPos : c.RightHandPos, ray ? c.RightAim : c.RightHand)
-            : (ray ? c.LeftAimPos : c.LeftHandPos, ray ? c.LeftAim : c.LeftHand);
-        if (pos is not { } p || rot is not { } q || pilot.Region == 0) return null;
-        return (pilot.RoomToRegion(p), ToRegion(pilot, q));
-    }
-
-    /// <summary>A rotation of the play space as one of the region (the hand's axes carried across as the pilot carries
-    /// directions; the map from room to region is itself a rotation, so this is one).</summary>
-    public static Quaternion ToRegion(VrPilot pilot, Quaternion room)
-    {
-        var x = pilot.RoomDirToRegion(Vector3.Transform(Vector3.UnitX, room));
-        var y = pilot.RoomDirToRegion(Vector3.Transform(Vector3.UnitY, room));
-        var z = pilot.RoomDirToRegion(Vector3.Transform(Vector3.UnitZ, room));
-        var m = new Matrix4x4(x.X, x.Y, x.Z, 0, y.X, y.Y, y.Z, 0, z.X, z.Y, z.Z, 0, 0, 0, 0, 1);
-        return Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(m));
-    }
-
-    // --- what's under the hand ------------------------------------------------------------------------------------------
-
-    /// <summary>The smallest prim whose box (3 cm to spare) holds the point, in the region you're in, not worn and not
-    /// someone: the prim, whose thing HandMove then judges.</summary>
-    Primitive? Reach(Vector3 at)
-    {
-        if (_s.Region is not { } w) return null;
-        Primitive? best = null;
-        float bestVol = float.MaxValue;
-        foreach (var p in w.Prims.Values)
+        if (_frame is not { } f) return null;
+        axis = Math.Clamp(axis, 0, 2);
+        switch (kind)
         {
-            var s = p.Scale;
-            float r = 0.5f * MathF.Sqrt(s.X * s.X + s.Y * s.Y + s.Z * s.Z) + ReachMargin;
-            if (p.ParentID != 0 && !w.Prims.TryGetValue(p.ParentID, out var parent)) continue;
-            if (w.Avatars.ContainsKey(p.LocalID)) continue;
-            var lp = w.RegionPosition(p);
-            var c = new Vector3(lp.X, lp.Y, lp.Z);
-            if (Vector3.DistanceSquared(c, at) > r * r) continue;
-            var lr = w.RegionRotation(p);
-            var local = Vector3.Transform(at - c, Quaternion.Inverse(new Quaternion(lr.X, lr.Y, lr.Z, lr.W)));
-            if (MathF.Abs(local.X) > s.X / 2 + ReachMargin || MathF.Abs(local.Y) > s.Y / 2 + ReachMargin || MathF.Abs(local.Z) > s.Z / 2 + ReachMargin) continue;
-            float vol = s.X * s.Y * s.Z;
-            if (vol < bestVol) (best, bestVol) = (p, vol);
+            case 1:
+            {
+                var (a, b) = f.Arrow(axis);
+                return Vector3.Lerp(a, b, 0.6f);
+            }
+            case 2:
+                return f.Plane(axis).Mid;
+            case 3:
+            {
+                var (e1, e2) = Sojourn.Client.Building.Gizmo.Basis(f.Axis(axis));
+                Vector3 best = f.Centre;
+                float bestD = float.MaxValue;
+                for (int i = 0; i < 4; i++)
+                {
+                    float a = (45 + 90 * i) * MathF.PI / 180;
+                    var p = f.Centre + (e1 * MathF.Cos(a) + e2 * MathF.Sin(a)) * f.R;
+                    float d = Vector3.Distance(p, _eye);
+                    if (d < bestD) (best, bestD) = (p, d);
+                }
+                return best;
+            }
+            default:
+                return f.Centre;
         }
-        return best;
     }
 
-    (UUID Root, bool Ok)? _hover;   // what the hand or ray is on, and whether it may be grabbed
-    long _hoverAt;
+    // --- taps (DirectTouch's hooks) ------------------------------------------------------------------------------------
 
-    // --- the headset's world ------------------------------------------------------------------------------------------
+    /// <summary>A press on this hit is building's: a thing the person may move (it selects it rather than touching).</summary>
+    public bool Claims(PickHit? hit) => _m.On && Movable(hit) != UUID.Zero;
 
-    /// <summary>The headset's world each frame, after the menus have had the ray: the right hand's grab (a reach, else
-    /// the ray on a thing), what's held carried, the boxes and the ray's cue. world: the controllers as the world's
-    /// touch sees them (the right trigger only while the ray is out in the world freely). blocked: a confirmation or
-    /// the menu is up (no new grabs; what's held stays held).</summary>
-    public OverlayScene? Headset(OverlayScene? scene, XrControllers world, VrPilot pilot, bool blocked, bool hidden, bool focused, float dt)
+    UUID Movable(PickHit? hit) =>
+        hit is { Kind: PickKind.Object } h && _m.May(h.Region, h.Id, chosen: false).Root is { } root ? root.ID : UUID.Zero;
+
+    /// <summary>A tap (or a drag begun) on a thing building claims: it's selected.</summary>
+    public void Tapped(PickHit hit)
     {
-        _blocked = blocked || hidden || !focused;
+        var (root, why) = _m.May(hit.Region, hit.Id, chosen: false, tell: true);
+        if (root == null) { Note(Why(why)); return; }
+        Select(root.ID, "a tap");
+    }
+
+    /// <summary>A press anywhere else in the world: the selection goes (and the press does what it always does).</summary>
+    public void Elsewhere()
+    {
+        if (_m.On && _drag == null) Deselect("a tap elsewhere");
+    }
+
+    // --- the headset ----------------------------------------------------------------------------------------------------
+
+    bool _armed = true, _rayOn;
+
+    /// <summary>The start of a headset frame, before the assistant's ray is worked out: the gizmo from the eyes and the
+    /// handle the right ray is on (raw: the controllers as read). The ray goes to a handle only when that's nearer than
+    /// any menu (HeadsetAssistant compares <see cref="HandleT"/>, then says through <see cref="RayOn"/>).</summary>
+    public void Aim(XrControllers raw, VrPilot pilot, Vector3 head, bool pointerOn, bool hidden)
+    {
+        Tick(pointerOn);
+        if (!_m.On || pilot.Region == 0) { _hot = null; _frame = null; return; }
+        Vector3? o = null, u = null;
+        if (raw.RightAim is { } q && raw.RightAimPos is { } at)
+            (o, u) = (pilot.RoomToRegion(at), pilot.RoomDirToRegion(Vector3.Transform(-Vector3.UnitZ, q)));
+        Hover(pilot.RoomToRegion(head), o, u, pointerOn && !hidden);
+    }
+
+    /// <summary>How far along the right ray the handle under it is (metres; null: none), or the dragged one.</summary>
+    public float? HandleT => _m.On && _hot != null ? _hotT : null;
+
+    /// <summary>Said by HeadsetAssistant each frame: the ray is the gizmo's (a handle is nearest, or a drag goes on).</summary>
+    public bool RayOn { set => _rayOn = value; }
+
+    /// <summary>The headset's world each frame, after the menus have had the ray: a press on a handle begins a drag, the
+    /// drag follows the ray, the release ends it; then the gizmo and the boxes. hit: what the pointer's on out in the
+    /// world (a thing a tap would select gets a faint box). blocked: a confirmation or the menu is up.</summary>
+    public OverlayScene? Headset(OverlayScene? scene, XrControllers raw, VrPilot pilot, PickHit? hit, bool blocked, bool hidden, bool focused)
+    {
         if (!_m.On) return scene;
-        if (_held is { } h)
+        float trigger = raw.RightTrigger;
+        Vector3? o = null, u = null;
+        if (raw.RightAim is { } q && raw.RightAimPos is { } at)
+            (o, u) = (pilot.RoomToRegion(at), pilot.RoomDirToRegion(Vector3.Transform(-Vector3.UnitZ, q)));
+        if (_drag != null)
         {
-            if (!focused) Release(h); else Carry(h, pilot, dt);
+            if (!focused || trigger < 0.35f || o == null || hidden || blocked) EndDrag();
+            else UpdateDrag(o.Value, u!.Value);
         }
-        var c = _raw;
-        // the right hand: reaching into a thing (looked for ten times a second, and on the pull), else its ray on one
-        long now = Environment.TickCount64;
-        _hover = null;
-        if (_held == null && c.RightHandPos is { } rp && c.RightHand is { } rq && pilot.Region != 0)
+        else if (trigger > 0.6f && _armed)
         {
-            bool pull = !_blocked && _rightArmed && world.LeftTrigger > 0.6f;
-            if (pull || now - _hoverAt > 100)
-            {
-                _reach = Reach(pilot.RoomToRegion(rp));
-                _hoverAt = now;
-            }
-            PickHit? hit = null;
-            if (_reach == null && world.LeftAim is { } aq && world.LeftAimPos is { } ap)
-                hit = _r.Pick(pilot.Region, pilot.RoomToRegion(ap), pilot.RoomDirToRegion(Vector3.Transform(-Vector3.UnitZ, aq)), 64, _s.Client?.Self.LocalID ?? 0);
-            var prim = _reach ?? (hit is { Kind: PickKind.Object } oh && _s.Region?.PrimById(oh.Id) is { } hp ? hp : null);
-            if (pull)
-            {
-                _rightArmed = false;
-                if (prim == null) { }
-                else if (_reach != null) Grab(prim, pilot.Region, Hand.Right, ray: false, pilot.RoomToRegion(rp), ToRegion(pilot, rq));
-                else if (c.RightAimPos is { } a && c.RightAim is { } aq2) Grab(prim, pilot.Region, Hand.Right, ray: true, pilot.RoomToRegion(a), ToRegion(pilot, aq2));
-            }
-            else if (prim != null && _m.May(pilot.Region, prim.ID, chosen: false).Root is { } root) _hover = (root.ID, true);
+            _armed = false;
+            if (_rayOn && !blocked && !hidden && focused && o is { } ro) BeginDrag(ro, u!.Value);
         }
+        if (trigger < 0.35f) _armed = true;
+        _hoverThing = _drag == null && _hot == null && !hidden ? Movable(hit) : UUID.Zero;
         if (hidden) return scene;
-        return Outlines(scene, pilot.Region);
+        return Draw(scene);
     }
 
-    Primitive? _reach;
+    // --- drawing ------------------------------------------------------------------------------------------------------
 
-    // --- the boxes ----------------------------------------------------------------------------------------------------
-
-    readonly Dictionary<UUID, (Vector3 Min, Vector3 Max, long At)> _bounds = new();
-
-    /// <summary>The thing's box in its root's frame: every prim's box carried into it.</summary>
-    (Vector3 Min, Vector3 Max)? Bounds(UUID rootId)
+    static readonly Vector4[] AxisInk =
     {
-        long now = Environment.TickCount64;
-        if (_bounds.TryGetValue(rootId, out var b) && now - b.At < 2000) return (b.Min, b.Max);
-        if (_s.Region is not { } w || w.PrimById(rootId) is not { } root) return null;
-        var min = new Vector3(float.MaxValue);
-        var max = new Vector3(float.MinValue);
-        void Add(Vector3 pos, Quaternion rot, LibreMetaverse.Vector3 s)
+        new(0.95f, 0.30f, 0.28f, 0.95f),   // x red
+        new(0.38f, 0.85f, 0.32f, 0.95f),   // y green
+        new(0.32f, 0.55f, 1.00f, 0.95f),   // z blue (as every viewer's build tools)
+    };
+
+    static Vector4 Lit(Vector4 c) => new(c.X + (1 - c.X) * 0.55f, c.Y + (1 - c.Y) * 0.55f, c.Z + (1 - c.Z) * 0.45f, 1);
+
+    OverlayScene? Draw(OverlayScene? scene)
+    {
+        var beams = new List<OverlayBeam>(scene?.Beams ?? []);
+        var dots = new List<OverlayDot>(scene?.Dots ?? []);
+        if (_hoverThing != UUID.Zero && _hoverThing != _m.Selected) Box(beams, _hoverThing, 0.45f);
+        if (_m.Selected != UUID.Zero) Box(beams, _m.Selected, 0.28f);
+        if (_frame is { } f) DrawGizmo(beams, dots, f);
+        return (scene ?? new OverlayScene()) with { Beams = beams, Dots = dots };
+    }
+
+    void Box(List<OverlayBeam> beams, UUID id, float alpha)
+    {
+        if (Pose(id) is not { } pose || _m.Bounds(id) is not { } b) return;
+        var light = Sojourn.Session.Assistant.PanelLook.InUse.Light(alpha);
+        Span<Vector3> v = stackalloc Vector3[8];
+        for (int i = 0; i < 8; i++)
+            v[i] = pose.Pos + Vector3.Transform(new Vector3((i & 1) == 0 ? b.Min.X : b.Max.X, (i & 2) == 0 ? b.Min.Y : b.Max.Y, (i & 4) == 0 ? b.Min.Z : b.Max.Z), pose.Rot);
+        float w = Math.Clamp(0.0015f * Vector3.Distance(_eye, pose.Pos), 0.0015f, 0.03f);
+        for (int i = 0; i < 8; i++)
+            for (int bit = 1; bit < 8; bit <<= 1)
+                if ((i & bit) == 0) beams.Add(new OverlayBeam(v[i], v[i | bit], w, light));
+    }
+
+    /// <summary>The gizmo, over everything (beams are drawn over the eye's image): rings with their far halves dimmer,
+    /// arrows with stepped heads, plane squares, the orb. The handle under the ray lights and thickens; during a drag
+    /// the others dim and the dragged one shows its line (an arrow's axis right across, a ring's start and now).</summary>
+    void DrawGizmo(List<OverlayBeam> beams, List<OverlayDot> dots, GizmoFrame f)
+    {
+        float R = f.R;
+        float w = Math.Clamp(0.0045f * Vector3.Distance(_eye, f.Centre), 0.0015f, 0.06f);
+        var drag = _drag?.D.Handle;
+        Vector4 Ink(GizmoHandle h, int axis)
         {
-            for (int i = 0; i < 8; i++)
+            var c = AxisInk[axis];
+            if (_hot == h) return Lit(c);
+            return drag != null ? c with { W = c.W * 0.3f } : c;
+        }
+        float Width(GizmoHandle h) => _hot == h ? w * 1.8f : w;
+        // rings
+        for (int k = 0; k < 3; k++)
+        {
+            var h = new GizmoHandle(GizmoKind.Ring, k);
+            var ink = Ink(h, k);
+            var (e1, e2) = Sojourn.Client.Building.Gizmo.Basis(f.Axis(k));
+            float centreDist = Vector3.Distance(_eye, f.Centre);
+            var prev = f.Centre + e1 * R;
+            for (int i = 1; i <= Sojourn.Client.Building.Gizmo.RingSegments; i++)
             {
-                var corner = new Vector3((i & 1) == 0 ? -s.X : s.X, (i & 2) == 0 ? -s.Y : s.Y, (i & 4) == 0 ? -s.Z : s.Z) * 0.5f;
-                var at = pos + Vector3.Transform(corner, rot);
-                min = Vector3.Min(min, at);
-                max = Vector3.Max(max, at);
+                float a = i * MathF.Tau / Sojourn.Client.Building.Gizmo.RingSegments;
+                var p = f.Centre + (e1 * MathF.Cos(a) + e2 * MathF.Sin(a)) * R;
+                bool far = Vector3.Distance(_eye, (prev + p) * 0.5f) > centreDist;
+                beams.Add(new OverlayBeam(prev, p, Width(h), far ? ink with { W = ink.W * 0.55f } : ink));
+                prev = p;
             }
         }
-        Add(Vector3.Zero, Quaternion.Identity, root.Scale);
-        foreach (var p in w.Prims.Values)
-            if (p.ParentID == root.LocalID && !w.Avatars.ContainsKey(p.LocalID))
-                Add(new Vector3(p.Position.X, p.Position.Y, p.Position.Z), Quaternion.Normalize(new Quaternion(p.Rotation.X, p.Rotation.Y, p.Rotation.Z, p.Rotation.W)), p.Scale);
-        _bounds[rootId] = (min, max, now);
-        if (_bounds.Count > 64) _bounds.Clear();
-        return (min, max);
-    }
-
-    /// <summary>Where a root is drawn: where the hand has it, else where the region does.</summary>
-    (Vector3 Pos, Quaternion Rot)? Pose(UUID rootId)
-    {
-        if (_held is { } h && h.G.Root.ID == rootId) return (h.Pos, h.Rot);
-        if (_desk is { } d && d.G.Root.ID == rootId) return (d.Pos, d.Rot);
-        if (_s.Region is not { } w || w.PrimById(rootId) is not { } root) return null;
-        var p = w.RegionPosition(root);
-        var q = w.RegionRotation(root);
-        return (new Vector3(p.X, p.Y, p.Z), Quaternion.Normalize(new Quaternion(q.X, q.Y, q.Z, q.W)));
-    }
-
-    OverlayScene? Outlines(OverlayScene? scene, ulong region)
-    {
-        if (_s.Client?.Network.CurrentSim?.Handle != region) return scene;
-        var beams = new List<OverlayBeam>(scene?.Beams ?? []);
-        var eye = _eye;
-        void Box(UUID id, float alpha)
+        // arrows: the shaft, then the head in four steps narrowing to the tip
+        for (int i = 0; i < 3; i++)
         {
-            if (Pose(id) is not { } pose || Bounds(id) is not { } b) return;
-            var light = Sojourn.Session.Assistant.PanelLook.InUse.Light(alpha);
-            Span<Vector3> v = stackalloc Vector3[8];
-            for (int i = 0; i < 8; i++)
-                v[i] = pose.Pos + Vector3.Transform(new Vector3((i & 1) == 0 ? b.Min.X : b.Max.X, (i & 2) == 0 ? b.Min.Y : b.Max.Y, (i & 4) == 0 ? b.Min.Z : b.Max.Z), pose.Rot);
-            float w = Math.Clamp(0.0015f * Vector3.Distance(eye, pose.Pos), 0.0015f, 0.03f);
-            for (int i = 0; i < 8; i++)
-                for (int bit = 1; bit < 8; bit <<= 1)
-                    if ((i & bit) == 0) beams.Add(new OverlayBeam(v[i], v[i | bit], w, light));
+            var h = new GizmoHandle(GizmoKind.Arrow, i);
+            var ink = Ink(h, i);
+            if (Sojourn.Client.Building.Gizmo.EndOn(f.Axis(i), f.Centre - _eye)) ink = ink with { W = ink.W * 0.25f };
+            var a = f.Axis(i) * f.Sign(i);
+            float ww = Width(h);
+            beams.Add(new OverlayBeam(f.Centre + a * (GizmoFrame.ArrowFrom * R), f.Centre + a * (GizmoFrame.ArrowTo * R), ww, ink));
+            float head = Math.Max(GizmoFrame.HeadW * R, 3.5f * ww), len = (GizmoFrame.HeadTo - GizmoFrame.ArrowTo) * R / 4;
+            for (int s = 0; s < 4; s++)
+            {
+                var from = f.Centre + a * (GizmoFrame.ArrowTo * R + s * len);
+                beams.Add(new OverlayBeam(from, from + a * len, head * (1 - s * 0.24f), ink));
+            }
         }
-        var drawn = new HashSet<UUID>();
-        if (_held is { } h) { Box(h.G.Root.ID, 0.9f); drawn.Add(h.G.Root.ID); }
-        if (_desk is { } d) { Box(d.G.Root.ID, 0.9f); drawn.Add(d.G.Root.ID); }
-        if (_hover is { Ok: true } hv && drawn.Add(hv.Root)) Box(hv.Root, 0.45f);
-        if (_m.Chosen != UUID.Zero && drawn.Add(_m.Chosen)) Box(_m.Chosen, 0.7f);
-        return (scene ?? new OverlayScene()) with { Beams = beams };
+        // plane squares
+        for (int k = 0; k < 3; k++)
+        {
+            var h = new GizmoHandle(GizmoKind.Plane, k);
+            var ink = Ink(h, k);
+            var (mid, pu, pv) = f.Plane(k);
+            float half = GizmoFrame.PlaneHalf * R;
+            var c0 = mid + (-pu - pv) * half;
+            var c1 = mid + (pu - pv) * half;
+            var c2 = mid + (pu + pv) * half;
+            var c3 = mid + (-pu + pv) * half;
+            float ww = Width(h) * 0.8f;
+            beams.Add(new OverlayBeam(c0, c1, ww, ink));
+            beams.Add(new OverlayBeam(c1, c2, ww, ink));
+            beams.Add(new OverlayBeam(c2, c3, ww, ink));
+            beams.Add(new OverlayBeam(c3, c0, ww, ink));
+            if (_hot == h)
+                for (int s = 1; s < 4; s++)
+                    beams.Add(new OverlayBeam(c0 + (c3 - c0) * (s / 4f), c1 + (c2 - c1) * (s / 4f), ww, ink with { W = 0.6f }));
+        }
+        // the orb in the middle, with a rim
+        {
+            var h = new GizmoHandle(GizmoKind.Free);
+            bool hot = _hot == h;
+            float r = GizmoFrame.OrbR * R * (hot ? 1.15f : 1);
+            var ink = hot ? new Vector4(1, 1, 1, 0.95f) : new Vector4(0.92f, 0.94f, 0.96f, drag != null ? 0.3f : 0.75f);
+            dots.Add(new OverlayDot(f.Centre, r, ink));
+            var toEye = Vector3.Normalize(_eye - f.Centre);
+            var (e1, e2) = Sojourn.Client.Building.Gizmo.Basis(toEye);
+            var prev = f.Centre + e1 * r;
+            for (int i = 1; i <= 24; i++)
+            {
+                float a = i * MathF.Tau / 24;
+                var p = f.Centre + (e1 * MathF.Cos(a) + e2 * MathF.Sin(a)) * r;
+                beams.Add(new OverlayBeam(prev, p, w * 0.8f, new Vector4(1, 1, 1, hot ? 1 : 0.6f)));
+                prev = p;
+            }
+        }
+        // a drag's own line
+        if (_drag is { } d)
+        {
+            var dh = d.D.Handle;
+            if (dh.Kind == GizmoKind.Arrow)
+            {
+                var a = f.Axis(dh.Axis);
+                float span = Math.Max(4 * R, 3);
+                beams.Add(new OverlayBeam(f.Centre - a * span, f.Centre + a * span, w * 0.6f, AxisInk[dh.Axis] with { W = 0.4f }));
+            }
+            else if (dh.Kind == GizmoKind.Ring)
+            {
+                var a = f.Axis(dh.Axis);
+                var (e1, _) = Sojourn.Client.Building.Gizmo.Basis(a);
+                var now = Vector3.Transform(e1, Quaternion.CreateFromAxisAngle(a, d.D.Angle * (_fine ? FineScale : 1)));
+                beams.Add(new OverlayBeam(f.Centre, f.Centre + e1 * R, w * 0.7f, AxisInk[dh.Axis] with { W = 0.45f }));
+                beams.Add(new OverlayBeam(f.Centre, f.Centre + now * R, w * 0.9f, Lit(AxisInk[dh.Axis])));
+            }
+        }
     }
-
-    Vector3 _eye;
 
     // --- the readout --------------------------------------------------------------------------------------------------
 
@@ -574,26 +603,37 @@ public sealed class HandBuild
     int _hoverKey = -1;
     long _imageVersion;
 
+    static readonly string[] AxisName = { "x", "y", "z" };
+
+    /// <summary>What the handle under the ray does, in a few words.</summary>
+    static string Does(GizmoHandle h) => h.Kind switch
+    {
+        GizmoKind.Arrow => Lang.F("move along {0}", AxisName[h.Axis]),
+        GizmoKind.Plane => Lang.F("move across {0} and {1}", AxisName[(h.Axis + 1) % 3], AxisName[(h.Axis + 2) % 3]),
+        GizmoKind.Ring => Lang.F("turn around {0}", AxisName[h.Axis]),
+        _ => Lang.T("move it freely"),
+    };
+
     ReadoutView View()
     {
         string title = Lang.T("building by hand");
         Vector3? pos = null, euler = null;
-        if (_focus != UUID.Zero && Pose(_focus) is { } p)
+        var sel = _drag?.G.Root.ID ?? _m.Selected;
+        if (sel != UUID.Zero && Pose(sel) is { } p)
         {
-            title = _s.Region?.PrimById(_focus)?.Properties?.Name is { Length: > 0 } n ? n : _held?.G.Name ?? Lang.T("an object");
+            title = _s.Region?.PrimById(sel)?.Properties?.Name is { Length: > 0 } n ? n : _drag?.G.Name ?? Lang.T("an object");
             (pos, euler) = (p.Pos, HandMove.Euler(p.Rot));
         }
         string? snap = Settings.Snap ? Lang.F("grid {0} m · turns {1}°", Settings.Grid.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture),
             Settings.Angle.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)) : null;
-        bool fine = _held?.Fine ?? _desk?.Fine ?? _fineNext;
-        string? hint = _grabbedOnce ? null : _desktop
-            ? Lang.T("Drag a thing to move it; with Shift, up and down. The wheel turns it.")
-            : Lang.T("Reach into a thing, or point at it, and hold the trigger. While you hold it, the stick pushes, pulls and turns it, and A or X slows it for fine moves.");
-        return new ReadoutView(title, pos, euler, snap, fine, _focus != UUID.Zero && _moves.GetValueOrDefault(_focus) > 0, _note, hint, _hoverKey);
+        // the line: what came of things, else what the handle under the ray does, else what to do here
+        string line = _note ?? (_hot is { } h ? Does(h)
+            : sel == UUID.Zero ? Lang.T("Tap one of your things to move it.")
+            : Lang.T("Drag an arrow to move it, a ring to turn it, the middle to move it freely."));
+        bool strong = _note != null || _hot != null;
+        var undoOn = sel != UUID.Zero && _moves.GetValueOrDefault(sel) > 0;
+        return new ReadoutView(title, pos, euler, snap, _fine, Settings.Local, undoOn, line, strong, _hoverKey);
     }
-
-    bool _fineNext;   // fine pressed with nothing held: the next grab starts fine
-    bool _desktop;
 
     Drawn? Picture(float scale, bool layer)
     {
@@ -633,7 +673,12 @@ public sealed class HandBuild
                 _log($"building by hand: snap {(Settings.Snap ? "on" : "off")}");
                 break;
             case ReadoutKey.Fine:
-                _fineNext = !_fineNext;   // (the keys take no press while something's held)
+                _fine = !_fine;
+                break;
+            case ReadoutKey.Local:
+                Settings.Local = !Settings.Local;
+                _signs = null;
+                Save();
                 break;
             case ReadoutKey.Undo:
                 Undo();
@@ -642,11 +687,11 @@ public sealed class HandBuild
         Changed();
     }
 
-    /// <summary>The readout's undo: the last step on the thing it's about, through the dispatcher as anyone's undo (so
+    /// <summary>The readout's undo: the last step on the selected thing, through the dispatcher as anyone's undo (so
     /// one that would delete a creation still waits for the person's press on its confirmation).</summary>
     void Undo()
     {
-        var id = _focus;
+        var id = _m.Selected;
         if (id == UUID.Zero) return;
         var args = new JsonObject { ["op"] = "undo", ["steps"] = 1, ["id"] = id.ToString() };
         _ = Task.Run(async () =>
@@ -666,42 +711,61 @@ public sealed class HandBuild
         });
     }
 
-    const float Near = 0.45f, Far = 1.2f;
+    // Where the readout sits (Claude Opus 5.5, 2026-11-02, after the user found one beside the thing confusing, as it
+    // stayed behind when the thing moved and then jumped to it, and it sat partly behind the panel): near the person, at
+    // 0.6 m, nearer than the panel ever is by default (1.1 m), so where they overlap it's in front. Placed from where the
+    // person is, toward the selected thing: just under its gizmo, clear of its reach (or beside it if that's too low, or
+    // if a panel pulled in close would cover it there); with nothing selected, low and to the left of the gaze. Placed
+    // when building comes on or another thing is selected, and again only when it's left well out of view or behind
+    // (turned 70 degrees from it, or 2 m walked); never during a drag, and it never follows the thing.
+    const float ReadoutAt = 0.6f, Aside = 20 * MathF.PI / 180, Below = 24 * MathF.PI / 180;
     (ulong Region, Vector3 Pos, Vector3 Eyes)? _placed;
     Vector2 _size;
-    Quaternion _rot = Quaternion.Identity, _headRot = Quaternion.Identity;
+    Quaternion _rot = Quaternion.Identity;
     (OverlayImage Image, Vector3 Pos, Quaternion Rot, float Width)? _shown;
     (Vector3 From, Vector3 To)? _beam;
     ReadoutKey? _down;
     bool _keysArmed;
+    long _awaySince;
 
     /// <summary>The right ray is on the readout this frame (the panel, boards and world behind wait).</summary>
     public bool RightOn { get; private set; }
 
-    /// <summary>Each headset frame, with the boards' hands (the pointer's right, live while building): places the
-    /// readout, reads the ray and trigger on its keys. hidden: a confirmation waits or the interface is hidden.</summary>
+    /// <summary>Each headset frame, with the boards' hands (the pointer's right while it's on): places the readout,
+    /// reads the ray and trigger on its keys. hidden: a confirmation waits or the interface is hidden.</summary>
     public void Readout(XrControllers boards, VrPilot pilot, Vector3 head, Quaternion headRot, (Vector3 Pos, Quaternion Rot, Vector2 Size)? panel,
         bool hidden, bool focused)
     {
-        _headRot = headRot;
         RightOn = false;
         _beam = null;
         _shown = null;
         _desktop = false;
-        _eye = pilot.RoomToRegion(head);
         if (!_m.On || hidden || pilot.Region == 0) { _keysArmed = false; _hoverKey = -1; return; }
         if (Picture(UiSize.Raster, Sojourn.Session.Assistant.GlassLight.Layers) is not { } d) return;
-        if (_placeReadout && _held == null) Place(d, pilot, head);
-        if (_placed is not { } placed || placed.Region != pilot.Region) { Place(d, pilot, head); placed = _placed!.Value; }
-        if (d.Logical.X > 0) _size = new Vector2(_size.X, _size.X * d.Logical.Y / d.Logical.X);
-        // (placed by its top edge, which stays where it was put as it grows or shrinks)
+        var gaze = Vector3.Transform(-Vector3.UnitZ, headRot);
+        bool place = _placed is not { } pl0 || pl0.Region != pilot.Region || _shownSel != _m.Selected;
+        if (!place && _drag == null && _placed is { } pl1)
+        {
+            var at = pilot.RegionToRoom(pl1.Pos);
+            var to = at - head;
+            bool away = Vector3.Distance(pilot.RegionToRoom(pl1.Eyes), head) > 2
+                || to.Length() > 0.05f && Vector3.Dot(Vector3.Normalize(to), gaze) < MathF.Cos(70 * MathF.PI / 180);
+            long now = Environment.TickCount64;
+            if (!away) _awaySince = 0;
+            else if (_awaySince == 0) _awaySince = now;
+            else if (now - _awaySince > 1200) place = true;
+        }
+        if (place) Place(d, pilot, head, headRot, panel);
+        var placed = _placed!.Value;
+        if (d.Logical.X > 0) _size = d.Logical * UiSize.MetresPerPx(ReadoutAt);
+        // (kept by its top edge, which stays where it was put as it grows or shrinks)
         var topEdge = pilot.RegionToRoom(placed.Pos);
         _rot = PanelPlacement.Facing(pilot.RegionToRoom(placed.Eyes), topEdge);
         var centre = topEdge - Vector3.Transform(Vector3.UnitY, _rot) * (_size.Y / 2);
         _shown = (d.Image, centre, _rot, _size.X);
         ReadoutHit? key = null;
         bool on = false;
-        if (focused && _held == null && boards.RightAim is { } q && boards.RightAimPos is { } from)
+        if (focused && _drag == null && boards.RightAim is { } q && boards.RightAimPos is { } from)
         {
             var dir = Vector3.Transform(-Vector3.UnitZ, q);
             float panelT = panel is { } pl && PanelPlacement.Hit(from, dir, pl.Pos, pl.Rot, pl.Size, out var pt, out _) ? pt : float.MaxValue;
@@ -727,38 +791,79 @@ public sealed class HandBuild
         else if (trigger > 0.6f && _keysArmed)
         {
             _keysArmed = false;
-            if (on) { _down = key?.Key; _rightArmed = false; }
+            if (on) { _down = key?.Key; _armed = false; }
         }
     }
 
-    /// <summary>Beside the thing it's about (on the line from the eyes to a point just right of it, a little in front),
-    /// else in front and low; facing you; then it stays there in the world.</summary>
-    void Place(Drawn d, VrPilot pilot, Vector3 head)
+    void Place(Drawn d, VrPilot pilot, Vector3 head, Quaternion headRot, (Vector3 Pos, Quaternion Rot, Vector2 Size)? panel)
     {
-        _placeReadout = false;
-        var headRegion = pilot.RoomToRegion(head);
-        Vector3 anchor;
-        if (_focus != UUID.Zero && Pose(_focus) is { } p && Bounds(_focus) is { } b)
+        _shownSel = _m.Selected;
+        _awaySince = 0;
+        _size = d.Logical * UiSize.MetresPerPx(ReadoutAt);
+        const float Deg = MathF.PI / 180;
+        // the way it's placed from: the selected thing's middle, else where they're looking
+        var look = Vector3.Transform(-Vector3.UnitZ, headRot);
+        float gizmo = 0;   // how far the gizmo reaches round the thing, seen from here (radians)
+        if (_m.Selected != UUID.Zero && _frame is { } gf)
         {
-            var to = p.Pos - headRegion;
-            var flat = new Vector3(to.X, to.Y, 0);
-            var right = flat.LengthSquared() > 1e-6f ? Vector3.Normalize(Vector3.Cross(flat, Vector3.UnitZ)) : Vector3.UnitY;
-            float radius = Math.Min(2f, (b.Max - b.Min).Length() / 2);
-            anchor = p.Pos + right * (radius + 0.12f) + Vector3.UnitZ * 0.1f;
+            var to = pilot.RegionToRoom(gf.Centre) - head;
+            if (to.LengthSquared() > 0.01f)
+            {
+                look = Vector3.Normalize(to);
+                gizmo = MathF.Atan2(GizmoFrame.HeadTo * gf.R, to.Length());
+            }
+        }
+        var flat = new Vector3(look.X, 0, look.Z);
+        flat = flat.LengthSquared() > 1e-4f ? Vector3.Normalize(flat) : -Vector3.UnitZ;
+        float pitch = MathF.Asin(Math.Clamp(look.Y, -1, 1));
+        float halfW = MathF.Atan2(_size.X / 2, ReadoutAt), halfH = MathF.Atan2(_size.Y / 2, ReadoutAt);
+        Vector3 At(float yaw, float pt)
+        {
+            // (yaw about the room's up, + to the left)
+            var dir = Vector3.Transform(flat, Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw));
+            pt = Math.Clamp(pt, -70 * Deg, 30 * Deg);
+            return head + (dir * MathF.Cos(pt) + Vector3.UnitY * MathF.Sin(pt)) * ReadoutAt;
+        }
+        bool Clear(Vector3 at) => !(panel is { } pl && Covers(pl, head, at));
+        // with a thing selected: just under its gizmo, else beside it to the left or right, a little low; with nothing
+        // selected, low and to the left of the gaze
+        var tries = new List<Vector3>();
+        if (gizmo > 0)
+        {
+            float under = pitch - gizmo - halfH - 3 * Deg, aside = gizmo + halfW + 3 * Deg;
+            if (under > -55 * Deg) tries.Add(At(0, under));
+            tries.Add(At(aside, pitch - 10 * Deg));
+            tries.Add(At(-aside, pitch - 10 * Deg));
+            tries.Add(At(0, under));
         }
         else
         {
-            var fwd = pilot.RoomDirToRegion(Vector3.Transform(-Vector3.UnitZ, _headRot));
-            anchor = headRegion + new Vector3(fwd.X, fwd.Y, 0) * 0.7f - Vector3.UnitZ * 0.3f;
+            tries.Add(At(Aside, pitch - Below));
+            tries.Add(At(-Aside, pitch - Below));
         }
-        var anchorRoom = pilot.RegionToRoom(anchor);
-        var dir = anchorRoom - head;
-        float dist = dir.Length();
-        float at = Math.Clamp(dist - 0.1f, Near, Far);
-        var pos = head + (dist > 1e-3f ? dir / dist : -Vector3.UnitZ) * at;
-        _size = d.Logical * UiSize.MetresPerPx(at);
+        var pos = tries.FirstOrDefault(Clear, tries[0]);
+
         // (kept by its top edge: the middle given here is moved down by half its height when shown)
-        _placed = (pilot.Region, pilot.RoomToRegion(pos + Vector3.Transform(Vector3.UnitY, PanelPlacement.Facing(head, pos)) * (_size.Y / 2)), headRegion);
+        _placed = (pilot.Region, pilot.RoomToRegion(pos + Vector3.Transform(Vector3.UnitY, PanelPlacement.Facing(head, pos)) * (_size.Y / 2)), pilot.RoomToRegion(head));
+    }
+
+    /// <summary>Whether the panel is nearer than a readout at this point and over it, seen from the head.</summary>
+    bool Covers((Vector3 Pos, Quaternion Rot, Vector2 Size) panel, Vector3 head, Vector3 at)
+    {
+        var dir = at - head;
+        float dist = dir.Length();
+        if (dist < 1e-3f) return false;
+        dir /= dist;
+        var right = Vector3.Normalize(Vector3.Cross(dir, Vector3.UnitY));
+        var up = Vector3.Cross(right, dir);
+        // its corners and middle: any of them behind the panel
+        foreach (var (x, y) in new[] { (0f, 0f), (-0.5f, 0f), (0.5f, 0f), (-0.5f, -1f), (0.5f, -1f) })
+        {
+            var p = at + right * (x * _size.X) + up * (y * _size.Y);
+            var u = Vector3.Normalize(p - head);
+            if (PanelPlacement.Hit(head, u, panel.Pos, panel.Rot, panel.Size, out float t, out _) && t < (p - head).Length()) return true;
+        }
+        return false;
     }
 
     /// <summary>Its layer this frame (Map/MapWiring.HeadsetScene puts it up with the boards').</summary>
@@ -779,85 +884,44 @@ public sealed class HandBuild
     }
 
     // --- the desktop --------------------------------------------------------------------------------------------------
-    // In the world a left drag on something you may move moves it across the level it was grabbed at (Shift: up and
-    // down, in the plane facing you), the wheel turns it while held; the readout sits at the window's right.
+    // The same gizmo under the mouse: a press on a handle drags it, a press on a thing you may move selects it, a press
+    // anywhere else lets the selection go and does what it always does. The readout sits at the window's right.
 
-    sealed class DeskHeld
+    bool _desktop;
+    SkiaSharp.SKRect _deskRect;
+
+    /// <summary>Each desktop frame: the gizmo from the camera, the handle under the mouse, a drag carried along.</summary>
+    public void DesktopFrame(Vector3 eye, Vector3 origin, Vector3 dir, PickHit? hit, bool hidden)
     {
-        public required HandMove.Grab G;
-        public Vector3 Point, Offset;   // where the drag began on it, and the root from there
-        public float Yaw;
-        public bool Fine;
-        public Vector3 Pos;
-        public Quaternion Rot;
-        public Vector3 Origin, Dir;     // the ray at the start (fine counts from there)
+        Tick(null);
+        _desktop = true;
+        if (!_m.On) return;
+        Hover(eye, origin, dir, !hidden);
+        if (_drag != null) UpdateDrag(origin, dir);
+        _hoverThing = _drag == null && _hot == null && !hidden ? Movable(hit) : UUID.Zero;
     }
 
-    DeskHeld? _desk;
-    SkiaSharp.SKRect _deskRect;
-    float _deskScale = 1;
-
-    /// <summary>A left press in the world while building: a grab if it's on something movable. True if taken.</summary>
-    public bool DesktopDown(PickHit? hit, ulong region, Vector3 origin, Vector3 dir)
+    /// <summary>A left press in the world while building: true if building took it (a handle, or a thing it selects);
+    /// otherwise the selection goes and the press is the world's.</summary>
+    public bool DesktopDown(PickHit? hit, Vector3 origin, Vector3 dir)
     {
         if (!_m.On) return false;
-        if (hit is not { Kind: PickKind.Object } h || _s.Region?.PrimById(h.Id) is not { } prim) return true;   // (building: no touches)
-        var (root, why) = _m.May(region, prim.ID, chosen: false, tell: true);
-        if (root == null) { Note(Why(why)); return true; }
-        if (_settling != UUID.Zero) { _r.Motion.LetGo(_settling); _settling = UUID.Zero; }
-        var g = _m.Begin(root);
-        _desk = new DeskHeld { G = g, Point = h.Point, Offset = g.From - h.Point, Pos = g.From, Rot = g.FromRot, Fine = _fineNext, Origin = origin, Dir = dir };
-        _grabbedOnce = true;
-        _moves.TryAdd(root.ID, 0);
-        Note(null);
-        Focus(root.ID);
-        _r.Motion.Hold(root.ID, region, root.LocalID, g.From, g.FromRot);
-        return true;
+        if (_hot != null) return BeginDrag(origin, dir) || true;
+        if (Claims(hit)) { Tapped(hit!.Value); return true; }
+        Elsewhere();
+        return false;
     }
 
-    /// <summary>Each desktop frame: a drag carried along the mouse's ray.</summary>
-    public void DesktopFrame(Vector3 origin, Vector3 dir, bool vertical)
-    {
-        Tick();
-        _desktop = true;
-        if (_desk is not { } d) return;
-        var n = vertical ? Vector3.Normalize(new Vector3(-dir.X, -dir.Y, 0) is var f && f.LengthSquared() > 1e-6f ? f : Vector3.UnitX) : Vector3.UnitZ;
-        float denom = Vector3.Dot(dir, n);
-        if (MathF.Abs(denom) < 1e-4f) return;
-        float t = Vector3.Dot(d.Point - origin, n) / denom;
-        if (t <= 0 || t > 256) return;
-        var at = origin + dir * t;
-        if (d.Fine) at = d.Point + (at - d.Point) * FineScale;
-        var pos = at + d.Offset;
-        var rot = Quaternion.Normalize(Quaternion.CreateFromAxisAngle(Vector3.UnitZ, d.Yaw) * d.G.FromRot);
-        var (sp, sr) = Settings.Snap ? Snap(pos, rot) : (pos, rot);
-        (d.Pos, d.Rot) = _m.Move(d.G, sp, sr);
-        _r.Motion.Hold(d.G.Root.ID, d.G.Region, d.G.Root.LocalID, d.Pos, d.Rot);
-        Changed();
-    }
+    public void DesktopUp() => EndDrag();
 
-    /// <summary>The wheel while dragging turns it (a snap step a notch, else 5 degrees). True if taken.</summary>
-    public bool DesktopWheel(float notches)
-    {
-        if (_desk is not { } d || notches == 0) return false;
-        float step = (Settings.Snap ? Settings.Angle : 5) * MathF.PI / 180;
-        d.Yaw += MathF.Sign(notches) * step;
-        return true;
-    }
+    /// <summary>Whether a press here would be building's (the world's cue for a touch stays away).</summary>
+    public bool DesktopTakes(PickHit? hit) => _m.On && (_hot != null || _drag != null || Claims(hit));
 
-    public void DesktopUp()
-    {
-        if (_desk is not { } d) return;
-        _desk = null;
-        LetGo(d.G, d.Pos, d.Rot);
-    }
-
-    /// <summary>The desktop's readout at the window's right, and the boxes.</summary>
+    /// <summary>The desktop's readout at the window's right.</summary>
     public (OverlayImage Image, Vector2 At)? Desktop(float ui, int width, int height, bool hidden)
     {
         _deskRect = SkiaSharp.SKRect.Empty;
         if (!_m.On || hidden) return null;
-        _deskScale = ui;
         if (Picture(ui, false) is not { } d) return null;
         float w = d.Image.Width, h = d.Image.Height;
         float x = Math.Max(8, width - w - 16 * ui), y = Math.Clamp(height * 0.35f, 8, Math.Max(8, height - h - 8));
@@ -865,19 +929,8 @@ public sealed class HandBuild
         return (d.Image, new Vector2(x, y));
     }
 
-    /// <summary>The boxes on the desktop (the mouse's ray is the pointer's).</summary>
-    public OverlayScene? DesktopOutlines(OverlayScene? scene, ulong region, Vector3 eye, PickHit? hit)
-    {
-        if (!_m.On) return scene;
-        _eye = eye;
-        if (_desk == null && hit is { Kind: PickKind.Object } h && _s.Region?.PrimById(h.Id) is { } prim)
-        {
-            var (root, _) = _m.May(region, prim.ID, chosen: false);
-            _hover = root != null ? (root.ID, true) : null;
-        }
-        else if (_desk == null) _hover = null;
-        return Outlines(scene, region);
-    }
+    /// <summary>The gizmo and the boxes on the desktop.</summary>
+    public OverlayScene? DesktopOutlines(OverlayScene? scene) => _m.On ? Draw(scene) : scene;
 
     public bool DesktopOver(Vector2 px) => _m.On && _deskRect.Contains(px.X, px.Y);
 
@@ -916,15 +969,20 @@ public sealed class HandBuild
     public void Settle(SettingsApi api)
     {
         static string OnOff(bool b) => b ? "on" : "off";
-        api.Add("build_by_hand", new("building", "building by hand: the triggers grab the person's things to move and turn them (a reach or the "
-            + "right ray), the stick pushes, pulls and turns what's held, and a readout shows where it is; not kept between sessions. "
-            + "SojournHandBuild start puts a thing in their hands", "on, off", () => OnOff(_m.On), SettingsApi.Switch("build_by_hand", Set)));
-        api.Add("build_snap", new("building", "building by hand snaps what's moved to the grid and its turns to steps (off by default)", "on, off",
+        api.Add("build_by_hand", new("building", "building by hand: a tap of the pointer selects one of the person's things, and its arrows, rings and "
+            + "middle handle move and turn it, with a readout of where it is; not kept between sessions. SojournHandBuild start selects a thing for them",
+            "on, off", () => OnOff(_m.On), SettingsApi.Switch("build_by_hand", Set)));
+        api.Add("build_snap", new("building", "building by hand snaps moves to the grid and turns to steps (off by default)", "on, off",
             () => OnOff(Settings.Snap), SettingsApi.Switch("build_snap", on => { Settings.Snap = on; Save(); Changed(); })));
         api.Add("build_grid", new("building", "the grid building by hand snaps to, metres (the viewer's 0.5 by default)", "0.01-10",
             () => JsonValue.Create(Settings.Grid), SettingsApi.Number("build_grid", 0.01f, 10, " m", f => { Settings.Grid = f; Save(); Changed(); })));
         api.Add("build_snap_angle", new("building", "the step building by hand snaps turns to, degrees (15 by default)", "1-90",
             () => JsonValue.Create(Settings.Angle), SettingsApi.Number("build_snap_angle", 1, 90, " deg", f => { Settings.Angle = f; Save(); Changed(); })));
+        api.Add("build_axes", new("building", "the axes building by hand's arrows and rings follow: the region's (world, the default) or the thing's own (local)",
+            "world, local", () => Settings.Local ? "local" : "world",
+            SettingsApi.Choice("build_axes", new[] { "world", "local" }, i => { Settings.Local = i == 1; _signs = null; Save(); Changed(); })));
+        api.Add("build_fine", new("building", "building by hand's fine moves: drags move and turn a fifth as far (off; not kept between sessions)", "on, off",
+            () => OnOff(_fine), SettingsApi.Switch("build_fine", on => { _fine = on; Changed(); })));
     }
 
     public static readonly float[] Grids = { 0.01f, 0.05f, 0.1f, 0.25f, 0.5f, 1f, 2f };

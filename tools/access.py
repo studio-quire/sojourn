@@ -804,6 +804,21 @@ def wait_focus(pred, secs=5):
     return wait(lambda: (lambda d: d if d and pred(d) else None)(focused()), secs, 0.2)
 
 
+def focus_on(id_, tabs=12):
+    """The focus on a window's control before a key posted to the focus: UIA's SetFocus, which off the input desktop
+    doesn't always take (2026-11-02's full run: the clips window kept it in About, so Space never reached the notecard's
+    check box), else Tab, as the person moves, until it's there. Whether it got there."""
+    u(f"setfocus id={id_}")
+    if wait_focus(lambda d: d["id"] == id_, 1.5):
+        return True
+    print(f"     (UIA's SetFocus didn't move the focus to {id_}: Tab there; {focus_label()})")
+    for _ in range(tabs):
+        key("tab")
+        if wait_focus(lambda d: d["id"] == id_, 0.6):
+            return True
+    return False
+
+
 def key(*names, target="focus"):
     """Posted keys to whatever has the app's focus (or a selector): "ctrl+enter", "alt+3", "f6", "2"..."""
     specs = []
@@ -1357,6 +1372,7 @@ def session(run, procs):
         ("sound as a map", lambda: sound_map(run, tester_id)),
         ("someone's own IM sound", lambda: own_im_sound(run, tester_id)),
         ("walk mode", lambda: walk_mode(run)),
+        ("walk mode's warning, its name not in", lambda: walk_unnamed(run)),
         ("distance walked", lambda: distance_walked(run)),
         ("rail switches", lambda: rail_switches(run)),
         ("stopping a vehicle", lambda: vehicle_stop(run)),
@@ -3551,7 +3567,10 @@ def offscreen(run):
     run.check("the view out of sight runs, and came back after a lost GPU", st,
               json.dumps(st) if st else json.dumps(api("SojournView", "status")))
     st = api("SojournView", "status")
-    run.check("unseen with no assistant (only geometry drawn)", st.get("unseen") is True, json.dumps(st))
+    if RELAY:   # (with the assistant there's something to look at its pictures)
+        run.check("seen with the assistant (drawn whole)", st.get("unseen") is False, json.dumps(st))
+    else:
+        run.check("unseen with no assistant (only geometry drawn)", st.get("unseen") is True, json.dumps(st))
     box_checks(run)
     path = OUT / "look.png"
     r = api("LLViewerWindow", "saveSnapshot", timeout=20, filename=str(path), width=1024, height=1024, tool="assistant")
@@ -4489,10 +4508,10 @@ def clips_upload(run, d, nonce, made):
     wait(lambda: "3 clips of up to 29.9" in value_of("id=clipsAbout"), 8, 0.3)
     run.check("the folder offered first: a new one named after them, in Sounds",
               value_of("id=clipsFolder").startswith("A new folder named after the clips, in Sounds"), value_of("id=clipsFolder"))
-    u("setfocus id=clipsNotecard")
+    there = focus_on("clipsNotecard")
     key("space")
     run.check("(the notecard ticked)", wait(lambda: "toggle=On" in (find("id=clipsNotecard") or [{}])[0].get("raw", ""), 3, 0.2),
-              (find("id=clipsNotecard") or [{}])[0].get("raw", ""))
+              (find("id=clipsNotecard") or [{}])[0].get("raw", "") + ("" if there else f" (the focus never got there; {focus_label()})"))
     u("setfocus id=clipsName")
     u("set id=clipsName |")
     type_text(base, "id=clipsName")
@@ -6258,7 +6277,9 @@ def ride_recording(run):
     three taps of Up open the throttle to 30% (3 m/s); V while moving adds what it shows; H answers within a second
     while pictures are taken (on the processor too); past the markers Space stops it, and once it's been still 8 s the
     recording ends by itself (said). SojournRide: moments every 3 s, pictures taken (one at a time, a due one skipped
-    rather than queued), the markers among the names passed in order, the floating text and the train's lines kept.
+    rather than queued; only with ACCESS_RELAY: pictures are for the assistant to tell, so without it the start says
+    none are taken and why, and none are), the markers among the names passed in order, the floating text and the
+    train's lines kept.
     Then: with ACCESS_RELAY, Shift+C tells it, naming the markers in order, and what the telling cost; without it, Shift+C
     says what the recording knows, the markers in order."""
     back_to_chat()
@@ -6321,6 +6342,10 @@ def ride_recording(run):
         key("c")
         said = run.expect("C starts recording the ride, said", ["Recording the ride"], m, 5)
         print(f"     ({(said or {}).get('text', '')})")
+        if not RELAY and not VIEWLESS:
+            # (the run's --no-assistant: nothing would tell the pictures, so none are drawn)
+            run.check("without the assistant: no pictures, and why", "without pictures (the assistant isn't on" in (said or {}).get("text", ""),
+                      (said or {}).get("text", ""))
         rs = api("SojournRide", "status")
         run.check("(recording)", rs.get("recording"), json.dumps(rs)[:200])
         t_start = time.time()
@@ -6361,8 +6386,10 @@ def ride_recording(run):
               f"{ride.get('skipped')} skipped, last {ride.get('last_picture_ms')} ms; passed {ride.get('names_passed')})")
         run.check("(stopped: not recording)", not rs.get("recording") and ride.get("ended") == "the ride stopped moving", json.dumps(rs)[:300])
         run.check("a moment every 3 s or so", ride.get("moments", 0) >= ride.get("seconds", 0) / 3.5, f"{ride.get('moments')} in {ride.get('seconds')} s")
-        if not VIEWLESS:
+        if RELAY and not VIEWLESS:
             run.check("pictures taken along the way", ride.get("taken", 0) >= (2 if SOFTWARE else 4), f"{ride.get('taken')} taken, {ride.get('skipped')} skipped")
+        else:
+            run.check("(no pictures taken)", ride.get("taken", 0) == 0 and ride.get("skipped", 0) == 0, f"{ride.get('taken')} taken, {ride.get('skipped')} skipped")
         names = [n for n, _ in RIDE_MARKERS]
         passed = [n for n in ride.get("names_passed") or [] if n in names]
         run.check("the markers among the names passed, in order", passed == names, json.dumps(ride.get("names_passed")))
@@ -6377,7 +6404,7 @@ def ride_recording(run):
                 (OUT / f"ride-{i}.jpg").write_bytes(base64.b64decode(p["jpeg"]))
             sizes = [len(base64.b64decode(p["jpeg"])) for p in pics]
             print(f"     ({len(pics)} pictures for a brief telling, {min(sizes) // 1024}-{max(sizes) // 1024} KB each; ride-0.jpg in the run's folder)")
-        if not VIEWLESS:
+        if RELAY and not VIEWLESS:
             run.check("the pictures go with their moments, JPEG at 640x360, each with what's seen in it",
                       pics and all(p.get("width") == 640 and p.get("height") == 360 and "seen" in p for p in pics), f"{len(pics)} pictures")
 
@@ -6667,6 +6694,71 @@ def walk_mode(run):
         # the visitor's things in both regions (its own cleanup at the end only reaches the region it's in)
         for region in (REGION, COURSE_REGION):
             clear_owned(region, visitor_id())
+
+
+def walk_unnamed(run):
+    """The warning naming what came without its name: Second Life sends none with objects, and the tester's own new
+    prims bring theirs (the creator's selection) but nobody else's do. On open ground in Atelier East the visitor puts
+    out a box named Green Gate; walking toward it in walk mode, the first warning names it (asked for while it was
+    still twice as far as the warning reaches), not "Wall" or "Something" (2026-11-02's full run: the course's end
+    wall, its name not yet in, was "Wall, 4 metres." and named only 4 s later, against it). The visitor's box goes
+    after."""
+    if not VIEWLESS and not SOFTWARE:
+        # after the faked GPU loss (SOJOURN_OFFSCREEN_LOSE_AFTER): its slow first frames held walk mode's rays up 5 s
+        wait(lambda: (lambda st: st["state"] == "running" and st["losses"] >= 1)(api("SojournView", "status")), 60, 1)
+    m = mark()
+    say_in_app(f"//tp {COURSE_REGION}/200/20/30")
+    if not run.expect("(to Atelier East)", ["Arrived", COURSE_REGION], m, 40):
+        return
+    time.sleep(2)
+    xs = list(range(196, 216, 2))
+    y = g = None
+    for yy in range(12, 36, 4):
+        hs = api("TesselAgent", "ground", points=[[x, yy] for x in xs])["heights"]
+        if all(h is not None for h in hs) and max(hs) - min(hs) < 0.6:
+            ray = api("SojournCollision", "collide", **{"from": [xs[0], yy, max(hs) + 0.8], "dir": [1, 0, 0], "max": xs[-1] - xs[0]})
+            if not ray.get("hit"):
+                y, g = yy, max(hs)
+                break
+    if not run.check("(open flat ground in Atelier East for an unnamed thing)", y is not None, ""):
+        return
+    x0 = xs[0]
+    try:
+        v(f"tp {COURSE_REGION} {x0 + 6} {y + 5} {g + 1.5}", timeout=40)
+        time.sleep(1.5)
+        got = v(f"rez Green Gate {x0 + 14} {y} {g + 1.1} size 0.2 2 2.2", timeout=30)
+        if not run.check("(the visitor's Green Gate is out, 14 m ahead)", got.startswith("rezzed"), got):
+            return
+        m = mark()
+        say_in_app(f"//tp {COURSE_REGION}/{x0}/{y}/{g + 1.5:.0f}")
+        if not run.expect("(the tester on the open ground)", ["Arrived", COURSE_REGION], m, 40):
+            return
+        time.sleep(1.5)
+        m = mark()
+        say_in_app("//face 0")
+        run.expect("(facing east, toward it)", ["Facing", "east"], m, 8)
+        # the collision model has it once the region has sent it and its shape (its name never comes by itself)
+        seen = wait(lambda: (lambda h: h if h.get("hit") else None)(
+            api("SojournCollision", "collide", **{"from": [x0, y, g + 1], "dir": [1, 0, 0], "max": 16})), 30, 1)
+        run.check("(the collision model has it)", seen and abs(seen["distance"] - 13.9) < 0.5, json.dumps(seen))
+        time.sleep(1)
+        key("f3")
+        wait_focus(lambda d: d["id"] == "walkPad", 5)
+        m = mark()
+        u("keydown focus | 38")
+        warned = wait(lambda: next((e for e in said_since(m) if re.match(r"(Green Gate|Wall|Something), ", e.get("text") or "")), None), 8, 0.1)
+        u("keyup focus | 38")
+        at = walk_pos()
+        text = (warned or {}).get("text") or ""
+        run.check("a warning before a thing whose name hadn't come, naming it", text.startswith("Green Gate,") and "under a metre" not in text,
+                  f"{text or 'not said'} at {x0 + 13.9 - at[0]:.1f} m from it")
+        time.sleep(1)
+        m = mark()
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+    finally:
+        back_to_chat()
+        clear_owned(COURSE_REGION, visitor_id())
 
 
 # ---- the end ------------------------------------------------------------------------------------------------------------

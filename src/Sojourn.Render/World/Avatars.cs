@@ -182,6 +182,8 @@ public sealed partial class Avatars
 
     static readonly int Clones = int.TryParse(System.Environment.GetEnvironmentVariable("SOJOURN_AVATAR_CLONES"), out var c) ? c : 0;
     static readonly bool Debug = System.Environment.GetEnvironmentVariable("SOJOURN_AVATAR_DEBUG") == "1";
+    // test aid: every avatar stays a loading cloud
+    static readonly bool TestCloud = System.Environment.GetEnvironmentVariable("SOJOURN_TEST_CLOUD") == "1";
 
     static double Now => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
 
@@ -844,7 +846,7 @@ public sealed partial class Avatars
         bakes.Clear();
         bool jelly = how == Draw.Jelly;
         // a jelly doll needs only its shape: its bakes aren't shown
-        bool loaded = how != Draw.Cloud && (jelly ? vp is { Length: > 1 } : appearance);
+        bool loaded = how != Draw.Cloud && !TestCloud && (jelly ? vp is { Length: > 1 } : appearance);
         if (appearance && !jelly)
             foreach (int te in new[] { TeHead, TeUpper, TeLower, TeEyes, TeSkirt, TeHair })
             {
@@ -1133,10 +1135,20 @@ public sealed partial class Avatars
     }
 
     /// <summary>The loading cloud (the viewer's particle cloud while an avatar isn't fully loaded): soft grey puffs
-    /// filling the body's volume, deterministic per avatar.</summary>
+    /// filling the body's volume, deterministic per avatar. The person's own in the headset isn't drawn for their eyes
+    /// (docs/rendering.md > Your own loading cloud), only in a mirror that shows avatars.</summary>
     void AddCloud(Avatar av, Vector3 pos, ViewSetup v, DrawList dl, RenderRequest req)
     {
         float height = av.Scale.Z > 0.5f ? av.Scale.Z : 1.9f;
+        bool own = req.Self?.Id == av.ID;
+        if (!own || Mirror == MirrorAvatars.Shown)
+            AddPuffs(av, pos, height, own ? InstanceFlags.MirrorOnly : AvatarInstanceFlags, v, dl);
+        if (req.ShowUi && !string.IsNullOrEmpty(av.Name))
+            dl.NameTags.Add(new NameTag(pos + new Vector3(0, 0, height * 0.5f + 0.35f), av.Name, 0xFFFFFFFF, av.ID, pos + new Vector3(0, 0, height * 0.5f - 0.2f)));
+    }
+
+    void AddPuffs(Avatar av, Vector3 pos, float height, uint flags, ViewSetup v, DrawList dl)
+    {
         var rng = new Random(av.ID.GetHashCode());
         uint mat = dl.AddMaterial(new GpuMaterial
         {
@@ -1153,12 +1165,10 @@ public sealed partial class Avatars
             uint inst = dl.AddInstance(new GpuInstance
             {
                 Model = model, N0 = new Vector4(1 / s, 0, 0, 0), N1 = new Vector4(0, 1 / s, 0, 0), N2 = new Vector4(0, 0, 1 / s, 0),
-                Material = mat, ObjectId = av.LocalID, Flags = AvatarInstanceFlags,
+                Material = mat, ObjectId = av.LocalID, Flags = flags,
             });
             dl.Alpha.Add(new DrawCmd { Range = _puff, Instance = inst, Depth = Vector3.Distance(c, v.Position) });
         }
-        if (req.ShowUi && !string.IsNullOrEmpty(av.Name))
-            dl.NameTags.Add(new NameTag(pos + new Vector3(0, 0, height * 0.5f + 0.35f), av.Name, 0xFFFFFFFF, av.ID, pos + new Vector3(0, 0, height * 0.5f - 0.2f)));
     }
 
     static float Rescale(float x, float x1, float x2, float y1, float y2) => y1 + (x - x1) * (y2 - y1) / (x2 - x1);

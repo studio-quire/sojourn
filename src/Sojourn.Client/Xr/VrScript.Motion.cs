@@ -12,6 +12,10 @@ namespace Sojourn.Client.Xr;
 ///   positive; stays) |
 ///   face DEG (the view turned to that heading of the region, counter-clockwise from east) | mark TEXT |
 ///   lhold V / rhold V (the left or right trigger held at V through the steps after, until 0: a grab while hands move) |
+///   rat X Y Z (the right hand aimed at that point of the region from wherever it is; stays, until raim) |
+///   rhandle K A (the right hand aimed at building by hand's gizmo, K 0 the middle, 1 an arrow, 2 a plane square, 3 a
+///   ring, A its axis 0-2: where that handle is as the step begins; stays) | rslide DX DY DZ S (what the right hand aims at
+///   slides that far through the region over S seconds: a drag) |
 ///   lhand X Y Z S / rhand X Y Z S (the left or right controller's grip moved over S seconds to that offset from the
 ///   head in the room, held level with the fingers pointing ahead, the hand's aim with them unless aim/raim says; stays) |
 ///   panel X Y Z (the assistant's panel put at that offset from the head, facing it, as if dragged there) |
@@ -28,6 +32,10 @@ public sealed partial class VrScript
     (float Yaw, float Pitch)? _motionAim, _motionRightAim;
     Vector3? _lhandFrom, _lhandTo, _lhand, _rhandFrom, _rhandTo, _rhand;
     float _lhold, _rhold;
+    Vector3? _rTarget, _rSlideFrom, _rSlideTo;
+
+    /// <summary>Building by hand's gizmo: a point of a handle in the region (kind 0-3, axis), for rhandle.</summary>
+    public Func<int, int, Vector3?>? HandlePoint { get; set; }
 
     /// <summary>Puts the assistant's panel somewhere in the room (position, rotation), as a drag would.</summary>
     public Action<Vector3, Quaternion>? PinPanel { get; set; }
@@ -51,7 +59,7 @@ public sealed partial class VrScript
     static float Duration((string Op, float[] Args, string Text) s) => s.Op switch
     {
         "wait" => s.Args[0], "stick" or "rstick" => s.Args[2], "press" => s.Args[0], "ltrig" or "rtrig" => s.Args[1], "head" => s.Args[3],
-        "lhand" or "rhand" => s.Args[3],
+        "lhand" or "rhand" or "rslide" => s.Args[3],
         _ => 0,
     };
 
@@ -68,7 +76,15 @@ public sealed partial class VrScript
             _log($"motion {_motionAt}: {s.Op} {string.Join(' ', s.Args.Select(x => x.ToString(CultureInfo.InvariantCulture)))} {s.Text}".TrimEnd());
             if (s.Op == "head") { _headFrom = _head; _headTo = new Vector3(s.Args[0], s.Args[1], s.Args[2]); }
             if (s.Op == "aim") _motionAim = (s.Args[0], s.Args[1]);
-            if (s.Op == "raim") _motionRightAim = (s.Args[0], s.Args[1]);
+            if (s.Op == "raim") (_motionRightAim, _rTarget) = ((s.Args[0], s.Args[1]), null);
+            if (s.Op == "rat") (_motionRightAim, _rTarget) = (null, new Vector3(s.Args[0], s.Args[1], s.Args[2]));
+            if (s.Op == "rhandle")
+            {
+                _rTarget = HandlePoint?.Invoke((int)s.Args[0], (int)s.Args[1]);
+                _motionRightAim = null;
+                _log($"motion: the handle is at {(_rTarget is { } ht ? ht.ToString() : "nowhere")}");
+            }
+            if (s.Op == "rslide" && _rTarget is { } rt) (_rSlideFrom, _rSlideTo) = (rt, rt + new Vector3(s.Args[0], s.Args[1], s.Args[2]));
             if (s.Op == "lhold") _lhold = s.Args[0];
             if (s.Op == "rhold") _rhold = s.Args[0];
             if (s.Op == "face") Pilot?.Face(s.Args[0]);
@@ -101,6 +117,7 @@ public sealed partial class VrScript
                 case "head": _head = Vector3.Lerp(_headFrom, _headTo, (float)Math.Clamp(into / Math.Max(1e-3, s.Args[3]), 0, 1)); break;
                 case "lhand": _lhand = Vector3.Lerp(_lhandFrom!.Value, _lhandTo!.Value, (float)Math.Clamp(into / Math.Max(1e-3, s.Args[3]), 0, 1)); break;
                 case "rhand": _rhand = Vector3.Lerp(_rhandFrom!.Value, _rhandTo!.Value, (float)Math.Clamp(into / Math.Max(1e-3, s.Args[3]), 0, 1)); break;
+                case "rslide" when _rSlideFrom is { } sf: _rTarget = Vector3.Lerp(sf, _rSlideTo!.Value, (float)Math.Clamp(into / Math.Max(1e-3, s.Args[3]), 0, 1)); break;
                 case "press":
                     switch (s.Text)
                     {
@@ -141,6 +158,14 @@ public sealed partial class VrScript
             var from = centre + _head + (_rhand ?? new Vector3(0.2f, -0.35f, -0.25f));
             c.RightAimPos = from;
             c.RightAim = Quaternion.CreateFromAxisAngle(Vector3.UnitY, raim.Yaw * MathF.PI / 180) * Quaternion.CreateFromAxisAngle(Vector3.UnitX, raim.Pitch * MathF.PI / 180);
+        }
+        if (_rTarget is { } target && Pilot is { } pilot && pilot.Region != 0)
+        {
+            var from = centre + _head + (_rhand ?? new Vector3(0.2f, -0.35f, -0.25f));
+            var d = pilot.RegionToRoom(target) - from;
+            float yaw = MathF.Atan2(-d.X, -d.Z), pitch = MathF.Atan2(d.Y, MathF.Sqrt(d.X * d.X + d.Z * d.Z));
+            c.RightAimPos = from;
+            c.RightAim = Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw) * Quaternion.CreateFromAxisAngle(Vector3.UnitX, pitch);
         }
         f.Input = c;
     }

@@ -399,21 +399,21 @@
     "de": "Was andere von Ihrem Blick sehen: Ihr Kopf dreht sich zu dem, den Sie ansehen, nur die Richtung, oder nichts.",
     "zh-Hans": "别人看到的你的视线：头转向你看着的人、只有方向，或什么都没有。"
   },
-  "Grab your things with a trigger to move and turn them: reach into one, or point at it. The × on the readout beside it ends it.": {
-    "_": "settings menu: the tip on the 'build by hand' row in the moving section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences; the trigger: a controller's; the readout: the small sheet of numbers shown beside the object; keep the ×",
-    "zh": "用扳機鍵抓住你的物件來移動和轉動：把手伸進物件裡，或指著它。旁邊讀數板上的 × 可結束。",
-    "it": "Afferra i tuoi oggetti con un trigger per spostarli e ruotarli: infila la mano in uno, o puntalo. La × sulla scheda accanto chiude.",
-    "es": "Agarra tus objetos con un gatillo para moverlos y girarlos: mete la mano en uno o apúntalo. La × de la ficha de al lado lo termina.",
-    "pt": "Pegue seus objetos com um gatilho para mover e girar: enfie a mão em um, ou aponte para ele. O × no painel ao lado encerra.",
-    "ja": "トリガーで自分のオブジェクトをつかんで、動かしたり回したりします。手を中に入れるか、指してください。横の表示の × で終了します。",
-    "tr": "Nesnelerinizi tetikle tutup taşıyın ve döndürün: elinizi birinin içine uzatın ya da onu işaretleyin. Yanındaki göstergedeki × bunu kapatır.",
-    "fr": "Saisissez vos objets avec une gâchette pour les déplacer et les tourner : plongez la main dans l'un d'eux, ou pointez-le. Le × du panneau à côté y met fin.",
-    "da": "Grib dine ting med en aftrækker for at flytte og dreje dem: ræk ind i en, eller peg på den. × på visningen ved siden af slår det fra.",
-    "ru": "Хватайте свои объекты триггером, чтобы двигать и поворачивать их: протяните руку внутрь или наведите луч. × на табличке рядом выключает это.",
-    "pl": "Chwytaj swoje obiekty spustem, by je przesuwać i obracać: sięgnij do środka albo wskaż obiekt. × na tabliczce obok to kończy.",
-    "az": "Obyektlərinizi tətiklə tutub yerini dəyişin və çevirin: əlinizi birinin içinə uzadın, ya da ona işarə edin. Yanındakı lövhədəki × bunu bitirir.",
-    "de": "Greifen Sie Ihre Objekte mit einem Trigger, um sie zu bewegen und zu drehen: hineingreifen oder darauf zeigen. Das × an der Anzeige daneben beendet es.",
-    "zh-Hans": "用扳机键抓住你的物体来移动和转动：把手伸进物体里，或指着它。旁边读数板上的 × 可结束。"
+  "Tap one of your things, then drag its arrows to move it, its rings to turn it, or its middle to move it freely. The × on the readout ends it.": {
+    "_": "settings menu: the tip on the 'build by hand' row in the moving section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences; tap: a quick press of the pointer's trigger; the arrows, rings and middle: handles drawn on the selected object, as SL's build tool has; the readout: the small sheet of numbers and keys shown near you while building; keep the ×",
+    "zh": "點一下你的物件，再拖曳它的箭頭來移動、圓環來旋轉，或拖曳中心來自由移動。讀數板上的 × 結束。",
+    "it": "Tocca una delle tue cose, poi trascina le frecce per spostarla, gli anelli per ruotarla o il centro per muoverla liberamente. La × sul riquadro termina.",
+    "es": "Toca una de tus cosas y arrastra sus flechas para moverla, sus anillos para girarla o su centro para moverla libremente. La × del panel lo termina.",
+    "pt": "Toque em uma das suas coisas e arraste as setas para movê-la, os anéis para girá-la ou o centro para movê-la livremente. O × no painel encerra.",
+    "ja": "自分の物をタップし、矢印で移動、輪で回転、中心で自由に移動します。表示板の × で終了。",
+    "tr": "Eşyalarından birine dokun, sonra taşımak için oklarını, döndürmek için halkalarını ya da serbestçe taşımak için ortasını sürükle. Göstergedeki × bitirir.",
+    "fr": "Touchez un de vos objets, puis faites glisser ses flèches pour le déplacer, ses anneaux pour le tourner ou son centre pour le déplacer librement. Le × du relevé arrête.",
+    "da": "Tryk på en af dine ting, og træk så i pilene for at flytte den, ringene for at dreje den eller midten for at flytte den frit. × på visningen afslutter.",
+    "ru": "Коснитесь своей вещи, затем тяните стрелки, чтобы двигать, кольца — чтобы вращать, центр — чтобы двигать свободно. × на табличке завершает.",
+    "pl": "Stuknij swoją rzecz, potem przeciągaj strzałki, by przesuwać, pierścienie, by obracać, lub środek, by przesuwać swobodnie. × na odczycie kończy.",
+    "az": "Əşyalarından birinə toxun, sonra köçürmək üçün oxlarını, fırlatmaq üçün halqalarını, sərbəst köçürmək üçün mərkəzini sürüklə. Göstəricidəki × bitirir.",
+    "de": "Tippe eines deiner Dinge an und ziehe dann an den Pfeilen zum Verschieben, an den Ringen zum Drehen oder an der Mitte zum freien Bewegen. Das × auf der Anzeige beendet es.",
+    "zh-Hans": "点一下你的物品，再拖动它的箭头来移动、圆环来旋转，或拖动中心来自由移动。读数板上的 × 结束。"
   },
   "Things you move by hand snap to a grid, and their turns to steps.": {
     "_": "settings menu: the tip on the 'build snap' row in the moving section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences",
@@ -3071,36 +3071,20 @@
     "de": "Was Ihre RLV-Objekte jetzt einschränken und welches Objekt jeweils dahintersteht.",
     "zh-Hans": "你的 RLV 物件现在限制了什么，以及分别由哪个物件施加。"
   },
-  "Logs you out and takes you back to where you logged in, to log in again or as someone else.": {
-    "_": "settings menu: the tip on the 'log out' row in the you section (back to the login screen, or to the launcher); keep about as long as the English (at most three lines of ~50 characters); plain, friendly sentences",
-    "zh": "登出並回到你登入的地方，可以重新登入或換一個帳號。",
-    "it": "Ti disconnette e ti riporta dove hai fatto l'accesso, per rientrare o entrare con un altro account.",
-    "es": "Cierra tu sesión y te lleva de vuelta a donde la iniciaste, para volver a entrar o con otra cuenta.",
-    "pt": "Encerra a sessão e leva você de volta aonde entrou, para entrar de novo ou com outra conta.",
-    "ja": "ログアウトして、ログインした画面に戻ります。もう一度、または別のアカウントでログインできます。",
-    "tr": "Oturumunuzu kapatır ve giriş yaptığınız yere döndürür; yeniden ya da başka bir hesapla girebilirsiniz.",
-    "fr": "Vous déconnecte et vous ramène là où vous vous êtes connecté, pour revenir ou entrer avec un autre compte.",
-    "da": "Logger dig af og tager dig tilbage, hvor du loggede ind, så du kan logge ind igen eller som en anden.",
-    "ru": "Выходит из аккаунта и возвращает туда, где вы входили, чтобы войти снова или под другим аккаунтом.",
-    "pl": "Wylogowuje cię i wraca tam, gdzie się logowałeś, by zalogować się ponownie lub na inne konto.",
-    "az": "Hesabdan çıxır və daxil olduğunuz yerə qaytarır ki, yenidən və ya başqa hesabla daxil olasınız.",
-    "de": "Meldet Sie ab und bringt Sie dorthin zurück, wo Sie sich angemeldet haben, um sich erneut oder mit einem anderen Konto anzumelden.",
-    "zh-Hans": "登出并回到你登录的地方，可以重新登录或换一个账号。"
-  },
-  "Logs you out and closes Sojourn.": {
-    "_": "settings menu: the tip on the 'quit Sojourn' row in the you section (in a launcher run, the launcher closes too); keep 'Sojourn' as is; keep about as long as the English; plain, friendly sentences",
-    "zh": "登出並關閉 Sojourn。",
-    "it": "Ti disconnette e chiude Sojourn.",
-    "es": "Cierra tu sesión y cierra Sojourn.",
-    "pt": "Encerra a sessão e fecha o Sojourn.",
-    "ja": "ログアウトして Sojourn を終了します。",
-    "tr": "Oturumunuzu kapatır ve Sojourn'u kapatır.",
-    "fr": "Vous déconnecte et ferme Sojourn.",
-    "da": "Logger dig af og lukker Sojourn.",
-    "ru": "Выходит из аккаунта и закрывает Sojourn.",
-    "pl": "Wylogowuje cię i zamyka Sojourn.",
-    "az": "Hesabdan çıxır və Sojourn-u bağlayır.",
-    "de": "Meldet Sie ab und beendet Sojourn.",
-    "zh-Hans": "登出并关闭 Sojourn。"
+  "Logs you out and closes Sojourn, back where you started it.": {
+    "_": "settings menu: the tip on the quit key (a power symbol in the top bar, beside ? and the close key): back at the launcher, or the login screen, wherever Sojourn was started from; keep 'Sojourn' as is; keep about as long as the English; plain, friendly sentences",
+    "zh": "登出並關閉 Sojourn，回到你啟動它的地方。",
+    "it": "Ti disconnette e chiude Sojourn, riportandoti dove l'hai avviato.",
+    "es": "Cierra tu sesión y cierra Sojourn, de vuelta a donde lo iniciaste.",
+    "pt": "Encerra a sessão e fecha o Sojourn, de volta aonde você o iniciou.",
+    "ja": "ログアウトして Sojourn を終了し、起動した場所に戻ります。",
+    "tr": "Oturumunuzu kapatır ve Sojourn'u kapatır; onu başlattığınız yere dönersiniz.",
+    "fr": "Vous déconnecte et ferme Sojourn : vous revenez là où vous l'avez lancé.",
+    "da": "Logger dig af og lukker Sojourn, tilbage hvor du startede det.",
+    "ru": "Выходит из аккаунта и закрывает Sojourn: вы вернётесь туда, откуда его запустили.",
+    "pl": "Wylogowuje cię i zamyka Sojourn; wracasz tam, skąd go uruchomiłeś.",
+    "az": "Hesabdan çıxır və Sojourn-u bağlayır; onu başlatdığınız yerə qayıdırsınız.",
+    "de": "Meldet Sie ab und beendet Sojourn; Sie kehren dorthin zurück, wo Sie es gestartet haben.",
+    "zh-Hans": "登出并关闭 Sojourn，回到你启动它的地方。"
   }
 }

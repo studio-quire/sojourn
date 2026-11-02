@@ -46,9 +46,9 @@ by Claude Opus 5.5, 2026-10-29 and 30. Agent-facing.
   remember choice goes with it). Its console goes to `B/logs/launcher-console.log`; no console window.
 - **While it runs**, Launch's place shows its state: starting, logging in, terms or authenticator code, in the headset or on the
   desktop, closing; the grid's terms or MFA code are answered in the card (> The grid's questions at the desk); a
-  stop key closes the client's window as the person would (ended after 20 s if it hasn't). A run that starts itself again (a lost GPU, back to its login screen) is followed. The headset menu's log out
-  (you, at the foot) ends the client as quitting does, an ordinary end, and Launch is back; its quit Sojourn ends the
-  client and then the launcher too (the client's last state `quit`, `ClientRun.Poll`; the user, 2026-11-02). A failed login
+  stop key closes the client's window as the person would (ended after 20 s if it hasn't). A run that starts itself again (a lost GPU, back to its login screen) is followed. The headset menu's quit key
+  ends the client, an ordinary end, and Launch is back; the launcher stays open, for the person to close (the user,
+  2026-11-02; a last state `quit` from older clients still closes it, `ClientRun.Poll`). A failed login
   stops the run and leaves the grid's reason at the foot, the form as typed. A crash leaves "stopped unexpectedly" and
   a log key (the session's log, or the console's if it died with an unhandled exception), and offers a report (> After
   a crash).

@@ -2560,7 +2560,7 @@
     "zh-Hans": "拿取"
   },
   "move by hand": {
-    "_": "a thing's card (pointing at an object in the world brings it up), an action key, a full-width row (~26 characters); lowercase as the UI; turns building by hand on with this object chosen, to grab it with a trigger and move and turn it",
+    "_": "a thing's card (pointing at an object in the world brings it up), an action key, a full-width row (~26 characters); lowercase as the UI; turns building by hand on with this object selected, its arrows and rings on it to move and turn it",
     "zh": "用手移動",
     "it": "sposta a mano",
     "es": "mover a mano",
@@ -3056,7 +3056,7 @@
     "zh-Hans": "已复制 {0}/{1} 个到文件夹“{2}”。"
   },
   "building by hand": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): its title when no object is chosen yet (otherwise the object's name); lowercase as the UI; same as the menu's 'build by hand' row",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): its title when nothing is selected (otherwise the object's name); lowercase as the UI; same as the menu's 'build by hand' row",
     "zh": "徒手建造",
     "it": "costruire a mano",
     "es": "construir a mano",
@@ -3072,7 +3072,7 @@
     "zh-Hans": "徒手建造"
   },
   "snap#building": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): a small key (~8 characters); lowercase as the UI; snapping on or off: moves to a grid, turns to steps (the Snap of SL's Build floater)",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): a small key (~8 characters); lowercase as the UI; snapping on or off: moves to a grid, turns to steps (the Snap of SL's Build floater)",
     "zh": "貼齊",
     "it": "aggancia",
     "es": "ajustar",
@@ -3088,7 +3088,7 @@
     "zh-Hans": "吸附"
   },
   "fine#building": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): a small key (~8 characters); lowercase as the UI; fine movement on or off: the hand's motion slowed down for small, precise adjustments",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): a small key (~8 characters); lowercase as the UI; fine movement on or off: the hand's motion slowed down for small, precise adjustments",
     "zh": "微調",
     "it": "preciso",
     "es": "preciso",
@@ -3104,7 +3104,7 @@
     "zh-Hans": "微调"
   },
   "undo#building": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): a small key (~8 characters); lowercase as the UI; undoes the last move (SL's Undo)",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): a small key (~8 characters); lowercase as the UI; undoes the last move (SL's Undo)",
     "zh": "復原",
     "it": "annulla",
     "es": "deshacer",
@@ -3119,8 +3119,120 @@
     "de": "Rückgängig",
     "zh-Hans": "撤销"
   },
+  "local#building": {
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): a small key (~8 characters); lowercase as the UI; on: the arrows and rings follow the object's own axes rather than the region's (SL's Build floater's ruler mode, Local as against World)",
+    "zh": "局部",
+    "it": "locale",
+    "es": "local",
+    "pt": "local",
+    "ja": "ローカル",
+    "tr": "yerel",
+    "fr": "local",
+    "da": "lokal",
+    "ru": "локально",
+    "pl": "lokalne",
+    "az": "lokal",
+    "de": "Lokal",
+    "zh-Hans": "局部"
+  },
+  "move along {0}": {
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): what the handle under the pointer does, a lowercase fragment; {0} an axis, x, y or z (kept as it is): dragging this arrow moves the object along that axis only",
+    "zh": "沿 {0} 移動",
+    "it": "sposta lungo {0}",
+    "es": "mover a lo largo de {0}",
+    "pt": "mover ao longo de {0}",
+    "ja": "{0} 方向に移動",
+    "tr": "{0} boyunca taşı",
+    "fr": "déplacer le long de {0}",
+    "da": "flyt langs {0}",
+    "ru": "двигать вдоль {0}",
+    "pl": "przesuń wzdłuż {0}",
+    "az": "{0} boyunca köçür",
+    "de": "entlang {0} verschieben",
+    "zh-Hans": "沿 {0} 移动"
+  },
+  "move across {0} and {1}": {
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): what the handle under the pointer does, a lowercase fragment; {0} and {1} two axes, x, y or z (kept as they are): dragging this small square moves the object in the plane of those two axes",
+    "zh": "在 {0} 與 {1} 平面上移動",
+    "it": "sposta su {0} e {1}",
+    "es": "mover en {0} y {1}",
+    "pt": "mover em {0} e {1}",
+    "ja": "{0} と {1} の平面で移動",
+    "tr": "{0} ve {1} düzleminde taşı",
+    "fr": "déplacer selon {0} et {1}",
+    "da": "flyt i {0} og {1}",
+    "ru": "двигать по {0} и {1}",
+    "pl": "przesuń w {0} i {1}",
+    "az": "{0} və {1} müstəvisində köçür",
+    "de": "in {0} und {1} verschieben",
+    "zh-Hans": "在 {0} 和 {1} 平面上移动"
+  },
+  "turn around {0}": {
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): what the handle under the pointer does, a lowercase fragment; {0} an axis, x, y or z (kept as it is): dragging this ring turns the object about that axis",
+    "zh": "繞 {0} 旋轉",
+    "it": "ruota attorno a {0}",
+    "es": "girar alrededor de {0}",
+    "pt": "girar em torno de {0}",
+    "ja": "{0} 軸で回転",
+    "tr": "{0} etrafında döndür",
+    "fr": "tourner autour de {0}",
+    "da": "drej om {0}",
+    "ru": "вращать вокруг {0}",
+    "pl": "obróć wokół {0}",
+    "az": "{0} ətrafında fırlat",
+    "de": "um {0} drehen",
+    "zh-Hans": "绕 {0} 旋转"
+  },
+  "move it freely": {
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): what the handle under the pointer does, a lowercase fragment: dragging the orb in the object's middle moves it anywhere, in any direction",
+    "zh": "自由移動",
+    "it": "spostalo liberamente",
+    "es": "moverlo libremente",
+    "pt": "movê-lo livremente",
+    "ja": "自由に移動",
+    "tr": "serbestçe taşı",
+    "fr": "le déplacer librement",
+    "da": "flyt den frit",
+    "ru": "двигать свободно",
+    "pl": "przesuwaj swobodnie",
+    "az": "sərbəst köçür",
+    "de": "frei verschieben",
+    "zh-Hans": "自由移动"
+  },
+  "Tap one of your things to move it.": {
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): the line it shows while nothing is selected, a sentence; tap: a quick press of the pointer's trigger, or a click on the desktop",
+    "zh": "點一下你的物件來移動它。",
+    "it": "Tocca una delle tue cose per spostarla.",
+    "es": "Toca una de tus cosas para moverla.",
+    "pt": "Toque em uma das suas coisas para movê-la.",
+    "ja": "動かしたい自分の物をタップしてください。",
+    "tr": "Taşımak için eşyalarından birine dokun.",
+    "fr": "Touchez un de vos objets pour le déplacer.",
+    "da": "Tryk på en af dine ting for at flytte den.",
+    "ru": "Коснитесь одной из своих вещей, чтобы её передвинуть.",
+    "pl": "Stuknij jedną ze swoich rzeczy, aby ją przesunąć.",
+    "az": "Köçürmək üçün əşyalarından birinə toxun.",
+    "de": "Tippe eines deiner Dinge an, um es zu bewegen.",
+    "zh-Hans": "点一下你的物品来移动它。"
+  },
+  "Drag an arrow to move it, a ring to turn it, the middle to move it freely.": {
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): the line it shows while an object is selected and the pointer is on none of its handles, a sentence; the arrows, rings and the orb in the middle are drawn on the object (SL's build tool handles)",
+    "zh": "拖曳箭頭來移動，拖曳圓環來旋轉，拖曳中心來自由移動。",
+    "it": "Trascina una freccia per spostarlo, un anello per ruotarlo, il centro per spostarlo liberamente.",
+    "es": "Arrastra una flecha para moverlo, un anillo para girarlo, el centro para moverlo libremente.",
+    "pt": "Arraste uma seta para movê-lo, um anel para girá-lo, o centro para movê-lo livremente.",
+    "ja": "矢印をドラッグで移動、輪で回転、中心で自由に移動します。",
+    "tr": "Taşımak için bir oku, döndürmek için bir halkayı, serbestçe taşımak için ortayı sürükle.",
+    "fr": "Faites glisser une flèche pour le déplacer, un anneau pour le tourner, le centre pour le déplacer librement.",
+    "da": "Træk en pil for at flytte den, en ring for at dreje den, midten for at flytte den frit.",
+    "ru": "Тяните стрелку, чтобы двигать, кольцо — чтобы вращать, центр — чтобы двигать свободно.",
+    "pl": "Przeciągnij strzałkę, by przesunąć, pierścień, by obrócić, środek, by przesuwać swobodnie.",
+    "az": "Köçürmək üçün oxu, fırlatmaq üçün halqanı, sərbəst köçürmək üçün mərkəzi sürüklə.",
+    "de": "Ziehe einen Pfeil zum Verschieben, einen Ring zum Drehen, die Mitte zum freien Bewegen.",
+    "zh-Hans": "拖动箭头来移动，拖动圆环来旋转，拖动中心来自由移动。"
+  },
   "grid {0} m · turns {1}°": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): a dim line under its keys while snap is on; {0} the grid's size in metres, {1} the turn step in degrees (numbers); lowercase as the UI",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): a dim line under its keys while snap is on; {0} the grid's size in metres, {1} the turn step in degrees (numbers); lowercase as the UI",
     "zh": "網格 {0} 公尺 · 轉動 {1}°",
     "it": "griglia {0} m · rotazioni {1}°",
     "es": "rejilla {0} m · giros {1}°",
@@ -3135,40 +3247,8 @@
     "de": "Raster {0} m · Drehung {1}°",
     "zh-Hans": "网格 {0} 米 · 转动 {1}°"
   },
-  "Drag a thing to move it; with Shift, up and down. The wheel turns it.": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): the hint at its foot on the desktop, sentences; Shift: the keyboard's key; the wheel: the mouse's",
-    "zh": "拖曳物件來移動；按住 Shift 則上下移動。滾輪可轉動它。",
-    "it": "Trascina un oggetto per spostarlo; con Maiusc, su e giù. La rotellina lo ruota.",
-    "es": "Arrastra un objeto para moverlo; con Mayúsculas, arriba y abajo. La rueda lo gira.",
-    "pt": "Arraste um objeto para movê-lo; com Shift, para cima e para baixo. A roda do mouse o gira.",
-    "ja": "オブジェクトをドラッグで移動、Shiftを押しながらで上下に動きます。ホイールで回転します。",
-    "tr": "Bir nesneyi taşımak için sürükleyin; Shift ile yukarı ve aşağı. Tekerlek onu döndürür.",
-    "fr": "Faites glisser un objet pour le déplacer ; avec Maj, vers le haut ou le bas. La molette le fait tourner.",
-    "da": "Træk i en ting for at flytte den; med Shift op og ned. Hjulet drejer den.",
-    "ru": "Перетащите объект, чтобы сдвинуть его; с Shift — вверх и вниз. Колесо поворачивает его.",
-    "pl": "Przeciągnij obiekt, by go przesunąć; z Shift w górę i w dół. Kółko go obraca.",
-    "az": "Obyekti sürüşdürüb yerini dəyişin; Shift ilə yuxarı və aşağı. Təkər onu çevirir.",
-    "de": "Ziehen Sie ein Objekt, um es zu bewegen, mit Umschalt nach oben und unten. Das Mausrad dreht es.",
-    "zh-Hans": "拖动物体来移动；按住 Shift 则上下移动。滚轮可以转动它。"
-  },
-  "Reach into a thing, or point at it, and hold the trigger. While you hold it, the stick pushes, pulls and turns it, and A or X slows it for fine moves.": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): the hint at its foot in the headset, sentences; the trigger and the stick: a controller's; A and X: the Quest controllers' buttons, keep as is",
-    "zh": "把手伸進物件裡或指著它，按住扳機鍵。抓著時，搖桿可以推遠、拉近和轉動它，A 或 X 可放慢以微調。",
-    "it": "Infila la mano in un oggetto, o puntalo, e tieni premuto il trigger. Mentre lo tieni, lo stick lo spinge, lo tira e lo ruota, e A o X lo rallenta per i ritocchi.",
-    "es": "Mete la mano en un objeto, o apúntalo, y mantén el gatillo. Mientras lo sujetas, el joystick lo aleja, lo acerca y lo gira, y A o X lo ralentiza para ajustes finos.",
-    "pt": "Enfie a mão num objeto, ou aponte para ele, e segure o gatilho. Enquanto segura, o analógico o afasta, aproxima e gira, e A ou X deixa o movimento lento para ajustes finos.",
-    "ja": "オブジェクトに手を入れるか指して、トリガーを押し続けます。持っている間、スティックで押す、引く、回すことができ、AかXで動きが遅くなり微調整できます。",
-    "tr": "Elinizi bir nesnenin içine uzatın ya da onu işaretleyin ve tetiği basılı tutun. Tutarken çubuk onu iter, çeker ve döndürür; A ya da X ince ayar için onu yavaşlatır.",
-    "fr": "Plongez la main dans un objet, ou pointez-le, et maintenez la gâchette. Tant que vous le tenez, le joystick l'éloigne, le rapproche et le tourne, et A ou X le ralentit pour les réglages fins.",
-    "da": "Ræk ind i en ting, eller peg på den, og hold aftrækkeren. Mens du holder den, skubber, trækker og drejer styrepinden den, og A eller X gør den langsom til fine justeringer.",
-    "ru": "Протяните руку внутрь объекта или наведите на него луч и держите триггер. Пока держите, стик отодвигает, придвигает и поворачивает его, а A или X замедляет движение для точной подгонки.",
-    "pl": "Sięgnij do obiektu albo go wskaż i przytrzymaj spust. Gdy go trzymasz, gałka go odsuwa, przysuwa i obraca, a A lub X spowalnia ruch do precyzyjnych poprawek.",
-    "az": "Əlinizi obyektin içinə uzadın, ya da ona işarə edin və tətiyi saxlayın. Tutduğunuz müddətdə çubuq onu itələyir, çəkir və çevirir, A və ya X isə dəqiq tənzimləmə üçün onu yavaşladır.",
-    "de": "Greifen Sie in ein Objekt oder zeigen Sie darauf und halten Sie den Trigger. Solange Sie es halten, schiebt, zieht und dreht der Stick es, und A oder X verlangsamt es für feine Bewegungen.",
-    "zh-Hans": "把手伸进物体里或指着它，按住扳机键。抓着时，摇杆可以推远、拉近和转动它，A 或 X 能放慢它来微调。"
-  },
   "The region kept it where it was.": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): a note after a move, sentence case: the region refused the move and the object stayed put",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): a note after a move, sentence case: the region refused the move and the object stayed put",
     "zh": "地區把它留在原處。",
     "it": "La regione l'ha lasciato dov'era.",
     "es": "La región lo dejó donde estaba.",
@@ -3184,7 +3264,7 @@
     "zh-Hans": "地区把它留在了原处。"
   },
   "The region put it somewhere else.": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): a note after a move, sentence case: the region placed the object elsewhere than where it was let go",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): a note after a move, sentence case: the region placed the object elsewhere than where it was let go",
     "zh": "地區把它放到了別的地方。",
     "it": "La regione l'ha messo altrove.",
     "es": "La región lo puso en otro sitio.",
@@ -3200,7 +3280,7 @@
     "zh-Hans": "地区把它放到了别的地方。"
   },
   "It's gone: returned or deleted.": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): a note after a move, sentence case: the object disappeared (SL's Return, or deleted)",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): a note after a move, sentence case: the object disappeared (SL's Return, or deleted)",
     "zh": "它不見了：被退回或刪除了。",
     "it": "Non c'è più: restituito o eliminato.",
     "es": "Ya no está: devuelto o borrado.",
@@ -3216,7 +3296,7 @@
     "zh-Hans": "它不见了：被退回或删除了。"
   },
   "At the region's edge.": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): a note while moving, sentence case: the object can't go further, it's at the region's border",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): a note while moving, sentence case: the object can't go further, it's at the region's border",
     "zh": "到了地區邊界。",
     "it": "Al confine della regione.",
     "es": "En el borde de la región.",
@@ -3232,7 +3312,7 @@
     "zh-Hans": "到了地区边界。"
   },
   "Undone.": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): a note after its undo key, sentence case: the last move was undone",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): a note after its undo key, sentence case: the last move was undone",
     "zh": "已復原。",
     "it": "Annullato.",
     "es": "Deshecho.",
@@ -3248,7 +3328,7 @@
     "zh-Hans": "已撤销。"
   },
   "not in a region": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): why a grab didn't work, shown as a note on the readout; a lowercase fragment, as the UI; the person isn't in a region (yet)",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): why a tap or a drag didn't select or move it, shown as a note on the readout; a lowercase fragment, as the UI; the person isn't in a region (yet)",
     "zh": "不在地區裡",
     "it": "non sei in una regione",
     "es": "no estás en una región",
@@ -3264,7 +3344,7 @@
     "zh-Hans": "不在地区里"
   },
   "it's in the next region: go over to it first": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): why a grab didn't work, shown as a note on the readout; a lowercase fragment, as the UI; the object is across the border in a neighbouring region",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): why a tap or a drag didn't select or move it, shown as a note on the readout; a lowercase fragment, as the UI; the object is across the border in a neighbouring region",
     "zh": "它在相鄰的地區：先過去那邊",
     "it": "è nella regione accanto: prima vai lì",
     "es": "está en la región de al lado: ve allí primero",
@@ -3280,7 +3360,7 @@
     "zh-Hans": "它在相邻的地区：先过去那边"
   },
   "it's gone": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): why a grab didn't work, shown as a note on the readout; a lowercase fragment, as the UI; the object no longer exists",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): why a tap or a drag didn't select or move it, shown as a note on the readout; a lowercase fragment, as the UI; the object no longer exists",
     "zh": "它不見了",
     "it": "non c'è più",
     "es": "ya no está",
@@ -3296,7 +3376,7 @@
     "zh-Hans": "它不见了"
   },
   "worn things aren't moved by hand yet": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): why a grab didn't work, shown as a note on the readout; a lowercase fragment, as the UI; attachments (things worn on an avatar) can't be moved this way yet",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): why a tap or a drag didn't select or move it, shown as a note on the readout; a lowercase fragment, as the UI; attachments (things worn on an avatar) can't be moved this way yet",
     "zh": "穿戴中的東西還不能用手移動",
     "it": "le cose indossate non si spostano ancora a mano",
     "es": "lo que llevas puesto aún no se mueve a mano",
@@ -3312,7 +3392,7 @@
     "zh-Hans": "穿戴着的东西还不能用手移动"
   },
   "that's someone": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): why a grab didn't work, shown as a note on the readout; a lowercase fragment, as the UI; the hand was on an avatar, a person, not an object",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): why a tap or a drag didn't select or move it, shown as a note on the readout; a lowercase fragment, as the UI; the hand was on an avatar, a person, not an object",
     "zh": "那是一個人",
     "it": "è una persona",
     "es": "es una persona",
@@ -3328,7 +3408,7 @@
     "zh-Hans": "那是一个人"
   },
   "it's locked": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): why a grab didn't work, shown as a note on the readout; a lowercase fragment, as the UI; the object's Locked checkbox (SL's Build floater) is on",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): why a tap or a drag didn't select or move it, shown as a note on the readout; a lowercase fragment, as the UI; the object's Locked checkbox (SL's Build floater) is on",
     "zh": "它已鎖定",
     "it": "è bloccato",
     "es": "está bloqueado",
@@ -3344,7 +3424,7 @@
     "zh-Hans": "它已锁定"
   },
   "you may not modify it": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): why a grab didn't work, shown as a note on the readout; a lowercase fragment, as the UI; the person lacks SL's Modify permission on the object",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): why a tap or a drag didn't select or move it, shown as a note on the readout; a lowercase fragment, as the UI; the person lacks SL's Modify permission on the object",
     "zh": "你沒有修改它的權限",
     "it": "non hai il permesso di modificarlo",
     "es": "no tienes permiso para modificarlo",
@@ -3360,7 +3440,7 @@
     "zh-Hans": "你没有修改它的权限"
   },
   "it isn't yours: choose it on its card first": {
-    "_": "building by hand's readout (a small sheet beside the object while it's moved by hand, in the headset or on the desktop): why a grab didn't work, shown as a note on the readout; a lowercase fragment, as the UI; someone else's object the person may modify is chosen on purpose, with 'move by hand' on its card (the card pointing at a thing brings up)",
+    "_": "building by hand's readout (a small sheet near the person while building by hand is on, in the headset or on the desktop, about the object selected: the one with the arrows and rings on it): why a tap or a drag didn't select or move it, shown as a note on the readout; a lowercase fragment, as the UI; someone else's object the person may modify is chosen on purpose, with 'move by hand' on its card (the card pointing at a thing brings up)",
     "zh": "這不是你的：先在它的卡片上選擇它",
     "it": "non è tuo: prima sceglilo dalla sua scheda",
     "es": "no es tuyo: elígelo antes en su ficha",

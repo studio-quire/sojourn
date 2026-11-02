@@ -78,7 +78,7 @@ public sealed class PanelState
 }
 
 /// <summary>Something on the panel the pointer can press.</summary>
-public enum KeyKind { Choice, Confirm, Cancel, Hide, Menu, Tab, Help, Keyboard, Page, Replies, Draft, List }
+public enum KeyKind { Choice, Confirm, Cancel, Hide, Menu, Tab, Help, Keyboard, Page, Replies, Draft, List, Quit }
 public readonly record struct PanelKey(KeyKind Kind, int Index, SKRect Rect);
 
 /// <summary>

@@ -20,46 +20,106 @@ take's `separate`), `InventoryOps.cs` and `GestureOps.cs` (default permissions; 
 ## By hand (B9's first part; Claude Opus 5.5, 2026-11-02)
 
 The user's idea (2026-10-30): the assistant finds a thing and places it roughly; the person fine-tunes where it stands
-and how it's turned by hand, which a headset is good at and voice is slow at. Code: `Session/Building/HandMove.cs` (the
-rules, the network, undo, what came of it: any host), `Session/Building/HandBuildApi.cs` (SojournHandBuild),
-`Client/Building/HandBuild.cs` (the hands, the drawing, the readout; `HandBuildPainter.cs`), the drawing's hold in
-`Render/World/MotionSmoother.Held.cs`. Controls: `docs/vr.md` > Controls > Building by hand.
+and how it's turned by hand, which a headset is good at and voice is slow at. The first version (grab with the trigger,
+the thing following the hand, the stick pushing, pulling and turning it, A or X for fine) confused the user at their
+first try (2026-11-02: a readout that stayed put beside the thing, controls nothing showed, a stick that fought the
+hand), so it was reworked the same day to their design: **select by tapping, then the viewer's handles**, everything
+done through things you can see and drag, the controller's buttons and sticks keeping their usual jobs. Code:
+`Session/Building/HandMove.cs` (the rules, the network, undo, what came of it, selection, straightening: any host),
+`Session/Building/HandBuildApi.cs` (SojournHandBuild), `Client/Building/Gizmo.cs` (the handles' geometry and the drag
+maths, no drawing), `Client/Building/HandBuild.cs` (selection, the gizmo drawn, the readout, the desktop;
+`HandBuildPainter.cs`), the drawing's hold in `Render/World/MotionSmoother.Held.cs`. Controls: `docs/vr.md` > Controls
+> Building by hand.
 
-- **On and off**: a thing's card's "move by hand" (things the person may move), the assistant's `hands` tool
-  (SojournHandBuild `start {id?}`), menu > moving > build by hand (`build_by_hand`), and off by the readout's ×, the
-  same switch, the assistant (`stop`), Esc on the desktop, or leaving the region. Not kept between sessions.
+- **On and off**: menu > moving > build by hand (`build_by_hand`), a thing's card's "move by hand" (on, with that thing
+  selected), the assistant's `hands` tool (SojournHandBuild `start {id?}`); off by the readout's ×, the same switch,
+  the assistant (`stop`), Esc on the desktop, or leaving the region. Not kept between sessions. Off, everything is as
+  it was.
+- **Selecting**: while it's on, a tap of the pointer (the trigger pressed and let go, or a press that moves) on a thing
+  the person may move selects it rather than touching it (as the viewer's edit tool selects); a still hold still
+  brings up its card. A tap anywhere else (the sky, the ground, someone, a thing they may not move) lets the selection
+  go and does what that tap always does: touches, sits. The pointer turned off (A) lets it go too (the user,
+  2026-11-02); the pointer stays the person's own switch, which building doesn't hold up. Building coming on, or a
+  thing selected for them (the card, the assistant), turns the pointer on, since everything is worked with it. Selection is the client's: the
+  region hears ObjectSelect only while a handle is dragged. A thing on a media face: a tap on the face is the page's.
 - **What may be moved**: the whole linked set (as the viewer's move with "edit linked parts" off; single prims of a set
   can come later), in the region the person is in, not worn (attachments later), with modify rights, or move rights on
   their own (a locked thing says so). Someone else's thing they may modify only once chosen on purpose (its card, the
-  assistant), never by reaching into it. RLV's `@edit`, `@editobj`, `@editworld` hold (`RlvEngine.CanEdit`), with the
-  quiet notice as for any refusal. Nothing spends. Why a grab didn't take shows on the readout.
-- **The network**, as the viewer's: held, the thing is selected (ObjectSelect; the region holds a selected physical
-  thing still) and let go of after; MultipleObjectUpdate with position, rotation and the linked flag on the root (as
-  LLSelectMgr packs it with UPD_LINKED_SETS), at most 10 a second while held and only when it moved (0.5 mm or 0.05
-  degrees), and once more on release. The official viewer today moves the selection locally while dragging and sends on
-  mouse up (its `llmaniptranslate.cpp` still says "throttle updates to 10 per second" from when it sent while dragging);
-  sending while held lets the region and anyone watching see the move as it happens. Clamped inside the region (no
-  carrying across a border; the viewer clips to the regions it can see) and under 4096 m (MAX_OBJECT_Z).
-- **Drawn where the hand has it**: while held and after, the renderer draws the root where it was put, whatever the
-  region's echoes say (the viewer's overrideObjectUpdates does the same for a selection being dragged), until the
-  region's own word matches (2 cm, a degree) or 4 s pass, then the region's word again: a refused move snaps back.
+  assistant), never by a tap. RLV's `@edit`, `@editobj`, `@editworld` hold (`RlvEngine.CanEdit`), with the quiet notice
+  as for any refusal. Nothing spends. Why a tap didn't select shows on the readout. A selection that may no longer be
+  moved (taken, returned, its rights changed) lets go by itself.
+- **The handles** (`Gizmo.cs`; the viewer's `LLManipTranslate` and `LLManipRotate`, done for a ray): at the selected
+  thing's middle (its linked set's box centre, the viewer's selection centre), in the axis colours every build tool
+  uses (x red, y green, z blue), drawn over everything:
+  - **arrows**, one per axis, each pointing to the side the eye is on (the viewer turns its arrows to the camera's
+    side): dragging one moves the thing along that axis only. The ray meets a plane holding the axis and facing the ray
+    as it was at the press, and the point's distance along the axis is the move, as the viewer reads the mouse. An
+    arrow seen end-on (within about 12 degrees) is faded and can't be taken, as the viewer hides it.
+  - **plane squares**, one per pair of axes, between the arrows: dragging one moves the thing across that plane (the
+    xy square: along the floor, its height kept).
+  - **rings**, one per axis, round the thing: dragging one turns it about that axis, about its middle (so a linked set
+    turns in place). The turn is the angle the ray's point on the ring's plane sweeps round the middle, added up frame
+    by frame; seen nearly edge-on, the ray's travel along the ring's tangent at the grab, over the ring's radius. Far
+    halves are drawn dimmer.
+  - **the orb** in the middle: dragging it moves the thing freely, the point grabbed riding the ray at the distance it
+    was grabbed at (a lever from the hand: a hand reaching into the orb carries it one to one). It doesn't turn it.
+  - The ray passes through the thing to reach them. Under the ray a handle lights and thickens; during a drag the
+    others fade and the dragged one shows its line (an arrow's axis right across, a ring's start and now). Their size
+    follows the thing's (rings 15% outside its box) within 5 to 12 degrees of view, so they hug a small thing nearby and
+    stay graspable far off; the viewer keeps its own a fixed size on screen. Picking allows 1.3 degrees from the ray's
+    start (at least a centimetre) around each handle; of several, the one the ray passes closest to for its size.
+  - Axes: the region's by default (`build_axes` world), or the thing's own (local), as the viewer's ruler mode.
+- **Fine** (the readout's key, `build_fine`; not kept): drags move and turn a fifth as far.
+- **Snapping** (`build_snap`, off; `build_grid`, 0.5 m, the viewer's; `build_snap_angle`, 15 degrees; kept in
+  `build-settings.json`): an arrow or square on the region's axes puts the root's coordinate on the grid (from the
+  region's corner, as the viewer's); on local axes the distance moved goes in grid steps; rings turn in steps; the orb
+  puts the root's position on the grid. The viewer snaps a translate only while the mouse is over its snap guide; here
+  it's the switch.
+- **The network**, as the viewer's: while a handle is dragged the thing is selected (ObjectSelect; the region holds a
+  selected physical thing still) and let go of after; MultipleObjectUpdate with position, rotation and the linked flag
+  on the root (as LLSelectMgr packs it with UPD_LINKED_SETS), at most 10 a second while dragged and only when it moved
+  (0.5 mm or 0.05 degrees), and once more on release. The official viewer today moves the selection locally while
+  dragging and sends on mouse up (its `llmaniptranslate.cpp` still says "throttle updates to 10 per second" from when it
+  sent while dragging); sending while dragged lets the region and anyone watching see the move as it happens. Clamped
+  inside the region (no carrying across a border; the viewer clips to the regions it can see) and under 4096 m
+  (MAX_OBJECT_Z).
+- **Drawn where it's put**: while dragged and after, the renderer draws the root where it was put, whatever the region's
+  echoes say (the viewer's overrideObjectUpdates does the same for a selection being dragged), until the region's own
+  word matches (2 cm, a degree) or 4 s pass, then the region's word again: a refused move snaps back.
 - **What came of it** (`HandMove.Last`, SojournHandBuild `state`): placed, refused (the region kept it where it was: a
   parcel that won't take it, a no-entry parcel, rights it didn't have), moved elsewhere, or gone (returned or deleted),
   read from the region's updates within 3 s; the readout says the last three plainly.
-- **Undo**: each grab that moved something is one undo step ("moved NAME by hand", the placement captured at the grab:
-  `BuildUndo.BeforeHandMove`), in the same history as the assistant's edits, so "undo that" takes back a hand move and
-  the readout's undo takes back the assistant's last edit of that thing (through the dispatcher, so undoing a creation
+- **Undo**: each drag that moved something is one undo step ("moved NAME by hand", the placement captured at the press:
+  `BuildUndo.BeforeHandMove`), in the same history as the assistant's edits, so "undo that" takes back a hand move, and
+  the readout's undo takes back the last step on the selected thing (through the dispatcher, so undoing a creation
   still asks).
-- **Snapping** (`build_snap`, off; `build_grid`, 0.5 m, the viewer's; `build_snap_angle`, 15 degrees; kept in
-  `build-settings.json`): the root's position to the grid in the region's axes, its turn to the step in each of the edit
-  floater's three angles, and the stick's turns a step a flick. The hand moves freely underneath, so it's a grid it
-  clicks along, not a drag that sticks.
-- **The assistant**: the `hands` tool (start with a thing, stop, state); its context line says while building by hand
-  is on and, for ten minutes, what the person last moved by hand, how far, where to and whether the region kept it.
-  Not on incognito's blind allowlist (it names objects), so it runs with "let it see" as SojournBuild does.
+- **The readout** (`HandBuildPainter.cs`, the panel's look like the thing's card): the selected thing's name and ×
+  (done), where it is (the region's x, y, z, each axis letter in its colour) and how it's turned (the edit floater's
+  three angles), a line saying what's going on (what came of the last move or why a tap didn't select; else what the
+  handle under the ray does, "move along x", "turn around z"; else what to do: "Tap one of your things to move it.",
+  "Drag an arrow to move it, a ring to turn it, the middle to move it freely."), and four keys, each a switch lit while
+  on: snap (its grid and steps under the keys while on), fine, local, undo. Near the person, not the thing (where and
+  why: `docs/vr.md` > Building by hand).
+- **Straightening is the assistant's** (the user, 2026-11-02: no reset button): SojournHandBuild `straighten {id,
+  level?}` sets the rotation back to none (the edit floater's 0, 0, 0), or with level only takes out the tilt, keeping
+  the heading; the whole linked set turns about its middle so it stays where it is; one undo step ("straightened NAME",
+  "levelled NAME"). The assistant's `hands` tool has it as `straighten` ("straighten it", "reset its rotation", "level
+  it").
+- **The assistant**: the `hands` tool (start with a thing, stop, state, straighten); its context line says, while
+  building by hand is on, what's selected (with its id, so "it" is that) and what's being dragged, and for ten minutes
+  what the person last moved by hand, how far, where to and whether the region kept it. Not on incognito's blind
+  allowlist (it names objects), so it runs with "let it see" as SojournBuild does.
 
-Checked in the XR Simulator on the local grid by `python tools/handbuild.py` (below). What waits for the headset and
-Second Life: how the grab and the stick feel, a parcel that refuses a move, a no-mod or locked thing, a physical one.
+Checked in the XR Simulator on the local grid by `python tools/handbuild.py`: a tap selecting, each kind of handle
+dragged and measured against what it means (an arrow 0.3 m along its axis and nowhere else, a ring by the angle the aim
+swept, the square across its plane, the orb on the ray at its distance), another thing selected by a tap, a tap on the
+sky letting go, someone else's thing not selected by a tap (and sat on, when its click action reaches the client:
+two runs in six on 2026-11-02, the last included), undo back to the start, straighten and level. What waits for the headset and Second Life: how the handles feel and
+whether they're easy to hit, the readout's place, a parcel that refuses a move, a no-mod or locked thing, a physical
+one; the desktop's handles under the mouse are built but not yet run. On the local grid a click action set by one
+client often never reaches another's, and a colour change clears it even in its maker's (TesselBuild with colour and
+click action together, or a colour after it; seen 2026-11-02, not yet looked into: whether it's OpenSim's updates or
+our reading of them, and whether Second Life does the same).
 
 ## Materials (MaterialOps; TesselBuild modify keys, on `face` or every face)
 

@@ -83,6 +83,10 @@ How it's built:
   bump notices: no preference, kept as built (`docs/safety.md`).
 - **Menus belong to the world** (user, 2026-10-28): in the headset, walls and things in front hide the panel, feed and
   cards by default; menus always on top is an option.
+- **Controls show themselves in the world** (user, 2026-11-02, about building by hand): what a feature does should be
+  apparent from in-world UI you can see and move (handles, arrows, keys on a readout), not from controller buttons
+  someone has to be told about; buttons are shortcuts for power users, and a disappearing pop-up of instructions isn't
+  enough.
 
 The assistant (detail in `docs/assistant.md`):
 - **Its shape** (Claude Opus 5.5, 2026-10-21): the Agent SDK in a Python sidecar (Whisper too), on the person's own

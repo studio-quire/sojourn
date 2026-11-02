@@ -240,6 +240,14 @@ public sealed class DirectTouch
     /// <summary>A still hold has begun on a thing (the ring starts): its card may start finding out about it.</summary>
     public Action<PickHit>? Holding { get; set; }
 
+    /// <summary>Building by hand (Building/HandBuild.cs): whether a press on this hit is building's (a thing the person
+    /// may move), which a tap, or a press that moves, selects (BuildTap) instead of touching; a still hold still brings
+    /// up its card. Any other press tells building first (Elsewhere: the selection goes), then does what it does.</summary>
+    public Func<PickHit?, bool>? Builds { get; set; }
+    public Action<PickHit>? BuildTap { get; set; }
+    public Action? Elsewhere { get; set; }
+    bool _claimed;
+
     /// <summary>How far a still hold is toward the card (0-1, for the ring), while one is.</summary>
     public float? Filling => _g == Gesture.Hold ? Math.Clamp((Environment.TickCount64 - _downAt - HoldMs) / (float)(OpenMs - HoldMs), 0, 1) : null;
 
@@ -270,7 +278,7 @@ public sealed class DirectTouch
         // a trigger held when the press couldn't count (a confirmation, the menu, focus coming back) waits for a release
         if (trigger < 0.35f) _armed = true;
         PickHit? hit = onPanel ? null : _r.Pick(region, origin, dir, Reach, c.Self.LocalID);
-        var act = blocked ? DirectAct.None : Classify(hit);
+        var act = blocked || Builds?.Invoke(hit) == true ? DirectAct.None : Classify(hit);
         // something came up mid-press (a confirmation, the menu, aiming): a press still deciding sends nothing
         if (blocked && _g is Gesture.Pending or Gesture.Hold) _g = Gesture.None;
         if (_g == Gesture.None && trigger > 0.6f && _armed)
@@ -285,6 +293,13 @@ public sealed class DirectTouch
 
     void Begin(PickHit? hit, Vector3 origin, Vector3 dir)
     {
+        _claimed = Builds?.Invoke(hit) == true && hit is { Kind: PickKind.Object };
+        if (_claimed)
+        {
+            (_g, _downHit, _downOrigin, _downDir, _downAt) = (Gesture.Pending, hit!.Value, origin, Vector3.Normalize(dir), Environment.TickCount64);
+            return;
+        }
+        Elsewhere?.Invoke();
         if (LongPress == null || ButtonTaken(false) || hit is not { Kind: PickKind.Object } h)
         {
             Press(hit, origin, dir, mouselook: false);
@@ -305,7 +320,13 @@ public sealed class DirectTouch
             {
                 float deg = MathF.Acos(Math.Clamp(Vector3.Dot(Vector3.Normalize(dir), _downDir), -1, 1)) * 180 / MathF.PI;
                 long held = Environment.TickCount64 - _downAt;
-                if (deg > MoveDeg)
+                if (deg > MoveDeg && _claimed)
+                {
+                    // building's: a press that moves selects it too, and touches nothing
+                    _g = Gesture.Opened;
+                    BuildTap?.Invoke(_downHit);
+                }
+                else if (deg > MoveDeg)
                 {
                     // moved: the press goes in where it began, then follows the ray
                     Press(_downHit, _downOrigin, _downDir, mouselook: false);
@@ -330,7 +351,11 @@ public sealed class DirectTouch
     void End(ulong region, Vector3 origin, Vector3 dir)
     {
         // let go before it moved or opened: a click where it went down
-        if (_g is Gesture.Pending or Gesture.Hold) Press(_downHit, _downOrigin, _downDir, mouselook: false);
+        if (_g is Gesture.Pending or Gesture.Hold)
+        {
+            if (_claimed) BuildTap?.Invoke(_downHit);
+            else Press(_downHit, _downOrigin, _downDir, mouselook: false);
+        }
         if (_down) Release(region, origin, dir);
         _g = Gesture.None;
     }

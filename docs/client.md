@@ -304,11 +304,10 @@ Claude Opus 5.5, 2026-10-28 (batch R, `src/Sojourn.Client/Login/`). Two ways in:
 The account is chosen before the session exists because everything kept per account lives in its state dir:
 `<base>/state/<grid>/<first.last>/` (grid: `agni`, `aditi` or `host_port`), the cache per grid under
 `<base>/cache/<grid>`; the settings (`vr-settings.json`) stay the base dir's, the person's for every account. So
-another account is another run: Back, Cancel or the menu's log out ("you" section, at the foot, twice) shut the
-client down as quitting does and start it again at the login screen (`LoginRestart`), the account shown selected. In a
-run the launcher started (`LaunchState.ForLauncher`), log out ends the client instead, back to the launcher, which
-stays open. Under it, quit Sojourn (twice, in every run) closes the client, and in a launcher run the launcher too;
-both rows are in the simple menu, so "you" shows there with just them (the user, 2026-11-02).
+another account is another run: Back, Cancel or the menu's quit key (the power key in its top bar, confirmed) shut
+the client down and start it again at the login screen (`LoginRestart`), the account shown selected. In a run the
+launcher started (`LaunchState.ForLauncher`), quit ends the client instead, back to the launcher, which stays open; after
+a command-line login it just closes (the user, 2026-11-02).
 For the person's own use, `--base-dir local/main` keeps their headset settings; the first login there asks for MFA
 once (the old `state/pilot` isn't carried over).
 

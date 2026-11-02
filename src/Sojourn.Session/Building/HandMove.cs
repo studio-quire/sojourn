@@ -37,17 +37,21 @@ public sealed class HandMove
     /// <summary>The thing chosen on purpose (by the card's move key or the assistant), which may be someone else's.</summary>
     public UUID Chosen { get; private set; }
 
-    /// <summary>On, off, chosen, held or settled: the host redraws.</summary>
+    /// <summary>The thing selected (a root): the one with the gizmo on it, tapped by the person or handed over.</summary>
+    public UUID Selected { get; private set; }
+
+    /// <summary>On, off, chosen, selected, held or settled: the host redraws.</summary>
     public event Action? Changed;
 
+    /// <summary>Building by hand on; with a root, that thing chosen and selected.</summary>
     public void Start(UUID chosen, string by)
     {
         lock (_lock)
         {
             On = true;
-            if (chosen != UUID.Zero) Chosen = chosen;
+            if (chosen != UUID.Zero) Chosen = Selected = chosen;
         }
-        _s.Log.LogInformation("building by hand: on ({By}{What})", by, chosen != UUID.Zero ? $", {Name(chosen)} chosen" : "");
+        _s.Log.LogInformation("building by hand: on ({By}{What})", by, chosen != UUID.Zero ? $", {Name(chosen)} selected" : "");
         Changed?.Invoke();
     }
 
@@ -58,9 +62,19 @@ public sealed class HandMove
         lock (_lock)
         {
             On = false;
-            Chosen = UUID.Zero;
+            Chosen = Selected = UUID.Zero;
         }
         _s.Log.LogInformation("building by hand: off ({Why})", why);
+        Changed?.Invoke();
+    }
+
+    /// <summary>Selects a root (after <see cref="May"/>), or none.</summary>
+    public void Select(UUID root, string by)
+    {
+        if (!On || Selected == root) return;
+        if (_grab is { } g && g.Root.ID != root) End(g, g.Pos, g.Rot);
+        lock (_lock) Selected = root;
+        _s.Log.LogInformation("building by hand: {What} ({By})", root != UUID.Zero ? $"{Name(root)} selected" : "nothing selected", by);
         Changed?.Invoke();
     }
 
@@ -217,9 +231,15 @@ public sealed class HandMove
     void Send(Grab g, long now)
     {
         if (_s.Client is not { Network.CurrentSim: { } sim } c || sim.Handle != g.Region) return;
+        SendPlace(c, sim, g.Root.LocalID, g.Pos, g.Rot);
+        (g.SentPos, g.SentRot, g.SentAt) = (g.Pos, g.Rot, now);
+    }
+
+    static void SendPlace(GridClient c, Simulator sim, uint localId, SVector3 pos, SQuaternion rot)
+    {
         var data = new List<byte>(24);
-        data.AddRange(L(g.Pos).GetBytes());
-        data.AddRange(L(g.Rot).GetBytes());
+        data.AddRange(L(pos).GetBytes());
+        data.AddRange(L(rot).GetBytes());
         c.Network.SendPacket(new MultipleObjectUpdatePacket
         {
             AgentData = { AgentID = c.Self.AgentID, SessionID = c.Self.SessionID },
@@ -227,11 +247,96 @@ public sealed class HandMove
             {
                 new MultipleObjectUpdatePacket.ObjectDataBlock
                 {
-                    ObjectLocalID = g.Root.LocalID, Type = (byte)(UpdateType.Position | UpdateType.Rotation | UpdateType.Linked), Data = data.ToArray(),
+                    ObjectLocalID = localId, Type = (byte)(UpdateType.Position | UpdateType.Rotation | UpdateType.Linked), Data = data.ToArray(),
                 },
             },
         }, sim);
-        (g.SentPos, g.SentRot, g.SentAt) = (g.Pos, g.Rot, now);
+    }
+
+    // --- its shape --------------------------------------------------------------------------------------------------
+
+    readonly Dictionary<UUID, (SVector3 Min, SVector3 Max, long At)> _bounds = new();
+
+    /// <summary>The linked set's box in its root's frame (every prim's box carried into it), kept two seconds.</summary>
+    public (SVector3 Min, SVector3 Max)? Bounds(UUID rootId)
+    {
+        long now = Environment.TickCount64;
+        lock (_bounds)
+            if (_bounds.TryGetValue(rootId, out var b) && now - b.At < 2000) return (b.Min, b.Max);
+        if (_s.Region is not { } w || w.PrimById(rootId) is not { } root) return null;
+        var min = new SVector3(float.MaxValue);
+        var max = new SVector3(float.MinValue);
+        void Add(SVector3 pos, SQuaternion rot, Vector3 s)
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = new SVector3((i & 1) == 0 ? -s.X : s.X, (i & 2) == 0 ? -s.Y : s.Y, (i & 4) == 0 ? -s.Z : s.Z) * 0.5f;
+                var at = pos + SVector3.Transform(corner, rot);
+                min = SVector3.Min(min, at);
+                max = SVector3.Max(max, at);
+            }
+        }
+        Add(SVector3.Zero, SQuaternion.Identity, root.Scale);
+        foreach (var p in w.Prims.Values)
+            if (p.ParentID == root.LocalID && !w.Avatars.ContainsKey(p.LocalID))
+                Add(N(p.Position), N(p.Rotation), p.Scale);
+        lock (_bounds)
+        {
+            if (_bounds.Count > 64) _bounds.Clear();
+            _bounds[rootId] = (min, max, now);
+        }
+        return (min, max);
+    }
+
+    /// <summary>The middle of the linked set's box, for a root at this pose: what turns go about, as the viewer's
+    /// selection centre.</summary>
+    public SVector3 Centre(UUID rootId, SVector3 pos, SQuaternion rot) =>
+        Bounds(rootId) is { } b ? pos + SVector3.Transform((b.Min + b.Max) * 0.5f, rot) : pos;
+
+    // --- straightening (the assistant's) ------------------------------------------------------------------------------
+
+    /// <summary>Its rotation back to none (the edit floater's 0, 0, 0), or with level only its tilt taken out (which
+    /// way it faces kept), turning the whole linked set about its middle so it stays where it is. One undo step, in the
+    /// shared history. The rules are the hands' (an object chosen on purpose, so another person's they may modify is
+    /// allowed).</summary>
+    public JsonObject Straighten(UUID id, bool level)
+    {
+        if (_s.Client is not { Network.CurrentSim: { } sim } c) throw new InvalidOperationException("not in a region");
+        var (root, why) = May(sim.Handle, id, chosen: true, tell: true);
+        if (root is null) throw new InvalidOperationException(why ?? "it can't be moved");
+        var w = _s.Region!;
+        var pos = N(w.RegionPosition(root));
+        var rot = N(w.RegionRotation(root));
+        var to = level ? Level(rot) : SQuaternion.Identity;
+        var dq = SQuaternion.Normalize(to * SQuaternion.Inverse(rot));
+        var mid = Centre(root.ID, pos, rot);
+        var newPos = Clamp(mid + SVector3.Transform(pos - mid, dq));
+        string name = root.Properties?.Name is { Length: > 0 } n ? n : "an object";
+        var record = _s.Undo.BeforeHandMove(root);
+        SendPlace(c, sim, root.LocalID, newPos, to);
+        record(level ? $"levelled {name}" : $"straightened {name}");
+        _s.Log.LogInformation("building by hand: {Name} {What} (turned {Deg:0.#} deg)", name, level ? "levelled" : "straightened", Degrees(rot, to));
+        Changed?.Invoke();
+        return new JsonObject
+        {
+            ["id"] = root.ID.ToString(), ["name"] = name, ["pos"] = Json3(newPos), ["rot_euler"] = Json3(Euler(to)),
+            ["turned_deg"] = Math.Round(Degrees(rot, to), 1),
+        };
+    }
+
+    /// <summary>The same heading with no tilt: a turn about the vertical only, toward where its x axis points (its y
+    /// axis's, a quarter back, when x points straight up or down).</summary>
+    public static SQuaternion Level(SQuaternion rot)
+    {
+        var x = SVector3.Transform(SVector3.UnitX, rot);
+        float yaw;
+        if (x.X * x.X + x.Y * x.Y > 0.01f) yaw = MathF.Atan2(x.Y, x.X);
+        else
+        {
+            var y = SVector3.Transform(SVector3.UnitY, rot);
+            yaw = MathF.Atan2(y.Y, y.X) - MathF.PI / 2;
+        }
+        return SQuaternion.CreateFromAxisAngle(SVector3.UnitZ, yaw);
     }
 
     /// <summary>Inside the region (the viewer clips to the regions it can see; here the one you're in) and under the
@@ -250,7 +355,11 @@ public sealed class HandMove
     public JsonObject State()
     {
         var o = new JsonObject { ["on"] = On };
-        if (Chosen != UUID.Zero) o["chosen"] = new JsonObject { ["id"] = Chosen.ToString(), ["name"] = Name(Chosen) };
+        if (Selected != UUID.Zero && _s.Region?.PrimById(Selected) is { } sp && _s.Region is { } sw)
+            o["selected"] = new JsonObject
+            {
+                ["id"] = Selected.ToString(), ["name"] = Name(Selected), ["pos"] = Json3(N(sw.RegionPosition(sp))), ["rot_euler"] = Json3(Euler(N(sw.RegionRotation(sp)))),
+            };
         if (_grab is { } g) o["holding"] = new JsonObject { ["id"] = g.Root.ID.ToString(), ["name"] = g.Name, ["pos"] = Json3(g.Pos), ["rot_euler"] = Json3(Euler(g.Rot)) };
         if (Last is { } l)
             o["last"] = new JsonObject

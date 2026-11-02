@@ -42,7 +42,7 @@ public static class MenuGuide
         A("moving/tracking", "Your avatar's arms follow your hands. Auto lets dances and poses from things around you take over."),
         A("moving/pointer", "The ray from your right hand that touches, sits and presses. A quick press of A turns it on or off."),
         A("moving/your gaze", "What others see of where you look: your head turning toward who you look at, only the direction, or nothing."),
-        S("moving/build by hand", "Grab your things with a trigger to move and turn them: reach into one, or point at it. The × on the readout beside it ends it."),
+        S("moving/build by hand", "Tap one of your things, then drag its arrows to move it, its rings to turn it, or its middle to move it freely. The × on the readout ends it."),
         A("moving/build snap", "Things you move by hand snap to a grid, and their turns to steps."),
         A("moving/build grid", "How far apart the grid's lines are when moving things by hand."),
         A("moving/build turn steps", "How far each step of a turn goes when moving things by hand."),
@@ -99,8 +99,6 @@ public static class MenuGuide
         A("you/skeleton", "Fixes your avatar when its shape looks stretched or bent wrong."),
         A("you/attachments", "Reloads what you're wearing when something is missing or out of place."),
         A("you/animations", "Restarts your animations when others see you stuck or out of step."),
-        S("you/log out", "Logs you out and takes you back to where you logged in, to log in again or as someone else."),
-        S("you/quit Sojourn", "Logs you out and closes Sojourn."),
 
         // --- social
         A("social/name tags", "Names over people's heads."),

@@ -74,50 +74,70 @@ public static class PanelShots
         Shot("de-3e-no-agent", State(States().First(x => x.Name == "3e-no-agent").State));
         Lang.Use("en");
         var look = new PanelLook();
-        Shot("7b-settings-view-paged", Panel.DrawMenu(look, ViewTabs, 3, ViewRows, null, -1, scale, 1, 0, 44 / UiSize.BaseDegPerPx));
-        Shot("7c-settings-view-paged-2", Panel.DrawMenu(look, ViewTabs, 3, ViewRows, null, -1, scale, 1, 1, 44 / UiSize.BaseDegPerPx));
-        Shot("7d-settings-view-small", Panel.DrawMenu(look, ViewTabs, 3, ViewRows, null, -1, scale, 1, 0, 44 / (UiSize.BaseDegPerPx * 0.7f)));
+        Shot("7b-settings-view-paged", Panel.DrawMenu(look, ViewTabs, 3, ViewRows, null, -1, scale, 1, 0, 44 / UiSize.BaseDegPerPx, quit: true));
+        Shot("7c-settings-view-paged-2", Panel.DrawMenu(look, ViewTabs, 3, ViewRows, null, -1, scale, 1, 1, 44 / UiSize.BaseDegPerPx, quit: true));
+        Shot("7d-settings-view-small", Panel.DrawMenu(look, ViewTabs, 3, ViewRows, null, -1, scale, 1, 0, 44 / (UiSize.BaseDegPerPx * 0.7f), quit: true));
         // every section's tab as the headset has them, at size 1 and at 0.7 (wider), and a group opened
-        Shot("7e-settings-all-tabs", Panel.DrawMenu(look, AllTabs, 4, SocialRows, null, -1, scale, 1, 0, 44 / UiSize.BaseDegPerPx));
+        Shot("7e-settings-all-tabs", Panel.DrawMenu(look, AllTabs, 4, SocialRows, null, -1, scale, 1, 0, 44 / UiSize.BaseDegPerPx, quit: true));
         Shot("7f-settings-all-tabs-small", Panel.DrawMenu(look, AllTabs, 4, SocialRows, null, -1, scale, 1, 0, 44 / (UiSize.BaseDegPerPx * 0.7f),
-            UiSize.WideFor(1 / 0.7f)));
-        Shot("7g-settings-group", Panel.DrawMenu(look, AllTabs, 9, GraphicsRows, null, -1, scale, 1, 0, 44 / UiSize.BaseDegPerPx, group: "graphics"));
-        Shot("7h-settings-group-lit", Panel.DrawMenu(look, AllTabs, 4, SocialRows, null, 23, scale, 1, 0, 44 / UiSize.BaseDegPerPx));
+            UiSize.WideFor(1 / 0.7f), quit: true));
+        Shot("7g-settings-group", Panel.DrawMenu(look, AllTabs, 9, GraphicsRows, null, -1, scale, 1, 0, 44 / UiSize.BaseDegPerPx, group: "graphics", quit: true));
+        Shot("7h-settings-group-lit", Panel.DrawMenu(look, AllTabs, 4, SocialRows, null, 23, scale, 1, 0, 44 / UiSize.BaseDegPerPx, quit: true));
         // the pointer resting on a row (its tip under it), on the last row (above it), and on a tab
         string Tip(string section, MenuRow? row) => Sojourn.Client.Control.MenuGuide.Tip(section, null, row) ?? "(no tip)";
-        Shot("7i-settings-tip", Panel.DrawMenu(look, Tabs, 0, MovingRows, null, -1, scale, 1, tip: (3, Tip("moving", MovingRows[3]))));
-        Shot("7j-settings-tip-last", Panel.DrawMenu(look, Tabs, 0, MovingRows, null, -1, scale, 1, tip: (MovingRows.Length - 1, Tip("moving", MovingRows[^1]))));
-        Shot("7k-settings-tip-tab", Panel.DrawMenu(look, AllTabs, 4, SocialRows, null, -1, scale, 1, 0, 44 / UiSize.BaseDegPerPx, tip: (-1 - 7, Tip("screen reader", null))));
-        Shot("7l-settings-tip-long", Panel.DrawMenu(look, Tabs, 1, AssistantRows(0), null, -1, scale, 1, tip: (6, Tip("assistant", AssistantRows(0)[6]))));
-        Shot("7-settings-moving", Panel.DrawMenu(look, Tabs, 0, MovingRows, null, -1, scale, 1));
-        Shot("8-settings-assistant", Panel.DrawMenu(look, Tabs, 1, AssistantRows(0), null, -1, scale, 1));
-        Shot("8b-settings-help", Panel.DrawMenu(look, Tabs, 1, AssistantRows(0), HelpLines, -1, scale, 1));
+        Shot("7i-settings-tip", Panel.DrawMenu(look, Tabs, 0, MovingRows, null, -1, scale, 1, tip: (3, Tip("moving", MovingRows[3])), quit: true));
+        Shot("7j-settings-tip-last", Panel.DrawMenu(look, Tabs, 0, MovingRows, null, -1, scale, 1, tip: (MovingRows.Length - 1, Tip("moving", MovingRows[^1])), quit: true));
+        Shot("7k-settings-tip-tab", Panel.DrawMenu(look, AllTabs, 4, SocialRows, null, -1, scale, 1, 0, 44 / UiSize.BaseDegPerPx, tip: (-1 - 7, Tip("screen reader", null)), quit: true));
+        Shot("7l-settings-tip-long", Panel.DrawMenu(look, Tabs, 1, AssistantRows(0), null, -1, scale, 1, tip: (6, Tip("assistant", AssistantRows(0)[6])), quit: true));
+        Shot("7-settings-moving", Panel.DrawMenu(look, Tabs, 0, MovingRows, null, -1, scale, 1, quit: true));
+        Shot("8-settings-assistant", Panel.DrawMenu(look, Tabs, 1, AssistantRows(0), null, -1, scale, 1, quit: true));
+        Shot("8b-settings-help", Panel.DrawMenu(look, Tabs, 1, AssistantRows(0), HelpLines, -1, scale, 1, quit: true));
         // the person's own agent as the assistant (dev mode): its line in the built-in assistant's rows' place
         Shot("8c-settings-assistant-agent", Panel.DrawMenu(look, Tabs, 1, AgentRows, null, -1, scale, 1,
-            text: Sojourn.Client.Control.SettingsMenu.AgentText));
+            text: Sojourn.Client.Control.SettingsMenu.AgentText, quit: true));
         // about, the last section (Control/AboutMenu.cs: its own words), and its report page with and without a token
         var aboutTabs = AllTabs.Append("about").ToArray();
         float room = 44 / UiSize.BaseDegPerPx;
         Shot("7m-settings-about", Panel.DrawMenu(look, aboutTabs, 10, AboutRows, null, -1, scale, 1, 0, room,
-            text: Sojourn.Client.Control.AboutMenu.Lines("0.1.0.812", "3938f43")));
+            text: Sojourn.Client.Control.AboutMenu.Lines("0.1.0.812", "3938f43"), quit: true));
         Shot("7n-settings-about-report", Panel.DrawMenu(look, aboutTabs, 10, ReportRows(true), null, -1, scale, 1, 0, room,
-            group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(true)));
+            group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(true), quit: true));
         Shot("7o-settings-about-report-no-token", Panel.DrawMenu(look, aboutTabs, 10, ReportRows(false), null, -1, scale, 1, 0, room,
-            group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(false)));
-        // the simple menu's "you": log out and quit, the second press asking, a tip; and in German
-        var simpleTabs = new[] { "moving", "assistant", "incognito", "you", "safety", "view", "about" };
-        MenuRow[] Leaving(bool sure) => new[] { new MenuRow("log out", sure ? "sure?" : "out", false), new MenuRow("quit Sojourn", "close", false) };
-        Shot("7p-settings-you-simple", Panel.DrawMenu(look, simpleTabs, 3, Leaving(false), null, -1, scale, 1, 0, room));
-        Shot("7q-settings-you-sure", Panel.DrawMenu(look, simpleTabs, 3, Leaving(true), null, -1, scale, 1, 0, room,
-            tip: (0, Tip("you", Leaving(true)[0]))));
-        Shot("7r-settings-you-tip-last", Panel.DrawMenu(look, simpleTabs, 3, Leaving(false), null, -1, scale, 1, 0, room,
-            tip: (1, Tip("you", Leaving(false)[1]))));
+            group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(false), quit: true));
+        // the simple menu (no "you": quitting is the top bar's key), the quit key lit, its tip, its question; German too
+        var simpleTabs = new[] { "moving", "assistant", "incognito", "safety", "view", "about" };
         var oneRow = new[] { new MenuRow("controls a script took", "release", false) };
-        Shot("7s-settings-one-row-tip", Panel.DrawMenu(look, simpleTabs, 4, oneRow, null, -1, scale, 1, 0, room,
-            tip: (0, Tip("safety", oneRow[0]))));
+        string quitTip = Sojourn.Client.Control.SettingsMenu.QuitTip;
+        Shot("7p-settings-quit-key", Panel.DrawMenu(look, simpleTabs, 3, oneRow, null, simpleTabs.Length, scale, 1, 0, room, quit: true));
+        Shot("7q-settings-quit-tip", Panel.DrawMenu(look, simpleTabs, 3, oneRow, null, simpleTabs.Length, scale, 1, 0, room,
+            tip: (Panel.QuitSpot, quitTip), quit: true));
+        Shot("7r-settings-quit-ask", Panel.DrawMenu(look, simpleTabs, 3, oneRow, null, -1, scale, 1, 0, room, quit: true,
+            quitAsk: "You'll be back at the launcher."));
+        Shot("7r2-settings-quit-ask-about", Panel.DrawMenu(look, simpleTabs, 5, AboutRows, null, -1, scale, 1, 0, room, quit: true,
+            text: Sojourn.Client.Control.AboutMenu.Lines("0.1.0.837", "3938f43"), quitAsk: "You'll be back at the login screen."));
+        Shot("7s-settings-one-row-tip", Panel.DrawMenu(look, simpleTabs, 3, oneRow, null, -1, scale, 1, 0, room,
+            tip: (0, Tip("safety", oneRow[0])), quit: true));
+        // taller simple sections get no room made up under them: the agent's words over two rows, and about
+        var agentSimple = AgentRows[^2..];
+        Shot("7t-settings-assistant-agent-simple", Panel.DrawMenu(look, simpleTabs, 1, agentSimple, null, -1, scale, 1, 0, room,
+            text: Sojourn.Client.Control.SettingsMenu.AgentText, tip: (1, Tip("assistant", agentSimple[1])), quit: true));
+        Shot("7u-settings-assistant-agent-simple-tip-first", Panel.DrawMenu(look, simpleTabs, 1, agentSimple, null, -1, scale, 1, 0, room,
+            text: Sojourn.Client.Control.SettingsMenu.AgentText, tip: (0, Tip("assistant", agentSimple[0])), quit: true));
+        var aboutSimple = AboutRows[..^1];
+        Shot("7v-settings-about-simple", Panel.DrawMenu(look, simpleTabs, 5, aboutSimple, null, -1, scale, 1, 0, room,
+            text: Sojourn.Client.Control.AboutMenu.Lines("0.1.0.837", "3938f43"), quit: true));
+        Shot("7w-settings-about-simple-tip-last", Panel.DrawMenu(look, simpleTabs, 5, aboutSimple, null, -1, scale, 1, 0, room,
+            text: Sojourn.Client.Control.AboutMenu.Lines("0.1.0.837", "3938f43"), tip: (2, Tip("about", aboutSimple[2])), quit: true));
+        Shot("7x-settings-about-simple-tip-first", Panel.DrawMenu(look, simpleTabs, 5, aboutSimple, null, -1, scale, 1, 0, room,
+            text: Sojourn.Client.Control.AboutMenu.Lines("0.1.0.837", "3938f43"), tip: (0, Tip("about", aboutSimple[0])), quit: true));
+        Shot("7y-settings-safety-simple", Panel.DrawMenu(look, simpleTabs, 3, oneRow, null, -1, scale, 1, 0, room, quit: true));
         Lang.Use("de");
-        Shot("de-7p-settings-you-simple", Panel.DrawMenu(look, simpleTabs, 3, Leaving(false), null, -1, scale, 1, 0, room,
-            tip: (1, Tip("you", Leaving(false)[1]))));
+        Shot("de-7q-settings-quit-tip", Panel.DrawMenu(look, simpleTabs, 3, oneRow, null, simpleTabs.Length, scale, 1, 0, room,
+            tip: (Panel.QuitSpot, quitTip), quit: true));
+        Shot("de-7r-settings-quit-ask", Panel.DrawMenu(look, simpleTabs, 3, oneRow, null, -1, scale, 1, 0, room, quit: true,
+            quitAsk: "You'll be back at the launcher."));
+        Shot("de-7r2-settings-quit-ask-screen", Panel.DrawMenu(look, simpleTabs, 3, oneRow, null, -1, scale, 1, 0, room, quit: true,
+            quitAsk: "You'll be back at the login screen."));
         Lang.Use("en");
         // each preset, answering, confirming and as the settings (and how readable, by the measure the assistant's changes get)
         for (int i = 0; i < PanelLook.Presets.Count; i++)
@@ -127,7 +147,7 @@ public static class PanelShots
             Console.WriteLine($"preset {preset.Preset}: {preset.Margins()}");
             foreach (var (name, state) in States().Where(x => x.Name is "4-answer" or "5-choices" or "6-confirm"))
                 Shot($"look-{preset.Preset}-{name[2..]}", State(state, preset));
-            Shot($"look-{preset.Preset}-settings", Panel.DrawMenu(preset, Tabs, 1, AssistantRows(i), null, -1, scale, 1));
+            Shot($"look-{preset.Preset}-settings", Panel.DrawMenu(preset, Tabs, 1, AssistantRows(i), null, -1, scale, 1, quit: true));
         }
 
         // the reader: the session's replies at the newest, a long notecard partway down, and in smoke
@@ -418,7 +438,7 @@ public static class PanelShots
         View("choices", S("5-choices"), PanelPlacement.Mode.Panel);
         View("confirm", S("6-confirm"), PanelPlacement.Mode.Confirm);
         View("confirm-list", S("6c-confirm-list"), PanelPlacement.Mode.Confirm);
-        View("settings", Panel.DrawMenu(new PanelLook(), Tabs, 0, MovingRows, null, -1, 2.4f, 1), PanelPlacement.Mode.Menu);
+        View("settings", Panel.DrawMenu(new PanelLook(), Tabs, 0, MovingRows, null, -1, 2.4f, 1, quit: true), PanelPlacement.Mode.Menu);
         View("reply-working", Replying().First(x => x.Name == "4h-reply-working").Panel.Draw(2.4f), PanelPlacement.Mode.Panel);
 
         // each of the menu's sizes (UiSize): an answer that pages at 1, and the view section as it pages
@@ -428,7 +448,7 @@ public static class PanelShots
             var p = new Panel { Fit = UiSize.Fit };
             p.Update(States().First(x => x.Name == "4c-answer-paged").State);
             View($"size-{size:0.00}-answer", p.Draw(UiSize.Raster), PanelPlacement.Mode.Panel);
-            View($"size-{size:0.00}-settings", Panel.DrawMenu(new PanelLook(), ViewTabs, 3, ViewRows, null, -1, UiSize.Raster, 1, 0, 44 / UiSize.DegPerPx, UiSize.Wide),
+            View($"size-{size:0.00}-settings", Panel.DrawMenu(new PanelLook(), ViewTabs, 3, ViewRows, null, -1, UiSize.Raster, 1, 0, 44 / UiSize.DegPerPx, UiSize.Wide, quit: true),
                 PanelPlacement.Mode.Menu);
             // the reader as ReaderView places it: 1.2 m out, its middle 4 degrees below the eyes
             var reader = new Reader { ViewHeight = Reader.BaseViewHeight * UiSize.Fit, Wide = UiSize.Wide };

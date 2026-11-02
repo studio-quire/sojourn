@@ -48,11 +48,14 @@ public sealed partial class Panel
     /// back key with the name instead of the sections, a <see cref="KeyKind.Tab"/> for the section it's in.
     /// tip: what a row (its index) or tab (-1 - its index) does, drawn on a small pane just under it (over the rows
     /// below; above it, over the rows above, where there's no room below; never over the tabs). text: a section's own words above its rows (the about section's),
-    /// drawn as help is when help isn't open. The raster's Spots say where each row and tab was drawn.
+    /// drawn as help is when help isn't open. quit: a quit key (<see cref="KeyKind.Quit"/>, its spot
+    /// <see cref="QuitSpot"/>) beside help; quitAsk: its question open in the rows' place, the words saying where quitting
+    /// leaves the person, with cancel and quit keys (<see cref="KeyKind.Cancel"/>, <see cref="KeyKind.Confirm"/>).
+    /// The raster's Spots say where each row and tab was drawn.
     /// </summary>
     public static Raster DrawMenu(PanelLook look, IReadOnlyList<string> tabs, int section, IReadOnlyList<MenuRow> rows, IReadOnlyList<string>? help,
         int hover, float scale, long version, int page = 0, float maxHeight = float.MaxValue, float wide = 1, bool? layer = null, string? group = null,
-        (int Target, string Text)? tip = null, IReadOnlyList<string>? text = null)
+        (int Target, string Text)? tip = null, IReadOnlyList<string>? text = null, bool quit = false, string? quitAsk = null)
     {
         // the person's language, as drawn: the rows keep their English (the tips and the tests find rows by it)
         string? section0 = section >= 0 && section < tabs.Count ? tabs[section] : null;
@@ -61,6 +64,7 @@ public sealed partial class Panel
         group = Lang.Tn(group);
         help = help?.Select(Lang.T).ToList();
         text = text?.Select(Lang.T).ToList();
+        quitAsk = Lang.Tn(quitAsk);
         if (tip is { } tp) tip = (tp.Target, Lang.T(tp.Text));
         var ink = Ink.For(look);
         var keys = new List<PanelKey>();
@@ -70,13 +74,18 @@ public sealed partial class Panel
         {
             spots.Clear();
             var draw = new Painter(c, ink, width);
-            float y = LayoutMenu(draw, tabs, section, rows, help, hover, keys, spots, height, page, maxHeight, group, sectionText: text);
-            var rowSpots = spots.Where(sp => sp.Item1 >= 0 && sp.Item2.Width > 0).Select(sp => sp.Item2).OrderBy(r => r.Top).ToList();
-            // a short section keeps room under its second row for the longest tip: a tip above the first two rows would
-            // cover the tabs. Always, not only while a tip shows: a menu growing under the pointer would move its rows
-            if (height <= 0 && rowSpots.Count > 0) y = Math.Max(y, rowSpots[Math.Min(1, rowSpots.Count - 1)].Bottom + TipGap + TipMostHeight + TipFoot);
+            float y = LayoutMenu(draw, tabs, section, rows, help, hover, keys, spots, height, page, maxHeight, group, out float contentTop, sectionText: text,
+                quit: quit, quitAsk: quitAsk);
+            // a short section is made up to the least height, so a tip has room under its first two rows (above them it
+            // would cover the tabs); a taller one gets nothing. Always, not only while a tip shows: a menu growing under
+            // the pointer would move its rows
+            if (height <= 0) y = Math.Max(y, contentTop + MenuLeast);
             if (tip is { } t && spots.FirstOrDefault(sp => sp.Item1 == t.Target) is { Item2.Width: > 0 } at)
-                DrawTip(draw, at.Item2, t.Target < 0, t.Text, height, rowSpots.Count > 0 ? rowSpots[0].Top : 0);
+            {
+                // the quit key's tip goes under the whole header, not over a second strip of tabs
+                var under = t.Target == QuitSpot ? at.Item2 with { Bottom = contentTop - 14 } : at.Item2;
+                DrawTip(draw, under, t.Target < 0, t.Text, height, contentTop);
+            }
             return y;
         }, MaxRasterWidth);
         GlassLight.Finish(pixels, look, layer ?? GlassLight.Layers);
@@ -92,11 +101,17 @@ public sealed partial class Panel
         Options = r.Options?.Select(o => Lang.T(o, section)).ToArray(),
     };
 
+    /// <summary>The quit key's spot (tabs' are -1 - their index).</summary>
+    public const int QuitSpot = -1000;
+
     const float TipLine = 19.5f, TipGap = 4, TipFoot = 10;
     const float TipMostHeight = 3 * TipLine + 16;   // three lines, as many as a tip wraps to
+    /// <summary>The least height under the header (logical px): two plain rows and the tallest tip under the second.</summary>
+    const float MenuLeast = 2 * 50 + TipGap + TipMostHeight + TipFoot;
 
     /// <summary>The tip's pane, fitted to its words (up to three lines), from the row's label (a tab's left edge),
-    /// inside the menu: under the row, else above it if that stays under the tabs (rowsTop), else as low as fits.</summary>
+    /// inside the menu: under the row, else above it if that stays under the header (rowsTop: over a section's words is
+    /// fine), else as low as fits.</summary>
     static void DrawTip(Painter draw, SKRect at, bool tab, string text, float height, float rowsTop)
     {
         if (height <= 0) return;   // (the measuring pass)
@@ -142,7 +157,7 @@ public sealed partial class Panel
 
     static float LayoutMenu(Painter draw, IReadOnlyList<string> tabs, int section, IReadOnlyList<MenuRow> allRows, IReadOnlyList<string>? help,
         int hover, List<PanelKey> keys, List<(int, SKRect)> spots, float height, int page, float maxHeight, string? group,
-        IReadOnlyList<string>? sectionText = null)
+        out float contentTop, IReadOnlyList<string>? sectionText = null, bool quit = false, string? quitAsk = null)
     {
         var k = draw.K;
         float W = draw.W;
@@ -153,11 +168,13 @@ public sealed partial class Panel
         // header: the sections (or the one section's name, or the group's with a way back), then help and close
         var close = new SKRect(W - 10 - 38, y, W - 10, y + 38);
         var helpKey = new SKRect(close.Left - 4 - 38, y, close.Left - 4, y + 38);
+        var quitKey = new SKRect(helpKey.Left - 4 - 38, y, helpKey.Left - 4, y + 38);
+        float keysLeft = quit ? quitKey.Left : helpKey.Left;
         float headerBottom = y + 38;
         if (group != null)
         {
             bool lit = hover == keys.Count;
-            var back = new SKRect(pad - 6, y, helpKey.Left - 10, y + 38);
+            var back = new SKRect(pad - 6, y, keysLeft - 10, y + 38);
             var tf = Font(k.Semi, 17);
             if (lit) draw.Fill(back, 19, k.Look.KeyOpacity * 0.9f);
             draw.GlyphKey(new SKRect(back.Left, y, back.Left + 38, y + 38), Painter.Glyph.Back, false);
@@ -167,7 +184,7 @@ public sealed partial class Panel
         else if (tabs.Count > 1)
         {
             var tf = Font(k.Regular, 15);
-            float room = helpKey.Left - pad - 10;
+            float room = keysLeft - pad - 10;
             // more sections than one strip holds with a little air round each name: two strips, split where the longer
             // is shortest, both as wide as the room so they read as one block
             const float minAir = 16;
@@ -202,11 +219,36 @@ public sealed partial class Panel
         }
         else if (tabs.Count == 1)
             draw.Text(tabs[0], pad + 4, y + 25, Font(k.Semi, 17), k.Text);
+        if (quit)
+        {
+            draw.GlyphKey(quitKey, Painter.Glyph.Power, hover == keys.Count, on: quitAsk != null);
+            keys.Add(new PanelKey(KeyKind.Quit, 0, quitKey));
+            spots.Add((QuitSpot, quitKey));
+        }
         draw.GlyphKey(helpKey, Painter.Glyph.Help, hover == keys.Count, on: help != null);
         keys.Add(new PanelKey(KeyKind.Help, 0, helpKey));
         draw.GlyphKey(close, Painter.Glyph.Close, hover == keys.Count);
         keys.Add(new PanelKey(KeyKind.Hide, 0, close));
-        y = headerBottom + 14;
+        y = contentTop = headerBottom + 14;
+
+        if (quitAsk != null)
+        {
+            // the quit key's question, as the panel's confirmations are: what happens, then cancel and quit
+            var titleF = Font(k.Semi, 20);
+            var detailF = Font(k.Regular, 15);
+            draw.Text(Lang.T("Quit?"), pad, y + 22, titleF, k.Text);
+            y += 30;
+            foreach (var l in Wrap(quitAsk, detailF, W - 2 * pad, 3)) { draw.Text(l, pad, y + 17, detailF, k.Text); y += 21; }
+            y += 18;
+            float half = (W - 2 * pad - 12) / 2;
+            var cancel = new SKRect(pad, y, pad + half, y + 48);
+            var ok = new SKRect(cancel.Right + 12, y, W - pad, y + 48);
+            draw.Key(cancel, Lang.T("cancel"), hover == keys.Count, 16.5f);
+            keys.Add(new PanelKey(KeyKind.Cancel, 0, cancel));
+            draw.AccentKey(ok, Lang.T("quit"), hover == keys.Count, true);
+            keys.Add(new PanelKey(KeyKind.Confirm, 0, ok));
+            return y + 48 + 12;
+        }
 
         if ((help ?? sectionText) is { Count: > 0 } box0)
         {

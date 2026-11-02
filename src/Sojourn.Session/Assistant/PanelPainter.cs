@@ -447,7 +447,7 @@ public sealed partial class Panel
             Text(label, tx, ty, f, k.OnAccent);
         }
 
-        public enum Glyph { Close, Help, Mic, Back, Forward, Reload, Play, Pause, Keyboard, ClearAll, Stack, List }
+        public enum Glyph { Close, Help, Mic, Back, Forward, Reload, Play, Pause, Keyboard, ClearAll, Stack, List, Power }
 
         /// <summary>A small round key with a glyph: close, help, the microphone. Quiet until pointed at.</summary>
         public void GlyphKey(SKRect r, Glyph g, bool lit, bool on = false)
@@ -538,6 +538,16 @@ public sealed partial class Panel
                     c.DrawRoundRect(new SKRect(cx - w, cy - h + s * 0.35f, cx + w, cy + h + s * 0.35f), s * 0.22f, s * 0.22f, thin);
                     c.DrawLine(cx - w * 0.78f, cy - h - s * 0.05f, cx + w * 0.78f, cy - h - s * 0.05f, p);
                     c.DrawLine(cx - w * 0.56f, cy - h - s * 0.45f, cx + w * 0.56f, cy - h - s * 0.45f, p);
+                    break;
+                }
+                case Glyph.Power:
+                {
+                    // the power symbol: a ring open at the top, a stroke down into it
+                    float rr = s * 1.05f;
+                    using var arc = new SKPath();
+                    arc.AddArc(new SKRect(cx - rr, cy - rr + s * 0.1f, cx + rr, cy + rr + s * 0.1f), -55, 290);
+                    c.DrawPath(arc, p);
+                    c.DrawLine(cx, cy - rr - s * 0.15f, cx, cy - s * 0.1f, p);
                     break;
                 }
                 case Glyph.List:

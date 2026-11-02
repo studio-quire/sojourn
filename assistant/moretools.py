@@ -581,13 +581,16 @@ def build_more(kit):
         except (ApiError, KeyError) as e:
             return error(str(e))
 
-    @tool("hands", "Building by hand (the VR client): the person grabs a thing with a trigger, reaching into it or pointing at it, "
-          "moves and turns it with their hand and lets go; fine placement is theirs, by hand, after you've placed it roughly. action: "
-          "start (what: 'that', a name in view or an id: building by hand comes on with that object outlined for them to grab, "
-          "whoever owns it if they may modify it; without what, any of their own things; refused, with why, when they may not "
-          "move it), stop, state (on, what's held, their last move: where from and to, how far and how much it turned, and "
-          "whether the region kept it there). Their moves are undo steps like yours.",
-          schema(["action"], action=["start", "stop", "state"], what={"description": "'that', a name in view, or an id"}))
+    @tool("hands", "Building by hand (the VR client): the person taps one of their things to select it, then drags its arrows "
+          "(along one axis), rings (turning about one axis) or middle handle (anywhere) to place it; fine placement is theirs, after "
+          "you've placed it roughly. action: start (what: 'that', a name in view or an id: building by hand comes on with that object "
+          "selected for them, whoever owns it if they may modify it; without what, just on; refused, with why, when they may not move "
+          "it), stop, state (on, what's selected, their last move: where from and to, how far and how much it turned, and whether the "
+          "region kept it there), straighten (what: its rotation back to none, the edit floater's 0,0,0, turning it about its middle "
+          "so it stays where it is; level: true takes out only the tilt and keeps which way it faces: 'straighten it', 'reset its "
+          "rotation', 'level it'). Their moves and straightening are undo steps like yours.",
+          schema(["action"], action=["start", "stop", "state", "straighten"], what={"description": "'that', a name in view, or an id"},
+                 level=bool))
     async def hands(args):
         act = args["action"]
         try:
@@ -597,6 +600,12 @@ def build_more(kit):
                 return text(await call("SojournHandBuild", "start", **a))
             if act == "stop":
                 return text(await call("SojournHandBuild", "stop"))
+            if act == "straighten":
+                if not args.get("what"):
+                    return error("straighten needs what: 'that', a name or an id (the selected thing's id is on the context line)")
+                ids = await things(args["what"])
+                kit.did("levelling it" if args.get("level") else "straightening it")
+                return text(await call("SojournHandBuild", "straighten", id=ids[0], level=bool(args.get("level"))))
             return text(await call("SojournHandBuild", "state"))
         except (ApiError, KeyError) as e:
             return error(str(e))

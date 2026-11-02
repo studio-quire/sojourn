@@ -361,6 +361,19 @@ rather than to each eye, so both eyes see one plane.
   instead of ~30 at detail 2.5), though a Quest eye has more pixels a degree than a desktop. More triangles in view in
   busy places as a result (`ViewSetup.LodFov`).
 
+## Your own loading cloud
+
+2026-11-02. In the headset at login, the person's own avatar stood as a loading cloud (`Avatars.AddCloud`: 14 blended
+grey puffs filling the body, drawn under the head) with their eyes inside it, and a puff crossing the near plane showed
+in one eye but not the other, which hurt to look at. Now the own cloud (the avatar `RenderRequest.Self` names, so only
+the headset with your body shown) isn't drawn for the eyes or the camera's preview; a mirror that shows avatars still
+has it (`InstanceFlags.MirrorOnly`), and others see it in their own viewers. The desktop, and the headset while looking
+around from elsewhere, draw it as before. `SOJOURN_TEST_CLOUD=1` keeps every avatar a cloud; with
+`SOJOURN_SELF_TEST=front` at Atelier 66,66 (the mirror scene) the eyes see no cloud and the east mirror shows it.
+Particles near the eyes aren't faded, the user's call (2026-11-02): anything
+blended reaching within 2 cm of an eye can still show in one eye only (a hat's emitter, someone's particles passing
+through your head).
+
 ## Blended or masked: as the viewer decides
 
 2026-10-27, checked against secondlife/viewer develop (`llimagegl.cpp` analyzeAlphaData, `llface.cpp`
