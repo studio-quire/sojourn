@@ -5,19 +5,27 @@ namespace Sojourn.Render.Realtime;
 /// <summary>
 /// SOJOURN_ALLOC_PROFILE=1: what the process allocates, by type, from the runtime's own allocation samples (an event
 /// about every 100 KB allocated, naming the type that crossed the mark), logged every 10 s as the top types and their
-/// share. Cheap enough to leave on for a session; it says what to pool, not where from (no stacks).
+/// share. Cheap enough to leave on for a session; it says what to pool, not where from (no stacks). Sojourn Access
+/// keeps one on in every session at five minutes (<see cref="Every"/>), so a tester's log says what a long ride on
+/// Second Life allocates, which the perf grid doesn't reproduce (docs/performance.md > Sojourn Access on a small PC).
 /// </summary>
 public sealed class AllocProfile : EventListener
 {
     readonly Action<string> _log;
     readonly Dictionary<string, long> _bytes = new();
     readonly object _lock = new();
+    readonly long _period;
     long _lastReport = System.Environment.TickCount64;
 
-    AllocProfile(Action<string> log) { _log = log; }
+    AllocProfile(Action<string> log, long periodMs) { _log = log; _period = periodMs; }
 
     public static AllocProfile? Start(Action<string>? log) =>
-        log != null && System.Environment.GetEnvironmentVariable("SOJOURN_ALLOC_PROFILE") == "1" ? new AllocProfile(log) : null;
+        log != null && System.Environment.GetEnvironmentVariable("SOJOURN_ALLOC_PROFILE") == "1" ? new AllocProfile(log, 10_000) : null;
+
+    /// <summary>One reporting every <paramref name="periodMs"/>, unless SOJOURN_ALLOC_PROFILE says 0 (none) or 1 (the
+    /// renderer's own, every 10 s, does it).</summary>
+    public static AllocProfile? Every(Action<string> log, long periodMs) =>
+        System.Environment.GetEnvironmentVariable("SOJOURN_ALLOC_PROFILE") is "0" or "1" ? null : new AllocProfile(log, periodMs);
 
     protected override void OnEventSourceCreated(EventSource source)
     {
@@ -40,7 +48,7 @@ public sealed class AllocProfile : EventListener
         {
             _bytes[type] = _bytes.GetValueOrDefault(type) + amount;
             long now = System.Environment.TickCount64;
-            if (now - _lastReport >= 10_000)
+            if (_period > 0 && now - _lastReport >= _period)   // (events can come from the base constructor, before _period is set)
             {
                 double secs = (now - _lastReport) / 1000.0;
                 _lastReport = now;

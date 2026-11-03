@@ -57,6 +57,7 @@ public sealed class WalkApi : LeapApi
             ["name"] = t.Name, ["by_hand"] = t.ByHand,
             ["pos"] = t.Where() is { } p ? new JsonArray(Math.Round(p.X, 2), Math.Round(p.Y, 2), Math.Round(p.Z, 2)) : null,
         } : null,
+        ["world_duck"] = Math.Round(_walk.WorldDuck, 3),
         // rail switches the last look found (Walk/WalkMode.Switches.cs), nearest first
         ["switches"] = new JsonArray(_walk.Switches.Take(8).Select(s => (JsonNode?)new JsonObject
         {

@@ -160,7 +160,7 @@ MAX_TABS = 25                      # Tab stops walked before calling the order e
 NAMED_TYPES = {"Edit", "Document", "Button", "CheckBox", "RadioButton", "ComboBox", "List", "Tree", "Tab", "TabItem",
                "Slider", "Spinner", "DataGrid", "Table", "Hyperlink", "MenuItem", "SplitButton"}
 # the contract's controls (AutomationId = WinForms Name) and the UIA types that would be right for them
-ROLES = {"buildCommand": {"Edit"}, "buildRows": {"List", "DataGrid", "Table"}, "buildTab": {"ComboBox"}, "buildFaces": {"List", "DataGrid", "Table"},
+ROLES = {"landCommand": {"Edit"}, "landRows": {"List", "DataGrid", "Table"}, "landTab": {"ComboBox"}, "buildCommand": {"Edit"}, "buildRows": {"List", "DataGrid", "Table"}, "buildTab": {"ComboBox"}, "buildFaces": {"List", "DataGrid", "Table"},
          "chatInput": {"Edit"}, "chatHistory": {"Edit", "Document"}, "chatPeople": {"List", "DataGrid", "Table"}, "conversations": {"Tab"},
          "convInput": {"Edit"}, "convHistory": {"Edit", "Document"}, "people": {"List", "DataGrid", "Table"},
          "objects": {"List", "DataGrid", "Table"}, "notices": {"List", "DataGrid", "Table"},
@@ -1380,6 +1380,7 @@ def session(run, procs):
         ("placing by words", lambda: placing(run, nonce)),
         ("building with her own hands", lambda: building(run, nonce)),
         ("uploads", lambda: uploads(run, nonce)),
+        ("About Land, her own parcel", lambda: about_land(run, nonce, tester_id)),
         ("two inventory panes", lambda: two_panes(run, nonce)),
         ("incognito", lambda: incognito(run, nonce)),
         ("voice keys", lambda: voice_keys(run)),
@@ -4313,6 +4314,249 @@ def build_leftovers():
                 api("TesselBuild", "take", 30, ids=[o["id"]])
 
 
+LAND_PLOT = (24, 8, 48, 32)        # About Land's parcel, divided off Atelier for the step, away from the other steps' spots
+KEEPER = ("Estate", "Keeper")      # the local grid's estate owner, every parcel's (tools/land.py)
+KEEPER_PORT = V_PORT + 4           # the Keeper, as a second visitor bot, for the step
+
+
+def keeper(line, timeout=60):
+    return tcp(KEEPER_PORT, line, timeout)
+
+
+def land_cmd(text):
+    """A command typed into About Land's command box and sent with Enter, as the person would."""
+    if (focused() or {}).get("id") != "landCommand":
+        key("ctrl+l")
+        wait_focus(lambda d: d["id"] == "landCommand", 3)
+    u("set id=landCommand |")
+    type_text(text, "id=landCommand")
+    wait(lambda: value_of("id=landCommand") == text, 3, 0.2)
+    key("enter", target="id=landCommand")
+
+
+def about_land(run, nonce, tester_id):
+    """Land settings with her own keys (M6): a parcel of her own in Atelier (LAND_PLOT, divided off and sold to her for
+    L$0 by the estate's owner, Estate Keeper, as a second visitor bot), then About Land by keys only. Control+L says
+    whose it is and that it's for sale to her; `buy` through her confirmation makes it hers; its name, a tab read by its
+    name, where she is on it; Anyone can fly stepped by Right and Left in the settings list; a category, a landing point
+    and routing; the visitor banned for an hour by name through the confirmation, listed on the Access tab and taken
+    off by Delete there; an allow cancelled at the confirmation; her box counted on the Objects tab; the covenant and the
+    region read; put up for sale and taken off; a divide cancelled; abandoned through the confirmation (the Keeper's
+    again); a pass bought; Escape back to Say; `//land where` from Say. Undone after: the Keeper reclaims what isn't his
+    and joins the region into one parcel again (an interrupted run's leftovers too, first), the box taken, the tester
+    back where she was."""
+    import grid
+    if online(*KEEPER):
+        run.check("(About Land: the estate's owner is free; tools/land.py isn't running)", False, "Estate Keeper is logged in already: skipped")
+        return
+    # Estate Keeper had no known password on a fresh grid: the usual one (as tools/land.py gives it)
+    grid.console(f"reset user password {KEEPER[0]} {KEEPER[1]} {PASSWORD}", wait=2)
+    w, s, e, n = LAND_PLOT
+    cx, cy = (w + e) / 2, (s + n) / 2
+    area = (e - w) * (n - s)
+    plot = f"Access Plot {nonce}"
+    box = f"Access Land Box {nonce}"
+    home = tester_where()
+    log = open(OUT / "visitor" / "keeper.log", "w", encoding="utf-8")
+    proc = subprocess.Popen(
+        [str(DOTNET), str(VISITOR_DLL), "--port", str(KEEPER_PORT), "--first", KEEPER[0], "--last", KEEPER[1],
+         "--password", PASSWORD, "--start", "%s/%d/%d/%d" % (REGION, w + 2, s + 2, 30), "--login", GRID_URI],
+        cwd=OUT / "visitor", stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+        creationflags=CREATE_NO_WINDOW | BELOW_NORMAL | NEW_GROUP)
+
+    def keeper_up():
+        try:
+            return keeper("pos", 5)
+        except (OSError, ToolError):
+            return None
+
+    def parcel():
+        return api("SojournLand", "parcel", 20, at=[cx, cy])
+
+    def listed(field):
+        return api("SojournLand", "access", 20, at=[cx, cy]).get(field) or []
+
+    vid = visitor_id()
+    try:
+        up = wait(keeper_up, 60, 1)
+        if not run.check("(the estate's owner logged in)", up, up or "no answer in 60 s (local/access-test/visitor/keeper.log)"):
+            return
+        print(f"     ({keeper('land tidy', 60)})")
+        got = keeper(f"land divide {w} {s} {e} {n}")
+        run.check(f"(a parcel of {area} square metres divided off)", f"area {area} " in got, got)
+        got = keeper(f"land sell {cx} {cy} 0 {tester_id}")
+        run.check("(and for sale to the tester for L$0)", "sale 0" in got, got)
+        ground = api("TesselAgent", "ground", points=[[cx, cy]])["heights"][0]
+        m = mark()
+        say_in_app(f"//tp {REGION}/{cx:.0f}/{cy:.0f}/{ground + 1:.0f}")
+        run.expect("(teleported onto it)", ["Arrived"], m, 40)
+        time.sleep(1.5)
+
+        # Control+L: whose it is, that it's for sale to her
+        m = mark()
+        key("ctrl+l")
+        f = wait_focus(lambda d: d["id"] == "landCommand", 5)
+        run.check("Control+L: About Land, the focus in its command box", f, label(f) if f else focus_label())
+        run.expect("it says whose land it is and that it's for sale to her", ["About Land", "owned by Estate Keeper", "L$0 to you"], m, 10)
+        run.expect("and where she is on it", ["you're on it", "nearest edge"], m, 4)
+        tree_check(run, "About Land", must=("landCommand", "landRows", "landTab"))
+
+        m = mark()
+        land_cmd("buy")
+        confirm_in_notices(run, "Buy", m)
+        run.expect("buy: bought after her confirmation, said as hers", ["Bought", "yours now"], m, 25)
+        p = parcel()
+        run.check("(the region has her as its owner)", p.get("owner_id") == tester_id, json.dumps({k: p.get(k) for k in ("owner", "for_sale")}))
+
+        m = mark()
+        land_cmd(f"name {plot}")
+        run.expect("name: said back once the region has it", [f"Name: {plot}"], m, 10)
+        run.check("(its name in the region)", parcel().get("name") == plot, parcel().get("name"))
+        m = mark()
+        land_cmd("general")
+        run.expect("a tab's name reads it", ["General:", "Owner: you", f"Area: {area} square metres"], m, 8)
+        m = mark()
+        land_cmd("where")
+        run.expect("where: on it, its nearest edge from her", [plot, "you're on it", "nearest edge"], m, 6)
+
+        # the settings list by keys: Options, Anyone can fly stepped by Right and Left
+        m = mark()
+        land_cmd("options")
+        run.expect("options: its switches read", ["Options:", "Anyone can fly:"], m, 8)
+        key("tab")
+        if run.check("Tab: the settings list, named for the tab and the parcel",
+                     wait_focus(lambda d: d["id"] == "landRows" or d["type"] == "ListItem", 4)
+                     and any(d["name"] == f"Options of {plot}" for d in find("id=landRows")), focus_label()):
+            if run.check("(Anyone can fly selected)", select_in("id=landRows", "Anyone can fly:", 30), selected_text("id=landRows")):
+                was = "on" if "Anyone can fly: on" in selected_text("id=landRows") else "off"
+                other = "off" if was == "on" else "on"
+                m = mark()
+                key("right")
+                run.expect("Right turns it, said back once the region shows it", [f"Anyone can fly: {other}"], m, 10)
+                run.check("(the region has it so)", (parcel().get("options") or {}).get("fly") == (other == "on"), json.dumps(parcel().get("options")))
+                run.check("the row says so, still selected", wait(lambda: f"Anyone can fly: {other}" in selected_text("id=landRows"), 4), selected_text("id=landRows"))
+                m = mark()
+                key("left")
+                run.expect("Left turns it back", [f"Anyone can fly: {was}"], m, 10)
+        m = mark()
+        land_cmd("category residential")
+        run.expect("category residential: said back", ["Category: residential"], m, 10)
+        m = mark()
+        land_cmd("landing here")
+        run.expect("landing here: a landing point where she stands", ["Landing point:"], m, 10)
+        run.check("(the region has a landing point)", parcel().get("landing") == "point", parcel().get("landing"))
+        m = mark()
+        land_cmd("routing anywhere")
+        run.expect("routing anywhere: said back", ["Teleport routing: anywhere"], m, 10)
+
+        # who may come: a ban by name through her confirmation, off again by Delete on its row
+        m = mark()
+        land_cmd(f"ban {VNAME} for 1 hour")
+        confirm_in_notices(run, "Ban", m)
+        run.expect("ban NAME for 1 hour: banned after her confirmation, until when said", ["Banned", VNAME, "until"], m, 20)
+        banned = listed("banned")
+        run.check("(the region has the visitor banned, for a while)", any(b.get("id") == vid and b.get("until") for b in banned), json.dumps(banned))
+        m = mark()
+        land_cmd("access")
+        run.expect("access: its lists read", ["Access:", "Open to:", "Banned list: 1 person", f"Banned: {VNAME}"], m, 10)
+        key("tab")
+        wait_focus(lambda d: d["id"] == "landRows" or d["type"] == "ListItem", 4)
+        if run.check(f"(Banned: {VNAME} selected in the list)", select_in("id=landRows", f"Banned: {VNAME}", 30), selected_text("id=landRows")):
+            m = mark()
+            key("del")
+            confirm_in_notices(run, "Lift the ban", m)
+            run.expect("Delete on them: unbanned after her confirmation", ["isn't banned"], m, 20)
+            banned = listed("banned")
+            run.check("(off the region's ban list)", not any(b.get("id") == vid for b in banned), json.dumps(banned))
+            f = wait_focus(lambda d: d["id"] == "landRows" or d["type"] == "ListItem", 4)
+            run.check("the focus back in the list after the confirmation", f, focus_label())
+        m = mark()
+        land_cmd(f"allow {VNAME}")
+        confirm_in_notices(run, "Let", m, answer="esc")
+        run.expect("allow, cancelled at the confirmation: Cancelled", ["Cancelled"], m, 8)
+        allowed = listed("allowed")
+        run.check("(not on the allowed list)", not any(a.get("id") == vid for a in allowed), json.dumps(allowed))
+
+        # what's on it: her box counted
+        made = api("TesselBuild", "create", 20, shape="box", pos=[cx + 2, cy + 2, ground + 0.3], scale=[0.5, 0.5, 0.5])
+        if made.get("id"):
+            api("TesselBuild", "modify", 20, id=made["id"], name=box)
+        time.sleep(1.5)
+        land_cmd("here")
+        time.sleep(1.5)
+        m = mark()
+        land_cmd("objects")
+        run.expect("objects: its land impact", ["Objects:", "Land impact:", "The owner's: 1"], m, 15)
+        run.expect("and who owns what, her box among it", ["Who owns them:", "You: 1 prim"], m, 4)
+        heard = " | ".join(x.get("text") or "" for x in said_since(m))
+        print(f"     (objects said: {heard[-240:]})")
+
+        m = mark()
+        land_cmd("covenant")
+        run.expect("covenant: the estate's covenant read", ["Covenant:"], m, 20)
+        m = mark()
+        land_cmd("region")
+        run.expect("region: the region read, and that she doesn't manage it", ["Region: Atelier", "You manage it: no"], m, 15)
+        run.check("(not named twice)", not any("Region: Region:" in (x.get("text") or "") for x in said_since(m)), "")
+
+        # for sale and off again; a divide cancelled; abandoned
+        m = mark()
+        land_cmd("for sale 100")
+        confirm_in_notices(run, "for sale", m)
+        run.expect("for sale 100: for sale after her confirmation", ["For sale: L$100 to anyone"], m, 15)
+        run.check("(for sale in the region)", (parcel().get("for_sale") or {}).get("price") == 100, json.dumps(parcel().get("for_sale")))
+        m = mark()
+        land_cmd("not for sale")
+        run.expect("not for sale: said back", ["For sale: no"], m, 10)
+        m = mark()
+        land_cmd("divide north half")
+        confirm_in_notices(run, "Divide", m, answer="esc")
+        run.expect("divide north half, cancelled at the confirmation", ["Cancelled"], m, 8)
+        run.check("(still one parcel of its size)", parcel().get("area") == area, parcel().get("area"))
+        if made.get("id"):
+            api("TesselBuild", "take", 30, ids=[made["id"]])
+        m = mark()
+        land_cmd("abandon")
+        confirm_in_notices(run, "Abandon", m)
+        run.expect("abandon: given back after her confirmation, said whose it is now", ["Abandoned", "Estate Keeper"], m, 20)
+        run.check("(the estate's owner has it again)", parcel().get("owner_id") != tester_id, parcel().get("owner"))
+
+        # a pass, on the Keeper's parcel again
+        got = keeper(f"land pass {cx} {cy} 0 1")
+        run.check("(passes sold on it, by the Keeper)", "parcel" in got, got)
+        land_cmd("here")
+        time.sleep(1)
+        m = mark()
+        land_cmd("buy pass")
+        confirm_in_notices(run, "Buy a pass", m)
+        run.expect("buy pass: bought after her confirmation, for how long said", ["Bought a pass", "1 hour"], m, 20)
+
+        m = mark()
+        key("esc")
+        f = wait_focus(lambda d: d["id"] == "chatInput", 4)
+        run.check("Escape: back where Control+L came from (Say)", f, label(f) if f else focus_label())
+        m = mark()
+        say_in_app("//land where")
+        run.expect("//land where, from Say: answered without going there", [plot, "you're on it"], m, 8)
+        run.check("(the focus stays in Say)", (focused() or {}).get("id") == "chatInput", focus_label())
+    finally:
+        for o in api("TesselObjects", "nearby", dist=60, query="Access Land Box").get("objects", []):
+            if o.get("name", "").startswith("Access Land Box"):
+                api("TesselBuild", "take", 30, ids=[o["id"]])
+        try:
+            print(f"     ({keeper('land tidy', 60)})")
+            keeper("quit", 10)
+        except (OSError, ToolError) as x:
+            print(f"     (the Keeper: {x})")
+        try:
+            proc.wait(20)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        back_to_chat()
+        say_in_app(f"//tp {REGION}/{home[0]:.0f}/{home[1]:.0f}/{home[2]:.0f}")
+        wait(lambda: math.dist(tester_where()[:2], home[:2]) < 3, 30, 1)
+
+
 HUD_SCRIPT = 'default { touch_start(integer n) { llSay(0, "Access HUD pressed, link " + (string)llDetectedLinkNumber(0)); } }'
 
 
@@ -5739,6 +5983,8 @@ def sound_map(run, tester_id):
         run.check("its beacon pips from the visitor's direction, quietly",
                   len(pings) >= 2 and all(c["bearing"] is not None and off_by(c["bearing"], want_b) < 20 and c["level"] <= 0.21 for c in pings),
                   f"{len(pings)} pips at {[c['bearing'] for c in pings]} (the visitor at {want_b:.0f}), levels {[c['level'] for c in pings]}")
+        duck = api("SojournWalk", "status").get("world_duck")
+        run.check("while it sounds, the world's sounds are much softer (walk_beacon_duck)", duck == 0.25, f"world_duck {duck}")
         m = mark()
         say_in_app("//beacon Marks Bench")
         run.expect("//beacon moves it to the bench", ["Beacon on Marks Bench"], m, 8)
@@ -5760,6 +6006,8 @@ def sound_map(run, tester_id):
         m = mark()
         key("shift+b")
         run.expect("Shift+B with it gone: nothing to take off", ["No beacon to take off"], m, 5)
+        undone = wait(lambda: api("SojournWalk", "status").get("world_duck") == 1, 3, 0.1)
+        run.check("and with no beacon the world's sounds are back as they were", undone, f"world_duck {api('SojournWalk', 'status').get('world_duck')}")
         key("esc")
         wait_focus(lambda d: d["id"] == "chatInput", 5)
 
@@ -5787,6 +6035,28 @@ def sound_map(run, tester_id):
         run.check("the assistant's walk (the session's autopilot) has the beacon too", b and "assistant" in b["name"], json.dumps(b))
         wait(lambda: not api("LLAgent", "getAutoPilot")["enabled"], 20, 0.3)
         run.check("pipping as it went", cues_since(t0, "Beacon", "BeaconAhead"), f"{len(cues_since(t0, 'Beacon', 'BeaconAhead'))} pips")
+
+        # a beacon on someone who crosses into the next region stays on them (0.1.0.877 lost it 5 s after her
+        # partner's car crossed out): the tester near Atelier's east edge, the visitor just over it in Atelier East
+        back_to_chat()
+        m = mark()
+        say_in_app("//tp %s/%d/%d/%d" % (REGION, 236, MARKS_AT[1], TESTER_START[2]))
+        if run.expect("(the tester near Atelier's east edge)", ["Arrived"], m, 30):
+            v(f"tp {REGION} 248 {MARKS_AT[1] + 4} {TESTER_START[2]}", timeout=30)
+            time.sleep(2)
+            m = mark()
+            say_in_app(f"//beacon {VNAME}")
+            run.expect("(a beacon on the visitor beside the border)", ["Beacon on " + VNAME], m, 8)
+            crossed = mark()
+            v(f"tp Atelier East 14 {MARKS_AT[1] + 4} {TESTER_START[2]}", timeout=30)
+            time.sleep(7)
+            m = mark()
+            say_in_app("//beacon")
+            got = run.expect("the visitor over the border in Atelier East: the beacon still on them", ["Beacon on " + VNAME, "metres"], m, 5)
+            lost = [e.get("text", "") for e in said_since(crossed) if "Beacon lost" in e.get("text", "")]
+            run.check("(not lost meanwhile)", got and not lost, (got or {}).get("text", "") + (f"; {lost}" if lost else ""))
+            say_in_app("//beacon off")
+            v("tp %s %d %d %d" % (REGION, MARKS_AT[0] + 6, MARKS_AT[1] - 6, TESTER_START[2]), timeout=30)
     finally:
         back_to_chat()
         for name in made:
@@ -6076,6 +6346,12 @@ def walk_vehicle(run, bx, by, g):
     if not run.heard_by_visitor("the cart's script takes the movement keys", lambda d: d["msg"] == "cart controls taken", n, 15, "cart controls taken"):
         return
     m = mark()
+    say_in_app(f"//follow {VNAME}")
+    run.expect("//follow while seated says following only walks", ["You're seated", "beacon"], m, 8)
+    run.expect("and puts a beacon on them instead", ["Beacon on " + VNAME], m, 8)
+    say_in_app("//beacon off")
+    time.sleep(0.5)
+    m = mark()
     key("f3")
     wait_focus(lambda d: d["id"] == "walkPad", 5)
     m = mark()
@@ -6097,6 +6373,10 @@ def walk_vehicle(run, bx, by, g):
     n = visitor_n()
     key("left")
     run.heard_by_visitor("a tap of Left turns it (the script's rotate left)", lambda d: d["msg"] == "cart: left", n, 8, "cart: left")
+    n = visitor_n()
+    key("enter")
+    run.heard_by_visitor("Enter reaches the cart's script as the mouse button", lambda d: d["msg"] == "cart: click", n, 8, "cart: click")
+    run.heard_by_visitor("and let go, as the button's release", lambda d: d["msg"] == "cart: click up", n, 8, "cart: click up")
     m = mark()
     key("a")
     got = run.expect("A says what's ahead, not the cart itself", ["ahead"], m, 5)

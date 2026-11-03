@@ -43,7 +43,7 @@ public sealed class Commands
     /// for before its next line.</summary>
     public async Task<bool> RunAsync(string line)
     {
-        var words = Split(line.TrimStart()[2..]);
+        var words = Split(line.TrimStart()[2..].TrimStart('/'));   // ////unsit as //unsit (a typed extra pair, 0.1.0.877)
         if (words.Count == 0) { Help(""); return false; }
         var verb = words[0].ToLowerInvariant();
         var rest = words.Skip(1).ToList();
@@ -77,6 +77,7 @@ public sealed class Commands
                 case "outfit": if (Outfit != null) await Outfit(); return true;
                 case "upload": if (Upload != null) await Upload(AfterVerb(line)); return true;
                 case "build": if (Build != null) await Build(AfterVerb(line)); return true;
+                case "land": if (Land != null) await Land(AfterVerb(line)); return true;
                 case "voice": if (Voice != null) await Voice(string.Join(" ", rest)); return true;
                 case "imsound": if (ImSound != null) await ImSound(string.Join(" ", rest)); return true;
                 case "sendlog": SendLog?.Invoke(); return true;
@@ -138,6 +139,8 @@ public sealed class Commands
         ("outfit", "//outfit", "what you're wearing, by name from the worn list: clothing, attachments and where, HUDs, body parts"),
         ("build", "//build | //build COMMAND (hollow 50, colour red, new box, undo, help)",
             "the build editor (Control+B), or one of its commands on what you're editing"),
+        ("land", "//land | //land COMMAND (options, fly off, ban NAME, for sale 500, buy, help)",
+            "About Land (Control+L) on the parcel you're on, or one of its commands"),
         ("upload", "//upload | //upload PATH", "upload a picture, sound, animation or model: with no path, choose the file (Control+U)"),
         ("voice", "//voice | //voice answer | //voice decline", "who's in voice and speaking, your mic; or answer or decline a call ringing"),
         ("imsound", "//imsound NAME SOUND | //imsound NAME usual | //imsound NAME | //imsound",
@@ -699,6 +702,14 @@ public sealed class Commands
         if (name.Length == 0) { _say(_following != null ? $"Following {_following}." : "Not following anyone."); return; }
         if (name.Equals("stop", StringComparison.OrdinalIgnoreCase)) { StopFollowing(quiet: false); return; }
         if (await _ops.FindPersonAsync(name) is not { } p) { _say($"Nobody called {name} nearby."); return; }
+        // following walks; seated (a car after someone else's, 0.1.0.877) it would only stand still, so a beacon instead
+        if (_ops.Client is { Self.SittingOn: not 0 } && WalkMode is { } walk)
+        {
+            StopFollowing(quiet: true);
+            _say("You're seated, and following only walks you, so here's a beacon on them instead: steer toward its pip, and B in walk mode says where they are.");
+            walk.BeaconOn(p.Name, p.Id);
+            return;
+        }
         Follow(p);
     }
 
@@ -988,6 +999,9 @@ public sealed class Commands
 
     /// <summary>`//build`'s words as typed, to the build editor (MainForm.Build.cs).</summary>
     public Func<string, Task>? Build { get; set; }
+
+    /// <summary>`//land`'s words as typed, to About Land (MainForm.Land.cs).</summary>
+    public Func<string, Task>? Land { get; set; }
 
     /// <summary>`//imsound`'s words (MainForm.ImSounds.cs).</summary>
     public Func<string, Task>? ImSound { get; set; }

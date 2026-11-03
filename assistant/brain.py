@@ -586,7 +586,7 @@ class Brain:
 
     def base_prompt(self):
         return ((HERE / "prompt.md").read_text(encoding="utf-8").rstrip() + "\n" + self.app_text() + "\n"
-                + (HERE / "prompt-powers.md").read_text(encoding="utf-8").rstrip().replace("{work}", str(homemod.work_dir()))
+                + (HERE / "prompt-powers.md").read_text(encoding="utf-8").rstrip().replace("{work}", str(homemod.work_dir())).replace("{api}", self.api.base)
                 + "\n" + self.memory_text() + self.persona_text() + self.provider.prompt_note())
 
     def prompts(self, catalog):

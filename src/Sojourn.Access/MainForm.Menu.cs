@@ -38,6 +38,9 @@ public sealed partial class MainForm
             _incognitoItem = Item("&Incognito", "Control+Shift+I", ToggleIncognito),
             new ToolStripSeparator(),
             Item("&Region info", "Control+Shift+1", () => _ = _cmd.RunAsync("//siminfo")),
+            // (no mnemonic: every letter of its words is taken in World)
+            Later("About Land", "Control+L", () => GoLand()),
+            Later("The region's covenant", "covenant", () => { GoLand("Covenant"); }),
             Item("&Parcels in this region", null, () => _ = _cmd.RunAsync("//parcelinfo")),
             Item("S&tatus", null, () => _ = _cmd.RunAsync("//status")),
             Item("What you're &wearing", "Control+Shift+W", () => _ = OutfitListAsync()),

@@ -87,6 +87,12 @@ public sealed class AccessSettings
     /// <summary>Cues quieter than medium unless changed: the beacon repeats all through a walk.</summary>
     static readonly Dictionary<string, string> WalkDefaultLevels = new() { ["beacon"] = "quiet", ["route"] = "quiet" };
 
+    /// <summary>How much softer the world's sounds go while a beacon sounds (walk_beacon_duck).</summary>
+    public static readonly string[] DuckChoices = { "as usual", "softer", "much softer", "very soft" };
+    static readonly float[] DuckGains = { 1f, 0.5f, 0.25f, 0.1f };
+    public string BeaconDuckName => Walk.TryGetValue("beacon_duck", out var v) && DuckChoices.Contains(v) ? v : "much softer";
+    public float BeaconDuck => DuckGains[Array.IndexOf(DuckChoices, BeaconDuckName)];
+
     public string WalkMode(string cue) => Walk.TryGetValue(cue, out var v) ? v : WalkCues.FirstOrDefault(c => c.Name == cue).Mode ?? "both";
     public bool WalkText(string cue) => WalkMode(cue) is "both" or "text";
     public bool WalkSound(string cue) => WalkMode(cue) is "both" or "sound";
@@ -275,6 +281,9 @@ public sealed class AccessSettings
                 Save();
                 changed();
             })));
+        api.Add("walk_beacon_duck", new SettingsApi.Setting("access", "Sojourn Access: the world's sounds (engines, ambience; not "
+            + "music or Access's own sounds) while a beacon is sounding, so it's heard over them", string.Join(", ", DuckChoices),
+            () => BeaconDuckName, SettingsApi.Choice("walk_beacon_duck", DuckChoices, i => { Walk["beacon_duck"] = DuckChoices[i]; Save(); changed(); })));
         string[] steps = { "smooth", "10", "15", "22.5", "30", "45", "90" }, rates = { "45", "90", "135", "180" };
         api.Add("walk_turn_step", new SettingsApi.Setting("access", "Sojourn Access walk mode: degrees a tap of Left or Right turns "
             + "(smooth: only held turning); held, it turns smoothly", string.Join(", ", steps),

@@ -153,14 +153,15 @@ Alt+number; Radegast's numbers where Radegast has the same area.
 
 Pressing the Alt+number of the area you're in reads it again ("Inventory: Red Dress, skirt, worn.").
 
-One more area has no Alt+number: Build, the build editor, on Control+B (Building, below).
+Two more areas have no Alt+number: Build, the build editor, on Control+B (Building, below), and About Land, on
+Control+L (About Land, below).
 
 ### The menu bar
 
 `MainForm.Menu.cs`; Alt or F10, then the arrows, or Alt+W, V, R, B, H for a menu. It's there for finding out what exists,
 as Radegast's menus are. World (teleport home, to the SLurl on the clipboard, set home here, landmark here, sit on the
 ground or stand up, fly or stop flying, walk mode, Recording a route (its keys and Discard), Gestures: the active ones to play, Away and Do not disturb as checked
-items, incognito, region info, parcels in this region, status, what you're wearing, describe where you are, describe
+items, incognito, region info, About Land (Control+L) and the region's covenant, parcels in this region, status, what you're wearing, describe where you are, describe
 me, who's in voice, open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
 Friends among them, the second inventory pane, the inventory's favorites, the newest notice, Conversations, the conversation ring, closing one),
 Read-out (mute all, mute this conversation, times, arrivals, Recent messages: the last nine as items with their
@@ -333,6 +334,7 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   own (Uploading, below).
 - Ctrl+B: the build editor, on what's selected in Objects, its parts or faces, else what was edited last (Building,
   below); Escape there goes back.
+- Ctrl+L: About Land, on the parcel you're on (About Land, below); Escape there goes back.
 - Ctrl+Shift+T: times in the chat histories ("[14:05] Kestrel: hi", from the next line) or not.
 - F3: walk mode (below); F3 or Escape again leaves it. R there, or `//record` anywhere, records a route by walking it
   (Walk mode > Recording a route); C there, or `//ride`, records a ride to hear it told after (Walk mode > Recording a
@@ -548,6 +550,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//outfit` | what you're wearing, by name (Ctrl+Shift+W) |
 | `//upload` / `//upload PATH` | upload a file: the Open window, or the file at PATH (Ctrl+U; Uploading, below) |
 | `//build` / `//build COMMAND` | the build editor (Ctrl+B), or one of its commands on what's being edited, from any input (Building, below) |
+| `//land` / `//land COMMAND` | About Land (Ctrl+L), or one of its commands on the parcel shown (or the one you're on), from any input (About Land, below) |
 | `//describe [here|me|NAME|person NAME|object NAME|more]` | describe (Describing, below) |
 | `//voice` / `answer` / `decline` | who's in voice; answer or decline a call |
 | `//imsound NAME SOUND` / `NAME usual` / `NAME` / (nothing) | a sound of its own for someone's IMs or a group's chat; back to the usual; theirs; the sounds and who has one (Earcons, above) |
@@ -595,6 +598,7 @@ window and every viewer send them); the local collision model only tells you wha
 | Shift+Left / Right | a step sideways while held |
 | Page Up / Page Down | up / down: flying, rise and sink; on foot, jump and crouch |
 | Home | fly, or land ("Flying." / "Not flying: landing.") |
+| Enter | the mouse button, for a script that takes clicks (a vehicle's horn or gun, a weapon): down while Enter is held, up when let go; with nothing taking them, "Nothing here takes clicks. T touches what's ahead." |
 | Space | stop everything: the keys, a `//go`, a follow, a route ("Stopped."); seated on something moving, stop it by its controls ("Stopping.", then "Stopped.": Stopping a vehicle, below) |
 | H | heading: "Facing northeast, 45 degrees." (Second Life's degrees, 0 east, counter-clockwise, as `//face` takes them) |
 | V / Shift+V | speed: "Walking, 3 m a second, to the north." / "Standing still." / seated, the vehicle's, then what it shows as floating text when it shows any ("Ride Train: 3 metres a second, to the east. It shows: Throttle 30%, Speed 11 km/h."); Shift+V (or `//text`): only what it shows ("Ride Train shows: ...") |
@@ -614,7 +618,11 @@ window and every viewer send them); the local collision model only tells you wha
 
 Seated on something, or with a script holding the movement keys, the same arrows drive it (CONTROL_FWD and BACK,
 ROT_LEFT and RIGHT, UP and DOWN for Page Up and Down, a tap held long enough to reach the script): a car, a horse, a
-boat, a ride's controls. H and V then say the vehicle's heading and speed, A and the warnings look ahead from it,
+boat, a ride's controls. A script sees only the controls, never the keys: to it Up and Down are W and S, Left and
+Right A and D, Shift with them Shift+A and D, Page Up and Down E and C (a vehicle's "press C to land" is Page Down),
+so walk mode's letters are free for its own keys (the blind tester asked, 2026-11-03, after learning some vehicles land
+on C). A layout where W, A, S, D, E and C drive, for a keyboard without arrows, waits until someone needs it. Enter is
+the left mouse button (CONTROL_LBUTTON; the mouselook one when that's all the script took). H and V then say the vehicle's heading and speed, A and the warnings look ahead from it,
 leaving out its own parts. A rail switch coming up is said once with how it's set, W says the next one and Shift+W
 throws it (Rail switches, below). Space (or `//stop`) stops it, and a vehicle saying its track ends is stopped by itself
 (Stopping a vehicle, below).
@@ -637,7 +645,7 @@ in your left ear.
 | distance (`walk_distance`, text) | a stretch walked by the arrows has ended: no walking key for 0.7 s, no key at all for 0.7 s, the avatar stopped (or 3 s on), and walk mode's line before it heard out; taps in quick succession (a turn between them too) are one stretch; straight from where it began; under 0.3 m nothing; not a `//go`, a follow or a vehicle | none | "0.9 metres." / "4 metres." (tenths under 3 m: a tap is about 0.9 on Second Life) / "1.8 metres backward." / "1 metre to the left." (by the keys that walked it) |
 | follow (`walk_follow`, text) | following someone | none | "With Kestrel, 3 m, twelve o'clock." / "Kestrel sat down, ..." / "Kestrel is getting away: 24 m, ..." |
 | vehicle (`walk_vehicle`, both) | driving: what's ahead (as the warning, further at speed), only what the vehicle is closing on (met for 0.4 s or more and come nearer by at least half what it travelled meanwhile; each thing once in 4 s): on a train a ray from the seat meets the track's own sections and guides ahead on every curve, which stay about as far ahead as the track bends away (the blind tester's ride of 2026-11-02 had 157 such warnings); a seated border crossing, judged once the new region has sent the avatar and the seat it's on (up to 15 s, else said as not known yet: judged at 2.5 s whatever had come, it told her "the crossing left you standing" seven times while she sat on); the speed has its own switch, `walk_speed` (on): the distance travelled over 2 s, said once it has held within 15% for 2 s and differs from the last said by 3 m/s and a third (a train's reported velocity swung 19, 6, 13, 8 three seconds apart, 2026-11-01); stood up off the seat within 5 s of its moving, not at a crossing (the region left her behind as her train crossed out, 2026-11-02, and only the train's own chat said so) | as the warning | "12 metres a second." / "Now in Bay City, still on Walk Kart." / "Now in Bay City; the crossing left you standing." / "You're off Walk Kart: it went on without you." |
-| switch (`walk_switch`, both) | seated and moving: a rail switch coming into the way ahead within 60 m, said once (one a line, the nearest first, 2.5 s apart; again only after a minute out of the way ahead; not once it's under 5 m); the next one ahead said again if its setting changes; a throw done (W, Shift+W, `//switch`). A switch's line is heard out (about 30 ms a character): the lines walk mode says by itself meanwhile (the seated crossing, the speed, the next switch, a route's point) wait for it and then follow in turn, as an answer cuts off what's being said (0.1.0.835 cut 25 of 146, both before her wrong turn); warnings, the answers to her keys and "Track ends" still cut in | a points' clack, then one note forking into two that part; a throw: a heavy clack and a lighter answer | "Switch in 40 metres, set to the main line, North Station." / "Switch in 25 metres, set to: unknown." / "The switch ahead is now set to the main line." / "Switch set to the branch, East Yard." |
+| switch (`walk_switch`, both) | seated and moving: a rail switch coming into the way ahead within about 7 s of travel (60-100 m), said once (one a line, the nearest first, 2.5 s apart; again only after a minute out of the way ahead; not once it's under 5 m; under 1.5 s away, "just ahead"); the next one ahead said again if its setting changes; a throw done (W, Shift+W, `//switch`). A switch's line is heard out (about 30 ms a character): the lines walk mode says by itself meanwhile (the seated crossing, the speed, the next switch, a route's point) wait for it and then follow in turn, as an answer cuts off what's being said (0.1.0.835 cut 25 of 146, both before her wrong turn); warnings, the answers to her keys and "Track ends" still cut in | a points' clack, then one note forking into two that part; a throw: a heavy clack and a lighter answer | "Switch in 40 metres, set to the main line, North Station." / "Switch in 25 metres, set to: unknown." / "The switch ahead is now set to the main line." / "Switch set to the branch, East Yard." |
 | beacon (`walk_beacon`, both; volume quiet) | a walk under way (`//go`, walk to, a follow, the assistant's walk), else one put on someone or something | a soft pip from the target's direction, every 1.4 s far off down to 0.6 s near, with a fifth above it while it's within 20 degrees ahead (front and back are hard to tell by ear); a small bell flourish on reaching a hand beacon | "Reached Bench." / "Beacon lost: Kestrel isn't here now."; B says where it is |
 | route (`walk_route`, sound; volume quiet) | recording a route: each point it keeps (Recording a route, below) | one small bright wooden tick | "Step 4: a doorway." / "Step 5: a turn." / "Step 7: a teleport to Bay City." |
 | marks (`walk_marks`, both) | O | each thing in turn round from ahead to the right, as the sonar: a door knocks (as the warning's door), a seat sinks (two low notes falling), a touchable thing taps (a small high bell) | "Bench, a seat, 4 metres, twelve o'clock. Garden Gate, a door, 4 metres, three o'clock. Bell, touchable, 4 metres, nine o'clock." |
@@ -652,6 +660,11 @@ on what the person put it on, to walk to themselves in walk mode or by `//go`: `
 else thing, by name; `person`/`object` as `//find`), or Beacon on a person's or an object's Applications key. That one
 stays until it's reached (within 1.6 m: "Reached ...", the flourish), taken off (Shift+B, `//beacon off`) or gone for
 5 s; walking by hand doesn't stop it (it stops a `//go`), and a walk's own beacon takes its place while the walk lasts.
+It finds its target in every region in view, then by the map's positions (CoarseLocationUpdate) for a person, so a car
+it's on crossing into the next region keeps it (0.1.0.877 lost her partner's car 5 s after it crossed). `//follow`
+while seated puts one on the person instead, saying following only walks. While a beacon sounds the world's sounds go
+softer (`walk_beacon_duck`: as usual, softer, much softer (the default, a quarter), very soft; over half a second each
+way; not music or Access's own sounds): two cars' engines drowned it at its loudest (the blind tester, 2026-11-03).
 
 **The marks** (O): from the objects list's flags and names within 12 m, at most eight: a door or gate by name, a seat
 (sits on a click, or named chair, seat, bench, sofa, couch, stool, cushion, poseball, hammock, swing), anything a script
@@ -691,6 +704,18 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   objects with "switch stand" in a longer name. Five lines said distances of 135-260 m, each at a crossing: the
   position was taken in the old region's frame and measured against the new one's (fixed). No throw was tried (she
   heard of W and Shift+W mid-run and said she'd try another time).
+- **The second real log** (0.1.0.877, 2026-11-03, a freight run, `tester-20261103T224954-3fb77f`): stands and their
+  Alternate Guides were placed right (guides 10 m long, single phantom prims, one every 7-10 m along the branch out to
+  45 m from their stand), but most switches were said only 5-25 m out at 11 m/s, as found late: names were asked
+  nearest first all round, and a busy track's objects beside and behind came before the way ahead. Some stands on the
+  Linden track have an empty description (the same 32-prim stand), and some stands carry "Main" and "Branch" as the
+  lines' names. Since: names asked for the way ahead first (nearest along it), thirty a look; said within about 7 s of
+  travel (60-100 m) and names asked 30 m further; under a second and a half away it's "Switch just ahead, ..."; "Main"
+  and "Branch" as names aren't repeated; a stand that says nothing is said as such ("its stand doesn't say how it's
+  set"), a rail with no stand found as "how it's set isn't known: no switch stand found for it". The log adds where each
+  was from her (along and aside the way, her speed) when found and when it came into the way ahead, which way each
+  part faces, and the Guide and Alternate Guide rails near each stand with their places, lengths and facings, for
+  working out which way each line goes.
 - So: the setting is read from the stand's description (asked again each time it's said: the region sends a changed
   description only to whoever has the object selected), with the main line's or branch's name from it when it has one.
   What doesn't say its setting (an "Alternate Guide" or "AlternateGuide" root, as one Marketplace kit names it, or a
@@ -1160,6 +1185,70 @@ reachable by typing, with a list to browse. A first version for her and her part
   flip, align media; editing a whole linked set at once (as the viewer's Edit linked off: here it's always one prim,
   the root moving the whole); editing something worn; copying settings from one prim to another; selecting several
   prims. Second Life itself (only the local grid is checked), and the blind tester's and her partner's verdict.
+
+### About Land
+
+M6's land settings (Claude Opus 5.5, 2026-11-03; `MainForm.Land.cs`, `LandRows.cs`, over SojournLand's ops,
+`docs/land.md`): land settings by her own keys, the task blind residents still hand to a sighted person logging in as
+them. Laid out as the build editor is, with the official viewer's About Land tab names and settings as the words.
+- **The area**: Control+L (ours: the official viewer has no key for About Land; Control+L is free in Access, NVDA and
+  JAWS, and a RichEdit's left-align it would shadow isn't used here), World > About Land, or `//land`; no Alt+number.
+  Arriving reads the parcel she stands on afresh and says it: "About Land: Your Parcel, owned by Estate Keeper, 576
+  square metres, for sale: L$0 to you; you're on it; its nearest edge 12 metres, three o'clock." (the first time also
+  how to start). Escape goes back where Control+L came from. Tab order: the command box, the settings list, Tab (the
+  tabs, a list). World > The region's covenant opens it on the Covenant tab and reads that.
+- **The parcel shown is pinned** by its id and region, so a change acts on what she was told about even after walking
+  off it; F5 in the list, or `here`, reads the parcel she's on now (and the tab's lists again). Where she is comes
+  from the parcel's 4 m cells as the region sent them (`LandRows.Nearest`): on it, and its nearest edge by the clock;
+  or off it, and its nearest part.
+- **The tabs** (About Land's, then World > Region/Estate's Region tab): General (name, description, owner, group,
+  area with its size east to west and north to south, where, region and maturity, for sale, and the actions Buy this
+  land, Abandon land, Deed to the group where they apply), Covenant (the estate's covenant, a line a row, after a line
+  saying how many and when it changed), Objects (land impact used of the most, the owner's, set to the group, others',
+  auto return of others' objects, then who owns what, a row each: "Access Visitor: 3 prims"; on Second Life with the date of their newest), Options (anyone can edit
+  terrain, fly, have objects enter, run scripts, make landmarks; the group can build, its objects enter, its scripts
+  run; damage allowed, pushing allowed, show in search, category, seen and heard from other parcels, teleport routing,
+  landing point), Media (media URL), Sound (music URL, sounds kept to this parcel, voice, voice kept to this parcel),
+  Access (open to, only the allowed list, the group may enter, passes sold with their price and hours, no one without
+  payment info, no one under 18, Buy a pass where it sells them, then the allowed and banned lists, a row each:
+  "Banned: Access Visitor, until Tue 3 Nov 23:27"), Region (its name and type, the estate and its owner, maturity,
+  people at most, now: people, active scripts and time dilation, whether she manages it, water height, and the
+  estate's switches: terraforming, flying and flying over blocked, damage, pushing, resale, joining and dividing,
+  parcels hidden from search). The lists and owners are read only for her own land or her group's (the region tells no
+  one else; the rows say so).
+- **The settings list**: named "Options of Our Garden"; rows read "Anyone can fly: on". Enter changes one (a switch
+  turns, a choice opens its list, anything else a box with the value as it is; Enter on an action does it, on Landing
+  point puts it where she stands); Right and Left (Space too) step it; F5 reads it all again. On someone listed,
+  Delete takes them off the list; on an owner of objects, Delete returns their objects. A row that's still the same
+  row keeps its place as its words change.
+- **Typed commands** (Enter runs, Control+Up and Down bring back earlier ones; `//land COMMAND` from any input): a
+  tab's name reads it; a setting and a value changes it (`name Our Garden`, `description ...`, `category
+  residential`, `fly off`, `scripts on`, `damage off`, `show in search on`, `landing here`, `routing anywhere`, `auto
+  return 10`, `music url ADDRESS`, `voice off`, `only the allowed list on`, `passes on`, `pass price 10`); a setting
+  alone says it. Besides: `allow NAME`, `ban NAME for 2 hours`, `unallow NAME`, `unban NAME` (a name on the list
+  first, else anyone in the region, else anyone on the grid by the avatar picker; several alike are listed back);
+  `eject NAME`, `eject and ban NAME`, `freeze NAME`, `unfreeze NAME`; `return NAME`, `return others`; `for sale 500`,
+  `for sale 0 to NAME`, `... with objects`, `not for sale`; `buy`, `buy pass`, `abandon`, `deed [GROUP]`; `divide
+  north half` and `join north` (compass words, or ahead, behind, left and right from her, to the nearest of the four:
+  parcels are laid out on the compass); `flatten`, `raise`, `lower`, `smooth`, `roughen`, `revert` (the viewer's land
+  brush where she stands, 2 metres across; `parcel` for the whole parcel, `for 3 seconds` held longer; the heights
+  before and after said); `my land` (holdings), `parcels` (`//parcelinfo`), `where`, `here`, `help`, `done`.
+- **Said back**: every change goes through SojournLand's ops, which read the parcel back from the region (and refuse
+  in words when it didn't change); the row's new words are then said ("Anyone can fly: off."), or "Already so" when it
+  was. A refusal is the op's words in her terms ("Not changed: the region didn't change name: only the parcel's
+  owner (or a group member with the powers) may").
+- **Her confirmation** (Notices, as everywhere; the dispatcher's words for land, `docs/land.md` > What waits for the
+  person, with a setting's change now listed in these words, not the op's): who may enter (only the allowed list, the
+  group, passes and their price and hours, the payment-info and age switches, the group itself), anyone can edit
+  terrain, the allowed and banned lists, eject, freeze, returning objects, a sale, buying, a pass, abandoning, deeding,
+  dividing, joining, terraforming the whole parcel, and the region's settings. The other switches and words (name,
+  description, fly, scripts, category, landing, music) change at her press, as the viewer's checkboxes do: they're
+  hers to set and set back. Unfreezing and taking it off sale aren't asked, as in `docs/land.md`.
+- **Not here**: the parcel's picture (snapshot), media's other settings (type, size, loop, the media's description),
+  Experiences, the estate tab's lists and the estate tools for managers (kick, send home, messages, restart, top
+  scripts and colliders, the debug switches: SojournLand has them, the assistant reaches them), claiming public land,
+  and Second Life itself (only the local grid is checked, where land costs nothing and there's no covenant; there,
+  who owns what comes without each owner's newest date). Her verdict on the words and on what asks first.
 
 ### Incognito
 

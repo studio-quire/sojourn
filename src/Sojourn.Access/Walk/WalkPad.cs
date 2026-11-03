@@ -37,7 +37,7 @@ public sealed class WalkPad : Control
 
     protected override bool IsInputKey(Keys keyData) => (keyData & Keys.KeyCode) switch
     {
-        Keys.Up or Keys.Down or Keys.Left or Keys.Right or Keys.PageUp or Keys.PageDown or Keys.Home or Keys.Space => true,
+        Keys.Up or Keys.Down or Keys.Left or Keys.Right or Keys.PageUp or Keys.PageDown or Keys.Home or Keys.Space or Keys.Enter => true,
         _ => base.IsInputKey(keyData),
     };
 

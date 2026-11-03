@@ -71,6 +71,7 @@ public sealed partial class MainForm
         ("walk_sonar_volume", "Sonar's volume"),
         ("walk_beacon", "Beacon on where you're heading"),
         ("walk_beacon_volume", "Beacon's volume"),
+        ("walk_beacon_duck", "Beacon: the world's sounds while it sounds"),
         ("walk_marks", "Marks: doors, seats and touchable things (walk mode, O)"),
         ("walk_marks_volume", "Marks' volume"),
         ("walk_route", "Route recording's points (walk mode, R)"),

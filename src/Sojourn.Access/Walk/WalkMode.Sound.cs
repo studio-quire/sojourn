@@ -30,11 +30,21 @@ public sealed partial class WalkMode
     /// <summary>The same for someone or something by id, in the region the person is in; null when it isn't there.</summary>
     public (Vector3d At, float Distance)? Toward(UUID id) => PosOf(id) is { } p ? Toward(p) : null;
 
+    /// <summary>Where someone or something is, in the person's region's frame: in any region in view (a car the beacon
+    /// is on crossing into the next region stays on it: on 0.1.0.877 the beacon was lost 5 s after her partner's car
+    /// crossed out, 2026-11-03), else for a person their place on the map (CoarseLocationUpdate, any region in view).</summary>
     Vector3? PosOf(UUID id)
     {
-        if (id == UUID.Zero || S.Region is not { } w) return null;
-        if (w.AvatarById(id) is { } av) return V(w.RegionPosition(av));
-        if (w.PrimById(id) is { } prim) return V(w.RegionPosition(prim));
+        if (id == UUID.Zero || S.Region == null) return null;
+        var regions = S.VisibleRegions().ToList();
+        foreach (var w in regions)
+        {
+            var off = V(S.FrameOffset(w));
+            if (w.AvatarById(id) is { } av) return V(w.RegionPosition(av)) + off;
+            if (w.PrimById(id) is { } prim) return V(w.RegionPosition(prim)) + off;
+        }
+        foreach (var w in regions)
+            if (w.Coarse.TryGetValue(id, out var c)) return V(c) + V(S.FrameOffset(w));
         return null;
     }
 
@@ -101,6 +111,7 @@ public sealed partial class WalkMode
     void BeaconTick(Body b, long now)
     {
         var t = BeaconTarget();
+        Duck(t != null && _set.WalkSound("beacon") && t.Where() != null, now);
         if (t != _beaconWas) { _beaconWas = t; _beaconAt = 0; }
         if (t == null) return;
         if (t.Where() is not { } pos)
@@ -133,6 +144,21 @@ public sealed partial class WalkMode
         bool ahead = off < 20 || off > 340;
         float near = 1 - Math.Clamp(dist / 30, 0, 1);
         Sounds.Play(ahead ? CueSounds.Cue.BeaconAhead : CueSounds.Cue.Beacon, _set.WalkLevel("beacon") * (0.6f + 0.4f * near), Around(b, yaw));
+    }
+
+    float _duck = 1;
+    long _duckAt;
+    public float WorldDuck => _duck;
+
+    /// <summary>While the beacon sounds, the world's sounds go softer (walk_beacon_duck), over half a second each way.</summary>
+    void Duck(bool sounding, long now)
+    {
+        float dt = _duckAt == 0 ? 0.05f : Math.Clamp((now - _duckAt) / 1000f, 0, 0.5f);
+        _duckAt = now;
+        float want = sounding ? _set.BeaconDuck : 1;
+        if (_duck == want) return;
+        _duck = want < _duck ? Math.Max(want, _duck - 2 * dt) : Math.Min(want, _duck + 2 * dt);
+        if (_host.Audio is { } audio) audio.Sounds.WorldDuck = _duck;
     }
 
     // --- the marks --------------------------------------------------------------------------------------------------------

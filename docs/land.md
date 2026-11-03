@@ -7,7 +7,8 @@ person presses. No menu rows or settings: the person asks the assistant, whose `
 covers about, region, covenant, access and the lists, eject, freeze, passes, buying, land for sale, About Land's
 settings, lag and returns, the region's switches, terraforming and holdings; selling, dividing, joining, deeding and
 the estate's lists go through `client_api`. None of it is on incognito's blind allowlist
-(`Session/Private/Allowlist.cs`); with "let it see" it runs as usual, gated as always.
+(`Session/Private/Allowlist.cs`); with "let it see" it runs as usual, gated as always. Sojourn Access has About Land by
+keys over the same ops (Control+L, `docs/access-app.md` > About Land).
 
 Code: `Core/Agents/ParcelOps.cs` (About Land, the lists, the parcel by place), `ParcelOps.Deals.cs` (sell, buy, pass,
 abandon, deed, reclaim, divide, join), `ParcelOps.Terraform.cs`, `EstateOps.cs` (region, covenant, estate),
@@ -38,6 +39,9 @@ viewer's selection does.
   (llparcel's SeeAVs: others outside see and hear avatars here) and the options `access_list`, `access_group`,
   `pass_list`, `deny_no_payment_info`, `deny_under_18`, `voice`, `voice_parcel_only`; Parcel.Update
   (ParcelPropertiesUpdate cap, else the UDP message, then ParcelSetOtherCleanTime), read back.
+- `objects`: who has objects on the parcel and how many prims (ParcelObjectOwnersRequest, its owner only). Second
+  Life answers over the event queue, which LibreMetaverse raises; OpenSim with the UDP message, which it doesn't, so
+  the packet is read too (it has no date for each owner's newest object).
 - `access`: the allowed and banned lists (ParcelAccessListRequest, AL_ACCESS and AL_BAN; an empty list comes as one
   blank entry), each `{id, name, until?}`, and who it's open to. `allow`, `unallow`, `ban`, `unban {to | ids, hours?}`:
   as the floater, the whole list goes back (LLViewerParcelMgr::sendParcelAccessListUpdate: ParcelAccessListUpdate, 48

@@ -121,6 +121,10 @@ UNUSED_TOOLS = ["DesignSync", "EnterWorktree", "ExitWorktree", "NotebookEdit", "
                 "SendMessage"]
 
 
+# the app's agent API (main.py sets it from --api: the VR client's 9720, Access's 9725)
+API_BASE = "http://127.0.0.1:9720"
+
+
 def settings(home: Path, work: Path, auto=True):
     # Read rules hold for every tool that reads (Read, Grep, Glob) and Edit rules for every one that writes
     def dir_rules(tools, paths):
@@ -139,7 +143,7 @@ def settings(home: Path, work: Path, auto=True):
     if not auto:   # (dontAsk: reads outside its folders need a rule; Sojourn's docs, to learn how something works)
         allow = [a for a in allow if a != "WebSearch"] + dir_rules(("Read", "Glob", "Grep"), [home, work, ROOT / "docs"])
     sl = "Second Life"
-    api = "the Sojourn client's agent API at http://127.0.0.1:9720 (POST /cmd {pump, data: {op, ...}}, GET /events, GET /status)"
+    api = f"the Sojourn client's agent API at {API_BASE} (POST /cmd {{pump, data: {{op, ...}}}}, GET /events, GET /status)"
     return {
         "permissions": {"allow": allow, "deny": deny, "defaultMode": "auto" if auto else "dontAsk"},
         # no compaction, automatic or while idle: near the context limit the session writes its own handoff and a fresh

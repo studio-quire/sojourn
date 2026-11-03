@@ -164,6 +164,20 @@ docstring with its checks in full):
   grid's `Asset.db`, decoded by ffmpeg where the PC has it) its part's tone and length. It deletes what it uploaded.
   Not reached: Second Life's real fees, its mesh upload rights, a 2048 picture, the quiet cuts (checked on synthetic
   notes outside the test: each fell just before an attack), a clip failing partway.
+- **About Land, her own parcel** (`ACCESS_STEPS=About Land`; about 2 minutes, no renderer needed): Estate Keeper, the
+  estate's owner, logs in as a second visitor bot (`land` commands in `tools/visitor`), divides `LAND_PLOT` (24 by 24
+  m at Atelier's south-west, away from the other steps' spots) off Atelier and puts it up for sale to the tester for
+  L$0; she teleports onto it. By keys: Control+L saying whose it is, that it's for sale to her and where she is on it,
+  its controls named; `buy` confirmed in Notices, then hers in the region; its name said back once the region has it;
+  `general` read; `where`; Options' Anyone can fly stepped by Right and Left in the settings list (the region checked
+  each way); a category, a landing point and routing; the visitor banned for an hour by name, confirmed, the until
+  said and in the region's list, the Access tab listing him, Delete on his row lifting it after the confirmation, the
+  focus back in the list; an allow cancelled at the confirmation; a box of hers counted on the Objects tab, with who
+  owns what; the covenant and the region read; for sale for L$100 confirmed and then not for sale; a divide cancelled;
+  abandoned through the confirmation (the Keeper's again); passes sold by the Keeper and one bought; Escape back to
+  Say; `//land where` from Say. After, and before it starts (an interrupted run's leftovers), the Keeper reclaims what
+  isn't his and joins Atelier into one parcel again; the box is taken and she's back where she was. Skipped, said so,
+  while Estate Keeper is on the grid (`tools/land.py` running).
 - **favorites in the inventory** (needs nothing of the view): against `AisStandIn`, a stand-in for Second Life's
   inventory service that the test serves on a free port and hands the app as `SOJOURN_TEST_AIS` (Core's InventoryMeta
   uses it only where the region offers no InventoryAPIv3, so never on Second Life). Checked: the app reads every

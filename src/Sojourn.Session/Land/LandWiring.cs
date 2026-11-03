@@ -181,9 +181,7 @@ public sealed class LandWiring : IDisposable
             case "set":
             {
                 var (sim, p) = await PinAsync(a, ct);
-                var changes = a.Where(kv => kv.Key is not ("op" or "at" or "local_id" or "region"))
-                    .Select(kv => kv.Value is JsonObject o ? $"{kv.Key}: " + string.Join(", ", o.Select(x => $"{x.Key} {Short(x.Value)}")) : $"{kv.Key}: {Short(kv.Value)}");
-                return (Lang.F("Change the settings of {0}", Land(sim, p)), string.Join("; ", changes));
+                return (Lang.F("Change the settings of {0}", Land(sim, p)), SetWords(a));
             }
             case "allow" or "unallow" or "ban" or "unban":
             {
@@ -237,7 +235,7 @@ public sealed class LandWiring : IDisposable
                 var (sim, p) = await PinAsync(a, ct, pass: true);
                 a["price"] = p.PassPrice;
                 if (parcels.PassRefusal(p) is { } no) return (Lang.F("Buy a pass to {0}", Land(sim, p)), Lang.F("It can't be bought: {0}.", no));
-                return (Lang.F("Buy a pass to {0} for L${1}", Land(sim, p), p.PassPrice), Join(Lang.F("{0} hours of access.", Num(p.PassHours, "0.#")), Balance()));
+                return (Lang.F("Buy a pass to {0} for L${1}", Land(sim, p), p.PassPrice), Join(p.PassHours == 1 ? Lang.T("1 hour of access.") : Lang.F("{0} hours of access.", Num(p.PassHours, "0.#")), Balance()));
             }
             case "abandon":
             {
@@ -387,6 +385,64 @@ public sealed class LandWiring : IDisposable
         }
         return ($"SojournLand.{op}", Short(a));
     }
+
+    /// <summary>A `set`'s changes in About Land's words, for the person to read before they say yes: "Only the allowed
+    /// list: on; Pass price: L$10" (not the op's names and JSON).</summary>
+    string SetWords(JsonObject a)
+    {
+        static string OnOff(JsonNode? v) => (v is JsonValue jv && jv.TryGetValue<bool>(out var b) ? b : Json.AsDouble(v) is { } d && d != 0) ? Lang.T("on") : Lang.T("off");
+        var parts = new List<string>();
+        foreach (var (key, value) in a)
+        {
+            if (key is "op" or "at" or "local_id" or "region") continue;
+            string text = value is JsonValue sv && sv.TryGetValue<string>(out var str) ? str : Short(value);
+            switch (key)
+            {
+                case "options" when value is JsonObject opts:
+                    parts.AddRange(opts.Select(o => $"{(OptionWords.TryGetValue(o.Key, out var w) ? Lang.T(w) : o.Key)}: {OnOff(o.Value)}"));
+                    break;
+                case "name": parts.Add(Lang.F("Name: “{0}”", text)); break;
+                case "desc": parts.Add(Lang.F("Description: “{0}”", text.Length > 120 ? text[..120] + "..." : text)); break;
+                case "music_url": parts.Add(text.Length == 0 ? Lang.T("No music URL") : Lang.F("Music URL: {0}", text)); break;
+                case "media_url": parts.Add(text.Length == 0 ? Lang.T("No media URL") : Lang.F("Media URL: {0}", text)); break;
+                case "group_id":
+                    parts.Add(UUID.TryParse(text, out var g) && g != UUID.Zero
+                        ? Lang.F("Group: {0}", _s.State.Groups.TryGetValue(g, out var grp) ? grp.Name : Lang.T("a group named by id"))
+                        : Lang.T("Group: none"));
+                    break;
+                case "category": parts.Add(Lang.F("Category: {0}", text)); break;
+                case "landing":
+                    parts.Add(text switch
+                    {
+                        "here" or "point" => Lang.T("Teleport routing: a landing point where you stand now"),
+                        "anywhere" => Lang.T("Teleport routing: anywhere"),
+                        _ => Lang.T("Teleport routing: blocked (no one can teleport in)"),
+                    });
+                    break;
+                case "pass_price": parts.Add(Lang.F("Pass price: L${0}", Num(Json.AsDouble(value) ?? 0))); break;
+                case "pass_hours": parts.Add(Lang.F("Pass hours: {0}", Num(Json.AsDouble(value) ?? 0, "0.##"))); break;
+                case "auto_return_minutes":
+                    parts.Add(Json.AsDouble(value) is { } m && m > 0 ? Lang.F("Auto return of others' objects: after {0} minutes", Num(m)) : Lang.T("Auto return of others' objects: off"));
+                    break;
+                case "see_avatars": parts.Add(Lang.F("Seen and heard from other parcels: {0}", OnOff(value))); break;
+                case "snapshot_id": parts.Add(Lang.T("A new picture")); break;
+                default: parts.Add($"{key}: {text}"); break;
+            }
+        }
+        return string.Join("; ", parts);
+    }
+
+    /// <summary>About Land's words for SojournLand set's options.</summary>
+    static readonly Dictionary<string, string> OptionWords = new()
+    {
+        ["fly"] = "Anyone can fly", ["scripts"] = "Anyone's scripts run", ["group_scripts"] = "The group's scripts run",
+        ["landmark"] = "Anyone can make landmarks", ["damage"] = "Damage allowed", ["push"] = "Pushing allowed",
+        ["show_in_search"] = "Show in search", ["object_entry"] = "Anyone's objects can enter", ["terraform"] = "Anyone can edit terrain",
+        ["sound_local"] = "Sounds kept to this parcel", ["group_build"] = "The group can build", ["group_object_entry"] = "The group's objects can enter",
+        ["access_list"] = "Only the allowed list may enter", ["access_group"] = "The group may enter", ["pass_list"] = "Passes sold",
+        ["deny_no_payment_info"] = "No one without payment info", ["deny_under_18"] = "No one under 18", ["voice"] = "Voice",
+        ["voice_parcel_only"] = "Voice kept to this parcel",
+    };
 
     static JsonObject CentreOf(JsonObject a) =>
         a.Num("west") is { } w && a.Num("south") is { } s && a.Num("east") is { } e && a.Num("north") is { } n

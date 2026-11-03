@@ -268,7 +268,18 @@ too; a value every face shares said once; each change said back once the region 
 rests on and touches, by the collision model's rays and the prims' boxes, no picture; new prims set down on what's
 under the spot; linking and unlinking; undo in one history with the assistant's; permissions, a sale, temporary and
 deleting through her confirmation; `look` (Control+D there) has the assistant describe it. Checked on the local grid
-by the hidden-desktop step, with and without the renderer. Left: land settings; for building, Second Life itself, the
+by the hidden-desktop step, with and without the renderer. Land settings (2026-11-03; `docs/access-app.md` > About
+Land): the About Land area on Control+L, on the parcel she stands on, laid out as the build editor: a command box
+taking About Land's tab names and settings as words ("options", "fly off", "ban NAME for 2 hours", "for sale 500",
+"buy"), a settings list per tab (Enter changes, Right and Left step) and the tabs as a list: General, Covenant,
+Objects, Options, Media, Sound, Access and the Region tab; where she is on the parcel by its cells; the allowed and
+banned lists by name with Delete taking someone off, who owns the objects with Delete returning them; buying land or a
+pass where she stands, selling, abandoning, deeding, dividing and joining by compass or her own directions, the land
+brush; each change through SojournLand and said once the region shows it; who may enter, the land's owner and shape
+behind her confirmation, the other switches at her press as the viewer's checkboxes. Checked on the local grid by the
+hidden-desktop step on a parcel divided off and sold to her for it. Left: for land, Second Life itself (real prices, a
+covenant, group land and its powers, mainland), the parcel's picture and media's other settings, the estate tools as
+keys (they're ops the assistant reaches), and every word and what asks first judged by her; for building, Second Life itself, the
 rows left out (locked, force, projectors, reflection probes, PBR materials, repeats per metre, flip), a whole linked
 set or several prims at once, copying one prim's settings to another, the assistant saying what a change did by
 itself (now on asking), and every word and default judged by her and her partner; for uploads, Second Life itself
@@ -626,6 +637,30 @@ partner, joined after the wrong turn).
   that was meant isn't in the log.
 - "Now in Nessus; the crossing left you standing" (21:38:43) while she sat on: the 811 run's false verdict, fixed after 835.
 
+### Keys a vehicle wants, and a car after her partner's (0.1.0.877, the blind tester, 2026-11-03)
+
+On the builders' line (16:42): some vehicles land on C, and W, A, S and D stand for the arrows for people without
+them, so walk mode's letters (W for switches) looked like a clash. Told her a script sees only controls, so Page Down
+is C and the arrows are WASD (`docs/access-app.md` > Walk mode); a layout where the letters drive waits until someone
+needs it (she knows nobody yet). The mouse button, which some vehicles and weapons take, had no key: Enter now.
+
+Log `tester-20261103T220106-714894` (16:38-17:01), her note: trying to follow her partner by vehicle "did not work as
+well as I had hoped... it was worth a try".
+- `//follow` while she sat in a car (16:53) only said he'd sat down and stood still: following walks. Now, seated, it
+  says so and puts a beacon on the person instead.
+- The beacon on him was lost ("isn't here now", 16:46:47) a few seconds after his car crossed into Astarte: it looked
+  for its target only in her region. Now it looks in every region in view, then the map's positions.
+- "It is too loud. I can't focus on the beacon and you": she could aim by the beacon (at its quiet default) but not
+  hear it clearly over something loud; "Sooooo loud" when the cars came out (16:44:53). What was loud is asked; Alt+0's
+  beacon and world volumes pointed out meanwhile. If it's the cars, the open question is a beacon that rises over the
+  world's sounds (the mixer has no level meter yet) or the world ducking under it.
+- `////unsit` (an extra pair of slashes) wasn't taken; now extra slashes are.
+- She said the two cars' own sounds were too loud to hear the beacon even at its loudest: now the world's sounds go
+  softer while a beacon sounds (`walk_beacon_duck`, much softer by default).
+- Her next log (`tester-20261103T224954-3fb77f`, a freight run on Zephyr, 17:03-17:49) was the first with the switch
+  lines: most switches said only 5-25 m out at 11 m/s, found late (`docs/access-app.md` > Rail switches has what it
+  showed and what changed). She didn't try a throw ("things were going so well"); that's next, with her partner.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -646,7 +681,6 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 - The renderer out of sight could start only when needed: on the processor, unseen, it's ~700 MB of committed memory
   (~0.25-0.3 GB of working set), against the first picture, face list or touch waiting for it to start and, on her
   2400G, for its shaders (minutes, by her log); `docs/performance.md` > Sojourn Access on a small PC. Undecided.
-- The assistant's prompt names the agent API's port as 9720 (`assistant/prompt-powers.md`); Access's is 9725.
 - Branch `fix/own-voice` (arrivals in Access's own voice) is WIP, not wired in.
 - Her PC's log (2026-10-31) named both chips at Vulkan 1.1.125 (driver 2.0.116, by its look a 2019 OEM driver): the view
   now draws on the processor there. Her logs of 2026-11-01 showed a session's first frame taking 1-3 minutes of
@@ -666,6 +700,10 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
+- Sent with 0.1.0.877 on the builders' line (2026-11-02, 22:45): was going into Pavonia at the end of her solo run on
+  purpose; a log after trying a switch throw; whatever is awkward in the build editor. Her long train-loop ride
+  recording was planned for 2026-11-03 (the first on 15-minute recordings and 877's switch lines). Still to come from
+  her before that: harp clip length, how the IM sounds feel.
 - Sent with 0.1.0.737 (2026-11-01): a log after her next ride, even a good one (it now records each crossing);
   where she found the skirt and pet copies (Alt+7?); for her partner, whether his train stops a few seconds after losing
   its driver, and whether riders in other viewers are dropped at that corner too.

@@ -316,7 +316,9 @@ process 1.1-1.9 GB, the heap 1.2-1.7 GB (a full collection leaving 0.5-0.8 GB in
 fragmented), 77 s of collection pauses (about 0.7 s a minute); 118 GB allocated, 25-31 MB/s while riding and 3-5 MB/s
 still. The collision model held 43-379 MB. So the footprint came down but the allocation didn't (about 5 MB/s still and
 10-30 moving on 718): moving through regions allocates as much as ever, SL's update traffic and what reacts to it (new regions' objects, shapes
-built and let go), not reproduced on the perf grid yet. The next lever, not started.
+built and let go), not reproduced on the perf grid yet. The next lever, not started. Since 2026-11-03 Access logs
+what it allocates by type every five minutes in every session (`allocations N MB/s: TYPE n%, ...`, the runtime's own
+samples, `AllocProfile.Every`; `SOJOURN_ALLOC_PROFILE=0` turns it off), so a tester's next long ride says what it is.
 
 Measured on the perf grid's eight places (`tools/accesssoak.py`, the view on the processor, LP_NUM_THREADS=8, a
 description's four pictures every 5 minutes so it's drawn whole; before = the code just after 0.1.0.737):

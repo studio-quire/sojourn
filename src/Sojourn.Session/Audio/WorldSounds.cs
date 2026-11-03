@@ -105,6 +105,11 @@ public sealed class WorldSounds : IDisposable
     /// <summary>The level of <see cref="Kind.App"/> sounds (1: as made).</summary>
     public float AppVolume { get => _appVolume; set => _appVolume = Math.Max(0, value); }
     float _appVolume = 1;
+
+    /// <summary>The world's sounds (not an app's own, not music) brought down for a while, 0-1: Sojourn Access's beacon
+    /// sounding over two cars' engines (the blind tester couldn't hear it clearly at its loudest, 2026-11-03).</summary>
+    public float WorldDuck { get => _duck; set => _duck = Math.Clamp(value, 0, 1); }
+    volatile float _duck = 1;
     public int Playing => _channels.Count(c => c != null);
 
     /// <summary>Where every source is, heard or not (global metres; not UI or HUD sounds), refreshed at 10 Hz while
@@ -546,7 +551,7 @@ public sealed class WorldSounds : IDisposable
         s.Priority = (float)(s.Gain / d2);
     }
 
-    float TypeGain(Kind k) => ViewerLevel * (k == Kind.App ? _appVolume : _soundsVolume);
+    float TypeGain(Kind k) => ViewerLevel * (k == Kind.App ? _appVolume : _soundsVolume * _duck);
 
     // ---- the thread ----
 

@@ -225,17 +225,39 @@ public sealed partial class ParcelOps
     {
         var c = C;
         var (sim, p) = await ParcelAsync(a, ct);
-        var owners = await GroupOps.AskAsync<ParcelObjectOwnersReplyEventArgs, List<ParcelPrimOwners>>(
-            h => c.Parcels.ParcelObjectOwnersReply += h, h => c.Parcels.ParcelObjectOwnersReply -= h,
-            e => (e.Simulator == sim, e.PrimOwners), () => c.Parcels.RequestObjectOwners(sim, p.LocalID),
-            "object owners (only the parcel's owner may ask)", ct, TimeSpan.FromSeconds(8));
+        // Second Life answers over the event queue, which LibreMetaverse raises; OpenSim answers with the UDP message,
+        // which it doesn't: so the packet too (as the access lists are read)
+        var udp = new TaskCompletionSource<List<ParcelPrimOwners>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Packet(object? _, PacketReceivedEventArgs e)
+        {
+            if (e.Simulator != sim || e.Packet is not ParcelObjectOwnersReplyPacket r) return;
+            udp.TrySetResult(r.Data.Where(d => d.OwnerID != UUID.Zero || d.Count > 0).Select(d => new ParcelPrimOwners
+            {
+                OwnerID = d.OwnerID, IsGroupOwned = d.IsGroupOwned, Count = d.Count, OnlineStatus = d.OnlineStatus,
+            }).ToList());
+        }
+        c.Network.RegisterCallback(PacketType.ParcelObjectOwnersReply, Packet);
+        List<ParcelPrimOwners> owners;
+        try
+        {
+            var queue = GroupOps.AskAsync<ParcelObjectOwnersReplyEventArgs, List<ParcelPrimOwners>>(
+                h => c.Parcels.ParcelObjectOwnersReply += h, h => c.Parcels.ParcelObjectOwnersReply -= h,
+                e => (e.Simulator == sim, e.PrimOwners), () => c.Parcels.RequestObjectOwners(sim, p.LocalID),
+                "object owners (only the parcel's owner may ask)", ct, TimeSpan.FromSeconds(8));
+            var first = await Task.WhenAny(queue, udp.Task);
+            if (first == udp.Task) _ = queue.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+            owners = first == udp.Task ? udp.Task.Result : await queue;
+        }
+        finally { c.Network.UnregisterCallback(PacketType.ParcelObjectOwnersReply, Packet); }
         await _s.Names.ResolveAsync(c, owners.Select(o => o.OwnerID), TimeSpan.FromSeconds(3), ct);
         var arr = new JsonArray();
         foreach (var o in owners.OrderByDescending(o => o.Count))
             arr.Add(new JsonObject
             {
                 ["owner_id"] = o.OwnerID.ToString(), ["name"] = o.IsGroupOwned ? "(group)" : _s.Names.Complete(o.OwnerID, o.OwnerID.ToString()),
-                ["prims"] = o.Count, ["group_owned"] = o.IsGroupOwned, ["newest"] = o.NewestPrim.ToString("yyyy-MM-dd HH:mm"),
+                ["prims"] = o.Count, ["group_owned"] = o.IsGroupOwned,
+                // (the UDP answer has no date)
+                ["newest"] = o.NewestPrim.Year > 2000 ? o.NewestPrim.ToString("yyyy-MM-dd HH:mm") : null,
             });
         return new JsonObject { ["parcel"] = p.Name, ["owners"] = arr };
     }

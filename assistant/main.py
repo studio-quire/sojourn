@@ -24,6 +24,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from api import Api, ApiError  # noqa: E402
+import harness  # noqa: E402
 
 os.environ.pop("CLAUDE_CODE_PLUGIN_DIRS", None)  # the user's own Claude Code mods stay out of the assistant
 # how long the SDK waits for Claude Code to start (its initialize; the SDK reads this, in ms, default a minute): a tester's
@@ -84,6 +85,7 @@ async def main():
         pass
 
     api = Api(a.api)
+    harness.API_BASE = api.base
     while True:
         try:
             st = api.status()

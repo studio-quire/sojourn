@@ -66,6 +66,11 @@
 //                                                         past their stands, 2026-11-02)
 //   cleanup                                               take every object it rezzed in this run to its trash
 //   derez NAME                                            take every object it rezzed with that name to its trash
+//   land show X Y | land divide W S E N | land sell X Y PRICE BUYER_UUID | land pass X Y PRICE HOURS | land tidy
+//                                                         the region owner's chores (run as Estate Keeper) for About
+//                                                         Land's step: a parcel divided off and sold to one buyer, passes
+//                                                         sold on one, and tidy: every parcel not its own reclaimed and
+//                                                         the region joined into one again
 //   pos | whereis | quit                                  "REGION <x, y, z> heading DEG" (as the region has it)
 using System.Collections.Concurrent;
 using System.Net;
@@ -319,8 +324,97 @@ static class Program
                 return "ok";
             case "cleanup": return Cleanup();
             case "derez": return Derez(rest);
+            case "land": return await Land(rest);
             default: return "ERR unknown command";
         }
+    }
+
+    // ---- land, as the region's owner ----
+
+    static async Task<Parcel> ParcelAt(float x, float y)
+    {
+        var sim = client.Network.CurrentSim;
+        var got = new TaskCompletionSource<Parcel>(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler<ParcelPropertiesEventArgs> h = (_, e) =>
+        {
+            if (e.Simulator == sim && e.Parcel is { } p && p.AABBMin.X <= x && p.AABBMin.Y <= y && p.AABBMax.X >= x && p.AABBMax.Y >= y) got.TrySetResult(p);
+        };
+        client.Parcels.ParcelProperties += h;
+        try
+        {
+            client.Parcels.RequestParcelProperties(sim, y + 1, x + 1, y - 1, x - 1, 0, false);
+            return await Task.WhenAny(got.Task, Task.Delay(8000)) == got.Task ? got.Task.Result : null;
+        }
+        finally { client.Parcels.ParcelProperties -= h; }
+    }
+
+    static string ParcelWords(Parcel p) =>
+        $"parcel {p.LocalID} owner {p.OwnerID} area {p.Area} sale {((p.Flags & ParcelFlags.ForSale) != 0 ? p.SalePrice.ToString() : "no")} name {p.Name}";
+
+    static async Task<string> Land(string rest)
+    {
+        var (sub, args) = Split(rest);
+        var a = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        float F(int i) => float.Parse(a[i], System.Globalization.CultureInfo.InvariantCulture);
+        var sim = client.Network.CurrentSim;
+        switch (sub)
+        {
+            case "show":
+            {
+                var p = await ParcelAt(F(0), F(1));
+                return p == null ? "ERR the region didn't describe it" : ParcelWords(p);
+            }
+            case "divide":
+            {
+                client.Parcels.ParcelSubdivide(sim, F(0), F(1), F(2), F(3));
+                await Task.Delay(2500);
+                var p = await ParcelAt((F(0) + F(2)) / 2, (F(1) + F(3)) / 2);
+                return p == null ? "ERR the region didn't describe it" : ParcelWords(p);
+            }
+            case "sell" or "pass":
+            {
+                var p = await ParcelAt(F(0), F(1));
+                if (p == null) return "ERR the region didn't describe it";
+                if (sub == "sell")
+                {
+                    p.Flags |= ParcelFlags.ForSale;
+                    p.SalePrice = int.Parse(a[2]);
+                    p.AuthBuyerID = UUID.Parse(a[3]);
+                }
+                else
+                {
+                    p.Flags |= ParcelFlags.UsePassList;
+                    p.PassPrice = int.Parse(a[2]);
+                    p.PassHours = F(3);
+                }
+                p.Update(client, sim, false);
+                await Task.Delay(1500);
+                var after = await ParcelAt(F(0), F(1));
+                return after == null ? "ERR the region didn't describe it" : ParcelWords(after);
+            }
+            case "tidy":
+            {
+                // a fresh login's list of the region's parcels is the region's as it is now
+                using (var cts = new CancellationTokenSource(15000))
+                    try { await client.Parcels.RequestAllSimParcelsAsync(sim, cts.Token); } catch (OperationCanceledException) { }
+                var parcels = sim.Parcels.Values.ToList();
+                int reclaimed = 0;
+                foreach (var p in parcels.Where(p => p.OwnerID != client.Self.AgentID))
+                {
+                    client.Parcels.Reclaim(sim, p.LocalID);
+                    reclaimed++;
+                }
+                if (reclaimed > 0) await Task.Delay(2500);
+                if (parcels.Count > 1)
+                {
+                    client.Parcels.ParcelJoin(sim, 0, 0, sim.SizeX, sim.SizeY);
+                    await Task.Delay(3000);
+                }
+                var whole = await ParcelAt(sim.SizeX / 2f, sim.SizeY / 2f);
+                return $"tidied: {parcels.Count} parcels, {reclaimed} reclaimed; now {(whole == null ? "not known" : ParcelWords(whole))}";
+            }
+        }
+        return "ERR land show|divide|sell|pass|tidy";
     }
 
     static string Tell(string what, string who)
@@ -579,7 +673,7 @@ static class Program
         Named(box.LocalID, name);
         var script = await UploadScript("Walk cart",
             "integer K; default { state_entry() { llSitTarget(<0, 0, 0.7>, ZERO_ROTATION); "
-            + "K = CONTROL_FWD | CONTROL_BACK | CONTROL_ROT_LEFT | CONTROL_ROT_RIGHT | CONTROL_LEFT | CONTROL_RIGHT | CONTROL_UP | CONTROL_DOWN; "
+            + "K = CONTROL_FWD | CONTROL_BACK | CONTROL_ROT_LEFT | CONTROL_ROT_RIGHT | CONTROL_LEFT | CONTROL_RIGHT | CONTROL_UP | CONTROL_DOWN | CONTROL_LBUTTON; "
             + "llSay(0, llGetObjectName() + \" ready\"); } "
             + "changed(integer c) { if (c & CHANGED_LINK) { key who = llAvatarOnSitTarget(); "
             + "if (who != NULL_KEY) llRequestPermissions(who, PERMISSION_TAKE_CONTROLS); else llSay(0, \"cart empty\"); } } "
@@ -588,7 +682,8 @@ static class Program
             + "if (level & CONTROL_FWD) llSetPos(llGetPos() + f * 0.3); if (level & CONTROL_BACK) llSetPos(llGetPos() - f * 0.3); "
             + "if (level & (CONTROL_ROT_LEFT | CONTROL_LEFT)) llSetRot(llGetRot() * llEuler2Rot(<0, 0, 6> * DEG_TO_RAD)); "
             + "if (level & (CONTROL_ROT_RIGHT | CONTROL_RIGHT)) llSetRot(llGetRot() * llEuler2Rot(<0, 0, -6> * DEG_TO_RAD)); "
-            + "if (edge & level & CONTROL_FWD) llSay(0, \"cart: forward\"); if (edge & level & CONTROL_ROT_LEFT) llSay(0, \"cart: left\"); } }");
+            + "if (edge & level & CONTROL_FWD) llSay(0, \"cart: forward\"); if (edge & level & CONTROL_ROT_LEFT) llSay(0, \"cart: left\"); "
+            + "if (edge & level & CONTROL_LBUTTON) llSay(0, \"cart: click\"); if (edge & ~level & CONTROL_LBUTTON) llSay(0, \"cart: click up\"); } }");
         int mark = counter;
         client.Inventory.CopyScriptToTask(box.LocalID, script, true);
         client.Objects.DeselectObject(sim, box.LocalID);

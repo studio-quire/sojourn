@@ -174,10 +174,10 @@ passed 2026-11-01. Atelier doesn't let the tester set a home, so the grid refusi
 
 ## Checks only Second Life can do
 
-In `docs/sittings.md` and the board: a real OpenCollar (its RLV, owner menu, outfits from #RLV), a worn RLV relay with
-real furniture or a trap (and the way out from it), a blindfold HUD's spheres in the headset (comfort), @shownames in a
-crowd, IM restrictions with someone, and a collar's hold across teleports (whether Second Life keeps an attachment's
-id across regions as OpenSim does: if not, restrictions would last only until the collar sends them again).
+Done on Second Life by the user (by 2026-11-03): a real OpenCollar, a worn relay with real furniture or a trap and
+the way out, a blindfold HUD in the headset. Still open, in `docs/sittings.md`: @shownames in a crowd, IM restrictions
+with someone, and a collar's hold across teleports (whether Second Life keeps an attachment's id across regions as
+OpenSim does: if not, restrictions would last only until the collar sends them again).
 
 ## For the user (decisions, each a reversible default)
 

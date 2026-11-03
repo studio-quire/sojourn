@@ -61,8 +61,9 @@ public sealed partial class MainForm : Form
         BuildAssistant();
         BuildSettings();
         BuildBuild();
+        BuildLand();
         BuildMenu();
-        _areas.TabPages.AddRange(new[] { _chatPage, _conversationsPage, _peoplePage, _inventoryPage, _searchPage, _placesPage, _objectsPage, _noticesPage, _assistantPage, _settingsPage, _buildPage });
+        _areas.TabPages.AddRange(new[] { _chatPage, _conversationsPage, _peoplePage, _inventoryPage, _searchPage, _placesPage, _objectsPage, _noticesPage, _assistantPage, _settingsPage, _buildPage, _landPage });
         _statusStrip.Items.Add(_where);
         Controls.Add(_areas);
         Controls.Add(_walkPad);
@@ -82,6 +83,8 @@ public sealed partial class MainForm : Form
     // --- the session --------------------------------------------------------------------------------------------------
 
     /// <summary>Makes the session for this account and starts it (login begins); the window stays hidden until arrival.</summary>
+    Sojourn.Render.Realtime.AllocProfile? _allocs;
+
     public async Task StartAsync(LoginChoice c)
     {
         var handle = Handle;   // the window exists (hidden) for the screen reader's voice
@@ -118,6 +121,8 @@ public sealed partial class MainForm : Form
         // the renderer out of sight: pictures for the assistant's look, touches on faces
         var view = _opt.Render ? host.StartOffscreen() : null;
         _view = view;
+        // what's allocated, by type, every five minutes: for a long ride's log
+        _allocs ??= Sojourn.Render.Realtime.AllocProfile.Every(line => host.Log.LogInformation("{Line}", line), 300_000);
         host.StartDescribe(view);
 
         _ops = new PersonOps(host.Session);
@@ -138,6 +143,7 @@ public sealed partial class MainForm : Form
         _cmd.Outfit = () => (Task)Invoke(() => OutfitListAsync());
         _cmd.Upload = words => (Task)Invoke(() => UploadWordsAsync(words));
         _cmd.Build = words => (Task)Invoke(() => BuildWordsAsync(words));
+        _cmd.Land = words => (Task)Invoke(() => LandWordsAsync(words));
         _cmd.Music = MusicWords;
         _cmd.TeleportFallback = () => _set.WalkTeleportFallback;
         _cmd.CueText = cue => _set.WalkText(cue);
@@ -572,6 +578,16 @@ public sealed partial class MainForm : Form
         Escape: back where Control+B came from
         //build and a command, from any input
 
+        About Land
+        Control+L: About Land, on the parcel you're on
+        In it, type a tab's name (general, covenant, objects, options, media, sound, access, region), or a setting and its value: name Our Garden, fly off
+        help in its command box: the land commands; ban NAME, allow NAME, for sale 500, buy, buy pass
+        Tab: its settings, then the tab
+        On a setting, Enter changes it, Right and Left step it; on someone listed, Delete takes them off
+        F5: the parcel you're on now, read again
+        Escape: back where Control+L came from
+        //land and a command, from any input
+
         Objects
         Tab: the selected one's parts, then a part's faces
         Enter: touch
@@ -650,6 +666,7 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.G: TeleportClipboard(); return true;
             case Keys.Control | Keys.U: UploadKey(); return true;
             case Keys.Control | Keys.B: GoBuild(); return true;   // the official viewer's Build
+            case Keys.Control | Keys.L: GoLand(); return true;   // About Land
             case Keys.Control | Keys.Shift | Keys.H: _ = HomeAsync(); return true;
             case Keys.F6: MuteAll(); return true;
             case Keys.Shift | Keys.F6: MuteSource(); return true;
@@ -675,6 +692,7 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.Shift | Keys.B: GoBuilders(); return true;
             case Keys.Escape when _walkPad.Focused: ToggleWalk(); return true;
             case Keys.Escape when _areas.SelectedTab == _buildPage && _buildPage.ContainsFocus: BuildBack(); return true;
+            case Keys.Escape when _areas.SelectedTab == _landPage && _landPage.ContainsFocus: LandBack(); return true;
             // on the notices, back where Control+N came from (the list's Escape on a confirmation cancels it)
             case Keys.Escape when _areas.SelectedTab == _noticesPage && ActiveControl != _noticeReply
                                   && !(_notices.Focused && Selected()?.Confirm != null):
@@ -765,7 +783,8 @@ public sealed partial class MainForm : Form
         : page == _noticesPage ? _notices
         : page == _assistantPage ? _assistantInput
         : page == _settingsPage ? _settingsList
-        : page == _buildPage ? _buildCommand : null;
+        : page == _buildPage ? _buildCommand
+        : page == _landPage ? _landCommand : null;
 
     /// <summary>Ctrl+Tab: nearby chat and the conversations as one ring, as Radegast's tabs.</summary>
     void Ring(int dir)

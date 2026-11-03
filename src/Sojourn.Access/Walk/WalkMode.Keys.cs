@@ -41,7 +41,8 @@ public sealed partial class WalkMode
         Page Up and Page Down: up and down (flying, or jump and crouch)
         Home: fly or land
         Space: stop; seated on something moving, stop it by its controls (also //stop)
-        Seated on a vehicle, the arrows drive it
+        Seated on a vehicle, the arrows drive it: to the vehicle, Up and Down are W and S, Left and Right are A and D, Page Up and Page Down are E and C
+        Enter: the mouse button, for a vehicle or weapon that takes clicks, held as long as Enter is
 
         Asking
         H: your heading
@@ -104,6 +105,7 @@ public sealed partial class WalkMode
         Array.Clear(_until);
         _pressedAs.Clear();
         _turnSmooth = false;
+        if (_click) Click(false);
         if (moving) StartBrake();
     }
 
@@ -134,6 +136,11 @@ public sealed partial class WalkMode
             if (key is K.Fwd or K.Back or K.SideL or K.SideR && !HeldMoveBefore(key)) { _moveSince = now; _toldBlocked = false; }
             if (key is K.Fwd or K.Back && Me() is { Sitting: true }) CountThrottle(key);
             if (key == K.Fwd) _fwdSince = now;
+            return true;
+        }
+        if (code == Keys.Enter)
+        {
+            if (!repeat) Click(true);
             return true;
         }
         if (repeat) return code is Keys.Home or Keys.Space or Keys.H or Keys.V or Keys.L or Keys.A or Keys.S or Keys.T or Keys.D or Keys.O or Keys.B or Keys.M
@@ -172,6 +179,7 @@ public sealed partial class WalkMode
 
     public void KeyUp(Keys code)
     {
+        if (code == Keys.Enter) { if (_click) Click(false); return; }
         if (!_pressedAs.Remove(code, out var k)) return;
         bool wasMoving = _k[(int)K.Fwd] || _k[(int)K.Back] || _k[(int)K.SideL] || _k[(int)K.SideR];
         _k[(int)k] = false;
@@ -182,6 +190,45 @@ public sealed partial class WalkMode
             _turnSmooth = false;
         }
         if (wasMoving && !(_k[(int)K.Fwd] || _k[(int)K.Back] || _k[(int)K.SideL] || _k[(int)K.SideR])) StartBrake();
+    }
+
+    bool _click;
+
+    /// <summary>Enter: the left mouse button for a script that has taken it (CONTROL_LBUTTON, or the mouselook one when
+    /// that's all it took: Access has no mouselook), as the viewer sends a click in the world while controls are taken:
+    /// down while held, up once. Nothing taking clicks, it's said, since a click in the world would only touch.</summary>
+    void Click(bool down)
+    {
+        if (S.Client is not { Network.Connected: true } c) return;
+        var mv = c.Self.Movement;
+        if (down)
+        {
+            var kept = S.ControlsKept;
+            if ((kept & (ScriptControlChange.LeftButton | ScriptControlChange.MouseLookLeftButton)) == 0)
+            {
+                Line("Nothing here takes clicks. T touches what's ahead.");
+                return;
+            }
+            _click = true;
+            lock (_controlsLock)
+            {
+                if ((kept & ScriptControlChange.LeftButton) != 0) mv.LButtonDown = true; else mv.MLButtonDown = true;
+                mv.SendUpdate(true);
+                _sentAt = Environment.TickCount64;
+            }
+            Sounds.Play(CueSounds.Cue.Turn, 0.35f, null);
+            return;
+        }
+        _click = false;
+        lock (_controlsLock)
+        {
+            bool ml = mv.MLButtonDown;
+            mv.LButtonDown = mv.MLButtonDown = false;
+            if (ml) mv.MLButtonUp = true; else mv.LButtonUp = true;
+            mv.SendUpdate(true);
+            mv.LButtonUp = mv.MLButtonUp = false;
+            _sentAt = Environment.TickCount64;
+        }
     }
 
     /// <summary>The person moves by hand: a walk, follow or route the app was doing stops, and the autopilot lets go.</summary>
