@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using LibreMetaverse;
+using Microsoft.Extensions.Logging;
 
 namespace Sojourn.Access;
 
@@ -91,25 +92,30 @@ public sealed partial class MainForm
         // the person's own things back out of the world (the blind tester found no way to delete what she'd rezzed, 2026-11-01)
         Item("Ta&ke into your inventory", t => _ = TakeThingAsync(t));
         Item("De&lete", t => _ = DeleteThingAsync(t));
+        // what she wears, off again from where she found it (the blind tester couldn't take a HUD off here, 2026-11-02)
+        Item("Take &off", t => _ = TakeOffWornAsync(t));
         // F5's refresh, here too so it can be found (the blind tester found no way to refresh, 2026-10-31)
         _objectMenu.Items.Add(new ToolStripMenuItem("&Refresh", null, (_, _) => _ = RefreshObjects(true)));
-        // a HUD is touched, described and its parts listed; the rest is for things in the world
+        // something worn is touched, described, its parts listed and taken off; the rest is for things in the world
         _objectMenu.Opening += (_, _) =>
         {
             var sel = _objects.FocusedItem?.Tag as PersonOps.Thing;
             bool hud = sel is { Hud: true }, mine = sel is { Mine: true };
             foreach (ToolStripItem i in _objectMenu.Items)
-                i.Visible = hud ? i.Text is "&Touch" or "&Describe" or "W&here" or "&Parts" or "&Refresh"
-                    : mine || i.Text is not ("Ta&ke into your inventory" or "De&lete");
+                i.Visible = hud ? i.Text is "&Touch" or "&Describe" or "W&here" or "&Parts" or "Take &off" or "&Refresh"
+                    : i.Text != "Take &off" && (mine || i.Text is not ("Ta&ke into your inventory" or "De&lete"));
+            if (sel != null)
+                Host?.Log.LogInformation("objects: actions on {Name} ({Where}): {Items}", sel.Name, sel.Hud ? "worn" : sel.Mine ? "yours, nearby" : "nearby",
+                    string.Join(", ", _objectMenu.Items.OfType<ToolStripItem>().Where(i => i.Visible).Select(i => i.Text.Replace("&", ""))));
         };
-        KeysOn(_objectMenu, ("&Describe", "Control+D"), ("&Parts", "Tab"), ("&Edit (build)", "Control+B"), ("De&lete", "Delete"), ("&Refresh", "F5"));
+        KeysOn(_objectMenu, ("&Describe", "Control+D"), ("&Parts", "Tab"), ("&Edit (build)", "Control+B"), ("De&lete", "Delete"), ("Take &off", "Delete"), ("&Refresh", "F5"));
         MenuOn(_objects, _objectMenu);
         _objects.KeyDown += (_, e) => ListKey(_objects, _objectMenu, e, RefreshObjects);
         _objects.KeyDown += (_, e) =>
         {
             if (e.KeyData != Keys.Delete || _objects.FocusedItem?.Tag is not PersonOps.Thing t) return;
             e.Handled = e.SuppressKeyPress = true;
-            if (t.Hud) Answer($"{t.Name} is worn: take it off in the inventory (Alt+4).");
+            if (t.Hud) _ = TakeOffWornAsync(t);
             else _ = DeleteThingAsync(t);
         };
         BuildParts();
@@ -122,6 +128,15 @@ public sealed partial class MainForm
         var r = await _ops.DoAsync("TesselBuild", "take", new JsonObject { ["ids"] = new JsonArray(t.Id.ToString()) });
         Answer(PersonOps.Error(r) is { } e ? $"Not taken: {e}" : $"Took {t.Name} into your inventory.");
         await Task.Delay(500);
+        _ = RefreshObjects(false);
+    }
+
+    /// <summary>Something worn taken off, back into the inventory (Delete on it, or Take off): never deleted.</summary>
+    async Task TakeOffWornAsync(PersonOps.Thing t)
+    {
+        var r = await _ops.DoAsync("TesselAgent", "detach", new JsonObject { ["object_id"] = t.Id.ToString() });
+        Answer(PersonOps.Error(r) is { } e ? $"Didn't take off {t.Name}: {e}" : $"Took off {t.Name}.");
+        await Task.Delay(1000);
         _ = RefreshObjects(false);
     }
 

@@ -88,6 +88,7 @@ public sealed class HandBuild
         Settings = HandBuildSettings.Load(_path, log);
         _m = new HandMove(s);
         _m.Changed += () => _main.Enqueue(OnChanged);
+        s.ClaimAlerts(_m.ClaimAlert);
         s.Api.Register(new HandBuildApi(s, _m));
     }
 
@@ -126,7 +127,8 @@ public sealed class HandBuild
 
     string? _note;               // what came of the last move, or why a tap didn't select
     readonly Dictionary<UUID, int> _moves = new();   // hand moves this time on, for the readout's undo
-    UUID _settling;              // let go, drawn where it was put until the region says
+    UUID _awaiting;              // let go, its outcome to be said when the region has had its say
+    UUID _settling;              // let go, drawn where it was put until the region says (not after a refusal)
     (Vector3 Pos, Quaternion Rot) _settlePose;
     long _settleUntil;
     ulong _region;
@@ -152,6 +154,7 @@ public sealed class HandBuild
             (_onBefore, _selBefore) = (false, UUID.Zero);
             EndDrag();
             if (_settling != UUID.Zero) { _r.Motion.LetGo(_settling); _settling = UUID.Zero; }
+            _awaiting = UUID.Zero;
             (_note, _signs) = (null, null);
             _moves.Clear();
             _shown = null;
@@ -162,20 +165,31 @@ public sealed class HandBuild
         // work it (it stays the person's switch after)
         if ((!_onBefore || _m.Selected != _selBefore && _m.Selected != UUID.Zero) && PointerOn is { } p && !p()) PointerUp?.Invoke();
         (_onBefore, _selBefore) = (true, _m.Selected);
-        if (_m.Last is { } last && last.Id == _settling && last.Result != "moving")
+        // the region refused the drag as it went: said at once (the feed doesn't show the region's own words)
+        if (_drag is { G.Refusal: not null } && _note != Refusing) Note(Refusing);
+        if (_m.Last is { } last && last.Id == _awaiting && last.Result != "moving")
         {
-            _r.Motion.LetGo(_settling);
-            _settling = UUID.Zero;
-            Note(last.Result switch
-            {
-                "refused" => Lang.T("The region kept it where it was."),
-                "moved elsewhere" => Lang.T("The region put it somewhere else."),
-                "gone" => Lang.T("It's gone: returned or deleted."),
-                _ => _note,
-            });
+            if (_settling == _awaiting) { _r.Motion.LetGo(_settling); _settling = UUID.Zero; }
+            _awaiting = UUID.Zero;
+            Note(Said(last) ?? (_note == Refusing ? null : _note));
         }
         Changed();
     }
+
+    static string Refusing => Lang.T("The land there doesn't allow it.");
+
+    /// <summary>What came of a move, for the readout (null: placed, nothing to say).</summary>
+    public static string? Said(HandMove.Outcome o) => o.Result switch
+    {
+        "refused" when o.Said != null => Lang.T("The land there doesn't allow it, so it stayed put."),
+        "refused" => Lang.T("The region kept it where it was."),
+        "partly refused" => Lang.T("The region stopped it at the edge of land that doesn't allow it."),
+        "nudged" => Lang.F("The region nudged it {0} cm.", Math.Max(1, (int)MathF.Round(o.Off * 100))),
+        "moved elsewhere" when o.Off >= 0.1f => Lang.F("It ended up {0} m from where you let go of it.", Math.Round(o.Off, o.Off < 10 ? 1 : 0)),
+        "moved elsewhere" => Lang.F("It ended up turned {0}° from how you left it.", (int)MathF.Round(o.OffTurn)),
+        "gone" => Lang.T("It's gone: returned or deleted."),
+        _ => null,
+    };
 
     /// <summary>Why it can't be moved, in the person's language (HandMove's words; RLV's own pass as they are).</summary>
     static string? Why(string? why) => why switch
@@ -326,10 +340,16 @@ public sealed class HandBuild
         _m.End(g, d.Pos, d.Rot);
         if (_m.Last is { } l && l.Id == g.Root.ID && l.Result == "moving" && (DateTime.UtcNow - l.At).TotalSeconds < 1)
         {
-            _settling = g.Root.ID;
-            _settlePose = (d.Pos, d.Rot);
-            _settleUntil = Environment.TickCount64 + 4000;
+            _awaiting = g.Root.ID;
             _moves[g.Root.ID] = _moves.GetValueOrDefault(g.Root.ID) + 1;
+            // a drag the region has already refused isn't held where it was let go: it shows where the region has it
+            if (g.Refusal == null)
+            {
+                _settling = g.Root.ID;
+                _settlePose = (d.Pos, d.Rot);
+                _settleUntil = Environment.TickCount64 + 4000;
+            }
+            else _r.Motion.LetGo(g.Root.ID);
         }
         else _r.Motion.LetGo(g.Root.ID);
         Changed();

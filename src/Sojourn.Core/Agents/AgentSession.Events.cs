@@ -742,6 +742,17 @@ public sealed partial class AgentSession
     /// <summary>Set by an op that waits for the region's answer as an alert (setHome).</summary>
     internal TaskCompletionSource<string>? LastAlert;
 
+    volatile Func<string, bool>[] _alertClaims = [];
+
+    /// <summary>Something of the host's that may answer a region notice itself (true: it did, and the notice stays
+    /// off the feed): building by hand takes the refusals that answer its own drag.</summary>
+    public void ClaimAlerts(Func<string, bool> claim)
+    {
+        lock (_alertClaimsLock) _alertClaims = [.. _alertClaims, claim];
+    }
+
+    readonly object _alertClaimsLock = new();
+
     void OnAlert(GridClient c, AlertMessageEventArgs e)
     {
         var msg = e.Message ?? "";
@@ -759,6 +770,8 @@ public sealed partial class AgentSession
         if (msg == "AUTOPILOT_CANCELED") return;
         if (msg.StartsWith('/')) msg = msg[1..];  // the viewer shows these without the slash
         LastAlert?.TrySetResult(msg);
+        foreach (var claim in _alertClaims)
+            if (claim(msg)) return;
         var name = string.IsNullOrEmpty(e.NotificationId) ? "SystemMessageTip" : e.NotificationId!;
         Notify.Add(name, "notifytip", msg, Notifications.None, substitutions: new JsonObject { ["MESSAGE"] = msg });
     }

@@ -174,6 +174,7 @@ public sealed partial class MainForm
         Add(f.Str("name") is { } name ? f.Str("where") is { } where ? $"{name}, {where}" : name : null);
         if (f.Str("worn_by") is { } by) Add($"Worn by {by}, on {f.Str("worn_on")}");
         if (f.Str("sitting_on") is { } seat) Add($"Sitting on {seat}");
+        if (f.Str("its_inventory_item") is { } item) Add($"Your inventory item: {item}");
         if (f.Str("its_own_description") is { } desc) Add($"Its own description: {desc}");
         if (f.Str("floating_text") is { } text) Add($"Its floating text: {text}");
         if (f.Str("owner") is { } owner) Add($"Owned by {owner}");

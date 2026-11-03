@@ -21,16 +21,17 @@ by Claude Opus 5.5, 2026-10-29 and 30. Agent-facing.
   - the provider (`assistantProvider`, as `assistant/provider.py` has them): claude (a Claude plan, offered only in runs
     from the repo, `ProviderKeys.ClaudeOffered`: released builds have no Claude-account sign-in, the user, 2026-10-30),
     anthropic, openrouter, agent ("your agent": the person's own AI agent on this PC, Claude Code or similar, as the
-    assistant; the client starts in dev mode, `docs/dev-mode.md`; the user's idea, 2026-11-01), and relay (Studio
-    Quire's, shown only once chosen or its token is kept); more than three on two rows;
+    assistant; the client starts in dev mode, `docs/dev-mode.md`; the user's idea, 2026-11-01); more than three on two
+    rows. No Studio Quire relay (Sojourn Access's alone, the user, 2026-11-02: `docs/assistant.md` > The studio relay):
+    a saved "relay" gives way at load as a packaged "claude" does;
   - with **your agent**, no key box, models or auto mode: in their place a line ("An AI agent on this PC, such as
     Claude Code, will be Sojourn's assistant. Tell it:") over the sentence to give it, "Read <DEV-MODE.md> and be my
     Sojourn assistant.", with the real path for this copy (`Places.Guide`: beside the exe packaged, the clone's root,
     or `tools/publish/sojourn/` in the studio's repo) and a copy key; "your own agent is the assistant" under the
     wordmark. `--dev` shows the same for this window's launches without saving it (picking another provider ends it)
     and passes `--dev` on; a saved choice needs no switch, as the client reads it;
-  - the **key box**: paste an Anthropic or OpenRouter key or a relay token (Ctrl+V, or Enter after typing): its shape
-    says which, it's kept by `ProviderKeys` (DPAPI, linked here) and that provider chosen, the box cleared; a kept
+  - the **key box**: paste an Anthropic or OpenRouter key (Ctrl+V, or Enter after typing): its shape says which (a
+    Studio Quire token isn't taken), it's kept by `ProviderKeys` (DPAPI, linked here) and that provider chosen, the box cleared; a kept
     key greys the box out as a remembered password does. Kept only from the person's
     own press (> The person's own press), and only if everything in the box came from their own keys or mouse; never
     shown back (the box's hint says "key kept"), never logged; × twice forgets it;
@@ -130,14 +131,15 @@ or a UI Automation call must never count on its own.
 `CrashReportView.xaml(.cs)` (Claude Opus 5.5, 2026-11-01), by the person's `crash_reports` setting in
 `vr-settings.json` (menu > about > crash reports; Firestorm's CrashSubmitBehavior): **ask** (the default) opens a window
 over the launcher in its look, once per crashed run: "Sojourn stopped unexpectedly", the exit code in words, a note
-(what happened, optional), what a report holds and where it goes, then send report (to the studio relay, with the
-Studio Quire token if one is kept, else without), review (the filtered text, read-only), save instead (a file for a
+(what happened, optional), what a report holds and where it goes, then send report (to the studio relay's anonymous
+report path: the VR app has no Studio Quire token), review (the filtered text, read-only), save instead (a file for a
 GitHub issue) and not now. **always** sends it without asking, the foot saying whether it went; **never** leaves only
 the foot's note. Send and save take only the person's own press (RealPress). The
 report is `ProblemReport`'s (`docs/client.md` > About, problem and crash reports): the crashed session's log filtered as
 Access's Send a log filters it, the exit code, and the runtime's last words from `launcher-console.log`. In runs from
 the repo the client is started with the runtime's minidump on (`DOTNET_DbgEnableMiniDump`, into `dumps/`, never sent).
-`launcher.py shots` draws it as `crash-report.png` and `crash-report-no-token.png`.
+`launcher.py shots` draws it as `crash-report.png`, with a decoy token kept that it doesn't use, and
+`settings-relay-left.png`, a saved "relay" given way to the key kept.
 
 ## The client's side
 

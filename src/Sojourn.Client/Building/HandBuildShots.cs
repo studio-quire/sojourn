@@ -55,9 +55,73 @@ static class HandBuildShots
             }
             Readout(pre + "hb-readout-8-all-on-snap", View(true, 1, snap: true, fine: true, local: true));
             Readout(pre + "hb-readout-8b-all-on-axes", View(true, 3, snap: true, fine: true, local: true));
+            // what came of a move: each outcome's line, from the classification of a case like it
+            foreach (var (name, c) in Outcomes)
+                if (lang == "en" || name is "refusing" or "partly-refused")
+                    Readout($"{pre}hb-readout-10-{name}", View(true, -1, note: c.Result == "" ? Lang.T("The land there doesn't allow it.") : HandBuild.Said(c.Outcome())));
         }
         Lang.Use("en");
+        Classified();
         Places(dir, answer, menu, look);
+    }
+
+    /// <summary>A move's case: where it was, where the hand put it, where the region has it after, whether a refusal
+    /// notice answered the drag, and what it should be called ("" for one still being dragged).</summary>
+    sealed record MoveCase(Vector3 From, Vector3 Put, Vector3 At, float TurnedDeg, bool Refusal, string Result)
+    {
+        public Sojourn.Session.Building.HandMove.Outcome Outcome()
+        {
+            var turned = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, TurnedDeg * Deg);
+            var result = Sojourn.Session.Building.HandMove.Classify(From, Put, Quaternion.Identity, At, turned, Refusal);
+            return new Sojourn.Session.Building.HandMove.Outcome(default, "Garden bench", From, At, Quaternion.Identity, turned, result, DateTime.UtcNow)
+            {
+                Put = Put, PutRot = Quaternion.Identity, Said = Refusal ? "Can't rotate -- permission denied" : null,
+            };
+        }
+    }
+
+    // the first two are the user's on Second Life (0.1.0.852, 2026-11-02), from its log: a drag towards a no-build
+    // parcel that the region took as far as the parcel's edge, then one from there that it refused outright (5.5 cm)
+    static readonly (string Name, MoveCase Case)[] Outcomes =
+    [
+        ("partly-refused", new(new(222.75f, 49.93f, 22.05f), new(74.90f, 123.82f, 38.44f), new(92.34f, 114.94f, 36.76f), 0, true, "partly refused")),
+        ("refused-stayed", new(new(92.34f, 114.94f, 36.76f), new(59.44f, 133.79f, 42.03f), new(92.35f, 114.90f, 36.80f), 0, true, "refused")),
+        ("refused-quiet", new(new(10, 10, 22), new(14, 10, 22), new(10.005f, 10, 22), 0, false, "refused")),
+        ("placed", new(new(10, 10, 22), new(14, 10, 22), new(14.01f, 10, 22.005f), 0.5f, false, "placed")),
+        ("placed-despite-notice", new(new(10, 10, 22), new(14, 10, 22), new(14.01f, 10, 22), 0, true, "placed")),
+        ("nudged", new(new(10, 10, 22), new(14, 10, 22), new(14, 10, 22.04f), 0, false, "nudged")),
+        ("moved-elsewhere", new(new(10, 10, 22), new(14, 10, 22.5f), new(14.3f, 10.4f, 21.1f), 0, false, "moved elsewhere")),
+        ("turned-elsewhere", new(new(10, 10, 22), new(14, 10, 22), new(14, 10, 22), 40, false, "moved elsewhere")),
+        ("refused-small-drag", new(new(10, 10, 22), new(10.06f, 10, 22), new(10.01f, 10, 22), 0, true, "refused")),
+        ("partly-refused-near", new(new(10, 10, 22), new(14, 10, 22), new(10.3f, 10, 22), 0, true, "partly refused")),
+        ("refusing", new(new(10, 10, 22), new(14, 10, 22), new(10, 10, 22), 0, true, "")),
+    ];
+
+    /// <summary>The classification of each case, and which region notices a drag claims, printed as checks.</summary>
+    static void Classified()
+    {
+        int bad = 0;
+        foreach (var (name, c) in Outcomes)
+        {
+            if (c.Result == "") continue;
+            var o = c.Outcome();
+            bool ok = o.Result == c.Result;
+            if (!ok) bad++;
+            Console.WriteLine($"building's outcomes: {(ok ? "PASS" : "FAIL")} {name}: {o.Result}{(ok ? "" : $" (wanted {c.Result})")}: \"{HandBuild.Said(o)}\"");
+        }
+        foreach (var (text, ours) in new[]
+        {
+            ("Can't rotate -- permission denied", true), ("Can't move object -- permission denied", true), ("Cannot scale -- permission denied", true),
+            ("can't rotate -- Permission denied.", true), ("Can't edit object -- permission denied", false), ("Permission denied", false),
+            ("Can't rez object 'Box' at { 92, 114, 36 } on parcel 'Welcome' in region Hub because the owner of this land does not allow it.", false),
+            ("Can't set position -- permission denied", true), ("You can't rotate that.", false),
+        })
+        {
+            bool ok = Sojourn.Session.Building.HandMove.IsMoveRefusal(text) == ours;
+            if (!ok) bad++;
+            Console.WriteLine($"building's refusals: {(ok ? "PASS" : "FAIL")} \"{text}\" {(ours ? "answers a drag" : "goes to the feed")}");
+        }
+        Console.WriteLine($"building's outcomes and refusals: {(bad == 0 ? "all as meant" : $"{bad} wrong")}");
     }
 
     static Panel.Raster Raster(byte[] px, int w, int h, float used) =>

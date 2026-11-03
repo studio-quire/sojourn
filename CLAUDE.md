@@ -39,7 +39,10 @@ The product:
   closed, not only the valuable ones (`docs/viewer-gaps.md`); the release waits for most gaps, not every last one, and
   is planned relatively soon. Free and open source as licences permit. The name is Sojourn (the user, 2026-11-01). No
   AI credits for the public: people bring their own Anthropic or OpenRouter key, and the studio doesn't subsidise use of
-  its open-source software (the user, 2026-11-01); the relay is only for people the studio chooses to cover. UI
+  its open-source software (the user, 2026-11-01); the relay is only for people the studio chooses to cover, and only in
+  Sojourn Access: the VR app offers no Studio Quire token anywhere (the user, 2026-11-02: nobody will be given one for
+  VR, and a public viewer naming one only sends people looking for it; `ProviderKeys.RelayOffered`), while its problem
+  and crash reports still go to the relay without one. UI
   translation is the first release's last step; the viewer directory listing follows the release (the user, 2026-11-01). Sojourn itself is a VR viewer without an
   accessibility lean; accessibility is Sojourn Access's purpose.
 - **VR-first; the desktop gets its own UI later** (user, 2026-10-27, 2026-10-29): today the desktop reuses the
@@ -100,7 +103,7 @@ The assistant (detail in `docs/assistant.md`):
   are chosen in the launcher (Access: Alt+0); the viewer's menu shows only that provider's models. `docs/launcher.md`.
 - **No Claude-account sign-in in released builds** (user, 2026-10-30): Anthropic's Agent SDK terms don't let
   third-party products offer claude.ai login or plan usage without approval, so packaged and public builds offer an
-  Anthropic key, OpenRouter and the studio relay only. People who want their subscription have their own agent (Claude
+  Anthropic key and OpenRouter only (and Access the studio relay). People who want their subscription have their own agent (Claude
   Code, or any other) be the assistant through dev mode, chosen as "your agent" in the launcher, installed or from
   source (user, 2026-11-01; the public `DEV-MODE.md`, `docs/dev-mode.md` > Outside the studio), or add the sign-in to
   their own copy of the source. Our own runs from the repo keep the Claude account. Bundling the SDK's Claude Code is allowed; the

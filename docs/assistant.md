@@ -54,10 +54,10 @@ The providers:
   Offered only when running from the repo (`ProviderKeys.ClaudeOffered`): packaged and public builds offer no
   Claude-account sign-in (the user, 2026-10-30, because of Anthropic's Agent SDK terms; CLAUDE.md > Decisions), so
   neither Access's Alt+0 nor a packaged launcher lists it. There "claude", the old default every earlier build saved,
-  means none chosen yet: the session host puts a key or token already kept in its place (`ProviderKeys.FallbackFor`,
-  at settings load), else the sidecar's state is `none`, the person hears once how to choose (a token from Studio
-  Quire, or their own Anthropic or OpenRouter key, pasted into the key row), and the provider row says "none chosen
-  yet".
+  means none chosen yet: the session host puts a key (or in Access a token) already kept in its place
+  (`ProviderKeys.FallbackFor`, at settings load), else the sidecar's state is `none`, the person hears once how to
+  choose (their own Anthropic or OpenRouter key, pasted into the launcher's key box; in Access also a token from Studio
+  Quire, into the key row), and the provider row says "none chosen yet".
 - **anthropic**: the person's Anthropic API key.
 - **openrouter**: their OpenRouter key, and **openrouter model**: `claude`, shown as **Claude Haiku · Sonnet · Opus**
   with its tags (anthropic/claude-haiku-5.5 · sonnet-5.5 · opus-5.5: Claude Code's ids as `or_slug` maps them, so the
@@ -72,7 +72,7 @@ The providers:
   list built in. A chosen tag stays as chosen when its family moves on. The launcher's box takes any id typed; the
   headset's row steps through the list (the name, or Claude's tags, under its label); Access's Enter steps it,
   Control+Enter takes any id.
-- **relay** ("Studio relay"): a personal token (`sqr-...`) from Studio Quire (> The studio relay, below).
+- **relay**, in Sojourn Access only: a personal token (`sqr-...`) from Studio Quire (> The studio relay, below).
 
 **Putting a key in**: the launcher's key box (paste it; its shape says which provider it's for and switches to it;
 kept only from the person's own keys or mouse, `RealPress`; × twice forgets it). Access: Enter on the key row opens a
@@ -133,7 +133,17 @@ Cloudflare Worker holding the studio's key with a monthly cap per token (`tools/
 capped by `python tools/relay.py`). The proxy keeps and adds the token as it does a key, so it works exactly as an
 Anthropic key does. Its check is the relay's `/relay/usage` (costs nothing); a month's allowance used up (402 from the
 relay) is the state `allowance`, said plainly with the day it comes back, and the first request that goes through
-after it clears it. The launcher shows the choice only once a token is kept or it's chosen; Access lists it always.
+after it clears it.
+
+**Only Sojourn Access offers it** (the user, 2026-11-02: nobody will be given a token for VR, and a public viewer naming
+one only sends people looking for it). It's a per-app switch, `ProviderKeys.RelayOffered`, which Access's
+`Program.Main` turns on and nothing else does, and `provider.py`'s `RELAY_APPS` by the hello's `app`. Off (the VR client
+and its launcher): no relay among the launcher's choices or `VrSettings.OfferedProviders`, a pasted token isn't
+recognised, a token Access kept in the keys folder they share is left alone and unseen (`Has`, `RelayToken`), a saved
+"relay" gives way at settings load as a packaged "claude" does (to a key kept, else "claude": none chosen when
+packaged, the Claude account from the repo), the sidecar treats "relay" as "claude", and neither the panel's words nor
+the assistant's tool and API descriptions mention a token. Its problem and crash reports still go to the relay, to the
+anonymous `/relay/report`.
 
 ## Auto mode off (harness.py MANUAL_TOOLS)
 
@@ -381,7 +391,10 @@ TTS speech (Kokoro, several voices) through Sojourn's own capture chain or a hea
   opus mode uses the same session, so it keeps one conversation.
 - **One session per model** (`brain.py` MODELS): the mode's first model and Opus are kept warm (a session whose context
   is dropped reconnects in the background, not at the next request); another lingers until 15 idle minutes, then
-  closes. A switch brings the new model up in ~0.6 s. `SOJOURN_HAIKU` / `SOJOURN_SONNET` / `SOJOURN_OPUS` = a model id
+  closes. Warming at the start is a head start: a session that fails to come up then starts with the first request
+  (one timing out ended the whole sidecar on a tester's PC, 2026-11-02), and the SDK waits up to 4 minutes for Claude
+  Code to start (`CLAUDE_CODE_STREAM_CLOSE_TIMEOUT`, its default a minute; her 2018 processor took 12-38 s, once over
+  60). The client logs the sidecar's end with its exit code. A switch brings the new model up in ~0.6 s. `SOJOURN_HAIKU` / `SOJOURN_SONNET` / `SOJOURN_OPUS` = a model id
   run another model in its place (tests); the effort stays the setting's.
 - **Context across models**: each exchange of the sitting is recorded with who answered it; a session's next request
   carries the ones it hasn't seen (another model answered: a handover, a mode switch), the last four within 15

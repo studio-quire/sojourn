@@ -93,6 +93,9 @@ public sealed class Sidecar : IDisposable
         proc.ErrorDataReceived += (_, e) => { if (e.Data is { Length: > 0 } l) log.LogInformation("assistant: {Line}", l); };
         proc.BeginOutputReadLine();
         proc.BeginErrorReadLine();
+        // its end said in the log (a tester's ended at its first start, 2026-11-02, and nothing said it was gone)
+        proc.EnableRaisingEvents = true;
+        proc.Exited += (_, _) => { try { log.LogInformation("assistant: ended (exit code {Code})", proc.ExitCode); } catch { } };
         log.LogInformation("assistant: started (pid {Pid})", proc.Id);
         return new Sidecar(proc, job);
     }

@@ -5,9 +5,9 @@ using System.Text.RegularExpressions;
 namespace Sojourn.Session.Assistant;
 
 /// <summary>
-/// The person's own keys for the assistant's provider (an Anthropic API key, an OpenRouter key, or a personal token for
-/// Studio Quire's relay): docs/assistant.md > Switching it on. Each is kept in a file of its own in the keys folder,
-/// encrypted for this Windows account (DPAPI),
+/// The person's own keys for the assistant's provider (an Anthropic API key, an OpenRouter key, or in Sojourn Access a
+/// personal token for Studio Quire's relay, <see cref="RelayOffered"/>): docs/assistant.md > Switching it on. Each is
+/// kept in a file of its own in the keys folder, encrypted for this Windows account (DPAPI),
 /// and read only by the sidecar (assistant/provider.py; the relay's token also by <see cref="RelayToken"/>, for sending
 /// a log), which never hands it to Claude Code: its sessions talk to a
 /// loopback proxy that adds the key. The folder is the repo's local/secrets/assistant, or a release's
@@ -21,16 +21,31 @@ namespace Sojourn.Session.Assistant;
 /// </summary>
 public static class ProviderKeys
 {
-    public static readonly string[] Kinds = { "anthropic", "openrouter", "relay" };
+    static readonly string[] AllKinds = { "anthropic", "openrouter", "relay" };
+
+    /// <summary>Whether this app offers Studio Quire's relay as the assistant's provider: Sojourn Access does, for the
+    /// people the studio covers there, and sets this at its start; the VR client and its launcher don't (the user,
+    /// 2026-11-02: nobody gets a token for VR, and a public viewer naming one only confuses). Off, a token kept in the
+    /// keys folder (which Access shares) is left alone and unseen: not a provider here, not recognised when pasted,
+    /// and no report goes with it. Problem and crash reports still go to the relay without one.</summary>
+    public static bool RelayOffered { get; set; }
+
+    /// <summary>The providers with a key or token this app offers.</summary>
+    public static string[] Kinds => RelayOffered ? AllKinds : AllKinds[..2];
 
     /// <summary>The Claude account (the subscription Claude Code is signed in to) is offered only in runs from the repo:
-    /// packaged and public builds offer keys and the studio's token alone (Anthropic's Agent SDK terms; CLAUDE.md's
-    /// decision of 2026-10-30). There a setting of "claude" means none chosen yet.</summary>
+    /// packaged and public builds offer keys (and Access the studio's token) alone (Anthropic's Agent SDK terms;
+    /// CLAUDE.md's decision of 2026-10-30). There a setting of "claude" means none chosen yet.</summary>
     public static bool ClaudeOffered { get; } = false;
 
-    /// <summary>A packaged build's setting that names no provider it offers ("claude", from the old default or a run that
-    /// had it): the provider of a key or token already kept, or null (none chosen yet).</summary>
-    public static string? FallbackFor(string kind) => ClaudeOffered || Kinds.Contains(kind) || kind == Agent ? null : Kinds.FirstOrDefault(Has);
+    /// <summary>A setting that names a provider this app doesn't offer ("claude" in a packaged build, from the old default
+    /// or a run that had it; "relay" outside Access): what to put in its place, the provider of a key already kept, else
+    /// "claude" (none chosen yet when packaged, the Claude account from the repo); null when it needs no change.</summary>
+    public static string? FallbackFor(string kind)
+    {
+        if (kind == Agent || Kinds.Contains(kind) || kind == "claude" && ClaudeOffered) return null;
+        return Kinds.FirstOrDefault(Has) ?? (kind == "claude" ? null : "claude");
+    }
 
     /// <summary>The person's own agent (Claude Code or similar, on this PC) as the assistant: no key and no provider of
     /// Sojourn's; the client starts in dev mode (docs/dev-mode.md). Chosen in the launcher.</summary>
@@ -80,7 +95,7 @@ public static class ProviderKeys
     {
         var t = (text ?? "").Trim().Trim('"', '\'').Trim();
         foreach (var (kind, re) in Shapes)
-            if (re.IsMatch(t)) return (kind, t);
+            if (Kinds.Contains(kind) && re.IsMatch(t)) return (kind, t);
         return null;
     }
 
@@ -104,8 +119,8 @@ public static class ProviderKeys
 
     /// <summary>The Studio Quire token itself, for the requests the apps make with it straight to the relay over HTTPS,
     /// never logged or shown: a log or report sent (Sojourn Access's SendLog.cs, the VR client's reports) and the
-    /// builders' messages (Sojourn Access's BuildersLine.cs). Null if none is kept or it
-    /// can't be read. The provider keys stay the sidecar's alone.</summary>
+    /// builders' messages (Sojourn Access's BuildersLine.cs). Null if none is kept, it can't be read, or this app doesn't
+    /// offer the relay (<see cref="RelayOffered"/>). The provider keys stay the sidecar's alone.</summary>
     public static string? RelayToken()
     {
         if (!Has("relay")) return null;
@@ -137,7 +152,7 @@ public static class ProviderKeys
         string? kind;
         try { kind = Keep(text); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException) { return (null, "couldn't keep it"); }
-        if (kind == null) return (null, "that isn't an Anthropic or OpenRouter key or a Studio Quire token");
+        if (kind == null) return (null, RelayOffered ? "that isn't an Anthropic or OpenRouter key or a Studio Quire token" : "that isn't an Anthropic or OpenRouter key");
         try { ClearClipboardIf(text); } catch (Exception) { }
         return (kind, $"{Thing(kind)} kept");
     }

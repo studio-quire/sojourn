@@ -56,6 +56,10 @@ screen reader: a bare line naming Oriole
 10:00:28 ~name {"id":"99999999-9999-9999-9999-999999999999","legacy":"amberly Resident","display":"Amber"}
 10:00:29 ~heard {"from":"assistant","how":"arrival","via":"NVDA","text":"They wear a fitted light grey top; Grey Lantern waves and Grey nods, and grey lantern bows."}
 10:00:30 ~words {"kind":"nearby","from":"me","id":"{{Me}}","name":"Juniper Tester","style":"say","text":"hi Amber, the amber lamp is lit"}
+10:00:31 ~words {"kind":"nearby","from":"people","id":"{{Kestrel}}","name":"Kestrel Tester","style":"say","text":"Wombat Operator HUD"}
+10:00:32 ~words {"kind":"nearby","from":"objects","name":"Wombat Operator HUD v1.9","style":"object","text":"Your HUD is ready"}
+10:00:33 ~heard {"from":"objects","how":"arrival","via":"NVDA","text":"Wombat Operator HUD v1.9: Your HUD is ready"}
+10:00:34 ~heard {"from":"app","how":"answer","via":"NVDA","text":"Touched Wombat Operator HUD v1.9."}
 """;
 
 int failed = 0, passed = 0;
@@ -101,6 +105,10 @@ foreach (var w in new[]
 Check("an object relaying someone is left out", text.Contains("object Chat Relay, nearby: (words left out: they repeat someone's)"));
 Check("the assistant's line repeating someone is left out", text.Contains("10:00:14 (a line repeating someone's words, left out)"));
 Check("a read-back repeating someone's short line is left out", text.Contains("10:00:18 read out (again, NVDA): (words left out"));
+// someone naming an object isn't someone's words in every line that names it
+Check("an object's line read out is kept though someone said its name", text.Contains("read out (arrival, NVDA), objects: Wombat Operator HUD v1.9: Your HUD is ready"));
+Check("and a touch of it", text.Contains("read out (answer, NVDA): Touched Wombat Operator HUD v1.9."));
+Check("while what they said is still left out", text.Contains("10:00:31 person 1, nearby: (words left out)"));
 Check("a record of an unknown kind is left out", text.Contains("10:00:21 (a record of a kind not known here, left out)"));
 Check("a record that doesn't parse is left out", text.Contains("10:00:22 (a record that couldn't be read, left out)"));
 Check("an entry with old-style chat in it is left out", text.Contains("10:00:23 (lines of an older kind, left out)"));

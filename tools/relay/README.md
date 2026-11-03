@@ -14,7 +14,8 @@ What it answers, for a token's holder (`x-api-key: <token>` or `Authorization: B
 - `POST /v1/messages/count_tokens`, `GET /v1/models[/id]`: passed through, not counted (they cost nothing).
 - `GET /relay/usage`: the token's month so far: spent, cap, left, requests, when it resets.
 - `POST /relay/log`: a session's log sent from Sojourn Access (Help > Send a log, `//sendlog`; docs/access-app.md >
-  Sending a log), or a problem or crash report from Sojourn (docs/client.md > About, problem and crash reports),
+  Sending a log), or a problem report its assistant sends (docs/client.md > About, problem and crash reports; the VR
+  client has no token since 2026-11-02, so its reports go to `/relay/report`),
   already filtered there: other people's words left out, their names stand-ins. The body is gzipped JSON
   (`content-type: application/gzip`): `log` (the text), `note` (the person's, at most 4,000 characters), `app`,
   `commit`, `session`, `current`, `lines`, `left_out`, and from Sojourn `kind` (problem or crash) and a crash's

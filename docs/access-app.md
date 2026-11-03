@@ -107,12 +107,21 @@ Nothing moves the focus but the person's keys.
 ### Login
 
 Grid (a plain list: the local grid, a grid given or used before, or "Another grid", which opens a Login URI box),
-Username, Password, Show password (a check box), Start at (a plain list: my last location, home, a place given, or
-"Another place", which opens a Place box), Log in. The focus starts where you'd type next. Progress and failures are
+Username, Password, Show password (a check box), Start at (a plain list: my last location, home, the account's
+Favorites bar landmarks ("Harbour, favorites bar"), a place given, or "Another place", which opens a Place box), Log
+in. The focus starts where you'd type next. Progress and failures are
 said ("That username and password don't match."); the focus goes back to Password. The grid's Terms of Service and an
 MFA code come in their own small windows, answered only by the person's own key or click. On arrival the main window
 opens with the focus in the Say box and "Logged in, in Atelier. F1 for keys." is said. Another account after a failed
 one restarts the app with the form filled in (each account's state is its own).
+
+The Favorites bar's landmarks as start places (`StartPlaces.cs`; the blind tester's ask, 2026-11-02): the login screen
+can't read the inventory, so, as the official viewer saves each account's favourites' SLurls while logged in
+(`LLFavoritesOrderStorage`), Access keeps each landmark directly in the account's Favorites folder (or a link to one)
+with where it points in `favorite-starts.json` in the account's state dir, checked every 10 s once the inventory has
+loaded (only new landmarks are read; renames just renamed; sorted by name, as Places lists them). Start at reads that
+file for the grid and username typed, following both as they change; one picked is remembered as the last start, unlike
+a place typed once. The viewer shows them only with its "Show Favorites on login" preference; here always.
 
 After that the connection is said too (`MainForm.Connection.cs`): a drop is the session's notice ("Lost the
 connection: no region has answered for half a minute. Logging in again by itself; ...", or the grid's words for a
@@ -134,9 +143,9 @@ Alt+number; Radegast's numbers where Radegast has the same area.
 | Alt+2 | Friends | the People area with the focus on Friends, its first friend read: Radegast's Alt+2 (a blind tester's habit, 2026-10-30) |
 | Alt+3 | People | Nearby ("Kestrel Tester, 4 metres, two o'clock", nearest first), Friends ("Kestrel, online", online first), My groups ("Builders, tag worn") |
 | Control+Tab | Conversations | a tab per IM or group chat: its history over its input ("Message to Kestrel"); also View > Conversations; and the builders' tab (Control+Shift+B, Messages to the builders, below) |
-| Alt+4 | Inventory | the tree ("Red Dress, skirt, worn"; "Hair, object, worn on Skull"; "..., marked"), Search, and Show (everything, worn, recent, trash) |
+| Alt+4 | Inventory | the tree ("Red Dress, skirt, worn"; "Hair, object, worn on Skull"; "..., favorite"; "..., marked"), Search, and Show (everything, worn, recent, trash, favorites) |
 | Alt+5 | Search | Search for (words), Look for (people, places, events, groups, classifieds), Results |
-| Alt+6 | Places | Landmarks (a tree: the Landmarks folder and Favorites), Teleport history ("Bay City, Harbour, today 14:05"), Go to region (a box), Regions around ("Bay City, 3 people, next door to the north") |
+| Alt+6 | Places | Landmarks (a tree: the Landmarks folder and the Favorites bar), Teleport history ("Bay City, Harbour, today 14:05"), Go to region (a box), Regions around ("Bay City, 3 people, next door to the north") |
 | Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touchable" (or ", can sit"), nearest first, within 30 m (Show: what you wear instead, Alt+Shift+7); Tab: the selected one's parts, then a part's faces (Parts and faces, below) |
 | Alt+8 | Notices | what waits for an answer, newest first; the selected one's text, keys and reply box; Escape goes back where Control+N came from |
 | Alt+9 | Assistant | a typed request ("Ask the assistant"), its replies, its choices as buttons |
@@ -153,7 +162,7 @@ as Radegast's menus are. World (teleport home, to the SLurl on the clipboard, se
 ground or stand up, fly or stop flying, walk mode, Recording a route (its keys and Discard), Gestures: the active ones to play, Away and Do not disturb as checked
 items, incognito, region info, parcels in this region, status, what you're wearing, describe where you are, describe
 me, who's in voice, open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
-Friends among them, the second inventory pane, the newest notice, Conversations, the conversation ring, closing one),
+Friends among them, the second inventory pane, the inventory's favorites, the newest notice, Conversations, the conversation ring, closing one),
 Read-out (mute all, mute this conversation, times, arrivals, Recent messages: the last nine as items with their
 Control+numbers, then back, forward, oldest, newest, mark, copy, copy the assistant's last answer), Build (the
 official viewer's Build menu: the build editor, Control+B; a new box; undo the last build change; the build
@@ -216,7 +225,10 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   tester's Radegast habit of copying an item and giving it from the person (2026-10-31), beside the inventory's Give
   to... On an object: Touch, Sit, Walk to, Beacon, Face, Describe, Where (with its floating
   text), Parts, Move..., Take into your inventory, Delete (the last three on your own: Placing by words, below; Delete,
-  also the key, is confirmed in Notices and goes to the Trash); on something worn only Touch, Describe, Where, Parts.
+  also the key, is confirmed in Notices and goes to the Trash); on something worn only Touch, Describe, Where, Parts and
+  Take off (Delete too: back into the inventory, never deleted; the blind tester found no way to take a HUD off there,
+  2026-11-02). Each list menu's opening is a line in the session log with what it offered, on what (the inventory's
+  too, with the item's words), so a log shows what she was given to choose from.
 - Lists: F5 refreshes; a list you're in never changes under you otherwise (it refreshes every 3 s while you're
   elsewhere). Arriving in a list that hasn't filled yet (Second Life's objects wait up to 3 s for their names), its
   name says so ("Objects nearby, looking") and its first item is read as it fills; the landmarks tree has a "Looking
@@ -243,6 +255,25 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   - A gesture's words say whether it's active, and its trigger ("Clap, gesture, active, /clap"); Enter plays it (any
     gesture, active or not), and its Applications key has Play, Activate and Deactivate (for all the marked ones).
   - Ctrl+X / Ctrl+C then Ctrl+V on a folder (or an item in it) move or copy; F2 renames.
+  - **Favorites** (the official viewer's 2024 inventory favourites; `MainForm.Favorites.cs`): any item or folder can be
+    a favourite, staying where it is, the mark kept on Second Life's inventory service, so the official viewer shows
+    the same. Ctrl+Shift+F adds what's marked (else the selected one) to the favourites, or takes it off when all of it
+    is one ("Added Red Dress to favorites."); the Applications key has Add to favorites and Remove from favorites
+    (neither in the Trash, never Add in the Library, as the viewer). A favourite's words end "favorite" ("Red Dress,
+    skirt, worn, favorite"), not in the Trash; a link's mark goes on what it links to and the link says its original's.
+    Show: Favorites (also View > Inventory favorites) is the viewer's Favorites tab: the topmost favourites, folders
+    first then by name, each with where it lives ("Red Dress, skirt, in Clothing"; "favorite" not said on each), a
+    favourite folder opening with Right onto its contents (favourites inside it not listed again at the top), links,
+    the outfit's links and the Trash left out; every action works there as in the tree; F5 reads them from the service
+    again (marks made in another viewer meanwhile). With words in Search, Show: Favorites searches only them. The
+    system folder the viewer now calls the Favorites Bar (landmarks for its bar and the login's start places) is named
+    "Favorites bar" in the tree and in Places, so the two don't share a name. LibreMetaverse's inventory fetch drops the
+    marks, so after logging in, once the inventory has loaded, Access reads every one from the service in the
+    background (`SojournInventory favorites`; a big inventory in parts, `docs/inventory.md` > Thumbnails and
+    favourites), and the words follow when it's done; Show: Favorites before then says "Reading your favorites from
+    Second Life." and shows them when they're in. On a grid without the service (OpenSim) the key and Show say
+    "Favorites aren't on this grid: ...". The viewer has no key for it; Ctrl+Shift+F is ours. Checked against a
+    stand-in for the service (`docs/access-testing.md`); only Second Life checks the real one.
   - Delete and Give ask first (the confirmation comes up selected in Notices: Enter confirms, Escape cancels, then the
     focus is back in the tree). As in the official viewer and Firestorm, a worn body part isn't deleted, said at once
     without asking, and other worn items, the folder's too, are taken off first, the confirmation saying so.
@@ -605,8 +636,8 @@ in your left ear.
 | sonar (`walk_sonar`, both) | S | twelve pings, one from each hour of the clock, starting ahead and going round to the right: higher the nearer (under 2.5 m, under 7, further), a breath where it's open (nothing within 15 m); then a three-note chime from each opening | "Walls: ahead 11 m, right 1 m, left 1 m. Open: behind. Opening at twelve o'clock, 6 m away, 1.4 m wide. Opening at six o'clock, under a metre away, 2.8 m wide." and doors by name |
 | distance (`walk_distance`, text) | a stretch walked by the arrows has ended: no walking key for 0.7 s, no key at all for 0.7 s, the avatar stopped (or 3 s on), and walk mode's line before it heard out; taps in quick succession (a turn between them too) are one stretch; straight from where it began; under 0.3 m nothing; not a `//go`, a follow or a vehicle | none | "0.9 metres." / "4 metres." (tenths under 3 m: a tap is about 0.9 on Second Life) / "1.8 metres backward." / "1 metre to the left." (by the keys that walked it) |
 | follow (`walk_follow`, text) | following someone | none | "With Kestrel, 3 m, twelve o'clock." / "Kestrel sat down, ..." / "Kestrel is getting away: 24 m, ..." |
-| vehicle (`walk_vehicle`, both) | driving: what's ahead (as the warning, further at speed), a seated border crossing; the speed has its own switch, `walk_speed` (on): the distance travelled over 2 s, said once it has held within 15% for 2 s and differs from the last said by 3 m/s and a third (a train's reported velocity swung 19, 6, 13, 8 three seconds apart, 2026-11-01) | as the warning | "12 m a second." / "Still on Walk Kart after the crossing." / "The crossing left you standing: you're no longer seated." |
-| switch (`walk_switch`, both) | seated and moving: a rail switch coming into the way ahead within 60 m, said once (one a line, the nearest first, 2.5 s apart; again only after a minute out of the way ahead); the next one ahead said again if its setting changes; a throw done (W, Shift+W, `//switch`) | a points' clack, then one note forking into two that part; a throw: a heavy clack and a lighter answer | "Switch in 40 metres, set to the main line, North Station." / "Switch in 25 metres, set to: unknown." / "The switch ahead is now set to the main line." / "Switch set to the branch, East Yard." |
+| vehicle (`walk_vehicle`, both) | driving: what's ahead (as the warning, further at speed), only what the vehicle is closing on (met for 0.4 s or more and come nearer by at least half what it travelled meanwhile; each thing once in 4 s): on a train a ray from the seat meets the track's own sections and guides ahead on every curve, which stay about as far ahead as the track bends away (the blind tester's ride of 2026-11-02 had 157 such warnings); a seated border crossing, judged once the new region has sent the avatar and the seat it's on (up to 15 s, else said as not known yet: judged at 2.5 s whatever had come, it told her "the crossing left you standing" seven times while she sat on); the speed has its own switch, `walk_speed` (on): the distance travelled over 2 s, said once it has held within 15% for 2 s and differs from the last said by 3 m/s and a third (a train's reported velocity swung 19, 6, 13, 8 three seconds apart, 2026-11-01) | as the warning | "12 metres a second." / "Now in Bay City, still on Walk Kart." / "Now in Bay City; the crossing left you standing." |
+| switch (`walk_switch`, both) | seated and moving: a rail switch coming into the way ahead within 60 m, said once (one a line, the nearest first, 2.5 s apart; again only after a minute out of the way ahead; not once it's under 5 m); the next one ahead said again if its setting changes; a throw done (W, Shift+W, `//switch`) | a points' clack, then one note forking into two that part; a throw: a heavy clack and a lighter answer | "Switch in 40 metres, set to the main line, North Station." / "Switch in 25 metres, set to: unknown." / "The switch ahead is now set to the main line." / "Switch set to the branch, East Yard." |
 | beacon (`walk_beacon`, both; volume quiet) | a walk under way (`//go`, walk to, a follow, the assistant's walk), else one put on someone or something | a soft pip from the target's direction, every 1.4 s far off down to 0.6 s near, with a fifth above it while it's within 20 degrees ahead (front and back are hard to tell by ear); a small bell flourish on reaching a hand beacon | "Reached Bench." / "Beacon lost: Kestrel isn't here now."; B says where it is |
 | route (`walk_route`, sound; volume quiet) | recording a route: each point it keeps (Recording a route, below) | one small bright wooden tick | "Step 4: a doorway." / "Step 5: a turn." / "Step 7: a teleport to Bay City." |
 | marks (`walk_marks`, both) | O | each thing in turn round from ahead to the right, as the sonar: a door knocks (as the warning's door), a seat sinks (two low notes falling), a touchable thing taps (a small high bell) | "Bench, a seat, 4 metres, twelve o'clock. Garden Gate, a door, 4 metres, three o'clock. Bell, touchable, 4 metres, nine o'clock." |
@@ -629,7 +660,7 @@ takes touches; never what you're sitting on.
 **Rail switches** (`Walk/WalkMode.Switches.cs`; Claude Opus 5.5, 2026-11-01, after the blind tester took two wrong turns
 at switches driving her partner's train and had to back up and reset them). Built on the Second Life Railroad's switch
 as the SL wiki documents it ("Second Life Railroad/SLRR standards" and ".../SLRR Switch", 2010-2012, which the Virtual
-Rail Consortium's free tools follow), **not yet checked against a real switch in Second Life**:
+Rail Consortium's free tools follow), and first met on real track on 2026-11-02 (below):
 - From the standard: the switch is a linkset whose root is named "Switch Stand", with a large invisible part over the
   stand taking touches (for "click-able switches"), and dwarf signals. Its description is
   `Identifier~Status~Heading Name~Mainline Name~Branch Name~messaging channel`, Status "Main" or "Branch" ("for train
@@ -637,28 +668,57 @@ Rail Consortium's free tools follow), **not yet checked against a real switch in
   solid, the other renamed "Alternate Guide" and phantom. The stand listens for "Main" or "Branch" on its channel and
   shouts the new setting there when done. A mainline switch goes back to the main line 2.5 minutes after being set to
   the branch, and sensors at the merge set it right for a train coming into the merge by themselves (spring switches).
-- From an SL feedback report (Pawpaw Wye, 2025-12), so still so today: touching the stand, or Main and Branch on its
-  channel, throw it; that stand had changed while its guide rails hadn't.
+- From an SL feedback report (Pawpaw Wye, 2025-12, with merged posts to 2026-07), so still so today: touching the
+  stand, or Main and Branch on its channel, throw it; that stand had changed while its guide rails hadn't ("Guide on
+  the main line and Alternate Guide on the branch" stayed put), and a large invisible "Switch Controller" meant to be
+  linked to the stand for clicks had come unlinked. Two Tenera switches of the Crumbi Junction wye were reported the
+  same way in 2026-07. So the guide rails are objects of their own, which the stand talks to.
 - Not from the standard: an unsourced description passed on in Second Life had Guide always the main line's rail and
   Alternate Guide the branch's, one solid at a time; the standard renames them instead, so the names say only which rail
-  is in use, never which way. Where the guide rails are (in the stand's linkset, the track's, or objects of their own)
-  isn't documented; whether touching toggles or opens a menu isn't either.
+  is in use, never which way. Whether touching toggles or opens a menu isn't documented.
+- **On real track** (the blind tester's freight run over the Linden railroad's atoll lines, 0.1.0.811, 2026-11-02, 108
+  minutes and 181 crossings; log `tester-20261103T000721-ef2577`): stands named "Switch Stand" with the standard's
+  description were read right: 104 lines named a way ("set to the main line, Aglia Station", "set to the branch,
+  Lunalis Passing Track"; some stands carry the bare words, "the main line, Main", "the branch, Branch"). Twice a
+  switch said as set to the main line changed to the branch some 10-20 s later as she neared it ("The switch ahead is
+  now set to the branch, Clearwing passing track."): most likely the merge's sensors springing it for her train (or
+  another driver). But 178 lines said "unknown", often several within seconds at growing distances around a station's
+  named switches (17:50:31-40, four in 9 s). The log
+  didn't say which kind each was. Most likely the switches' own guide rails: objects of their own (above), the
+  branch's reaching tens of metres past the stand, taken for switches of their own whenever more than 25 m from a stand
+  already named (and before its name had come). But W, pressed three times at 18:04:58-18:05:02, found stands (no "No
+  switch stand found") that didn't say Main or Branch, so some unknowns are stands of some other description, or
+  objects with "switch stand" in a longer name. Five lines said distances of 135-260 m, each at a crossing: the
+  position was taken in the old region's frame and measured against the new one's (fixed). No throw was tried (she
+  heard of W and Shift+W mid-run and said she'd try another time).
 - So: the setting is read from the stand's description (asked again each time it's said: the region sends a changed
   description only to whoever has the object selected), with the main line's or branch's name from it when it has one.
-  A root named "Alternate Guide" (or "AlternateGuide", as one Marketplace kit names it) with no stand within 25 m is a
-  switch of another make, said with its setting unknown and not thrown. Switch stands are found among roots within
-  90 m in the regions in view, their names asked for twenty a look, nearest first ahead. "Ahead" is within 60 m along
-  the way the seat moves (its facing, stopped), within 6 m either side and a third of the distance more (curves).
+  What doesn't say its setting (an "Alternate Guide" or "AlternateGuide" root, as one Marketplace kit names it, or a
+  stand whose description doesn't give Main or Branch) is part of the switch whose stand does, within 60 m; with none,
+  it waits 2 s for such a stand's name (the names around it asked for first) before it counts as a switch of its own,
+  said with its setting unknown and not thrown (W doesn't wait). Names with "guide", "signal", "sensor" or "light" in
+  them aren't stands (the standard's "Switch Stand Signal", a junction kit's "Switchstand Guide X2"). Switch stands are
+  found among roots within 150 m in the regions in view and offered within 90 m, their names asked for twenty a look,
+  nearest first ahead, never again those asked in the last 5 s (twenty that never answered held back every name behind
+  them). "Ahead" is within 60 m along the way the seat moves (its facing, stopped), within 6 m either side and a third
+  of the distance more (curves). Where a switch is when it's said is taken again then, in the frame the person is in
+  then; one first due closer than 5 m isn't said (too near to act on; 0.1.0.811 said several at 1-4 m).
+- The log says what it finds (`switch: ...` lines, kept by Send a log): each stand or alternate guide the first time
+  (name, local id, region and place, description as written, prim count, size, phantom, which parts take touches) and
+  again when its name or description changes; where each part that doesn't say its setting went ("part of Switch
+  Stand (...), 31 m from it", or "a switch of its own: no stand saying how it's set within 60 metres (the nearest 75
+  metres away)"); each line said or not said and why; W's answers; and a throw's touched part, the setting before and
+  after with the milliseconds it took, and whether the guide rails changed.
 - Throwing (Shift+W, `//switch flip`, `main`, `branch`) touches the stand's part that takes touches (the largest, if
   several; the stand itself if none), as a person's click, then reads the description until its Status changes (6 s at
-  most) and says the new setting. The guide rails within 15 m of the stand are watched too: if the stand changed and
+  most) and says the new setting. The guide rails within 60 m of the stand are watched too: if the stand changed and
   they didn't, it's said ("Its guide rails didn't change, though: the stand may be out of order"); a stand without a
   Status, if they changed, "Switch thrown: its guide rails changed, but its stand doesn't say which way." The channel
   commands aren't used: neighbouring stands may share a channel, and a shout would throw them all. A switch across a
   border is said but can't be thrown from here (touches go to the current region).
-- What the first real switch should check (Tessel, or her next ride's log): the stand's name and description as
-  written, which part takes the touch and whether a touch toggles, how long the description takes to change, and where
-  the guide rails are.
+- What her next ride's log should settle: whether the unknowns were the switches' own rails (their "part of" lines and
+  how far from their stands), what the stands W found unknown are named and hold, and on a throw, which part took the
+  touch, whether a touch toggles, how long the description took to change and whether the rails followed.
 
 **Stopping a vehicle** (`Walk/WalkMode.Stop.cs`; Claude Opus 5.5, 2026-11-01, after the blind tester's freight train, an
 SLRR-style train driven by the arrows, ran off the end of its track and derailed or stranded her: once she had to
@@ -891,7 +951,7 @@ from guided testing of Radegast, and no list changes while you're in it):
   menu, "Pet, on Left Shoulder, 3 parts"; the blind tester couldn't reach her worn things, 2026-11-01). Their
   buttons are parts like any other: their parts listed (a body attachment's without where-words: its offsets are in
   its attachment point's frame), Enter presses one where it shows (a HUD's), or on the part without a surface (a body
-  attachment's). Delete there says to take it off in the inventory.
+  attachment's). Delete or Take off there takes it off.
 - **A HUD's buttons read off its picture** (Claude Opus 5.5, 2026-11-01; `MainForm.Huds.cs`). Most HUDs she meets (a
   train's driver panel, games, 7Seas) are one textured prim with buttons painted on it, its script telling them apart
   by where it's touched (llDetectedTouchST), so they have no parts to name. A HUD's parts list ends with "Read its
@@ -1254,7 +1314,16 @@ What the model gets (SojournDescribe, `Sojourn.Session/Offscreen/DescribeApi.cs`
     giving the hair and trousers, which had. Not seen yet: Second Life's server bakes and a busy place's network.
 - The facts: names (the viewer's complete names; "Object" counts as unnamed), an object's description, floating text,
   owner, parts, size, who sits on it, for sale, and that you're on it; what someone wears by its items' names and
-  points; for you, the clothing and body parts too, and what you sit on; you are "the person themselves (you)" wherever
+  points; for you, the clothing and body parts too, and what you sit on, and each thing you wear also by the
+  inventory item it was worn from where that name differs, and by its own description where it adds something
+  ("Pip (on left shoulder; its inventory item: Flying Pet Gryphon)"; looked up by its AttachItemID in the inventory
+  already loaded, as the worn list does; one of them described on its own gives its item too, `its_inventory_item`,
+  said without the assistant as "Your inventory item: ..."). An object renamed in world keeps its product's name only in that item: the
+  blind tester's renamed shoulder pet, a winged gryphon lying with its wings folded, was described by both models as
+  a black-and-white cat (2026-11-02). Others' worn things stay by their object names. The describer is told what the
+  item name and description are (the item as the person has it, often the product's name; the object's own words),
+  to know what a thing is by, not as something seen. `tools/access.py`'s step "describing" wears a box renamed in
+  world and checks the facts and Control+Shift+D give both names. You are "the person themselves (you)" wherever
   you'd be named (owner, wearer, who's seated), never your own name; for here the parcel, its description, people within 30 m and named things within 20 m.
   Textures and profile pictures by id (`texture`, `profile`). With `--no-render` there are no pictures (said so), only
   the facts and textures.
@@ -1288,7 +1357,9 @@ become "person N" (the order they come up) and the person's own "me", except tha
 English word (a display name's first word "Grey", a display name "Amber"; `common-words.txt`, SCOWL's commonest) is
 replaced only where it's capitalised as a name, so "a light grey top" stays (a log once read "light person 29 top");
 an object's line relaying someone ("person 2:
-...") and any line repeating five words in a row of someone's left-out words (or a whole short line) are left out;
+...") and any line repeating five words in a row of someone's left-out words (or a whole short line) are left out,
+except words that are an object's name (someone saying "Operator HUD" had every line naming her GTFO! Operator HUD
+left out, its menus and her touches of it, 2026-11-02);
 keys, capability URLs, the Windows account's folder and public IP addresses are masked. The assistant's replies and
 what it said about people stay, names replaced. A log from before the records isn't offered. `tools/logcheck` checks
 the filter on a synthetic log (`dotnet run --project tools/logcheck`; with a path, prints that log as it would go).
@@ -1335,6 +1406,7 @@ it).
   SojournSettings), `MainForm.Inventory.cs` (the tree, search and Show, the actions; Big inventories, below),
   `ReaderTree.cs` (its tree view and Places', read through Windows' own MSAA object: WinForms' numbered the items wrong
   for NVDA), `ReaderList.cs` (every list: its item's focus announced only while the list has the focus),
+  `MainForm.Favorites.cs` (favourites in the inventory), `StartPlaces.cs` (the Favorites bar's landmarks as start places),
   `MainForm.Places.cs`, `MainForm.Search.cs`, `MainForm.People.cs` (friends, groups, profiles, pay),
   `MainForm.Describe.cs` (describing), `MainForm.Parts.cs` and `Linkset.cs` (parts and faces), `MainForm.Huds.cs` (HUD faces and buttons), `MainForm.Place.cs` and
   `PlaceWords.cs` (placing by words), `MainForm.Outfit.cs`, `MainForm.Incognito.cs`, `MainForm.Voice.cs`,

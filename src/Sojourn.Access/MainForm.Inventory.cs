@@ -53,7 +53,7 @@ public sealed partial class MainForm
         // reader reads on every item ("check box, not checked") and the guided test took for worn or not
         public readonly HashSet<string> Marked = new();
         public readonly HashSet<string> Open = new();   // the folders the person has open, kept open when the tree is filled again
-        public string Mode = "";   // "" the tree; else what the flat list shows: "search", "worn", "recent", "trash"
+        public string Mode = "";   // "" the tree; else what the flat list shows: "search", "worn", "recent", "trash", "favorites"
         public CancellationTokenSource? Finding;   // the flat list being found off the window's thread, if one is
         public readonly Dictionary<UUID, object> Fills = new();   // big folders still going in, by folder (FillRest)
         public string? Keep;   // during a fill: the node that stays selected
@@ -100,7 +100,7 @@ public sealed partial class MainForm
         };
         var search = new LineBox { Name = name == "inventory" ? "inventorySearch" : name + "Search", AccessibleName = title == "" ? "Search inventory" : "Search the second pane", Dock = DockStyle.Fill };
         var show = new ComboBox { Name = name == "inventory" ? "inventoryShow" : name + "Show", AccessibleName = title == "" ? "Show" : "Show, second pane", DropDownStyle = ComboBoxStyle.DropDownList, Width = 140 };
-        show.Items.AddRange(new object[] { "Everything", "Worn", "Recent", "Trash" });
+        show.Items.AddRange(new object[] { "Everything", "Worn", "Recent", "Trash", "Favorites" });
         show.SelectedIndex = 0;
         var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 2, Margin = Padding.Empty };
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -206,7 +206,8 @@ public sealed partial class MainForm
         }
         var words = p.Search.Text.Trim();
         var show = p.Show.SelectedIndex;
-        var mode = words.Length > 0 ? "search" : show == 1 ? "worn" : show == 2 ? "recent" : show == 3 ? "trash" : "";
+        var mode = words.Length > 0 ? "search" : show == 1 ? "worn" : show == 2 ? "recent" : show == 3 ? "trash" : show == ShowFavorites ? "favorites" : "";
+        if (show == ShowFavorites && FavoritesNotReady(p, said, focus)) return;
         if (mode == "")
         {
             p.Mode = "";
@@ -214,7 +215,7 @@ public sealed partial class MainForm
             if (focus) tree.Focus();
             return;
         }
-        var ask = new FlatAsk(store, root.UUID, client.Inventory.FindFolderForType(FolderType.Trash), mode, words, show, Worn());
+        var ask = new FlatAsk(store, root.UUID, client.Inventory.FindFolderForType(FolderType.Trash), mode, words, show, Worn(), Meta.IsFavorite);
         var cts = p.Finding = new CancellationTokenSource();
         var find = Task.Run(() => FindFlat(ask, cts.Token), cts.Token);
         try { find.Wait(100); }
@@ -265,6 +266,7 @@ public sealed partial class MainForm
                     "search" => trashed.Length > 0 ? $"Nothing called {words}, but {trashed}." : $"Nothing called {words}.",
                     "worn" => "Nothing worn.",
                     "trash" => "The Trash is empty.",
+                    "favorites" => "No favorites yet. Control+Shift+F on an item or folder adds it.",
                     _ => "Nothing new in the last day.",
                 }));
             tree.SelectedNode = (keep != null ? tree.Nodes[keep] : null) ?? tree.Nodes[0];
@@ -275,6 +277,7 @@ public sealed partial class MainForm
             var many = $"{ordered.Count}{(ordered.Count >= FlatLimit ? " or more" : "")}";
             Reader?.Answer(ordered.Count == 0 ? tree.Nodes[0].Text
                 : p.Mode == "worn" ? $"{many} worn."
+                : p.Mode == "favorites" ? $"{many} {(ordered.Count == 1 ? "favorite" : "favorites")}."
                 : trashOnly ? $"{many} in the Trash."
                 : trashed.Length > 0 ? $"{many} found, and {trashed}." : $"{many} found.", keep: false);
         }
@@ -288,7 +291,7 @@ public sealed partial class MainForm
 
     /// <summary>What a flat list asks for, with what's read on the window's thread for it (the Trash's id, what's worn).</summary>
     sealed record FlatAsk(LibreMetaverse.Inventory Store, UUID Root, UUID Trash, string Mode, string Words, int Show,
-        (HashSet<UUID> Ids, Dictionary<UUID, string> Points) Worn);
+        (HashSet<UUID> Ids, Dictionary<UUID, string> Points) Worn, Func<UUID, bool> Favorite);
 
     /// <summary>A flat list found: its nodes in order, with the folder each is in, how many matches the Trash has, how
     /// many nodes were looked at and how long it took.</summary>
@@ -308,7 +311,8 @@ public sealed partial class MainForm
         {
             "search" => n.Name.Contains(a.Words, StringComparison.OrdinalIgnoreCase)
                         && (a.Show != 1 || n is InventoryItem wi && a.Worn.Ids.Contains(Target(store, wi).UUID))
-                        && (a.Show != 2 || n is InventoryItem ri && Utc(ri.CreationDate) >= since),
+                        && (a.Show != 2 || n is InventoryItem ri && Utc(ri.CreationDate) >= since)
+                        && (a.Show != ShowFavorites || n is not InventoryItem { AssetType: AssetType.Link or AssetType.LinkFolder } && a.Favorite(n.UUID)),
             "worn" => n is InventoryItem it && it.AssetType is not (AssetType.Link or AssetType.LinkFolder) && a.Worn.Ids.Contains(it.UUID),
             "trash" => true,
             _ => n is InventoryItem rt && Utc(rt.CreationDate) >= since,
@@ -316,6 +320,11 @@ public sealed partial class MainForm
         bool trashOnly = a.Show == 3;
         var found = new List<(InventoryBase Node, string Path)>();
         if (trashOnly && a.Trash == UUID.Zero) return new(a, found, 0, 0, 0);
+        if (a.Mode == "favorites")
+        {
+            WalkFavorites(store, a.Root, "", a.Trash, a.Favorite, found, ref seen, ct);
+            return new(a, found.OrderBy(f => f.Node is InventoryFolder ? 0 : 1).ThenBy(f => f.Node.Name, StringComparer.OrdinalIgnoreCase).ToList(), 0, seen, took.ElapsedMilliseconds);
+        }
         var trashName = store.TryGetValue<InventoryFolder>(a.Trash, out var tf) ? tf.Name : "Trash";
         Walk(store, trashOnly ? a.Trash : a.Root, trashOnly ? trashName : "", trashOnly ? UUID.Zero : a.Trash, ct, (n, path) =>
         {
@@ -542,13 +551,14 @@ public sealed partial class MainForm
     {
         var tn = new InvNode(n, path) { Name = n.UUID.ToString(), Tag = n };
         tn.Text = Label(p, tn, worn);
-        if (n is InventoryFolder && path == null) tn.Nodes.Add(Placeholder());
+        // (a favourites list's folders open onto their contents, as the viewer's Favorites tab)
+        if (n is InventoryFolder && (path == null || p.Mode == "favorites")) tn.Nodes.Add(Placeholder());
         return tn;
     }
 
-    /// <summary>"Red Dress, skirt, worn, in Clothing, marked".</summary>
+    /// <summary>"Red Dress, skirt, worn, favorite, in Clothing, marked".</summary>
     string Label(InvPane p, InvNode tn, (HashSet<UUID> Ids, Dictionary<UUID, string> Points) worn) =>
-        Words(p, tn.Item, worn) + (tn.Path != null ? $", in {tn.Path}" : "") + (p.Marked.Contains(tn.Name) ? ", marked" : "");
+        Words(p, tn.Item, worn) + (SaysFavorite(p, tn) ? ", favorite" : "") + (tn.Path != null ? $", in {tn.Path}" : "") + (p.Marked.Contains(tn.Name) ? ", marked" : "");
 
     /// <summary>Every node's words again where they changed (worn, marked), without rebuilding the tree: the place
     /// and what's open stay, and the screen reader hears the item it's on change.</summary>
@@ -582,7 +592,7 @@ public sealed partial class MainForm
     /// <summary>"Red Dress, skirt, worn", "Hair, object, worn on Skull", "Dresses" (a folder), "Home, landmark, link".</summary>
     string Words(InvPane p, InventoryBase n, (HashSet<UUID> Ids, Dictionary<UUID, string> Points) worn)
     {
-        if (n is InventoryFolder f) return p.Mode == "" ? f.Name : $"{f.Name}, folder";
+        if (n is InventoryFolder f) return p.Mode == "" ? FolderWords(f) : $"{FolderWords(f)}, folder";
         var it = (InventoryItem)n;
         var target = Target(it);
         var words = $"{it.Name}, {TypeWord(target)}";
@@ -722,6 +732,12 @@ public sealed partial class MainForm
             case Keys.Control | Keys.V: _ = PasteAsync(p); break;
             case Keys.Control | Keys.M: _ = ToOtherPaneAsync(p, copy: false); break;
             case Keys.Control | Keys.F: p.Search.Focus(); p.Search.SelectAll(); break;
+            case Keys.Control | Keys.Shift | Keys.F: _ = FavoriteAsync(p); break;
+            // (in the favourites list, read from the service again: marks made in another viewer meanwhile)
+            case Keys.F5 when p.Show.SelectedIndex == ShowFavorites && Meta.Available:
+                Reader?.Answer("Reading your favorites again.", keep: false);
+                ReadFavorites(refresh: true).ContinueWith(_ => BeginInvoke(() => ShowInventory(p, said: true)), TaskScheduler.Default);
+                break;
             case Keys.F5: ShowInventory(p, said: false); Reader?.Answer("Inventory shown again.", keep: false); break;
             case Keys.Apps or (Keys.Shift | Keys.F10): ShowInventoryMenu(p); break;
             default: handled = false; break;
@@ -754,6 +770,10 @@ public sealed partial class MainForm
             var act = a;
             _invMenu.Items.Add(new ToolStripMenuItem(a.Text, null, (_, _) => act.Do()) { ShortcutKeyDisplayString = a.Key });
         }
+        // what the person was offered, and on what as the tree said it (a worn HUD she couldn't take off, 2026-11-02)
+        _ops.Session.Log.LogInformation("inventory: actions on {What}: {Items}",
+            chosen.Count == 1 ? p.Tree.SelectedNode?.Text ?? chosen[0].Name : $"{chosen.Count} marked",
+            string.Join(", ", actions.Where(a => a.Text != "-").Select(a => a.Text.Replace("&", ""))));
         // the other pane, as Alt+4 and Alt+Shift+4 go there (after the menu has closed and given the focus back)
         _invMenu.Items.Add(new ToolStripSeparator());
         bool inSecond = p == _pane2;
@@ -801,6 +821,7 @@ public sealed partial class MainForm
             list.Add(new($"&Move to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: false), "Control+M"));
             list.Add(new($"Cop&y to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: true)));
         }
+        list.AddRange(FavoriteActions(p, chosen, folder: false));
         if (one) list.Add(new("Re&name", () => Rename(p), "F2"));
         if (one) list.Add(new("D&etails", () => _ = DetailsAsync(items[0])));
         if (one) list.Add(new("Descri&be", () => DescribeKey(me: false), "Control+D"));
@@ -832,6 +853,7 @@ public sealed partial class MainForm
             list.Add(new($"&Move to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: false), "Control+M"));
             list.Add(new($"Cop&y to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: true)));
         }
+        list.AddRange(FavoriteActions(p, new() { f }, folder: true));
         list.Add(new("Re&name", () => Rename(p), "F2"));
         list.Add(new("&Delete", () => _ = DeleteAsync(p), "Delete"));
         return list;

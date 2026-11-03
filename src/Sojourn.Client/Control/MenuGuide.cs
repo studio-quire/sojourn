@@ -224,7 +224,7 @@ public static class MenuGuide
         // --- about (Control/AboutMenu.cs)
         S("about/report a problem/", "Send Studio Quire this session's log, with other people's words left out, or save it for GitHub."),
         S("about/report a problem/review what's sent", "Read exactly what the report holds before it goes."),
-        S("about/report a problem/send to Studio Quire", "Sends the report with your Studio Quire token. It's kept for 30 days."),
+        S("about/report a problem/send to Studio Quire", "Sends the report to Studio Quire. It's kept for 30 days."),
         S("about/report a problem/save for GitHub", "Saves the report as a file and opens GitHub's issues page on the PC, to attach it there."),
         S("about/third-party notices", "The code, libraries and assets Sojourn uses from others, and their licences."),
         S("about/crash reports", "If Sojourn crashes, whether the launcher asks before sending a report, sends it without asking, or never offers one."),

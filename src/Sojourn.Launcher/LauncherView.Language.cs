@@ -21,7 +21,7 @@ public partial class LauncherView
 
     static string ProviderWords(string label) => label == "OpenRouter" ? label : Lang.T(label);
 
-    /// <summary>What's kept for a provider ("Anthropic key", "Studio Quire token"), in the person's language.</summary>
+    /// <summary>What's kept for a provider ("Anthropic key", "OpenRouter key"), in the person's language.</summary>
     static string Thing(string kind) => Lang.T(ProviderKeys.Thing(kind));
 
     void ShowLanguages()

@@ -1031,7 +1031,9 @@ def visitor_command(args):
     try:
         v("pos", timeout=5)
     except OSError:
-        if not VISITOR_DLL.exists() and tools():
+        # built when missing or older than its source (a stale visitor once rezzed a sized gate in the region's corner)
+        made = VISITOR_DLL.stat().st_mtime if VISITOR_DLL.exists() else 0
+        if any(f.stat().st_mtime > made for f in (ROOT / "tools" / "visitor").glob("*.cs*")) and tools():
             return 1
         if not grid.ready():
             print("the local grid is down (python tools/grid.py start)")
@@ -1220,6 +1222,8 @@ def test():
         for i in range(len(PALS)):
             pal_quit(i)
         shutdown(run, procs["server"], procs["app"], procs["visitor"])
+        if AIS:
+            AIS.stop()
     return finish(run)
 
 
@@ -1301,7 +1305,12 @@ def session(run, procs):
         env["SOJOURN_SOFTWARE_VULKAN"] = str(LAVAPIPE)
     if SOFTWARE and not NO_GPU:
         env["SOJOURN_OFFSCREEN_SOFTWARE"] = "1"
+    global AIS, APP_LAUNCH
+    if os.environ.get("ACCESS_NO_AIS") != "1":
+        AIS = AisStandIn()   # favourites' inventory service, which OpenSim lacks (stopped with the run)
+        env["SOJOURN_TEST_AIS"] = AIS.url
     host = [APP_EXE] if APP_AS_EXE else [DOTNET, APP_DLL]
+    APP_LAUNCH = (host, app_args, env)
     global APP_PID
     app = APP_PID = procs["app"] = launch_hidden(host + app_args, env=env, cwd=APP_BIN)
     u(f"watch {app}")
@@ -1368,7 +1377,7 @@ def session(run, procs):
         ("places and a route", lambda: places(run, nonce)),
         ("search, profiles, pay", lambda: search_and_people(run)),
         ("more commands", lambda: more_commands(run)),
-        ("describing", lambda: describing(run)),
+        ("describing", lambda: describing(run, nonce)),
         ("describing a look as it loads", lambda: describing_looks(run, nonce)),
         ("review keys and arrivals", lambda: review_and_arrivals(run, nonce)),
         ("sound as a map", lambda: sound_map(run, tester_id)),
@@ -1381,6 +1390,9 @@ def session(run, procs):
         ("recording a route", lambda: route_recording(run)),
         ("recording a route across a border", lambda: route_crossing(run)),
         ("recording a ride", lambda: ride_recording(run)),
+        ("favorites in the inventory", lambda: favorites(run, nonce)),
+        # (last: it logs out and in again, from the login form)
+        ("favorite landmarks at login", lambda: favorite_starts(run, nonce, procs)),
     ]
     only = [w.strip() for w in os.environ.get("ACCESS_STEPS", "").split(",") if w.strip()]
     for name, step in steps:
@@ -2771,6 +2783,304 @@ def notice_perm(run, tester_id):
     run.heard_by_visitor(f"{number} on the list allows it", lambda d: d["msg"] == "permission 16", n, 10, "permission 16")
 
 
+class AisStandIn:
+    """A stand-in for Second Life's inventory service (AIS3), which OpenSim lacks, for favourites only: the app's
+    InventoryMeta goes to it by SOJOURN_TEST_AIS when the region offers no InventoryAPIv3 (never where it does). It
+    answers as the service's shape has it, read from the official viewer and InventoryMeta: GET category/<id>/children
+    (every flag it holds under _embedded, so a sweep from the top finds them all; the real one nests them by folder),
+    GET item/<id> and category/<id>, and PATCH item/<id> or category/<id> with {"favorite": {"toggled": true}} (or an
+    undefined "favorite" to unmark, as the viewer sends it), which it keeps. What it can't stand in for: the real service's tree, its 403 on a big subtree, its latency (docs/inventory.md
+    > Checks only Second Life can do). ACCESS_NO_AIS=1 runs without it, as on OpenSim."""
+
+    def __init__(self):
+        import http.server
+        import threading
+        self.flags = {}        # id -> (is_folder, favourite)
+        self.patches = []      # (id, favourite, how it was sent) as they came
+        self.sweeps = 0        # GETs of a folder's children (the app's reading of every favourite)
+        standin = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def answer(self, status, body=b""):
+                self.send_response(status)
+                self.send_header("Content-Type", "application/llsd+xml")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                parts = self.path.split("?")[0].strip("/").split("/")
+                if len(parts) >= 2 and parts[0] == "category" and parts[-1] == "children":
+                    standin.sweeps += 1
+                    self.answer(200, standin.llsd(standin.children(parts[1])))
+                elif len(parts) == 2 and parts[0] in ("item", "category"):
+                    self.answer(200, standin.llsd(standin.one(parts[1], parts[0] == "category")))
+                else:
+                    self.answer(404)
+
+            def do_PATCH(self):
+                parts = self.path.split("?")[0].strip("/").split("/")
+                body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8", "replace")
+                # marked: {"toggled": true}; unmarked, as the viewer sends it: an undefined "favorite"
+                m = re.search(r"<key>toggled</key>\s*<boolean>\s*([^<]*)</boolean>", body)
+                undef = re.search(r"<key>favorite</key>\s*<undef\s*/>", body)
+                if len(parts) != 2 or parts[0] not in ("item", "category") or not (m or undef):
+                    self.answer(400)
+                    return
+                on = bool(m) and m.group(1).strip().lower() in ("1", "true")
+                standin.flags[parts[1]] = (parts[0] == "category", on)
+                standin.patches.append((parts[1], on, "undef" if undef else "toggled"))
+                self.answer(200, standin.llsd(standin.one(parts[1], parts[0] == "category")))
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    @staticmethod
+    def entry(id_, folder, on):
+        return ("category_id" if folder else "item_id", id_, on)
+
+    def one(self, id_, folder):
+        f, on = self.flags.get(id_, (folder, False))
+        return {"self": self.entry(id_, f, on), "items": [], "categories": []}
+
+    def children(self, id_):
+        flags = list(self.flags.items())
+        return {"self": self.entry(id_, True, self.flags.get(id_, (True, False))[1]),
+                "items": [self.entry(k, False, on) for k, (f, on) in flags if not f],
+                "categories": [self.entry(k, True, on) for k, (f, on) in flags if f]}
+
+    @staticmethod
+    def llsd(a):
+        def obj(e):
+            key, id_, on = e
+            return (f"<map><key>{key}</key><uuid>{id_}</uuid><key>name</key><string>x</string>"
+                    f"<key>favorite</key><map><key>toggled</key><boolean>{'1' if on else '0'}</boolean></map></map>")
+        key, id_, on = a["self"]
+        inner = obj(a["self"])[len("<map>"):-len("</map>")]
+        emb = "".join(f"<key>{group}</key><map>" + "".join(f"<key>{e[1]}</key>{obj(e)}" for e in a[group]) + "</map>"
+                      for group in ("items", "categories"))
+        return f"<?xml version=\"1.0\" ?><llsd><map>{inner}<key>_embedded</key><map>{emb}</map></map></llsd>".encode()
+
+    def stop(self):
+        self.server.shutdown()
+
+
+AIS = None   # the stand-in while a test runs (session)
+
+
+APP_LAUNCH = None   # (host, args, env) the app was started with (favorite_starts starts it again)
+
+
+def show_choice(index):
+    """The first pane's Show set by keys: Control+F, Escape (the search cleared, back in the tree), Control+F, Tab to
+    Show, Home, Down to the choice (0 everything ... 4 favorites)."""
+    key("alt+4")
+    wait_focus(lambda d: d["id"] == "inventory", 4)
+    key("ctrl+f")
+    wait_focus(lambda d: d["id"] == "inventorySearch", 3)
+    key("esc", target="id=inventorySearch")
+    wait_focus(lambda d: d["id"] == "inventory", 3)
+    key("ctrl+f")
+    wait_focus(lambda d: d["id"] == "inventorySearch", 3)
+    key("tab")
+    wait_focus(lambda d: d["id"] == "inventoryShow", 3)
+    key("home")
+    for _ in range(index):
+        key("down")
+
+
+def favorites(run, nonce):
+    """Favourites (the official viewer's 2024 marks) by keys, against AisStandIn: marked by Control+Shift+F and a
+    folder's Applications key, the words, Show: Favorites (one marked in another viewer coming in on F5, a folder opening
+    onto its contents, Enter acting from the list), unmarked from the list as the viewer sends it. ACCESS_NO_AIS=1: the
+    same keys say favourites aren't on this grid."""
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+    fold, shelf = f"Access Fav {nonce}", f"Access Fave {nonce} shelf"
+    one, two, kept = f"Access Fave {nonce} one", f"Access Fave {nonce} two", f"Access Fave {nonce} kept"
+    folder = api("TesselInventory", "createFolder", name=fold, parent_id=root)["folder_id"]
+    shelf_id = api("TesselInventory", "createFolder", name=shelf, parent_id=folder)["folder_id"]
+    api("TesselInventory", "createNotecard", name=one, text="one", folder_id=folder)
+    two_id = api("TesselInventory", "createNotecard", name=two, text="two", folder_id=folder)["item_id"]
+    api("TesselInventory", "createNotecard", name=kept, text="kept", folder_id=shelf_id)
+    have = wait(lambda: (lambda i: i if two in i and shelf in i else None)(inv_items(folder)), 10)
+    if not run.check("(fixtures: a folder, two notecards and a shelf with one)", have, ", ".join(have or {}) or "none"):
+        return
+    try:
+        if AIS is None:
+            favorites_not_here(run, one)
+            return
+        swept = wait(lambda: AIS.sweeps > 0, 60, 0.5)
+        run.check("after logging in the app read every favourite from the service, by itself", swept, f"{AIS.sweeps} sweeps")
+        AIS.flags[two_id] = (False, True)   # as if marked in another viewer (the service has it; the app doesn't know yet)
+
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        sel = inv_search(one, one)
+        run.check("an item not marked says nothing of favourites", sel and "favorite" not in sel, sel)
+        m = mark()
+        key("ctrl+shift+f")
+        run.expect("Control+Shift+F adds it, saying so", [f"Added {one} to favorites"], m, 10)
+        sent = next((x for x in AIS.patches if x[0] != two_id and x[1]), None)
+        run.check("the mark went to the service as the viewer sends it (favorite: toggled true)", sent and sent[2] == "toggled", str(AIS.patches))
+        sel = wait(lambda: (lambda t: t if ", favorite" in t else None)(selection("id=inventory")), 4)
+        run.check("its words now end with favorite", sel, selection("id=inventory"))
+
+        inv_search(shelf, shelf)
+        m = mark()
+        key("apps")
+        time.sleep(0.6)
+        key("v")   # Add to fa&vorites, on a folder's menu
+        run.expect("a folder's Applications key: Add to favorites", [f"Added {shelf} to favorites"], m, 10)
+
+        m = mark()
+        show_choice(4)
+        run.expect("Show: Favorites lists them, saying how many", ["2 favorites"], m, 8)
+        listed = [t["name"] for t in find("type=TreeItem")]
+        run.check("the item, with where it lives, not saying favorite on each",
+                  any(one in n and f"in {fold}" in n and "favorite" not in n for n in listed), "; ".join(listed[:6]))
+        run.check("the folder, as a folder", any(n.startswith(f"{shelf}, folder") for n in listed), "; ".join(listed[:6]))
+        run.check("the one marked elsewhere isn't there yet", not any(two in n for n in listed), "; ".join(listed[:6]))
+        u("setfocus id=inventory")
+        wait_focus(lambda d: d["id"] == "inventory", 3)
+        m = mark()
+        key("f5")
+        run.expect("F5 there reads them from the service again", ["Reading your favorites again"], m, 4)
+        run.expect("and the one marked in another viewer comes in", ["3 favorites"], m, 10)
+        if run.check("(the shelf selected)", select_in("id=inventory", shelf, 10), selected_text("id=inventory")):
+            key("right")
+            inside = wait(lambda: [t["name"] for t in find("type=TreeItem") if kept in t["name"]], 5)
+            run.check("Right opens a favourite folder onto its contents", inside, "; ".join(t["name"] for t in find("type=TreeItem")[:8]))
+            key("left")
+        if run.check("(the item selected)", select_in("id=inventory", one, 10), selected_text("id=inventory")):
+            key("enter")
+            ed = wait_focus(lambda d: d["id"] == "editorText", 6)
+            run.check("Enter on it in the list opens it, as in the tree", ed, label(ed) if ed else focus_label())
+            if ed:
+                key("esc")
+                wait_focus(lambda d: d["id"] == "inventory", 4)
+            select_in("id=inventory", one, 10)
+            m = mark()
+            key("ctrl+shift+f")
+            run.expect("Control+Shift+F on a favourite removes it", [f"Removed {one} from favorites"], m, 10)
+            last = AIS.patches[-1] if AIS.patches else None
+            run.check("unmarked as the viewer sends it (an undefined favorite)", last and not last[1] and last[2] == "undef", str(last))
+            gone = wait(lambda: not any(one in t["name"] for t in find("type=TreeItem")), 5)
+            run.check("and it leaves the list", gone, "; ".join(t["name"] for t in find("type=TreeItem")[:6]))
+        # the rest unmarked, so a later step's favourites start from none
+        for name in (two, shelf):
+            if select_in("id=inventory", name, 10):
+                key("ctrl+shift+f")
+                time.sleep(1.5)
+    finally:
+        show_choice(0)
+        clear_search()
+        delete_by_search(run, fold)
+
+
+def favorites_not_here(run, one):
+    """Without the stand-in (as OpenSim is): the keys say where favourites live."""
+    key("alt+4")
+    wait_focus(lambda d: d["id"] == "inventory", 4)
+    inv_search(one, one)
+    m = mark()
+    key("ctrl+shift+f")
+    run.expect("without the inventory service, Control+Shift+F says favourites aren't on this grid", ["aren't on this grid"], m, 6)
+    m = mark()
+    show_choice(4)
+    run.expect("and Show: Favorites says so in the list's place", ["aren't on this grid"], m, 6)
+    run.check("as its only line", any("aren't on this grid" in t["name"] for t in find("type=TreeItem")),
+              "; ".join(t["name"] for t in find("type=TreeItem")[:4]))
+
+
+def favorite_starts(run, nonce, procs):
+    """A landmark in the Favorites bar remembered for the account (favorite-starts.json in its state dir) and offered at
+    the login: logged out, the app started again without --autologin, Start at's favourite picked by keys, Enter, and
+    the tester arrives where the landmark points (not where it was last)."""
+    global APP_PID
+    name = f"Access Start {nonce}"
+    here = tester_where()
+    made = api("SojournPeople", "addFavorite", 20, name=name)
+    lm = made.get("item_id") or made.get("id")
+    if not run.check("(a landmark of here in the Favorites bar)", lm, json.dumps(made)[:160]):
+        return
+    state = OUT / "app" / "state" / "127.0.0.1_9700" / f"{TESTER[0]}.{TESTER[1]}".lower() / "favorite-starts.json"
+    saved = wait(lambda: (lambda t: t if name in t else None)(state.read_text(encoding="utf-8") if state.exists() else ""), 30, 1)
+    run.check("the account's start places are kept, with where the landmark points", saved and f'"Region": "{REGION}"' in saved,
+              (saved or "no file")[:200])
+    key("alt+6")
+    wait_focus(lambda d: d["id"] == "landmarks", 4)
+    key("f5")
+    bar = wait(lambda: any(t["name"].startswith("Favorites bar") for t in find("type=TreeItem")), 8)
+    run.check("Places names the folder the Favorites bar", bar, "; ".join(t["name"] for t in find("type=TreeItem")[:6]))
+    back_to_chat()
+    # away, so arriving at the landmark isn't arriving where the tester was last
+    say_in_app(TP_COMMAND)
+    away = wait(lambda: math.dist(tester_where()[:2], TP_TO[:2]) < 3, 40, 1)
+    if not run.check("(away from the landmark first, so the last location is elsewhere)", away, str(tester_where()[:2])):
+        return
+    time.sleep(2)
+
+    app = procs["app"]
+    u(f"close {app}")
+    if not run.check("(logged out and closed)", wait(lambda: not alive(app), 20, 0.5), f"pid {app}"):
+        return
+    wait(lambda: not online(*TESTER), 30, 1)
+    host, args, env = APP_LAUNCH
+    args = [a for a in args if a != "--autologin"]
+    if "--start" in args:
+        i = args.index("--start")
+        del args[i:i + 2]
+    app = APP_PID = procs["app"] = launch_hidden(host + args, env=env, cwd=APP_BIN)
+    u(f"watch {app}")
+    form = wait(lambda: next((l for l in u(f"windows {app}").splitlines() if "log in" in l), None), 60, 1)
+    if not run.check("(the login form, not logging in by itself)", form, u(f"windows {app}")):
+        return
+    try:
+        u(f"activate {app}")
+    except ToolError:
+        pass
+    key("alt+s")
+    if not run.check("(Alt+S to Start at)", wait_focus(lambda d: d["id"] == "start", 5), focus_label()):
+        return
+    seen = []
+    for _ in range(8):
+        cur = selection("id=start") or value_of("id=start")
+        seen.append(cur)
+        if name in cur:
+            break
+        key("down")
+        time.sleep(0.2)
+    cur = selection("id=start") or value_of("id=start")
+    picked = name in cur
+    run.check("Start at offers the Favorites bar landmark, after My last location and Home",
+              picked and seen[:2] == ["My last location", "Home"], " / ".join(seen))
+    if not picked:
+        return
+    run.check("named as the favorites bar's", "favorites bar" in cur, cur)
+    key("enter")
+    st = wait(lambda: (lambda s: s if s.get("connected") else None)(status()), LOGIN_SECS, 1)
+    if not run.check("Enter logs in there", st, "connected" if st else "not connected"):
+        return
+    time.sleep(3)
+    x, y, z, _ = tester_where()
+    off = math.dist((x, y), here[:2])
+    st = json.dumps(status())
+    run.check("arriving where the landmark points, not where the tester was last", REGION in st and off < 5,
+              f"{x:.0f}, {y:.0f}: {off:.1f} m from the landmark at {here[0]:.0f}, {here[1]:.0f}; status {st[:120]}")
+    try:
+        u(f"activate {app}")
+    except ToolError:
+        pass
+    wait_focus(lambda d: d["id"] == "chatInput", 15)
+    # the landmark deleted again by keys (a move to the Trash waits for the person's press, as a delete does)
+    delete_by_search(run, name)
+    clear_search()
+
+
 def inv_search(words, expect_first):
     """Control+F, the words typed, Enter: the focus back in the tree with the first match selected."""
     key("ctrl+f")
@@ -3299,11 +3609,13 @@ def more_commands(run):
     run.check("//status music answers", said, said or " / ".join(e.get("text") or "" for e in said_since(m)) or "nothing said")
 
 
-def describing(run):
+def describing(run, nonce):
     """M5 without the assistant (the test runs with --no-assistant): the first Control+D says plainly that describing
     needs it, then what the lists know, and the keys after it only what the lists know; with the renderer out of sight, SojournDescribe's pictures aimed at
-    the visitor, the fixture box and round the tester, each with what's visible in it by name."""
+    the visitor, the fixture box and round the tester, each with what's visible in it by name. First, something the
+    tester wears renamed in world is given with its inventory item's name too (with the assistant as well)."""
     back_to_chat()
+    worn_renamed(run, nonce)
     if RELAY:
         return   # (with the assistant: what's here is its absence)
     m = mark()
@@ -3363,6 +3675,44 @@ def describing(run):
     run.check("here: four views round the tester, the visitor among the people around",
               len(labels) == 4 and "ahead" in labels[0] and any(VNAME in s for s in r["subject"].get("people_within_30_metres", [])),
               "; ".join(labels))
+
+
+def worn_renamed(run, nonce):
+    """A worn thing renamed in world keeps its product's name only in the wearer's inventory item (a renamed shoulder
+    pet, a winged gryphon, was described as a cat, 2026-11-02): the person's own attachments are described with that
+    item's name beside the object's where they differ, and the object's own description."""
+    item_name, worn_name, desc = f"Access Gryphon Pet {nonce}", f"Access Kitten {nonce}", f"A small test pet {nonce}"
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+    x, y, z, _ = tester_where()
+    box = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y, z], scale=[0.2, 0.2, 0.2], name=item_name)["id"]
+    api("TesselBuild", "take", 30, ids=[box], folder_id=root)
+    item = wait(lambda: inv_items(root).get(item_name), 10)
+    if not run.check("(a pet box in the inventory)", item, ""):
+        return
+    api("TesselAgent", "attach", 30, item_id=item, point="Left Shoulder")
+    try:
+        if not run.check("(and worn on the left shoulder)", wait(lambda: attached(item), 10), ""):
+            return
+        worn = next(a["id"] for a in api("LLAgent", "getAttachedObjectsList").get("result", []) if a.get("item_id") == item)
+        api("TesselBuild", "modify", 20, id=worn, name=worn_name, desc=desc)
+        time.sleep(1)
+        names = api("SojournDescribe", "look", 30, subject="me", pictures=False).get("subject", {}).get("wearing_items_named") or []
+        mine = next((n for n in names if worn_name in n), "")
+        run.check("describing the tester: a worn thing renamed in world given with its inventory item's name and its description",
+                  f"its inventory item: {item_name}" in mine and desc in mine, mine or "; ".join(names))
+        alone = api("SojournDescribe", "look", 30, subject=worn, pictures=False).get("subject", {})
+        run.check("(and described on its own, its inventory item too)", alone.get("name") == worn_name and alone.get("its_inventory_item") == item_name,
+                  json.dumps(alone)[:300])
+        others = [n for v in [visitor_id()] if v
+                  for n in api("SojournDescribe", "look", 30, subject=v, pictures=False).get("subject", {}).get("wearing_items_named") or []]
+        run.check("(others' worn things by their object names only)", not any("inventory item" in n for n in others), "; ".join(others) or "none worn")
+        if not RELAY:
+            m = mark()
+            key("ctrl+shift+d")
+            run.expect("Control+Shift+D without the assistant: the renamed thing and its inventory item said",
+                       ["What the lists know", worn_name, item_name], m, 10)
+    finally:
+        api("TesselAgent", "detach", 30, item_id=item)
 
 
 def describing_looks(run, nonce):
@@ -3975,7 +4325,8 @@ def gated(run, what, pump, op, timeout=60, **args):
 def huds(run, nonce):
     """HUD buttons as parts (M2): a HUD of two prims made and worn (a base, and a button "Play" whose script says when
     it's pressed); Objects' Show: Your HUDs lists it; its parts are the base and Play; Enter on Play presses it. And
-    what's worn by name (Ctrl+Shift+W, //outfit) has it among the HUDs."""
+    what's worn by name (Ctrl+Shift+W, //outfit) has it among the HUDs; Delete on it there takes it off (the blind tester
+    found no way to take a HUD off from that list, 2026-11-02)."""
     name = f"Access HUD {nonce}"
     root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
     x, y, z, _ = tester_where()
@@ -4021,6 +4372,14 @@ def huds(run, nonce):
             key("enter")
             run.expect("Enter on Play presses it", ["Touched Play"], m, 10)
             run.heard_by_visitor("its script says it was pressed, on its own prim", lambda d: "Access HUD pressed, link 2" in d["msg"], n, 10, "pressed, link 2")
+        key("alt+shift+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        if run.check("(back on it in what you wear)", select_in("id=objects", name), selected_text("id=objects")):
+            m = mark()
+            key("del")
+            run.expect("Delete on something worn takes it off", [f"Took off {name}"], m, 10)
+            off = wait(lambda: not attached(item) or None, 10)
+            run.check("and it's off", off, "" if off else "still attached")
     finally:
         try:   # Show back to things nearby, whatever stopped the step (the placing step lists them)
             key("alt+7")
@@ -4029,7 +4388,8 @@ def huds(run, nonce):
             key("up")
         except Exception:
             pass
-        api("TesselAgent", "detach", 30, item_id=item)
+        if attached(item):
+            api("TesselAgent", "detach", 30, item_id=item)
         back_to_chat()
 
 
@@ -5808,6 +6168,10 @@ def distance_walked(run):
     key("f3")
     if not run.check("(F3: walk mode)", wait_focus(lambda d: d["id"] == "walkPad", 5), focus_label()):
         return
+    # the count from here: what earlier steps walked (the warning's step walks toward its gate) isn't this step's
+    m = mark()
+    key("shift+m")
+    run.expect("(the count starts here)", ["Counting from here."], m, 5)
 
     def stretch(keyname, taps, what, way=None):
         time.sleep(1.5)
@@ -5870,10 +6234,14 @@ def rail_switches(run):
     """Rail switches while riding (Walk/WalkMode.Switches.cs; the blind tester took two wrong turns on her partner's train,
     2026-11-01). On a flat stretch of Atelier East found first, the visitor's two switches as the SLRR standard has them
     (`switch`: a "Switch Stand" whose description says Main or Branch, a touch part, two guide rails that swap names and
-    phantom) 30 m apart, and its kart heading east toward them. Seated, in walk mode, a held Up drives: the first switch
-    said once with its setting and the switch cue; W says it ahead with both ways' names; Shift+W touches its stand and
-    says the new setting (the visitor hears the stand set); //switch, //switch main and //switch main again (already);
-    then driving on past both, the second said once and the first not again. Needs no renderer."""
+    phantom) 30 m apart, the second's rails in sections of their own reaching 43 m past its stand as the Linden
+    railroad's do (`switch ... long`; the tester's first run on real track, 2026-11-02, heard "unknown" switches that
+    were most likely such rails), and its kart heading east toward them. Seated, in walk mode, a held Up drives: the
+    first switch said once with its setting and the switch cue; W says it ahead with both ways' names; Shift+W touches
+    its stand and says the new setting (the visitor hears the stand set); //switch, //switch main and //switch main
+    again (already); then driving on past both, the second said once (not its rails as a switch of their own) and the
+    first not again; the session log names each stand found with its description, and the rails as its parts. Needs
+    no renderer."""
     back_to_chat()
     m = mark()
     say_in_app(f"//tp {COURSE_REGION}/100/60/40")
@@ -5903,10 +6271,10 @@ def rail_switches(run):
         return
     try:
         made = []
-        for x, ch in ((a, 133), (b, 134)):
-            visitor_tp(x, y + 8, g(x) + 1.5)
+        for x, ch, more in ((a, 133, ""), (b, 134, " long")):
+            visitor_tp(x + (10 if more else 0), y + 8, g(x) + 1.5)   # in chat range of the stand, its rails in reach
             time.sleep(1.5)
-            made.append(v(f"switch {x} {y} {g(x)} {ch}", timeout=60))
+            made.append(v(f"switch {x} {y} {g(x)} {ch}{more}", timeout=90))
         if not run.check("the visitor's two switches are out, their scripts running", all(r.startswith("switch") for r in made), " | ".join(made)):
             return
         visitor_tp(x0, y - 5, g(x0) + 1.5)
@@ -5980,10 +6348,20 @@ def rail_switches(run):
         time.sleep(2)
         lines = [e.get("text") or "" for e in said_since(m) if (e.get("text") or "").startswith("Switch in")]
         print(f"     (passing both, at {walk_pos()[0]:.1f}: {lines})")
-        run.check("driving on past both: the next one said once, the one passed not again",
+        run.check("driving on past both: the next one said once, not its rails beyond it, the one passed not again",
                   len(lines) == 1 and SWITCH_LINE.match(lines[0]), " | ".join(lines) or "none said")
         key("esc")
         wait_focus(lambda d: d["id"] == "chatInput", 5)
+        logs = sorted((OUT / "app" / "logs").glob("*.log"), key=lambda p: p.stat().st_mtime)
+        log = logs[-1].read_text(encoding="utf-8", errors="replace") if logs else ""   # this session's
+        found = re.findall(r"switch: found Switch Stand .*", log)
+        run.check("the session log names each stand found, with its description as written",
+                  len(found) >= 2 and all("~North Station~East Yard~" in f for f in found), " | ".join(found[:3]) or "none")
+        parts = re.findall(r"switch: Alternate Guide .*: (part of .*|a switch of its own.*)", log)
+        far = [p_ for p_ in parts if re.search(r", (2[5-9]|[3-9]\d) m from it", p_)]
+        run.check("and the far rails as parts of their own switch",
+                  parts and all(p_.startswith("part of Switch Stand") for p_ in parts)
+                  and far and all(f" {b}, " in p_ for p_ in far), " | ".join(parts[:6]) or "none")
     finally:
         say_in_app("//stand")
         time.sleep(1)

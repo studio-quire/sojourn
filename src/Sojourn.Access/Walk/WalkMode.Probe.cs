@@ -17,6 +17,9 @@ public sealed partial class WalkMode
     readonly Dictionary<uint, long> _doorsTold = new();
     string? _warnedKey;
     long _warnedAt, _clearSince, _edgeAt, _waterAt;
+    /// <summary>Seated: what's been met ahead, by object, with how far it was when first met (to tell what the vehicle
+    /// is closing on from what stays ahead of it round a curve), when it was last met and when it was last warned of.</summary>
+    readonly Dictionary<string, (float D0, long T0, long Seen, long Warned)> _ahead = new();
     float _lastSpeedTold;
     long _speedToldAt;
 
@@ -116,7 +119,8 @@ public sealed partial class WalkMode
         string cue = b.Sitting ? "vehicle" : "walls";
         var front = Nearer(h[0], h[1]);
         if (front is { Avatar: false } far && far.Distance > look) KnowName(far);
-        if (moving && (On || b.Sitting) && front is { } hit && hit.Distance <= look)
+        if (b.Sitting) { if (moving) Approach(front, look, speed, cue, b, moveYaw, now); }
+        else if (moving && On && front is { } hit && hit.Distance <= look)
         {
             var key = (hit.Avatar ? "a" : "p") + RootId(hit);
             if (key != _warnedKey || now - _warnedAt > 4000)
@@ -161,6 +165,30 @@ public sealed partial class WalkMode
             }
         }
         else if (!b.Sitting && _track.Count > 0) { _track.Clear(); _lastSpeedTold = _settling = 0; }
+    }
+
+    /// <summary>Seated: a warning only for what the vehicle is closing on, at about its own speed, met for 0.4 s or more,
+    /// each thing once in 4 s. On a train a straight ray from the seat meets the track's own pieces and guides ahead on
+    /// every curve, staying about as far ahead as the track bends away (the blind tester's ride of 2026-11-02 had 157
+    /// such warnings, "Atoll Railroad Section, 20 metres." five times in three seconds, two things taking turns); what's
+    /// really in the way comes nearer as fast as the vehicle goes.</summary>
+    void Approach(CollideHit? front, float look, float speed, string cue, Body b, float moveYaw, long now)
+    {
+        if (_ahead.Count > 0)
+        {
+            List<string>? gone = null;
+            foreach (var (k, v) in _ahead) if (now - v.Seen > 1500) (gone ??= new()).Add(k);
+            if (gone != null) foreach (var k in gone) _ahead.Remove(k);
+        }
+        if (front is not { } hit || hit.Distance > look * 2) return;
+        var key = (hit.Avatar ? "a" : "p") + RootId(hit);
+        if (!_ahead.TryGetValue(key, out var a)) { _ahead[key] = (hit.Distance, now, now, 0); return; }
+        _ahead[key] = a with { Seen = now };
+        float secs = (now - a.T0) / 1000f, closed = a.D0 - hit.Distance;
+        if (hit.Distance > look || secs < 0.4f || closed < Math.Max(0.5f, speed * secs * 0.5f) || now - a.Warned < 4000) return;
+        _ahead[key] = a with { Seen = now, Warned = now };
+        var name = Obstacle(hit);
+        Cue(cue, IsDoor(name) ? CueSounds.Cue.Door : CueSounds.Cue.Wall, $"{name}, {Bearings.Metres(hit.Distance)}.", b, moveYaw);
     }
 
     readonly Queue<(long T, Vector3 P)> _track = new();

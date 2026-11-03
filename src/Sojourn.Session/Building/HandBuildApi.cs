@@ -30,7 +30,10 @@ public sealed class HandBuildApi : LeapApi
             return _m.State();
         });
         Op("state", "{} -> {on, selected?: {id, name, pos, rot_euler}, holding?: {id, name, pos, rot_euler}, last?: {id, name, from, to, rot_euler, "
-            + "moved_m, turned_deg, result: moving | placed | refused (the region kept it where it was) | moved elsewhere | gone, ago_s}}", _ => _m.State());
+            + "moved_m, turned_deg, result: moving | placed | refused (the region kept it where it was) | partly refused (the region took it "
+            + "part of the way, as far as the land allows: 'to' is where it stopped) | nudged (the region adjusted it a few cm) | moved elsewhere "
+            + "(physics or a script, no refusal) | gone, put? (where their hand put it), off_m?, region_said? (the region's refusal notice "
+            + "that answered the drag, e.g. \"Can't rotate -- permission denied\" when the land there doesn't allow their objects), ago_s}}", _ => _m.State());
         Op("straighten", "{id, level?} -> {id, name, pos, rot_euler, turned_deg}: its rotation back to none (the edit floater's 0,0,0), or with "
             + "level: true only its tilt taken out, keeping which way it faces; the whole linkset turns about its middle, so it stays where it is. "
             + "One undo step. Works whether or not building by hand is on", a =>

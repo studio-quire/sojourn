@@ -2959,21 +2959,21 @@
     "de": "Genau lesen, was der Bericht enthält, bevor er rausgeht.",
     "zh-Hans": "发送前，先仔细读一遍报告里有什么。"
   },
-  "Sends the report with your Studio Quire token. It's kept for 30 days.": {
-    "_": "settings menu: the tip on the 'send to Studio Quire' row in the 'report a problem' group of the about section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences; Studio Quire is a name; the token is the person's Studio Quire relay token",
-    "zh": "用你的 Studio Quire 權杖送出報告。會保留 30 天。",
-    "it": "Invia il rapporto con il tuo token di Studio Quire. Viene conservato per 30 giorni.",
-    "es": "Envía el informe con tu token de Studio Quire. Se guarda 30 días.",
-    "pt": "Envia o relatório com a sua credencial do Studio Quire. Ele fica guardado por 30 dias.",
-    "ja": "Studio Quireのトークンでレポートを送ります。30日間保管されます。",
-    "tr": "Raporu Studio Quire token'ınızla gönderir. 30 gün saklanır.",
-    "fr": "Envoie le rapport avec votre jeton Studio Quire. Il est conservé 30 jours.",
-    "da": "Sender rapporten med dit Studio Quire-token. Den gemmes i 30 dage.",
-    "ru": "Отправляет отчёт с вашим токеном Studio Quire. Он хранится 30 дней.",
-    "pl": "Wysyła raport z twoim tokenem Studio Quire. Jest przechowywany przez 30 dni.",
-    "az": "Hesabatı Studio Quire tokeninizlə göndərir. 30 gün saxlanılır.",
-    "de": "Sendet den Bericht mit Ihrem Token für Studio Quire. Er wird 30 Tage aufbewahrt.",
-    "zh-Hans": "用你的 Studio Quire 令牌发送报告。会保留 30 天。"
+  "Sends the report to Studio Quire. It's kept for 30 days.": {
+    "_": "settings menu: the tip on the 'send to Studio Quire' row in the 'report a problem' group of the about section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences; Studio Quire is a name",
+    "zh": "把報告送到 Studio Quire。會保留 30 天。",
+    "it": "Invia il rapporto a Studio Quire. Viene conservato per 30 giorni.",
+    "es": "Envía el informe a Studio Quire. Se guarda 30 días.",
+    "pt": "Envia o relatório ao Studio Quire. Ele fica guardado por 30 dias.",
+    "ja": "レポートをStudio Quireに送ります。30日間保管されます。",
+    "tr": "Raporu Studio Quire'a gönderir. 30 gün saklanır.",
+    "fr": "Envoie le rapport à Studio Quire. Il est conservé 30 jours.",
+    "da": "Sender rapporten til Studio Quire. Den gemmes i 30 dage.",
+    "ru": "Отправляет отчёт в Studio Quire. Он хранится 30 дней.",
+    "pl": "Wysyła raport do Studio Quire. Jest przechowywany przez 30 dni.",
+    "az": "Hesabatı Studio Quire-a göndərir. 30 gün saxlanılır.",
+    "de": "Sendet den Bericht an Studio Quire. Er wird 30 Tage aufbewahrt.",
+    "zh-Hans": "把报告发送给 Studio Quire。会保留 30 天。"
   },
   "Saves the report as a file and opens GitHub's issues page on the PC, to attach it there.": {
     "_": "settings menu: the tip on the 'save for GitHub' row in the 'report a problem' group of the about section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences; GitHub is a name; issues: GitHub's issues (bug reports)",

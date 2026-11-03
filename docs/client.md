@@ -389,10 +389,11 @@ Written by Claude Opus 5.5, 2026-11-01 (batch R; the TPV policy's side in `docs/
   folder and public addresses masked), with the person's note, and for a crash how it ended (the exit code in words)
   and the .NET runtime's last words from the console ("Unhandled exception." or "Fatal error." and its frames), folded
   into the log before filtering so the same filter covers them. It goes to the studio relay (`LogSend.cs`, shared
-  with Access; `kind` and `exit_code` beside Access's fields): with a Studio Quire token kept (`ProviderKeys`, the
-  launcher's key box) to `/relay/log` as Access's logs go, without one to `/relay/report`, which takes Sojourn's reports
-  from anyone within its limits (three a day from one address, fifty a day in all; the address itself isn't kept;
-  `tools/relay/README.md`; the user's ask, 2026-11-01). Either way kept 30 days. Or, the person's other choice, it's
+  with Access; `kind` and `exit_code` beside Access's fields): from the VR client and its launcher always without a
+  token (they offer no Studio Quire token: `ProviderKeys.RelayOffered`, the user, 2026-11-02) to `/relay/report`, which
+  takes Sojourn's reports from anyone within its limits (three a day from one address, fifty a day in all; the address itself isn't kept;
+  `tools/relay/README.md`; the user's ask, 2026-11-01); in Sojourn Access, whose assistant can send one through the same
+  op, with its tester's token to `/relay/log` as its logs go. Either way kept 30 days. Or, the person's other choice, it's
   saved as `reports/sojourn-<kind>-<time>.txt` in the base dir (the newest ten kept), shown in Explorer, and GitHub's
   new-issue page opens for them to attach it.
 - **Report a problem**: the menu's page says what goes and where, reviews it in the reader, and sends it (send to

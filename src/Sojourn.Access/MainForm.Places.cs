@@ -7,7 +7,7 @@ using Sojourn.Core.Agents;
 namespace Sojourn.Access;
 
 /// <summary>
-/// Places (Alt+6): landmarks by folder (the Landmarks folder and Favorites), the teleport history, a box to go to a
+/// Places (Alt+6): landmarks by folder (the Landmarks folder and the Favorites bar), the teleport history, a box to go to a
 /// region by name (or an SLurl, or "Region 128 64 22"), and the regions around on the map with how many are there.
 /// Enter teleports from any of them and the arrival is said ("Arrived in Bay City, at 128, 64, 22."). The lists are
 /// read when the area opens and on F5, never changed under the person otherwise.
@@ -184,7 +184,7 @@ public sealed partial class MainForm
             }
             return kids.Count > 0 ? new(id.ToString(), name, null, kids) : null;
         }
-        var folders = new[] { (FolderType.Landmark, "Landmarks"), (FolderType.Favorites, "Favorites") }
+        var folders = new[] { (FolderType.Landmark, "Landmarks"), (FolderType.Favorites, "Favorites bar") }
             .Select(t => (Id: inv.FolderFor(t.Item1), Name: t.Item2)).Where(t => t.Id != UUID.Zero).ToList();
         var tops = await Task.Run(async () =>
         {

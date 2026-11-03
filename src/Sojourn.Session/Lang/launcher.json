@@ -431,22 +431,6 @@
     "de": "Anthropic-API",
     "zh-Hans": "Anthropic API"
   },
-  "Studio relay": {
-    "_": "launcher settings, an option in the assistant's segmented control (~12 chars): Studio Quire's relay, the studio's own service for people it covers",
-    "zh": "工作室中繼",
-    "it": "Relay Studio",
-    "es": "Relé del estudio",
-    "pt": "relay Studio",
-    "ja": "スタジオのリレー",
-    "tr": "Stüdyo aktarıcı",
-    "fr": "Relais Studio",
-    "da": "Studio-relæ",
-    "ru": "через студию",
-    "pl": "Przez studio",
-    "az": "Studiya releyi",
-    "de": "Studio-Relay",
-    "zh-Hans": "工作室中继"
-  },
   "your agent": {
     "_": "launcher settings, an option in the assistant's segmented control (~12 chars, 4-5 options on two rows): the person's own AI agent on their PC (such as Claude Code) acts as the assistant; lowercase, as the UI",
     "zh": "你的 AI 代理",
@@ -607,38 +591,6 @@
     "de": "{0} vergessen",
     "zh-Hans": "忘记 {0}"
   },
-  "key or token": {
-    "_": "launcher settings, the hint in the key field while no provider is chosen: paste an API key (Anthropic, OpenRouter) or a Studio Quire token; lowercase, ~25 chars",
-    "zh": "金鑰或權杖",
-    "it": "chiave o token",
-    "es": "clave o token",
-    "pt": "chave ou credencial",
-    "ja": "キーまたはトークン",
-    "tr": "anahtar veya token",
-    "fr": "clé ou jeton",
-    "da": "nøgle eller token",
-    "ru": "ключ или токен",
-    "pl": "klucz lub token",
-    "az": "açar və ya token",
-    "de": "Schlüssel oder Token",
-    "zh-Hans": "密钥或令牌"
-  },
-  "forget the token?": {
-    "_": "launcher settings, the hint in the greyed key field after the first press of ×: press it again to forget the kept Studio Quire token; lowercase",
-    "zh": "要忘記權杖嗎？",
-    "it": "dimenticare il token?",
-    "es": "¿olvidar el token?",
-    "pt": "esquecer a credencial?",
-    "ja": "トークンを削除しますか？",
-    "tr": "token unutulsun mu?",
-    "fr": "oublier le jeton ?",
-    "da": "glem tokenet?",
-    "ru": "забыть токен?",
-    "pl": "zapomnieć token?",
-    "az": "token unudulsun?",
-    "de": "Token vergessen?",
-    "zh-Hans": "要忘记令牌吗？"
-  },
   "forget the key?": {
     "_": "launcher settings, as \"forget the token?\" for a kept API key; lowercase",
     "zh": "要忘記金鑰嗎？",
@@ -656,7 +608,7 @@
     "zh-Hans": "要忘记密钥吗？"
   },
   "{0} kept": {
-    "_": "launcher, the hint in the greyed key field and a note at the foot; {0} is what's kept, translated: \"Anthropic key\", \"OpenRouter key\" or \"Studio Quire token\"; lowercase",
+    "_": "launcher, the hint in the greyed key field and a note at the foot; {0} is what's kept, translated: \"Anthropic key\" or \"OpenRouter key\"; lowercase",
     "zh": "已保存 {0}",
     "it": "{0} in memoria",
     "es": "{0} en este PC",
@@ -1022,22 +974,6 @@
     "az": "OpenRouter açarı",
     "de": "OpenRouter-Schlüssel",
     "zh-Hans": "OpenRouter 密钥"
-  },
-  "Studio Quire token": {
-    "_": "launcher, as \"Anthropic key\", a token for Studio Quire's relay (Studio Quire is the studio's name)",
-    "zh": "Studio Quire 權杖",
-    "it": "token di Studio Quire",
-    "es": "token de Studio Quire",
-    "pt": "credencial do Studio Quire",
-    "ja": "Studio Quireトークン",
-    "tr": "Studio Quire token'ı",
-    "fr": "jeton Studio Quire",
-    "da": "Studio Quire-token",
-    "ru": "токен Studio Quire",
-    "pl": "token Studio Quire",
-    "az": "Studio Quire tokeni",
-    "de": "Token für Studio Quire",
-    "zh-Hans": "Studio Quire 令牌"
   },
   "update to {0}": {
     "_": "launcher, a small word key at the foot beside the version: download and install the newer version {0} (like 0.1.0.812); lowercase",

@@ -311,6 +311,13 @@ between pictures. What it was (Claude Opus 5.5; `tools/accesssoak.py` reproduces
 - The collision model now logs what it holds every five minutes (`collision: ... shapes (N MB)`), so the next long log
   says how big it gets on SL.
 
+Her next long log (0.1.0.811, 2026-11-02, 108 minutes, most of it seated on a train through about 180 regions): the
+process 1.1-1.9 GB, the heap 1.2-1.7 GB (a full collection leaving 0.5-0.8 GB in gen2 and 0.6-0.9 GB large, up to 0.7
+fragmented), 77 s of collection pauses (about 0.7 s a minute); 118 GB allocated, 25-31 MB/s while riding and 3-5 MB/s
+still. The collision model held 43-379 MB. So the footprint came down but the allocation didn't (about 5 MB/s still and
+10-30 moving on 718): moving through regions allocates as much as ever, SL's update traffic and what reacts to it (new regions' objects, shapes
+built and let go), not reproduced on the perf grid yet. The next lever, not started.
+
 Measured on the perf grid's eight places (`tools/accesssoak.py`, the view on the processor, LP_NUM_THREADS=8, a
 description's four pictures every 5 minutes so it's drawn whole; before = the code just after 0.1.0.737):
 
@@ -375,7 +382,9 @@ rather than answering without them; warm pictures about 0.5 s (no shadows). Not 
 frame cost 27 times ours where her processor is about 2.5 times slower, so most of it is her places' content (and
 perhaps the processor's other users at login: the assistant's start, decoding hundreds of textures, the screen reader;
 the view's threads run below normal priority). Each picture's and warm-up step's log line now says how busy the
-processor was meanwhile and this app's share, which her next log will answer.
+processor was meanwhile and this app's share. Her log of 2026-11-02 (0.1.0.811): the first frame 25.4 s (the processor
+20% busy meanwhile, this app 10% of it), the warm-up 47.9 s (29%, 22%), done 99 s after login, as predicted; the
+processor was mostly idle, so it's the compiling going one thread at a time, not other programs.
 
 ## Threads
 

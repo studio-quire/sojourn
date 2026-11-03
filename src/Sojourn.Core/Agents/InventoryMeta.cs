@@ -32,11 +32,23 @@ public sealed class InventoryMeta
     /// <summary>J2C to pixel planes (the client sets the renderer's OpenJPEG; LibreMetaverse's own decoder without it).</summary>
     public static Func<byte[], int, (byte[][] Planes, int Width, int Height)?>? Decoder { get; set; }
 
-    Uri Cap()
-    {
-        var cap = C.Network.CurrentSim?.Caps?.CapabilityURI(InventoryAISClient.INVENTORY_CAP_NAME);
-        return cap ?? throw new LeapError("this grid has no inventory service for thumbnails and favourites (InventoryAPIv3: Second Life has it)");
-    }
+    /// <summary>A stand-in for the inventory service on a grid without one (tests only: OpenSim has no AIS3), its base
+    /// URL; never used where the region offers the real one.</summary>
+    static readonly string? TestService = Environment.GetEnvironmentVariable("SOJOURN_TEST_AIS") is { Length: > 0 } t ? t.TrimEnd('/') : null;
+
+    Uri? CapOrNull() => C.Network.CurrentSim?.Caps?.CapabilityURI(InventoryAISClient.INVENTORY_CAP_NAME)
+                        ?? (TestService != null ? new Uri(TestService) : null);
+
+    Uri Cap() => CapOrNull() ?? throw new LeapError("this grid has no inventory service for thumbnails and favourites (InventoryAPIv3: Second Life has it)");
+
+    /// <summary>Whether this grid's region offers the inventory service (Second Life does; OpenSim doesn't).</summary>
+    public bool Available => _s.Client is not null && CapOrNull() is not null;
+
+    /// <summary>Whether the whole inventory's favourites have been read this session (FavoritesAsync).</summary>
+    public bool Swept => _swept;
+
+    /// <summary>An item's or folder's favourite flag as known (read from the service, or set here), without asking.</summary>
+    public bool IsFavorite(UUID id) => _meta.TryGetValue(id, out var m) && m.Fav;
 
     // ---------- reading ----------
 
@@ -171,19 +183,34 @@ public sealed class InventoryMeta
 
     // ---------- changing ----------
 
+    /// <summary>A partial update (AIS PATCH), as LibreMetaverse's UpdateItemAsync/UpdateCategoryAsync send it, but to
+    /// Cap(), so a test's stand-in gets the same request.</summary>
     async Task PatchAsync(UUID id, OSDMap updates, CancellationToken ct)
     {
-        Cap();
+        var cap = Cap();
         bool folder = _s.Inventory.Node(id) is InventoryFolder;
         if (!folder && _s.Inventory.Node(id) is null && await _s.Inventory.ItemAsync(id, ct) is null) throw new LeapError($"no item or folder {id} in my inventory");
-        bool ok = folder ? await C.AisClient.UpdateCategoryAsync(id, updates, ct) : await C.AisClient.UpdateItemAsync(id, updates, ct);
-        if (!ok) throw new LeapError("the inventory service refused the change");
+        using var request = new HttpRequestMessage(HttpMethod.Patch, new Uri($"{cap}/{(folder ? "category" : "item")}/{id}"));
+        request.Content = new StringContent(OSDParser.SerializeLLSDXmlString(updates), System.Text.Encoding.UTF8, HttpCapsClient.LLSD_XML);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(30));
+        using var reply = await C.HttpCapsClient.SendAsync(request, cts.Token);
+        if (!reply.IsSuccessStatusCode)
+        {
+            _s.Log.LogInformation("inventory service: PATCH {Id} answered {Status}", id, (int)reply.StatusCode);
+            throw new LeapError($"the inventory service refused the change (HTTP {(int)reply.StatusCode})");
+        }
     }
 
+    /// <summary>An item or folder marked or unmarked, as the viewer's set_favorite: a link's mark goes on what it links
+    /// to (links show their original's), nothing in the Library or Trash is marked, and unmarking sends an undefined
+    /// "favorite" as the viewer does.</summary>
     public async Task<JsonObject> SetFavoriteAsync(UUID id, bool on, CancellationToken ct)
     {
+        if (_s.Inventory.Node(id) is InventoryItem { AssetType: AssetType.Link or AssetType.LinkFolder } link && link.AssetUUID != UUID.Zero) id = link.AssetUUID;
         if (_s.InventoryOps.InLibrary(id)) throw new LeapError("that's in the Library; copy it first");
-        await PatchAsync(id, new OSDMap { ["favorite"] = new OSDMap { ["toggled"] = OSD.FromBoolean(on) } }, ct);
+        if (on && _s.Inventory.Node(id) is { } node && Under(node, _s.Inventory.FolderFor(FolderType.Trash))) throw new LeapError("that's in the Trash");
+        await PatchAsync(id, new OSDMap { ["favorite"] = on ? new OSDMap { ["toggled"] = OSD.FromBoolean(true) } : new OSD() }, ct);
         var m = _meta.TryGetValue(id, out var k) ? k : (UUID.Zero, false);
         _meta[id] = (m.Item1, on);
         return new JsonObject { ["id"] = id.ToString(), ["favorite"] = on };

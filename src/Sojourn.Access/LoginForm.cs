@@ -71,13 +71,11 @@ public sealed class LoginForm : Form
         _grid.SelectedIndex = at;
         _user.Text = opt.User ?? settings.LastUser ?? "";
         _password.Text = opt.Password ?? "";
-        // where to start: last, home, a place given on the command line, or another typed in
-        var start = AccessOptions.StartFor(opt.Start ?? settings.LastStart ?? "last");
-        _start.Items.Add(new Choice("My last location", "last"));
-        _start.Items.Add(new Choice("Home", "home"));
-        if (start is not ("last" or "home")) _start.Items.Add(new Choice(PlaceWords(start), start));
-        _start.Items.Add(new Choice(OtherPlace, ""));
-        _start.SelectedIndex = start switch { "last" => 0, "home" => 1, _ => 2 };
+        // where to start: last, home, the account's Favorites bar landmarks, a place given on the command line, or another
+        // typed in (the list follows the grid and username: FillStarts)
+        _baseDir = opt.BaseDir;
+        _given = AccessOptions.StartFor(opt.Start ?? settings.LastStart ?? "last");
+        FillStarts(_given);
 
         var table = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill };
         int tab = 0;
@@ -104,7 +102,9 @@ public sealed class LoginForm : Form
         _status.Text = $"Sojourn Access {AppInfo.Version}";
         Controls.Add(table);
 
-        _grid.SelectedIndexChanged += (_, _) => _gridUri.Visible = _gridUriLabel.Visible = Picked(_grid) == "";
+        _grid.SelectedIndexChanged += (_, _) => { _gridUri.Visible = _gridUriLabel.Visible = Picked(_grid) == ""; FillStarts(Picked(_start)); };
+        _gridUri.TextChanged += (_, _) => FillStarts(Picked(_start));
+        _user.TextChanged += (_, _) => FillStarts(Picked(_start));
         _start.SelectedIndexChanged += (_, _) => _place.Visible = _placeLabel.Visible = Picked(_start) == "";
         _showPassword.CheckedChanged += (_, _) => _password.UseSystemPasswordChar = !_showPassword.Checked;
 
@@ -118,6 +118,35 @@ public sealed class LoginForm : Form
     }
 
     static string Picked(ComboBox c) => (c.SelectedItem as Choice)?.Value ?? "";
+
+    readonly string _baseDir;
+    readonly string _given;
+    List<StartPlaces.Place> _favorites = new();
+
+    /// <summary>Whether a start is one of the account's Favorites bar landmarks (remembered as the last start, unlike
+    /// a place typed once).</summary>
+    public bool IsFavoriteStart(string start) => _favorites.Any(f => f.Start == start);
+
+    /// <summary>Start at's choices for the grid and username as they stand: My last location, Home, each landmark in
+    /// that account's Favorites bar as it was when last in world ("Harbour, favorites bar"), the place given if it's
+    /// none of those, Another place; what was chosen stays chosen where it's still there.</summary>
+    void FillStarts(string keep)
+    {
+        var grid = Picked(_grid) is { Length: > 0 } g ? g : AccessOptions.GridFor(_gridUri.Text);
+        var (first, last) = AccessOptions.SplitName(_user.Text);
+        _favorites = grid.Length > 0 && first.Length > 0 ? StartPlaces.Load(StartPlaces.StateDir(_baseDir, grid, first, last)) : new();
+        var choices = new List<Choice> { new("My last location", "last"), new("Home", "home") };
+        choices.AddRange(_favorites.Select(f => new Choice($"{f.Name}, favorites bar", f.Start)));
+        if (_given is not ("last" or "home") && choices.All(c => c.Value != _given)) choices.Add(new(PlaceWords(_given), _given));
+        choices.Add(new(OtherPlace, ""));
+        if (_start.Items.Count == choices.Count && choices.Select((c, i) => c == (Choice)_start.Items[i]!).All(x => x)) return;
+        _start.BeginUpdate();
+        _start.Items.Clear();
+        _start.Items.AddRange(choices.ToArray());
+        int at = choices.FindIndex(c => c.Value == keep);
+        _start.SelectedIndex = at >= 0 ? at : 0;
+        _start.EndUpdate();
+    }
 
     static bool SameUri(string a, string b) => string.Equals(a.Trim().TrimEnd('/'), b.Trim().TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
 

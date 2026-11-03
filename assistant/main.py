@@ -26,6 +26,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from api import Api, ApiError  # noqa: E402
 
 os.environ.pop("CLAUDE_CODE_PLUGIN_DIRS", None)  # the user's own Claude Code mods stay out of the assistant
+# how long the SDK waits for Claude Code to start (its initialize; the SDK reads this, in ms, default a minute): a tester's
+# 2018 processor took 12-38 s on a good day and over 60 s once, at login beside the view's compiling (2026-11-02)
+os.environ.setdefault("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT", "240000")
 # whose models answer is the person's setting (provider.py), not whatever this PC's environment happens to say
 for _k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"):
     os.environ.pop(_k, None)

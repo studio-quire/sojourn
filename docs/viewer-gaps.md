@@ -332,7 +332,7 @@ Done:
   the menu's about section in the headset and on the desktop (version, disclaimer, credit, licence and source,
   support, third-party notices); report a problem from the menu or by asking the assistant, and after a crash the
   launcher's window (ask by default, always, never; `docs/launcher.md` > After a crash), both the log filtered as
-  Access's, sent to the studio relay (with a Studio Quire token, or without one within its limits) or saved for a
+  Access's, sent to the studio relay (without a token, within its limits) or saved for a
   GitHub issue; the `ViewerStats` report (2.h), the MAC and serial left out (the user's call, 2026-11-01).
 - **LGPL source published**: the public snapshot since 2026-10-29 (`docs/publishing.md`).
 - **Sojourn Access's package** (2026-10-29): `docs/access-app.md` > Packaging.
@@ -352,7 +352,7 @@ Done:
   row (`Control/MenuGuide.cs`).
 - **The assistant for people who aren't us**, mostly settled: the person's own provider (a Claude account, an
   Anthropic key or OpenRouter, 2026-10-29), no Claude-account sign-in in released builds (the user, 2026-10-30), and
-  the studio relay for people the studio covers; `docs/assistant.md` > Switching it on. What's still open: Waiting.
+  the studio relay for people the studio covers in Sojourn Access only (the user, 2026-11-02); `docs/assistant.md` > Switching it on. What's still open: Waiting.
 
 ## Closing the rest
 

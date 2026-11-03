@@ -10,6 +10,9 @@ static class Program
     static int Main(string[] args)
     {
         var opt = AccessOptions.Parse(args);
+        // Studio Quire's relay as the assistant's provider is Access's alone (the people the studio covers are here); the
+        // VR client and its launcher leave it off (Sojourn.Session's ProviderKeys.RelayOffered)
+        Sojourn.Session.Assistant.ProviderKeys.RelayOffered = true;
         ApplicationConfiguration.Initialize();
         Application.AddMessageFilter(RealInput.Filter);
         RealInput.Start();
@@ -64,7 +67,7 @@ sealed class AccessApp : ApplicationContext
         RealInput.Detach();
         _settings.LastGrid = choice.Grid;
         _settings.LastUser = choice.Last == "Resident" ? choice.First : $"{choice.First} {choice.Last}";
-        _settings.LastStart = choice.Start.StartsWith("uri:") ? null : choice.Start;
+        _settings.LastStart = choice.Start.StartsWith("uri:") && !_login.IsFavoriteStart(choice.Start) ? null : choice.Start;
         _settings.Save();
         if (_main != null && _sessionFor != null)
         {

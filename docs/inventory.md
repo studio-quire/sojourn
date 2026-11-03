@@ -52,7 +52,13 @@ viewer's `update_inventory_item`/`update_inventory_category` do.
   for it, as the viewer's floater does. The viewer refuses a texture that isn't square; this crops it and says so.
 - `favorites {refresh?}` (the viewer's Favorites tab): the whole tree read from the service once a session (a
   subtree at a time; one the service finds too big, HTTP 403, split by its folders, four at a time), then kept by our
-  own changes; with each favourite's path and thumbnail. `favorite {id, on}`.
+  own changes; with each favourite's path and thumbnail. The official viewer needs no such sweep (its own fetch,
+  AIS or the old caps' "metadata", carries every flag); LibreMetaverse's drops them. Sojourn Access runs it once
+  after login (`docs/access-app.md` > Keys, Favorites). `favorite {id, on}`, as the viewer's `set_favorite`: a link's
+  mark goes on what it links to, nothing in the Library or Trash is marked, and unmarking sends an undefined
+  `"favorite"` (the viewer's `LLSD()`), not `toggled: false`. Changes go out as PATCH to the cap ourselves, as
+  LibreMetaverse's `UpdateItemAsync` would, so a test's stand-in (`SOJOURN_TEST_AIS`, a base URL used only when the
+  region has no InventoryAPIv3) gets the same request.
 - OpenSim (our grid) has no InventoryAPIv3 or InventoryThumbnailUpload: those ops say so; textures' own pictures work.
 
 ## Moving and tidying (the user, 2026-10-31)
@@ -185,7 +191,9 @@ spell); pictures of inventory aren't (`Session/Private/Allowlist.cs`).
 ## Checks only Second Life can do
 
 - Thumbnails and favourites against the real inventory service: `meta`, `favorites` on a large inventory (the 403
-  split), `favorite`, `thumbnail` by texture, by file and by view (and that the viewer shows them).
+  split, and how long the sweep after login takes: Access logs "favorites read from the inventory service: N in M
+  ms"), `favorite` on and off (the official viewer showing the star and losing it), `thumbnail` by texture, by file
+  and by view (and that the viewer shows them). Favourites have been checked only against Access's test stand-in.
 - A real `#Firestorm/#AO` made by Firestorm (its sets, groups, tracks) playing here as there, on SL's server-side
   default animations; a seat with its own animation under smart sit; swimming in Linden water.
 - The pose stand's Firestorm poses (SL assets) and the lock.

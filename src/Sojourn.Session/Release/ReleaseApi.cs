@@ -69,8 +69,9 @@ public sealed class ReleaseApi : LeapApi
         });
         Op("reportProblem", "{note} -> {sent | saved, said}: a report of a problem with Sojourn: this session's log (other "
             + "people's words left out, their names stand-ins) and note, the person's own words about what went wrong. "
-            + "The person confirms on the panel first; it goes to Studio Quire's relay, with their Studio Quire token if they "
-            + "have one, else without (its daily limits). Saving it for a GitHub issue instead is the menu's (about > report "
+            + "The person confirms on the panel first; it goes to Studio Quire's relay, "
+            + (ProviderKeys.RelayOffered ? "with their Studio Quire token if they have one, else without (its daily limits)" : "within its daily limits")
+            + ". Saving it for a GitHub issue instead is the menu's (about > report "
             + "a problem)", async (a, ct) =>
         {
             if (!_asked.TryGetValue(a, out var r)) r = Make(a.Str("note") ?? "", out var why) ?? throw new LeapError(why!);
@@ -100,7 +101,8 @@ public sealed class ReleaseApi : LeapApi
         return ProblemReport.Make(log, note, null, S.Host.Version, Commit, current, out why);
     }
 
-    /// <summary>Sent to the relay, with the person's Studio Quire token if one is kept, else without.</summary>
+    /// <summary>Sent to the relay, with the person's Studio Quire token if one is kept (Sojourn Access only:
+    /// ProviderKeys.RelayOffered), else without.</summary>
     public async Task<(bool Sent, string Said)> SendAsync(ProblemReport.Report r, CancellationToken ct = default)
     {
         var token = ProviderKeys.RelayToken();

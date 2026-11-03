@@ -164,6 +164,23 @@ docstring with its checks in full):
   grid's `Asset.db`, decoded by ffmpeg where the PC has it) its part's tone and length. It deletes what it uploaded.
   Not reached: Second Life's real fees, its mesh upload rights, a 2048 picture, the quiet cuts (checked on synthetic
   notes outside the test: each fell just before an attack), a clip failing partway.
+- **favorites in the inventory** (needs nothing of the view): against `AisStandIn`, a stand-in for Second Life's
+  inventory service that the test serves on a free port and hands the app as `SOJOURN_TEST_AIS` (Core's InventoryMeta
+  uses it only where the region offers no InventoryAPIv3, so never on Second Life). Checked: the app reads every
+  favourite by itself after logging in; an item's words without and with "favorite"; Ctrl+Shift+F adding one, sent as
+  the viewer sends it; a folder's Applications key adding it; Show: Favorites by keys, its count said, the item with its
+  folder and no "favorite" on each, the folder as a folder; one marked "in another viewer" (put in the stand-in) absent
+  until F5 reads them again; Right opening the favourite folder onto its contents; Enter opening a notecard from the
+  list; Ctrl+Shift+F there removing it (sent as an undefined "favorite", as the viewer unmarks) and it leaving the list.
+  `ACCESS_NO_AIS=1` runs without the stand-in, as on OpenSim: Ctrl+Shift+F and Show: Favorites say favourites aren't on
+  this grid. The stand-in answers in the service's shape but flat (every flag under the top folder): the real
+  service's nesting, its 403 on a big subtree, its timing and whether Second Life copies a mark with an item are only
+  checked on Second Life (`docs/inventory.md` > Checks only Second Life can do).
+- **favorite landmarks at login** (last, as it logs out and in): a landmark of where the tester stands made in the
+  Favorites bar (`SojournPeople addFavorite`), `favorite-starts.json` written for the account with its region, Places
+  naming the folder "Favorites bar"; then a `//tp` away, the app closed, started again without `--autologin`, Alt+S to
+  Start at, Down past My last location and Home to "Access Start ..., favorites bar", Enter, and the tester arriving
+  within 5 m of the landmark.
 - **two inventory panes**: Alt+4 again reading the first, Alt+Shift+4 opening the second, a search there, Ctrl+M moving
   marked notecards across, Ctrl+W closing it.
 - **incognito**: on and said, the title without the region, SojournSettings refusing it off, a line read out but not

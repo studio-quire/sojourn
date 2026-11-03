@@ -11,6 +11,7 @@ import re
 from claude_agent_sdk import tool
 
 from api import ApiError
+from provider import relay_offered
 from tools import GATED_TIMEOUT, Ambiguous, error, like, text
 
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -698,8 +699,9 @@ def build_more(kit):
           "it, its licence, source and support: say what they asked about, in a sentence or two); report_problem (when "
           "the person wants to report a problem with Sojourn or says it's misbehaving and wants it looked at: note, what "
           "went wrong in their own words, nothing added; this session's log goes with it, other people's words left out "
-          "and their names made stand-ins. They confirm on the panel; it goes to Studio Quire's relay, with their Studio "
-          "Quire token if they have one. Saving it for a GitHub issue instead is the menu's: about, report a problem); stats "
+          "and their names made stand-ins. They confirm on the panel; it goes to Studio Quire's relay"
+          + (", with their Studio Quire token if they have one" if relay_offered(getattr(kit, "app", None)) else "")
+          + ". Saving it for a GitHub issue instead is the menu's: about, report a problem); stats "
           "(the viewer statistics Sojourn sends Linden Lab, as every viewer does: what they hold).",
           schema(["action"], action=["about", "report_problem", "stats"], note=str))
     async def sojourn(args):

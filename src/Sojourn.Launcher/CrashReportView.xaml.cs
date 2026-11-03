@@ -12,15 +12,14 @@ namespace Sojourn.Launcher;
 /// default) opens this window; always sends the report without asking; never leaves the launcher's note alone. The
 /// report (Sojourn.Session/Release/ProblemReport.cs) is the crashed session's log filtered as Sojourn Access's Send a
 /// log filters it, with how the run ended and the .NET runtime's last words from its console, and the person's note.
-/// Send goes to Studio Quire's relay, with their Studio Quire token if one is kept, else to its anonymous report
-/// endpoint; "save instead" keeps it as a file for an issue on GitHub. Only the person's own press sends or saves
-/// (RealPress). docs/launcher.md > After a crash. Written by Claude Opus 5.5, 2026-11-01.
+/// Send goes to Studio Quire's relay, to its anonymous report endpoint (the VR app has no Studio Quire token:
+/// ProviderKeys.RelayOffered); "save instead" keeps it as a file for an issue on GitHub. Only the person's own press
+/// sends or saves (RealPress). docs/launcher.md > After a crash. Written by Claude Opus 5.5, 2026-11-01.
 /// </summary>
 public partial class CrashReportView : UserControl
 {
     readonly Places _places;
     readonly RunStatus _status;
-    readonly bool _token;
     bool _busy, _done;
 
     public event Action? CloseRequested;
@@ -31,7 +30,6 @@ public partial class CrashReportView : UserControl
         Words.Remember(this);
         _places = places;
         _status = status;
-        _token = ProviderKeys.RelayToken() != null;
         CloseKey.Click += (_, _) => CloseRequested?.Invoke();
         SaveKey.Click += async (_, _) => await GoAsync(save: true);
         SkipKey.Click += (_, _) => CloseRequested?.Invoke();
@@ -50,7 +48,7 @@ public partial class CrashReportView : UserControl
         How.Text = ProblemReport.ExitName(_status.ExitCode) is { } name ? Lang.F("Exit code {0}, {1}.", code, Lang.T(name))
             : _status.Detail is { } d ? Lang.F("Exit code {0}: {1}.", code, Lang.T(d))
             : Lang.F("Exit code {0}.", code);
-        WhatsSent.Text = Lang.T(ProblemReport.WhatsSent(_token)) + " " + Lang.T(ProblemReport.GitHubWords);
+        WhatsSent.Text = Lang.T(ProblemReport.WhatsSent) + " " + Lang.T(ProblemReport.GitHubWords);
         if (_done) SendKey.Content = Lang.T("close");
         if (_said != null) Say(_said, _saidAlarm);
         if (Window.GetWindow(this) is { } w) { w.Language = Words.Language; w.Title = Lang.T("Sojourn: a crash report"); }
@@ -125,7 +123,7 @@ public partial class CrashReportView : UserControl
                 if (Make(note, out var why) is not { } r) return (false, () => CantBeMade(why));
                 if (!save)
                 {
-                    var (sent, said) = await ProblemReport.SendAsync(r, ProviderKeys.RelayToken());
+                    var (sent, said) = await ProblemReport.SendAsync(r, token: null);
                     return (sent, () => Lang.T(said));
                 }
                 var path = ProblemReport.Save(r, _places.BaseDir);
@@ -168,12 +166,11 @@ static class CrashReport
         if (how == "never") return;
         if (how == "always")
         {
-            var token = ProviderKeys.RelayToken();
             var view = new CrashReportView(places, s);
             _ = Task.Run(async () =>
             {
                 var r = view.Make("", out _);
-                var (sent, said) = r is null ? (false, "no log to send") : await ProblemReport.SendAsync(r, token);
+                var (sent, said) = r is null ? (false, "no log to send") : await ProblemReport.SendAsync(r, token: null);
                 launcher.Dispatcher.Invoke(() => note(sent ? () => Lang.T("stopped unexpectedly; a report went to Studio Quire")
                     : () => Lang.F("stopped unexpectedly; the report wasn't sent ({0})", Lang.T(said))));
             });

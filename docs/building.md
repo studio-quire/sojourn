@@ -87,9 +87,24 @@ maths, no drawing), `Client/Building/HandBuild.cs` (selection, the gizmo drawn, 
 - **Drawn where it's put**: while dragged and after, the renderer draws the root where it was put, whatever the region's
   echoes say (the viewer's overrideObjectUpdates does the same for a selection being dragged), until the region's own
   word matches (2 cm, a degree) or 4 s pass, then the region's word again: a refused move snaps back.
-- **What came of it** (`HandMove.Last`, SojournHandBuild `state`): placed, refused (the region kept it where it was: a
-  parcel that won't take it, a no-entry parcel, rights it didn't have), moved elsewhere, or gone (returned or deleted),
-  read from the region's updates within 3 s; the readout says the last three plainly.
+- **What came of it** (`HandMove.Classify`, `HandMove.Last`, SojournHandBuild `state`), read from the region's updates
+  within 3 s of letting go, and from any refusal notice that answered the drag: placed (2 cm, a degree); refused (it
+  stayed where it was: within 2 cm, or with a notice within 10 cm and nearer where it was than where it was put, since
+  the region takes the first few centimetres before the edge); partly refused (a notice, and it went part of the way:
+  the region took the updates up to where the land stops it); nudged (no notice, within 10 cm and 5 degrees: the region
+  adjusting it); moved elsewhere (no notice: physics, a script); or gone (returned or deleted). The state carries where
+  the hand put it (`put`, `off_m`) and the region's words (`region_said`) for the assistant. The readout says each but
+  placed in words that don't suggest something else moved it ("The land there doesn't allow it, so it stayed put.",
+  "The region stopped it at the edge of land that doesn't allow it.", "It ended up 1.5 m from where you let go of it."),
+  and a drag already refused isn't drawn where it was let go.
+- **The region's refusals** (`HandMove.ClaimAlert`, through `AgentSession.ClaimAlerts`): Second Life answers a move
+  onto land that doesn't allow the person's objects with a notice like "Can't rotate -- permission denied" (rotate,
+  though it was a move: each update carries position and rotation together; seen on 2026-11-02 at
+  a sandbox's edge, once per drag, early in it). A notice refusing to move, turn, position or scale that comes while a
+  drag is held or within 3.5 s of letting go is taken as its answer: the readout says "The land there doesn't allow
+  it." at once and the outcome after, and the feed doesn't show it. Any other notice, or one with no drag of ours
+  about, goes to the feed as before. Checked by `--panel-shots` (`building's outcomes` and `building's refusals`, with
+  the user's two refused drags from that log among the cases; `hb-readout-10-*.png`).
 - **Undo**: each drag that moved something is one undo step ("moved NAME by hand", the placement captured at the press:
   `BuildUndo.BeforeHandMove`), in the same history as the assistant's edits, so "undo that" takes back a hand move, and
   the readout's undo takes back the last step on the selected thing (through the dispatcher, so undoing a creation

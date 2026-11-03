@@ -69,8 +69,9 @@ public partial class LauncherView : UserControl
         _desktop = desktop;
         _extra = extra;
 
-        // a packaged build offers no Claude account (ProviderKeys.ClaudeOffered): a key or token already kept takes the
-        // place of a saved "claude", and with none kept no provider is chosen until one is pasted
+        // a packaged build offers no Claude account (ProviderKeys.ClaudeOffered): a key already kept takes the place of a
+        // saved "claude", and with none kept no provider is chosen until one is pasted; a saved "relay" (Access's alone)
+        // gives way the same
         if (ProviderKeys.FallbackFor(ProviderNow) is { } kept) _settings.Provider = kept;
         foreach (var (value, label) in SettingsFile.Providers)
         {
@@ -317,11 +318,7 @@ public partial class LauncherView : UserControl
     {
         var kind = ProviderNow;
         bool agent = kind == ProviderKeys.Agent;
-        // Studio Quire's relay is for the few the studio covers: its choice shows once it's chosen or its token is kept
-        // (a token pasted into any key box is recognised); more than three choices go on two rows, as one row clips them
-        bool relay = kind == "relay" || ProviderKeys.Has("relay");
-        foreach (RadioButton rb in ProviderTrack.Children)
-            if ((string)rb.Tag == "relay") rb.Visibility = relay ? Visibility.Visible : Visibility.Collapsed;
+        // more than three choices go on two rows, as one row clips them
         bool two = ProviderTrack.Children.OfType<RadioButton>().Count(rb => rb.Visibility == Visibility.Visible) > 3;
         ProviderTrack.Rows = two ? 2 : 1;
         if (two) ProviderBorder.Height = 74;
@@ -331,11 +328,11 @@ public partial class LauncherView : UserControl
         if (agent) { AgentSentence.Text = Sentence; CopySentence.Content = Lang.T("copy", "button"); }
         Switches.Visibility = agent ? Visibility.Collapsed : Visibility.Visible;   // auto mode is the built-in assistant's
         bool chosen = kind != "claude" || ProviderKeys.ClaudeOffered;
-        bool keyed = !agent && (kind != "claude" || !chosen);   // none chosen: the box takes a key or token, which chooses its provider
+        bool keyed = !agent && (kind != "claude" || !chosen);   // none chosen: the box takes a key, which chooses its provider
         bool kept = !agent && kind != "claude" && ProviderKeys.Has(kind);
         bool armed = Environment.TickCount64 - _forgetPressedAt < 4000;
-        KeyHint.Text = kind is "claude" or ProviderKeys.Agent ? Lang.T(chosen ? "API key" : "key or token")
-            : kept ? (armed ? Lang.T(kind == "relay" ? "forget the token?" : "forget the key?") : Lang.F("{0} kept", Thing(kind))) : Thing(kind);
+        KeyHint.Text = kind is "claude" or ProviderKeys.Agent ? Lang.T("API key")
+            : kept ? (armed ? Lang.T("forget the key?") : Lang.F("{0} kept", Thing(kind))) : Thing(kind);
         // a kept key: the box greyed out and closed, as a remembered password; × (twice) forgets it and opens it again
         KeyBox.IsEnabled = !kept;
         KeyBox.Opacity = kept ? 0.6 : 1;
@@ -349,8 +346,7 @@ public partial class LauncherView : UserControl
         DenyDataSwitch.Visibility = openRouter ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>A key in the box (pasted, or Enter): kept encrypted if it's an Anthropic or OpenRouter key or a Studio
-    /// Quire token, its provider
+    /// <summary>A key in the box (pasted, or Enter): kept encrypted if it's an Anthropic or OpenRouter key, its provider
     /// chosen, the box cleared. Only from the person's own keys or mouse (RealPress); never shown back or logged.</summary>
     void TryKeep(bool enter)
     {

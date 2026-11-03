@@ -76,10 +76,13 @@ static class Shots
             Draw(behind, Path.Combine(dir, "language-list.png"));
             file.Provider = "anthropic";
             Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings-anthropic.png"));
-            // Studio Quire's relay: its choice shows once a token is kept (a decoy)
+            // a "relay" saved and a Studio Quire token kept (decoys, as Sojourn Access would leave them in the keys folder it
+            // shares): the VR launcher offers no relay, so the choice gives way to the key kept and the token stays unseen
+            Sojourn.Session.Assistant.ProviderKeys.RelayOffered = true;
             Sojourn.Session.Assistant.ProviderKeys.Keep("sqr-" + new string('0', 43));
+            Sojourn.Session.Assistant.ProviderKeys.RelayOffered = false;
             file.Provider = "relay";
-            Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings-relay.png"));
+            Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings-relay-left.png"));
             Draw(Make(places, v => v.ShowStatus(new RunStatus(Phase.Code, Headset: true))), Path.Combine(dir, "code-headset.png"));
             Draw(Make(places, v => v.ShowStatus(new RunStatus(Phase.Code, Headset: true, Question: new() { ["asks"] = 1 }, Answers: true))),
                 Path.Combine(dir, "code.png"));
@@ -93,12 +96,9 @@ static class Shots
             Draw(Make(places, v => v.ShowStatus(new RunStatus(Phase.World, Headset: true))), Path.Combine(dir, "headset.png"));
             Draw(Make(places, v => v.ShowStatus(new RunStatus(Phase.Crashed, Log: Path.Combine(places.BaseDir, "logs", "session.log")))),
                 Path.Combine(dir, "crashed.png"));
-            // after a crash, as the crash_reports setting's "ask" shows it: with a Studio Quire token (the decoy above),
-            // then without one (sent without a token)
+            // after a crash, as the crash_reports setting's "ask" shows it (sent without a token, the decoy above unseen)
             var crash = new RunStatus(Phase.Crashed) { ExitCode = unchecked((int)0xC0000005) };
             Draw(new CrashReportView(places, crash), Path.Combine(dir, "crash-report.png"));
-            Sojourn.Session.Assistant.ProviderKeys.Forget("relay");
-            Draw(new CrashReportView(places, crash), Path.Combine(dir, "crash-report-no-token.png"));
         }
         finally
         {

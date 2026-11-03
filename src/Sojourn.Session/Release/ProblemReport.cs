@@ -11,8 +11,9 @@ namespace Sojourn.Session.Release;
 /// Sojourn Access's Send a log filters it (LogShare.cs: nothing other people said or wrote, their names and keys
 /// stand-ins), with the person's note and, for a crash, how the app ended and what the .NET runtime wrote as it died
 /// (folded into the log before filtering, so the same filter covers it). Then sent to Studio Quire's relay (LogSend.cs):
-/// with the person's Studio Quire token as their logs go, or without one to its anonymous report endpoint, within its
-/// limits (the user's ask, 2026-11-01; tools/relay/README.md). Or, if they'd rather, saved as a text file for them to
+/// with the person's Studio Quire token as their logs go (in Sojourn Access, whose assistant's reportProblem reaches
+/// ReleaseApi too), or without one to its anonymous report endpoint, within its limits (the user's ask, 2026-11-01;
+/// tools/relay/README.md). Or, if they'd rather, saved as a text file for them to
 /// attach to an issue on GitHub, the issues page opened. Only the person's own press sends or saves one (the launcher's
 /// crash window or its "always" setting, the menu's about > report a problem, or the assistant's reportProblem op once
 /// they confirm). Shared by the VR client
@@ -65,13 +66,9 @@ public static class ProblemReport
     }
 
     /// <summary>The words the summary shows before sending (for the launcher's window and the menu's page): what goes
-    /// and where. In English, each whole as a catalog key (Lang/launcher.json): translated where they're shown.</summary>
-    public static string WhatsSent(bool token) => token
-        ? "Sent to Studio Quire through its relay, relay.studioquire.org, with your token: your note and the session's log, "
-          + "which keeps what Sojourn did, your own chat, objects' lines, the assistant's replies, errors and timings. "
-          + "Everything other people said or wrote is left out, and their names become person 1, person 2 and so on; yours "
-          + "becomes me. Studio Quire keeps it for 30 days."
-        : "Sent to Studio Quire through its relay, relay.studioquire.org: your note and the session's log, which keeps what "
+    /// and where, without a token (the VR app has none: ProviderKeys.RelayOffered). In English, a catalog key
+    /// (Lang/menu.json): translated where it's shown.</summary>
+    public const string WhatsSent = "Sent to Studio Quire through its relay, relay.studioquire.org: your note and the session's log, which keeps what "
           + "Sojourn did, your own chat, objects' lines, the assistant's replies, errors and timings. Everything other people "
           + "said or wrote is left out, and their names become person 1, person 2 and so on; yours becomes me. Studio Quire "
           + "keeps it for 30 days, and doesn't keep your IP address.";

@@ -56,8 +56,9 @@ The assistant bears on these last two, since nearby chat, IMs, names and rendere
 A session's log that a tester sends us from Sojourn Access (`docs/access-app.md` > Sending a log), and the VR
 client's problem and crash reports (`docs/client.md` > About, problem and crash reports), are filtered on the
 person's PC first: nothing other people said or wrote goes, and their names and keys become stand-ins ("person 2").
-A report goes only at the person's press (or, after a crash, by their "always" setting), to the studio relay (with
-their Studio Quire token, or without one within the relay's limits, the IP address not kept), or is saved for them to
+A report goes only at the person's press (or, after a crash, by their "always" setting), to the studio relay (from
+the VR client without a token, within the relay's limits, the IP address not kept; from Access with the tester's
+Studio Quire token), or is saved for them to
 attach to a GitHub issue; a crash's memory dump never leaves the PC.
 
 ## Bots, scripted agents, and the assistant

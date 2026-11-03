@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
 using LibreMetaverse;
+using Microsoft.Extensions.Logging;
 using Sojourn.Core.World;
 using Vector2 = System.Numerics.Vector2;
 using Vector3 = System.Numerics.Vector3;
@@ -18,8 +19,15 @@ namespace Sojourn.Access.Walk;
 /// part over the stand taking touches, and invisible guide rails the trains steer by: the one in use named "Guide" and
 /// solid, the other renamed "Alternate Guide" and phantom. So the guides' names swap with the setting and can't say which
 /// way it's set: the stand's description does. Switches of other makes (a root named "Alternate Guide" or "AlternateGuide"
-/// with no stand near) are announced with the setting unknown. Not yet checked against a real switch in Second Life.
-/// Written by Claude Opus 5.5, 2026-11-01.
+/// with no stand near) are announced with the setting unknown. Written by Claude Opus 5.5, 2026-11-01.
+///
+/// First met on real track 2026-11-02 (the blind tester's freight run over the Linden railroad, 0.1.0.811): stands
+/// named "Switch Stand" with the standard's description were read right, but 178 of 282 lines said "unknown", several a
+/// few seconds apart. Most likely the switches' own guide rails: on the Linden track they're objects of their own the
+/// stand talks to, reaching tens of metres past it, and they were taken for switches of their own whenever more than
+/// 25 m from a stand already named. So anything that doesn't say its setting is now part of a switch that does within
+/// 60 m, waits a moment for its stand's name before standing alone, and every part found is logged ("switch: ...") so
+/// the next log tells what real switches hold.
 /// </summary>
 public sealed partial class WalkMode
 {
@@ -30,12 +38,17 @@ public sealed partial class WalkMode
     const float SwitchAhead = 60f;        // said within this far ahead
     const float SwitchLook = 90f;         // names asked for this far ahead, so they're known by then
     const float SwitchAsk = 60f;          // W and //switch: the nearest within this far when none is ahead
+    const float SwitchReach = 60f;        // a switch's parts (its guide rails) this far from its stand are that switch
+    const float SwitchNear = 5f;          // one first due closer than this isn't said: too near to act on
+    const long SwitchSettle = 2000;       // a part with no stand near waits this long for one's name before standing alone
 
     List<RailSwitch> _switches = new();
     long _switchScanAt, _switchSaidAt, _switchWatchAt, _switchMovedAt = -1_000_000;
     readonly Dictionary<UUID, long> _switchAhead = new();       // when each was last in the way ahead
     readonly HashSet<UUID> _switchPending = new();              // come into the way ahead, not said yet
     readonly Dictionary<UUID, string> _switchToldAs = new();    // the setting last said for each
+    readonly Dictionary<UUID, long> _switchAlone = new();       // when each part with no stand near was first seen so
+    readonly Dictionary<UUID, string> _switchLogged = new();    // what the log last said of each part found
     bool _switchBusy;
 
     /// <summary>The switches the last look found, nearest first (the status op, tests).</summary>
@@ -51,7 +64,7 @@ public sealed partial class WalkMode
         // only on something that moves (a seat at a club never looks), and for two minutes after it stops (a station)
         if (now - _switchMovedAt > 120_000 || now - _switchScanAt < (speed > 1f ? 1000 : 3000)) return;
         _switchScanAt = now;
-        float yaw = speed > 0.5f ? MathF.Atan2(b.Vel.Y, b.Vel.X) : b.Yaw;
+        float yaw = Way(b);
         ScanSwitches(b, yaw);
 
         // what's in the way ahead, kept while stopped too (a stop before a switch to throw it doesn't make it new again)
@@ -68,6 +81,8 @@ public sealed partial class WalkMode
         _switchPending.RemoveWhere(id => !_switchAhead.TryGetValue(id, out var at) || at != now);
         if (_switchAhead.Count > 200)
             foreach (var id in _switchAhead.Where(x => now - x.Value > 600_000).Select(x => x.Key).ToList()) { _switchAhead.Remove(id); _switchToldAs.Remove(id); }
+        if (_switchAlone.Count > 500)
+            foreach (var id in _switchAlone.Where(x => now - x.Value > 600_000).Select(x => x.Key).ToList()) _switchAlone.Remove(id);
         if (_switchBusy || speed < 1f) return;
 
         // the nearest not yet said, read fresh first (one at a time, nearest first, a few seconds apart)
@@ -75,7 +90,7 @@ public sealed partial class WalkMode
         if (say.s != null && now - _switchSaidAt > 2500)
         {
             _switchPending.Remove(say.s.Id);
-            _ = AnnounceAsync(say.s, b, yaw);
+            _ = AnnounceAsync(say.s);
             return;
         }
         // the next one ahead, already said: read again every few seconds, said when it changed (another train sprang it,
@@ -87,18 +102,25 @@ public sealed partial class WalkMode
         }
     }
 
-    async Task AnnounceAsync(RailSwitch s, Body b, float yaw)
+    async Task AnnounceAsync(RailSwitch s)
     {
         _switchBusy = true;
         try
         {
             var fresh = await ReadSwitchAsync(s);
             if (Me() is not { } now) return;
-            float along = Along(now, yaw, fresh.Pos);
-            if (along <= 0) return;
+            // where it is now, in the frame the person is in now: a crossing meanwhile moved the frame (0.1.0.811 said
+            // "Switch in 185 metres" at crossings, from the old region's position against the new one's)
+            if (!InWayAhead(now, Way(now), fresh.Pos, SwitchAhead + 10, out float along) || along < SwitchNear)
+            {
+                SwitchLog($"{PartWords(fresh)} not said: {(along < SwitchNear && along > -SwitchNear ? $"{along:0} m ahead, too near" : "no longer in the way ahead")}");
+                return;
+            }
             _switchSaidAt = Environment.TickCount64;
             _switchToldAs[s.Id] = fresh.Setting?.Status ?? "";
-            Cue("switch", CueSounds.Cue.Switch, $"Switch in {SwitchMetres(along)}, {SettingWords(fresh)}.", now, MathF.Atan2(fresh.Pos.Y - now.Pos.Y, fresh.Pos.X - now.Pos.X));
+            var line = $"Switch in {SwitchMetres(along)}, {SettingWords(fresh)}.";
+            SwitchLog($"said \"{line}\" of {PartWords(fresh)}");
+            Cue("switch", CueSounds.Cue.Switch, line, now, MathF.Atan2(fresh.Pos.Y - now.Pos.Y, fresh.Pos.X - now.Pos.X));
         }
         finally { _switchBusy = false; }
     }
@@ -113,6 +135,7 @@ public sealed partial class WalkMode
             if (!_switchToldAs.TryGetValue(s.Id, out var was) || was == status || status == "") return;
             _switchToldAs[s.Id] = status;
             if (Me() is not { } b) return;
+            SwitchLog($"{PartWords(fresh)} changed from {(was == "" ? "unknown" : was)} to {status} by itself");
             _switchSaidAt = Environment.TickCount64;
             Cue("switch", CueSounds.Cue.Switch, $"The switch ahead is now {SettingWords(fresh)}.", b, MathF.Atan2(fresh.Pos.Y - b.Pos.Y, fresh.Pos.X - b.Pos.X));
         }
@@ -121,15 +144,19 @@ public sealed partial class WalkMode
 
     // --- finding them ------------------------------------------------------------------------------------------------
 
-    /// <summary>Roots in the regions in view, near enough: switch stands and lone alternate guides among those named,
-    /// and the names of the nearest unnamed ones ahead asked for (twenty a look), so they're known by the time they're
-    /// near. Region-wide scans only once a second at most (a train ride's garbage, WalkMode.SeatLinkset).</summary>
-    void ScanSwitches(Body b, float yaw)
+    /// <summary>Roots in the regions in view, near enough: switch stands that say how they're set, and the parts that
+    /// don't (a stand that doesn't, an alternate guide) as switches of their own only with no such stand within 60 m and
+    /// after a moment alone (W asks at once: not patient); the names of the nearest unnamed ones asked for (twenty a look: first those around a part
+    /// waiting for its stand, then ahead), so they're known by the time they're near. Region-wide scans only once a
+    /// second at most (a train ride's garbage, WalkMode.SeatLinkset).</summary>
+    void ScanSwitches(Body b, float yaw, bool patient = true)
     {
-        var stands = new List<RailSwitch>();
-        var alternates = new List<RailSwitch>();
-        var unnamed = new List<(RegionWorld W, Primitive P, float D)>();
+        long now = Environment.TickCount64;
+        var known = new List<RailSwitch>();      // stands whose description says Main or Branch
+        var parts = new List<RailSwitch>();      // the rest: stands that don't say, alternate guides
+        var unnamed = new List<(RegionWorld W, Primitive P, Vector3 Pos, float D, bool Ahead)>();
         var dir = new Vector2(MathF.Cos(yaw), MathF.Sin(yaw));
+        var asked = DateTime.UtcNow - TimeSpan.FromSeconds(5);
         foreach (var w in S.VisibleRegions())
         {
             var off = S.FrameOffset(w);
@@ -139,24 +166,92 @@ public sealed partial class WalkMode
                 var pos = new Vector3(p.Position.X + off.X, p.Position.Y + off.Y, p.Position.Z);
                 var rel = new Vector2(pos.X - b.Pos.X, pos.Y - b.Pos.Y);
                 float d = rel.Length();
-                if (d > SwitchLook || MathF.Abs(pos.Z - b.Pos.Z) > 30) continue;
+                // stands a little further than looked for, so a guide rail ahead finds its stand beyond it
+                if (d > SwitchLook + SwitchReach || MathF.Abs(pos.Z - b.Pos.Z) > 30) continue;
                 if (p.Properties is not { } props || props.ObjectID != p.ID)
                 {
-                    if (Vector2.Dot(rel, dir) > -10 || d < SwitchAsk) unnamed.Add((w, p, d));
+                    // not those asked for in the last 5 s (FetchAsync skips them): twenty a look that never answer
+                    // would otherwise hold back every name behind them
+                    if (!(w.PropsMeta.TryGetValue(p.ID, out var m) && m.RequestedAt > asked))
+                        unnamed.Add((w, p, pos, d, Vector2.Dot(rel, dir) > -10 || d < SwitchAsk));
                     continue;
                 }
                 var name = props.Name?.Trim() ?? "";
-                if (SwitchStand.IsStand(name)) stands.Add(new RailSwitch(p.ID, p.LocalID, w.Handle, pos, true, SwitchStand.Parse(props.Description)));
-                else if (SwitchStand.IsAlternateGuide(name)) alternates.Add(new RailSwitch(p.ID, p.LocalID, w.Handle, pos, false, null));
+                bool stand = SwitchStand.IsStand(name);
+                if (!stand && !SwitchStand.IsAlternateGuide(name)) continue;
+                var s = new RailSwitch(p.ID, p.LocalID, w.Handle, pos, stand, stand ? SwitchStand.Parse(props.Description) : null);
+                LogPart(w, p, name, props.Description, s);
+                (s.Setting?.Status != null ? known : parts).Add(s);
             }
         }
-        // a lone alternate guide stands for a switch without a stand (one for those within 25 m of each other)
-        var found = new List<RailSwitch>(stands);
-        foreach (var a in alternates.OrderBy(a => Vector3.DistanceSquared(a.Pos, b.Pos)))
-            if (!found.Any(f => Vector2.Distance(new(f.Pos.X, f.Pos.Y), new(a.Pos.X, a.Pos.Y)) < 25)) found.Add(a);
-        _switches = found.OrderBy(s => Vector3.DistanceSquared(s.Pos, b.Pos)).ToList();
-        foreach (var g in unnamed.OrderBy(x => x.D).Take(20).GroupBy(x => x.W))
+        var found = new List<RailSwitch>(known);
+        var waiting = new List<RailSwitch>();
+        foreach (var s in parts.OrderBy(s => s.Stand ? 0 : 1).ThenBy(s => Vector3.DistanceSquared(s.Pos, b.Pos)))
+        {
+            if (found.Where(f => Flat(f.Pos, s.Pos) < SwitchReach).MinBy(f => Flat(f.Pos, s.Pos)) is { } of)
+            {
+                PlacedLog(s, $"part of {PartWords(of)}, {Flat(of.Pos, s.Pos):0} m from it");
+                continue;
+            }
+            if (!_switchAlone.TryGetValue(s.Id, out var since)) _switchAlone[s.Id] = since = now;
+            if (patient && now - since < SwitchSettle) { waiting.Add(s); continue; }
+            var stand = known.Count == 0 ? null : known.MinBy(k => Flat(k.Pos, s.Pos));
+            PlacedLog(s, "a switch of its own: no stand saying how it's set within " + Bearings.Metres(SwitchReach)
+                + (stand != null ? $" (the nearest {Bearings.Metres(Flat(stand.Pos, s.Pos))} away)" : ""));
+            found.Add(s);
+        }
+        _switches = found.Where(s => Flat(s.Pos, b.Pos) <= SwitchLook).OrderBy(s => Vector3.DistanceSquared(s.Pos, b.Pos)).ToList();
+        var ask = unnamed.Where(x => x.D <= SwitchLook + SwitchReach && waiting.Any(s => Flat(s.Pos, x.Pos) < SwitchReach)).OrderBy(x => x.D).Take(20).ToList();
+        if (ask.Count < 20)
+            ask.AddRange(unnamed.Where(x => x.D <= SwitchLook && x.Ahead).OrderBy(x => x.D).Where(x => !ask.Contains(x)).Take(20 - ask.Count));
+        foreach (var g in ask.GroupBy(x => x.W))
             _ = S.Objects.FetchAsync(g.Key, g.Select(x => x.P).ToList(), TimeSpan.Zero, CancellationToken.None, sim: g.Key.Simulator);
+    }
+
+    static float Flat(Vector3 a, Vector3 b) => Vector2.Distance(new(a.X, a.Y), new(b.X, b.Y));
+
+    /// <summary>The way the person goes: seated and moving, the seat's way; seated and still, its facing; else theirs.</summary>
+    float Way(Body b) => b.Sitting ? (Speed(b) > 0.5f ? MathF.Atan2(b.Vel.Y, b.Vel.X) : b.Yaw) : Facing(b);
+
+    // --- what the log says of them (the first real switches left too little to tell, 2026-11-02) ----------------------
+
+    void SwitchLog(string line) => S.Log.LogInformation("switch: {Line}", line);
+
+    /// <summary>A part as the log names it: its name, local id, region and place there.</summary>
+    string PartWords(RailSwitch s)
+    {
+        var w = RegionOf(s);
+        var p = w != null && w.Prims.TryGetValue(s.LocalId, out var q) ? q : null;
+        var at = p != null ? $"{p.Position.X:0}, {p.Position.Y:0}, {p.Position.Z:0}" : "gone";
+        return $"{p?.Properties?.Name?.Trim() ?? (s.Stand ? "a stand" : "an alternate guide")} (local {s.LocalId}, {w?.Name ?? "?"} {at})";
+    }
+
+    /// <summary>Each stand or alternate guide the first time it's found, and again when its name or description
+    /// changes (a throw, a spring, another driver): name, place, description as written, its linkset, which part takes
+    /// touches, phantom or not.</summary>
+    void LogPart(RegionWorld w, Primitive p, string name, string? desc, RailSwitch s)
+    {
+        var said = name + "\n" + desc;
+        bool first = !_switchLogged.TryGetValue(p.ID, out var was);
+        if (!first && was == said) return;
+        if (_switchLogged.Count > 5000) _switchLogged.Clear();
+        _switchLogged[p.ID] = said;
+        var how = s.Stand ? $"read as {s.Setting?.Status ?? "unknown"}" : "an alternate guide";
+        if (!first) { SwitchLog($"{PartWords(s)} now \"{desc}\", {how}"); return; }
+        var set = S.Objects.Linkset(w, p);
+        var touch = set.Where(x => (S.State.PrimFlagsOf(x) & PrimFlags.Touch) != 0)
+            .Select(x => $"{(x.LocalID == p.LocalID ? "the root" : x.Properties?.Name?.Trim() ?? "a part")} {x.Scale.X:0.#}x{x.Scale.Y:0.#}x{x.Scale.Z:0.#}").ToList();
+        SwitchLog($"found {PartWords(s)}: \"{desc}\", {how}; {set.Count} prim{(set.Count == 1 ? "" : "s")}, {p.Scale.X:0.#}x{p.Scale.Y:0.#}x{p.Scale.Z:0.#}"
+            + $"{(Phantom(p) ? ", phantom" : "")}; touches: {(touch.Count == 0 ? "none" : string.Join("; ", touch))}");
+    }
+
+    readonly HashSet<(UUID, bool)> _switchPlaced = new();
+
+    /// <summary>Where a part that doesn't say its setting went, once: a switch's own, or a switch of its own.</summary>
+    void PlacedLog(RailSwitch s, string what)
+    {
+        if (_switchPlaced.Count > 5000) _switchPlaced.Clear();
+        if (_switchPlaced.Add((s.Id, what.StartsWith("part")))) SwitchLog($"{PartWords(s)}: {what}");
     }
 
     static float Along(Body b, float yaw, Vector3 pos) => Vector2.Dot(new(pos.X - b.Pos.X, pos.Y - b.Pos.Y), new(MathF.Cos(yaw), MathF.Sin(yaw)));
@@ -175,16 +270,26 @@ public sealed partial class WalkMode
     /// <summary>The stand's description asked again (the region sends a changed one only to whoever has it selected).</summary>
     async Task<RailSwitch> ReadSwitchAsync(RailSwitch s)
     {
-        if (!s.Stand || RegionOf(s) is not { } w || w.Prims.TryGetValue(s.LocalId, out var p) is false) return s;
+        if (!s.Stand || RegionOf(s) is not { } w || w.Prims.TryGetValue(s.LocalId, out var p) is false) return s with { Pos = PosNow(s) ?? s.Pos };
         try { await S.Objects.RenewAsync(w, new[] { p }, TimeSpan.FromSeconds(2), CancellationToken.None, w.Simulator); }
         catch (Exception) { return s; }
-        var fresh = s with { Setting = SwitchStand.Parse(p.Properties?.Description) };
+        // and where it is now: the person's frame moves at a crossing
+        var off = S.FrameOffset(w);
+        var fresh = s with { Setting = SwitchStand.Parse(p.Properties?.Description), Pos = new(p.Position.X + off.X, p.Position.Y + off.Y, p.Position.Z) };
         int i = _switches.FindIndex(x => x.Id == s.Id);
         if (i >= 0) _switches[i] = fresh;
         return fresh;
     }
 
     RegionWorld? RegionOf(RailSwitch s) => S.VisibleRegions().FirstOrDefault(w => w.Handle == s.Region);
+
+    /// <summary>Where it is now in the person's region's frame, or null if it's gone.</summary>
+    Vector3? PosNow(RailSwitch s)
+    {
+        if (RegionOf(s) is not { } w || !w.Prims.TryGetValue(s.LocalId, out var p)) return null;
+        var off = S.FrameOffset(w);
+        return new(p.Position.X + off.X, p.Position.Y + off.Y, p.Position.Z);
+    }
 
     static string SwitchMetres(float m) => m < 20 ? Bearings.Metres(m) : Bearings.Metres(Math.Round(m / 5) * 5);
 
@@ -201,13 +306,13 @@ public sealed partial class WalkMode
     /// 60 m any way.</summary>
     async Task<RailSwitch?> TheSwitchAsync(Body b)
     {
-        float yaw = b.Sitting ? (Speed(b) > 0.5f ? MathF.Atan2(b.Vel.Y, b.Vel.X) : b.Yaw) : Facing(b);
-        ScanSwitches(b, yaw);
+        float yaw = Way(b);
+        ScanSwitches(b, yaw, patient: false);
         if (_switches.Count == 0)
         {
             // names asked just now: a moment for them to come
             await Task.Delay(1200);
-            if (Me() is { } again) { b = again; ScanSwitches(b, yaw); }
+            if (Me() is { } again) { b = again; ScanSwitches(b, yaw, patient: false); }
         }
         var ahead = _switches.Select(s => (s, ok: InWayAhead(b, yaw, s.Pos, SwitchLook, out var along), along))
             .Where(x => x.ok).OrderBy(x => x.along).Select(x => x.s).FirstOrDefault();
@@ -216,7 +321,7 @@ public sealed partial class WalkMode
 
     string WhereWords(Body b, RailSwitch s)
     {
-        float yaw = b.Sitting ? (Speed(b) > 0.5f ? MathF.Atan2(b.Vel.Y, b.Vel.X) : b.Yaw) : Facing(b);
+        float yaw = Way(b);
         if (InWayAhead(b, yaw, s.Pos, SwitchLook, out var along)) return $"{SwitchMetres(along)} ahead";
         var rel = Bearings.Norm(Bearings.Compass(b.Pos.X, b.Pos.Y, s.Pos.X, s.Pos.Y) - Compass(Facing(b)));
         float d = Vector2.Distance(new(s.Pos.X, s.Pos.Y), new(b.Pos.X, b.Pos.Y));
@@ -233,6 +338,7 @@ public sealed partial class WalkMode
         if (s.Setting is { Mainline: var m, Branch: var br } && (m != null || br != null))
             line += $" Main line: {m ?? "not named"}; branch: {br ?? "not named"}.";
         if (!s.Stand) line += " No switch stand found to read or throw it.";
+        SwitchLog($"asked: \"{line}\" of {PartWords(s)}");
         Told(s);
         Line(line);
     }
@@ -256,6 +362,10 @@ public sealed partial class WalkMode
             var guides = GuidesNear(here, s.Pos);
             var part = TouchPartOf(here, s.LocalId);
             if (part == null) { Line("The switch isn't here any more."); return; }
+            long t0 = Environment.TickCount64;
+            SwitchLog($"throwing {PartWords(s)}{(to != null ? " to " + to : "")}: was {was ?? "unknown"}; touching "
+                + $"{(part.LocalID == s.LocalId ? "the root" : $"{part.Properties?.Name?.Trim() ?? "a part"} (local {part.LocalID})")}, "
+                + $"{part.Scale.X:0.#}x{part.Scale.Y:0.#}x{part.Scale.Z:0.#}; guide rails within 60 m: {guides.Count}");
             var r = await _ops.DoAsync("LLAgent", "requestTouch", new JsonObject { ["obj_uuid"] = part.ID.ToString() });
             if (PersonOps.Error(r) is { } e) { Line($"Couldn't throw the switch: {e}"); return; }
             var end = Environment.TickCount64 + 6000;
@@ -270,6 +380,9 @@ public sealed partial class WalkMode
                 if (was == null && guidesMoved) break;
             }
             var status = now.Setting?.Status;
+            SwitchLog($"after {Environment.TickCount64 - t0} ms: {status ?? "unknown"}"
+                + $" (\"{(RegionOf(s) is { } rw && rw.Prims.TryGetValue(s.LocalId, out var sp) ? sp.Properties?.Description : null)}\")"
+                + $"; guide rails {(guidesMoved ? "changed" : "unchanged")}");
             Told(now);
             var pos = Me() is { } me ? me : b;
             float yaw = MathF.Atan2(s.Pos.Y - pos.Pos.Y, s.Pos.X - pos.Pos.X);
@@ -318,13 +431,14 @@ public sealed partial class WalkMode
 
     bool Phantom(Primitive p) => (S.State.PrimFlagsOf(p) & PrimFlags.Phantom) != 0;
 
-    /// <summary>The guide rails near a stand (roots named Guide or Alternate Guide within 15 m) and whether each is phantom.</summary>
+    /// <summary>The guide rails near a stand (roots named Guide or Alternate Guide within 60 m:
+    /// on the Linden railroad they're objects of their own reaching on past the stand) and whether each is phantom.</summary>
     Dictionary<uint, bool> GuidesNear(RegionWorld w, Vector3 at)
     {
         var o = new Dictionary<uint, bool>();
         foreach (var (id, p) in w.Prims)
             if (p.ParentID == 0 && p.Properties?.Name?.Trim() is { } n && (SwitchStand.IsGuide(n) || SwitchStand.IsAlternateGuide(n))
-                && Vector3.Distance(new(p.Position.X, p.Position.Y, p.Position.Z), at) < 15)
+                && Vector3.Distance(new(p.Position.X, p.Position.Y, p.Position.Z), at) < SwitchReach)
                 o[id] = Phantom(p);
         return o;
     }
@@ -354,7 +468,13 @@ public static class SwitchStand
     public sealed record Setting(string? Status, string? Ident, string? Mainline, string? Branch, int? Channel);
 
     public static bool IsStand(string name) =>
-        name.Contains("switch stand", StringComparison.OrdinalIgnoreCase) || name.Contains("switchstand", StringComparison.OrdinalIgnoreCase);
+        (name.Contains("switch stand", StringComparison.OrdinalIgnoreCase) || name.Contains("switchstand", StringComparison.OrdinalIgnoreCase))
+        // a stand's parts or kin named after it aren't stands: the standard's "Switch Stand Signal", or a junction kit's
+        // "Switchstand Guide X2" (Switchstand Unlimited on the Marketplace)
+        && !Part.IsMatch(name);
+
+    static readonly System.Text.RegularExpressions.Regex Part = new(@"\b(guide|signal|sensor|light)s?\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
     public static bool IsGuide(string name) => name.Equals("Guide", StringComparison.OrdinalIgnoreCase);
 
@@ -367,7 +487,7 @@ public static class SwitchStand
         if (string.IsNullOrWhiteSpace(desc)) return null;
         var f = desc.Split('~').Select(x => x.Trim()).ToArray();
         string? At(int i) => i < f.Length && f[i].Length > 0 ? f[i] : null;
-        var status = At(1)?.ToLowerInvariant() switch { "main" or "mainline" => "Main", "branch" => "Branch", _ => null };
+        var status = At(1)?.ToLowerInvariant() switch { "main" or "mainline" or "main line" => "Main", "branch" => "Branch", _ => null };
         if (status == null && f.Length < 2) return null;
         int? channel = int.TryParse(At(5), NumberStyles.Integer, CultureInfo.InvariantCulture, out var ch) ? ch : null;
         return new Setting(status, At(0), At(3), At(4), channel);

@@ -18,7 +18,7 @@ Sojourn itself signs in to nothing for this: no AI provider, no key, no account.
 session, under their own account, driving a program on their own PC. That is how someone uses an AI subscription with
 Sojourn, a Claude plan through Claude Code for instance: released builds don't offer signing in with a Claude account,
 so their own agent is the way, from an installed copy or from source. Their other choices are the built-in assistant
-on an Anthropic API key, an OpenRouter key or a Studio Quire token, all chosen in the same place in the launcher.
+on an Anthropic API key or an OpenRouter key, both chosen in the same place in the launcher.
 
 What it isn't:
 - **Not a bot.** You act on the person's requests while they're there and directing you. That keeps their account a

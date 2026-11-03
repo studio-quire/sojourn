@@ -120,17 +120,73 @@ public sealed class HandMove
         internal long SentAt;
         internal bool WasSelected;
         internal Action<string> Record = _ => { };
+        /// <summary>The region's refusal notice that answered this drag ("Can't rotate -- permission denied"), if one
+        /// came while it was held or settling.</summary>
+        public volatile string? Refusal;
+        internal long SettleUntil = long.MaxValue;
     }
 
     Grab? _grab;
+    volatile Grab? _settlingGrab;
 
     public Grab? Holding => _grab;
 
-    /// <summary>What came of the last move: where it went, and whether the region kept it there.</summary>
+    /// <summary>What came of the last move: where it is now (To), where the hand put it (Put), and whether the region
+    /// kept it there; Said, the region's refusal notice if one answered the drag.</summary>
     public sealed record Outcome(UUID Id, string Name, SVector3 From, SVector3 To, SQuaternion FromRot, SQuaternion ToRot, string Result, DateTime At)
     {
         public float Moved => SVector3.Distance(From, To);
         public float Turned => Degrees(FromRot, ToRot);
+        public SVector3 Put { get; init; } = To;
+        public SQuaternion PutRot { get; init; } = ToRot;
+        public string? Said { get; init; }
+        /// <summary>How far from where the hand put it, metres and degrees.</summary>
+        public float Off => SVector3.Distance(Put, To);
+        public float OffTurn => Degrees(PutRot, ToRot);
+    }
+
+    /// <summary>
+    /// What came of a move, from where the region has the thing once it's settled (at, atRot), where it was (from) and
+    /// where the hand put it (put, putRot), and whether a refusal notice answered the drag:
+    /// - placed: where it was put (2 cm, a degree: the region rounds);
+    /// - refused: it stayed where it was (with a notice, within 10 cm and nearer where it was than where it was put,
+    ///   since the region may take the first few centimetres before the edge; without one, within 2 cm);
+    /// - partly refused: a notice, and it went part of the way (the region took the updates up to where the land stops
+    ///   it and refused the rest);
+    /// - nudged: no notice, a little off (10 cm, 5 degrees): the region adjusting it;
+    /// - moved elsewhere: no notice, and it's somewhere else (physics, a script).
+    /// </summary>
+    public static string Classify(SVector3 from, SVector3 put, SQuaternion putRot, SVector3 at, SQuaternion atRot, bool refusal)
+    {
+        float off = SVector3.Distance(at, put), back = SVector3.Distance(at, from);
+        if (off < 0.02f && Degrees(atRot, putRot) < 1f) return "placed";
+        if (refusal) return back < 0.1f && back < off ? "refused" : "partly refused";
+        if (back < 0.02f) return "refused";
+        if (off < 0.1f && Degrees(atRot, putRot) < 5f) return "nudged";
+        return "moved elsewhere";
+    }
+
+    /// <summary>A region's notice refusing to move, turn or resize a thing (the Second Life simulator's "Can't rotate --
+    /// permission denied", "Can't move object -- permission denied"), which may answer a drag.</summary>
+    public static bool IsMoveRefusal(string message) =>
+        RefusalWords.IsMatch(message);
+
+    static readonly System.Text.RegularExpressions.Regex RefusalWords = new(
+        @"^\s*(can't|cannot|can not)\s+(move|rotate|position|scale|set position)\b.*permission denied",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>A region notice (the network thread): taken as the answer to a drag if it refuses a move and a drag is
+    /// held, or let go of less than 3.5 s ago; then the readout says it in plain words and the feed doesn't show it.
+    /// Anything else, or with no drag of ours, goes to the feed as usual.</summary>
+    public bool ClaimAlert(string message)
+    {
+        if (!On || !IsMoveRefusal(message)) return false;
+        var g = _grab ?? (_settlingGrab is { } s && Environment.TickCount64 < s.SettleUntil ? s : null);
+        if (g == null) return false;
+        g.Refusal = message;
+        _s.Log.LogInformation("building by hand: the region refused moving {Name}: {Said}", g.Name, message);
+        Changed?.Invoke();
+        return true;
     }
 
     public Outcome? Last { get; private set; }
@@ -191,16 +247,18 @@ public sealed class HandMove
             Changed?.Invoke();
             return;
         }
-        var o = new Outcome(g.Root.ID, g.Name, g.From, g.Pos, g.FromRot, g.Rot, "moving", DateTime.UtcNow);
+        var o = new Outcome(g.Root.ID, g.Name, g.From, g.Pos, g.FromRot, g.Rot, "moving", DateTime.UtcNow) { Said = g.Refusal };
         Last = o;
+        g.SettleUntil = Environment.TickCount64 + 3500;
+        _settlingGrab = g;
         _s.Log.LogInformation("building by hand: let go of {Name} at {Pos}, {Moved:0.00} m and {Turned:0.#} deg from where it was",
             g.Name, F(g.Pos), o.Moved, o.Turned);
         Changed?.Invoke();
         _ = Task.Run(() => SettleAsync(g, o));
     }
 
-    /// <summary>Whether the region kept it where it was put: its own updates within 3 s (2 cm and a degree, the
-    /// region rounds), else where it has it.</summary>
+    /// <summary>Whether the region kept it where it was put: its own updates within 3 s (<see cref="Classify"/>), with
+    /// any refusal notice that answered the drag, during it or in those 3 s.</summary>
     async Task SettleAsync(Grab g, Outcome o)
     {
         string result = "the region didn't say";
@@ -214,17 +272,19 @@ public sealed class HandMove
             }
             var at = N(w.RegionPosition(p));
             var rot = N(w.RegionRotation(p));
-            if (SVector3.Distance(at, o.To) < 0.02f && Degrees(rot, o.ToRot) < 1f) { result = "placed"; break; }
+            if (Classify(o.From, o.Put, o.PutRot, at, rot, false) == "placed") { result = "placed"; break; }
             if (i == 29)
             {
-                bool back = SVector3.Distance(at, o.From) < 0.02f;
-                result = back ? "refused" : "moved elsewhere";
+                result = Classify(o.From, o.Put, o.PutRot, at, rot, g.Refusal != null);
                 o = o with { To = at, ToRot = rot };
             }
         }
+        if (ReferenceEquals(_settlingGrab, g)) _settlingGrab = null;
         if (Last?.At != o.At) return;   // a newer move since
-        Last = o with { Result = result };
-        if (result != "placed") _s.Log.LogInformation("building by hand: {Name}: {Result} (now at {Pos})", o.Name, result, F(o.To));
+        Last = o with { Result = result, Said = g.Refusal };
+        if (result != "placed")
+            _s.Log.LogInformation("building by hand: {Name}: {Result} (now at {Pos}, {Back:0.000} m from where it was, {Off:0.000} m from where it was put{Said})",
+                o.Name, result, F(o.To), SVector3.Distance(o.To, o.From), o.Off, g.Refusal is { } said ? $"; the region said \"{said}\"" : "");
         Changed?.Invoke();
     }
 
@@ -368,6 +428,12 @@ public sealed class HandMove
                 ["rot_euler"] = Json3(Euler(l.ToRot)), ["moved_m"] = Math.Round(l.Moved, 3), ["turned_deg"] = Math.Round(l.Turned, 1),
                 ["result"] = l.Result, ["ago_s"] = Math.Round((DateTime.UtcNow - l.At).TotalSeconds),
             };
+        if (Last is { Result: not ("moving" or "placed") } lo)
+        {
+            o["last"]!["put"] = Json3(lo.Put);
+            o["last"]!["off_m"] = Math.Round(lo.Off, 3);
+        }
+        if (Last?.Said is { } said) o["last"]!["region_said"] = said;
         return o;
     }
 

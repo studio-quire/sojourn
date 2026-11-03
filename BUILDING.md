@@ -140,13 +140,13 @@ To update later: `git pull`, then `python tools/setup.py` again.
 ## 6. The assistant's provider
 
 The assistant is optional. Its provider is chosen in the launcher's settings (Access: Alt+0), and the person pastes
-the key there. Public builds offer:
+the key there. Public builds of both apps offer:
 - **An Anthropic API key** (console.anthropic.com), billed by Anthropic for what's used.
 - **An OpenRouter key** (openrouter.ai) and a model. Claude models through it can do everything; other makers' models
   work with caveats (`docs/assistant.md` > What works with which). "No data collection", on by default, routes only to
   providers whose stated policy is not to keep or train on prompts.
-- **The studio relay**: a personal token from Studio Quire for people it covers, such as testers. Not something to
-  sign up for here.
+- In Sojourn Access only, **the studio relay**: a personal token from Studio Quire for people it covers, such as its
+  testers. Not something to sign up for. The VR viewer has no such choice (`ProviderKeys.RelayOffered`).
 
 Public builds don't offer signing in with a Claude subscription: Anthropic's terms for the Agent SDK don't let
 third-party products offer claude.ai login or use plan limits without Anthropic's approval. For a person who wants to

@@ -108,7 +108,7 @@ public sealed partial class MainForm : Form
         var key = Grids.KeyOf(c.Grid);
         host.Config.Grids[key] = new Sojourn.Core.Config.GridConfig { LoginUri = c.Grid };
         host.Agent.Grid = key;
-        host.Agent.StateDir = Path.Combine(_opt.BaseDir, "state", key, $"{c.First}.{c.Last}".ToLowerInvariant());
+        host.Agent.StateDir = StartPlaces.StateDir(_opt.BaseDir, c.Grid, c.First, c.Last);
         // no greeting while logging in (arriving says where the keys are); after that, when a screen reader starts
         await host.StartAllAsync(_args, handle, new FormVoice(this), "");
         // no frame loop here: the autopilot (the assistant's walks) steers by the avatar dead-reckoned between updates
@@ -200,6 +200,7 @@ public sealed partial class MainForm : Form
         if (_ops.Me() is { } me) Reader?.Answer($"Logged in, in {me.Region}. {noSound}F1 for keys.", keep: false);
         if (Reader is { } r) r.Greeting = "Sojourn Access. F1 for keys.";
         _arrived = true;
+        _ = ReadFavoritesAfterLoadingAsync();
     }
 
     void Tick()
@@ -222,6 +223,7 @@ public sealed partial class MainForm : Form
         WatchSpeakers();
         FriendsBurstSaid();
         WatchConnection();
+        KeepStartPlaces();
     }
 
     string? _lastRegion;
@@ -555,6 +557,7 @@ public sealed partial class MainForm : Form
         Delete: delete
         F2: rename
         Control+F: search
+        Control+Shift+F: add to favorites, or remove; Show: Favorites lists them
         Alt+Shift+4: a second pane, Alt+4 back to the first
         Control+M: move what's marked into the folder selected in the other pane
         Control+U: upload a picture, sound, animation or model (on a folder: into it)
@@ -573,6 +576,7 @@ public sealed partial class MainForm : Form
         Tab: the selected one's parts, then a part's faces
         Enter: touch
         Alt+Shift+7: what you wear instead (HUDs, then a pet or anything with a menu); Alt+7's Show switches back
+        Delete on something you wear: take it off
 
         Voice
         F4 held: talk

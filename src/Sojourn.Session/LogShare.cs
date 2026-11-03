@@ -119,6 +119,7 @@ public static class LogShare
         // first, who's who: everyone the log names, and everything they said (to catch it repeated)
         var people = new Dictionary<string, Person>(StringComparer.OrdinalIgnoreCase);   // by id
         var theirWords = new List<string>();
+        var objectNames = new List<string>();
         Person Of(string id) => people.TryGetValue(id, out var p) ? p : people[id] = new Person();
         foreach (var e in entries)
         {
@@ -135,6 +136,7 @@ public static class LogShare
                 case "words":
                     var from = Str(o, "from");
                     if (from == "people" && Str(o, "text") is { } said) theirWords.Add(said);
+                    if (from == "objects" && Str(o, "name") is { Length: > 0 } objectName) objectNames.Add(objectName);
                     // a person's line or notice (the app's notices name the friend online, the payer...): their id and name
                     if (id is { Length: > 0 } && from is "people" or "me" or "app")
                     {
@@ -149,7 +151,7 @@ public static class LogShare
             }
         }
         var names = new Names(people);
-        var echo = new Echo(theirWords);
+        var echo = new Echo(theirWords, objectNames);
 
         var outText = new StringBuilder();
         var head = started is { } s ? $"started {s:yyyy-MM-dd HH:mm:ss}" : "";
@@ -404,20 +406,28 @@ public static class LogShare
     }
 
     /// <summary>Other people's words, to catch a line that repeats them (read back, quoted by the assistant, relayed by
-    /// an object): five words in a row from a longer line, or a whole short one of at least 12 characters.</summary>
+    /// an object): five words in a row from a longer line, or a whole short one of at least 12 characters. Not words
+    /// that are an object's name: someone naming a thing ("operator hud") isn't what a line naming it repeats (the blind
+    /// tester's log of 2026-11-02 lost every line of her GTFO! Operator HUD, menus and touches, that way).</summary>
     sealed class Echo
     {
         const int Run = 5;
         readonly HashSet<string> _runs = new();
         readonly HashSet<string>[] _short = { new(), new(), new(), new(), new() };   // by word count, 2-4
 
-        public Echo(IEnumerable<string> texts)
+        public Echo(IEnumerable<string> texts, IEnumerable<string>? objectNames = null)
         {
+            var names = (objectNames ?? Array.Empty<string>()).Select(n => $" {string.Join(' ', Words(n))} ").Distinct().ToList();
+            bool Named(string phrase) => names.Any(n => n.Contains($" {phrase} "));
             foreach (var t in texts)
             {
                 var w = Words(t);
-                if (w.Length >= Run) for (int i = 0; i + Run <= w.Length; i++) _runs.Add(string.Join(' ', w, i, Run));
-                else if (w.Length >= 2 && string.Join(' ', w) is { Length: >= 12 } phrase) _short[w.Length].Add(phrase);
+                if (w.Length >= Run)
+                {
+                    for (int i = 0; i + Run <= w.Length; i++)
+                        if (string.Join(' ', w, i, Run) is var run && !Named(run)) _runs.Add(run);
+                }
+                else if (w.Length >= 2 && string.Join(' ', w) is { Length: >= 12 } phrase && !Named(phrase)) _short[w.Length].Add(phrase);
             }
         }
 

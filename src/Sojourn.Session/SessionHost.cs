@@ -134,10 +134,12 @@ public sealed class SessionHost : IAsyncDisposable
         SettingsPath = VrSettings.PathIn(Options.BaseDir);
         Settings = VrSettings.Load(SettingsPath, Warn);
         var st = Settings;
-        // a packaged build offers no Claude account: a key or token already kept takes its place, else none is chosen
+        // a provider this app doesn't offer (a packaged build's "claude", the VR client's "relay"): a key already kept
+        // takes its place, else none is chosen ("claude": ProviderKeys.FallbackFor)
         if (Sojourn.Session.Assistant.ProviderKeys.FallbackFor(st.AssistantProvider) is { } kept)
         {
-            Info($"assistant: the provider {st.AssistantProvider} isn't offered in this build; using the {kept} kept");
+            Info($"assistant: the provider {st.AssistantProvider} isn't offered in this app; "
+                + (kept == "claude" ? "none chosen" + (Sojourn.Session.Assistant.ProviderKeys.ClaudeOffered ? " (the Claude account, from the repo)" : "") : $"using the {Sojourn.Session.Assistant.ProviderKeys.Thing(kept)} kept"));
             st.AssistantProvider = kept;
             SaveSettings();
         }

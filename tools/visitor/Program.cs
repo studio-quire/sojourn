@@ -54,13 +54,16 @@
 //                                                         that never reached the script; start P: the throttle at P%
 //                                                         once sat on; quiet 1: the throttle isn't said aloud (its
 //                                                         changes always go to the visitor by llOwnerSay)
-//   switch X Y Z [CHANNEL]                                a rail switch as the SLRR standard describes one (Sojourn
+//   switch X Y Z [CHANNEL] [long]                         a rail switch as the SLRR standard describes one (Sojourn
 //                                                         Access's rail switches): a "Switch Stand" whose description is
 //                                                         "Walk Junction.N~Main~Walk Halt~North Station~East Yard~N",
 //                                                         1.8 m north of X Y, a touch part over it, and two guide rails
 //                                                         10 m long running east, the main one 3 m north and the branch 4.2; a
 //                                                         touch, or "Main" or "Branch" on CHANNEL (133), sets it (says
-//                                                         "switch Main" / "switch Branch")
+//                                                         "switch Main" / "switch Branch"); long: each rail four sections
+//                                                         of their own 14 m apart, the branch's parting north to 10 m, its
+//                                                         furthest 43 m from the stand (as the Linden railroad's reach on
+//                                                         past their stands, 2026-11-02)
 //   cleanup                                               take every object it rezzed in this run to its trash
 //   derez NAME                                            take every object it rezzed with that name to its trash
 //   pos | whereis | quit                                  "REGION <x, y, z> heading DEG" (as the region has it)
@@ -698,32 +701,41 @@ static class Program
     /// its channel (133 unless given) sets it; each change is said on channel 0 ("switch Branch") for the test.</summary>
     static async Task<string> Switch(string rest)
     {
-        var w = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var w = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+        bool lengthy = w.Remove("long");
         int channel = 133;
-        if (w.Length < 3 || !float.TryParse(w[0], out var x) || !float.TryParse(w[1], out var y) || !float.TryParse(w[2], out var z)
-            || (w.Length > 3 && !int.TryParse(w[3], out channel)))
-            return "ERR switch X Y Z [CHANNEL]";
+        if (w.Count < 3 || !float.TryParse(w[0], out var x) || !float.TryParse(w[1], out var y) || !float.TryParse(w[2], out var z)
+            || (w.Count > 3 && !int.TryParse(w[3], out channel)))
+            return "ERR switch X Y Z [CHANNEL] [long]";
         var sim = client.Network.CurrentSim;
         var stand = await RezBox(new Vector3(x, y + 1.8f, z + 0.6f), new Vector3(0.3f, 0.3f, 1.2f));
         var touch = await RezBox(new Vector3(x, y + 1.8f, z + 0.8f), new Vector3(0.8f, 0.8f, 1.6f));
-        var main = await RezBox(new Vector3(x, y + 3, z + 0.25f), new Vector3(10f, 0.5f, 0.5f));
-        var branch = await RezBox(new Vector3(x, y + 4.2f, z + 0.25f), new Vector3(10f, 0.5f, 0.5f));
-        if (stand == null || touch == null || main == null || branch == null) return "ERR a part didn't come back";
+        if (stand == null || touch == null) return "ERR a part didn't come back";
+        // the rails: one section each, or four (east of the stand, 14 m apart, the branch parting north)
+        var rails = new List<(Primitive P, bool Main)>();
+        foreach (var (dx, branchY) in lengthy ? new[] { (0f, 4.2f), (14f, 5.5f), (28f, 7.5f), (42f, 10f) } : new[] { (0f, 4.2f) })
+        {
+            var m = await RezBox(new Vector3(x + dx, y + 3, z + 0.25f), new Vector3(10f, 0.5f, 0.5f));
+            var br = await RezBox(new Vector3(x + dx, y + branchY, z + 0.25f), new Vector3(10f, 0.5f, 0.5f));
+            if (m == null || br == null) return "ERR a rail didn't come back";
+            rails.Add((m, true));
+            rails.Add((br, false));
+        }
         Named(stand.LocalID, "Switch Stand");
         client.Objects.SetName(sim, touch.LocalID, "Switch Touch");
         client.Objects.SetDescription(sim, stand.LocalID, $"Walk Junction.{channel}~Main~Walk Halt~North Station~East Yard~{channel}");
-        Named(main.LocalID, "Guide");
-        Named(branch.LocalID, "Alternate Guide");
-        client.Objects.SetDescription(sim, main.LocalID, "main");
-        client.Objects.SetDescription(sim, branch.LocalID, "branch");
+        foreach (var (r, isMain) in rails)
+        {
+            Named(r.LocalID, isMain ? "Guide" : "Alternate Guide");
+            client.Objects.SetDescription(sim, r.LocalID, isMain ? "main" : "branch");
+        }
         await Task.Delay(1000);
         var guide = await UploadScript("Walk guide",
             "string track; integer CH = " + channel + "; set(string s) { integer mine = llToLower(s) == track; "
             + "if (mine) llSetObjectName(\"Guide\"); else llSetObjectName(\"Alternate Guide\"); llSetPrimitiveParams([PRIM_PHANTOM, !mine]); } "
             + "default { state_entry() { track = llGetObjectDesc(); set(\"main\"); llListen(-7133 - CH, \"\", NULL_KEY, \"\"); } "
             + "listen(integer c, string n, key id, string m) { if (llGetOwnerKey(id) == llGetOwner()) set(m); } }");
-        client.Inventory.CopyScriptToTask(main.LocalID, guide, true);
-        client.Inventory.CopyScriptToTask(branch.LocalID, guide, true);
+        foreach (var (r, _) in rails) client.Inventory.CopyScriptToTask(r.LocalID, guide, true);
         var toucher = await UploadScript("Walk switch touch",
             "default { touch_start(integer n) { llMessageLinked(LINK_ROOT, 0, \"toggle\", llDetectedKey(0)); } }");
         client.Inventory.CopyScriptToTask(touch.LocalID, toucher, true);
@@ -740,12 +752,12 @@ static class Program
         // ObjectLink: the first one becomes the root
         client.Objects.LinkPrims(sim, new List<uint> { stand.LocalID, touch.LocalID });
         await Task.Delay(1500);
-        client.Objects.DeselectObjects(sim, new[] { stand.LocalID, touch.LocalID, main.LocalID, branch.LocalID });
+        client.Objects.DeselectObjects(sim, new[] { stand.LocalID, touch.LocalID }.Concat(rails.Select(r => r.P.LocalID)).ToArray());
         for (int i = 0; i < 40; i++)
         {
             lock (heard)
                 if (heard.Any(l => l.Contains("switch ready") && int.Parse(Regex.Match(l, "\"n\":(\\d+)").Groups[1].Value) > mark))
-                    return $"switch stand {stand.ID} touch {touch.ID} main {main.ID} branch {branch.ID}";
+                    return $"switch stand {stand.ID} touch {touch.ID} rails {rails.Count}";
             await Task.Delay(250);
         }
         return $"ERR switch (stand {stand.ID}) rezzed but its script didn't say it was ready";

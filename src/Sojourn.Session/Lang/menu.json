@@ -3071,22 +3071,6 @@
     "de": "Noch kein Schlüssel",
     "zh-Hans": "尚未填写密钥"
   },
-  "no token yet": {
-    "_": "settings menu: why the assistant's provider isn't working, a row note: a small line under the row's label, one line of ~55 characters; lowercase, as the menu; no Studio Quire relay token put in yet",
-    "zh": "尚未輸入權杖",
-    "it": "nessun token inserito",
-    "es": "aún sin token",
-    "pt": "ainda sem credencial",
-    "ja": "トークンがまだありません",
-    "tr": "henüz token yok",
-    "fr": "pas encore de jeton",
-    "da": "intet token endnu",
-    "ru": "токена пока нет",
-    "pl": "brak tokenu",
-    "az": "hələ token yoxdur",
-    "de": "Noch kein Token",
-    "zh-Hans": "尚未填写令牌"
-  },
   "key refused": {
     "_": "settings menu: why the assistant's provider isn't working, a row note: a small line under the row's label, one line of ~55 characters; lowercase, as the menu; the API key was refused",
     "zh": "金鑰被拒絕",
@@ -3103,22 +3087,6 @@
     "de": "Schlüssel abgelehnt",
     "zh-Hans": "密钥被拒绝"
   },
-  "token refused": {
-    "_": "settings menu: why the assistant's provider isn't working, a row note: a small line under the row's label, one line of ~55 characters; lowercase, as the menu; the relay token was refused",
-    "zh": "權杖被拒絕",
-    "it": "token rifiutato",
-    "es": "token rechazado",
-    "pt": "credencial recusada",
-    "ja": "トークンが拒否されました",
-    "tr": "token reddedildi",
-    "fr": "jeton refusé",
-    "da": "tokenet blev afvist",
-    "ru": "токен отклонён",
-    "pl": "token odrzucony",
-    "az": "token qəbul edilmədi",
-    "de": "Token abgelehnt",
-    "zh-Hans": "令牌被拒绝"
-  },
   "no credits": {
     "_": "settings menu: why the assistant's provider isn't working, a row note: a small line under the row's label, one line of ~55 characters; lowercase, as the menu; the account has no credits",
     "zh": "沒有額度",
@@ -3134,22 +3102,6 @@
     "az": "kredit yoxdur",
     "de": "Kein Guthaben",
     "zh-Hans": "没有余额"
-  },
-  "this month's allowance used up": {
-    "_": "settings menu: why the assistant's provider isn't working, a row note: a small line under the row's label, one line of ~55 characters; lowercase, as the menu; the relay's monthly allowance is used up",
-    "zh": "本月額度已用完",
-    "it": "quota di questo mese esaurita",
-    "es": "agotada la cuota de este mes",
-    "pt": "a cota deste mês acabou",
-    "ja": "今月の利用枠を使い切りました",
-    "tr": "bu ayın hakkı doldu",
-    "fr": "quota du mois épuisé",
-    "da": "denne måneds kvote er brugt op",
-    "ru": "лимит на этот месяц исчерпан",
-    "pl": "wykorzystano limit na ten miesiąc",
-    "az": "bu ayın limiti bitib",
-    "de": "Kontingent für diesen Monat aufgebraucht",
-    "zh-Hans": "本月额度已用完"
   },
   "can't use tools": {
     "_": "settings menu: why the assistant's provider isn't working, a row note: a small line under the row's label, one line of ~55 characters; lowercase, as the menu; the chosen model can't use tools",
@@ -5215,22 +5167,6 @@
     "de": "Ein Bericht über diese Sitzung",
     "zh-Hans": "这次会话的报告"
   },
-  "Sent to Studio Quire through its relay, relay.studioquire.org, with your token: your note and the session's log, which keeps what Sojourn did, your own chat, objects' lines, the assistant's replies, errors and timings. Everything other people said or wrote is left out, and their names become person 1, person 2 and so on; yours becomes me. Studio Quire keeps it for 30 days.": {
-    "_": "settings menu, about > report a problem: a paragraph above its rows (wraps; keep about as long as the English); what a report holds, for someone with a Studio Quire token; Studio Quire, the address and Sojourn untranslated; 'person 1', 'person 2', 'me' are the stand-ins put in the log (in English), so keep them in English",
-    "zh": "透過 Studio Quire 的中繼 relay.studioquire.org，連同你的權杖送出：你的備註和這次工作階段的記錄檔，內含 Sojourn 做了什麼、你自己的聊天、物件說的話、助理的回覆、錯誤和計時。其他人說的或寫的一律略去，他們的名字會變成 person 1、person 2 等等；你的名字會變成 me。Studio Quire 會保留 30 天。",
-    "it": "Inviato a Studio Quire tramite il suo relay, relay.studioquire.org, con il tuo token: la tua nota e il log della sessione, che conserva ciò che Sojourn ha fatto, la tua chat, le righe degli oggetti, le risposte dell'assistente, errori e tempi. Tutto ciò che altre persone hanno detto o scritto resta fuori, e i loro nomi diventano person 1, person 2 e così via; il tuo diventa me. Studio Quire lo conserva per 30 giorni.",
-    "es": "Se envía a Studio Quire por su relé, relay.studioquire.org, con tu token: tu nota y el registro de la sesión, que guarda lo que hizo Sojourn, tu propio chat, las líneas de los objetos, las respuestas del asistente, errores y tiempos. Todo lo que otras personas dijeron o escribieron queda fuera, y sus nombres pasan a ser person 1, person 2, etc.; el tuyo pasa a ser me. Studio Quire lo guarda 30 días.",
-    "pt": "Enviado ao Studio Quire pelo relay dele, relay.studioquire.org, com a sua credencial: a sua nota e o log da sessão, que guarda o que o Sojourn fez, o seu próprio bate-papo, as falas de objetos, as respostas do assistente, erros e tempos. Tudo o que outras pessoas disseram ou escreveram fica de fora, e os nomes delas viram person 1, person 2 e assim por diante; o seu vira me. O Studio Quire guarda o relatório por 30 dias.",
-    "ja": "Studio Quireのリレー（relay.studioquire.org）を通じて、あなたのトークンで送られます。内容はあなたのメモとセッションのログです。ログにはSojournの動作、あなた自身のチャット、オブジェクトの発言、アシスタントの返答、エラー、所要時間が残ります。他の人が言ったり書いたりしたことはすべて除かれ、その名前はperson 1、person 2のように、あなたの名前はmeに置き換えられます。Studio Quireは30日間保管します。",
-    "tr": "Token'ınızla, Studio Quire'ın aktarıcısı relay.studioquire.org üzerinden gönderilir: notunuz ve oturumun günlüğü; günlükte Sojourn'un yaptıkları, kendi sohbetiniz, nesnelerin satırları, asistanın yanıtları, hatalar ve süreler bulunur. Başkalarının söylediği ya da yazdığı her şey çıkarılır, adları person 1, person 2 vb. olur; sizinki me olur. Studio Quire bunu 30 gün saklar.",
-    "fr": "Envoyé à Studio Quire via son relais, relay.studioquire.org, avec votre jeton : votre note et le journal de la session, qui garde ce que Sojourn a fait, votre propre chat, les lignes des objets, les réponses de l'assistant, les erreurs et les durées. Tout ce que les autres ont dit ou écrit est omis, et leurs noms deviennent person 1, person 2, etc. ; le vôtre devient me. Studio Quire le conserve 30 jours.",
-    "da": "Sendes til Studio Quire via dets relæ, relay.studioquire.org, med dit token: din note og sessionens log, som rummer, hvad Sojourn gjorde, din egen chat, objekters linjer, assistentens svar, fejl og tidsmålinger. Alt, hvad andre har sagt eller skrevet, udelades, og deres navne bliver til person 1, person 2 og så videre; dit bliver til me. Studio Quire gemmer den i 30 dage.",
-    "ru": "Отправляется в Studio Quire через её ретранслятор relay.studioquire.org с вашим токеном: ваша заметка и журнал сеанса, где записано, что делал Sojourn, ваш собственный чат, реплики объектов, ответы ассистента, ошибки и тайминги. Всё, что говорили или писали другие, исключается, а их имена заменяются на person 1, person 2 и так далее; ваше — на me. Studio Quire хранит отчёт 30 дней.",
-    "pl": "Trafia do Studio Quire przez jego przekaźnik, relay.studioquire.org, z twoim tokenem: twoja notka i log sesji, w którym jest to, co robił Sojourn, twój własny czat, wypowiedzi obiektów, odpowiedzi asystenta, błędy i czasy. Wszystko, co mówili lub pisali inni, jest pomijane, a ich imiona zmieniają się w person 1, person 2 i tak dalej; twoje w me. Studio Quire przechowuje go przez 30 dni.",
-    "az": "Studio Quire studiyasına onun releyi relay.studioquire.org vasitəsilə, tokeninizlə göndərilir: qeydiniz və sessiyanın jurnalı, yəni Sojourn-un etdikləri, öz söhbətiniz, obyektlərin sətirləri, köməkçinin cavabları, xətalar və vaxtlar. Başqalarının dediyi və ya yazdığı hər şey çıxarılır, adları isə person 1, person 2 və s. olur; sizin adınız me olur. Studio Quire onu 30 gün saxlayır.",
-    "de": "Geht mit Ihrem Token über das Relay relay.studioquire.org an Studio Quire: Ihre Notiz und das Log der Sitzung, das festhält, was Sojourn getan hat, Ihren eigenen Chat, Zeilen von Objekten, die Antworten des Assistenten, Fehler und Zeiten. Alles, was andere gesagt oder geschrieben haben, wird ausgelassen, und ihre Namen werden zu person 1, person 2 und so weiter; Ihrer wird zu me. Studio Quire bewahrt ihn 30 Tage auf.",
-    "zh-Hans": "通过 Studio Quire 的中继 relay.studioquire.org，连同你的令牌发送：你的备注和这次会话的日志，其中记录了 Sojourn 做了什么、你自己的聊天、物体说的话、助手的回复、错误和耗时。别人说的或写的一律略去，他们的名字变成 person 1、person 2 等等；你的名字变成 me。Studio Quire 会保留 30 天。"
-  },
   "Sent to Studio Quire through its relay, relay.studioquire.org: your note and the session's log, which keeps what Sojourn did, your own chat, objects' lines, the assistant's replies, errors and timings. Everything other people said or wrote is left out, and their names become person 1, person 2 and so on; yours becomes me. Studio Quire keeps it for 30 days, and doesn't keep your IP address.": {
     "_": "settings menu, about > report a problem: a paragraph above its rows (wraps; keep about as long as the English); what a report holds, without a token; Studio Quire, the address and Sojourn untranslated; 'person 1', 'person 2', 'me' are the stand-ins put in the log (in English), so keep them in English",
     "zh": "透過 Studio Quire 的中繼 relay.studioquire.org 送出：你的備註和這次工作階段的記錄檔，內含 Sojourn 做了什麼、你自己的聊天、物件說的話、助理的回覆、錯誤和計時。其他人說的或寫的一律略去，他們的名字會變成 person 1、person 2 等等；你的名字會變成 me。Studio Quire 會保留 30 天，且不保留你的 IP 位址。",
@@ -5454,22 +5390,6 @@
     "az": "Göndərilmədi: Studio Quire releyinə qoşulmaq alınmadı ({0}).",
     "de": "Nicht gesendet: Das Relay von Studio Quire war nicht erreichbar ({0}).",
     "zh-Hans": "未发送：无法连接 Studio Quire 的中继（{0}）。"
-  },
-  "Studio Quire's relay didn't take your token. Nothing was sent.": {
-    "_": "settings menu, about > report a problem: a row note, what came of a press (one line, cut if longer; keep it short)",
-    "zh": "Studio Quire 的中繼不接受你的權杖。沒有送出任何東西。",
-    "it": "Il relay di Studio Quire non ha accettato il tuo token. Non è stato inviato nulla.",
-    "es": "El relé de Studio Quire no aceptó tu token. No se envió nada.",
-    "pt": "O relay do Studio Quire não aceitou a sua credencial. Nada foi enviado.",
-    "ja": "Studio Quireのリレーがトークンを受け付けませんでした。何も送信されていません。",
-    "tr": "Studio Quire'ın aktarıcısı token'ınızı kabul etmedi. Hiçbir şey gönderilmedi.",
-    "fr": "Le relais de Studio Quire n'a pas accepté votre jeton. Rien n'a été envoyé.",
-    "da": "Studio Quires relæ godtog ikke dit token. Intet blev sendt.",
-    "ru": "Ретранслятор Studio Quire не принял ваш токен. Ничего не отправлено.",
-    "pl": "Przekaźnik Studio Quire nie przyjął twojego tokenu. Nic nie wysłano.",
-    "az": "Studio Quire releyi tokeninizi qəbul etmədi. Heç nə göndərilmədi.",
-    "de": "Das Relay von Studio Quire hat Ihr Token nicht angenommen. Nichts wurde gesendet.",
-    "zh-Hans": "Studio Quire 的中继不接受你的令牌。什么都没有发送。"
   },
   "Too many reports sent today. Try again tomorrow. You can save it for GitHub instead.": {
     "_": "settings menu, about > report a problem: a row note, what came of a press (one line, cut if longer; keep it short); the relay's daily limit",

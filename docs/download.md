@@ -59,16 +59,16 @@ https://github.com/studio-quire/sojourn-access/issues. Issues are read, but ther
 ## Privacy policy
 
 Studio Quire makes Sojourn and Sojourn Access. This policy covers both apps and Studio Quire's relay, and describes
-what the current code does (in effect from 2026-11-01).
+what the current code does (in effect from 2026-11-02).
 
 Studio Quire collects nothing on its own. Neither app has analytics or tracking. The only things that reach Studio
-Quire are ones you choose: requests through the studio relay, if the studio gave you a token for it (below); in
-Sojourn Access a session's log, if you send one (Help > Send a log); and in Sojourn a problem report (menu > about >
+Quire are ones you choose: in Sojourn Access, requests through the studio relay, if the studio gave you a token for
+it (below), and a session's log, if you send one (Help > Send a log); and in Sojourn a problem report (menu > about >
 report a problem, or by asking the assistant) or a crash report, which the launcher asks about after a crash unless
 you set crash reports to always or never. Other people's words are left out and their names replaced before a log
-or report leaves your computer; it goes to Studio Quire's relay (relay.studioquire.org) and is kept for 30 days. With
-a Studio Quire token it goes as yours; without one, Sojourn's reports are taken anonymously, at most three a day from
-one address, and your IP address isn't stored. Or you can save a report as a file and attach it to a GitHub issue
+or report leaves your computer; it goes to Studio Quire's relay (relay.studioquire.org) and is kept for 30 days. What
+Sojourn Access sends goes with your Studio Quire token, as yours; Sojourn's reports go without one, taken
+anonymously, at most three a day from one address, and your IP address isn't stored. Or you can save a report as a file and attach it to a GitHub issue
 yourself.
 
 **Without the assistant**, the apps connect only where any Second Life viewer does:
@@ -95,7 +95,7 @@ Sojourn Access, Alt+0), under that provider's terms and privacy policy:
 - your own Anthropic API key: to Anthropic, the maker of Claude;
 - your own OpenRouter key: to OpenRouter and the model's provider it routes to. "No data collection" is on by default:
   OpenRouter then uses only providers that say they don't keep or train on prompts;
-- the studio relay, for people Studio Quire covers: to Anthropic on Studio Quire's key, through Studio Quire's relay,
+- in Sojourn Access only, the studio relay, for people Studio Quire covers: to Anthropic on Studio Quire's key, through Studio Quire's relay,
   which reads only how much each request cost (to keep to your monthly allowance) and stores nothing of what's said.
 
 What's sent: your request (typed, or transcribed from your speech on your

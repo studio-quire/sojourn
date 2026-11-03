@@ -627,7 +627,12 @@ class Brain:
         self.prompts(catalog)
         self.started = True
         await self.jobs.startup()
-        await asyncio.gather(*(self.sessions[n].ensure() for n in self.wanted()))
+        # warming is a head start, not a must: a session that doesn't come up now comes up with the first request (one
+        # failing here ended the whole sidecar, 2026-11-02: Claude Code's start passed the SDK's minute on a tester's PC)
+        names = list(self.wanted())
+        for n, r in zip(names, await asyncio.gather(*(self.sessions[n].ensure() for n in names), return_exceptions=True)):
+            if isinstance(r, BaseException):
+                self.log(f"{n} session didn't come up yet ({r!r}); it starts again with the first request")
         asyncio.create_task(self.keep_warm())
 
     def apply_prefs(self, prefs):
@@ -812,7 +817,9 @@ class Brain:
         if recent:
             to = last.get("to") or [0, 0, 0]
             out += (f"; they last moved {last.get('name')} id={last.get('id')} by hand {last.get('ago_s'):.0f} s ago, "
-                    f"{last.get('moved_m')} m and {last.get('turned_deg')} deg, to {to[0]:.2f},{to[1]:.2f},{to[2]:.2f} ({last.get('result')})")
+                    f"{last.get('moved_m')} m and {last.get('turned_deg')} deg, to {to[0]:.2f},{to[1]:.2f},{to[2]:.2f} ({last.get('result')}"
+                    + (f"; {last.get('off_m')} m from where they let go" if last.get("off_m") is not None else "")
+                    + (f"; the region said \"{last['region_said']}\"" if last.get("region_said") else "") + ")")
         return out
 
     async def context(self, target, jobs=True):

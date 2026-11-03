@@ -57,6 +57,7 @@ public sealed partial class MainForm
             Later("&People", "Alt+3", () => GoArea(_peoplePage)),
             Later("&Inventory", "Alt+4", () => GoInventory(second: false)),
             Later("Inventory, s&econd pane", "Alt+Shift+4", () => GoInventory(second: true)),
+            Later("Inventor&y favorites", null, GoFavorites),
             Later("&Search", "Alt+5", () => GoArea(_searchPage)),
             Later("P&laces", "Alt+6", () => GoArea(_placesPage)),
             Later("O&bjects", "Alt+7", GoNearby),

@@ -674,7 +674,7 @@ public sealed class DescribeApi : LeapApi
         if (w.AvatarById(c.Self.AgentID) is { } av)
         {
             if (av.ParentID != 0 && w.Prims.TryGetValue(av.ParentID, out var seat)) o["sitting_on"] = SittingOn(w, seat);
-            o["wearing_items_named"] = await AttachmentsAsync(w, av, ct);
+            o["wearing_items_named"] = await AttachmentsAsync(w, av, ct, own: true);
         }
         // clothing and body parts (the Current Outfit folder's links)
         var layers = new JsonArray();
@@ -690,7 +690,12 @@ public sealed class DescribeApi : LeapApi
         return o;
     }
 
-    async Task<JsonArray> AttachmentsAsync(RegionWorld w, Avatar av, CancellationToken ct)
+    /// <summary>What someone wears, by object name and point. The person's own things also give the inventory item each
+    /// was worn from (its AttachItemID, looked up in the inventory already loaded) where its name differs, and the
+    /// object's own description where it says something more: an object renamed in world, as a scripted pet renamed by
+    /// its owner, keeps its product's name only in that item (a renamed shoulder pet, a winged gryphon, was described
+    /// as a cat, 2026-11-02).</summary>
+    async Task<JsonArray> AttachmentsAsync(RegionWorld w, Avatar av, CancellationToken ct, bool own = false)
     {
         var roots = w.Prims.Values.Where(p => p.ParentID == av.LocalID).ToList();
         if (roots.Count > 0) await S.Objects.FetchAsync(w, roots, TimeSpan.FromSeconds(2), ct);
@@ -699,10 +704,25 @@ public sealed class DescribeApi : LeapApi
         {
             int point = (int)p.PrimData.AttachmentPoint;
             if (point is >= 31 and <= 38) continue;   // HUDs: not seen by anyone
-            list.Add($"{ObjectName(p)} (on {ObjectViews.AttachPointName(point)})");
+            var name = ObjectName(p);
+            var about = $"on {ObjectViews.AttachPointName(point)}";
+            if (own)
+            {
+                var itemName = InventoryName(p);
+                if (itemName.Length > 0 && !itemName.Equals(name, StringComparison.OrdinalIgnoreCase)) about += $"; its inventory item: {itemName}";
+                if (p.Properties?.Description?.Trim() is { Length: > 0 } d && d != "(No Description)"
+                    && !d.Equals(name, StringComparison.OrdinalIgnoreCase) && !d.Equals(itemName, StringComparison.OrdinalIgnoreCase))
+                    about += $"; its description: {Clip(d, 120)}";
+            }
+            list.Add($"{name} ({about})");
         }
         return list;
     }
+
+    /// <summary>The name of the inventory item one of the person's own attachments was worn from, if the inventory
+    /// already loaded has it.</summary>
+    string InventoryName(Primitive p) =>
+        S.Inventory.Node(AgentInventory.AttachItemId(p)) is InventoryItem { Name: { Length: > 0 } n } ? n.Trim() : "";
 
     async Task<JsonObject> ObjectAsync(GridClient c, RegionWorld w, Primitive prim, CancellationToken ct)
     {
@@ -716,6 +736,8 @@ public sealed class DescribeApi : LeapApi
         {
             o["worn_by"] = wearer.ID == c.Self.AgentID ? "the person themselves" : S.Names.Complete(wearer.ID, wearer.Name ?? "someone");
             o["worn_on"] = ObjectViews.AttachPointName((int)root.PrimData.AttachmentPoint);
+            if (wearer.ID == c.Self.AgentID && InventoryName(root) is { Length: > 0 } item && !item.Equals(ObjectName(root), StringComparison.OrdinalIgnoreCase))
+                o["its_inventory_item"] = item;
         }
         else
         {

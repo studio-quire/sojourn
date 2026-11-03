@@ -379,7 +379,9 @@ for went into 0.1.0.589 (`docs/access-app.md`).
   is $50), nothing kept. While she's the only token holder her cap is the whole credit; split it when others join. The relay's Anthropic key is scoped to the studio's "Sojourn relay"
   workspace (no Admin API; the workspace carries the spend limit, $200 a month), paid from the plan's monthly API credit, kept in
   `local/secrets/studio/relay-anthropic.key` (DPAPI, the user's Windows account), put there by the user without
-  passing through a session.
+  passing through a session. Telling testers why it's easy to cover is fine (the user, 2026-11-02): it comes with the
+  plan the studio uses for running Claude anyway, and those credits would go unused otherwise. She had been keeping to
+  the economy describer to save the code (2026-11-02, 8 cents used that month); told her both.
 
 ### A day on 0.1.0.589 (the blind tester, 2026-10-31)
 
@@ -490,6 +492,81 @@ her log (sent 12:57, `local/relay-logs/tester-20261101T175707-4c467c.txt`).
   relay's credit, handling it if it runs low: two friends' tokens (`tester-friend-1`, `-2`, $40 a month each) went
   to Tessel to pass on; more on asking (`python tools/relay.py token new NAME --cap 40`).
 
+### Favourites and start places (the blind tester, 2026-11-02 evening)
+
+On the builders' line (18:09 and 18:14): she'd kept objects and landmarks in her inventory's Favorites folder, learned
+it's meant for landmarks, and heard from her partner of the newer way to favourite things; she asked for that and what
+it does, and whether the Favorites folder's landmarks can be start places at login. Told the difference (the folder,
+now the viewer's Favorites Bar, vs marks kept by Second Life's inventory service). Built that evening: the marks
+(Ctrl+Shift+F, the Applications key, "favorite" in an item's words, Show: Favorites) and the Favorites bar's landmarks
+in Start at (`docs/access-app.md` > Keys, Favorites; Login). The folder is now said as "Favorites bar" (the viewer's
+name for it). The marks are checked only against a stand-in for the service, so her first use is their first on Second
+Life.
+
+### Her HUD, crossings and the rest of that freight run (0.1.0.811, the blind tester, 2026-11-02 evening)
+
+Her log `tester-20261103T000721-ef2577` (17:19-19:07 SLT, about 180 region crossings seated, three GTFO jobs) and the
+builders' line, where she said she was trying to take off another HUD and couldn't (our words). Rail switches are the
+next entry.
+- **The HUD**: her region-crossing script (an attachment named Region-Change that says each region in local chat),
+  which she found she didn't need now that Access says crossings ("Oops there is no way to remove it"). What you wear
+  (Alt+Shift+7) offered only Touch, Describe, Where and Parts, and Delete there said to use the inventory. Now Take off
+  and Delete there take it off. Which list she was in isn't in the log: what each list's menu offers is logged now.
+  Her Chat-Range script also repeats the chat-range lines Access says.
+- **"The crossing left you standing"** seven times while she sat on ("Sometimes it says the crossing left me standing
+  but then it looks as if I am sitting"), each a second or three before the region sent her avatar seated; the other
+  170 said "still on Zephyr". Now judged once the avatar and its seat have come.
+- **Warnings while driving**: 157 lines such as "Atoll Railroad Section, 20 metres." and "Guide, 13 metres.", the track's
+  own pieces met straight ahead on curves, up to six in three seconds. Now only what the train is closing on.
+- **The track's end** in Velox: the train said "No Guide found" at speed and Access stopped it ("Track ends: stopping.");
+  she asked whether they'd run out of track, then drove on forward the same way. Likely a gap in the guide (a switch was
+  just ahead), not the end. Kept as it is; a question for her partner.
+- **The assistant never came up**: Claude Code's start took over the SDK's minute (12-38 s on her earlier days; the view
+  was compiling on her processor meanwhile) and the whole sidecar ended, with nothing said; she didn't ask it anything
+  that run. Now a slow start is waited for up to four minutes, a failed warm-up starts again at the first request, and
+  the log says when the sidecar ends.
+- **Her log** had left out every line of her GTFO! Operator HUD (its menus as read out, her touches of it) as repeating
+  someone's words: someone had said its name. The filter now lets an object's name through.
+- GTFO's menus came as script dialogs in Notices and she answered them all by key (Get Cargo, the pages, a hub, Load
+  Job, Confirm, Deliver), levelling up twice. "Just still amazed how well it's working."
+- Walk mode went on 47 times, mostly to change the throttle between IMs (it ends when the focus leaves it, with its
+  sound). A question for her.
+- Memory: 1.1-1.9 GB (2.0-2.4 on 718), the heap 1.2-1.7 GB with up to 0.7 fragmented, 77 s of collection pauses in 108
+  minutes; allocation 25-31 MB/s while riding, 3-5 still. Smaller than before, but the allocation while moving is the
+  next thing (`docs/performance.md` > Sojourn Access on a small PC).
+- The first picture: a first frame 25 s after the view came up, the warm-up done 99 s after login (1.5-2 minutes was
+  predicted); her processor 20-29% busy meanwhile, so the compiling is one thread at a time, not other programs.
+
+### Rail switches on that freight run (0.1.0.811, the blind tester, 2026-11-02 evening)
+
+Log `tester-20261103T000721-ef2577`, over the Linden railroad's atoll lines: the switch announcements' first meeting
+with real switches.
+- She was pleased the viewer sees switches now and asked whether she could work them; told W and Shift+W, `//switch
+  flip`, `main` and `branch` on the builders' line mid-run; she didn't try a throw that run. Stands to the SLRR
+  standard were read right (104 lines named the way set), but 178 lines said "unknown", often several in a few seconds
+  (noise while driving), and five said 135-260 m at crossings. Fixed after 811: what doesn't say its setting is part of the switch
+  that does within 60 m (most likely the switches' own guide rails, objects of their own on the Linden track), waits a
+  moment for its stand's name, distances taken in the frame she's in when said, nothing first due under 5 m; the log
+  now records each switch part found, so her next ride's log settles what the unknowns were (`docs/access-app.md` >
+  Rail switches).
+
+### A description at home (0.1.0.835, the blind tester, 2026-11-02 evening)
+
+Log `tester-20261103T004420-253fad`, her first session on 835 (the freight run was on 811 from its old folder).
+- The view on the processor was ready 53.5 s after login, against 99 s on 811 that afternoon.
+- She asked the assistant to describe her, and shared what it said: the room by clock directions, her outfit garment
+  by garment, the colours as in daylight because her house was dark. But her cat, which has wings, was "a
+  black-and-white cat". Her look was fully loaded in both pictures (191 of 191 surfaces with their colours), so the miss
+  wasn't loading. She switched to best (Opus 5.5) and asked again (log `tester-20261103T004927-5e9901`): a finer
+  outfit, the room right, 40 s in all (shaders compiled by then), and still "a small black-and-white cat" on her
+  shoulder. Both models missing them suggests the wings don't show from the front (folded behind, see-through?);
+  asked her what they're like, and Tessel will describe a picture of the cat if she sends one.
+- "Describe me" took 93 s: the quick model asked for the room (four pictures) and then her (two), and her full-length
+  picture took 21 s to draw (fullbright and alpha compiling for her attachments). Control+Shift+D describes only
+  herself (told her).
+- She was in Alt+7 with Show on what she wears when she couldn't take her HUDs off: the list fixed after 811.
+- Her parcel's stream answered 401 at every retry (about every 35 s): log noise only.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -575,11 +652,12 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 - For the beacon and the marks: is a pip from where a walk is heading useful, or noise on top of the footsteps (on,
   quiet, now)? Walking to a beacon by hand: can she tell ahead from behind (it brightens within 20 degrees ahead)? Is
   O's list (doors, seats, touchable things within 12 m, sounded one by one) the right set and range?
-- For rail switches (after the next build): is a switch said early enough ("Switch in 40 metres", up to 60 m ahead), and
-  is the main line's or branch's name from the stand useful or noise? Do W and Shift+W sit well, or would she rather a
-  key that sets it to the main line and one to the branch? Did any switch on the atoll go unsaid, or say "unknown"? For
-  her partner: are the atoll's switches SLRR switch stands (named "Switch Stand", Main or Branch in the description),
-  and does touching the stand flip them?
+- For rail switches (after the build following 811): is a switch said early enough ("Switch in 40 metres", up to 60 m
+  ahead), and is the main line's or branch's name from the stand useful or noise? Are there still "unknown" switches,
+  or switches said in bursts? Do W and Shift+W sit well once she's tried a throw (a log of that ride would show what the
+  stand did), or would she rather a key that sets it to the main line and one to the branch? For her partner (the
+  atoll's stands do follow the standard, by her 811 log): does touching a stand flip it, or open a menu; and are the
+  switches' guide rails objects of their own, apart from the stand?
 - For the track's end (after the next build): did it stop in time, before the derail? For her partner: does Down past 0
   put the train in reverse; does holding Down take more than one step; what exactly does it say of its throttle, and
   anything else as the track runs out (a log's lines would do)? Is Space the right emergency key, or would she want one

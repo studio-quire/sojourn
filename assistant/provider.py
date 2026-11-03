@@ -8,9 +8,11 @@
 - anthropic: the person's Anthropic API key.
 - openrouter: the person's OpenRouter key, and a model there: "claude" (Anthropic's models through OpenRouter, the
   same three roles and modes) or any OpenRouter model id, which then takes every request itself.
-- relay: a personal token from Studio Quire, for people the studio covers: Anthropic's API through the studio's relay
-  (tools/relay/, docs/assistant.md > The studio relay), which holds the studio's key and caps each token's spending by
-  the month. The token is kept and added as a key is; its month's allowance used up, the person hears so plainly.
+- relay, in Sojourn Access only (RELAY_APPS): a personal token from Studio Quire, for people the studio covers:
+  Anthropic's API through the studio's relay (tools/relay/, docs/assistant.md > The studio relay), which holds the
+  studio's key and caps each token's spending by the month. The token is kept and added as a key is; its month's
+  allowance used up, the person hears so plainly. The VR client offers no relay (the user, 2026-11-02): there a
+  "relay" setting is none chosen, as an unknown one is.
 
 The keys are the person's secrets. They're kept only in the keys folder (local/secrets/assistant from the repo,
 %LOCALAPPDATA%\\Sojourn\\secrets\\assistant otherwise; SOJOURN_KEYS for tests), each encrypted for this Windows account
@@ -64,6 +66,8 @@ CLAUDE_OFFERED = False
 ANTHROPIC = "https://api.anthropic.com"
 OPENROUTER = "https://openrouter.ai/api"
 RELAY = "https://relay.studioquire.org"
+# the apps (the hello's "app") offering the relay as a provider, as ProviderKeys.RelayOffered: Sojourn Access alone
+RELAY_APPS = ("access",)
 NAMES = {"anthropic": "Anthropic", "openrouter": "OpenRouter", "relay": "Studio Quire"}
 # auto mode's classifier (permission checks): pinned so the proxy knows its requests and keeps them on Claude
 CLASSIFIER = "claude-sonnet-5"
@@ -87,6 +91,10 @@ def shape(kind, text):
     """The key in what was pasted (trimmed of spaces and quotes), or None if it isn't one of kind's."""
     t = (text or "").strip().strip("\"'").strip()
     return t if kind in SHAPES and SHAPES[kind].fullmatch(t) else None
+
+
+def relay_offered(app):
+    return app in RELAY_APPS
 
 
 def kind_of(text):
@@ -426,7 +434,8 @@ class Provider:
 
     def wanted(self, prefs):
         p = prefs or {}
-        kind = p.get("provider") if p.get("provider") in KINDS else "claude"
+        kinds = KINDS if relay_offered(self.app) else tuple(k for k in KINDS if k != "relay")
+        kind = p.get("provider") if p.get("provider") in kinds else "claude"
         return (kind, (p.get("openrouter_model") or "claude").strip(), p.get("key_stamp"),
                 p.get("openrouter_deny_data") is not False, p.get("auto_mode") is not False)
 
@@ -587,8 +596,9 @@ class Provider:
                    if self.state == "no_key" else f"Put in another {noun} or choose another provider")
             return f"The assistant is off: {self.words} {how} ({where})."
         if self.state == "none":
-            return ("The assistant is off until you choose how it runs: with a token from Studio Quire, or your own "
-                    "Anthropic or OpenRouter key. Copy it, then "
+            return ("The assistant is off until you choose how it runs: with "
+                    + ("a token from Studio Quire, or your own " if relay_offered(self.app) else "your own ")
+                    + "Anthropic or OpenRouter key. Copy it, then "
                     f"{'choose the assistant key row in Alt+0 and paste it' if access else 'paste it into the key box in the launcher (its settings)'}. "
                     "Everything else works without it.")
         if self.state == "no_tools":
@@ -597,7 +607,7 @@ class Provider:
             return (f"The assistant can't answer: {self.words} Choose another model, or allow data collection "
                     f"({'Alt+0' if access else "the launcher's settings"}).")
         return (f"The assistant is off: {self.words} To switch it on, sign in to Claude Code on this PC with a Claude "
-                f"subscription, or use your own Anthropic or OpenRouter key, or a token from Studio Quire: copy it, then "
+                f"subscription, or use your own Anthropic or OpenRouter key{', or a token from Studio Quire' if relay_offered(self.app) else ''}: copy it, then "
                 f"{'choose the assistant key row in Alt+0' if access else 'paste it into the key box in the launcher (its settings)'}. "
                 "Everything else works without it.")
 

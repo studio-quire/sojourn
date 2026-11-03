@@ -83,15 +83,15 @@ sealed class SettingsFile
     // ---- the assistant ----
 
     /// <summary>Whose models the assistant runs on: VrSettings.AssistantProvider and its values (assistant/provider.py):
-    /// the Claude account signed in on this PC, the person's Anthropic key, their OpenRouter key, or a token for Studio
-    /// Quire's relay (people the studio covers), or the person's own agent on this PC ("agent": no key, the client starts
-    /// in dev mode, docs/dev-mode.md); chosen here only
+    /// the Claude account signed in on this PC, the person's Anthropic key, their OpenRouter key, or the person's own agent
+    /// on this PC ("agent": no key, the client starts in dev mode, docs/dev-mode.md); chosen here only. Studio Quire's
+    /// relay is Sojourn Access's alone (ProviderKeys.RelayOffered): a saved "relay" gives way at load (FallbackFor)
     /// (the headset's menu shows the model choices for it). The keys go to ProviderKeys, never into this file.
     /// Null: not in the file, the client's default (claude).</summary>
     public const string ProviderKey = "assistantProvider";
     public static readonly (string Value, string Label)[] Providers =
     {
-        ("claude", "Claude plan"), ("anthropic", "Anthropic API"), ("openrouter", "OpenRouter"), ("agent", "your agent"), ("relay", "Studio relay"),
+        ("claude", "Claude plan"), ("anthropic", "Anthropic API"), ("openrouter", "OpenRouter"), ("agent", "your agent"),
     };
 
     public string? Provider

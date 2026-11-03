@@ -95,15 +95,18 @@ public static class PanelShots
         // the person's own agent as the assistant (dev mode): its line in the built-in assistant's rows' place
         Shot("8c-settings-assistant-agent", Panel.DrawMenu(look, Tabs, 1, AgentRows, null, -1, scale, 1,
             text: Sojourn.Client.Control.SettingsMenu.AgentText, quit: true));
-        // about, the last section (Control/AboutMenu.cs: its own words), and its report page with and without a token
+        // about, the last section (Control/AboutMenu.cs: its own words), and its report page, before and after sending
         var aboutTabs = AllTabs.Append("about").ToArray();
         float room = 44 / UiSize.BaseDegPerPx;
         Shot("7m-settings-about", Panel.DrawMenu(look, aboutTabs, 10, AboutRows, null, -1, scale, 1, 0, room,
             text: Sojourn.Client.Control.AboutMenu.Lines("0.1.0.812", "3938f43"), quit: true));
-        Shot("7n-settings-about-report", Panel.DrawMenu(look, aboutTabs, 10, ReportRows(true), null, -1, scale, 1, 0, room,
-            group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(true), quit: true));
-        Shot("7o-settings-about-report-no-token", Panel.DrawMenu(look, aboutTabs, 10, ReportRows(false), null, -1, scale, 1, 0, room,
-            group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(false), quit: true));
+        Shot("7n-settings-about-report", Panel.DrawMenu(look, aboutTabs, 10, ReportRows(false), null, -1, scale, 1, 0, room,
+            group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(), quit: true));
+        Shot("7o-settings-about-report-sent", Panel.DrawMenu(look, aboutTabs, 10, ReportRows(true), null, -1, scale, 1, 0, room,
+            group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(), quit: true));
+        string sendTip = Sojourn.Client.Control.MenuGuide.Tip("about", "report a problem", ReportRows(false)[1]) ?? "(no tip)";
+        Shot("7o2-settings-about-report-tip", Panel.DrawMenu(look, aboutTabs, 10, ReportRows(false), null, -1, scale, 1, 0, room,
+            group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(), tip: (1, sendTip), quit: true));
         // the simple menu (no "you": quitting is the top bar's key), the quit key lit, its tip, its question; German too
         var simpleTabs = new[] { "moving", "assistant", "incognito", "safety", "view", "about" };
         var oneRow = new[] { new MenuRow("controls a script took", "release", false) };
@@ -138,6 +141,8 @@ public static class PanelShots
             quitAsk: "You'll be back at the launcher."));
         Shot("de-7r2-settings-quit-ask-screen", Panel.DrawMenu(look, simpleTabs, 3, oneRow, null, -1, scale, 1, 0, room, quit: true,
             quitAsk: "You'll be back at the login screen."));
+        Shot("de-7o2-settings-about-report-tip", Panel.DrawMenu(look, aboutTabs, 10, ReportRows(false), null, -1, scale, 1, 0, room,
+            group: "report a problem", text: Sojourn.Client.Control.AboutMenu.ReportLines(), tip: (1, sendTip), quit: true));
         Lang.Use("en");
         // each preset, answering, confirming and as the settings (and how readable, by the measure the assistant's changes get)
         for (int i = 0; i < PanelLook.Presets.Count; i++)

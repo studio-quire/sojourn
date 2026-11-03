@@ -36,7 +36,7 @@ public sealed class AboutMenu
 
     /// <summary>The words above the rows: the section's own, or the report page's.</summary>
     public IReadOnlyList<string> Text(string? group) =>
-        group == ReportGroup ? ReportLines(ProviderKeys.RelayToken() != null) : Lines(_release.Version, ReleaseApi.Commit);
+        group == ReportGroup ? ReportLines() : Lines(_release.Version, ReleaseApi.Commit);
 
     public static string[] Lines(string version, string? commit) => new[]
     {
@@ -47,9 +47,9 @@ public sealed class AboutMenu
         ReleaseApi.Support,
     };
 
-    public static string[] ReportLines(bool token) => new[]
+    public static string[] ReportLines() => new[]
     {
-        "A report of this session", ProblemReport.WhatsSent(token),
+        "A report of this session", ProblemReport.WhatsSent,
         "To say what went wrong, ask the assistant to report a problem: your words go with it. " + ProblemReport.GitHubWords,
     };
 
