@@ -129,7 +129,14 @@ the main tree's build, `local/audio/wt-sync.sh` builds HEAD plus audio's files i
 - OpenSim's footstep asset is quiet (-42 dBFS average): footsteps at the viewer's gain are around -80 dBFS. Faithful,
   but worth a listen on SL.
 - Under water (the camera below the region's water height, 20 m at Atelier's south) the rolloff is 5: sounds drop off
-  fast, so test spots must be on land.
+  fast, so test spots must be on land. By height alone, as the viewer's (llvieweraudio.cpp), so a dry tunnel under the
+  sea is "under water" too (a blind tester heard the sounds go faint in one, 2026-11-02). Logged as it changes, once
+  the change has held a second (at most every 3 s): "audio: under the water (the ear at 4.2 m, the region's water at 20.0 m): ..." and "audio: above the
+  water ...". Sojourn Access makes it dry beneath a roof below the surface (`AudioWiring.Roof`, a ray up by its
+  collision model: `docs/access-app.md` > Dry under the sea); the VR client stays as the viewer.
+- The speakers running dry (underruns: clicks or gaps, never a quieter sound) are logged every 30 s while they happen,
+  with the mixer's time a frame: "audio: the speakers ran dry 3 times in the last 30 s ..."; before 2026-11-02 only the
+  device's first 2 s were.
 - llSetParcelMusicURL works only for an object owned by the parcel's owner.
 
 ## Not done

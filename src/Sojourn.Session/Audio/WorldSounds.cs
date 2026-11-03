@@ -128,8 +128,67 @@ public sealed class WorldSounds : IDisposable
     Vector3d Listener() { lock (_listenerLock) return _listener; }
     public Vector3d Ear => Listener();
 
-    /// <summary>The camera under water: the viewer's rolloff goes from 1 to 5.</summary>
-    public void SetUnderwater(bool under) => _rolloff = under ? 5 : 1;
+    /// <summary>The camera under water: the viewer's rolloff goes from 1 to 5 (llvieweraudio.cpp, by the camera's height
+    /// against the region's water alone, so in a dry tunnel under the sea too). Logged as it changes (TellUnderwater),
+    /// with the heights: the blind tester's sounds "went faint" riding a glass tunnel under the sea (0.1.0.835).
+    /// <paramref name="roof"/>: under the water with something solid overhead below its surface (Sojourn Access's
+    /// AudioWiring.Roof: a tunnel or a room under the sea), how far up; there it's dry, and the rolloff stays 1.</summary>
+    public void SetUnderwater(bool under, float ear = float.NaN, float water = float.NaN, float? roof = null)
+    {
+        int state = !under ? 0 : roof == null ? 1 : 2;
+        if (state == _waterState) return;
+        _waterState = state;
+        _rolloff = state == 1 ? 5 : 1;
+        (_underwaterEar, _underwaterLevel, _underwaterRoof) = (ear, water, roof ?? float.NaN);
+        _underwaterChangedAt = Environment.TickCount64;
+        Interlocked.Increment(ref _underwaterChanges);
+    }
+    volatile int _waterState;   // 0 above the water, 1 under it, 2 under it beneath a roof
+
+    /// <summary>For SojournAudio status: above, under or under a roof (the water), the rolloff, the roof's height then.</summary>
+    public (string State, float Rolloff, float Roof) Water =>
+        (_waterState switch { 1 => "under", 2 => "under a roof", _ => "above" }, _rolloff, _underwaterRoof);
+    float _underwaterEar, _underwaterLevel, _underwaterRoof;
+    int _underwaterChanges;
+    long _underwaterToldAt = -10_000, _underwaterChangedAt;
+
+    /// <summary>On this thread each second: where it stands once a change has held a second, at most every 3 s (bobbing
+    /// at the surface would be a line a frame), so the last line always says where it ended up.</summary>
+    void TellUnderwater()
+    {
+        long now = Environment.TickCount64;
+        if (Volatile.Read(ref _underwaterChanges) == 0 || now - _underwaterChangedAt < 1000 || now - _underwaterToldAt < 3000) return;
+        int n = Interlocked.Exchange(ref _underwaterChanges, 0);
+        _underwaterToldAt = now;
+        var since = n > 1 ? $" ({n} changes since the last line)" : "";
+        _log(_waterState switch
+        {
+            1 => FormattableString.Invariant($"audio: under the water (the ear at {_underwaterEar:0.0} m, the region's water at {_underwaterLevel:0.0} m): sounds fade with distance five times as fast, as in Second Life's viewers{since}"),
+            2 => FormattableString.Invariant($"audio: under the water (the ear at {_underwaterEar:0.0} m, the region's water at {_underwaterLevel:0.0} m) beneath a roof {_underwaterRoof:0.0} m up: dry, so sounds fade with distance as usual (other viewers would make them fade five times as fast){since}"),
+            _ => FormattableString.Invariant($"audio: above the water (the ear at {_underwaterEar:0.0} m): sounds fade with distance as usual{since}"),
+        });
+    }
+
+    /// <summary>The speakers running dry (each a click or gap, not a quieter sound), said every 30 s or so while it
+    /// happens, with the mixer's time a 10 ms frame: the first 2 s were the only ones logged, so a busy processor
+    /// starving the sound couldn't be told from the sound itself going quiet.</summary>
+    void Underruns()
+    {
+        try
+        {
+            if (System.Text.Json.Nodes.JsonNode.Parse(Voice.VoiceNative.Stats()) is not { } e || e["render_glitches"] is not { } g) return;
+            long now = g.GetValue<long>();
+            if (_glitches >= 0 && now > _glitches)
+            {
+                var mix = System.Text.Json.Nodes.JsonNode.Parse(AudioNative.Stats());
+                _log(FormattableString.Invariant($"audio: the speakers ran dry {now - _glitches} times in the last {(Environment.TickCount64 - _glitchesAt) / 1000} s (clicks or gaps); the mixer {mix?["mix_us_recent"]} us a 10 ms frame lately, {mix?["mix_us_max"]} at most since it started"));
+            }
+            _glitches = now;
+            _glitchesAt = Environment.TickCount64;
+        }
+        catch (Exception) { /* the engine not up: nothing to say */ }
+    }
+    long _glitches = -1, _glitchesAt;
 
     public static Vector3d Global(ulong handle, Vector3 local)
     {
@@ -517,6 +576,8 @@ public sealed class WorldSounds : IDisposable
         if (_teleporting)
             foreach (var c in _channels) if (c is { Forced: false }) Release(c);
         if (_rolloff != _rolloffSent || _tick % 50 == 0) { _rolloffSent = _rolloff; AudioNative.sv_world_set(1, _rolloff); }
+        if (_tick % 50 == 0) TellUnderwater();
+        if (_tick % 1500 == 0) Underruns();
 
         unsafe { fixed (int* p = _states) AudioNative.sv_ch_states(p, AudioNative.Channels); }
         for (int i = 0; i < AudioNative.Channels; i++)

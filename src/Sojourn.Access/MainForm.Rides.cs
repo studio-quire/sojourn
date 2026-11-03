@@ -39,7 +39,9 @@ public sealed partial class MainForm
     string? RidePicturesOff()
     {
         if (Host is not { } h) return "not in world";
-        if (h.Offscreen is not { Running: true } && !(h.Offscreen?.Preparing ?? false)) return "the view isn't drawing on this PC";
+        // (only when there's no view or it gave up: one starting or restarting draws once it's up, and a ride said to be
+        // "without pictures" then took twelve in the local test)
+        if (h.Offscreen is not { } view || view.State == "stopped") return "the view isn't drawing on this PC";
         if (!_opt.Assistant || (!h.Assistant.SidecarAlive && h.Sidecar == null)) return "the assistant isn't on to tell them";
         if (h.Assistant.ProviderStatus is { } ps && ps["state"]?.GetValue<string>() is { } state && state is not ("ready" or "offline" or "checking"))
             return "the assistant isn't on to tell them";
@@ -102,7 +104,8 @@ public sealed partial class MainForm
                 var off = RidePicturesOff();
                 var how = off == null
                     ? "Recording the ride: a picture every few seconds and what's around, kept on this PC until you ask."
-                      + (h.Offscreen?.Preparing == true ? " The view is still preparing, so pictures start in a minute or so." : "")
+                      + (h.Offscreen?.Preparing == true ? " The view is still preparing, so pictures start in a minute or so."
+                         : h.Offscreen is { Running: false } ? " The view is still starting, so pictures start once it's up." : "")
                     : $"Recording the ride without pictures ({off}): where you go, how fast, and what's around.";
                 Answer($"{how} {K("C stops it", "//ride stop stops it")}, or it stops when you stand up or the ride does; "
                        + $"{K("Shift+C", "//ride describe")} then tells it.");
@@ -120,7 +123,8 @@ public sealed partial class MainForm
                     Answer($"Recording stopped: {RideRecorder.Length(stopped.Ms)}.");
                 if (rec.Latest is not { } r) { Answer($"No ride recorded yet. {K("C", "//ride")} starts recording one."); return; }
                 var s = RideSubject(r);
-                await DescribeAsync(s, verb == "more" ? "rich" : null);
+                // (the first telling is the gist; she didn't know there was more, 0.1.0.835)
+                await DescribeAsync(s, verb == "more" ? "rich" : null, more: $"{K("Shift+C again", "//ride more")} tells more of it.");
                 return;
             }
             case "help": await _cmd.RunAsync("//help ride"); return;

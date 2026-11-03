@@ -19,9 +19,10 @@ Our own Second Life client, built for VR first, with a personal AI that operates
 - **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01) and a first build editor (2026-11-02); test builds (the assistant bundled) published as releases
   on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.835 (2026-11-02); a blind
   tester's first session on Second Life was 2026-10-30. `docs/access.md` (plan, milestones, what testers said), `docs/access-app.md` (as built, packaging).
-- **Public source** since 2026-10-29 (`docs/publishing.md`). The VR viewer itself has no release yet; its package
-  (Velopack: install, updates at the person's press, uninstall) is built and checked (`tools/package.py`,
-  `docs/launcher.md` > The package, 2026-11-01).
+- **Public source** since 2026-10-29 (`docs/publishing.md`). **First release, 0.1.0.867, published 2026-11-02**: a
+  pre-release on studio-quire/sojourn (Velopack: install, updates at the person's press, uninstall; `tools/package.py`,
+  `docs/launcher.md` > The package), downloaded from studioquire.org/sojourn; the viewer directory application is
+  secondlife/third-party-viewers#21.
 - **Next**: the board's checks; the gaps left in `docs/viewer-gaps.md` (> Closing the rest) and the calls waiting on
   the user there; Access's next milestones and testers; phase 4's leaning, crouching and finger poses; an in-world
   desktop (the user wants it, 2026-10-28; not started): our own mirror of the PC's desktop or single windows (Windows'

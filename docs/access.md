@@ -567,6 +567,65 @@ Log `tester-20261103T004420-253fad`, her first session on 835 (the freight run w
 - She was in Alt+7 with Show on what she wears when she couldn't take her HUDs off: the list fixed after 811.
 - Her parcel's stream answered 401 at every retry (about every 35 s): log noise only.
 
+### A ride under the sea (0.1.0.835, the blind tester, 2026-11-02 evening)
+
+Logs `tester-20261103T014229-b71db4` and `-015035-cbbb25`: her first rides recorded on Second Life, on her partner's
+engine along a mainland railway and through a glass tunnel under the sea, there and back. Her note: "I thought there
+might be more to the description, and I thought I had it set on best."
+- Four recordings. 6 s (C twice). 29 s, ended as "the ride stopped moving" before the train set off: flipping the
+  engine round at the platform moved it a few metres at once, which counted as the ride having moved. 5 minutes, ended
+  by the five-minute cap while still rolling: 101 moments, 51 pictures drawn on lavapipe (one every 6 s or so, 0.4-3.6
+  s each, the processor 37-79% busy), 20 thinned past 40, 16 of the 31 kept sent to the telling. The way back, at 11
+  m/s, also cut at five minutes: 40 drawn, 38 kept.
+- Best applied: told by Opus 5.5 (low effort), 37.7K and 39.3K tokens in. But in 134 and 146 words, the tunnel a
+  sentence or a clause ("ran for over a minute through a glass underwater tunnel"); the 6-second ride's telling had
+  121. The brief telling was about 100 words whatever the ride's
+  length, and nothing said Shift+C again tells more. The 6-second ride's said she was standing on top of the engine:
+  a moment taken mid-crossing, before the region had sent her seat.
+- "The sounds went faint, I still hear them" in the tunnel: Second Life's underwater rolloff (5 against 1), which
+  viewers apply by the camera's height against the region's water alone, so in a dry tunnel too (a sound 4 m away at a
+  quarter of its level). Not the processor: faint rather than broken up, and the pictures never saturated it; but
+  underruns after the first 2 s weren't logged, so that couldn't be ruled out from the log.
+- Fixed after 835: a brief telling grows with the ride (about 50 words a minute past the first, some 300 for five
+  minutes, up to about 500) and gives a long alike stretch what it looked like; "Describing your ride." adds how to
+  have more; a seat held over a crossing, and a ride counted as moving only after 3 s of it; rides recorded for up to
+  fifteen minutes, a long one's moments thinned for the telling to about a five-minute ride's size; under the water
+  beneath a roof (a ray up from the ear meeting something solid below the surface) sounds keep their usual falloff in
+  Access. Logged now: going under and above the water, roofed or not, with the heights, and the speakers running dry,
+  every 30 s while it happens (`docs/access-app.md` > Recording a ride and Dry under the sea, `docs/audio.md`).
+
+### A solo run home, an accident and a wrong turn (0.1.0.835, the blind tester, 2026-11-02 evening)
+
+Log `tester-20261103T025050-3d7644` (19:18-21:50) and two notes on the builders' line: a freight run from Lunalis to Bhaga
+on her train, then home toward Concinna with cargo, alone (someone she shares her home region with, most likely her
+partner, joined after the wrong turn).
+- **The accident** (21:34): leaving Bhaga at 35-50% throttle, the train crossed into Fishii four seconds out and she
+  was left standing in Bhaga ("stood up from Zephyr" 21:34:17; no crossing of ours began, and the Fishii circuit was
+  alive, as the teleport into it found). The train said "Driver missing! stopping..." and IMed a SLurl; she teleported
+  to it 16 s later, sat, started the engine and was moving again 90 s after the stand-up, and called it easy. Second
+  Life's crossing, as on 2026-11-01; but Access said nothing itself (the stand-up was only a log line). Now: "You're off Zephyr: it went on
+  without you." when the seat is lost while it was moving, not at a crossing.
+- **The wrong turn** (21:37): at 11 m/s through Crumbi and Tenera she went on toward Webworm instead of Velox, noticed
+  only in Anilis and stopped in Pawpaw for help; they came, she flipped the train and drove back through Tenera
+  onto the right line. She said she hasn't worked out the switches yet and hadn't touched them. The two switch lines
+  before the turn were "Switch in 17 metres, set to the branch, Crumbi Station NCB." (21:37:29) and "Switch in 13
+  metres, set to the main line, Crumbi Junction." (21:37:41), the first most likely the one that took her off her way. Both
+  were cut off within a second, by "Guide, 15 metres." and by "Now in Tenera, still on Zephyr." (a walk line is an
+  answer, and an answer cuts in); 25 of 146 switch lines that run were cut so. Both also came 1-2 s before the switch,
+  too late to throw at that speed, and neither name says which way is home. A third, "set to: unknown" at 19 m
+  (21:37:45), was most likely that switch's own rail (folded into its stand after 835). The 811 build's noise was still
+  there: 91 of 146 switch lines "unknown" (fixed after 835), and 56 warnings ("Guide", "Atoll Railroad Section",
+  "Something") in the 76 s before the turn (only what the train closes on after 835).
+- Fixed after 835 for this: a switch's line is heard out before walk mode's other lines that come by themselves (the
+  crossing, the speed, the next switch); warnings, her keys' answers and "Track ends" still cut in. Shift+W waits for a
+  switch being read as it comes up instead of saying "Still reading a switch". Open (ours): saying switches sooner at
+  speed, telling facing from trailing switches, and saying which way each way leads (a region or a direction), or that
+  a switch is set against the way she came; the next log's `switch:` lines say where stands are and what they hold.
+- Later, from Crenulate, the train went into Pavonia by a switch "set to the branch, Mountain Branch" (21:48:34) rather
+  than on to Clearwing; with company riding along she stopped there, cancelled the job and teleported home. Whether
+  that was meant isn't in the log.
+- "Now in Nessus; the crossing left you standing" (21:38:43) while she sat on: the 811 run's false verdict, fixed after 835.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -658,8 +717,9 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   stand did), or would she rather a key that sets it to the main line and one to the branch? For her partner (the
   atoll's stands do follow the standard, by her 811 log): does touching a stand flip it, or open a menu; and are the
   switches' guide rails objects of their own, apart from the stand?
-- For the track's end (after the next build): did it stop in time, before the derail? For her partner: does Down past 0
-  put the train in reverse; does holding Down take more than one step; what exactly does it say of its throttle, and
+- For the track's end (after the next build): did it stop in time, before the derail? (Answered 2026-11-02: on her
+  train, Down once it's stopped doesn't reverse it; other trains may.) For her partner: does holding Down take more
+  than one step; what exactly does it say of its throttle, and
   anything else as the track runs out (a log's lines would do)? Is Space the right emergency key, or would she want one
   that works outside walk mode too (`//stop` works from Say)?
 - For rides (after the next build): does C in walk mode sit well for recording a ride, and Shift+C for hearing it?

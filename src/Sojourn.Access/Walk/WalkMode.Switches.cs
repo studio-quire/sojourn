@@ -348,6 +348,9 @@ public sealed partial class WalkMode
     /// setting it's already at, only says so.</summary>
     public async Task ThrowSwitchAsync(string? to = null)
     {
+        // a switch being read as it comes up (every few seconds while one is ahead) is waited for, not a reason to refuse:
+        // a throw is pressed with the switch coming up fast
+        for (int i = 0; _switchBusy && i < 30; i++) await Task.Delay(100);
         if (_switchBusy) { Line("Still reading a switch: a moment."); return; }
         if (Me() is not { } b) { Line("Not in a region yet."); return; }
         if (await TheSwitchAsync(b) is not { } s) { Line($"No switch within {Bearings.Metres(SwitchAsk)} to throw."); return; }

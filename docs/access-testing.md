@@ -265,6 +265,9 @@ docstring with its checks in full):
   and the train's lines kept, the pictures JPEG at 640x360 with what's seen in each (`ride-0.jpg` in the run's folder).
   With the relay Shift+C tells it, the markers named in order, and Shift+C again tells more (the telling's tokens
   printed); without, Shift+C says what the recording knows, the markers in order.
+- **a roof under the water** (about a minute): on Atelier's seabed (the first ground under 14 m, the water at 20),
+  SojournAudio status's `water` is "under" (rolloff 5); a 6 by 6 m slab the visitor rezzes 3.5 m above the seabed
+  makes it "under a roof" (rolloff 1, the roof 0.5-3 m up); taken away, "under" again.
 
 **Tab items.** QuireUia's `find` uses the managed UI Automation client (System.Windows.Automation), which leaves out a
 WinForms tab control's first and last tab items; the COM client (UIAutomationCore, what screen readers use) lists them

@@ -140,6 +140,15 @@ public sealed partial class MainForm
             else if (e.KeyCode == Keys.Escape) { e.Handled = e.SuppressKeyPress = true; search.Clear(); p.SearchTimer.Stop(); ShowInventory(p, said: false, focus: true); }
         };
         show.SelectedIndexChanged += (_, _) => ShowInventory(p, said: show.Focused);
+        // Control+F from Show goes to Search, as from the tree; and its character never reaches the list, whose
+        // first-letter search took it as F and picked Favorites (the inventory test's search after Show: Worn)
+        show.KeyDown += (_, e) =>
+        {
+            if (e.KeyData != (Keys.Control | Keys.F)) return;
+            e.Handled = e.SuppressKeyPress = true;
+            search.Focus();
+            search.SelectAll();
+        };
         return p;
     }
 

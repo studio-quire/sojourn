@@ -18,20 +18,28 @@ namespace Sojourn.Access.Walk;
 /// how fast they come: one at a time, the next at least 2.5 times as long after as the last took (3-15 s), and one
 /// due while another is still drawing is skipped, never queued, so on a PC drawing on its processor the ride doesn't
 /// wait on them. At most 40 kept: past that every other one goes and they come half as often, so a long ride keeps its
-/// whole length. It ends on her word (C, `//ride stop`), when she stands up, when a ride she sat on has been still for
-/// 8 s, or after five minutes. Nothing leaves the PC until she asks for it told (`Get`, through SojournRide); the last
-/// ride stays until the next starts or the session ends. Runs on the window's thread (walk mode's tick); pictures and
+/// whole length. It ends on her word (C, `//ride stop`), when she stands up, when a ride she sat on has moved (3 s of
+/// it, not a jolt) and then been still for 8 s, or after fifteen minutes. Nothing leaves the PC until she asks for it told
+/// (`Get`, through SojournRide); the last ride stays until the next starts or the session ends. Runs on the window's thread (walk mode's tick); pictures and
 /// looks round come back there. Written by Claude Opus 5.5, 2026-11-01.
 /// </summary>
 public sealed class RideRecorder
 {
     public const int MaxPictures = 40;        // kept; past that, every other one goes
     public const int BriefPictures = 16;      // sent for a brief telling, evenly through the ride (rich: all)
+    public const int BriefPicturesLong = 24;  // the same for a ride over five minutes
+    // the most moments sent for any telling (a five-minute ride's 100 or so, about 30K tokens of them): past that the
+    // ones between fold into the next one sent (MomentsForTelling)
+    public const int MomentsTold = 100;
     const long MomentEvery = 3000;
     const long FirstInterval = 3000, LongestInterval = 15000;
     const double SlowerThanDrawing = 2.5;      // the next picture at least this many times as long after as the last took
-    const long LongestRide = 5 * 60_000;
-    const long StillFor = 8000, StoodFor = 3000;   // (a crossing can drop the seat for a moment: StoodFor outlasts it)
+    // fifteen minutes (five until 835 cut both her rides through an undersea tunnel short; a railway loop runs longer)
+    const long LongestRide = 15 * 60_000;
+    const long StillFor = 8000, StoodFor = 3000;   // (a crossing drops the seat for a moment: held over it, WalkMode.SeatInDoubt)
+    // moving this long seated before a stop can end it: a train flipped round at its platform jumps a few metres at once,
+    // which read as a ride that had moved and stopped (0.1.0.835 ended her recording that way before the train set off)
+    const long MovedFor = 3000;
     const float Near = 20;
 
     public sealed record Thing(string Name, string Where);
@@ -108,6 +116,7 @@ public sealed class RideRecorder
         _ride = new Ride { Id = DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture), Start = Environment.TickCount64, Began = b.RegionName, Private = incognito };
         _track.Clear();
         (_seatedEver, _moved, _standingSince, _stillSince, _nextMoment, _nextPicture, _interval, _floor, _shows) = (false, false, 0, 0, 0, 0, FirstInterval, FirstInterval, null);
+        (_movingMs, _lastTick) = (0, 0);
         while (_heard.TryDequeue(out _)) { }
         Tick(b, Environment.TickCount64);
         return true;
@@ -135,7 +144,7 @@ public sealed class RideRecorder
 
     readonly List<(long T, Vector3 G)> _track = new();
     bool _seatedEver, _moved, _shooting, _looking;
-    long _standingSince, _stillSince, _nextMoment, _nextPicture, _interval, _floor;
+    long _standingSince, _stillSince, _nextMoment, _nextPicture, _interval, _floor, _movingMs, _lastTick;
     string? _shows;
 
     public void Tick(WalkMode.Body b, long now)
@@ -147,19 +156,24 @@ public sealed class RideRecorder
         _track.Add((now, g));
         while (_track.Count > 2 && now - _track[1].T > 2000) _track.RemoveAt(0);
         var (speed, climb, compass) = Motion(b, now);
+        long dt = _lastTick == 0 ? 0 : Math.Min(now - _lastTick, 500);
+        _lastTick = now;
+        // seated, or seated before and the region not saying yet (a crossing): a crossing's moments aren't standing
+        // (0.1.0.835 told her "you were standing on top of Zephyr" from a moment taken mid-crossing)
+        bool sitting = b.Sitting || _walk.SeatInDoubt(b);
 
         // over by itself: stood up, a ride sat on gone still, or the longest a ride is kept
-        if (b.Sitting) { _seatedEver = true; _standingSince = 0; }
+        if (sitting) { _seatedEver = true; _standingSince = 0; }
         else if (_seatedEver && _standingSince == 0) _standingSince = now;
-        if (b.Sitting && speed >= 1) _moved = true;
+        if (sitting && speed >= 1 && (_movingMs += dt) >= MovedFor) _moved = true;
         if (speed >= 0.3f) _stillSince = 0;
         else if (_stillSince == 0) _stillSince = now;
         var why = _standingSince != 0 && now - _standingSince >= StoodFor ? "you stood up"
-            : _moved && b.Sitting && _stillSince != 0 && now - _stillSince >= StillFor ? "the ride stopped moving"
-            : now - r.Start >= LongestRide ? "five minutes, the longest a ride is recorded" : null;
+            : _moved && sitting && _stillSince != 0 && now - _stillSince >= StillFor ? "the ride stopped moving"
+            : now - r.Start >= LongestRide ? "fifteen minutes, the longest a ride is recorded" : null;
         if (why != null)
         {
-            TakeMoment(r, b, g, now, speed, climb, compass);
+            TakeMoment(r, b, sitting, g, now, speed, climb, compass);
             Stop(why);
             EndedByItself?.Invoke(r);
             return;
@@ -174,7 +188,7 @@ public sealed class RideRecorder
             picture = false;
         }
         if (!picture && now < _nextMoment) return;
-        var m = TakeMoment(r, b, g, now, speed, climb, compass);
+        var m = TakeMoment(r, b, sitting, g, now, speed, climb, compass);
         if (picture) Shoot(r, m, compass, climb, speed, now);
     }
 
@@ -196,13 +210,15 @@ public sealed class RideRecorder
         return (v, b.Vel.Z, v > 0.3f ? Bearings.Compass(0, 0, b.Vel.X, b.Vel.Y) : Bearings.Norm(90 - b.Yaw * 180 / Math.PI));
     }
 
-    Moment TakeMoment(Ride r, WalkMode.Body b, Vector3 g, long now, float speed, float climb, double compass)
+    Moment TakeMoment(Ride r, WalkMode.Body b, bool sitting, Vector3 g, long now, float speed, float climb, double compass)
     {
-        var shows = b.Sitting ? _walk.SeatText(b) : null;
+        // (mid-crossing the seat's text isn't there: what it showed last stands)
+        var shows = b.Sitting ? _walk.SeatText(b) : sitting ? _shows : null;
+        var seat = sitting ? b.SeatName ?? _walk.LastSeatName ?? "something unnamed" : null;
         var m = new Moment
         {
             Ms = now - r.Start, Region = b.RegionName, Pos = b.Pos, Global = g, Speed = speed, Climb = climb, Compass = compass,
-            Seat = b.Sitting ? b.SeatName ?? "something unnamed" : null, Shows = shows != _shows ? shows : null,
+            Seat = seat, Shows = shows != _shows ? shows : null,
         };
         _shows = shows;
         while (_heard.TryDequeue(out var h))
@@ -216,7 +232,8 @@ public sealed class RideRecorder
             task.ContinueWith(t => _post(() =>
             {
                 _looking = false;
-                if (t.IsCompletedSuccessfully) m.Around = t.Result;
+                // (what she rides is left out by its parts; mid-crossing they aren't known, so by its name too)
+                if (t.IsCompletedSuccessfully) m.Around = seat == null ? t.Result : t.Result.Where(x => x.Name != seat).ToList();
             }), TaskScheduler.Default);
         }
         return m;
@@ -307,23 +324,65 @@ public sealed class RideRecorder
 
     static string Clock(long ms) => $"{ms / 60000}:{ms / 1000 % 60:00}";
 
+    /// <summary>Which moments a telling gets: all up to <see cref="MomentsTold"/>; past that the first and the last,
+    /// those with a picture sent, those where the region or what she rides changed, and others evenly between.</summary>
+    static SortedSet<int> MomentsForTelling(Ride r, HashSet<int> pictures)
+    {
+        int n = r.Moments.Count;
+        var keep = new SortedSet<int>();
+        if (n <= MomentsTold)
+        {
+            for (int i = 0; i < n; i++) keep.Add(i);
+            return keep;
+        }
+        keep.Add(0);
+        keep.Add(n - 1);
+        keep.UnionWith(pictures);
+        for (int i = 1; i < n; i++)
+            if (r.Moments[i].Region != r.Moments[i - 1].Region || r.Moments[i].Seat != r.Moments[i - 1].Seat) keep.Add(i);
+        int room = MomentsTold - keep.Count;
+        for (int k = 1; k <= room; k++) keep.Add((int)Math.Round(k * (n - 1) / (double)(room + 1)));
+        return keep;
+    }
+
     /// <summary>The ride for the describer (SojournRide get): its moments in order, each with its picture where it has
-    /// one (brief: at most <see cref="BriefPictures"/>, evenly through the ride; rich: all).</summary>
+    /// one (brief: at most <see cref="BriefPictures"/>, or <see cref="BriefPicturesLong"/> past five minutes, evenly
+    /// through the ride; rich: all). A long ride's moments are thinned to <see cref="MomentsTold"/>, each one left out
+    /// folded into the next sent (the named things near, objects' lines, what the seat came to show), so nothing passed
+    /// goes untold and the request stays about a five-minute ride's size.</summary>
     public static JsonObject ForTelling(Ride r, bool rich)
     {
         var with = r.Moments.Select((m, i) => (m, i)).Where(x => x.m.Picture != null).Select(x => x.i).ToList();
         var send = new HashSet<int>(with);
-        if (!rich && with.Count > BriefPictures)
+        int brief = r.Ms > 5 * 60_000 ? BriefPicturesLong : BriefPictures;
+        if (!rich && with.Count > brief)
         {
             send.Clear();
-            for (int k = 0; k < BriefPictures; k++) send.Add(with[(int)Math.Round(k * (with.Count - 1) / (double)(BriefPictures - 1))]);
+            for (int k = 0; k < brief; k++) send.Add(with[(int)Math.Round(k * (with.Count - 1) / (double)(brief - 1))]);
         }
+        var told = MomentsForTelling(r, send);
         var start = r.Moments.FirstOrDefault();
         var moments = new JsonArray();
         string? region = null, seat = null;
+        // what the moments left out since the last one sent, for the next
+        var nearSince = new List<Thing>();
+        var saidSince = new List<string>();
+        string? showsSince = null;
         for (int i = 0; i < r.Moments.Count; i++)
         {
             var m = r.Moments[i];
+            if (!told.Contains(i))
+            {
+                if (m.Around != null) nearSince.AddRange(m.Around);
+                saidSince.AddRange(m.Said);
+                showsSince = m.Shows ?? showsSince;
+                continue;
+            }
+            var near = nearSince.Concat(m.Around ?? new()).DistinctBy(t => t.Name).Take(8).ToList();
+            var said = saidSince.Concat(m.Said).Distinct().ToList();
+            if (said.Count > 6) said = said.Skip(said.Count - 6).ToList();
+            var shows = m.Shows ?? showsSince;
+            (nearSince, saidSince, showsSince) = (new(), new(), null);
             var o = new JsonObject { ["at"] = Clock(m.Ms) };
             // the region and the seat only when they change
             if (m.Region != region) o["region"] = region = m.Region;
@@ -333,9 +392,9 @@ public sealed class RideRecorder
             if (Math.Abs(m.Climb) >= 0.5f) o["climb_m_s"] = Math.Round(m.Climb, 1);
             if (start != null) o["from_start_m"] = Math.Round(Vector3.Distance(m.Global, start.Global));
             if (m.Seat != seat) o["riding"] = (seat = m.Seat) ?? "nothing now: standing";
-            if (m.Shows != null) o["it_shows"] = m.Shows;
-            if (m.Around is { Count: > 0 } a) o["near"] = new JsonArray(a.Select(t => (JsonNode?)$"{t.Name}, {t.Where}").ToArray());
-            if (m.Said.Count > 0) o["said"] = new JsonArray(m.Said.Select(x => (JsonNode?)x).ToArray());
+            if (shows != null) o["it_shows"] = shows;
+            if (near.Count > 0) o["near"] = new JsonArray(near.Select(t => (JsonNode?)$"{t.Name}, {t.Where}").ToArray());
+            if (said.Count > 0) o["said"] = new JsonArray(said.Select(x => (JsonNode?)x).ToArray());
             if (m.Picture != null && send.Contains(i)) o["picture"] = m.Picture.DeepClone();
             moments.Add(o);
         }
@@ -350,6 +409,9 @@ public sealed class RideRecorder
                 ["ended"] = r.Ended ?? "still recording",
                 ["pictures"] = $"{send.Count} of {with.Count} kept" + (r.Thinned > 0 ? " (a long ride: fewer kept toward the start)" : "")
                                + (with.Count == 0 ? ": none, only what was known along the way" : ""),
+                ["moments_told"] = told.Count < r.Moments.Count
+                    ? $"{told.Count} of {r.Moments.Count}: a long ride, so each with what was near and said since the one before"
+                    : $"all {r.Moments.Count}, every few seconds",
                 ["moments"] = moments,
             },
         };

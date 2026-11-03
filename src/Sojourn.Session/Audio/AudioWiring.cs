@@ -108,10 +108,18 @@ public sealed class AudioWiring : IDisposable
         if (view is { } v) Listen(v.Region, v.Position, v.Forward, v.Up);
     }
 
+    /// <summary>Sojourn Access: under the water, how far above the ear something solid is below the water's surface (a
+    /// tunnel or a room under the sea, dry inside), else null; asked with the region, the ear and the water's height,
+    /// on each listener move under water, so it answers from a cache. Unset (the VR client), it's as the viewer:
+    /// under water by height alone.</summary>
+    public Func<ulong, NVector3, float, float?>? Roof { get; set; }
+
     void Listen(ulong region, NVector3 pos, NVector3 forward, NVector3 up)
     {
         Sounds.SetListener(region, pos, forward, up);
-        if (_session.Client?.Network.CurrentSim is { } sim && sim.Handle == region) Sounds.SetUnderwater(pos.Z < sim.WaterHeight);
+        if (_session.Client?.Network.CurrentSim is not { } sim || sim.Handle != region) return;
+        bool under = pos.Z < sim.WaterHeight;
+        Sounds.SetUnderwater(under, pos.Z, sim.WaterHeight, under ? Roof?.Invoke(region, pos, sim.WaterHeight) : null);
     }
 
     // ---- settings: the menu's sound section and SojournSettings ----
@@ -317,8 +325,11 @@ public sealed class AudioWiring : IDisposable
         if (Music.Title is { } t) music["title"] = t;
         if (Music.Format is { } f) music["format"] = f;
         if (_parcel.ParcelName is { } pn) music["parcel"] = pn;
-        return new JsonObject { ["sounds"] = sounds, ["playing"] = sounds.Count, ["music"] = music, ["mixer"] = JsonNode.Parse(AudioNative.Stats()),
-            ["engine"] = JsonNode.Parse(Voice.VoiceNative.Stats()) };
+        var (state, rolloff, roof) = Sounds.Water;
+        var water = new JsonObject { ["state"] = state, ["rolloff"] = rolloff };
+        if (state == "under a roof") water["roof_m"] = Math.Round(roof, 1);
+        return new JsonObject { ["sounds"] = sounds, ["playing"] = sounds.Count, ["music"] = music, ["water"] = water,
+            ["mixer"] = JsonNode.Parse(AudioNative.Stats()), ["engine"] = JsonNode.Parse(Voice.VoiceNative.Stats()) };
     }
 
     public void Dispose()
@@ -345,7 +356,8 @@ public sealed class AudioApi : LeapApi
 
     public AudioApi(AgentSession s, AudioWiring audio) : base(s)
     {
-        Op("status", "-> {sounds: [{sound_id, name?, kind, object_id?, owner?, loop?, dist}], music: {on, state, parcel_url?, url?, title?, format?}}",
+        Op("status", "-> {sounds: [{sound_id, name?, kind, object_id?, owner?, loop?, dist}], music: {on, state, parcel_url?, url?, title?, format?}, "
+            + "water: {state: above | under | under a roof, rolloff, roof_m?}, mixer, engine}",
             _ => audio.Status());
         Op("sources", "-> {sources: [...]}: every sound source tracked, playing or waiting (muted, cutoff, distance, channel)",
             _ => new JsonObject { ["sources"] = audio.Sounds.Sources() });

@@ -93,14 +93,19 @@ RIDE_HOW = (
     "order, each with what was known then (the time from the start; speed in metres a second over the ground, which way "
     "it was going, climbing or falling, height and distance from the start; what they rode; named things and people "
     "near, with where from them going that way; what objects said; what the vehicle's floating text showed), and every "
-    "few seconds a picture from their own eyes looking the way they were going. Tell the ride as it happened to them, in "
-    "order, in the second person, as a short story (\"You set off down a steep blue tube, picking up speed past Red "
+    "few seconds a picture from their own eyes looking the way they were going (on a long ride the moments are further "
+    "apart, each with what was near and said since the one before). Tell the ride as it happened to them, in "
+    "order, in the second person, as a story (\"You set off down a steep blue tube, picking up speed past Red "
     "Buoy on your right...\"), with the start, each stretch that differed (a drop, a climb, a turn, a burst of speed, a "
-    "slowing, a splash, a crossing into another region) and how it ended. These replace brief and rich above: brief is "
-    "four to seven sentences, about 100 words; rich (they asked for more) is a fuller telling stretch by stretch, adding "
-    "to what you told before rather than repeating it. Name the named things they passed by their names, in the order "
-    "they passed them; say speeds and drops as they'd feel them, with the numbers where they help (\"up to about 12 "
-    "metres a second\", \"down some 15 metres\"). What the vehicle said or showed only where it adds to the story. A "
+    "slowing, a splash, a crossing into another region) and how it ended. These replace brief and rich above, and go by "
+    "the ride's length: brief is about 100 words for a ride of a minute or less, and about 50 words more for each minute "
+    "beyond (a five-minute ride some 300 words, in a few short paragraphs), up to about 500 for a ride of ten minutes "
+    "or more; rich (they asked for more) is a fuller "
+    "telling stretch by stretch, at least as long again, adding to what you told before rather than repeating it. Give "
+    "each stretch its share: a long stretch that looks alike (a tunnel, open water, a straight run) still gets what it "
+    "looked like around them and what changed along it, never only a passing clause. Name the named things they passed "
+    "by their names, in the order they passed them; say speeds and drops as they'd feel them, with the numbers where "
+    "they help (\"up to about 12 metres a second\", \"down some 15 metres\"). What the vehicle said or showed only where it adds to the story. A "
     "moment without a picture is told from its facts alone; never fill a gap with what might have been there. The "
     "pictures are taken on the move and may be rough (shapes still arriving, colours not loaded): go by what's clear. "
     "Still nothing about pictures, recordings, moments or cameras: tell what happened."
@@ -194,8 +199,11 @@ def messages(look, intro, detail, before=None, words=None):
             content.append({"type": "image", "source": {"type": "base64", "media_type": media, "data": v}})
         else:
             content.append({"type": "text", "text": v})
-    content.append({"type": "text", "text": ask_text(detail, before, words).replace("Describe it", "Tell the ride")
-                    if "ride" in look else ask_text(detail, before, words)})
+    ask = ask_text(detail, before, words)
+    if "ride" in look:
+        # (its length decides how long a brief telling is, not "briefly": a five-minute ride got 160 words, 0.1.0.835)
+        ask = ask.replace("Describe it briefly", "Tell the ride").replace("Describe it", "Tell the ride")
+    content.append({"type": "text", "text": ask})
     return [{"role": "user", "content": content}]
 
 

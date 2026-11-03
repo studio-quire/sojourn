@@ -203,8 +203,19 @@ def tools():
     rc = dotnet_build(ROOT / "tools" / "quireuia" / "QuireUia.csproj")
     # with SOJOURN_BUILD_ROOT, the visitor into that tree too (another run's visitor holds the usual one open), built
     # even when QuireUia isn't (another run holds it open too; it rarely changes)
+    return build_visitor() or rc
+
+
+def build_visitor():
     out = [f"-p:OutputPath={VISITOR_DLL.parent}{os.sep}"] if os.environ.get("SOJOURN_BUILD_ROOT") else []
-    return dotnet_build(ROOT / "tools" / "visitor" / "Visitor.csproj", "Release", *out) or rc
+    return dotnet_build(ROOT / "tools" / "visitor" / "Visitor.csproj", "Release", *out)
+
+
+def visitor_stale():
+    """Missing, or older than its source (a stale visitor once rezzed a sized gate in the region's corner, and one built
+    before `switch ... long` ignored it, failing the rail switches step's check of the far rails, 2026-11-02)."""
+    made = VISITOR_DLL.stat().st_mtime if VISITOR_DLL.exists() else 0
+    return any(f.stat().st_mtime > made for f in (ROOT / "tools" / "visitor").glob("*.cs*"))
 
 
 # ---- the package for a tester -------------------------------------------------------------------------------------------
@@ -1031,9 +1042,7 @@ def visitor_command(args):
     try:
         v("pos", timeout=5)
     except OSError:
-        # built when missing or older than its source (a stale visitor once rezzed a sized gate in the region's corner)
-        made = VISITOR_DLL.stat().st_mtime if VISITOR_DLL.exists() else 0
-        if any(f.stat().st_mtime > made for f in (ROOT / "tools" / "visitor").glob("*.cs*")) and tools():
+        if visitor_stale() and tools():
             return 1
         if not grid.ready():
             print("the local grid is down (python tools/grid.py start)")
@@ -1185,6 +1194,10 @@ def test():
     if not APP_AS_EXE and needs_build():   # a test of stale binaries reads as a test of the sources
         print("building Sojourn Access", flush=True)
         if build():
+            return 1
+    if visitor_stale():   # the same for the visitor: its fixtures are part of what's tested
+        print("building the Access Visitor", flush=True)
+        if build_visitor():
             return 1
     app_file = APP_EXE if APP_AS_EXE else APP_DLL
     missing = [p for p in (QUIREUIA, VISITOR_DLL, app_file) if not p.exists()]
@@ -1390,6 +1403,7 @@ def session(run, procs):
         ("recording a route", lambda: route_recording(run)),
         ("recording a route across a border", lambda: route_crossing(run)),
         ("recording a ride", lambda: ride_recording(run)),
+        ("a roof under the water", lambda: roof_under_water(run)),
         ("favorites in the inventory", lambda: favorites(run, nonce)),
         # (last: it logs out and in again, from the login form)
         ("favorite landmarks at login", lambda: favorite_starts(run, nonce, procs)),
@@ -2944,8 +2958,11 @@ def favorites(run, nonce):
                   any(one in n and f"in {fold}" in n and "favorite" not in n for n in listed), "; ".join(listed[:6]))
         run.check("the folder, as a folder", any(n.startswith(f"{shelf}, folder") for n in listed), "; ".join(listed[:6]))
         run.check("the one marked elsewhere isn't there yet", not any(two in n for n in listed), "; ".join(listed[:6]))
-        u("setfocus id=inventory")
-        wait_focus(lambda d: d["id"] == "inventory", 3)
+        # from Show back to the list by keys: Control+F to Search, Escape (nothing to clear) to the list
+        key("ctrl+f")
+        wait_focus(lambda d: d["id"] == "inventorySearch", 3)
+        key("esc", target="id=inventorySearch")
+        run.check("(back in the favourites list)", wait_focus(lambda d: d["id"] == "inventory", 4), focus_label())
         m = mark()
         key("f5")
         run.expect("F5 there reads them from the service again", ["Reading your favorites again"], m, 4)
@@ -3002,14 +3019,16 @@ def favorite_starts(run, nonce, procs):
     the tester arrives where the landmark points (not where it was last)."""
     global APP_PID
     name = f"Access Start {nonce}"
-    here = tester_where()
+    here = api("LLAgent", "getPosition")["global"]   # (global: the region may be Atelier or Atelier East)
     made = api("SojournPeople", "addFavorite", 20, name=name)
     lm = made.get("item_id") or made.get("id")
     if not run.check("(a landmark of here in the Favorites bar)", lm, json.dumps(made)[:160]):
         return
+    # (the region the tester is in when the step starts: Atelier, or Atelier East after the walk-mode steps)
+    region = api("TesselInventory", "landmark", item_id=lm).get("region") or REGION
     state = OUT / "app" / "state" / "127.0.0.1_9700" / f"{TESTER[0]}.{TESTER[1]}".lower() / "favorite-starts.json"
     saved = wait(lambda: (lambda t: t if name in t else None)(state.read_text(encoding="utf-8") if state.exists() else ""), 30, 1)
-    run.check("the account's start places are kept, with where the landmark points", saved and f'"Region": "{REGION}"' in saved,
+    run.check("the account's start places are kept, with where the landmark points", saved and f'"Region": "{region}"' in saved,
               (saved or "no file")[:200])
     key("alt+6")
     wait_focus(lambda d: d["id"] == "landmarks", 4)
@@ -3066,11 +3085,10 @@ def favorite_starts(run, nonce, procs):
     if not run.check("Enter logs in there", st, "connected" if st else "not connected"):
         return
     time.sleep(3)
-    x, y, z, _ = tester_where()
-    off = math.dist((x, y), here[:2])
-    st = json.dumps(status())
-    run.check("arriving where the landmark points, not where the tester was last", REGION in st and off < 5,
-              f"{x:.0f}, {y:.0f}: {off:.1f} m from the landmark at {here[0]:.0f}, {here[1]:.0f}; status {st[:120]}")
+    now = api("LLAgent", "getPosition")["global"]
+    off = math.dist(now[:2], here[:2])
+    run.check("arriving where the landmark points, not where the tester was last", off < 5,
+              f"{off:.1f} m from the landmark ({region}), globally {now[0]:.0f}, {now[1]:.0f} against {here[0]:.0f}, {here[1]:.0f}")
     try:
         u(f"activate {app}")
     except ToolError:
@@ -6275,7 +6293,9 @@ def rail_switches(run):
             visitor_tp(x + (10 if more else 0), y + 8, g(x) + 1.5)   # in chat range of the stand, its rails in reach
             time.sleep(1.5)
             made.append(v(f"switch {x} {y} {g(x)} {ch}{more}", timeout=90))
-        if not run.check("the visitor's two switches are out, their scripts running", all(r.startswith("switch") for r in made), " | ".join(made)):
+        # the second's rails in four sections each ("rails 8"): a visitor without `long` makes one and says nothing of it
+        if not run.check("the visitor's two switches are out, their scripts running, the second's rails long",
+                         all(r.startswith("switch") for r in made) and made[1].endswith("rails 8"), " | ".join(made)):
             return
         visitor_tp(x0, y - 5, g(x0) + 1.5)
         time.sleep(1.5)
@@ -6804,6 +6824,65 @@ def route_recording(run):
 
 
 RIDE_MARKERS = (("Red Buoy", 62), ("Old Lighthouse", 82), ("Splash Pool", 102))   # beside the way, 4 m north of it
+
+
+def roof_under_water(run):
+    """World audio under the water with a roof overhead (Walk/WalkMode.Roof.cs, Audio/WorldSounds.cs; the blind
+    tester's sounds went faint in a glass tunnel under the sea, 0.1.0.835): on the seabed of Atelier, as the viewer's
+    under water (sounds fade five times as fast); a slab the visitor rezzes over her head, below the surface, makes it
+    dry (as on land), with how far up; taken away, under water again. SojournAudio status says which."""
+    back_to_chat()
+    m = mark()
+    say_in_app(f"//tp {REGION}/128/128/30")
+    if not run.expect("(to Atelier for the seabed)", ["Arrived"], m, 40):
+        return
+    time.sleep(2)
+    spot = None
+    for y in range(6, 250, 12):
+        xs = list(range(6, 250, 12))
+        hs = api("TesselAgent", "ground", points=[[x, y] for x in xs])["heights"]
+        spot = next(((x, y, h) for x, h in zip(xs, hs) if h is not None and h < 14), None)
+        if spot:
+            break
+    if not run.check("(a seabed at least 6 m under the water)", spot, ""):
+        return
+    x, y, g = spot
+
+    def water():
+        return api("SojournAudio", "status").get("water") or {}
+
+    def roof_lines():
+        logs = sorted((OUT / "app" / "logs").glob("*.log"), key=lambda f: f.stat().st_mtime)
+        return logs[-1].read_text(encoding="utf-8", errors="replace").count("beneath a roof") if logs else 0
+
+    made = False
+    try:
+        if not go_tp(run, f"(the tester on the seabed, {g:.1f} m)", x, y, g + 1):
+            return
+        got = wait(lambda: water().get("state") == "under" or None, 10)
+        run.check("on the seabed: under the water, sounds fading five times as fast", got and water().get("rolloff") == 5,
+                  json.dumps(water()))
+        v(f"tp {REGION} {x + 3} {y + 3} {g + 1}", timeout=30)
+        roof_z = g + 3.5
+        logged = roof_lines()
+        out = v(f"rez Sea Roof {x} {y} {roof_z} size 6 6 0.3", timeout=30)
+        made = out.startswith("rezzed")
+        run.check("(the visitor's roof over her head, below the surface)", made and roof_z + 0.15 < 20, out)
+        got = wait(lambda: water().get("state") == "under a roof" or None, 10)
+        w = water()
+        run.check("beneath it: dry, sounds fading as on land, with how far up the roof is",
+                  got and w.get("rolloff") == 1 and 0.5 < (w.get("roof_m") or 0) < 3, json.dumps(w))
+        run.check("and logged, with the heights", wait(lambda: roof_lines() > logged or None, 8), "no \"beneath a roof\" line")
+        v("derez Sea Roof", timeout=15)
+        made = False
+        got = wait(lambda: water().get("state") == "under" or None, 15)
+        run.check("the roof taken away: under the water again", got, json.dumps(water()))
+    finally:
+        if made:
+            try:
+                v("derez Sea Roof", timeout=15)
+            except Exception:
+                pass
 
 
 def ride_recording(run):

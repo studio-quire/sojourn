@@ -161,7 +161,7 @@ public sealed partial class WalkMode
             {
                 _lastSpeedTold = s;
                 _speedToldAt = now;
-                if (_set.WalkSpeed) Line(s < 0.3f ? "Stopped." : $"{SpeedWords(s)}.");
+                if (_set.WalkSpeed) ByItself(s < 0.3f ? "Stopped." : $"{SpeedWords(s)}.");
             }
         }
         else if (!b.Sitting && _track.Count > 0) { _track.Clear(); _lastSpeedTold = _settling = 0; }

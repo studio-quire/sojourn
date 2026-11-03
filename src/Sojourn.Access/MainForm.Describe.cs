@@ -73,7 +73,8 @@ public sealed partial class MainForm
     void DescribeKey(bool me) => _ = DescribeAsync(me ? Me : SelectedSubject());
 
     /// <summary>A description asked for: the same subject again within ten minutes asks for more.</summary>
-    async Task DescribeAsync(Subject s, string? detail = null)
+    /// <param name="more">said after a brief one's "Describing ...": how to have more (a ride's telling)</param>
+    async Task DescribeAsync(Subject s, string? detail = null, string? more = null)
     {
         if (Host is not { } h) return;
         detail ??= _described is { } d && d.Subject == s && Environment.TickCount64 - d.At < 600_000 ? "rich" : "brief";
@@ -96,7 +97,7 @@ public sealed partial class MainForm
         long before = h.Assistant.Panel.RepliesVersion;
         Ask($"{asked} [describe key: subject={s.Key}, of={s.Of}, detail={detail}]",
             shown: rich ? $"More on {s.Words}." : $"Describe {s.Words}.",
-            said: (rich ? $"More on {s.Words}." : $"Describing {s.Words}.") + slow);
+            said: (rich ? $"More on {s.Words}." : $"Describing {s.Words}." + (more != null ? " " + more : "")) + slow);
         // a picture waits for its subject's look to load (up to half a minute on the processor), so a long silence is
         // said once rather than left for her to wonder about
         if (s.Of != "view" || slow.Length > 0) return;

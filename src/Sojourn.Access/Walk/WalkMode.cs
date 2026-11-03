@@ -50,6 +50,7 @@ public sealed partial class WalkMode
         _rays = rays;
         _say = say;
         Sounds = new CueSounds(host.Audio, () => S.Client?.Self.AgentID ?? UUID.Zero) { Relative = RelativeOf };
+        if (host.Audio is { } audio) audio.Roof = RoofOver;   // dry under a roof under the sea (WalkMode.Roof.cs)
         ApplyFootsteps();
         HookChat();
     }
@@ -170,7 +171,10 @@ public sealed partial class WalkMode
     void Cue(string cue, CueSounds.Cue sound, string? text, Body? b = null, float? yaw = null)
     {
         if (_set.WalkSound(cue)) Sounds.Play(sound, _set.WalkLevel(cue), b is { } body && yaw is { } y ? Around(body, y) : null);
-        if (text != null && _set.WalkText(cue)) Line(text);
+        if (text == null || !_set.WalkText(cue)) return;
+        // warnings and turns are said at once whatever is being said; the rest that come by themselves let a switch's line finish
+        if (cue is "vehicle" or "walls" or "turns") Line(text);
+        else ByItself(text, heardOut: cue == "switch");
     }
 
     /// <summary>A line for the screen reader (and the pad's own text, for anyone looking).</summary>
@@ -178,9 +182,57 @@ public sealed partial class WalkMode
     {
         LastLine = text;
         lock (_recent) { _recent.Enqueue(text); while (_recent.Count > 20) _recent.Dequeue(); }
+        // an answer to her key while a switch's line is being heard: what comes by itself waits for that answer too
+        lock (_after) if (Environment.TickCount64 < _quietUntil) _quietUntil = Math.Max(_quietUntil, Environment.TickCount64 + Hearing(text));
         _say(text);
         Lines?.Invoke(text);
     }
+
+    // A switch's line is heard out before the next line walk mode says by itself (the seated crossing, the speed, the
+    // next switch): each is an answer to the reader, and an answer cuts off what's being said. On 0.1.0.835 both switch
+    // lines before the blind tester's wrong turn were cut within a second, by "Guide, 15 metres." and "Now in Tenera,
+    // still on Zephyr." (her log of 2026-11-02, 21:37). Her own keys' answers, warnings and "Track ends" still cut in.
+    long _quietUntil;
+    bool _quietForSwitch;   // what's being heard out is a switch's line (else a waiting line's: a switch's may cut in)
+    readonly Queue<(string Text, bool Switch, long At)> _after = new();
+
+    /// <summary>A line that comes by itself: said now, or once the switch line before it has been heard out (and any
+    /// waiting before it, each in turn). heardOut: a switch's line, which nothing by itself cuts off, and which cuts in on
+    /// any other waiting line's turn.</summary>
+    void ByItself(string text, bool heardOut = false)
+    {
+        long now = Environment.TickCount64;
+        lock (_after)
+        {
+            bool wait = heardOut ? now < _quietUntil && _quietForSwitch : now < _quietUntil || _after.Count > 0;
+            if (wait)
+            {
+                if (_after.Count < 6) _after.Enqueue((text, heardOut, now));
+                return;
+            }
+            if (heardOut) { _quietUntil = now + Hearing(text); _quietForSwitch = true; }
+        }
+        Line(text);
+    }
+
+    /// <summary>Each tick: the next waiting line, once the one before has been heard out (each heard out in turn).</summary>
+    void AfterTick(long now)
+    {
+        string text;
+        lock (_after)
+        {
+            // (one waiting past 8 s is old news: a teleport, or the walk pad gone meanwhile)
+            while (_after.Count > 0 && now - _after.Peek().At > 8000) _after.Dequeue();
+            if (_after.Count == 0 || now < _quietUntil) return;
+            (text, _quietForSwitch, _) = _after.Dequeue();
+            _quietUntil = now + Hearing(text);
+        }
+        Line(text);
+    }
+
+    /// <summary>About how long the reader takes to say a line at a quick voice (30 ms a character, as the lines cut by
+    /// typing are judged: MainForm.CutLines.cs), at least a second.</summary>
+    static long Hearing(string text) => Math.Clamp(text.Length * 30L, 1000, 6000);
 
     public string? LastLine { get; private set; }
     readonly Queue<string> _recent = new();
@@ -211,6 +263,7 @@ public sealed partial class WalkMode
         Crossing(b, now);
         BeaconTick(b, now);
         SwitchTick(b, now);
+        AfterTick(now);
         Recorder?.Tick(Reported(b), now);
         Ride?.Tick(b, now);
     }

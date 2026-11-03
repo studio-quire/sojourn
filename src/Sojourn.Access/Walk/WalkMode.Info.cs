@@ -224,6 +224,12 @@ public sealed partial class WalkMode
     /// seven times on the blind tester's ride of 2026-11-02, each time a second or three before the avatar arrived seated.)</summary>
     public bool SeatedRecently => _seated || _crossed != null;
 
+    /// <summary>Seated before and the region can't say yet whether still (a crossing's first seconds, or the seat not
+    /// sent yet): not standing up. The ride recorder holds the seat over it.</summary>
+    public bool SeatInDoubt(Body b) => !b.Sitting && (_crossed != null || _seated && SeatKnown() == null);
+    /// <summary>The seat as last known (kept over a crossing).</summary>
+    public string? LastSeatName => _seatName;
+
     /// <summary>A seated crossing's line, for the nearby chat history (written there whether or not it's read out).</summary>
     public event Action<string>? Crossed;
 
@@ -231,20 +237,36 @@ public sealed partial class WalkMode
     {
         if (_region != null && b.RegionName != _region && _seated) _crossed = (b.RegionName, now);
         bool? seated = b.Sitting ? true : _crossed != null || _seated ? SeatKnown() : false;
+        bool judged = false;
         if (_crossed is { } x && now - x.At > 2500 && (seated != null || now - x.At > 15_000))
         {
             _crossed = null;
+            judged = true;
             var line = seated == true ? $"Now in {x.Region}, still on {b.SeatName ?? _seatName ?? "your seat"}."
                 : seated == false ? $"Now in {x.Region}; the crossing left you standing."
                 : $"Now in {x.Region}; it hasn't said yet whether you're still seated.";
             Log($"seated crossing into {x.Region}: {(seated == true ? "seated" : seated == false ? "standing" : "not known")} after {now - x.At} ms");
-            if (_set.WalkText("vehicle")) Line(line);
+            if (_set.WalkText("vehicle")) { if (seated == true) ByItself(line); else Line(line); }
             Crossed?.Invoke(line);
         }
+        if (b.Sitting && Speed(b) > 1f) _seatMovingAt = now;
         _region = b.RegionName;
         // (not while the region hasn't said: a moment without the avatar or its seat isn't standing up)
-        if (_crossed == null && seated != null) { _seated = seated.Value; if (b.Sitting) _seatName = b.SeatName ?? _seatName; }
+        if (_crossed == null && seated != null)
+        {
+            // stood up off something moving, not at a crossing: the region left her behind (the tester's train crossed
+            // out of Bhaga without her on 2026-11-02, and only its own chat said so), or she stood herself
+            if (_seated && seated == false && !judged && now - _seatMovingAt < 5000 && _set.WalkText("vehicle"))
+            {
+                Log($"off {_seatName ?? "the seat"} while it was moving, in {b.RegionName}");
+                Line($"You're off {_seatName ?? "your seat"}: it went on without you.");
+            }
+            _seated = seated.Value;
+            if (b.Sitting) _seatName = b.SeatName ?? _seatName;
+        }
     }
+
+    long _seatMovingAt = long.MinValue / 2;
 
     /// <summary>Seated (true) or standing (false) as the current region has the avatar, or null while it can't say: the
     /// avatar not sent yet (a crossing's first seconds), or sent sitting on something that hasn't come yet.</summary>

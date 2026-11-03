@@ -277,7 +277,7 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   - Delete and Give ask first (the confirmation comes up selected in Notices: Enter confirms, Escape cancels, then the
     focus is back in the tree). As in the official viewer and Firestorm, a worn body part isn't deleted, said at once
     without asking, and other worn items, the folder's too, are taken off first, the confirmation saying so.
-  - Ctrl+F goes to Search, where typing lists what matches flat with its folder ("2 found"), Enter goes back to the
+  - Ctrl+F goes to Search (from the tree or Show), where typing lists what matches flat with its folder ("2 found"), Enter goes back to the
     tree, Escape clears it; a search leaves the Trash out and says what it has there ("2 found, and 3 in the Trash
     (Show: Trash lists them)"); a long one says "Searching." first. Tab from Search reaches Show (Up/Down: everything,
     worn, recent: the last day's, trash: what's in the Trash, or with words what matches there).
@@ -636,8 +636,8 @@ in your left ear.
 | sonar (`walk_sonar`, both) | S | twelve pings, one from each hour of the clock, starting ahead and going round to the right: higher the nearer (under 2.5 m, under 7, further), a breath where it's open (nothing within 15 m); then a three-note chime from each opening | "Walls: ahead 11 m, right 1 m, left 1 m. Open: behind. Opening at twelve o'clock, 6 m away, 1.4 m wide. Opening at six o'clock, under a metre away, 2.8 m wide." and doors by name |
 | distance (`walk_distance`, text) | a stretch walked by the arrows has ended: no walking key for 0.7 s, no key at all for 0.7 s, the avatar stopped (or 3 s on), and walk mode's line before it heard out; taps in quick succession (a turn between them too) are one stretch; straight from where it began; under 0.3 m nothing; not a `//go`, a follow or a vehicle | none | "0.9 metres." / "4 metres." (tenths under 3 m: a tap is about 0.9 on Second Life) / "1.8 metres backward." / "1 metre to the left." (by the keys that walked it) |
 | follow (`walk_follow`, text) | following someone | none | "With Kestrel, 3 m, twelve o'clock." / "Kestrel sat down, ..." / "Kestrel is getting away: 24 m, ..." |
-| vehicle (`walk_vehicle`, both) | driving: what's ahead (as the warning, further at speed), only what the vehicle is closing on (met for 0.4 s or more and come nearer by at least half what it travelled meanwhile; each thing once in 4 s): on a train a ray from the seat meets the track's own sections and guides ahead on every curve, which stay about as far ahead as the track bends away (the blind tester's ride of 2026-11-02 had 157 such warnings); a seated border crossing, judged once the new region has sent the avatar and the seat it's on (up to 15 s, else said as not known yet: judged at 2.5 s whatever had come, it told her "the crossing left you standing" seven times while she sat on); the speed has its own switch, `walk_speed` (on): the distance travelled over 2 s, said once it has held within 15% for 2 s and differs from the last said by 3 m/s and a third (a train's reported velocity swung 19, 6, 13, 8 three seconds apart, 2026-11-01) | as the warning | "12 metres a second." / "Now in Bay City, still on Walk Kart." / "Now in Bay City; the crossing left you standing." |
-| switch (`walk_switch`, both) | seated and moving: a rail switch coming into the way ahead within 60 m, said once (one a line, the nearest first, 2.5 s apart; again only after a minute out of the way ahead; not once it's under 5 m); the next one ahead said again if its setting changes; a throw done (W, Shift+W, `//switch`) | a points' clack, then one note forking into two that part; a throw: a heavy clack and a lighter answer | "Switch in 40 metres, set to the main line, North Station." / "Switch in 25 metres, set to: unknown." / "The switch ahead is now set to the main line." / "Switch set to the branch, East Yard." |
+| vehicle (`walk_vehicle`, both) | driving: what's ahead (as the warning, further at speed), only what the vehicle is closing on (met for 0.4 s or more and come nearer by at least half what it travelled meanwhile; each thing once in 4 s): on a train a ray from the seat meets the track's own sections and guides ahead on every curve, which stay about as far ahead as the track bends away (the blind tester's ride of 2026-11-02 had 157 such warnings); a seated border crossing, judged once the new region has sent the avatar and the seat it's on (up to 15 s, else said as not known yet: judged at 2.5 s whatever had come, it told her "the crossing left you standing" seven times while she sat on); the speed has its own switch, `walk_speed` (on): the distance travelled over 2 s, said once it has held within 15% for 2 s and differs from the last said by 3 m/s and a third (a train's reported velocity swung 19, 6, 13, 8 three seconds apart, 2026-11-01); stood up off the seat within 5 s of its moving, not at a crossing (the region left her behind as her train crossed out, 2026-11-02, and only the train's own chat said so) | as the warning | "12 metres a second." / "Now in Bay City, still on Walk Kart." / "Now in Bay City; the crossing left you standing." / "You're off Walk Kart: it went on without you." |
+| switch (`walk_switch`, both) | seated and moving: a rail switch coming into the way ahead within 60 m, said once (one a line, the nearest first, 2.5 s apart; again only after a minute out of the way ahead; not once it's under 5 m); the next one ahead said again if its setting changes; a throw done (W, Shift+W, `//switch`). A switch's line is heard out (about 30 ms a character): the lines walk mode says by itself meanwhile (the seated crossing, the speed, the next switch, a route's point) wait for it and then follow in turn, as an answer cuts off what's being said (0.1.0.835 cut 25 of 146, both before her wrong turn); warnings, the answers to her keys and "Track ends" still cut in | a points' clack, then one note forking into two that part; a throw: a heavy clack and a lighter answer | "Switch in 40 metres, set to the main line, North Station." / "Switch in 25 metres, set to: unknown." / "The switch ahead is now set to the main line." / "Switch set to the branch, East Yard." |
 | beacon (`walk_beacon`, both; volume quiet) | a walk under way (`//go`, walk to, a follow, the assistant's walk), else one put on someone or something | a soft pip from the target's direction, every 1.4 s far off down to 0.6 s near, with a fifth above it while it's within 20 degrees ahead (front and back are hard to tell by ear); a small bell flourish on reaching a hand beacon | "Reached Bench." / "Beacon lost: Kestrel isn't here now."; B says where it is |
 | route (`walk_route`, sound; volume quiet) | recording a route: each point it keeps (Recording a route, below) | one small bright wooden tick | "Step 4: a doorway." / "Step 5: a turn." / "Step 7: a teleport to Bay City." |
 | marks (`walk_marks`, both) | O | each thing in turn round from ahead to the right, as the sonar: a door knocks (as the warning's door), a seat sinks (two low notes falling), a touchable thing taps (a small high bell) | "Bench, a seat, 4 metres, twelve o'clock. Garden Gate, a door, 4 metres, three o'clock. Bell, touchable, 4 metres, nine o'clock." |
@@ -711,8 +711,9 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   after with the milliseconds it took, and whether the guide rails changed.
 - Throwing (Shift+W, `//switch flip`, `main`, `branch`) touches the stand's part that takes touches (the largest, if
   several; the stand itself if none), as a person's click, then reads the description until its Status changes (6 s at
-  most) and says the new setting. The guide rails within 60 m of the stand are watched too: if the stand changed and
-  they didn't, it's said ("Its guide rails didn't change, though: the stand may be out of order"); a stand without a
+  most) and says the new setting; a switch being read meanwhile (each is read as it comes up, and the next one
+  again every 4 s) is waited for, up to 3 s, rather than refused. The guide rails within 60 m of the stand are watched
+  too: if the stand changed and they didn't, it's said ("Its guide rails didn't change, though: the stand may be out of order"); a stand without a
   Status, if they changed, "Switch thrown: its guide rails changed, but its stand doesn't say which way." The channel
   commands aren't used: neighbouring stands may share a channel, and a shout would throw them all. A switch across a
   border is said but can't be thrown from here (touches go to the current region).
@@ -876,9 +877,12 @@ the way), else a walk from the last point. The recording lives in the app only u
 the blind tester wished to ride a carnival waterslide, "arrow keys make you go faster, sometimes so fast you fly off",
 and hear it described afterwards). C in walk mode (or `//ride`, or World > Recording a ride) starts it: "Recording the
 ride: a picture every few seconds and what's around, kept on this PC until you ask. C stops it, or it stops when you
-stand up or the ride does; Shift+C then tells it." Any time: standing in the queue, or already seated and moving.
+stand up or the ride does; Shift+C then tells it." (With the view still starting or preparing: "pictures start once
+it's up"; "without pictures" only with no view, one given up, or no assistant.) Any time: standing in the queue, or already seated and moving.
 - **What it keeps**, every 3 s a moment: the time from the start, the region, speed over the ground, which way it's
-  going, climbing or falling, height and distance from the start, what she rides (when it changes), the named things
+  going, climbing or falling, height and distance from the start, what she rides (when it changes; held over a region
+  crossing while the new region hasn't said whether she's still seated, `WalkMode.SeatInDoubt`: a moment taken
+  mid-crossing told her she was standing on top of the engine, 835), the named things
   and people within 20 m by name and where from her going that way (never what she rides), objects' lines (the seat's
   own, her own things', one said to her alone, or any object's within 20 m; never people's chat), and the seat's
   floating text when it changes. Every few seconds a picture from her eyes, looking the way she's going (tipped as it
@@ -893,15 +897,26 @@ stand up or the ride does; Shift+C then tells it." Any time: standing in the que
   tell them; otherwise it records the moments alone and says so ("without pictures (the assistant isn't on to tell
   them)").
 - **Ending**: C again or `//ride stop` ("Ride recorded: 1 minute 24 seconds, 28 pictures. Shift+C tells it."); by itself
-  3 s after she stands up (longer than a crossing drops a seat for), once a ride she sat on and that moved has been
-  still for 8 s, or at five minutes, each said ("The ride stopped moving: ride recorded, ...").
+  3 s after she stands up (a crossing's doubt about the seat isn't standing), once a ride she sat on has moved (3 s of
+  it at 1 m/s or more, not a jolt: a train flipped round at its platform jumps a few metres at once, which on 835
+  ended her recording before it set off) and then been still for 8 s, or at fifteen minutes (five until 835 cut both
+  her undersea rides short), each said ("The ride stopped moving: ride recorded, ...").
 - **Told**: Shift+C in walk mode (or `//ride describe`, World > Recording a ride > Tell the ride) stops a recording
-  still going and sends the ride, through the describe key's path, to one lean call (`describer.py` RIDE_HOW): the
-  moments in order as lines, each picture after its moment's line, and instructions to tell it as a short story in the
-  second person ("You set off down a steep blue tube ..."), the named things passed by name in the order passed, speeds
-  and drops as felt, a moment without a picture from its facts alone. Brief (four to seven sentences, at most 16
-  pictures chosen evenly through the ride); the same key again within ten minutes, or `//ride more`, a fuller telling
-  with every picture kept, adding to the first. Nothing leaves the PC before she asks; the ride stays until the next
+  still going and sends the ride, through the describe key's path, to one lean call (`describer.py` RIDE_HOW) on her
+  describing setting's model (best: Opus 5.5 at low effort): the moments in order as lines, each picture after its
+  moment's line, and instructions to tell it as a story in the second person ("You set off down a steep blue tube
+  ..."), the named things passed by name in the order passed, speeds and drops as felt, each stretch its share (a long
+  one that looks alike, a tunnel or open water, still gets what it looked like and what changed), a moment without a
+  picture from its facts alone. Brief by the ride's length: about 100 words for a minute or less, about 50 more a
+  minute past that (some 300 for five minutes), up to about 500 at ten minutes or more (until 835 it was about 100
+  whatever the length, and her five-minute rides got 134 and 146 words, the tunnel a clause); at most 16 pictures
+  chosen evenly through the ride, 24 past five minutes. Any telling gets at most 100 moments (a five-minute ride's,
+  about 30K tokens of them): past that the first and last, those with a picture sent, those where the region or the
+  seat changed, and others evenly between, each one left out folded into the next sent (its named things near, up to
+  8, objects' lines, up to 6, what the seat came to show), so a fifteen-minute ride's request stays near a
+  five-minute one's. Said as it
+  starts: "Describing your ride. Shift+C again tells more of it." (`//ride more` by words); the same key again within
+  ten minutes, or `//ride more`, a fuller telling with every picture kept, adding to the first. Nothing leaves the PC before she asks; the ride stays until the next
   starts or she logs out, and one recorded in incognito goes when the spell ends. Without the assistant: "What the
   recording knows: 38 seconds on Ride Train, from Atelier East; 75 metres travelled, at most 3 metres a second; passing
   Access Visitor, Red Buoy, Old Lighthouse, Splash Pool; 6 lines said by objects." The assistant's describe tool takes `of: ride` too,
@@ -910,15 +925,19 @@ stand up or the ride does; Shift+C then tells it." Any time: standing in the que
   was 8.7K tokens in and 1.6K out (1.4K of it thinking): $0.0017, 8.8 s of the model, 17 s from Shift+C to the last
   sentence read. A picture is ~300 tokens at 640x360, so a brief telling of any ride (16 at most) stays near $0.002 and
   a rich one of a five-minute ride (40) about $0.004; on best (Opus 5.5 low) about $0.05 and $0.10, reckoned from the
-  same tokens, not measured.
+  same tokens. Her five-minute rides on best (2026-11-02): 37.7K and 39.3K tokens in (16 pictures and 101 moments),
+  about 600 out, 8-9 s of the model; the moments' lines, not the pictures, are most of the input. A longer ride, its
+  moments thinned to 100 and 24 pictures, should be some 3K tokens more, with up to 500 words out (reckoned).
 - SojournRide on the agent API: `status` (recording, the ride's length, moments, pictures taken, skipped and thinned,
   the last picture's time, the names passed in order, what the seat showed and objects said), `get` (what the describer
   gets; the sidecar asks only when she has it told).
 - Checked on the local grid (`tools/access.py` step "recording a ride", `docs/access-testing.md`) on the GPU, on the
   processor (`ACCESS_NO_GPU=1`: the first pictures 1.1-1.4 s while its shaders compiled, then 40-150 ms on this PC's
   twelve threads, none skipped, H answered in 0.05 s throughout) and with neither view nor assistant.
-- Not seen yet: a real ride on Second Life (a waterslide's tube, a coaster), pictures on the processor during a busy
-  place's ride on her 2400G, and whether the telling's length and voice suit her.
+- On Second Life (the blind tester, 0.1.0.835, 2026-11-02; `docs/access.md` > A ride under the sea): two five-minute
+  rides on a train through a glass tunnel under the sea, on her 2400G's processor: 51 and 40 pictures drawn (one every
+  6-7 s, 0.4-3.6 s each, the processor never past 80%), the telling's length too short for her. Not seen yet: a
+  waterslide or coaster, the longer telling.
 
 ### Parts and faces
 
@@ -1697,6 +1716,16 @@ it).
 - **The listener**: Access has no camera, and world audio places nothing until something sets its listener
   (WorldSounds waits for one: objects' sounds, footsteps, even the new-IM sound). Walk mode's tick puts it at the
   avatar's head facing where it faces, for world audio and voice.
+- **Dry under the sea** (`Walk/WalkMode.Roof.cs`, `AudioWiring.Roof`; 2026-11-02, after the blind tester's sounds went
+  faint riding a glass tunnel under the sea): the viewer's underwater audio (sounds fading five times as fast with
+  distance) goes by the ear's height against the region's water alone, so a dry tunnel or seabed room is "under water"
+  too. In Access, under the water, one ray straight up from the ear to the surface by the collision model; anything
+  solid it meets (the vehicle she rides too: a submarine's hull) makes it dry, at the usual falloff. Asked again once
+  the ear has moved a metre or a second has passed, at most five times a second, one at a time; the last answer
+  stands meanwhile (a first moment under the water, before the ray answers, is as the viewer's). A phantom roof
+  doesn't count (the collision model passes through phantom prims). Logged with the heights ("audio: under the water
+  (the ear at 4.2 m, the region's water at 20.0 m) beneath a roof 1.7 m up: dry, ..."); SojournAudio status's `water`
+  says which. The VR client stays as the viewer.
 - **Sound as a map** (M4): `Sound/Earcons.cs` (classifies feed entries by kind, the notice's notification name on
   `FeedEntry.NoticeName`; placed toward the speaker by `WalkMode.Toward`), `Walk/WalkMode.Sound.cs` (the beacon:
   `Commands.Heading` for its own walks and follows, else `Motion.Destination` for the session's autopilot, else the
