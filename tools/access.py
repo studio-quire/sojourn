@@ -6726,7 +6726,7 @@ def rail_track(run, y1):
     rail an alternate (set against the kart), with a stand; and a decoy: a stand and its rails on a parallel line 12 m
     south, in the old straight band ahead and nearer than either. Seated, stopped, W says the facing switch by its
     distance along the track (60 m), that it takes you left and the branch goes right, not the decoy; a held Up says
-    the trailing one ("a line joins from the right: set against you") and never the decoy; the session log has the
+    the trailing one ("a line joins from the right: set for the other line") and never the decoy; the session log has the
     track followed and its two places where lines part and join. Called by rail_switches, its kart taken away first."""
     import math
     xs = list(range(35, 96, 10))
@@ -6830,12 +6830,14 @@ def rail_track(run, y1):
     lines = [e.get("text") or "" for e in said_since(m) if (e.get("text") or "").startswith("Switch")]
     print(f"     (drove to {at[0]:.1f}, {at[1]:.1f}: {lines})")
     run.check("driving: the trailing switch round the curve said, a line joining from the right, set against the kart",
-              any(re.match(r"Switch in \d+ metres where a line joins from the right: set against you\.$", l_) for l_ in lines),
+              any(re.match(r"Switch in \d+ metres where a line joins from the right: set for the other line\.$", l_) for l_ in lines),
               " | ".join(lines) or "none")
     run.check("and never the decoy on the line beside the track", not any("South" in l_ for l_ in lines), " | ".join(lines) or "none")
     run.check("(with the switch cue)", cues_since(t0, "Switch"), json.dumps(cues_since(t0)[-5:]))
     key("esc")
     wait_focus(lambda d: d["id"] == "chatInput", 5)
+    run.check("and the switch's line is in the chat history, to copy", "where a line joins from the right: set for the other line." in value_of("id=chatHistory"),
+              value_of("id=chatHistory")[-200:])
     logs = sorted((OUT / "app" / "logs").glob("*.log"), key=lambda p_: p_.stat().st_mtime)
     log = logs[-1].read_text(encoding="utf-8", errors="replace") if logs else ""
     tracks = re.findall(r"switch: track from .*", log)

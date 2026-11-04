@@ -132,7 +132,7 @@ public sealed partial class MainForm : Form
         };
         _walk = new Sojourn.Access.Walk.WalkMode(host, _ops, _set, rays, line => Reader?.Answer(line)) { StopOthers = () => _cmd.StopAll() };
         // a seated crossing (a train, a car) is a line in nearby chat's history, as a walked one is (Announce)
-        _walk.Crossed += AppendChat;   // (walk mode ticks on the window's thread)
+        _walk.ForHistory += line => { if (InvokeRequired) BeginInvoke(() => AppendChat(line)); else AppendChat(line); };
         _cmd.FeetZ = () => _walk.Me()?.Feet;
         _cmd.Describe = words => (Task)Invoke(() => DescribeWordsAsync(words));
         _cmd.About = () => AppInfo.About(_opt.BaseDir);

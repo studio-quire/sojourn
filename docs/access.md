@@ -691,6 +691,16 @@ well as I had hoped... it was worth a try".
   rails, switches said by distance along it, facing or trailing, which side, set for or against her
   (`docs/access-app.md` > Rail switches > Along the track).
 
+### "Set against you" and a line changed under her (the blind tester, 2026-11-04)
+
+On the builders' line (08:46-08:49): she didn't know what "set against you" meant, so a trailing switch now says "set for
+your line" or "set for the other line" (next build); told her, and the question of what her train does at such a join stands. She also said she was
+put on another line the night before with nobody changing anything. Her log of that evening
+(`tester-20261104T025444-eb47e5`) has a switch ahead changing to the branch by itself in Sinica (21:21:12) and no throw
+of hers; asked whether that was the one. Old versions: told her to delete them, the data folder being shared.
+That evening: her partner had been flipping switches, which would explain it. Her first throw on Second Life worked (18:06).
+She couldn't copy switch lines to show him: all of them now go in the chat history too.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's

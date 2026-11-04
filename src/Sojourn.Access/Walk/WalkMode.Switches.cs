@@ -184,7 +184,7 @@ public sealed partial class WalkMode
     /// <summary>A switch's line: "Switch in 40 metres, set to the main line, North Station: it takes you left; the branch,
     /// East Yard, goes right." Facing with its rails clear: which side it takes the person, which side the other line
     /// goes (named from the stand where it says how it's set). Trailing with its rails clear: "Switch in 40 metres where a
-    /// line joins from the left: set for you." (or against). Else the stand's words, as without a track.</summary>
+    /// line joins from the left: set for your line." (or the other line). Else the stand's words, as without a track.</summary>
     static string Sentence(RailSwitch s, string where)
     {
         var j = s.Junction;
@@ -203,19 +203,19 @@ public sealed partial class WalkMode
         if (j is { Kind: RailTrack.Kind.Trailing, Verdict: RailTrack.Verdict.For or RailTrack.Verdict.Against })
         {
             var joins = j.OtherSide == RailTrack.Side.None ? "another line joins" : $"a line joins from the {SideWord(j.OtherSide)}";
-            return $"Switch {where} where {joins}: set {(j.Verdict == RailTrack.Verdict.For ? "for" : "against")} you.";
+            return $"Switch {where} where {joins}: set for {(j.Verdict == RailTrack.Verdict.For ? "your" : "the other")} line.";
         }
         return $"Switch {where}, {SettingWords(s)}.";
     }
 
-    /// <summary>What a switch already said now does, when its rails changed: "now takes you right", "is now set against
-    /// you"; null if its rails no longer say.</summary>
+    /// <summary>What a switch already said now does, when its rails changed: "now takes you right", "is now set for the other
+    /// line"; null if its rails no longer say.</summary>
     static string? Changed(RailSwitch s) => s.Junction switch
     {
         { Kind: RailTrack.Kind.Facing, Verdict: RailTrack.Verdict.For, OtherSide: not RailTrack.Side.None } j =>
             $"now takes you {SideWord(j.OtherSide == RailTrack.Side.Left ? RailTrack.Side.Right : RailTrack.Side.Left)}",
-        { Kind: RailTrack.Kind.Trailing, Verdict: RailTrack.Verdict.For } => "is now set for you",
-        { Kind: RailTrack.Kind.Trailing, Verdict: RailTrack.Verdict.Against } => "is now set against you",
+        { Kind: RailTrack.Kind.Trailing, Verdict: RailTrack.Verdict.For } => "is now set for your line",
+        { Kind: RailTrack.Kind.Trailing, Verdict: RailTrack.Verdict.Against } => "is now set for the other line",
         _ => null,
     };
 
@@ -749,6 +749,7 @@ public sealed partial class WalkMode
         SwitchLog($"asked: \"{line}\" of {PartWords(s)}{JunctionLogWords(s)}");
         Told(s);
         Line(line);
+        ForHistory?.Invoke(line);
     }
 
     /// <summary>Shift+W, //switch flip, //switch main or branch: throws the switch W is about by touching its stand, as a
@@ -769,7 +770,7 @@ public sealed partial class WalkMode
         {
             s = await ReadSwitchAsync(s);
             var was = s.Setting?.Status;
-            if (to != null && was == to) { Line($"The switch is already {SettingWords(s)}."); return; }
+            if (to != null && was == to) { Written($"The switch is already {SettingWords(s)}."); return; }
             var guides = GuidesNear(here, s.Pos);
             var part = TouchPartOf(here, s.LocalId);
             if (part == null) { Line("The switch isn't here any more."); return; }
@@ -811,10 +812,12 @@ public sealed partial class WalkMode
                 Cue("switch", CueSounds.Cue.SwitchThrown, line, pos, yaw);
             }
             else if (was == null && guidesMoved) Cue("switch", CueSounds.Cue.SwitchThrown, "Switch thrown: its guide rails changed, but its stand doesn't say which way.", pos, yaw);
-            else Line(was == null ? "Touched the switch stand; no change seen." : $"The switch didn't change: still {SettingWords(now)}.");
+            else Written(was == null ? "Touched the switch stand; no change seen." : $"The switch didn't change: still {SettingWords(now)}.");
         }
         finally { _switchBusy = false; }
     }
+
+    void Written(string line) { Line(line); ForHistory?.Invoke(line); }
 
     /// <summary>//switch [flip|main|branch].</summary>
     public Task SwitchWordsAsync(string words)

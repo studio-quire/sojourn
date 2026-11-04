@@ -255,7 +255,7 @@ docstring with its checks in full):
   meets the curve (the curve's last rail an alternate: against the kart), and a decoy stand with its rails on a line
   12 m south, in the old straight band and nearer. Stopped, W says the facing switch by its distance along the track
   with "it takes you left; the branch, East Yard, goes right", not the decoy; the status op has the track; a held Up
-  says "Switch in N metres where a line joins from the right: set against you." and never the decoy; the log has the
+  says "Switch in N metres where a line joins from the right: set for the other line." and never the decoy; the log has the
   `track from` and `lines part`/`lines join` lines. `RailTrack.Follow` itself can be run offline on a log's rails
   (with a slack for their rounding).
 - **stopping a vehicle** (about 10 minutes, no renderer needed): on a flat stretch of Atelier East, the visitor's `kart`

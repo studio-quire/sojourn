@@ -172,6 +172,7 @@ public sealed partial class WalkMode
     {
         if (_set.WalkSound(cue)) Sounds.Play(sound, _set.WalkLevel(cue), b is { } body && yaw is { } y ? Around(body, y) : null);
         if (text == null || !_set.WalkText(cue)) return;
+        if (cue == "switch") ForHistory?.Invoke(text);
         // warnings and turns are said at once whatever is being said; the rest that come by themselves let a switch's line finish
         if (cue is "vehicle" or "walls" or "turns") Line(text);
         else ByItself(text, heardOut: cue == "switch");

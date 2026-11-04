@@ -230,8 +230,9 @@ public sealed partial class WalkMode
     /// <summary>The seat as last known (kept over a crossing).</summary>
     public string? LastSeatName => _seatName;
 
-    /// <summary>A seated crossing's line, for the nearby chat history (written there whether or not it's read out).</summary>
-    public event Action<string>? Crossed;
+    /// <summary>A line for the nearby chat history, to copy from: a seated crossing's (written whether or not it's read
+    /// out) and whatever's said of a rail switch (the tester, explaining one to her partner, 2026-11-04).</summary>
+    public event Action<string>? ForHistory;
 
     void Crossing(Body b, long now)
     {
@@ -247,7 +248,7 @@ public sealed partial class WalkMode
                 : $"Now in {x.Region}; it hasn't said yet whether you're still seated.";
             Log($"seated crossing into {x.Region}: {(seated == true ? "seated" : seated == false ? "standing" : "not known")} after {now - x.At} ms");
             if (_set.WalkText("vehicle")) { if (seated == true) ByItself(line); else Line(line); }
-            Crossed?.Invoke(line);
+            ForHistory?.Invoke(line);
         }
         if (b.Sitting && Speed(b) > 1f) _seatMovingAt = now;
         _region = b.RegionName;
