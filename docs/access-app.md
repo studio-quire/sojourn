@@ -1375,6 +1375,12 @@ What the model gets (SojournDescribe, `Sojourn.Session/Offscreen/DescribeApi.cs`
 - When the place is dark (its sun under about 10 degrees, and no sky of your own), people, objects and what's worn are
   lit as at midday (the viewer's own midday sky, for that picture only) so their colours show, and the model is told
   the light was changed and the place is dark; here keeps its own light (the user's call, 2026-10-29).
+  Since 2026-11-03 a dim place with the sun up counts too (a jazz club indoors on Second Life: a face the describer
+  couldn't make out, clothes "too dark to be sure of", in pictures whose looks had all loaded): each picture of a person
+  or thing is measured, the mean sRGB luma of its middle (60% across, 70% down), and one under 0.15 is drawn again as at
+  midday at once (no settling again), as is the rest of its batch. Our grids' daylit people measure 0.22-0.31; 0.15 is a
+  guess, and each picture's brightness is logged, so testers' logs say where real places fall
+  (`SOJOURN_TEST_DIM_BELOW` forces it in tests: the describing step passed with every picture redrawn).
 - A camera that would be inside a wall comes closer (and wider) or goes round to another side.
 - Each picture lists what's visible in it by name (a 16 x 9 grid of picks through it: who and what, where in the
   picture, how much of it, and where from you, "4 metres, two o'clock"), with how much the subject fills; the names go

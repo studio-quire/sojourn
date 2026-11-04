@@ -3857,7 +3857,7 @@ def timed_look(**args):
     r = api("SojournDescribe", "look", 90, **args)
     pics = r.get("pictures") or []
     print(f"     (look {args.get('subject')}: {time.time() - t0:.1f} s, {len(pics)} picture(s)"
-          + (f", {pics[0].get('width')}x{pics[0].get('height')}" if pics else "") + ")")
+          + (f", {pics[0].get('width')}x{pics[0].get('height')}" if pics else f"; {r.get('notes') or r.get('error') or ''}") + ")")
     return r
 
 

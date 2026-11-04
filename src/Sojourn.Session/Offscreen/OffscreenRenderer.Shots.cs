@@ -84,13 +84,28 @@ public sealed partial class OffscreenRenderer
             long t0 = Stopwatch.GetTimestamp();
             var shots = new List<Shot>();
             double lookLeft = LookWait(r.Software);
-            bool stalled = false;
+            bool stalled = false, dim = false;
             foreach (var spec in specs)
             {
                 // later shots share what the first one waited for: each gets what's left of twice the budget, at least a
                 // second, and what's left of the batch's wait for looks, at least two
                 double left = Math.Max(1, 2 * settle - Stopwatch.GetElapsedTime(t0).TotalSeconds);
-                var shot = Shoot(r, sim, spec, Math.Min(settle, left), spec.Daylight && dark, Math.Max(2, lookLeft), stalled);
+                var shot = Shoot(r, sim, spec, Math.Min(settle, left), spec.Daylight && (dark || dim), Math.Max(2, lookLeft), stalled);
+                // dim with the sun up (a club indoors: the blind tester's at Kings Stone, 2026-11-03, a face "I can't make
+                // out" and clothes "too dark to be sure of" in pictures whose looks had all loaded): measured, and a
+                // person's or thing's picture drawn again as at midday, as the rest of the batch is
+                if (spec.Daylight && !shot.Relit)
+                {
+                    float lum = Brightness(shot);
+                    _log($"the view out of sight: \"{spec.Label}\" came out at brightness {lum:0.00}{(lum < DimBelow ? $" (under {DimBelow:0.00}): drawn again as at midday" : "")}");
+                    if (lum < DimBelow)
+                    {
+                        dim = true;
+                        lookLeft -= shot.Waited;
+                        // what's in view has come already: only the new light to draw, no settling or waiting for looks again
+                        shot = Shoot(r, sim, spec, 0.3, true, 0, true);
+                    }
+                }
                 lookLeft -= shot.Waited;
                 // a look that stopped arriving for one picture isn't waited for as long again in the next
                 stalled |= shot.LookUnfinished;
@@ -100,6 +115,30 @@ public sealed partial class OffscreenRenderer
             done(new ShotBatch(shots, sim.Handle));
             return true;
         }, PictureWait(settle), ct);
+
+    /// <summary>A picture's middle (the middle 60% across, 70% down: where its subject is framed) darker than this, as the
+    /// mean of its pixels' sRGB luma (0-1), is drawn again as at midday. A guess at first (2026-11-03): each picture's
+    /// brightness is logged, so testers' logs say where real places fall.</summary>
+    /// Our grids' daylit people came out at 0.22-0.31; SOJOURN_TEST_DIM_BELOW overrides it (tests).
+    static readonly float DimBelow = float.TryParse(Environment.GetEnvironmentVariable("SOJOURN_TEST_DIM_BELOW"),
+        System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : 0.15f;
+
+    static float Brightness(Shot s)
+    {
+        if (s.Rgba is not { Length: > 0 } px || s.Width <= 0 || s.Height <= 0) return 1;
+        int x0 = s.Width / 5, x1 = s.Width - x0, y0 = s.Height * 3 / 20, y1 = s.Height - y0;
+        double sum = 0;
+        long n = 0;
+        for (int y = y0; y < y1; y += 2)
+            for (int x = x0; x < x1; x += 2)
+            {
+                int i = (y * s.Width + x) * 4;
+                if (i + 2 >= px.Length) continue;
+                sum += 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+                n++;
+            }
+        return n == 0 ? 1 : (float)(sum / n / 255);
+    }
 
     Shot Shoot(FrameRenderer r, Simulator sim, ShotSpec spec, double settle, bool relight, double lookWait, bool stalledBefore)
     {

@@ -484,7 +484,7 @@ public sealed class DescribeApi : LeapApi
         if (shot.GroundCells > 0) o["ground"] = Share(shot.GroundCells, shot.Cells);
         // (the person's own avatar never counts in picks: how much of the picture they fill isn't known)
         if (shot.Spec.Subject != UUID.Zero && !shot.Spec.ShowSelf) o["subject_fills"] = Share(shot.SubjectCells, shot.Cells);
-        if (shot.Relit) o["lighting"] = "relit as at midday so colours show: the place itself is dark now (night or dusk), so don't describe this light as the scene's";
+        if (shot.Relit) o["lighting"] = "relit as at midday so colours show: the place itself is dark or dim now (night, dusk, or a dim room), so don't describe this light as the scene's";
         // what of the subject's look had arrived (the count of everything in view still loading, out to the draw
         // distance, is the log's: on a busy place it's thousands of far things, and said here it made every picture look
         // unfinished or none)

@@ -661,6 +661,25 @@ well as I had hoped... it was worth a try".
   lines: most switches said only 5-25 m out at 11 m/s, found late (`docs/access-app.md` > Rail switches has what it
   showed and what changed). She didn't try a throw ("things were going so well"); that's next, with her partner.
 
+### About Land, auto-accept and a face out of sight (0.1.0.887-891, the blind tester, 2026-11-03 evening)
+
+- About Land at a jazz club (pasted on the builders' line): right, its parcel's own description ending in a full stop
+  said twice (fixed). Her log had only `//kland`: on land not hers About Land's lines are others' words, so logs leave
+  them out, and checking it means asking her.
+- She asked for Radegast's auto-accept of animations and inventory. Inventory was there (Alt+0, since 11-01); animation
+  permission given without asking was built that evening (0.1.0.891, `docs/people.md` > `auto_grant_animation`), and on
+  Second Life a dance ball's request was granted and said: "Woohoo!"
+- That log carried two people's display names whole, from her Chat-Range HUD's "Display (username)" lines; every
+  earlier log had some too. Fixed in 0.1.0.894 (`docs/access-app.md` > Sending a log), the copies scrubbed and the
+  relay's deleted, and she was told.
+- "Is there a way to make the camera turn?": a description said someone 7 m behind her had a face it couldn't make
+  out. I first told her that was the place's description and to describe the person; her next log
+  (`tester-20261104T015531-32cb62`) showed she had, the pictures from the front with the look all loaded, and another
+  woman there "too dark to be sure of her clothes' colours": a dim club with the sun up, never relit. Corrected to her,
+  and dim pictures are now relit (`docs/access-app.md` > Describing).
+- Building: she'd like a big place to play where she can't do damage; a sandbox was suggested, and we offered to find
+  her one.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
