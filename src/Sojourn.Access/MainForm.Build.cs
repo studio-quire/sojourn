@@ -619,15 +619,35 @@ public sealed partial class MainForm
 
     // --- typed commands ----------------------------------------------------------------------------------------------
 
-    const string BuildHelp = "Build commands. A tab's name lists its settings: general, object, features, texture, content. "
-        + "A setting and its value changes it: name Table top, hollow 50, phantom on, material glass, colour red, transparency 50, "
-        + "shininess 2, bump bricks, fullbright on, light on, size 1 1 0.2, position z 25, rotation z 90; a setting alone says it. "
-        + "face top, face 2, face plusx or face north picks the face Texture's settings are for; all sides, every face. "
-        + "new box, or new cylinder 2 metres ahead, makes one and edits it, set down on what's there. "
-        + "move a metre to my left, move by 20 cm up, move to 128 64 25. turn 90 left, turn 45 around x. scale 2. "
-        + "where: where it is and what it rests on and touches. what: what it is. look: the assistant describes it. "
-        + "duplicate, delete, take: the whole object. link NAME, unlink. edit NAME, part 2, root, next, previous. "
-        + "In content: add NAME, remove NAME, copy NAME. undo, redo. Escape goes back.";
+    // one command a line, to arrow through in a window (help, Build > Build commands): said whole as one answer, the
+    // blind tester asked for it six times in her first quarter hour of building (2026-11-03)
+    const string BuildHelp = """
+        Build commands
+        Tabs: general, object, features, texture, content. A tab's name lists its settings
+        A setting and a value changes it: name Table top (or rename Table top), hollow 50, phantom on, material glass
+        More settings: colour red, transparency 50, shininess 2, bump bricks, fullbright on, light on
+        Size 1 1 0.2, position z 25, rotation z 90. A setting's name alone says how it is
+        Making one: new box, or new cylinder 2 metres ahead. It's set down on what's there, and you edit it
+        Shapes: box, cylinder, prism, sphere, torus, tube, ring, cone, pyramid. type sphere changes the one you're editing; shapes lists them
+        Faces: face top, face 2, face north. all sides: every face
+        Moving: move a metre to my left, move by 20 cm up, move to 128 64 25
+        Turning: turn 90 left, turn 45 around x. Sizing all of it: scale 2
+        where: where it is, what it rests on and touches. what: what it is. look: the assistant describes it
+        The whole object: duplicate, delete, take. Joining: link NAME, unlink
+        Parts: edit NAME, part 2, root, next, previous
+        In content: add NAME, remove NAME, copy NAME
+        undo, redo. done, or Escape, goes back
+        """;
+
+    static readonly string ShapesWords = "Shapes: box, cylinder, prism, sphere, torus, tube, ring, cone and pyramid. "
+        + "new and a shape makes one; type and a shape changes the one you're editing.";
+
+    /// <summary>The build commands in a window to arrow through, said as such.</summary>
+    void ShowBuildHelp()
+    {
+        Answer("Build commands, in a window to arrow through. Escape closes it.");
+        BeginInvoke(() => ShowText("Build commands", BuildHelp));
+    }
 
     /// <summary>`//build WORDS` from any input: the editor's command, without going there.</summary>
     Task BuildWordsAsync(string words)
@@ -653,6 +673,8 @@ public sealed partial class MainForm
     async Task BuildCommandCoreAsync(string text)
     {
         var t = text.Trim();
+        // "rename Table top": the inventory's word for it, as she typed it (2026-11-03)
+        if (t.StartsWith("rename ", StringComparison.OrdinalIgnoreCase)) t = "name " + t[7..].Trim();
         var lower = t.ToLowerInvariant();
         var sp = lower.IndexOf(' ');
         var verb = sp < 0 ? lower : lower[..sp];
@@ -661,7 +683,8 @@ public sealed partial class MainForm
         if (tabIndex >= 0 && rest.Length == 0) { await SayTabAsync(tabIndex); return; }
         switch (verb)
         {
-            case "help" or "?": Answer(BuildHelp); return;
+            case "help" or "?" or "commands": ShowBuildHelp(); return;
+            case "shapes" or "types" or "kinds": Answer(ShapesWords); return;
             case "new" or "make" or "create": await NewPrimAsync(rest); return;
             case "edit" when rest.Length > 0: await EditNamedAsync(rest); return;
             case "edit": GoBuild(); return;

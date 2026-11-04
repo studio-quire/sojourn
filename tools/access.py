@@ -4225,9 +4225,21 @@ def building(run, nonce):
         build_cmd("new box 2 metres ahead")
         if not run.expect("new box: made, set down, and it's the one being edited", ["Made a box", "2 metres ahead", "Editing it"], m, 25):
             print(f"     (the command box holds {value_of('id=buildCommand')!r}; {focus_label()})")
+        # help in a window to arrow through (the tester asked for it six times, said whole, 2026-11-03)
         m = mark()
-        build_cmd(f"name {box}")
-        run.expect("name: said back once the region has it", [f"Name: {box}"], m, 10)
+        build_cmd("help")
+        run.expect("help: said to be in a window", ["Build commands, in a window"], m, 6)
+        hw = wait_focus(lambda d: d["id"] == "keysText", 5)
+        run.check("help: a window with the commands, the focus in it", hw and "Build commands" in label(hw), label(hw) if hw else focus_label())
+        if hw:
+            key("esc")
+            run.check("(Escape closes it, back in the command box)", wait_focus(lambda d: d["id"] == "buildCommand", 5), focus_label())
+        m = mark()
+        build_cmd("shapes")
+        run.expect("shapes: the list of shapes", ["Shapes: box, cylinder", "pyramid"], m, 6)
+        m = mark()
+        build_cmd(f"rename {box}")
+        run.expect("rename (as she typed it): the name said back once the region has it", [f"Name: {box}"], m, 10)
         o = wait(lambda: one(box), 6)
         if not run.check("(it's out, by its new name)", o, ""):
             return

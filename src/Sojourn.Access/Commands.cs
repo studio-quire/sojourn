@@ -45,7 +45,7 @@ public sealed class Commands
     {
         var words = Split(line.TrimStart()[2..].TrimStart('/'));   // ////unsit as //unsit (a typed extra pair, 0.1.0.877)
         if (words.Count == 0) { Help(""); return false; }
-        var verb = words[0].ToLowerInvariant();
+        var verb = words[0].ToLowerInvariant().TrimEnd(':');   // "//build:" as the usage line writes it
         var rest = words.Skip(1).ToList();
         try
         {

@@ -610,9 +610,11 @@ public sealed partial class MainForm : Form
     /// <summary>F1: the keys in a window of their own, a read-only text read line by line at the person's pace (spoken,
     /// they ran to some 2,000 characters in pieces, and the screen reader's stop key lost the rest, outside the review
     /// history); Escape closes it, the focus back where it was (as the profile's window).</summary>
-    void ShowKeys(bool walk)
+    void ShowKeys(bool walk) => ShowText(walk ? "Walk mode keys" : "Sojourn Access keys", walk ? Sojourn.Access.Walk.WalkMode.Help : KeysHelp);
+
+    /// <summary>Lines to arrow through in a window of their own (F1's keys, the build editor's commands), Escape closing it.</summary>
+    void ShowText(string title, string lines)
     {
-        var title = walk ? "Walk mode keys" : "Sojourn Access keys";
         using var form = new Form
         {
             Name = "keys", Text = title, AccessibleName = title, Size = new Size(560, 560),
@@ -624,7 +626,7 @@ public sealed partial class MainForm : Form
             Dock = DockStyle.Fill, BackColor = SystemColors.Window,
             // every line ends in a full stop, so a screen reader pauses between them: without, "Alt+1: nearby chat"
             // and "Alt+2: friends" ran together, each key sounding like the end of the line before (the user, 2026-10-30)
-            Text = string.Join("\r\n", (walk ? Sojourn.Access.Walk.WalkMode.Help : KeysHelp).ReplaceLineEndings("\n").TrimEnd()
+            Text = string.Join("\r\n", lines.ReplaceLineEndings("\n").TrimEnd()
                 .Split('\n').Select(l => l.TrimEnd() is { Length: > 0 } t && !".?!:".Contains(t[^1]) ? t + "." : l.TrimEnd())),
         };
         var close = new Button { Name = "keysClose", Text = "Close", AutoSize = true, DialogResult = DialogResult.Cancel };

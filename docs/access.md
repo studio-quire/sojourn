@@ -678,7 +678,16 @@ well as I had hoped... it was worth a try".
   woman there "too dark to be sure of her clothes' colours": a dim club with the sun up, never relit. Corrected to her,
   and dim pictures are now relit (`docs/access-app.md` > Describing).
 - Building: she'd like a big place to play where she can't do damage; a sandbox was suggested, and we offered to find
-  her one.
+  her one. Then, on a builders' grid with her partner (log `tester-20261104T025444-eb47e5`, 21:30-21:51): a box named,
+  hollowed 50 and made red, taken into her inventory; a box and a sphere made; a script added to the sphere. What got in
+  her way: help said whole as one line (asked six times; now a window to arrow through), `rename` (now `name`), wanting
+  the list of shapes (now `shapes`), `//build:` copied with its colon (now taken), and help's text pasted into nearby
+  chat by mistake. She asked whether she could start with anything but a box (`new cylinder`) and found it herself.
+- The same log's ride (891, 21:12-21:26, her train past Achemon to Concinna) had switches said 40-95 m ahead, mostly
+  50-70, against 5-25 m on 877. Missed: two Jodis stands whose names came only 7-8 m out, and two found 100 m out that
+  left the straight band on a curve. Its `rails near` lines (29 stands, each rail's place, length, facing, phantom)
+  show rails named Guide that are phantom too, so which rail is in use goes by phantom, not name: the data for
+  following the track itself, the next step for curves and for saying which way each line goes.
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 

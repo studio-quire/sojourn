@@ -103,7 +103,7 @@ public sealed partial class MainForm
             Later("&Edit (the build editor)", "Control+B", GoBuild),
             Later("&New box, 2 metres ahead", "new box", () => { GoBuild(); _ = BuildCommandAsync("new box"); }),
             Item("Undo the last build chan&ge", "undo", () => _ = BuildCommandAsync("undo")),
-            Item("Build &commands", "help", () => Answer(BuildHelp)),
+            Item("Build &commands", "help", ShowBuildHelp),
             new ToolStripSeparator(),
             Later("&Upload a file...", "Control+U", UploadKey));
 

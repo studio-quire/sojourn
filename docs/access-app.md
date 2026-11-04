@@ -1130,7 +1130,10 @@ reachable by typing, with a list to browse. A first version for her and her part
   `look` (the assistant describes it, as Control+D there does); `duplicate` (beside it to her right, or `duplicate by
   2 m left`), `delete`, `take` (the whole object; a part's delete says to unlink first); `link NAME` (another of hers
   joined to this one, this one's root staying the root), `unlink`; `edit NAME`, `part 2`, `root`, `next`, `previous`;
-  in Content `add NAME` (from her inventory), `remove NAME`, `copy NAME`; `undo [N]`, `redo`; `help`; `done`.
+  in Content `add NAME` (from her inventory), `remove NAME`, `copy NAME`; `undo [N]`, `redo`; `help`; `done`. `help` (and
+  Build > Build commands) opens the commands in a window to arrow through, a command a line, as F1's keys (said whole as
+  one answer, the blind tester asked for it six times in her first quarter hour of building, 2026-11-03); `shapes` lists
+  the shapes; `rename X` is `name X` (as she typed it).
 - **The settings list**: the tab chosen, a row each, named "Object settings of Table" ("Texture settings of Table, the
   top, face 0"). Rows read "Hollow: 50 percent", "Phantom: off", "Bumpiness: 5 bricks", "Colour: red (255, 0, 0), all
   sides". Enter changes one: a switch turns, a choice opens its numbered list (the one it has checked), anything else
