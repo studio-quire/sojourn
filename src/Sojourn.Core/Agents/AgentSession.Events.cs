@@ -60,7 +60,7 @@ public sealed partial class AgentSession
         c.Self.GroupChatJoined += (_, e) => Guard("groupchat", () => OnGroupChatJoined(e));
         c.Objects.ObjectDataBlockUpdate += (_, e) => Guard("block", () =>
         {
-            State.Flags[e.Prim.LocalID] = (PrimFlags)e.Block.UpdateFlags;
+            State.Flags[(e.Simulator.Handle, e.Prim.LocalID)] = (PrimFlags)e.Block.UpdateFlags;
         });
         // compressed updates carry the flags too (OpenSim and SL send most changes this way; phantom, scripted, touch
         // set after the first full update never reached State.Flags), but raise no block event: read them here
@@ -68,10 +68,10 @@ public sealed partial class AgentSession
         {
             foreach (var b in ((global::LibreMetaverse.Packets.ObjectUpdateCompressedPacket)e.Packet).ObjectData)
                 if (b.Data is { Length: >= 20 })
-                    State.Flags[Utils.BytesToUInt(b.Data, 16)] = (PrimFlags)b.UpdateFlags;
+                    State.Flags[(e.Simulator.Handle, Utils.BytesToUInt(b.Data, 16))] = (PrimFlags)b.UpdateFlags;
         }), false);
         c.Objects.ObjectUpdate += (_, e) => Guard("objupdate", () => OnObjectUpdate(c, e));
-        c.Objects.KillObject += (_, e) => Guard("kill", () => State.Flags.TryRemove(e.ObjectLocalID, out PrimFlags _));
+        c.Objects.KillObject += (_, e) => Guard("kill", () => State.Flags.TryRemove((e.Simulator.Handle, e.ObjectLocalID), out PrimFlags _));
         c.Objects.ObjectProperties += (_, e) => Guard("props", () => OnProperties(e.Simulator, e.Properties, full: true));
         c.Objects.ObjectPropertiesFamily += (_, e) => Guard("propsfamily", () => OnProperties(e.Simulator, e.Properties, full: false));
         c.Friends.FriendOnline += (_, e) => Guard("friend", () => FriendNotice(e.Friend, true));
@@ -869,7 +869,7 @@ public sealed partial class AgentSession
         var p = e.Prim;
         // Full updates set this agent's flags in the block event (synchronously, before the shared prim can be
         // rewritten by another session); this event can run later on another thread, so only fill in a gap here.
-        State.Flags.TryAdd(p.LocalID, p.Flags);
+        State.Flags.TryAdd((e.Simulator.Handle, p.LocalID), p.Flags);
         var flags = State.PrimFlagsOf(p);
         // (ObjectUpdate's OwnerID is only filled for objects with a sound; ownership is in this agent's flags)
         if ((flags & PrimFlags.CreateSelected) != 0 && (flags & PrimFlags.ObjectYouOwner) != 0 && p.ParentID == 0 && !e.IsAttachment)

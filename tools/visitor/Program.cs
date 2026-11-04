@@ -64,6 +64,12 @@
 //                                                         of their own 14 m apart, the branch's parting north to 10 m, its
 //                                                         furthest 43 m from the stand (as the Linden railroad's reach on
 //                                                         past their stands, 2026-11-02)
+//   rails Z KIND,X,Y,DEG,LEN;...                          guide rails laid as given, all at height Z, for a track
+//                                                         (Sojourn Access's rail switches followed along the track):
+//                                                         each a 0.5 m square box LEN long along its x axis, facing DEG
+//                                                         (0 east, 90 north); KIND G a "Guide", solid, A an "Alternate
+//                                                         Guide", phantom (no scripts: they don't change)
+//   stand X Y Z DESC                                      a phantom "Switch Stand" with that description and no script
 //   cleanup                                               take every object it rezzed in this run to its trash
 //   derez NAME                                            take every object it rezzed with that name to its trash
 //   land show X Y | land divide W S E N | land sell X Y PRICE BUYER_UUID | land pass X Y PRICE HOURS | land tidy
@@ -258,6 +264,8 @@ static class Program
             case "cart": return await Cart(rest);
             case "kart": return await Kart(rest);
             case "switch": return await Switch(rest);
+            case "rails": return await Rails(rest);
+            case "stand": return await Stand(rest);
             case "fmenu": return Tell("menu", rest);
             case "fmenu12": return Tell("menu12", rest);
             case "fdance": return Tell("dance", rest);
@@ -856,6 +864,48 @@ static class Program
             await Task.Delay(250);
         }
         return $"ERR switch (stand {stand.ID}) rezzed but its script didn't say it was ready";
+    }
+
+    /// <summary>Guide rails laid as given, for a track to follow (Sojourn Access's rail switches, 2026-11-03): each a
+    /// box 0.5 m square and LEN long along its x axis, turned to DEG, named "Guide" and solid or "Alternate Guide" and
+    /// phantom, as the SLRR standard has the rails in use and not.</summary>
+    static async Task<string> Rails(string rest)
+    {
+        const string usage = "ERR rails Z KIND,X,Y,DEG,LEN;...";
+        var w = rest.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (w.Length < 2 || !float.TryParse(w[0], out var z)) return usage;
+        var sim = client.Network.CurrentSim;
+        int n = 0;
+        foreach (var spec in w[1].Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var f = spec.Split(',');
+            if (f.Length != 5 || (f[0] != "G" && f[0] != "A") || !float.TryParse(f[1], out var x) || !float.TryParse(f[2], out var y)
+                || !float.TryParse(f[3], out var deg) || !float.TryParse(f[4], out var len)) return usage;
+            var box = await RezBox(new Vector3(x, y, z), new Vector3(len, 0.5f, 0.5f));
+            if (box == null) return $"ERR rail {n} didn't come back";
+            Named(box.LocalID, f[0] == "G" ? "Guide" : "Alternate Guide");
+            if (deg != 0) client.Objects.SetRotation(sim, box.LocalID, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, deg * MathF.PI / 180));
+            if (f[0] == "A") client.Objects.SetFlags(sim, box.LocalID, false, false, true, false);
+            client.Objects.DeselectObject(sim, box.LocalID);
+            n++;
+        }
+        return $"rails {n}";
+    }
+
+    /// <summary>A switch stand with no script: a phantom "Switch Stand" whose description is as given.</summary>
+    static async Task<string> Stand(string rest)
+    {
+        var w = rest.Split(' ', 4, StringSplitOptions.RemoveEmptyEntries);
+        if (w.Length < 4 || !float.TryParse(w[0], out var x) || !float.TryParse(w[1], out var y) || !float.TryParse(w[2], out var z))
+            return "ERR stand X Y Z DESC";
+        var sim = client.Network.CurrentSim;
+        var box = await RezBox(new Vector3(x, y, z + 0.6f), new Vector3(0.3f, 0.3f, 1.2f));
+        if (box == null) return "ERR no object came back";
+        Named(box.LocalID, "Switch Stand");
+        client.Objects.SetDescription(sim, box.LocalID, w[3]);
+        client.Objects.SetFlags(sim, box.LocalID, false, false, true, false);
+        client.Objects.DeselectObject(sim, box.LocalID);
+        return $"stand {box.ID} local {box.LocalID}";
     }
 
     /// <summary>A self-naming seat, as a blind tester met one (2026-10-31: a sofa that renamed itself as people sat,

@@ -686,8 +686,10 @@ well as I had hoped... it was worth a try".
 - The same log's ride (891, 21:12-21:26, her train past Achemon to Concinna) had switches said 40-95 m ahead, mostly
   50-70, against 5-25 m on 877. Missed: two Jodis stands whose names came only 7-8 m out, and two found 100 m out that
   left the straight band on a curve. Its `rails near` lines (29 stands, each rail's place, length, facing, phantom)
-  show rails named Guide that are phantom too, so which rail is in use goes by phantom, not name: the data for
-  following the track itself, the next step for curves and for saying which way each line goes.
+  show rails named Guide that are phantom too. Worked through offline, she rode over phantom Guides while Alternate
+  Guides were almost always phantom, so the name says which rail is in use. Built after 900: the track followed by its
+  rails, switches said by distance along it, facing or trailing, which side, set for or against her
+  (`docs/access-app.md` > Rail switches > Along the track).
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 

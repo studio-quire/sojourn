@@ -6704,6 +6704,8 @@ def rail_switches(run):
         run.check("and the far rails as parts of their own switch",
                   parts and all(p_.startswith("part of Switch Stand") for p_ in parts)
                   and far and all(f" {b}, " in p_ for p_ in far), " | ".join(parts[:6]) or "none")
+
+        rail_track(run, y)
     finally:
         say_in_app("//stand")
         time.sleep(1)
@@ -6712,6 +6714,134 @@ def rail_switches(run):
         except Exception:
             pass
         clear_owned(COURSE_REGION, visitor_id())
+
+
+def rail_track(run, y1):
+    """Rail switches along the track (Walk/WalkMode.Switches.cs and RailTrack.cs, 2026-11-03: switches said by their
+    distance along the rails the train is on, facing or trailing, which side the other line goes, and only those on the
+    track). On a second flat stretch of Atelier East, the visitor's guide rails (`rails`, no scripts) under the ground: a
+    straight track east under the kart from x 30 to 90, then a curve to the left (22.5 degrees a 10 m rail) to heading
+    north; at the curve's first joint a facing switch, its branch going on east as alternates, with a stand set to Main
+    ("Hill Line", "East Yard"); where the curve meets a line coming up from the south a trailing switch, the curve's last
+    rail an alternate (set against the kart), with a stand; and a decoy: a stand and its rails on a parallel line 12 m
+    south, in the old straight band ahead and nearer than either. Seated, stopped, W says the facing switch by its
+    distance along the track (60 m), that it takes you left and the branch goes right, not the decoy; a held Up says
+    the trailing one ("a line joins from the right: set against you") and never the decoy; the session log has the
+    track followed and its two places where lines part and join. Called by rail_switches, its kart taken away first."""
+    import math
+    xs = list(range(35, 96, 10))
+    y2 = ground = None
+    for yy in range(46, 200, 4):
+        if abs(yy - y1) < 30 or yy + 50 > 250:
+            continue
+        hs = api("TesselAgent", "ground", points=[[x, yy] for x in xs])["heights"]
+        if all(h is not None for h in hs) and max(hs) - min(hs) < 1.2:
+            y2, ground = yy, min(hs)
+            break
+    if y2 is None and y1 >= 16:
+        # Atelier East has one flat stretch long enough (2026-11-03): the first part's switches and kart cleared off it
+        say_in_app("//stand")
+        time.sleep(1)
+        clear_owned(COURSE_REGION, visitor_id())
+        time.sleep(2)
+        hs = api("TesselAgent", "ground", points=[[x, y1] for x in xs])["heights"]
+        y2, ground = y1, min(h for h in hs if h is not None)
+    if not run.check("(a flat stretch for the curved track)", y2 is not None, ""):
+        return
+    ray = api("SojournCollision", "collide", **{"from": [40, y2, ground + 0.8], "dir": [1, 0, 0], "max": 50})
+    if not run.check("(nothing in the kart's way along it)", not ray.get("hit"), json.dumps(ray)):
+        return
+    zr = ground - 0.5   # under the ground: the kart drives over its rails without meeting them
+    straight = [("G", x, y2, 0, 10) for x in range(35, 90, 10)]
+    p = (90.0, float(y2))
+    curve, pts = [], [p]
+    for k in range(4):
+        h = 11.25 + 22.5 * k
+        q = (p[0] + 10 * math.cos(math.radians(h)), p[1] + 10 * math.sin(math.radians(h)))
+        curve.append(("A" if k == 3 else "G", (p[0] + q[0]) / 2, (p[1] + q[1]) / 2, h, 10))
+        p = q
+        pts.append(p)
+    p1, p4 = pts[1], pts[4]
+    on_north = [("G", p4[0], p4[1] + 5 + 10 * i, 90, 10) for i in range(2)]
+    c = (math.cos(math.radians(11.25)), math.sin(math.radians(11.25)))
+    branch = [("A", p1[0] + (5 + 10 * i) * c[0], p1[1] + (5 + 10 * i) * c[1], 11.25, 10) for i in range(3)]
+    joining = [("G", p4[0], p4[1] - 5 - 10 * i, 90, 10) for i in range(3)]
+    decoy = [("G", x, y2 - 12, 0, 10) for x in (65, 75, 85)] + [("A", 85, y2 - 13, 350, 10)]
+
+    def spec(rails):
+        return ";".join(f"{k},{x:.2f},{yy:.2f},{d:.2f},{n}" for k, x, yy, d, n in rails)
+
+    made = []
+    visitor_tp(65, y2 - 5, ground + 1.5)
+    time.sleep(1.5)
+    made.append(v(f"rails {zr:.2f} {spec(straight + decoy)}", timeout=120))
+    made.append(v(f"stand 80 {y2 - 14} {ground:.2f} Walk Siding.137~Main~Walk Halt~South Siding~South Yard~137", timeout=30))
+    visitor_tp(105, y2 + 15, ground + 1.5)
+    time.sleep(1.5)
+    made.append(v(f"rails {zr:.2f} {spec(curve + on_north + branch + joining)}", timeout=120))
+    right = (c[1], -c[0])
+    made.append(v(f"stand {p1[0] + 2.5 * right[0]:.2f} {p1[1] + 2.5 * right[1]:.2f} {ground:.2f} "
+                  "Walk Curve.135~Main~Walk Halt~Hill Line~East Yard~135", timeout=30))
+    made.append(v(f"stand {p4[0] + 2.5:.2f} {p4[1]:.2f} {ground:.2f} Walk Merge.136~Branch~Walk Hill~Walk Curve~Walk Spur~136", timeout=30))
+    if not run.check("the visitor's track is laid: a straight, a curve, a facing and a trailing switch, a decoy beside it",
+                     all(not m_.startswith("ERR") for m_ in made), " | ".join(made)):
+        return
+    say_in_app("//stand")
+    time.sleep(1)
+    try:
+        v("derez Walk Kart", timeout=15)
+    except Exception:
+        pass
+    visitor_tp(40, y2 - 5, ground + 1.5)   # in chat range: the kart says when its script is ready
+    time.sleep(1.5)
+    kart = v(f"kart 40 {y2} {ground + 0.4:.2f} facing 0", timeout=60)
+    if not run.check("(a kart on the curved track's straight)", kart.startswith("kart"), kart):
+        return
+    go_tp(run, "(the tester beside it)", 39, y2 - 2, ground + 1.5)
+    m = mark()
+    say_in_app("//sit Walk Kart")
+    run.expect("(sitting in it)", ["Sitting on Walk Kart"], m, 10)
+    if not run.expect("(its script takes the keys)", ["kart controls taken"], m, 15):
+        return
+    key("f3")
+    wait_focus(lambda d: d["id"] == "walkPad", 5)
+    time.sleep(3)   # the rails' names asked for and come
+
+    m = mark()
+    key("w")
+    got = walk_said(m, ["Switch", "ahead"], 8)
+    text = (got or {}).get("text") or "not said"
+    dist = re.match(r"Switch (\d+) metres ahead", text)
+    run.check("W says the facing switch on the curve by its distance along the track, which side it takes you and the branch goes, not the decoy",
+              dist and 50 <= int(dist[1]) <= 70 and "set to the main line, Hill Line: it takes you left; the branch, East Yard, goes right." in text
+              and "South" not in text, text)
+    st = api("SojournWalk", "status")
+    tr = st.get("track") or {}
+    run.check("(the status op has the track: the rails followed, two places where lines part or join)",
+              tr.get("rails", 0) >= 8 and tr.get("junctions", 0) >= 2, json.dumps(tr))
+
+    m = mark()
+    t0 = time.time()
+    u("keydown focus | 38")
+    wait(lambda: walk_pos()[0] > 80 or any("joins" in (e.get("text") or "") for e in said_since(m)) or None, 12, 0.2)
+    u("keyup focus | 38")
+    time.sleep(4)
+    at = walk_pos()
+    lines = [e.get("text") or "" for e in said_since(m) if (e.get("text") or "").startswith("Switch")]
+    print(f"     (drove to {at[0]:.1f}, {at[1]:.1f}: {lines})")
+    run.check("driving: the trailing switch round the curve said, a line joining from the right, set against the kart",
+              any(re.match(r"Switch in \d+ metres where a line joins from the right: set against you\.$", l_) for l_ in lines),
+              " | ".join(lines) or "none")
+    run.check("and never the decoy on the line beside the track", not any("South" in l_ for l_ in lines), " | ".join(lines) or "none")
+    run.check("(with the switch cue)", cues_since(t0, "Switch"), json.dumps(cues_since(t0)[-5:]))
+    key("esc")
+    wait_focus(lambda d: d["id"] == "chatInput", 5)
+    logs = sorted((OUT / "app" / "logs").glob("*.log"), key=lambda p_: p_.stat().st_mtime)
+    log = logs[-1].read_text(encoding="utf-8", errors="replace") if logs else ""
+    tracks = re.findall(r"switch: track from .*", log)
+    places = re.findall(r"switch: lines (part|join) ", log)
+    run.check("the log has the track followed and the places its lines part and join",
+              tracks and "part" in places and "join" in places, (tracks[-1][:300] if tracks else "no track line") + f" | {places}")
 
 
 def vehicle_stop(run):

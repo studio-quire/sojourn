@@ -606,7 +606,7 @@ window and every viewer send them); the local collision model only tells you wha
 | A | what's ahead: the first thing straight ahead within 30 m, "Blue Door, 4 m ahead." or "Clear for 30 m ahead." |
 | S | the sonar: walls on four sides, openings by clock face, doors by name; the words and a sweep of sound (below) |
 | T | touch what's ahead within 3 m, where the ray met it (a door opens): "Touched Blue Door." |
-| W / Shift+W | the next rail switch and how it's set: "Switch 35 metres ahead, set to the main line, North Station. Main line: North Station; branch: East Yard."; Shift+W throws it, saying the new setting once it has changed (Rail switches, below) |
+| W / Shift+W | the next rail switch and how it's set: "Switch 35 metres ahead, set to the main line, North Station. Main line: North Station; branch: East Yard."; along a track whose rails say, which side it takes you or whether it's set for you ("Switch 60 metres ahead, set to the main line, Hill Line: it takes you left; the branch, East Yard, goes right. ..."); Shift+W throws it, saying the new setting once it has changed (Rail switches, below) |
 | D | doors and gates by name within 15 m: "Garden Gate, 6 m, two o'clock." |
 | O | the marks: doors, seats and touchable things within 12 m, said and sounded from where they are (below) |
 | B / Shift+B | where the beacon is ("Beacon on Bench, 4 metres, twelve o'clock." / "Heading to 54, 41, ..."); Shift+B takes one you put on off |
@@ -645,7 +645,7 @@ in your left ear.
 | distance (`walk_distance`, text) | a stretch walked by the arrows has ended: no walking key for 0.7 s, no key at all for 0.7 s, the avatar stopped (or 3 s on), and walk mode's line before it heard out; taps in quick succession (a turn between them too) are one stretch; straight from where it began; under 0.3 m nothing; not a `//go`, a follow or a vehicle | none | "0.9 metres." / "4 metres." (tenths under 3 m: a tap is about 0.9 on Second Life) / "1.8 metres backward." / "1 metre to the left." (by the keys that walked it) |
 | follow (`walk_follow`, text) | following someone | none | "With Kestrel, 3 m, twelve o'clock." / "Kestrel sat down, ..." / "Kestrel is getting away: 24 m, ..." |
 | vehicle (`walk_vehicle`, both) | driving: what's ahead (as the warning, further at speed), only what the vehicle is closing on (met for 0.4 s or more and come nearer by at least half what it travelled meanwhile; each thing once in 4 s): on a train a ray from the seat meets the track's own sections and guides ahead on every curve, which stay about as far ahead as the track bends away (the blind tester's ride of 2026-11-02 had 157 such warnings); a seated border crossing, judged once the new region has sent the avatar and the seat it's on (up to 15 s, else said as not known yet: judged at 2.5 s whatever had come, it told her "the crossing left you standing" seven times while she sat on); the speed has its own switch, `walk_speed` (on): the distance travelled over 2 s, said once it has held within 15% for 2 s and differs from the last said by 3 m/s and a third (a train's reported velocity swung 19, 6, 13, 8 three seconds apart, 2026-11-01); stood up off the seat within 5 s of its moving, not at a crossing (the region left her behind as her train crossed out, 2026-11-02, and only the train's own chat said so) | as the warning | "12 metres a second." / "Now in Bay City, still on Walk Kart." / "Now in Bay City; the crossing left you standing." / "You're off Walk Kart: it went on without you." |
-| switch (`walk_switch`, both) | seated and moving: a rail switch coming into the way ahead within about 7 s of travel (60-100 m), said once (one a line, the nearest first, 2.5 s apart; again only after a minute out of the way ahead; not once it's under 5 m; under 1.5 s away, "just ahead"); the next one ahead said again if its setting changes; a throw done (W, Shift+W, `//switch`). A switch's line is heard out (about 30 ms a character): the lines walk mode says by itself meanwhile (the seated crossing, the speed, the next switch, a route's point) wait for it and then follow in turn, as an answer cuts off what's being said (0.1.0.835 cut 25 of 146, both before her wrong turn); warnings, the answers to her keys and "Track ends" still cut in | a points' clack, then one note forking into two that part; a throw: a heavy clack and a lighter answer | "Switch in 40 metres, set to the main line, North Station." / "Switch in 25 metres, set to: unknown." / "The switch ahead is now set to the main line." / "Switch set to the branch, East Yard." |
+| switch (`walk_switch`, both) | seated and moving: a rail switch coming into the way ahead (along the track where its rails are known) within about 7 s of travel (60-100 m), said once (one a line, the nearest first, 2.5 s apart; again only after a minute out of the way ahead; not once it's under 5 m; under 1.5 s away, "just ahead"); the next one ahead said again if its setting changes; a throw done (W, Shift+W, `//switch`). A switch's line is heard out (about 30 ms a character): the lines walk mode says by itself meanwhile (the seated crossing, the speed, the next switch, a route's point) wait for it and then follow in turn, as an answer cuts off what's being said (0.1.0.835 cut 25 of 146, both before her wrong turn); warnings, the answers to her keys and "Track ends" still cut in | a points' clack, then one note forking into two that part; a throw: a heavy clack and a lighter answer | "Switch in 40 metres, set to the main line, North Station." / along the track: "Switch in 40 metres, set to the main line, Hill Line: it takes you left; the branch, East Yard, goes right." / "Switch in 60 metres where a line joins from the right: set against you." / "The switch ahead is now set to the main line." / "Switch set to the branch, East Yard." |
 | beacon (`walk_beacon`, both; volume quiet) | a walk under way (`//go`, walk to, a follow, the assistant's walk), else one put on someone or something | a soft pip from the target's direction, every 1.4 s far off down to 0.6 s near, with a fifth above it while it's within 20 degrees ahead (front and back are hard to tell by ear); a small bell flourish on reaching a hand beacon | "Reached Bench." / "Beacon lost: Kestrel isn't here now."; B says where it is |
 | route (`walk_route`, sound; volume quiet) | recording a route: each point it keeps (Recording a route, below) | one small bright wooden tick | "Step 4: a doorway." / "Step 5: a turn." / "Step 7: a teleport to Bay City." |
 | marks (`walk_marks`, both) | O | each thing in turn round from ahead to the right, as the sonar: a door knocks (as the warning's door), a seat sinks (two low notes falling), a touchable thing taps (a small high bell) | "Bench, a seat, 4 metres, twelve o'clock. Garden Gate, a door, 4 metres, three o'clock. Bell, touchable, 4 metres, nine o'clock." |
@@ -716,6 +716,49 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   was from her (along and aside the way, her speed) when found and when it came into the way ahead, which way each
   part faces, and the Guide and Alternate Guide rails near each stand with their places, lengths and facings, for
   working out which way each line goes.
+- **The third real log** (0.1.0.891, 2026-11-03, `tester-20261104T025444-eb47e5`, her train from Neumoegen past
+  Achemon to Concinna): switches were said 40-95 m ahead, mostly 50-70. Its `rails near` lines (29 stands) were
+  reconstructed offline (Claude Opus 5.5): the name, not phantom, says which rail is in use. Alternate Guides were
+  phantom 111 times in 114, but a quarter of the Guides were phantom too, and she rode over phantom Guides: on Lunalis's
+  main line before the stand at 102, 157 (her place worked out from two rails found the same second, both dead ahead),
+  and north out of Neumoegen station. At Lunalis the stand at 43, 100 changed from Branch to Main as she came up to it,
+  and the rails there carry both names at one place, as the standard's renaming would. Positions in those lines were
+  rounded to the metre, cut at 24 rails a stand and only rails already named, so yards (Achemon's, Obscure's ladder)
+  can't be followed from them: the log now carries more (below).
+- **Along the track** (`Walk/RailTrack.cs`; Claude Opus 5.5, 2026-11-03, after two switches found 100 m out left the
+  straight band on a curve, and a parallel line's switch could fall inside it): seated, the rails named Guide and
+  Alternate Guide within reach are followed from the seat. The start is the rail under the seat (within 2.5 m flat,
+  running within 35 degrees of the way the seat goes, Guides first; if another line's rail is about as near, no track:
+  which it's on isn't clear). From each rail's end the next is the one laid on from it (an end within 1 m, turning at
+  most 30 degrees, within 2.5 m up or down). Every rail going on from a rail's span is followed 50 m to see where it goes:
+  rails whose ways stay within 2.5 m are one line (switches' rails overlap for a while), ways further apart are two. The
+  track goes on along the line with a Guide; where the other line's first rail is an alternate, that's a **facing**
+  switch set for the line taken, and which side the other goes is where it's furthest from this one within 50 m. Two
+  lines with Guides (or two with none) ahead: unclear, and the track stops there. A rail running in beside the track
+  whose way back parts from the track's (followed back 50 m) is a line **joining** it: a **trailing** switch, placed
+  where the joining line's rails reach the track's own, set for the person if their line's rails up to there are
+  Guides and the other's an alternate, against them if theirs has an alternate and the other a Guide; else unclear.
+  Only alternates going on: the track follows them (a switch set against it), and says so in the log if they end.
+  The track reaches about as far as switches are said (90-130 m). Each stand is placed on it: at the place lines part
+  or join nearest it within 12 m (one stand a place, those saying Main or Branch first), else on the track if within 3 m
+  of its line (a switch whose other line's rails aren't named yet), else beyond the track's end by the straight band on
+  from there, else not on the track (a line beside it: not said). A place where lines part or join with no stand is a
+  switch of its own when its rails say something that matters: which side a facing one takes the person, or a
+  trailing one set against them. With no rails known (or none under the seat), it's the straight band from the seat,
+  as before.
+- What's said, along the track: a facing switch with its rails clear, "Switch in 40 metres, set to the main line, Hill
+  Line: it takes you left; the branch, East Yard, goes right." (the stand's names for the line taken and the other;
+  without a stand that says, "Switch in 40 metres: it takes you left; the other line goes right."); a trailing one,
+  "Switch in 40 metres where a line joins from the right: set against you." (or "set for you"; "where another line
+  joins" if its side isn't clear). Where the rails don't say (two Guides, no other line found, the side too close to
+  call), it's the stand's words alone, as before: she can't check, and a wrong side is worse than none. W says the same,
+  with both names. The next switch ahead is read again every 4 s, its rails too: if what they do changes, "The switch
+  ahead now takes you right." / "The switch ahead is now set for you."
+- Names: the region sends a new name only to whoever has the object selected, so a rail renamed by a throw keeps its
+  old name here until asked again. Rails with scripts near a switch are asked again each time it's said or read again,
+  and any rail whose phantom flag flips (that does come by itself) is asked again at once. Rail-shaped roots (one prim,
+  one axis 1.5-20 m, the others a metre or less) have their names asked first, twelve a look, so the track is known
+  before the switches on it.
 - So: the setting is read from the stand's description (asked again each time it's said: the region sends a changed
   description only to whoever has the object selected), with the main line's or branch's name from it when it has one.
   What doesn't say its setting (an "Alternate Guide" or "AlternateGuide" root, as one Marketplace kit names it, or a
@@ -725,15 +768,23 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   them aren't stands (the standard's "Switch Stand Signal", a junction kit's "Switchstand Guide X2"). Switch stands are
   found among roots within 150 m in the regions in view and offered within 90 m, their names asked for twenty a look,
   nearest first ahead, never again those asked in the last 5 s (twenty that never answered held back every name behind
-  them). "Ahead" is within 60 m along the way the seat moves (its facing, stopped), within 6 m either side and a third
-  of the distance more (curves). Where a switch is when it's said is taken again then, in the frame the person is in
+  them). "Ahead" is along the track where it's known (above); with no track, within 60 m along the way the seat moves
+  (its facing, stopped), within 6 m either side and a third of the distance more. Where a switch is when it's said is
+  taken again then (with a track, the track is followed again with what was just read), in the frame the person is in
   then; one first due closer than 5 m isn't said (too near to act on; 0.1.0.811 said several at 1-4 m).
 - The log says what it finds (`switch: ...` lines, kept by Send a log): each stand or alternate guide the first time
   (name, local id, region and place, description as written, prim count, size, phantom, which parts take touches) and
   again when its name or description changes; where each part that doesn't say its setting went ("part of Switch
   Stand (...), 31 m from it", or "a switch of its own: no stand saying how it's set within 60 metres (the nearest 75
-  metres away)"); each line said or not said and why; W's answers; and a throw's touched part, the setting before and
-  after with the milliseconds it took, and whether the guide rails changed.
+  metres away)"); each line said or not said and why, with what its rails said and where it was on the track; W's
+  answers; and a throw's touched part, the setting before and after with the milliseconds it took, and each guide
+  rail's name and phantom before and after. The rails near a stand are listed to the decimetre, nearest first, forty at
+  most. Along the track: `track from REGION x, y, z heading H` with each rail taken (G or A, local id, region, place,
+  length, facing, phantom, scripted) and why it ends, when what it found changes and every 15 s while moving; each place
+  lines part or join the first time and when its verdict changes (`lines part 52 m along the track ...`, both lines'
+  rails and points); `no track` with the nearest rail when there are rails but none under the seat; and, once past a
+  switch it said, which line the seat went on (`passed the facing switch ... now on the line it said it would take`, or
+  `on the OTHER line`).
 - Throwing (Shift+W, `//switch flip`, `main`, `branch`) touches the stand's part that takes touches (the largest, if
   several; the stand itself if none), as a person's click, then reads the description until its Status changes (6 s at
   most) and says the new setting; a switch being read meanwhile (each is read as it comes up, and the next one
@@ -742,9 +793,24 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   Status, if they changed, "Switch thrown: its guide rails changed, but its stand doesn't say which way." The channel
   commands aren't used: neighbouring stands may share a channel, and a shout would throw them all. A switch across a
   border is said but can't be thrown from here (touches go to the current region).
-- What her next ride's log should settle: whether the unknowns were the switches' own rails (their "part of" lines and
-  how far from their stands), what the stands W found unknown are named and hold, and on a throw, which part took the
-  touch, whether a touch toggles, how long the description took to change and whether the rails followed.
+- Checked offline against the third log's rails (the same code, `RailTrack.Follow` with a slack for the rounding):
+  Neumoegen's stand at 101, 135 came out consistent all three ways (its stand said Main, the main line's rails Guides,
+  the branch's alternates; she only left northward there, so none of it was ridden through): southbound from the
+  station, a facing switch 1 m on, the branch's alternates going off to the right (west); northbound on the main line,
+  trailing, set for her, the other
+  line joining from the left; northbound on the branch, trailing, set against her (its rails alternates), the main line
+  joining from the right. Achemon's Switchstand Main pair at 235, 125 and 222, 172 is a crossover between the yard's
+  two lines, its rails all Guides (phantom): from the east line northbound, facing onto the crossover, taking her left,
+  then trailing onto the west line, set for her, joining from the left; from the west line northbound, the crossover
+  joins from the right with her line's rails alternates: against. Achemon's Switch Stand at 14, 230 (said "set to the
+  branch, Obscure SLRR Info Station") gave no verdict: its two lines' rails run on into Obscure before they part, past
+  what the log held. At Lunalis 102, 157 the route she took (left) had no named rails in the log, so the track runs
+  into the straight line's alternates and says nothing of it. The Jodis stands' place gave a trailing switch set for
+  her; the Obscure ladder too little to tell.
+- What her next ride's log should settle: whether the verdicts were right at each switch she passed (the `passed`
+  lines), how far ahead the track reached at speed (the `track from` lines: are rails named in time?), whether rails
+  named Guide but phantom are ridden as this log suggests, and on a throw, which part took the touch, whether a touch
+  toggles, how long the description took to change and whether the rails' names followed.
 
 **Stopping a vehicle** (`Walk/WalkMode.Stop.cs`; Claude Opus 5.5, 2026-11-01, after the blind tester's freight train, an
 SLRR-style train driven by the arrows, ran off the end of its track and derailed or stranded her: once she had to

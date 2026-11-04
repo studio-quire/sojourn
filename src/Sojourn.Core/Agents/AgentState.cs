@@ -103,9 +103,11 @@ public sealed class AgentState : IDisposable
     public string? LastWords { get; set; }
 
     /// <summary>Per-observer prim flags (UpdateFlags differ per agent on the wire; shared prims hold the last writer's).</summary>
-    public ConcurrentDictionary<uint, PrimFlags> Flags { get; } = new();
+    /// By region and local id: local ids repeat across regions, so one region's prim overwrote another's phantom and touch
+    /// flags (found 2026-11-03 among the low ids of several railway regions in view at once).
+    public ConcurrentDictionary<(ulong Region, uint Local), PrimFlags> Flags { get; } = new();
 
-    public PrimFlags PrimFlagsOf(Primitive p) => Flags.TryGetValue(p.LocalID, out var f) ? f : p.Flags;
+    public PrimFlags PrimFlagsOf(Primitive p) => Flags.TryGetValue((p.RegionHandle, p.LocalID), out var f) ? f : p.Flags;
 
     public ConcurrentDictionary<UUID, ImSession> Ims { get; } = new();
 

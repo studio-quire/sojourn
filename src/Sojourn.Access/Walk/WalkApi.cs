@@ -63,7 +63,16 @@ public sealed class WalkApi : LeapApi
         {
             ["id"] = s.Id.ToString(), ["stand"] = s.Stand, ["status"] = s.Setting?.Status,
             ["pos"] = new JsonArray(Math.Round(s.Pos.X, 2), Math.Round(s.Pos.Y, 2), Math.Round(s.Pos.Z, 2)),
+            // along the track followed at the last look (null: no track; NaN as null with on_track false: not on it)
+            ["on_track"] = s.Along is { } a ? !float.IsNaN(a) : null,
+            ["along"] = s.Along is { } b && !float.IsNaN(b) ? Math.Round(b, 1) : null,
+            ["kind"] = s.Junction?.Kind.ToString().ToLowerInvariant(), ["verdict"] = s.Junction?.Verdict.ToString().ToLowerInvariant(),
+            ["other_side"] = s.Junction?.OtherSide.ToString().ToLowerInvariant(),
         }).ToArray()),
+        ["track"] = _walk.RailWay is { } tr ? new JsonObject
+        {
+            ["rails"] = tr.Rails.Count, ["length"] = Math.Round(tr.Length, 1), ["ends"] = tr.Ends, ["junctions"] = tr.Junctions.Count,
+        } : null,
         ["marks"] = _walk.LastMarks is { } ms ? new JsonArray(ms.Select(m => (JsonNode?)new JsonObject
         {
             ["name"] = m.Name, ["mark"] = m.Mark, ["bearing"] = Math.Round(m.Bearing, 1), ["distance"] = Math.Round(m.Dist, 2),

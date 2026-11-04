@@ -48,7 +48,9 @@ A bot (`tools/visitor`, Access Visitor) talks, IMs, and owns scripted fixtures: 
 permission requests and offers; `facebox` (says each touch's face and surface coordinates); `treasure` (a chest whose
 unnamed lid alone has a script); `sofa` (renames itself while sat on or on a touch); `kart` (a physical LSL car; with `throttle`, a throttle train that says its track ends past `endx`, and with `hover 1` shows its throttle and speed as floating text; `lose N`, `start P` and `quiet 1` for the stop's trials) and `cart` (its script takes the sitter's keys);
 `switch` (a rail switch as the SLRR standard has one: a "Switch Stand" whose description says Main or Branch, a touch
-part, two guide rails that swap their names and phantom; a touch or Main and Branch on its channel set it). Menus
+part, two guide rails that swap their names and phantom; a touch or Main and Branch on its channel set it); `rails`
+(guide rails laid as given, "Guide" solid and "Alternate Guide" phantom, no scripts) and `stand` (a scriptless "Switch
+Stand" with a description), for a track to follow. Menus
 open on the Applications key's press (`MenuOn`), not by WinForms' ContextMenuStrip, which opens on WM_CONTEXTMENU and
 never for posted keys. Before it logs in, whatever it owns in Atelier and Atelier East goes (an interrupted run's
 leftovers: a second fixture box obeys its words too, and every notice step then gets two of each).
@@ -246,7 +248,16 @@ docstring with its checks in full):
   mode, a held Up: the first said once ("Switch in N metres, set to the main line, North Station.", N 25-60) with the
   switch cue; W saying it ahead with both ways' names; Shift+W touching its stand, "Switch set to the branch, East
   Yard." and the visitor hearing the stand set, the throw's cue; `//switch`, `//switch main` (set back, heard),
-  `//switch main` again ("already"); then on past both, the second said once and the first not again.
+  `//switch main` again ("already"); then on past both, the second said once and the first not again. Then along a
+  track (`rail_track`, after clearing those off when Atelier East has no second flat stretch): the visitor's rails
+  under the ground, straight east under a new kart, then curving left to north; a facing switch at the curve's first
+  joint (its branch going on east as alternates, a stand set to Main), a trailing one where a line from the south
+  meets the curve (the curve's last rail an alternate: against the kart), and a decoy stand with its rails on a line
+  12 m south, in the old straight band and nearer. Stopped, W says the facing switch by its distance along the track
+  with "it takes you left; the branch, East Yard, goes right", not the decoy; the status op has the track; a held Up
+  says "Switch in N metres where a line joins from the right: set against you." and never the decoy; the log has the
+  `track from` and `lines part`/`lines join` lines. `RailTrack.Follow` itself can be run offline on a log's rails
+  (with a slack for their rounding).
 - **stopping a vehicle** (about 10 minutes, no renderer needed): on a flat stretch of Atelier East, the visitor's `kart`
   as a car, a held Up, then Space with Up still held: "Stopping.", "Stopped.", nothing said of moving backward, and it
   never moves back (`ACCESS_STOP_CARS=N` runs the car N times, a flake check, and `ACCESS_STOP_TRAIN=0` skips the rest;
