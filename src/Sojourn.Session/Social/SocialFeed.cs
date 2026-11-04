@@ -451,6 +451,7 @@ public sealed class SocialFeed
             // line, which the catalog's templates match)
             "RadarReport" => (NameOf(Id(pay, "from_id"), S(pay, "from_name") is { Length: > 0 } rn ? rn : Lang.T("Someone")), Lang.T(S(pay, "what")), 25),
             "InvOfferAutoAcceptUser" or "InvOfferAutoAcceptObject" => (Sub("NAME"), Lang.F("gave you {0}", Sub("DESC")), 30),
+            "ScriptQuestionAutoGranted" => (Sub("OBJECTNAME"), Lang.T("may animate you (animation permission given by itself)"), 30),
             "ScriptQuestionExperience" => (Sub("OBJECTNAME"), S(pay, "experience_name") is { Length: > 0 } en
                 ? Lang.F("asks you to join the experience {0}: {1}", en, Questions(Sub("QUESTIONS")))
                 : Lang.F("asks you to join an experience: {0}", Questions(Sub("QUESTIONS"))), 120),

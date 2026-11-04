@@ -700,6 +700,13 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
+- With 0.1.0.887 (2026-11-03, on the builders' line): a log after a ride (switches found sooner?) and after a throw
+  with her partner; whatever is awkward in About Land. Still to ask about land when she's used it: is the split between
+  switches that change at once and changes that ask first right; are the rows' words clear ("Damage allowed" rather
+  than the viewer's "Safe (no damage)"); is Control+L a good key; divide and join by compass words or from her facing?
+  And whether the world going much softer under a beacon is right.
+- Reading back (Control+[ and ]) stays where she left it however many lines arrive since; should new lines, or a
+  while without the review keys, bring it back to the newest (Control+Shift+] does now)?
 - Sent with 0.1.0.877 on the builders' line (2026-11-02, 22:45): was going into Pavonia at the end of her solo run on
   purpose; a log after trying a switch throw; whatever is awkward in the build editor. Her long train-loop ride
   recording was planned for 2026-11-03 (the first on 15-minute recordings and 877's switch lines). Still to come from

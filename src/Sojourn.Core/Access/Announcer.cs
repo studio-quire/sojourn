@@ -27,7 +27,7 @@ public static class LineSources
     /// estate's message box, and any name not listed here.</summary>
     public static LineFrom OfNotice(string? name) => name switch
     {
-        "ScriptDialog" or "ScriptDialogGroup" or "ObjectGiveItem" or "OwnObjectGiveItem" or "LoadWebPage" or "ScriptQuestion"
+        "ScriptDialog" or "ScriptDialogGroup" or "ObjectGiveItem" or "OwnObjectGiveItem" or "LoadWebPage" or "ScriptQuestion" or "ScriptQuestionAutoGranted"
             or "ScriptQuestionExperience" or "ObjectMessage" or "GotoURL" or "PlaceOffered" => LineFrom.Objects,
         null or "FriendOnlineOffline" or "FriendshipAccepted" or "FriendshipDeclined" or "InventoryAccepted" or "InventoryDeclined"
             or "UserGiveItem" or "InvOfferAutoAcceptUser" or "InvOfferAutoAcceptObject" or "PaymentReceived" or "PaymentSent"

@@ -182,7 +182,8 @@ public sealed partial class MainForm
     string LandSummary()
     {
         if (_land is not { } l) return "nothing read yet.";
-        var desc = l.Parcel.Str("desc") is { Length: > 0 } d ? $" {Cap(d.TrimEnd('.'))}." : "";
+        // trimmed first: "...the discerning avatar.  " came out as "avatar.  ." (the blind tester's club, 0.1.0.887)
+        var desc = l.Parcel.Str("desc")?.Trim().TrimEnd('.').TrimEnd() is { Length: > 0 } d ? $" {Cap(d)}{(d[^1] is '!' or '?' ? "" : ".")}" : "";
         var sale = l.Sale != null ? $", for sale: {LandRows.SaleWords(l)}" : "";
         var closed = LandRows.OpenTo(l) is var open && open != "everyone" ? $", open to {open}" : "";
         return $"{l.Name}, {l.Whose}, {l.Parcel.Int("area", 0)} square metres{sale}{closed}; {l.Where ?? "where it is from you isn't known"}.{desc}";

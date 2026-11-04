@@ -2797,6 +2797,32 @@ def notice_perm(run, tester_id):
     key(number)
     run.heard_by_visitor(f"{number} on the list allows it", lambda d: d["msg"] == "permission 16", n, 10, "permission 16")
 
+    # animation permission given by itself (Radegast's auto-accept, the blind tester's ask, 2026-11-03): turned on from
+    # anywhere but her own keys it waits for her press, then a script asking only to animate her gets it, said
+    back_to_chat()
+    def turn_on():
+        try:
+            api("SojournSettings", "set", 60, auto_grant_animation="on")
+        except Exception:
+            pass
+    m = mark()
+    import threading
+    threading.Thread(target=turn_on, daemon=True).start()
+    if run.expect("auto_grant_animation on by the API waits for her press", ["animation permission", "Enter confirms"], m, 8):
+        key("ctrl+n")
+        wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 4)
+        time.sleep(0.6)
+        key("enter")
+        run.check("(confirmed: on)", wait(lambda: setting("auto_grant_animation") == "on", 6), str(setting("auto_grant_animation")))
+        back_to_chat()
+        m = mark()
+        n = visitor_n()
+        v(f"fperm {tester_id}")
+        run.expect("then a request only to animate is allowed by itself, and said", ["Access Fixture", "may animate you"], m, NOTICE_SECS)
+        run.heard_by_visitor("(the script got it)", lambda d: d["msg"] == "permission 16", n, 10, "permission 16")
+        api("SojournSettings", "set", auto_grant_animation="off")
+        run.check("turned off by the API at once", setting("auto_grant_animation") == "off", str(setting("auto_grant_animation")))
+
 
 class AisStandIn:
     """A stand-in for Second Life's inventory service (AIS3), which OpenSim lacks, for favourites only: the app's
@@ -3837,7 +3863,11 @@ def timed_look(**args):
 
 def review_and_arrivals(run, nonce):
     back_to_chat()
-    # review: back through what was read, a mark, a copy from it (the clipboard left alone: SOJOURN_TEST_NO_CLIPBOARD)
+    # review: back through what was read, a mark, a copy from it (the clipboard left alone: SOJOURN_TEST_NO_CLIPBOARD).
+    # From the newest first: reading back leaves the review where it was (the menu step's Control+3 and Control+]
+    # left it mid-history, and Control+[ here went on from there)
+    key("ctrl+shift+oem_close")
+    time.sleep(0.5)
     m = mark()
     for word in ("alpha", "bravo", "charlie"):
         v(f"say review {word} {nonce}")

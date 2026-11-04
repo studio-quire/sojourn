@@ -144,6 +144,12 @@ Disturb (`PeopleTake`); other listeners ask `PeopleHide`, which has no side effe
   landmarks, Firestorm's for anything): kept without the offer notice, and a notice (`InvOfferAutoAcceptUser`,
   `InvOfferAutoAcceptObject`) says what came, as Firestorm's FSShowAutoAcceptInventoryInNotifications does by default.
   Do Not Disturb still turns objects' offers away first.
+- `auto_grant_animation` on | off (Radegast's auto-accept, which Sojourn Access's blind tester asked for, 2026-11-03; off
+  by default): a script question asking only PERMISSION_TRIGGER_ANIMATION (a dance ball, a pose) is granted without the
+  notice, and a tip (`ScriptQuestionAutoGranted`) says which object may now animate the person; anything asking more,
+  and experiences, ask as usual. Turning it on is a permissions confirmation for any caller but the person's own keys
+  (`PeopleWiring.Kind`), so the assistant can't lower it by itself; turning it off isn't asked. In Sojourn Access, Alt+0's
+  "Animation permission, given without asking".
 
 ## A group's chat (GroupChat)
 

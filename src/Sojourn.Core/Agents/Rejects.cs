@@ -46,6 +46,9 @@ public sealed class Rejects
     public bool RejectGroupInvites => Store.Flag("reject_group_invites", false);
     /// <summary>off, viewer (notecards, textures, landmarks: the official viewer's), all (Firestorm's).</summary>
     public string AutoAcceptInventory => Store.Text("auto_accept_inventory") is { } m && InventoryModes.Contains(m) ? m : "off";
+    /// <summary>A script asking only to animate the person gets it without asking (Radegast's, which the blind tester
+    /// asked for, 2026-11-03); said each time. Turned on by the person's own press: anyone else's waits for it.</summary>
+    public bool AutoGrantAnimation => Store.Flag("auto_grant_animation", false);
 
     public string TeleportsResponse => Store.Text("teleports_response") is { Length: > 0 } t ? t : DefaultTeleportsResponse;
     public string FriendshipsResponse => Store.Text("friendships_response") is { Length: > 0 } t ? t : DefaultFriendshipsResponse;
@@ -59,6 +62,7 @@ public sealed class Rejects
     }
     public void SetRejectFriendships(bool on) { Store.Set("reject_friendships", on); Changed?.Invoke(); }
     public void SetRejectGroupInvites(bool on) { Store.Set("reject_group_invites", on); Changed?.Invoke(); }
+    public void SetAutoGrantAnimation(bool on) { Store.Set("auto_grant_animation", on); Changed?.Invoke(); }
     public void SetAutoAcceptInventory(string mode)
     {
         if (!InventoryModes.Contains(mode)) throw new LeapError($"auto_accept_inventory is one of {string.Join(", ", InventoryModes)}");
@@ -115,6 +119,7 @@ public sealed class Rejects
         {
             ["friends_only_ims"] = FriendsOnly, ["reject_teleports"] = RejectTeleports, ["reject_friendships"] = RejectFriendships,
             ["reject_group_invites"] = RejectGroupInvites, ["auto_accept_inventory"] = AutoAcceptInventory,
+            ["auto_grant_animation"] = AutoGrantAnimation,
             ["teleports_response"] = TeleportsResponse, ["friendships_response"] = FriendshipsResponse,
             ["turned_away_this_session"] = away,
         };

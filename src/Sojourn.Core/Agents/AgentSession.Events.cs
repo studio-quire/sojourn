@@ -657,6 +657,15 @@ public sealed partial class AgentSession
                 _ = c.Self.SetExperiencePermissionAsync(experience, "Block").ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
             return Task.CompletedTask;
         }
+        // only animating, and the person has said yes to that by itself (Rejects.AutoGrantAnimation): granted, and said
+        if (experience == UUID.Zero && asked == ScriptPermission.TriggerAnimation && Rejects.AutoGrantAnimation)
+        {
+            c.Self.ScriptQuestionReply(sim, itemId, taskId, asked);
+            Notify.Add("ScriptQuestionAutoGranted", "notifytip",
+                $"'<nolink>{objectName}</nolink>', an object owned by '{ownerName}', may animate you: animation permission is given by itself.",
+                Notifications.None, payload: payload, substitutions: subs);
+            return;
+        }
         if (experience == UUID.Zero)
         {
             Notify.Add("ScriptQuestion", "notify",

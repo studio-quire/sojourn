@@ -34,6 +34,8 @@ public sealed partial class MainForm
         ("access_builders", "Messages with the builders (Control+Shift+B)"),
         // (Radegast's auto-accept, which the blind tester was used to and missed, 2026-11-01)
         ("auto_accept_inventory", "Items given to you, kept without asking"),
+        // (Radegast's, the blind tester asked for it, 2026-11-03)
+        ("auto_grant_animation", "Animation permission, given without asking"),
         ("earcon_im", "IM sound"),
         ("earcon_mention", "Mention sound (your name or a keyword)"),
         ("earcon_menu", "Menu sound (a script menu or question)"),
@@ -302,6 +304,8 @@ public sealed partial class MainForm
         ("auto_accept_inventory", "off") => "off, each offer waits in Notices",
         ("auto_accept_inventory", "viewer") => "notecards, textures and landmarks only",
         ("auto_accept_inventory", "all") => "everything, a notice saying what came",
+        ("auto_grant_animation", "on") => "on: a script asking only to animate you is allowed, and said",
+        ("auto_grant_animation", "off") => "off, each request waits in Notices",
         ("speakers" or "microphone", _) => DeviceWords(name, value),
         _ => value.Replace('_', ' '),
     };

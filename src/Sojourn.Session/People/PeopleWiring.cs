@@ -59,6 +59,10 @@ public sealed class PeopleWiring : IDisposable
 
     string? Kind(string pump, string op, JsonObject a)
     {
+        // animation permission given by itself lets any script that asks animate the person: turning it on is theirs to press
+        if (pump == "SojournSettings" && op == "set" && a["auto_grant_animation"] is { } v && v.ToString().ToLowerInvariant() is "on" or "true"
+            && !_s.Rejects.AutoGrantAnimation)
+            return "permissions";
         if (pump != "SojournPeople") return null;
         switch (op)
         {
@@ -102,6 +106,8 @@ public sealed class PeopleWiring : IDisposable
 
     async Task<(string Title, string Detail)> DescribeAsync(string pump, string op, JsonObject a)
     {
+        if (pump == "SojournSettings")
+            return (Lang.T("Give animation permission by itself"), Lang.T("Any script that asks only to animate you will be allowed to, without asking you each time."));
         var people = _s.People;
         switch (op)
         {
@@ -325,6 +331,9 @@ public sealed class PeopleWiring : IDisposable
             + "official viewer), all (anything, as Firestorm), or off; a notice says what came", string.Join(", ", Rejects.InventoryModes),
             () => JsonValue.Create(rj.AutoAcceptInventory),
             SettingsApi.Choice("auto_accept_inventory", Rejects.InventoryModes, i => rj.SetAutoAcceptInventory(Rejects.InventoryModes[i]))));
+        api.Add("auto_grant_animation", new("you", "a script asking only to animate the person (a dance ball, a pose) is allowed without "
+            + "asking, as Radegast's auto-accept; a notice says so each time. Turning it on waits for the person's own press", "on, off",
+            () => JsonValue.Create(rj.AutoGrantAnimation ? "on" : "off"), SettingsApi.Switch("auto_grant_animation", rj.SetAutoGrantAnimation)));
         api.Add("money_notices", new("you", "L$ received and spent shown on the feed (both viewers show both)", string.Join(", ", Money.NoticeModes),
             () => JsonValue.Create(_s.Money.Notices), SettingsApi.Choice("money_notices", Money.NoticeModes, i => _s.Money.SetNotices(Money.NoticeModes[i]))));
         api.Add("typing_animation", new("you", "the avatar plays the typing animation while the person writes in nearby chat", "on, off",
