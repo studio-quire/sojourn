@@ -1468,6 +1468,10 @@ an object's line relaying someone ("person 2:
 ...") and any line repeating five words in a row of someone's left-out words (or a whole short line) are left out,
 except words that are an object's name (someone saying "Operator HUD" had every line naming her GTFO! Operator HUD
 left out, its menus and her touches of it, 2026-11-02);
+a display name the session never looked up (someone only the radar saw) but written before a known name in brackets,
+the viewer's "Display (username)", is that person's name too, wherever it comes: a radar HUD's "Display (username) is
+now in chat range" had sent display names whole in every log until 2026-11-03 (the usernames were replaced); those logs
+were scrubbed in `local/relay-logs` and deleted from the relay;
 keys, capability URLs, the Windows account's folder and public IP addresses are masked. The assistant's replies and
 what it said about people stay, names replaced. A log from before the records isn't offered. `tools/logcheck` checks
 the filter on a synthetic log (`dotnet run --project tools/logcheck`; with a path, prints that log as it would go).

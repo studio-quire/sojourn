@@ -93,6 +93,8 @@ public static class LogShare
     // the console's chat as older versions wrote it into the file ("17:04 Name: words"): never part of a sendable log
     static readonly Regex OldChat = new(@"^\d\d:\d\d [^\d]", RegexOptions.Compiled);
     static readonly Regex StandIn = new(@"^person \d+$", RegexOptions.Compiled);
+    // "Display Name (username)": up to 64 characters back from the bracket to a colon, a full stop, a comma or the start
+    static readonly Regex BeforeName = new(@"(?:^|[:.,;!?]\s*)([^:.,;!?()\n]{2,64}?) \(([^()\n]{2,64})\)", RegexOptions.Compiled);
 
     sealed class Person
     {
@@ -149,6 +151,19 @@ public static class LogShare
                     if (Str(o, "from") == "people" && Str(o, "text") is { } heard) theirWords.Add(heard);
                     break;
             }
+        }
+        // a display name never looked up (someone only the radar saw) still shows in what objects say, written the
+        // viewer's way, "Display (username)": a radar HUD's "JeηηⅰfεR MαRⅰє Loνє (person 6) is now in chat range." went
+        // out with the display name whole (the blind tester's log, 2026-11-03). So what stands before a known name in
+        // brackets is that person's name too, wherever it comes
+        var known = people.Values.SelectMany(p => p.Names.Select(n => (n, p))).Where(x => x.n.Length > 1)
+            .GroupBy(x => x.n, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().p, StringComparer.OrdinalIgnoreCase);
+        foreach (var e in entries)
+        {
+            if (Parse(e[0]) is not { } r || r.Tag is not ("words" or "heard") || Str(r.Body, "text") is not { Length: > 0 } text) continue;
+            foreach (Match m in BeforeName.Matches(text))
+                if (known.TryGetValue(m.Groups[2].Value.Trim(), out var who) && m.Groups[1].Value.Trim() is { Length: > 1 } shown)
+                    who.Names.Add(shown);
         }
         var names = new Names(people);
         var echo = new Echo(theirWords, objectNames);
