@@ -27,6 +27,7 @@ public sealed partial class MainForm
         ("access_describing", "Describing model (economy or best)"),
         ("announce_music", "Music titles read out"),
         ("access_read_mine", "My own lines read back"),
+        ("access_read_cut", "Lines cut off by my typing said again"),
         ("access_mute_all", "Mute all read-out (F6)"),
         ("access_timestamps", "Times in the histories"),
         // (the blind tester asked what "answers without a physical key: refused" meant, 2026-10-31: the row says it plainly)

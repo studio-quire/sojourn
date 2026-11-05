@@ -418,7 +418,9 @@ the window's bottom-left corner and reads its name and its children's, so "Statu
   (`speech.cancelSpeech` clears every priority's queue; braille messages go at the next caret move too). A blind
   tester relies on hearing chat while she types, and turning the setting off slowed NVDA for her (2026-10-30). So an
   arrival (nearby, objects, IMs, group chat, the builders' tab) that a key typed into a box came into before it could
-  have been heard out is said again, once, when the keys have rested a second. Which lines: each is followed from
+  have been heard out is said again, once, when the keys have rested a second, unless someone's newer line has been
+  read since the last key (the talk has moved on; her own read back doesn't count), and never with Alt+0's
+  `access_read_cut` off. Which lines: each is followed from
   the moment the announcer hands it to the reader (`Announcer.Spoke`), queued after the ones before, for its speaking
   time at a quick voice (30 ms a character, 0.5-10 s); the first key typed after it (`RealInput.FirstTypedAfter`)
   cuts it if it comes within that. A guess wrong that way loses a line to review rather than saying one she heard.

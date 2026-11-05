@@ -10,7 +10,10 @@ namespace Sojourn.Access;
 /// been heard out (still queued behind others, or within its speaking time at a quick voice, and on NVDA 2026.3 and
 /// later not after the reader was seen falling quiet), never her own lines (she wrote them) or a line already said
 /// again; those cut in one stretch of typing as one, the newest three at most, after how many there were; none that
-/// Control alone silenced on purpose. (Taking any key within a slower voice's time as a cut, her own lines included,
+/// Control alone silenced on purpose, and none once someone's newer line has been read since the last key: the talk has
+/// moved on, and an older line after it only sounds like a repeat (47 of 67 in the blind tester's trivia log of
+/// 2026-11-04 came within a second of another line). Her own line read back doesn't count: a line that came as she
+/// finished typing would be lost. Alt+0 turns it all off (access_read_cut). (Taking any key within a slower voice's time as a cut, her own lines included,
 /// and saying them again at 0.7 s pauses, between words, had a busy game's chat say lines she'd heard over again.)
 /// </summary>
 public sealed partial class MainForm
@@ -20,7 +23,7 @@ public sealed partial class MainForm
     readonly List<Spoken> _spoken = new();
     readonly List<Spoken> _cut = new();
     readonly object _spokenLock = new();
-    long _spokenEnds;
+    long _spokenEnds, _othersAt;
 
     /// <summary>A pause in typing rather than the gap between two words, before what was cut is said again.</summary>
     const long KeysRest = 1000;
@@ -37,6 +40,7 @@ public sealed partial class MainForm
             _spokenEnds = starts + Speaking(l.Text);
             if (l.Again || l.From == LineFrom.Me
                 || l.Kind is not (AnnounceKind.Nearby or AnnounceKind.Objects or AnnounceKind.Ims or AnnounceKind.Group)) return;
+            _othersAt = l.At;
             _spoken.Add(new Spoken(l.Text, l.Kind, l.At, _spokenEnds, l.From));
         }
     }
@@ -74,6 +78,7 @@ public sealed partial class MainForm
             if (cut) _spokenEnds = typed;
             _cut.RemoveAll(s => RealInput.SilencedAt > s.At);
             if (_cut.Count == 0 || now - RealInput.LastKeyAt < KeysRest) return;
+            if (_othersAt > typed || !_set.ReadCut) { _cut.Clear(); return; }
             again = Again(_cut);
             kind = _cut[^1].Kind;
             from = _cut.Select(s => s.From).Aggregate(LineSources.Join);

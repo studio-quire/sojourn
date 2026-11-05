@@ -1675,6 +1675,19 @@ def typed_cut(run, nonce):
     run.check("and only once", len(times(f"cut two {nonce}", m)) == 2, f"{len(times(f'cut two {nonce}', m))} times in all")
     u("set id=chatInput |")
 
+    # a newer line read since the last key: the talk has moved on, so the older one isn't said again
+    m = mark()
+    typing("ij")
+    v(f"say stale line {nonce}")
+    run.expect("(a line while typing)", [f"stale line {nonce}"], m, 10)
+    typing("k")
+    v(f"say newer line {nonce}")
+    run.expect("(a newer line after the last key)", [f"newer line {nonce}"], m, 5)
+    time.sleep(2.5)
+    run.check("the line cut isn't said again after a newer one", len(times(f"stale line {nonce}", m)) == 1,
+              f"{len(times(f'stale line {nonce}', m))} times")
+    u("set id=chatInput |")
+
     # Control alone silences on purpose: not said again
     m = mark()
     typing("ij")

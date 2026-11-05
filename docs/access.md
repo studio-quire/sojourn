@@ -700,6 +700,10 @@ put on another line the night before with nobody changing anything. Her log of t
 of hers; asked whether that was the one. Old versions: told her to delete them, the data folder being shared.
 That evening: her partner had been flipping switches, which would explain it. Her first throw on Second Life worked (18:06).
 She couldn't copy switch lines to show him: all of them now go in the chat history too.
+- "Weird repeats of lines" at trivia again, log `tester-20261105T020834-5121c6` (909): 67 of 552 lines read were cut lines
+  said again, 47 of them within a second of another line being read, so heard out of order. Now none once someone's
+  newer line has been read, and a switch for the whole thing in Alt+0. Whether the rest she'd really heard is a question
+  for her: the logs leave the words out.
 - Her log `tester-20261104T232958-ce996b` (903, her first with the track followed): the throw at Clearwing took 1.1 s,
   stand and rails together. Of 53 switches passed, 11 facing ones were on the line said, 15 unclear from the log, and
   one at Tenera (18:14) went the other way: its stand changed to the branch by itself 6 m short, said as it happened
