@@ -52,6 +52,7 @@ public sealed class Commands
             switch (verb)
             {
                 case "help": Help(string.Join(" ", rest)); return true;
+                case "links": Links?.Invoke(); return true;
                 case "about" or "version": _say(About?.Invoke() ?? "Sojourn Access."); return true;
                 case "describe": if (Describe != null) await Describe(string.Join(" ", rest)); return true;
                 case "go": return await GoAsync(rest);
@@ -145,6 +146,7 @@ public sealed class Commands
         ("voice", "//voice | //voice answer | //voice decline", "who's in voice and speaking, your mic; or answer or decline a call ringing"),
         ("imsound", "//imsound NAME SOUND | //imsound NAME usual | //imsound NAME | //imsound",
             "a sound of its own for someone's IMs, or a group's chat, in place of the usual one; usual takes it back; with only a name, theirs; with nothing, the sounds and who has one"),
+        ("links", "//links", "the links seen in chat, IMs and notices, as Control+Shift+K: Enter opens one"),
         ("about", "//about", "which version of Sojourn Access this is, and where your settings and logs are"),
         ("sendlog", "//sendlog", "send a session's log to Studio Quire, with a note on what happened; other people's words are left out"),
         ("help", "//help [word]", "the commands"),
@@ -959,6 +961,7 @@ public sealed class Commands
 
     /// <summary>`//about`: the version and where the data lives (AppInfo).</summary>
     public Func<string>? About { get; set; }
+    public Action? Links { get; set; }
 
     /// <summary>Said like the rest, for words that quote someone (a parcel's description, a route notecard's note): the
     /// session log marks them so, and a log sent to the studio leaves them out.</summary>

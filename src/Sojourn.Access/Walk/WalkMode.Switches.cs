@@ -59,6 +59,7 @@ public sealed partial class WalkMode
     /// <summary>A rail the track is followed by, as found: index-aligned with the rails given to RailTrack.</summary>
     sealed record RailPrim(UUID Id, uint LocalId, ulong Region, string RegionName, Vector3 Local, bool Phantom, bool Scripted);
 
+    readonly Dictionary<UUID, long> _switchHeldTill = new();   // not to be said yet, until then
     RailTrack.Track? _railTrack;              // the track from the seat at the last look, in that look's frame
     List<RailPrim> _railPrims = new();
     ulong _railRegion;
@@ -115,7 +116,7 @@ public sealed partial class WalkMode
         if (_switchBusy || speed < 1f) return;
 
         // the nearest not yet said, read fresh first (one at a time, nearest first, a few seconds apart)
-        var say = _switches.Where(s => _switchPending.Contains(s.Id))
+        var say = _switches.Where(s => _switchPending.Contains(s.Id) && !(_switchHeldTill.TryGetValue(s.Id, out var till) && now < till))
             .Select(s => (s, d: WayAhead(b, yaw, s, float.MaxValue, out var al) ? al : float.MaxValue)).OrderBy(x => x.d).FirstOrDefault();
         if (say.s != null && now - _switchSaidAt > 2500)
         {
@@ -144,6 +145,14 @@ public sealed partial class WalkMode
             if (!WayAhead(now, Way(now), fresh, _switchAhead + 10, out float along) || along < SwitchNear)
             {
                 SwitchLog($"{PartWords(fresh)} not said: {(along < SwitchNear && along > -SwitchNear ? $"{along:0} m ahead, too near" : "no longer in the way ahead")}");
+                return;
+            }
+            // a join set for the other line usually springs for the train as it nears (Sinica and Euclidia on 903, within
+            // seconds of being said): held until it's close enough for that to have happened
+            if (fresh.Junction is { Kind: RailTrack.Kind.Trailing, Verdict: RailTrack.Verdict.Against } && along > MathF.Max(20f, Speed(now) * 2.5f))
+            {
+                _switchHeldTill[s.Id] = Environment.TickCount64 + 1000;
+                _switchPending.Add(s.Id);
                 return;
             }
             _switchSaidAt = Environment.TickCount64;

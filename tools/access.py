@@ -1288,6 +1288,7 @@ def session(run, procs):
                SOJOURN_OFFSCREEN_LOSE_AFTER=str(LOSE_AFTER),
                # People's and Objects' first fills held back, as Second Life's objects wait for their names
                SOJOURN_TEST_LIST_DELAY_MS=str(LIST_DELAY_MS),
+               SOJOURN_NO_BROWSER="1",   # a link says it's opening, and no browser comes up on the PC
                SOJOURN_VOICE_OUT_FILE=str(HEARD), SOJOURN_WALK_LOG=str(OUT / "walk.log"),   # world audio to a file (local grid only), never the speakers
                SOJOURN_TEST_UPLOAD_FEE=UPLOAD_FEES)   # uploads of some kinds confirmed as spending on the free local grid
     app_args = ["--grid", GRID_URI, "--user", f"{TESTER[0]} {TESTER[1]}", "--password", PASSWORD,
@@ -1402,6 +1403,7 @@ def session(run, procs):
         ("rail switches", lambda: rail_switches(run)),
         ("stopping a vehicle", lambda: vehicle_stop(run)),
         ("driving after someone", lambda: driving_after(run)),
+        ("links", lambda: links(run)),
         ("recording a route", lambda: route_recording(run)),
         ("recording a route across a border", lambda: route_crossing(run)),
         ("recording a ride", lambda: ride_recording(run)),
@@ -6727,8 +6729,8 @@ def rail_track(run, y1):
     ("Hill Line", "East Yard"); where the curve meets a line coming up from the south a trailing switch, the curve's last
     rail an alternate (set against the kart), with a stand; and a decoy: a stand and its rails on a parallel line 12 m
     south, in the old straight band ahead and nearer than either. Seated, stopped, W says the facing switch by its
-    distance along the track (60 m), that it takes you left and the branch goes right, not the decoy; a held Up says
-    the trailing one ("a line joins from the right: set for the other line") and never the decoy; the session log has the
+    distance along the track (60 m), that it takes you left and the branch goes right, not the decoy; a held Up doesn't
+    say the trailing one from far off, nor ever the decoy; W's line goes in the chat history; the session log has the
     track followed and its two places where lines part and join. Called by rail_switches, its kart taken away first."""
     import math
     xs = list(range(35, 96, 10))
@@ -6831,14 +6833,16 @@ def rail_track(run, y1):
     at = walk_pos()
     lines = [e.get("text") or "" for e in said_since(m) if (e.get("text") or "").startswith("Switch")]
     print(f"     (drove to {at[0]:.1f}, {at[1]:.1f}: {lines})")
-    run.check("driving: the trailing switch round the curve said, a line joining from the right, set against the kart",
-              any(re.match(r"Switch in \d+ metres where a line joins from the right: set for the other line\.$", l_) for l_ in lines),
-              " | ".join(lines) or "none")
+    # (a join set for the other line is held until near, as it usually springs for the train; the kart runs off the rails
+    # before that, so its line isn't reached here)
+    run.check("driving: the trailing switch, set against the kart, isn't said while far off", not any("joins" in l_ for l_ in lines), " | ".join(lines) or "none")
+    m = mark()
+    key("w")
+    run.expect("W says the switch ahead", ["it takes you left; the branch, East Yard, goes right."], m, 6)
     run.check("and never the decoy on the line beside the track", not any("South" in l_ for l_ in lines), " | ".join(lines) or "none")
-    run.check("(with the switch cue)", cues_since(t0, "Switch"), json.dumps(cues_since(t0)[-5:]))
     key("esc")
     wait_focus(lambda d: d["id"] == "chatInput", 5)
-    run.check("and the switch's line is in the chat history, to copy", "where a line joins from the right: set for the other line." in value_of("id=chatHistory"),
+    run.check("and the switch's line is in the chat history, to copy", "it takes you left; the branch, East Yard, goes right." in value_of("id=chatHistory"),
               value_of("id=chatHistory")[-200:])
     m = mark()
     say_in_app(f"//follow {VNAME}")
@@ -6852,6 +6856,41 @@ def rail_track(run, y1):
     places = re.findall(r"switch: lines (part|join) ", log)
     run.check("the log has the track followed and the places its lines part and join",
               tracks and "part" in places and "join" in places, (tracks[-1][:300] if tracks else "no track line") + f" | {places}")
+
+
+def links(run):
+    """Links (MainForm.Links.cs; the blind tester's ask, 2026-11-04): a web link and a place in the visitor's chat. Enter on
+    the history's line opens the first on it; Control+Shift+K lists both, the newest first, and Enter there opens the
+    one selected. No browser comes up (SOJOURN_NO_BROWSER)."""
+    back_to_chat()
+    m = mark()
+    v("say a page https://example.com/some/page, and that's it.")
+    run.expect("(the web link said)", ["example.com"], m, 10)
+    time.sleep(0.5)
+    m = mark()
+    v(f"say or go to secondlife:///app/teleport/{REGION}/60/60/24")
+    run.expect("(the place said)", ["or go to"], m, 10)
+    time.sleep(0.5)
+    m = mark()
+    key("ctrl+shift+k")
+    wait_focus(lambda d: d["id"] == "linksList", 5)
+    names = [x["name"] for x in find("type=ListItem")]
+    run.check("Control+Shift+K lists the links, the newest first, with who said them",
+              len(names) >= 2 and names[0].startswith(f"{REGION}, a place") and VNAME in names[0] and names[1].startswith("example.com/some/page, a web page"),
+              " | ".join(names[:3]))
+    key("down")
+    key("enter")
+    run.expect("Enter opens the one selected in the browser, said", ["Opening example.com in your browser."], m, 6)
+    wait_focus(lambda d: d["id"] == "chatInput", 5)
+    key("tab")
+    wait_focus(lambda d: d["id"] == "chatHistory", 5)
+    key("ctrl+end")
+    key("up")
+    m = mark()
+    key("enter")
+    run.expect("Enter on the history's line with a place teleports there", ["Teleporting", REGION], m, 8)
+    back_to_chat()
+    time.sleep(3)
 
 
 def driving_after(run):

@@ -49,6 +49,11 @@ public sealed class LocalCollision : IDisposable
     /// <summary>How far around the person shapes are kept ready: their draw distance, 64 to 256 m.</summary>
     public float Reach => Math.Clamp(_s.Camera.FarClip, 64f, 256f);
 
+    /// <summary>Riding something moving, its velocity: shapes are kept ready only 64 m around where it'll be in two seconds.
+    /// Rays then look at most 60 m ahead, and building the whole draw distance was most of what a train ride allocated (the
+    /// blind tester's log of 2026-11-04: 20-30 MB/s, a quarter of it float and vertex arrays).</summary>
+    public Vector3? Riding { get; set; }
+
     Func<Primitive, CollideAs> Solid(IReadOnlySet<uint>? passable) => passable is { Count: > 0 }
         ? p => passable.Contains(p.LocalID) || passable.Contains(p.ParentID) ? CollideAs.Passable : Physics.Collide(p)
         : Physics.Collide;
@@ -114,7 +119,8 @@ public sealed class LocalCollision : IDisposable
                 long now = Environment.TickCount64;
                 if (now < nextAround) continue;
                 nextAround = now + 1000;
-                _world.Around(sim.Handle, at, Reach);
+                if (Riding is { } v) _world.Around(sim.Handle, at + v * 2f, Math.Min(Reach, 64f));
+                else _world.Around(sim.Handle, at, Reach);
                 if (now >= nextReport)
                 {
                     // what it holds, for a tester's log (a long ride's memory): every five minutes if it changed

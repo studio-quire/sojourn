@@ -750,7 +750,8 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   Line: it takes you left; the branch, East Yard, goes right." (the stand's names for the line taken and the other;
   without a stand that says, "Switch in 40 metres: it takes you left; the other line goes right."); a trailing one,
   "Switch in 40 metres where a line joins from the right: set for the other line." (or "set for your line"; "where another line
-  joins" if its side isn't clear). Where the rails don't say (two Guides, no other line found, the side too close to
+  joins" if its side isn't clear). Set for the other line, it's held until 2.5 s of travel or 20 m away: such a join
+  usually springs for the train as it nears (Sinica and Euclidia, 0.1.0.903). Where the rails don't say (two Guides, no other line found, the side too close to
   call), it's the stand's words alone, as before: she can't check, and a wrong side is worse than none. W says the same,
   with both names. The next switch ahead is read again every 4 s, its rails too: if what they do changes, "The switch
   ahead now takes you right." / "The switch ahead is now set for your line."
@@ -811,6 +812,13 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   lines), how far ahead the track reached at speed (the `track from` lines: are rails named in time?), whether rails
   named Guide but phantom are ridden as this log suggests, and on a throw, which part took the touch, whether a touch
   toggles, how long the description took to change and whether the rails' names followed.
+
+**Links** (`MainForm.Links.cs`; Claude Opus 5.5, 2026-11-04, the blind tester's ask): Enter on a line of a history opens
+the first link on it; Control+Shift+K (`//links`, the Read-out menu) lists the last 50 seen in chat, IMs and notices, newest
+first, with who said them, Enter opening one. A web page (http or https only) goes to her browser, an SLurl teleports, a
+person's `secondlife:///app/agent` link opens their profile; any other `secondlife:` link is refused in words. A script's
+llLoadURL opens in the browser on Go to page (Access had nothing wired to it before). Second Life's other app links,
+`app/group` and the rest, aren't opened yet.
 
 **Driving after someone** (`Walk/WalkMode.Convoy.cs`; Claude Opus 5.5, 2026-11-04, after the blind tester steered a
 motorcycle by hand after her partner's by the beacon, jerkily, and asked for vehicles following each other): `//follow

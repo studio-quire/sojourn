@@ -255,9 +255,15 @@ docstring with its checks in full):
   meets the curve (the curve's last rail an alternate: against the kart), and a decoy stand with its rails on a line
   12 m south, in the old straight band and nearer. Stopped, W says the facing switch by its distance along the track
   with "it takes you left; the branch, East Yard, goes right", not the decoy; the status op has the track; a held Up
-  says "Switch in N metres where a line joins from the right: set for the other line." and never the decoy; the log has the
+  holds back the trailing one from far off (set for the other line) and never says the decoy; the log has the
   `track from` and `lines part`/`lines join` lines. `RailTrack.Follow` itself can be run offline on a log's rails
   (with a slack for their rounding).
+- `package --check`'s three provider checks fail on a PC with a key in `%LOCALAPPDATA%\Sojourn\secretsssistant` (the
+  main PC's since 2026-11-04, from the installed VR app): the saved "claude" gives way to it, while the check's sidecar has
+  a LOCALAPPDATA of its own and finds none. Not the build's fault.
+- **links** (under a minute, no renderer needed): a web link and a place in the visitor's chat; Control+Shift+K lists
+  them, Enter on the web one says it's opening (`SOJOURN_NO_BROWSER`: no browser comes up), Enter on the history's line
+  with the place teleports.
 - **driving after someone** (about 2 minutes, no renderer needed): on the gentlest patch of Atelier East, the visitor's
   kart, `//follow` with a gap, the visitor ahead to the left: it steers there and stops short without touching them; the
   visitor walks round behind and it turns and goes after them; an arrow takes the wheel back.

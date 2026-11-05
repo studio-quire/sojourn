@@ -15,6 +15,10 @@ public class LineBox : TextBox
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Action? AppsMenu { get; set; }
 
+    /// <summary>Enter in a multi-line box; true if it was used. Null: as Windows has it.</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Func<bool>? EnterKey { get; set; }
+
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         // on the key's press (Windows' own menu comes on its release, and never for posted keys)
@@ -23,6 +27,7 @@ public class LineBox : TextBox
             AppsMenu();
             return true;
         }
+        if (EnterKey != null && keyData == Keys.Enter && msg.Msg is WM_KEYDOWN && EnterKey()) return true;
         if (!Multiline && (keyData & Keys.KeyCode) == Keys.Enter && (keyData & Keys.Alt) == 0
             && msg.Msg is WM_KEYDOWN)
         {

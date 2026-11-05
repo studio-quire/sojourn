@@ -256,6 +256,7 @@ public sealed partial class WalkMode
         Track();
         if (Me() is not { } b) return;
         Listen(b);
+        _rays.Riding = b.Sitting && Speed(b) > 3f ? b.Vel : null;
         StopTick(b, now);
         ConvoyTick(b, now);
         Drive(b, dt, now);

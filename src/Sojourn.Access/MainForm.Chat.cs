@@ -81,6 +81,7 @@ public sealed partial class MainForm
         _chatPage = new TabPage("Nearby chat") { Name = "chatPage", AccessibleName = "Nearby chat" };
         _chatInput = InputBox("chatInput", "Say");
         _chatHistory = HistoryBox("chatHistory", "Nearby chat history");
+        ((LineBox)_chatHistory).EnterKey = () => OpenLinkOn(_chatHistory);
         (_chatPeople, _chatPersonMenu) = PeopleList("chatPeople", "chatPersonMenu");
         _chatPage.Controls.Add(HistoryOverInput("Say", _chatInput, "History", _chatHistory, _chatPeople));
         _chatInput.KeyDown += (_, e) => ChatKey(e);
@@ -165,6 +166,7 @@ public sealed partial class MainForm
         var page = new TabPage(label) { Name = "conv:" + sessionId, AccessibleName = label };
         var input = InputBox("convInput", $"Message to {label}");
         var history = HistoryBox("convHistory", $"Conversation with {label}");
+        ((LineBox)history).EnterKey = () => OpenLinkOn(history);
         page.Controls.Add(HistoryOverInput("Message", input, "History", history));
         cv = new Conversation { SessionId = sessionId, Title = label, Group = group, Other = other, Page = page, Input = input, History = history };
         page.Tag = cv;
@@ -268,6 +270,7 @@ public sealed partial class MainForm
     /// status lines in nearby chat, as in Radegast.</summary>
     void Joined(FeedEntry e)
     {
+        NoteLinks(e.Text, e.Name);
         switch (e.Kind)
         {
             case FeedKind.Nearby:

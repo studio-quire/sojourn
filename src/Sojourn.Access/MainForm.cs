@@ -128,6 +128,7 @@ public sealed partial class MainForm : Form
         _ops = new PersonOps(host.Session);
         _cmd = new Commands(_ops, Answer)
         {
+            Links = () => BeginInvoke(ShowLinks),
             Clipboard = () => (string?)Invoke(() => { try { return System.Windows.Forms.Clipboard.ContainsText() ? System.Windows.Forms.Clipboard.GetText() : null; } catch { return null; } }),
         };
         _walk = new Sojourn.Access.Walk.WalkMode(host, _ops, _set, rays, line => Reader?.Answer(line)) { StopOthers = () => _cmd.StopAll() };
@@ -179,6 +180,7 @@ public sealed partial class MainForm : Form
         host.ScreenReader.Actions.ConfirmKeys = "Enter confirms, Escape cancels.";
         host.ScreenReader.Actions.ConfirmListKey = "Control N, then Tab: the whole list.";
         host.Feed.Joined += e => BeginInvoke(() => Joined(e));
+        host.Session.OpenWebPage = offer => BeginInvoke(() => OpenLink(offer.Url));   // a script's llLoadURL, "Go to page" pressed
         StartEvents();
         _tick.Start();
         _slow.Start();
@@ -540,6 +542,8 @@ public sealed partial class MainForm : Form
         Control+Shift+M: mark a line
         Control+Shift+C: copy from the mark to the line you're on
         Control+Shift+L: copy the assistant's last answer, whole
+        Control+Shift+K: the links seen in chat, IMs and notices; Enter opens one
+        Enter on a line with a link in a history: opens it
         Control+Shift+T: times in the histories
         Control+Shift+A: arrivals and departures read out
 
@@ -680,6 +684,7 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.Shift | Keys.M: if (Reader is { } rm) rm.Answer(rm.Mark(), keep: false); return true;
             case Keys.Control | Keys.Shift | Keys.C: CopyFromMark(); return true;
             case Keys.Control | Keys.Shift | Keys.L: CopyLastAnswer(); return true;
+            case Keys.Control | Keys.Shift | Keys.K: ShowLinks(); return true;
             case Keys.Control | Keys.Shift | Keys.G: ShowGestures(); return true;
             case Keys.Control | Keys.Shift | Keys.O: _ = NextOutputAsync(); return true;
             case Keys.Control | Keys.Shift | Keys.T: ToggleTimestamps(); return true;

@@ -320,6 +320,14 @@ built and let go), not reproduced on the perf grid yet. The next lever, not star
 what it allocates by type every five minutes in every session (`allocations N MB/s: TYPE n%, ...`, the runtime's own
 samples, `AllocProfile.Every`; `SOJOURN_ALLOC_PROFILE=0` turns it off), so a tester's next long ride says what it is.
 
+It said (0.1.0.903, 2026-11-04, 50 minutes on her train, the first profiled ride): 16-32 MB/s riding, 6-9 at rest; byte
+arrays 22-32%, float arrays 14-30%, Vector3 arrays 8-17%, the mesher's vertices 5-8%, strings 2-7%. Between pictures on
+her PC the view builds nothing, so that's the collision model making shapes for all it passes (2,300-7,800 held, up to
+275 MB) with mesh assets fetched for them, not SL's update traffic as guessed above; that attribution is reasoned from
+the types, not measured. So riding, shapes are kept ready 64 m around where the vehicle will be in two seconds rather
+than the whole draw distance (`LocalCollision.Riding`; a quarter of the area at her 128 m, and rays look at most 60 m
+ahead). Her next ride's `allocations` and `collision:` lines say whether it worked.
+
 Measured on the perf grid's eight places (`tools/accesssoak.py`, the view on the processor, LP_NUM_THREADS=8, a
 description's four pictures every 5 minutes so it's drawn whole; before = the code just after 0.1.0.737):
 
