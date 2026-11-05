@@ -107,7 +107,7 @@ public sealed partial class MainForm
                       + (h.Offscreen?.Preparing == true ? " The view is still preparing, so pictures start in a minute or so."
                          : h.Offscreen is { Running: false } ? " The view is still starting, so pictures start once it's up." : "")
                     : $"Recording the ride without pictures ({off}): where you go, how fast, and what's around.";
-                Answer($"{how} {K("C stops it", "//ride stop stops it")}, or it stops when you stand up or the ride does; "
+                Answer($"{how} {K("C stops it", "//ride stop stops it")}, or it stops when you stand up after the ride, or the ride stops; "
                        + $"{K("Shift+C", "//ride describe")} then tells it.");
                 return;
             }

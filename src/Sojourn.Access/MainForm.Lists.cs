@@ -272,7 +272,7 @@ public sealed partial class MainForm
             bool worn = ShowingWorn;
             // scripted things' names asked again (F5 all of them, else those over 5 s old): a script renaming its
             // object reaches only those who have it selected, so a list holding names for minutes missed renames
-            var things = worn ? await WornAsync() : await _ops.ObjectsAsync(30, 60, renew: asked ? 0 : 5);
+            var things = worn ? await WornAsync() : await _ops.ObjectsAsync(_set.ObjectsRange, _set.ObjectsRange > 30 ? 200 : 60, renew: asked ? 0 : 5);
             await ListDelay(_objects);
             Fill(_objects, things.Select(t => (Text: t.Hud ? $"{t.Name}, {t.Text}" : $"{t.Name}, {_ops.Where(t.Pos)}{(t.Sit ? ", can sit" : t.Touch ? ", touchable" : "")}",
                 Key: t.Id.ToString(), Tag: (object)t)).ToList(), worn ? "Nothing worn here yet." : "Nothing nearby.");

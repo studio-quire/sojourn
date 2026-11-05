@@ -7528,6 +7528,23 @@ def ride_recording(run):
         say_in_app("//sit Ride Train")
         if not run.expect("the train's script takes the keys", ["kart controls taken"], m, 15):
             return
+
+        # standing up before anything moved is going to the ride: the recording goes on (her waterslide, 2026-11-04)
+        m = mark()
+        say_in_app("//ride")
+        run.expect("//ride starts a recording", ["Recording the ride"], m, 5)
+        m = mark()
+        say_in_app("//stand")
+        time.sleep(4.5)
+        run.check("standing up before the ride moved doesn't end the recording", not any("stood up" in (e.get("text") or "") for e in said_since(m)),
+                  " | ".join(e.get("text") or "" for e in said_since(m)))
+        m = mark()
+        say_in_app("//stopride")
+        run.expect("//stopride stops it", ["ride recorded"], m, 5)
+        m = mark()
+        say_in_app("//sit Ride Train")
+        run.expect("(back on the train)", ["kart controls taken"], m, 15)
+
         key("f3")
         wait_focus(lambda d: d["id"] == "walkPad", 5)
         time.sleep(1)

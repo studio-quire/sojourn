@@ -25,6 +25,8 @@ public sealed class AccessSettings
     /// <summary>The person's own lines read back as they're sent (nearby once the region echoes them): a blind tester's
     /// wish, 2026-10-30, to hear that what she typed went out.</summary>
     public bool ReadMine { get; set; } = true;
+    /// <summary>How far Objects nearby lists, metres: 30 by default, past the draw distance nothing's known.</summary>
+    public int ObjectsRange { get; set; } = 30;
     /// <summary>Lines cut off by typing said again once the keys rest (MainForm.CutLines.cs).</summary>
     public bool ReadCut { get; set; } = true;
     /// <summary>The builders' tab (MainForm.Builders.cs): on, the person can write to us and our replies are fetched and
@@ -343,6 +345,10 @@ public sealed class AccessSettings
         api.Add("access_read_mine", new SettingsApi.Setting("access", "Sojourn Access: the person's own lines (said, whispered, shouted, "
             + "emotes, IMs) read back in the same words as others', nearby once the region has echoed them", "on, off", () => ReadMine,
             SettingsApi.Switch("access_read_mine", on => { ReadMine = on; Save(); changed(); })));
+        string[] ranges = { "10", "20", "30", "50", "75", "100", "125" };
+        api.Add("access_objects_range", new SettingsApi.Setting("access", "Sojourn Access: how far Objects nearby lists, metres (the nearest "
+            + "200 at most; what's beyond the draw distance isn't known)", string.Join(", ", ranges), () => ObjectsRange.ToString(),
+            SettingsApi.Choice("access_objects_range", ranges, i => { ObjectsRange = int.Parse(ranges[i]); Save(); changed(); })));
         api.Add("access_read_cut", new SettingsApi.Setting("access", "Sojourn Access: a line cut off by your typing said again once "
             + "the keys rest (off: only the review keys have it)", "on, off", () => ReadCut,
             SettingsApi.Switch("access_read_cut", on => { ReadCut = on; Save(); changed(); })));

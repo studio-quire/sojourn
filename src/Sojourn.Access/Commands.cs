@@ -74,6 +74,7 @@ public sealed class Commands
                 case "switch": if (Switch != null) await Switch(string.Join(" ", rest)); return true;
                 case "stop": if (WalkMode is { } walk) walk.RequestStop(); else _say("Not in a region yet."); return true;
                 case "ride": if (Ride != null) await Ride(string.Join(" ", rest)); return true;
+                case "ridestop" or "stopride": if (Ride != null) await Ride("stop"); return true;
                 case "text": await TextAsync(string.Join(" ", rest)); return true;
                 case "outfit": if (Outfit != null) await Outfit(); return true;
                 case "upload": if (Upload != null) await Upload(AfterVerb(line)); return true;

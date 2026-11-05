@@ -815,6 +815,9 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   named Guide but phantom are ridden as this log suggests, and on a throw, which part took the touch, whether a touch
   toggles, how long the description took to change and whether the rails' names followed.
 
+**How far Objects lists**: Alt+0's "How far Objects nearby lists" (`access_objects_range`, 10 to 125 m, 30 by default,
+the nearest 200 past 30 m). Beyond the draw distance (128 m by default) the region sends nothing.
+
 **Links** (`MainForm.Links.cs`; Claude Opus 5.5, 2026-11-04, the blind tester's ask): Enter on a line of a history opens
 the first link on it; Control+Shift+K (`//links`, the Read-out menu) lists the last 50 seen in chat, IMs and notices, newest
 first, with who said them, Enter opening one. A web page (http or https only) goes to her browser, an SLurl teleports, a
@@ -991,8 +994,8 @@ the way), else a walk from the last point. The recording lives in the app only u
 the blind tester wished to ride a carnival waterslide, "arrow keys make you go faster, sometimes so fast you fly off",
 and hear it described afterwards). C in walk mode (or `//ride`, or World > Recording a ride) starts it: "Recording the
 ride: a picture every few seconds and what's around, kept on this PC until you ask. C stops it, or it stops when you
-stand up or the ride does; Shift+C then tells it." (With the view still starting or preparing: "pictures start once
-it's up"; "without pictures" only with no view, one given up, or no assistant.) Any time: standing in the queue, or already seated and moving.
+stand up after the ride, or the ride stops; Shift+C then tells it." (With the view still starting or preparing: "pictures start once
+it's up"; "without pictures" only with no view, one given up, or no assistant.) Any time: standing in the queue, or already seated and moving. Standing up before anything has moved doesn't end it (she was on a pose ball at the top of a waterslide, stood to go to the tube, and the slide went unrecorded, 2026-11-04); five minutes standing with no ride does.
 - **What it keeps**, every 3 s a moment: the time from the start, the region, speed over the ground, which way it's
   going, climbing or falling, height and distance from the start, what she rides (when it changes; held over a region
   crossing while the new region hasn't said whether she's still seated, `WalkMode.SeatInDoubt`: a moment taken

@@ -36,6 +36,7 @@ public sealed class RideRecorder
     const double SlowerThanDrawing = 2.5;      // the next picture at least this many times as long after as the last took
     // fifteen minutes (five until 835 cut both her rides through an undersea tunnel short; a railway loop runs longer)
     const long LongestRide = 15 * 60_000;
+    const long NoRideFor = 300_000;   // stood up before anything moved, and nothing has since
     const long StillFor = 8000, StoodFor = 3000;   // (a crossing drops the seat for a moment: held over it, WalkMode.SeatInDoubt)
     // moving this long seated before a stop can end it: a train flipped round at its platform jumps a few metres at once,
     // which read as a ride that had moved and stopped (0.1.0.835 ended her recording that way before the train set off)
@@ -168,7 +169,10 @@ public sealed class RideRecorder
         if (sitting && speed >= 1 && (_movingMs += dt) >= MovedFor) _moved = true;
         if (speed >= 0.3f) _stillSince = 0;
         else if (_stillSince == 0) _stillSince = now;
-        var why = _standingSince != 0 && now - _standingSince >= StoodFor ? "you stood up"
+        // standing up before anything moved is walking to the ride: the blind tester started one on a pose ball at the top of
+        // a waterslide, stood to go to its tube, and it ended there, the slide itself not recorded (2026-11-04)
+        var why = _moved && _standingSince != 0 && now - _standingSince >= StoodFor ? "you stood up"
+            : !_moved && _standingSince != 0 && now - _standingSince >= NoRideFor ? "no ride began"
             : _moved && sitting && _stillSince != 0 && now - _stillSince >= StillFor ? "the ride stopped moving"
             : now - r.Start >= LongestRide ? "fifteen minutes, the longest a ride is recorded" : null;
         if (why != null)
