@@ -257,6 +257,7 @@ public sealed partial class WalkMode
         if (Me() is not { } b) return;
         Listen(b);
         StopTick(b, now);
+        ConvoyTick(b, now);
         Drive(b, dt, now);
         Steps(b, dt);
         Distance(b, now);

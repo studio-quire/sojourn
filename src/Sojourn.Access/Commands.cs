@@ -115,7 +115,7 @@ public sealed class Commands
         ("face", "//face DEGREES | //face DIRECTION | //face person NAME | //face object NAME", "turn: degrees with 0 east, counter-clockwise, as in Second Life"),
         ("sit", "//sit NAME | //sit ground", "sit on the nearest thing with that name, or on the ground"),
         ("stand", "//stand (or //unsit)", "stand up"),
-        ("follow", "//follow NAME | //follow stop | //follow", "follow someone (ask first), stop, or say who"),
+        ("follow", "//follow NAME | //follow NAME METRES | //follow stop | //follow", "follow someone (ask first), stop, or say who; at the wheel of something steered by the arrows, drive after them, METRES behind if given (10 if not)"),
         ("tp", "//tp list | //tp N | //tp NAME | //tp Region/X/Y/Z | //tp SLURL", "teleport by landmark (Radegast Landmarks folder, else Landmarks), or to a place"),
         ("status", "//status [doing|region|parcel|location|money|time|music]", "what you're doing, where you are, your L$, the time in Second Life, the music playing"),
         ("route", "//route NOTECARD | //route (the lines on the clipboard) | //route stop | //route resume",
@@ -699,15 +699,27 @@ public sealed class Commands
     async Task FollowAsync(List<string> a)
     {
         var name = string.Join(" ", a);
-        if (name.Length == 0) { _say(_following != null ? $"Following {_following}." : "Not following anyone."); return; }
-        if (name.Equals("stop", StringComparison.OrdinalIgnoreCase)) { StopFollowing(quiet: false); return; }
-        if (await _ops.FindPersonAsync(name) is not { } p) { _say($"Nobody called {name} nearby."); return; }
-        // following walks; seated (a car after someone else's, 0.1.0.877) it would only stand still, so a beacon instead
+        if (name.Length == 0) { _say(WalkMode?.DrivingAfter is { } after ? $"Driving after {after}." : _following != null ? $"Following {_following}." : "Not following anyone."); return; }
+        if (name.Equals("stop", StringComparison.OrdinalIgnoreCase))
+        {
+            if (WalkMode is { DrivingAfter: { } car } w) w.EndConvoy($"No longer driving after {car}.");
+            else StopFollowing(quiet: false);
+            return;
+        }
+        // a last word that's a number, unless it's in their name: how far behind, when driving after them
+        float? gap = null;
+        var p = await _ops.FindPersonAsync(name);
+        if (p == null && a.Count > 1 && float.TryParse(a[^1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var metres))
+        {
+            gap = Math.Clamp(metres, 3f, 50f);
+            p = await _ops.FindPersonAsync(string.Join(" ", a.SkipLast(1)));
+        }
+        if (p == null) { _say($"Nobody called {name} nearby."); return; }
+        // following walks; seated, a vehicle steered by its keys is driven after them, else a beacon (DriveAfter says which)
         if (_ops.Client is { Self.SittingOn: not 0 } && WalkMode is { } walk)
         {
             StopFollowing(quiet: true);
-            _say("You're seated, and following only walks you, so here's a beacon on them instead: steer toward its pip, and B in walk mode says where they are.");
-            walk.BeaconOn(p.Name, p.Id);
+            walk.DriveAfter(p.Name, p.Id, gap);
             return;
         }
         Follow(p);

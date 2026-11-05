@@ -258,6 +258,9 @@ docstring with its checks in full):
   says "Switch in N metres where a line joins from the right: set for the other line." and never the decoy; the log has the
   `track from` and `lines part`/`lines join` lines. `RailTrack.Follow` itself can be run offline on a log's rails
   (with a slack for their rounding).
+- **driving after someone** (about 2 minutes, no renderer needed): on the gentlest patch of Atelier East, the visitor's
+  kart, `//follow` with a gap, the visitor ahead to the left: it steers there and stops short without touching them; the
+  visitor walks round behind and it turns and goes after them; an arrow takes the wheel back.
 - **stopping a vehicle** (about 10 minutes, no renderer needed): on a flat stretch of Atelier East, the visitor's `kart`
   as a car, a held Up, then Space with Up still held: "Stopping.", "Stopped.", nothing said of moving backward, and it
   never moves back (`ACCESS_STOP_CARS=N` runs the car N times, a flake check, and `ACCESS_STOP_TRAIN=0` skips the rest;

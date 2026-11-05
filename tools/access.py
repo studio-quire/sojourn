@@ -1401,6 +1401,7 @@ def session(run, procs):
         ("distance walked", lambda: distance_walked(run)),
         ("rail switches", lambda: rail_switches(run)),
         ("stopping a vehicle", lambda: vehicle_stop(run)),
+        ("driving after someone", lambda: driving_after(run)),
         ("recording a route", lambda: route_recording(run)),
         ("recording a route across a border", lambda: route_crossing(run)),
         ("recording a ride", lambda: ride_recording(run)),
@@ -6389,9 +6390,10 @@ def walk_vehicle(run, bx, by, g):
         return
     m = mark()
     say_in_app(f"//follow {VNAME}")
-    run.expect("//follow while seated says following only walks", ["You're seated", "beacon"], m, 8)
-    run.expect("and puts a beacon on them instead", ["Beacon on " + VNAME], m, 8)
-    say_in_app("//beacon off")
+    run.expect("//follow at the wheel drives after them", ["Driving Walk Cart after " + VNAME], m, 8)
+    m = mark()
+    say_in_app("//follow stop")
+    run.expect("//follow stop gives the keys back", ["No longer driving after " + VNAME], m, 8)
     time.sleep(0.5)
     m = mark()
     key("f3")
@@ -6838,12 +6840,90 @@ def rail_track(run, y1):
     wait_focus(lambda d: d["id"] == "chatInput", 5)
     run.check("and the switch's line is in the chat history, to copy", "where a line joins from the right: set for the other line." in value_of("id=chatHistory"),
               value_of("id=chatHistory")[-200:])
+    m = mark()
+    say_in_app(f"//follow {VNAME}")
+    run.expect("//follow on rails says it can't drive after them, and why", ["can't drive after", "runs on rails"], m, 8)
+    run.expect("and puts a beacon on them instead", ["Beacon on " + VNAME], m, 8)
+    say_in_app("//beacon off")
+    time.sleep(0.5)
     logs = sorted((OUT / "app" / "logs").glob("*.log"), key=lambda p_: p_.stat().st_mtime)
     log = logs[-1].read_text(encoding="utf-8", errors="replace") if logs else ""
     tracks = re.findall(r"switch: track from .*", log)
     places = re.findall(r"switch: lines (part|join) ", log)
     run.check("the log has the track followed and the places its lines part and join",
               tracks and "part" in places and "join" in places, (tracks[-1][:300] if tracks else "no track line") + f" | {places}")
+
+
+def driving_after(run):
+    """Driving after someone (Walk/WalkMode.Convoy.cs; the blind tester's ask, 2026-11-04): on a flat patch of Atelier
+    East, //follow in the visitor's kart with the visitor ahead and to the left: the kart steers there and stops about
+    10 m short, said; the visitor walks round behind it and the kart turns and goes after them; an arrow takes the wheel
+    back, said. Needs no renderer."""
+    back_to_chat()
+    m = mark()
+    say_in_app(f"//tp {COURSE_REGION}/100/60/40")
+    if not run.expect("(to Atelier East)", ["Arrived", COURSE_REGION], m, 40):
+        return
+    time.sleep(2)
+    # the gentlest 70 by 30 m in the region (it's mostly hill: a kart takes a slope, not a cliff)
+    pts = [[x, yy] for yy in range(10, 250, 10) for x in range(10, 250, 10)]
+    ground = dict(zip(map(tuple, pts), api("TesselAgent", "ground", points=pts)["heights"]))
+    best = None
+    for yy in range(10, 220, 10):
+        for x in range(10, 180, 10):
+            hs = [ground.get((x + i, yy + j)) for i in range(0, 71, 10) for j in range(0, 31, 10)]
+            if all(h is not None for h in hs) and (best is None or max(hs) - min(hs) < best[0]):
+                best = (max(hs) - min(hs), x, yy, max(hs))
+    if not run.check("(a gentle patch of Atelier East for the kart)", best and best[0] < 5, str(best)):
+        return
+    _, x0, y, gz = best
+    got = v(f"tp {COURSE_REGION} {x0 + 1} {y + 2} {gz + 1.5}", timeout=40)
+    time.sleep(2)
+    made = v(f"kart Convoy Kart {x0 + 5} {y + 2} {gz + 0.4} facing 0", timeout=60)
+    if not run.check("(the visitor's kart is out)", made.startswith("kart"), f"{got}; {made}"):
+        return
+    target = (x0 + 55, y + 28)
+    v(f"tp {COURSE_REGION} {target[0]} {target[1]} {gz + 1.5}", timeout=40)
+    go_tp(run, "(the tester beside the kart)", x0 + 4, y, gz + 1.5)
+    m = mark()
+    say_in_app("//sit Convoy Kart")
+    run.expect("(sitting in the kart)", ["Sitting on Convoy Kart"], m, 10)
+    if not run.expect("(the kart's script takes the keys)", ["kart controls taken"], m, 15):
+        say_in_app("//stand")
+        return
+    time.sleep(3)   # (the region's word that the keys are taken can come after the script's line)
+
+    def away(at):
+        x, yy, *_ = walk_pos()
+        return ((x - at[0]) ** 2 + (yy - at[1]) ** 2) ** 0.5
+
+    start = away(target)
+    m = mark()
+    say_in_app(f"//follow {VISITOR[0]} {VISITOR[1]} 6")
+    run.expect("//follow in a kart says it's driving after them, as far behind as asked", ["Driving Convoy Kart after", "6 metres behind", "Any arrow key or Space"], m, 8)
+    near = wait(lambda: away(target) < 12 or None, 30, 0.3)
+    run.check("the kart steers to about 6 m from them", near, f"{start:.0f} m away at the start, {away(target):.1f} now")
+    run.expect("and says it's with them once stopped", ["With Access Visitor"], m, 15)
+    stopped = away(target)
+    run.check("not running into them", stopped > 3.5, f"stopped {stopped:.1f} m away")
+
+    target = (x0 + 10, y + 8)
+    v(f"goto {target[0]} {target[1]}")
+    time.sleep(1)
+    near = wait(lambda: away(target) < 11 or None, 45, 0.3)
+    run.check("the visitor walks round behind it and the kart turns and goes after them", near, f"{away(target):.1f} m from where they went")
+
+    key("f3")
+    wait_focus(lambda d: d["id"] == "walkPad", 5)
+    m = mark()
+    u("keydown focus | 38")
+    time.sleep(0.2)
+    u("keyup focus | 38")
+    run.expect("an arrow takes the wheel back, said", ["The wheel's yours", "no longer driving after"], m, 5)
+    key("esc")
+    wait_focus(lambda d: d["id"] == "chatInput", 5)
+    say_in_app("//stand")
+    time.sleep(2)
 
 
 def vehicle_stop(run):

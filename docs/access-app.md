@@ -532,7 +532,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//find person NAME` / `object NAME` (or just `//find NAME`) | "Kestrel is 4 m away, two o'clock, to the northeast, at your level." |
 | `//face DEG` / `DIR` / `left`/`right`/`around` / `person NAME` / `object NAME` | turn; degrees are SL's (0 east, counter-clockwise), as Radegast's |
 | `//sit NAME` / `//sit ground`, `//stand` (`//unsit`) | sit on the nearest thing with that name, on the ground; stand |
-| `//follow NAME` / `//follow stop` / `//follow` | follow as they move (2.5 m behind where they'll be in a moment, around what's in the way), stop, or say who; said: when you're with them and they've stopped, when they sit, when they're getting away, when they're gone |
+| `//follow NAME` / `//follow NAME METRES` / `//follow stop` / `//follow` | follow as they move (2.5 m behind where they'll be in a moment, around what's in the way; at the wheel, Driving after someone, below), stop, or say who; said: when you're with them and they've stopped, when they sit, when they're getting away, when they're gone |
 | `//tp list` / `N` / `NAME` / `Region/X/Y/Z` / an SLurl | landmarks in "Radegast Landmarks" (else Landmarks), by number or name; or a place |
 | `//status [doing|region|parcel|location|money|time|music]` | any or all of them; music: what the parcel's stream is playing ("Playing: ...", in the whole status only when the parcel has music) |
 | `//route NOTECARD` / `//route` / `//route stop` / `//route resume` | play a route: a notecard's `//` lines one at a time (with no name, the lines on the clipboard, as copied from a blog), each walk or teleport finished before the next ("Step 2 of 7."), other lines read as notes; a step that doesn't get there pauses it, `//route resume` tries that step again. In the inventory, a notecard's Applications key has Play as a route |
@@ -662,7 +662,7 @@ stays until it's reached (within 1.6 m: "Reached ...", the flourish), taken off 
 5 s; walking by hand doesn't stop it (it stops a `//go`), and a walk's own beacon takes its place while the walk lasts.
 It finds its target in every region in view, then by the map's positions (CoarseLocationUpdate) for a person, so a car
 it's on crossing into the next region keeps it (0.1.0.877 lost her partner's car 5 s after it crossed). `//follow`
-while seated puts one on the person instead, saying following only walks. While a beacon sounds the world's sounds go
+while seated drives after them where the keys steer (Driving after someone, below), else puts one on them, saying why. While a beacon sounds the world's sounds go
 softer (`walk_beacon_duck`: as usual, softer, much softer (the default, a quarter), very soft; over half a second each
 way; not music or Access's own sounds): two cars' engines drowned it at its loudest (the blind tester, 2026-11-03).
 
@@ -811,6 +811,19 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   lines), how far ahead the track reached at speed (the `track from` lines: are rails named in time?), whether rails
   named Guide but phantom are ridden as this log suggests, and on a throw, which part took the touch, whether a touch
   toggles, how long the description took to change and whether the rails' names followed.
+
+**Driving after someone** (`Walk/WalkMode.Convoy.cs`; Claude Opus 5.5, 2026-11-04, after the blind tester steered a
+motorcycle by hand after her partner's by the beacon, jerkily, and asked for vehicles following each other): `//follow
+NAME` at the wheel of something that has taken the arrows holds those keys for her, about 10 m behind, or `//follow NAME
+METRES` (3 to 50). It follows the way they went (points every 2.5 m, in the grid's metres so a crossing moves nothing),
+not the straight line to them, and comes down to their pace in time (their pace from their position over half a second,
+4 m/s of braking assumed; Down while closing, never backing). It steers by the way the seat faces plus an offset learned
+on straights, not by the way it's travelling: travel lags the wheel, and steering by it spun the test's kart. The keys
+are held for a share of each 300 ms by how far off it is. Any arrow, Space or `//stop`, `//follow stop`, or standing up
+ends it; so does the vehicle not moving for 6 s, them lost for 6 s or jumping over 100 m (a stop follows those last two).
+Not for what runs on rails or shows a throttle, where Up held opens it all the way and the keys don't steer: she gets a
+beacon, saying why; the same if the seat hasn't taken her keys. Checked on the local grid in a kart only: real vehicles'
+turning and braking, roads, crossings, and how close a gap holds are for her and her partner.
 
 **Stopping a vehicle** (`Walk/WalkMode.Stop.cs`; Claude Opus 5.5, 2026-11-01, after the blind tester's freight train, an
 SLRR-style train driven by the arrows, ran off the end of its track and derailed or stranded her: once she had to

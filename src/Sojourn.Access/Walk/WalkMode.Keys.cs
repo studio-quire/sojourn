@@ -15,7 +15,7 @@ public sealed partial class WalkMode
     // send nothing): a short step walking, a nudge of a vehicle's steering
     readonly long[] _until = new long[8];
     readonly Dictionary<Keys, K> _pressedAs = new();
-    bool Down(K k) => _k[(int)k] || Environment.TickCount64 < _until[(int)k] || (k == K.Back && StopHolding) || (k == K.Fwd && StopHoldingUp);
+    bool Down(K k) => _k[(int)k] || Environment.TickCount64 < _until[(int)k] || (k == K.Back && StopHolding) || (k == K.Fwd && StopHoldingUp) || ConvoyDown(k);
     bool Held => Enumerable.Range(0, 8).Any(i => Down((K)i));
     bool HeldMove => Down(K.Fwd) || Down(K.Back) || Down(K.SideL) || Down(K.SideR);
     int Get(K k) => Down(k) ? 1 : 0;
@@ -134,6 +134,7 @@ public sealed partial class WalkMode
                 if (!_turnSmooth && Me() is { } b && !Driving(b)) Step(key == K.TurnL ? -1 : +1, b);
             }
             if (key is K.Fwd or K.Back or K.SideL or K.SideR && !HeldMoveBefore(key)) { _moveSince = now; _toldBlocked = false; }
+            if (key is K.Fwd or K.Back or K.TurnL or K.TurnR && _convoy is { } convoy) EndConvoy($"The wheel's yours: no longer driving after {convoy.Name}.");
             if (key is K.Fwd or K.Back && Me() is { Sitting: true }) CountThrottle(key);
             if (key == K.Fwd) _fwdSince = now;
             return true;

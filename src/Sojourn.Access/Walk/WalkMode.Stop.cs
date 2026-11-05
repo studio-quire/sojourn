@@ -100,6 +100,7 @@ public sealed partial class WalkMode
     /// as well) everything the app was walking stops.</summary>
     void StopKey(Body? b)
     {
+        if (_convoy is { } convoy) EndConvoy($"The wheel's yours: no longer driving after {convoy.Name}.");
         if (b is { Sitting: true } seated && Moving(seated))
         {
             bool heldUp = DrivenByHolding();

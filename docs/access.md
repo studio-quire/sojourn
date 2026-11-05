@@ -700,6 +700,16 @@ put on another line the night before with nobody changing anything. Her log of t
 of hers; asked whether that was the one. Old versions: told her to delete them, the data folder being shared.
 That evening: her partner had been flipping switches, which would explain it. Her first throw on Second Life worked (18:06).
 She couldn't copy switch lines to show him: all of them now go in the chat history too.
+- Her log `tester-20261104T232958-ce996b` (903, her first with the track followed): the throw at Clearwing took 1.1 s,
+  stand and rails together. Of 53 switches passed, 11 facing ones were on the line said, 15 unclear from the log, and
+  one at Tenera (18:14) went the other way: its stand changed to the branch by itself 6 m short, said as it happened
+  ("now set to the branch, Tenera Turnaround"), too late to do anything. Set against her at a
+  join, the switch changed for her within seconds at Sinica and Euclidia, as the standard's merge sensors would, and
+  she rolled through: so the line is mostly noise. Next: hold a trailing "other line" back until nearer, or say less.
+- 903's "The switch ahead is now set for you" as she passed a stand with two places on it wasn't a change: no longer said.
+- Log `tester-20261104T233532-b3e620`: steering a worn-or-sat chopper by hand after her partner by the beacon, which she
+  called a little better but very jerky, and asked for vehicles following each other, closer than 10 m too: Driving
+  after someone (`docs/access-app.md`). Horses she sits on are walking, by her note; that log is to come.
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 

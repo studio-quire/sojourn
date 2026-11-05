@@ -166,6 +166,9 @@ public sealed partial class WalkMode
             var way = WayKey(fresh);
             bool statusChanged = _switchToldAs.TryGetValue(s.Id, out var was) && was != status && status != "";
             bool wayChanged = _switchToldWay.TryGetValue(s.Id, out var wasWay) && wasWay != way && way != "";
+            // a stand serving two places: passing one, the next is another switch, facing where the last was trailing, not a
+            // change (0.1.0.903 said "now set for you" of it as she went by)
+            if (wayChanged && wasWay is { Length: > 0 } && wasWay.Split(' ')[0] != way.Split(' ')[0]) { wayChanged = false; _switchToldWay[s.Id] = way; }
             if (!statusChanged && !wayChanged) return;
             if (Me() is not { } b) return;
             SwitchLog($"{PartWords(fresh)} changed by itself: {(was is null or "" ? "unknown" : was)} to {(status == "" ? "unknown" : status)}"
