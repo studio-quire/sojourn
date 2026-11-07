@@ -449,6 +449,9 @@ public sealed partial class OffscreenRenderer : IDisposable
     static bool _lostOnce;
     long _firstFrame;
 
+    /// <summary>A complexity limit for tests (a person over it is a stand-in, except in their own pictures).</summary>
+    static readonly int? TestAvatarLimit = int.TryParse(Environment.GetEnvironmentVariable("SOJOURN_TEST_AVATAR_LIMIT"), out var testLimit) ? testLimit : null;
+
     void Step()
     {
         var r = _r!;
@@ -457,6 +460,7 @@ public sealed partial class OffscreenRenderer : IDisposable
         var me = _s.Client;
         var sim = me?.Network.Connected == true ? me.Network.CurrentSim : null;
         if (me != null) r.AvatarLimits.Self = me.Self.AgentID;   // never limited or an impostor
+        if (TestAvatarLimit is { } limit) r.AvatarLimits.MaxComplexity = limit;
         var look = _snapshots.WaitingSize ?? (_snapshots.SeenWaiting ? (1024, 576) : null);
         var glance = _waiting.Select(j => j.Glance).FirstOrDefault(g => g != null);
         bool busy = _busy();

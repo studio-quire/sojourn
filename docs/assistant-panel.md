@@ -339,9 +339,10 @@ or the desktop. It applies at once, to a panel put somewhere too.
 ## Showing things (Showing/)
 
 At the user's request (2026-10-25): the assistant can put things on screen to show the person information in whatever
-form helps, as the panel is for its words. Information only (the user's direction for Sojourn: the person operates
-nothing but the assistant): the one press an element takes is its own close key (and in the headset a card in view
-can be dragged somewhere, as every menu can).
+form helps, as the panel is for its words. As built, the one press an element takes is its own close key (and in
+the headset a card in view can be dragged somewhere, as every menu can). The earlier "information only" direction no
+longer holds: controls are good, with the assistant still the primary interface and not everything needing a direct
+control (user, 2026-11-05).
 - **The API**: `SojournShow` `show` (create, or change the element with that id: the fields given replace its own),
   `remove` ({id} or {all}), `list`; the assistant's `show` tool wraps all three. Each request's context line lists
   what's on screen ("on screen: tea (view: timer)"), so it can change or clear things. Events back to the sidecar:

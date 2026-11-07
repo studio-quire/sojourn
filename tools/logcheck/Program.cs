@@ -64,6 +64,12 @@ screen reader: a bare line naming Oriole
 10:00:36 ~words {"kind":"nearby","from":"objects","name":"Chat-Range","style":"object","text":"Ⅿoonbeam Tamarisk (tamsinmoth) is now in chat range."}
 10:00:37 ~heard {"from":"objects","how":"arrival","via":"NVDA","text":"Chat-Range: Ⅿoonbeam Tamarisk (tamsinmoth) is now in chat range."}
 10:00:38 ~heard {"from":"assistant","how":"arrival","via":"NVDA","text":"Ⅿoonbeam Tamarisk is by the bar."}
+10:00:39 ~words {"kind":"nearby","from":"objects","name":"Kestrel Tester","style":"object","text":"the walrus trombone waits behind the mill"}
+10:00:40 ~heard {"from":"objects","how":"arrival","via":"NVDA","text":"Kestrel Tester, IM: the walrus trombone waits behind the mill"}
+10:00:41 ~name {"id":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","legacy":"dotsy Resident","display":"."}
+10:00:42 ~heard {"from":"app","how":"answer","via":"NVDA","text":"Heading ENE.. or left, would like to:.."}
+10:00:43 ~name {"id":"cccccccc-cccc-cccc-cccc-cccccccccccc","legacy":"starry Resident","display":"★★★"}
+10:00:44 ~heard {"from":"app","how":"answer","via":"NVDA","text":"★★★ is here"}
 """;
 
 int failed = 0, passed = 0;
@@ -79,7 +85,7 @@ var text = res?.Text ?? "";
 var lower = text.ToLowerInvariant();
 
 // nothing of anyone else's words, names, keys, nor the person's own name, account folder, keys or address
-foreach (var w in new[] { "zebra", "marmalade", "quokka", "velvet", "platypus", "saffron", "narwhal", "gilded", "ferret", "pelican",
+foreach (var w in new[] { "zebra", "marmalade", "walrus", "trombone", "quokka", "velvet", "platypus", "saffron", "narwhal", "gilded", "ferret", "pelican",
              "mongoose", "hippo", "axolotl", "iguana", "kestrel", "wren", "birdie", "oriole", "quill", "unlisted", "stranger",
              "faraway", "juniper", "someperson", "moonbeam", "tamarisk", "tamsinmoth", "203.0.113.7", "2001:db8", "sk-ant-abc", "sqr-abc", "22222222-2222", "80751d6f", "db1c5249" })
     Check($"\"{w}\" isn't in it", !lower.Contains(w));
@@ -106,6 +112,7 @@ foreach (var w in new[]
          })
     Check($"keeps \"{w}\"", text.Contains(w));
 
+Check("an object named as a person: their words, left out", text.Contains("object person 1, nearby: (words left out)"));
 Check("an object relaying someone is left out", text.Contains("object Chat Relay, nearby: (words left out: they repeat someone's)"));
 Check("the assistant's line repeating someone is left out", text.Contains("10:00:14 (a line repeating someone's words, left out)"));
 Check("a read-back repeating someone's short line is left out", text.Contains("10:00:18 read out (again, NVDA): (words left out"));
@@ -118,7 +125,9 @@ Check("a record that doesn't parse is left out", text.Contains("10:00:22 (a reco
 Check("an entry with old-style chat in it is left out", text.Contains("10:00:23 (lines of an older kind, left out)"));
 Check("no ~name records sent", !text.Contains("~name") && !text.Contains("~words") && !text.Contains("~heard"));
 Check("a display name never looked up, written before a known name in brackets, is replaced too", text.Contains("Chat-Range: person 7 (person 7) is now in chat range.") && text.Contains("person 7 is by the bar."));
-Check("seven people counted", res?.People == 7);
+Check("a display name of punctuation is no stand-in: full stops stay", text.Contains("Heading ENE.. or left, would like to:.."));
+Check("one of symbols is still a name", text.Contains("person 8 is here"));
+Check("eight people counted", res?.People == 8);
 
 Check("a log from before the records isn't filtered", LogShare.Filter("10:00:00 info: sojourn[0] hello\n17:04 Someone: words\n") is null);
 Check("nor one whose header names an older format", LogShare.Filter("10:00:00 ~log {\"v\":1}\n10:00:01 info: x\n") is null);

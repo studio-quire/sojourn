@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using LibreMetaverse;
+using LibreMetaverse.Packets;
 using Sojourn.Core.Agents;
 
 namespace Sojourn.Core.Leap;
@@ -184,6 +185,27 @@ public sealed class TesselAgent : SessionApi
             if ((S.State.PrimFlagsOf(obj) & PrimFlags.Money) == 0 && (S.State.PrimFlagsOf(root) & PrimFlags.Money) == 0)
                 throw new LeapError("that object doesn't accept payment");
             send = () => c.Self.GiveObjectMoney(to, amount, obj.Properties?.Name ?? desc);
+            target = "object";
+        }
+        else if (S.VisibleRegions().FirstOrDefault(r => r.PrimById(to) != null) is { } next)
+        {
+            // a thing in the region beside this one: that region takes the payment, as the viewer sends it (llfloaterpay);
+            // LibreMetaverse's GiveObjectMoney only goes to the region she's in
+            var there = next.PrimById(to)!;
+            var root = S.Objects.RootOf(next, there);
+            if ((S.State.PrimFlagsOf(there) & PrimFlags.Money) == 0 && (S.State.PrimFlagsOf(root) & PrimFlags.Money) == 0)
+                throw new LeapError("that object doesn't accept payment");
+            var sim = c.Network.Simulators.FirstOrDefault(x => x.Handle == next.Handle) ?? throw new LeapError("that object's region isn't connected");
+            send = () => c.Network.SendPacket(new MoneyTransferRequestPacket
+            {
+                AgentData = { AgentID = c.Self.AgentID, SessionID = c.Self.SessionID },
+                MoneyData =
+                {
+                    Description = Utils.StringToBytes(there.Properties?.Name ?? desc), DestID = to, SourceID = c.Self.AgentID,
+                    TransactionType = (int)MoneyTransactionType.PayObject, Amount = amount,
+                    Flags = (byte)TransactionFlags.None, AggregatePermInventory = 0, AggregatePermNextOwner = 0,
+                },
+            }, sim);
             target = "object";
         }
         else

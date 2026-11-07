@@ -73,6 +73,9 @@ public sealed class Notifications
         return id;
     }
 
+    /// <summary>Something added with this key is still waiting for its answer.</summary>
+    public bool Waiting(string key) { Sweep(); return _byKey.TryGetValue(key, out var id) && _pending.ContainsKey(id); }
+
     public JsonObject? Get(Guid id) { Sweep(); return _pending.TryGetValue(id, out var p) ? p.Payload : null; }
 
     public IEnumerable<JsonObject> All { get { Sweep(); return _pending.Values.OrderBy(p => p.At).Select(p => p.Payload); } }

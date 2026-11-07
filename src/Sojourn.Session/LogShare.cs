@@ -166,6 +166,11 @@ public static class LogShare
                     who.Names.Add(shown);
         }
         var names = new Names(people);
+        // what's said through an object named as a person is theirs too, wherever it's repeated
+        foreach (var e in entries)
+            if (Parse(e[0]) is { Tag: "words" } r && Str(r.Body, "from") == "objects" && Str(r.Body, "text") is { } through
+                && StandIn.IsMatch(Mask(names.Replace(Str(r.Body, "name") ?? ""))))
+                theirWords.Add(through);
         var echo = new Echo(theirWords, objectNames);
 
         var outText = new StringBuilder();
@@ -245,7 +250,10 @@ public static class LogShare
                         {
                             var said = Mask(names.Replace(words));
                             var label = kind == "notice" ? $"{where} from {who}" : $"object {who}, {where}{how}";
-                            if (Relays.IsMatch(said) || echo.Repeats(said)) Drop($"{t} {label}{alert}: (words left out: they repeat someone's)");
+                            // an object named as a person is that person talking through it (a chat relay, a small
+                            // avatar's speaker): their words, whatever the object's kind (her logs of 2026-11-04 to -06)
+                            if (StandIn.IsMatch(who)) Drop($"{t} {label}{alert}: {LeftOut}");
+                            else if (Relays.IsMatch(said) || echo.Repeats(said)) Drop($"{t} {label}{alert}: (words left out: they repeat someone's)");
                             else Put($"{t} {label}{alert}: {said}");
                             return;
                         }
@@ -373,7 +381,7 @@ public static class LogShare
                 // the same name for two people: the person's own wins, then whoever the log met first
                 foreach (var n in p.Names) if (!_by.ContainsKey(n) || p.Me) _by[n] = p;
             }
-            var names = _by.Keys.Where(k => k.Length > 0).OrderByDescending(k => k.Length).ToList();
+            var names = _by.Keys.Where(k => k.Length > 0 && !Punctuation(k)).OrderByDescending(k => k.Length).ToList();
             var words = names.Where(IsCommon).ToList();
             var rest = names.Except(words, StringComparer.OrdinalIgnoreCase).ToList();
             if (rest.Count > 0)
@@ -385,6 +393,11 @@ public static class LogShare
                     + string.Join("|", words.Select(w => Regex.Escape(char.ToUpperInvariant(w[0]).ToString()) + "(?i:" + Regex.Escape(w[1..]) + ")"))
                     + @")(?![\p{L}\p{N}_])", RegexOptions.CultureInvariant);
         }
+
+        /// <summary>A display name of nothing but punctuation (".") says nothing of who it is, and replaced it landed in
+        /// every full stop of a line ("ENE.person 23 or left", the blind tester's logs, 2026-11-05). Only punctuation:
+        /// fancy letters and symbols (math alphabets are surrogates) stay names, as more is replaced than needed.</summary>
+        static bool Punctuation(string name) => name.All(c => char.IsPunctuation(c) || char.IsWhiteSpace(c) || c < 128 && char.IsSymbol(c));
 
         static bool IsCommon(string name) => name.Length > 1 && name.All(char.IsLetter) && Common.Contains(name.ToLowerInvariant());
 

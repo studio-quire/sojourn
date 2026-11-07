@@ -633,7 +633,8 @@ public sealed partial class MainForm
         Moving: move a metre to my left, move by 20 cm up, move to 128 64 25
         Turning: turn 90 left, turn 45 around x. Sizing all of it: scale 2
         where: where it is, what it rests on and touches. what: what it is. look: the assistant describes it
-        The whole object: duplicate, delete, take. Joining: link NAME, unlink
+        The whole object: duplicate, delete, take
+        Joining: link tunnel joins the object called tunnel to this one, which stays the root. link alone lists your objects to pick from. unlink takes a part out again
         Parts: edit NAME, part 2, root, next, previous
         In content: add NAME, remove NAME, copy NAME
         undo, redo. done, or Escape, goes back
@@ -957,16 +958,53 @@ public sealed partial class MainForm
     async Task LinkAsync(PrimLook l, string name)
     {
         if (Host?.Session is not { } s || s.Region is not { } w || BuildPrim() is not { } p) return;
-        if (name.Trim().Length == 0) { Answer("link NAME: the other object, by its name (within 30 metres)."); return; }
         var root = s.Objects.RootOf(w, p);
-        var other = (await _ops.ObjectsAsync(30, 60, name.Trim())).FirstOrDefault(t => t.Id != root.ID && t.Name.Contains(name.Trim(), StringComparison.OrdinalIgnoreCase));
-        if (other == null) { Answer($"Nothing called {name.Trim()} within 30 metres to link."); return; }
+        var near = (await _ops.ObjectsAsync(30, 60)).Where(t => t.Id != root.ID).ToList();
+        name = name.Trim();
+        string also = "";
+        PersonOps.Thing? other;
+        if (name.Length == 0)
+        {
+            var mine = near.Where(t => t.Mine).ToList();
+            if (mine.Count == 0) { Answer("None of your objects are within 30 metres to link."); return; }
+            var picked = Dialogs.Pick(this, $"Link to {l.RootName}", mine.Select(t => new Dialogs.Someone(t.Id, t.Name, _ops.Where(t.Pos) ?? "")).ToList(),
+                _ => Task.FromResult<Dialogs.Someone?>(null), "Your objects within 30 metres");
+            if (picked == null) return;
+            other = mine.First(t => t.Id == picked.Id);
+        }
+        else
+        {
+            var called = near.Where(t => t.Name.Contains(name, StringComparison.OrdinalIgnoreCase)).ToList();
+            var exact = called.Where(t => t.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (exact.Count > 0) called = exact;
+            if (called.Count == 0) { Answer($"Nothing called {name} within 30 metres to link."); return; }
+            var mine = called.Where(t => t.Mine).ToList();
+            if (mine.Count == 0) { Answer($"{called[0].Name} isn't yours, so it can't be linked."); return; }
+            other = mine[0];
+            if (mine.Count > 1) also = $" That's the nearest of {mine.Count} called {name}, {_ops.Where(other.Pos)}.";
+        }
+        await LinkToAsync(l, root, other, also);
+    }
+
+    /// <summary>Whether a build is open that this thing could be linked to.</summary>
+    bool LinkableNow(PersonOps.Thing t) => BuildPrim() is { } p && Host?.Session is { Region: { } w } s && s.Objects.RootOf(w, p).ID != t.Id;
+
+    /// <summary>Objects' "Link to what I'm editing".</summary>
+    async Task LinkThingAsync(PersonOps.Thing t)
+    {
+        if (Host?.Session is not { } s || s.Region is not { } w || BuildPrim() is not { } p || BuildLook() is not { } l) { Answer("Nothing is being edited: Control+B on something first."); return; }
+        await LinkToAsync(l, s.Objects.RootOf(w, p), t, "");
+    }
+
+    async Task LinkToAsync(PrimLook l, Primitive root, PersonOps.Thing other, string also)
+    {
+        if (Host?.Session is not { } s || s.Region is not { } w) return;
         var r = await _ops.DoAsync("TesselBuild", "link", new JsonObject { ["ids"] = new JsonArray(root.ID.ToString(), other.Id.ToString()) });
         if (PersonOps.Error(r) is { } e) { Answer($"Not linked: {Theirs(e)}"); return; }
         var newRoot = UUID.TryParse(r.Str("root_id"), out var nr) ? nr : root.ID;
         await RefreshBuildAsync(said: false);
         var count = s.Objects.Linkset(w, w.PrimById(newRoot) ?? root).Count;
-        Answer($"Linked {other.Name} to {l.RootName}: {count} parts, {(newRoot == root.ID ? $"{l.RootName}'s root still the root" : $"{other.Name}'s root the root now")}. unlink takes a part out again; undo too.");
+        Answer($"Linked {other.Name} to {l.RootName}: {count} parts, {(newRoot == root.ID ? $"{l.RootName}'s root still the root" : $"{other.Name}'s root the root now")}. unlink takes a part out again; undo too.{also}");
     }
 
     async Task UnlinkAsync(PrimLook l)

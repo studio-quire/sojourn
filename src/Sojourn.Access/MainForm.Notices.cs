@@ -33,6 +33,7 @@ public sealed partial class MainForm
     PendingConfirm? _cancelledHere;   // the confirmation the person last cancelled here (its op's refusal goes unsaid)
     ContextMenuStrip _noticeMenu = null!;
     (Control Control, TabPage Page)? _noticesFrom;   // where Control+N came from: Escape goes back there
+    long _noticePressed;         // the last key pressed on the notices list
     bool _saidLeft;            // the next refill's "N waiting." is said already (an Ignore says what's left)
 
     /// <param name="Kind">the notification's name (ScriptDialog, ScriptQuestion, LoadWebPage ...); "" for a confirmation</param>
@@ -40,6 +41,11 @@ public sealed partial class MainForm
     {
         /// <summary>A script's menu (or its text box): what paging by key follows from page to page.</summary>
         public bool Menu => Kind is "ScriptDialog" or "ScriptDialogGroup";
+
+        /// <summary>The button that blocks whatever sent it, if any: on B, never on a number (a menu's number pressed on the
+        /// question that had taken its place blocked the object, the tester's ski run, 2026-11-05).</summary>
+        public int Block => Buttons.FindIndex(b => b.Name is "Client_Side_Mute" or "Mute");
+        public string? KeyOf(int i) => i == Block ? "B" : ButtonKey(i);
     }
 
     void BuildNotices()
@@ -204,7 +210,7 @@ public sealed partial class MainForm
     static string KeyWords(Notice n)
     {
         if (n.Confirm != null) return n.Confirm.Lists.Count > 0 ? " Tab: the whole list. Enter confirms, Escape cancels." : " Enter confirms, Escape cancels.";
-        var keys = string.Join(", ", n.Buttons.Select((b, i) => ButtonKey(i) is { } k ? $"{k} {b.Label}" : b.Label).Append("Delete Ignore"));
+        var keys = string.Join(", ", n.Buttons.Select((b, i) => n.KeyOf(i) is { } k ? $"{k} {b.Label}" : b.Label).Append("Delete Ignore"));
         var end = n.Words.Length > 0 && n.Words[^1] is '.' or '?' or '!' ? "" : ".";
         return end + $" Keys: {keys}." + (n.TextBox ? " Enter to reply." : "");
     }
@@ -228,7 +234,7 @@ public sealed partial class MainForm
                 var label = n.Buttons[i].Label;
                 var b = new Button
                 {
-                    Name = $"noticeButton{i + 1}", Text = n.Confirm != null ? label : ButtonKey(i) is { } k ? $"{k}: {label}" : label, AutoSize = true, UseMnemonic = false,
+                    Name = $"noticeButton{i + 1}", Text = n.Confirm != null ? label : n.KeyOf(i) is { } k ? $"{k}: {label}" : label, AutoSize = true, UseMnemonic = false,
                 };
                 b.Click += (_, _) => Press(n, at, fromButton: true);
                 _noticeButtons.Controls.Add(b);
@@ -245,6 +251,7 @@ public sealed partial class MainForm
     {
         var n = Selected();
         if (n == null) return;
+        _noticePressed = Environment.TickCount64;
         if (e.KeyCode == System.Windows.Forms.Keys.Apps || e.KeyData == (System.Windows.Forms.Keys.Shift | System.Windows.Forms.Keys.F10))
         {
             e.Handled = e.SuppressKeyPress = true;
@@ -258,7 +265,13 @@ public sealed partial class MainForm
             // a script menu's 11th and 12th, as on the top row after 0 (and the VR client's reader keys)
             : e.KeyCode is System.Windows.Forms.Keys.OemMinus or System.Windows.Forms.Keys.Subtract && !e.Control && !e.Alt ? 10
             : e.KeyCode == System.Windows.Forms.Keys.Oemplus && !e.Control && !e.Alt && !e.Shift ? 11 : -1;
-        if (digit >= 0 && n.Confirm == null) { e.Handled = e.SuppressKeyPress = true; Press(n, digit, fromButton: false); }
+        if (digit >= 0 && n.Confirm == null)
+        {
+            e.Handled = e.SuppressKeyPress = true;
+            if (digit == n.Block) Reader?.Answer($"No key {ButtonKey(digit)} there.", keep: false);
+            else Press(n, digit, fromButton: false);
+        }
+        else if (e.KeyData == System.Windows.Forms.Keys.B && n.Confirm == null && n.Block >= 0) { e.Handled = e.SuppressKeyPress = true; Press(n, n.Block, fromButton: false); }
         else if (e.KeyCode == System.Windows.Forms.Keys.Delete && n.Confirm == null) { e.Handled = true; Ignore(fromButton: false); }
         else if (e.KeyCode == System.Windows.Forms.Keys.Enter && n.Confirm != null) { e.Handled = e.SuppressKeyPress = true; Press(n, 0, false); }
         else if (e.KeyCode == System.Windows.Forms.Keys.Escape && n.Confirm != null) { e.Handled = e.SuppressKeyPress = true; Press(n, 1, false); }
@@ -287,7 +300,7 @@ public sealed partial class MainForm
             for (int i = 0; i < n.Buttons.Count; i++)
             {
                 int at = i;
-                var k = ButtonKey(i);
+                var k = n.KeyOf(i);
                 // no mnemonics: a script's labels are its own words, and its keys are the numbers
                 var item = new ToolStripMenuItem(n.Buttons[i].Label.Replace("&", "&&"), null, (_, _) => Press(n, at, fromButton: true))
                 {
@@ -393,8 +406,27 @@ public sealed partial class MainForm
     async Task RespondAsync(Notice n, JsonObject response, string label)
     {
         var err = await Host!.Session.Notify.RespondAsync(n.Id, response);
-        Reader?.Answer(err == null ? $"{label}, done." : $"{label} didn't go through: {err}");
+        bool blocked = n.Block >= 0 && response.ContainsKey(n.Buttons[n.Block].Name);
+        Reader?.Answer(err != null ? $"{label} didn't go through: {err}" : blocked ? $"Blocked {Sender(n)}." : $"{label}, done.");
+        if (err == null) _ = SayNextNoticeAsync(n);
     }
+
+    /// <summary>What the keys now answer, said after an answer: the list moved to it as the answer went off, and the answer's
+    /// words cut off NVDA reading it, so the next number pressed went to something unheard (two questions and a menu at
+    /// once, the tester's ski run, 2026-11-05). Not when a key has come since, the focus has left, or a menu's next page
+    /// is what's selected (nothing cuts that off).</summary>
+    async Task SayNextNoticeAsync(Notice answered)
+    {
+        long pressed = _noticePressed;
+        await Task.Delay(answered.Menu ? 1000 : 500);
+        if (IsDisposed || pressed != _noticePressed || !_notices.Focused || Selected() is not { } next || next.Id == answered.Id) return;
+        if (next.Menu && next.ObjectId == answered.ObjectId) return;
+        Reader?.Answer($"Next: {next.Words}{KeyWords(next)}", keep: false);
+    }
+
+    /// <summary>Who a notice is from, short: a script question's object by its name in quotes, else the words before the colon.</summary>
+    static string Sender(Notice n) =>
+        n.Kind.StartsWith("ScriptQuestion", StringComparison.Ordinal) ? n.Words.Split(',', 2)[0].Trim() : n.Words.Split(':', 2)[0].Trim();
 
     /// <summary>Delete, the Ignore button or menu item: the official viewer's Ignore, the notice gone unanswered (a
     /// script menu's object hears nothing; an offer stays unanswered). Said, with the next one or none left.</summary>

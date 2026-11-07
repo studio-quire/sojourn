@@ -132,9 +132,9 @@ public sealed partial class MainForm
     }
 
     /// <summary>Pay someone: the amount asked, then the person's confirmation (Notices), then what the grid said.</summary>
-    async Task PayAsync(UUID id, string name)
+    async Task PayAsync(UUID id, string name, int? given = null)
     {
-        var text = Dialogs.Ask(this, $"Pay {name}", "Amount in L$");
+        var text = given?.ToString() ?? Dialogs.Ask(this, $"Pay {name}", "Amount in L$");
         if (text == null) { Reader?.Answer("Not paid.", keep: false); return; }
         if (!int.TryParse(text.Trim().TrimStart('L', '$').Trim(), out var amount) || amount <= 0) { Reader?.Answer($"{text} isn't an amount.", keep: false); return; }
         if (await ConfirmedAsync("TesselAgent", "pay", new JsonObject { ["to"] = id.ToString(), ["amount"] = amount }) is not { } r) return;

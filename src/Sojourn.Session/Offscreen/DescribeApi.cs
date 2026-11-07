@@ -505,8 +505,8 @@ public sealed class DescribeApi : LeapApi
             return "nothing of their look had loaded yet: they show only as a loading cloud (no body, skin, hair or clothes drawn). " +
                    "Say their look hasn't loaded yet and to ask again in a moment; describe nothing of their appearance";
         if (load.Drawn == "jelly")
-            return "drawn as a plain one-colour stand-in (their avatar is over this viewer's complexity limit), not their real look: " +
-                   "describe no colours, skin, hair or clothes, only that they're shown as a plain figure and their rough shape and pose";
+            return "drawn as a plain one-colour stand-in, as the person chose never to draw this avatar, not their real look: " +
+                   "describe no colours, skin, hair or clothes, only that they're shown as a plain figure by the person's own choice and their rough shape and pose";
         var notes = new List<string>();
         if (load.BakesLoading + load.BakesMissing > 0)
             notes.Add("their skin and body (as Second Life bakes them) hadn't loaded: skin colour and any baked-on clothing unknown");
@@ -565,7 +565,7 @@ public sealed class DescribeApi : LeapApi
             return load.Drawn switch
             {
                 "cloud" => "their look hadn't loaded: a loading cloud, nothing of their appearance drawn",
-                "jelly" => "shown as a plain one-colour stand-in, not their real look",
+                "jelly" => "shown as a plain one-colour stand-in, not their real look (described on their own, they're drawn whole)",
                 null => null,
                 _ => load.BakesLoading > 0 || load.Faces > 0 && load.Loading * 2 >= load.Faces
                     ? "their look hadn't loaded: drawn plain grey or white, colours unknown" : null,

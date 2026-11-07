@@ -6,14 +6,15 @@ and their wiring are `src/Sojourn.Session/Social/`); and objects' floating text,
 
 ## The rule
 
-Information only (user, 2026-10-25): visible UI is fine, but the person operates nothing here except through the
-assistant (plus the settings menu, confirmations, and their own touch and sit: `docs/vr.md` > Controls). Replying,
-accepting a teleport or an item go through the assistant (`message`, `say`, `dialogs`, `answer_dialog`), which can
-also read chat back (`recent_chat`). The words follow the panel's rule: no instructions, no labels saying what things
-are. Two exceptions, both the person's own hand: reading an entry in full (user, 2026-10-26: notifications and pop-up
-menus need a way to be opened and read whole; The feed below), and answering a waiting notice with its keys or putting
-it away, as the viewer's toast does (2026-10-27, after a script menu never showed and notices piled up unseen; Notices
-below). The assistant still answers through `answer_dialog`, under the confirmation gate.
+The assistant is the primary interface, but controls are good, and not everything needs a direct one (user,
+2026-11-05; this replaces the "information only" rule of 2026-10-25). As built: replying and accepting a teleport or an
+item go through the assistant (`message`, `say`, `dialogs`, `answer_dialog`), which can also read chat back
+(`recent_chat`). The person's own hand has the settings menu, confirmations, their touch and sit (`docs/vr.md` >
+Controls), reading an entry in full (user, 2026-10-26: notifications and pop-up menus need a way to be opened and read
+whole; The feed below), and answering a waiting notice with its keys or putting it away, as the viewer's toast does
+(2026-10-27, after a script menu never showed and notices piled up unseen; Notices below). The assistant still answers
+through `answer_dialog`, under the confirmation gate. The words follow the panel's rule: no instructions, no labels
+saying what things are.
 
 ## What shows
 

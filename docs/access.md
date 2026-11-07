@@ -720,6 +720,35 @@ She couldn't copy switch lines to show him: all of them now go in the chat histo
   called a little better but very jerky, and asked for vehicles following each other, closer than 10 m too: Driving
   after someone (`docs/access-app.md`). Horses she sits on are walking, by her note; that log is to come.
 
+### Tip jars, ski balls, a motorbike and an igloo (0.1.0.918, the blind tester, 2026-11-05 and 06)
+
+On the builders' line and five logs (our words). What's built from it is in `docs/access-app.md`.
+- **Tip jars and vendors**: she couldn't pay a tip jar at a club and paid the person instead. Objects had no Pay or Buy at
+  all, though Radegast has both. Now Pay..., Buy and Take a copy on objects and parts, the list saying which take money or
+  are for sale, `//pay` and `//buy`.
+- **Describing a club, person by person**: she found it much improved, and liked that it said why when it couldn't
+  describe someone. Two of them came out as plain stand-ins, over the complexity limit. Someone asked about is now drawn
+  whole for their own pictures. A small winged avatar was told as a ginger cat by its look; others' worn names aren't
+  used for what they are (open).
+- **Following by motorbike** (`//follow` seated, on her chopper, 20:04 onward): it worked and delighted her; she told a
+  friend who finds driving hard. She found 3 metres the closest she could ask for; now 1.
+- **A ski ball's dialogs**: sitting on one sent an attach question up to three times over its menu of runs, and her next
+  number went to whatever was selected, which she hadn't heard (the answer's words cut NVDA off): Yes, Yes, then Block on
+  the question when she likely meant a run, then 6, then No twice. So the same question asked again makes no second
+  notice, the next notice is said after an answer with its keys, Block is on B and never a number, and there's a block
+  list to undo it (Control+Shift+Y): nothing could unblock in Access before. Whether that's how she heard it is a question.
+- **A lift's top**: `//go` to her partner found no way to walk and no teleport that would land (a parcel with a landing
+  point), and her `//go` without the word `person` only got the usage. He offered her a teleport, which worked. Now
+  `//go NAME` takes a name alone and the line says asking for an offer may work.
+- "You're off the ski ball: it went on without you" when the run ended and let her off: now says only that she's off it
+  while it was moving.
+- **Building an igloo and a tunnel** on a skybox with commands from Tessel: she did a lot, but couldn't find linking (one
+  word in the help); told her `link NAME`, and it worked on Second Life, a sighted friend confirming. Now a line of its own
+  in the help, `link` alone lists her things, and Objects' menu has Link to what I'm editing. Two of her commands went to
+  chat as `build size 1.2` (no slashes, in Say): a question whether Say should take them.
+- **Her log's filter**: objects named as a person (someone speaking through one, a relay or a tiny avatar's) kept their
+  words in shared logs. Fixed in Send a log; 17 local copies scrubbed and the 10 still on the relay deleted.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's

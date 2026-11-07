@@ -140,6 +140,10 @@ public sealed partial class MainForm : Form
         _cmd.Quote = text => Answer(text, LineFrom.People);
         _cmd.SendLog = () => BeginInvoke(() => RealInput.Ours(SendLog));
         _cmd.Touch = words => (Task)Invoke(() => TouchWordsAsync(words));
+        _cmd.Block = words => (Task)Invoke(() => BlockWordsAsync(words));
+        _cmd.Unblock = words => (Task)Invoke(() => UnblockWordsAsync(words));
+        _cmd.Pay = words => (Task)Invoke(() => PayWordsAsync(words));
+        _cmd.Buy = words => (Task)Invoke(() => BuyWordsAsync(words));
         _cmd.Switch = words => (Task)Invoke(() => _walk.SwitchWordsAsync(words));
         _cmd.Outfit = () => (Task)Invoke(() => OutfitListAsync());
         _cmd.Upload = words => (Task)Invoke(() => UploadWordsAsync(words));
@@ -543,6 +547,7 @@ public sealed partial class MainForm : Form
         Control+Shift+C: copy from the mark to the line you're on
         Control+Shift+L: copy the assistant's last answer, whole
         Control+Shift+K: the links seen in chat, IMs and notices; Enter opens one
+        Control+Shift+Y: what you've blocked; Enter or Delete unblocks one
         Enter on a line with a link in a history: opens it
         Control+Shift+T: times in the histories
         Control+Shift+A: arrivals and departures read out
@@ -593,6 +598,8 @@ public sealed partial class MainForm : Form
         //land and a command, from any input
 
         Objects
+        Applications key or Enter: what you can do with it: touch, sit, Pay on what takes payment, Buy on what's for sale, Take a copy
+        //pay NAME or //pay NAME 50, //buy NAME: the same by name, from Say
         Tab: the selected one's parts, then a part's faces
         Enter: touch
         Alt+Shift+7: what you wear instead (HUDs, then a pet or anything with a menu); Alt+7's Show switches back
@@ -685,6 +692,7 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.Shift | Keys.C: CopyFromMark(); return true;
             case Keys.Control | Keys.Shift | Keys.L: CopyLastAnswer(); return true;
             case Keys.Control | Keys.Shift | Keys.K: ShowLinks(); return true;
+            case Keys.Control | Keys.Shift | Keys.Y: _ = ShowBlocksAsync(); return true;
             case Keys.Control | Keys.Shift | Keys.G: ShowGestures(); return true;
             case Keys.Control | Keys.Shift | Keys.O: _ = NextOutputAsync(); return true;
             case Keys.Control | Keys.Shift | Keys.T: ToggleTimestamps(); return true;

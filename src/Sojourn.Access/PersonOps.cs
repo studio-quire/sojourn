@@ -102,6 +102,15 @@ public sealed class PersonOps(AgentSession s)
         public bool Hud { get; init; }
         /// <summary>The person's own, in the world: theirs to take or delete.</summary>
         public bool Mine { get; init; }
+        /// <summary>It or one of its parts has a money event; PayTo: the root if it does, else that part.</summary>
+        public bool Money { get; init; }
+        public UUID PayTo { get; init; }
+        /// <summary>For sale, as its properties say ("original", "copy", "contents"), and the price; null: not, or not known yet.</summary>
+        public string? Sale { get; init; }
+        public int Price { get; init; }
+        public bool MayCopy { get; init; }
+        /// <summary>What the viewer's left click would do: "pay", "buy", "sit"...; null: touch.</summary>
+        public string? Click { get; init; }
     }
 
     /// <summary>Objects around (root objects, not attachments), nearest first; query: words in the name, description
@@ -114,13 +123,26 @@ public sealed class PersonOps(AgentSession s)
         if (renew is { } secs) args["renew"] = secs;
         var r = await ReadAsync("TesselObjects", "nearby", args);
         var list = new List<Thing>();
+        // a part's money event counts for its object: the region says it on that part alone
+        var childMoney = new Dictionary<UUID, UUID>();
+        if (s.Region is { } region)
+            foreach (var p in region.Prims.Values)
+                if (p.ParentID != 0 && (s.State.PrimFlagsOf(p) & PrimFlags.Money) != 0 && region.Prims.TryGetValue(p.ParentID, out var parent))
+                    childMoney.TryAdd(parent.ID, p.ID);
         foreach (var o in (r["objects"] as JsonArray ?? new()).OfType<JsonObject>())
         {
             if (!UUID.TryParse(o.Str("id"), out var id) || o["pos"] is not JsonArray pos || pos.Count < 3) continue;
             var flags = (o["flags"] as JsonArray ?? new()).Select(f => f?.ToString()).ToHashSet();
             var name = o.Str("name") is { Length: > 0 } n ? n : "object";
+            bool rootMoney = flags.Contains("pay");
+            bool kidMoney = childMoney.TryGetValue(id, out var payPart);
             list.Add(new Thing(id, name, new Vector3((float)pos[0]!.GetValue<double>(), (float)pos[1]!.GetValue<double>(), (float)pos[2]!.GetValue<double>()),
-                o["dist"]?.GetValue<double>() ?? 0, o.Str("click_action") == "sit", flags.Contains("touch"), o.Str("text")) { Mine = flags.Contains("mine") });
+                o["dist"]?.GetValue<double>() ?? 0, o.Str("click_action") == "sit", flags.Contains("touch"), o.Str("text"))
+            {
+                Mine = flags.Contains("mine"), MayCopy = flags.Contains("copy"), Click = o.Str("click_action"),
+                Sale = (o["sale"] as JsonObject)?.Str("type"), Price = (o["sale"] as JsonObject)?["price"]?.GetValue<int>() ?? 0,
+                Money = rootMoney || kidMoney, PayTo = rootMoney || !kidMoney ? id : payPart,
+            });
         }
         return list.OrderBy(t => t.Dist).ToList();
     }

@@ -4,7 +4,7 @@
 points to stay private and aren't in this repository: what the headset sittings left open (`docs/sittings.md`), the
 board, `local/`, and the other Studio Quire projects under `projects/`. For people, start with README.md.*
 
-Our own Second Life client, built for VR first, with a personal AI that operates the client for you by voice: whatever is awkward in a headset (inventory, outfits, search, typing, building, dialogs, settings). An accessibility tool for a person who is present and in charge, not an autonomous resident like Tessel; it runs on the desktop too. Its sibling Sojourn Access, in the same codebase, makes Second Life usable without sight. Started 2026-10-20 (Claude Opus 5.5, with the user).
+Our own Second Life client, built for VR first, with a personal AI that operates the client for you by voice: whatever is awkward in a headset (inventory, outfits, search, typing, building, dialogs, settings). It's for a person who is in charge, not an autonomous resident like Tessel; it runs on the desktop too. Its sibling Sojourn Access, in the same codebase, makes Second Life usable without sight. Started 2026-10-20 (Claude Opus 5.5, with the user).
 
 ## Where it stands (2026-10-31)
 
@@ -17,7 +17,7 @@ Our own Second Life client, built for VR first, with a personal AI that operates
   social, land, building, inventory and the AO, the map, voice and media extras, the menus, the login screen, the
   launcher), and RLV/RLVa (2026-11-01, off by default: `docs/rlv.md`). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
 - **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01), a first build editor (2026-11-02) and About Land (2026-11-03); test builds (the assistant bundled) published as releases
-  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.916 (2026-11-04); a blind
+  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.918 (2026-11-04); a blind
   tester's first session on Second Life was 2026-10-30. `docs/access.md` (plan, milestones, what testers said), `docs/access-app.md` (as built, packaging).
 - **Public source** since 2026-10-29 (`docs/publishing.md`). **First release, 0.1.0.867, published 2026-11-02**: a
   pre-release on studio-quire/sojourn (Velopack: install, updates at the person's press, uninstall; `tools/package.py`,
@@ -34,8 +34,9 @@ Our own Second Life client, built for VR first, with a personal AI that operates
 The product:
 - **Build our own** (user, 2026-10-20): no VR mods (P373R's Firestorm VR Mod), no injectors (VorpX), no official viewer
   plus patches; we can probably do it better. A VR-native client and the assistant, as one project.
-- **An accessibility tool** (user, 2026-10-20): the assistant acts for a human who is logged in and directing it, so
-  this account doesn't carry Tessel's scripted-agent setup.
+- **A person's assistant, not a bot** (2026-10-20): the assistant acts for a human who directs it, so this account
+  doesn't carry Tessel's scripted-agent setup. Only Sojourn Access is an accessibility tool in the usual sense; Sojourn
+  has things in common with one, but that isn't the perspective to develop it from (user, 2026-11-05).
 - **A full viewer for release** (user, 2026-10-27, 2026-10-29): every feature other viewers have that we lack gets
   closed, not only the valuable ones (`docs/viewer-gaps.md`); the release waits for most gaps, not every last one, and
   is planned relatively soon. Free and open source as licences permit. The name is Sojourn (the user, 2026-11-01). No
@@ -116,8 +117,9 @@ The assistant (detail in `docs/assistant.md`):
   `docs/assistant.md` > What it may do.
 - **Jobs are the assistant's** (user, 2026-10-25): one at a time, unbounded (no time limit or stall watchdog); the
   assistant decides whether to start one, its model, brief and helpers, and when to check, change, stop or resume it.
-  The harness keeps only the mechanics. Plan usage isn't economised, so no caps. A job the person asked for may act
-  until done or stopped; nothing starts acting on its own.
+  The harness keeps only the mechanics. No caps today, and adding them isn't a priority: people can manage that in
+  other ways and it could get finicky (user, 2026-11-05). A job the person asked for may act until done or stopped,
+  while they're away too (`docs/tpv-policy.md`); nothing starts acting on its own.
 - **The person's choices** (user, 2026-10-25): replies on the panel by default, spoken by a local voice as an option; no
   name and a plain character by default, both optional and written as what the person would like ("they'd like you to
   use the name X"), never "you are X"; a glassy look by default, which the assistant can change when asked; its

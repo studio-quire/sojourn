@@ -53,6 +53,9 @@ public sealed class Commands
             {
                 case "help": Help(string.Join(" ", rest)); return true;
                 case "links": Links?.Invoke(); return true;
+                case "block": if (Block != null) await Block(string.Join(" ", rest)); return true;
+                case "unblock": if (Unblock != null) await Unblock(string.Join(" ", rest)); return true;
+                case "blocks": if (Unblock != null) await Unblock(""); return true;
                 case "about" or "version": _say(About?.Invoke() ?? "Sojourn Access."); return true;
                 case "describe": if (Describe != null) await Describe(string.Join(" ", rest)); return true;
                 case "go": return await GoAsync(rest);
@@ -71,6 +74,8 @@ public sealed class Commands
                 case "scriptinfo": await ScriptInfoAsync(); return true;
                 case "beacon": await BeaconAsync(rest); return true;
                 case "touch": if (Touch != null) await Touch(string.Join(" ", rest)); return true;
+                case "pay": if (Pay != null) await Pay(string.Join(" ", rest)); return true;
+                case "buy": if (Buy != null) await Buy(string.Join(" ", rest)); return true;
                 case "switch": if (Switch != null) await Switch(string.Join(" ", rest)); return true;
                 case "stop": if (WalkMode is { } walk) walk.RequestStop(); else _say("Not in a region yet."); return true;
                 case "ride": if (Ride != null) await Ride(string.Join(" ", rest)); return true;
@@ -132,6 +137,9 @@ public sealed class Commands
             "a sound on someone or something to walk to (by hand in walk mode, or by //go), until you reach it; off; or where it is"),
         ("touch", "//touch NAME | //touch OBJECT PART | //touch NAME face top (or bottom, front, far, left, right, inside, a number)",
             "touch the nearest thing or part within 10 metres with that name (an object whose only touchable part is a child: that part), on a face if given"),
+        ("pay", "//pay NAME | //pay NAME 50",
+            "pay someone here, or something within 30 metres that takes payment (a tip jar); the amount asked if not given, and your confirmation either way"),
+        ("buy", "//buy NAME", "buy the nearest thing with that name within 30 metres that's for sale; your confirmation with its price"),
         ("switch", "//switch | //switch flip | //switch main | //switch branch",
             "the next rail switch and how it's set; throw it, or set it to the main line or the branch (walk mode's W and Shift+W)"),
         ("stop", "//stop", "stop: seated on something moving, it's stopped by its controls, as Space in walk mode; otherwise a walk, a follow or a route"),
@@ -147,6 +155,9 @@ public sealed class Commands
         ("voice", "//voice | //voice answer | //voice decline", "who's in voice and speaking, your mic; or answer or decline a call ringing"),
         ("imsound", "//imsound NAME SOUND | //imsound NAME usual | //imsound NAME | //imsound",
             "a sound of its own for someone's IMs, or a group's chat, in place of the usual one; usual takes it back; with only a name, theirs; with nothing, the sounds and who has one"),
+        ("block", "//block NAME", "block someone or something nearby: what they say, send or ask stops reaching you"),
+        ("unblock", "//unblock NAME", "take someone or something off your block list"),
+        ("blocks", "//blocks", "your block list, as Control+Shift+Y: Enter or Delete unblocks one"),
         ("links", "//links", "the links seen in chat, IMs and notices, as Control+Shift+K: Enter opens one"),
         ("about", "//about", "which version of Sojourn Access this is, and where your settings and logs are"),
         ("sendlog", "//sendlog", "send a session's log to Studio Quire, with a note on what happened; other people's words are left out"),
@@ -173,6 +184,12 @@ public sealed class Commands
         string what;
         double stop = 0.6;   // the autopilot coasts a little after letting go: routes of waypoints want it close
         var kind = a[0].ToLowerInvariant();
+        // a name alone: someone nearby, else something (she typed it so at a lift's top, 2026-11-05, and heard the usage twice)
+        if (kind is not ("xyz" or "person" or "object") && !double.TryParse(a[0], NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+        {
+            kind = await _ops.FindPersonAsync(string.Join(" ", a)) != null ? "person" : "object";
+            a = a.Prepend(kind).ToList();
+        }
         if (kind == "xyz")
         {
             var nums = string.Join(",", a.Skip(1)).Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries)
@@ -435,7 +452,7 @@ public sealed class Commands
         }
         if (TeleportWontLand(target) is { } why)
         {
-            _say($"No way to walk to {what} found, and a teleport wouldn't land there: {why}.");
+            _say($"No way to walk to {what} found, and a teleport wouldn't land there: {why}. If it's a person, asking them to offer you a teleport may work.");
             return false;
         }
         _say($"No way to walk to {what} found: teleporting there.");
@@ -714,7 +731,7 @@ public sealed class Commands
         var p = await _ops.FindPersonAsync(name);
         if (p == null && a.Count > 1 && float.TryParse(a[^1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var metres))
         {
-            gap = Math.Clamp(metres, 3f, 50f);
+            gap = Math.Clamp(metres, 1f, 50f);
             p = await _ops.FindPersonAsync(string.Join(" ", a.SkipLast(1)));
         }
         if (p == null) { _say($"Nobody called {name} nearby."); return; }
@@ -981,6 +998,10 @@ public sealed class Commands
 
     /// <summary>`//touch`'s words, to the app's parts (MainForm.Parts.cs).</summary>
     public Func<string, Task>? Touch { get; set; }
+    public Func<string, Task>? Block { get; set; }
+    public Func<string, Task>? Unblock { get; set; }
+    public Func<string, Task>? Pay { get; set; }
+    public Func<string, Task>? Buy { get; set; }
 
     /// <summary>`//switch`'s words, to walk mode's rail switches (Walk/WalkMode.Switches.cs).</summary>
     public Func<string, Task>? Switch { get; set; }

@@ -582,7 +582,8 @@ Jobs are the assistant's own way to do long work, not a system procedure (the us
 at a time, unbounded (no time or turn limit, and no stall watchdog: it stays on the panel and the person or the
 assistant can stop it whenever), and the assistant decides whether to start one, which model and effort run it, how
 to brief it, whether it may use helpers, and when to check on it, change, stop or resume it. The harness keeps only
-the mechanics that need it. No caps on time, helpers or usage: plan usage isn't economised (the user).
+the mechanics that need it. There are no caps on time, helpers or usage; adding them isn't a priority, since people
+can manage that in other ways and it could get finicky (user, 2026-11-05).
 - **The tools** (request sessions; `prompt.md` has one line on them): `start_job {title, brief, model:
   opus|sonnet|haiku, effort?, helpers?, queue?}` returns at once; `jobs` (each job's state, model and effort, its
   notes' file; the assistant Reads the notes for detail); `tell_job {text, id?}` (a change from the person: a running

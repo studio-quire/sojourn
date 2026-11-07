@@ -641,6 +641,10 @@ public sealed partial class AgentSession
         if (rlvGranted) return;
         if (rlvLeft != asked && rlvLeft == ScriptPermission.None) { c.Self.ScriptQuestionReply(sim, itemId, taskId, ScriptPermission.None); return; }
         asked = rlvLeft;
+        // the same script asking the same again while its question waits (a ski ball's attach asked three times over its
+        // menu, and the tester's number keys went to the wrong one, 2026-11-05): the one waiting answers it
+        var questionKey = $"question:{taskId}:{itemId}:{(int)asked}";
+        if (Notify.Waiting(questionKey)) return;
         var questions = string.Join("\n", PermissionLines(asked));
         var payload = new JsonObject
         {
@@ -671,7 +675,7 @@ public sealed partial class AgentSession
             Notify.Add("ScriptQuestion", "notify",
                 $"'<nolink>{objectName}</nolink>', an object owned by '{ownerName}', would like to:\n\n{questions}\nIs this OK?",
                 new[] { new NotifyButton("Yes", "Yes", 0), new NotifyButton("No", "No", 1), new NotifyButton("Mute", "Block", 2) },
-                payload: payload, substitutions: subs, respond: Respond);
+                payload: payload, substitutions: subs, respond: Respond, key: questionKey);
             return;
         }
         // the experience's name first, as the viewer does (LLExperienceCache), briefly
@@ -697,7 +701,7 @@ public sealed partial class AgentSession
                     new NotifyButton("Yes", "Yes", 0), new NotifyButton("No", "No", 1),
                     new NotifyButton("BlockExperience", "Block experience", 3), new NotifyButton("Mute", "Block object", 2),
                 },
-                payload: payload, substitutions: subs, respond: Respond));
+                payload: payload, substitutions: subs, respond: Respond, key: questionKey));
         });
     }
 

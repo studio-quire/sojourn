@@ -47,6 +47,21 @@ public sealed partial class MainForm
         // (on a HUD's read button or its reading line, Touch is Enter's: press it, read them)
         _partMenu.Items.Add(new ToolStripMenuItem("&Touch", null, (_, _) => PartEnter()));
         PartItem("&Sit", p => _ = SitPartAsync(p));
+        // the object's, from any of its parts; a pay goes to this part if it has the money event
+        PartItem("P&ay...", p => _ = PayThingAsync(p.Money ? p.Id : p.Root, p.Money ? PartName(p) : p.RootName));
+        var payPart = _partMenu.Items[^1];
+        PartItem("B&uy", p => _ = BuyThingAsync(p.Root, p.RootName));
+        var buyPart = _partMenu.Items[^1];
+        PartItem("Take a &copy", p => _ = TakeCopyAsync(p.Root, p.RootName));
+        var copyPart = _partMenu.Items[^1];
+        _partMenu.Opening += (_, _) =>
+        {
+            var p = _parts.FocusedItem?.Tag as Linkset.Part;
+            var of = p is { Hud: false } && _objects.FocusedItem?.Tag is PersonOps.Thing t && t.Id == p.Root ? t : null;
+            payPart.Visible = p is { Hud: false, Money: true } || of is { Money: true };
+            buyPart.Visible = of is { Mine: false, Sale: not null };
+            copyPart.Visible = of is { MayCopy: true };
+        };
         PartItem("W&here", p => Answer(p.Hud ? $"{PartName(p)} is {(OnHud(p.Root) ? "on your HUD" : "part of something you're wearing")}." : $"{PartName(p)} is {_ops.Where(L(p.Pos), full: true)}."));
         PartItem("&Describe", p => _ = DescribeAsync(Of(p)));
         PartItem("&Faces", p => { _faces.Focus(); });

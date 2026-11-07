@@ -92,7 +92,8 @@ public sealed partial class MainForm
             Item("Mar&k this line", "Control+Shift+M", () => { if (Reader is { } r) r.Answer(r.Mark(), keep: false); }),
             Item("&Copy from the mark", "Control+Shift+C", CopyFromMark),
             Item("Copy the assistant's last ans&wer", "Control+Shift+L", CopyLastAnswer),
-            Item("&Links seen", "Control+Shift+K", ShowLinks));
+            Item("&Links seen", "Control+Shift+K", ShowLinks),
+            Item("Bloc&ked", "Control+Shift+Y", () => _ = ShowBlocksAsync()));
         reading.DropDownOpening += (_, _) =>
         {
             _muteItem.Checked = _set.MuteAll;

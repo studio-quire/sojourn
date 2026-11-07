@@ -15,6 +15,9 @@
 //   chest NAME X Y Z                                      a linked set with a touch script in a part "Latch"
 //   treasure [NAME] X Y Z                                 a chest (default "Treasure Chest") whose root does nothing on a
 //                                                         touch; only its unnamed lid answers ("chest lid touched by ...")
+//   tipjar [NAME] X Y Z                                   a 0.4 m box (default "Access Tip Jar") that takes money: pay buttons
+//                                                         L$10 and L$50 or any amount, left click set to pay, and says "paid N by NAME"
+//   forsale NAME X Y Z PRICE                              a 0.4 m box for sale as a copy at that price; everyone may copy it
 //   facebox [NAME] X Y Z                                  a 0.5 m box (default name "Access Facebox") whose script says
 //                                                         "NAME touched face F st <s, t, 0>" for each touch
 //   fixture [NAME] X Y Z                                  the Access fixture (default name "Access Fixture"): a box
@@ -84,6 +87,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
 using LibreMetaverse;
+using LibreMetaverse.Packets;
 
 static class Program
 {
@@ -258,6 +262,8 @@ static class Program
             case "rez": return await Rez(rest);
             case "chest": return await Chest(rest);
             case "treasure": return await Treasure(rest);
+            case "tipjar": return await TipJar(rest);
+            case "forsale": return await ForSale(rest);
             case "fixture": return await Fixture(rest);
             case "facebox": return await Facebox(rest);
             case "sofa": return await Sofa(rest);
@@ -602,6 +608,54 @@ static class Program
         await Task.Delay(1500);
         client.Objects.DeselectObjects(sim, new[] { body.LocalID, lid.LocalID, latch.LocalID, foot.LocalID });
         return $"treasure {name} id {body.ID}: lid {lid.ID}, latch {latch.ID}, foot {foot.ID}";
+    }
+
+    /// <summary>A tip jar, as the blind tester met them at a club (2026-11-05): pays, never touches.</summary>
+    static async Task<string> TipJar(string rest)
+    {
+        if (NameAndPos(rest, "Access Tip Jar") is not var (name, pos)) return "ERR tipjar [NAME] X Y Z";
+        var sim = client.Network.CurrentSim;
+        var jar = await RezBox(pos, new Vector3(0.4f, 0.4f, 0.4f));
+        if (jar == null) return "ERR the jar didn't come back";
+        Named(jar.LocalID, name);
+        var script = await UploadScript("Tip jar",
+            "default { state_entry() { llSetPayPrice(PAY_DEFAULT, [10, 50, PAY_HIDE, PAY_HIDE]); llSay(0, \"tip jar ready\"); } "
+            + "money(key who, integer n) { llSay(0, \"paid \" + (string)n + \" by \" + llKey2Name(who)); } }");
+        int mark = counter;
+        client.Inventory.CopyScriptToTask(jar.LocalID, script, true);
+        bool ready = false;
+        for (int i = 0; i < 40 && !ready; i++)
+        {
+            await Task.Delay(250);
+            lock (heard)
+                ready = heard.Any(l => l.Contains("tip jar ready") && int.Parse(Regex.Match(l, "\"n\":(\\d+)").Groups[1].Value) > mark);
+        }
+        if (!ready) return $"ERR tipjar {name}: its script didn't say it was ready";
+        client.Network.SendPacket(new ObjectClickActionPacket
+        {
+            AgentData = { AgentID = client.Self.AgentID, SessionID = client.Self.SessionID },
+            ObjectData = new[] { new ObjectClickActionPacket.ObjectDataBlock { ObjectLocalID = jar.LocalID, ClickAction = (byte)ClickAction.Pay } },
+        }, sim);
+        await Task.Delay(500);
+        client.Objects.DeselectObject(sim, jar.LocalID);
+        return $"tipjar {name} id {jar.ID}";
+    }
+
+    static async Task<string> ForSale(string rest)
+    {
+        int cut = rest.TrimEnd().LastIndexOf(' ');
+        if (cut < 0 || !int.TryParse(rest.TrimEnd()[(cut + 1)..], out int price) || NameAndPos(rest[..cut], "Access Vendor") is not var (name, pos))
+            return "ERR forsale NAME X Y Z PRICE";
+        var sim = client.Network.CurrentSim;
+        var box = await RezBox(pos, new Vector3(0.4f, 0.4f, 0.4f));
+        if (box == null) return "ERR the box didn't come back";
+        Named(box.LocalID, name);
+        client.Objects.SetPermissions(sim, new List<uint> { box.LocalID }, PermissionWho.NextOwner, PermissionMask.Copy | PermissionMask.Modify | PermissionMask.Transfer, true);
+        client.Objects.SetPermissions(sim, new List<uint> { box.LocalID }, PermissionWho.Everyone, PermissionMask.Copy, true);
+        client.Objects.SetSaleInfo(sim, box.LocalID, SaleType.Copy, price);
+        await Task.Delay(500);
+        client.Objects.DeselectObject(sim, box.LocalID);
+        return $"forsale {name} id {box.ID}";
     }
 
     const string FixtureScript = """

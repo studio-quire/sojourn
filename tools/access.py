@@ -1372,6 +1372,7 @@ def session(run, procs):
         ("a dance machine's menu, ignored", lambda: notice_dance(run, tester_id)),
         ("a text box", lambda: notice_text(run, tester_id, nonce)),
         ("a permission question", lambda: notice_perm(run, tester_id)),
+        ("two questions and a menu", lambda: notice_pile(run, tester_id)),
         ("a confirmation left waiting", lambda: confirm_left_waiting(run, nonce)),
         ("inventory", lambda: inventory(run, nonce)),
         ("every part", lambda: parts(run)),
@@ -1392,6 +1393,7 @@ def session(run, procs):
         ("places and a route", lambda: places(run, nonce)),
         ("search, profiles, pay", lambda: search_and_people(run)),
         ("more commands", lambda: more_commands(run)),
+        ("paying and buying things", lambda: paying_and_buying(run, nonce)),
         ("describing", lambda: describing(run, nonce)),
         ("describing a look as it loads", lambda: describing_looks(run, nonce)),
         ("review keys and arrivals", lambda: review_and_arrivals(run, nonce)),
@@ -2705,7 +2707,7 @@ def notice_dance(run, tester_id):
     if not run.expect("a dance machine's menu announced", ["Access Dance"], m, NOTICE_SECS) or not open_newest_notice(run, ["Access Dance"]):
         return
     sel = selection("id=notices")
-    run.check("its keys end with Delete Ignore", "1 Waltz, 2 Tango, 3 Block, Delete Ignore." in sel, sel)
+    run.check("its keys end with Delete Ignore", "1 Waltz, 2 Tango, B Block, Delete Ignore." in sel, sel)
     run.check("the Ignore button says its key", find("type=Button;name=Delete: Ignore"), json.dumps([d["name"] for d in find("type=Button")]))
     n = visitor_n()
     first = notice_ids("Access Dance")
@@ -2795,6 +2797,48 @@ def notice_text(run, tester_id, nonce):
         type_text(word)
         key("enter")
         run.heard_by_visitor("typed and Enter answers the text box", lambda d: d["msg"] == f"typed {word}", n, 10, f"typed {word}")
+
+
+def notice_pile(run, tester_id):
+    """A question asked twice over a menu (the tester's ski ball, 2026-11-05): one notice for the question, what's next said
+    after an answer, a number never the Block key, Block on B, and the block list undoing it."""
+    m = mark()
+    v(f"fmenu {tester_id}")
+    run.expect("(a menu waiting)", ["Access Menu"], m, NOTICE_SECS)
+    m = mark()
+    v(f"fperm {tester_id}")
+    run.expect("(a question over it)", ["would like to"], m, NOTICE_SECS)
+    time.sleep(0.5)
+    v(f"fperm {tester_id}")
+    time.sleep(3)
+    got = api("LLNotifications", "listChannelNotifications", channel="Visible").get("notifications") or []
+    questions = [n for n in got if n.get("name") == "ScriptQuestion"]
+    run.check("the same question asked again makes no second notice", len(questions) == 1, f"{len(questions)} of it waiting")
+    if not open_newest_notice(run, ["would like to", "B Block"]):
+        return
+    m = mark()
+    key("3")
+    run.expect("a number is never the Block key", ["No key 3 there."], m, 4)
+    m = mark()
+    key("2")
+    run.expect("after an answer, what's next is said with its keys", ["Next:", "Access Menu", "Keys:"], m, 6)
+    m = mark()
+    key("b")
+    run.expect("B blocks what sent it, saying what", ["Blocked Access Fixture"], m, 6)
+    key("ctrl+shift+y")
+    d = wait_focus(lambda d: d["id"] == "blocksList", 5)
+    if run.check("Control+Shift+Y lists what's blocked", d and "Access Fixture" in selection("id=blocksList"), selection("id=blocksList") if d else focus_label()):
+        m = mark()
+        key("del")
+        run.expect("Delete there unblocks it", ["Unblocked Access Fixture"], m, 6)
+    m = mark()
+    v(f"fmenu {tester_id}")
+    run.expect("unblocked, its menus come again", ["Access Menu"], m, NOTICE_SECS)
+    key("ctrl+n")
+    time.sleep(0.5)
+    key("del")
+    time.sleep(0.5)
+    key("alt+1")
 
 
 def notice_perm(run, tester_id):
@@ -3670,6 +3714,92 @@ def more_commands(run):
     run.check("//status music answers", said, said or " / ".join(e.get("text") or "" for e in said_since(m)) or "nothing said")
 
 
+def paying_and_buying(run, nonce):
+    """Objects' Pay, Buy and Take a copy, and //pay and //buy (the blind tester's tip jars, 2026-11-05; docs/access-app.md
+    > Paying and buying things): the visitor's jar says it takes payment, its left click (pay) leads its menu, Pay names
+    its buttons, and a payment reaches the confirmation or the grid's refusal (no money here); the visitor's box for sale
+    says its price, is bought through a confirmation, a copy of it taken; a plain box offers none of them."""
+    x, y, z, _ = tester_where()
+    jar_name, box_name = f"Access Jar {nonce}", f"Access Vendor {nonce}"
+    made = v(f"tipjar {jar_name} {x - 2:.1f} {y + 2:.1f} {z:.1f}", timeout=60)
+    sold = v(f"forsale {box_name} {x + 2:.1f} {y + 2:.1f} {z:.1f} 0", timeout=30)
+    if not run.check("(the visitor's tip jar and vendor box are out)", " id " in made and " id " in sold, f"{made} / {sold}"):
+        return
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+    try:
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("f5")
+        # (a left click set after it was first seen reaches a viewer here once it's selected, which its parts' list does)
+        wait(lambda: find(f"type=ListItem;name~={jar_name}, "), 15)
+        select_in("id=objects", jar_name)
+        run.check("(the jar's left click is pay)", wait(lambda: any(o.get("click_action") == "pay" for o in api("TesselObjects", "nearby", dist=30, query=jar_name).get("objects") or []), 20), "")
+        key("f5")
+        jar = wait(lambda: (lambda f: f if f and "takes payment" in label(f[0]) else None)(find(f"type=ListItem;name~={jar_name}, ")), 15)
+        run.check("the jar's line says it takes payment", jar, label(jar[0]) if jar else "not listed")
+        box = wait(lambda: (lambda f: f if f and "for sale, free" in label(f[0]) else None)(find(f"type=ListItem;name~={box_name}, ")), 15)
+        run.check("the vendor's line says it's for sale", box, label(find(f"type=ListItem;name~={box_name}, ")[0]) if find(f"type=ListItem;name~={box_name}, ") else "not listed")
+        if not select_in("id=objects", jar_name):
+            run.check("(the jar selected)", False, "")
+            return
+        # Enter opens the menu with its left click's action first
+        key("enter")
+        items = wait(lambda: find("type=MenuItem"), 4) or []
+        run.check("a jar's menu: Pay first, as its left click", items and "Pay" in items[0]["name"], " | ".join(d["name"] for d in items[:4]) or focus_label())
+        key("a")
+        ask = wait_focus(lambda d: d["id"] == "answer", 5)
+        if run.check("Pay asks the amount, naming its pay buttons", ask and "L$10, L$50" in label(ask), label(ask) if ask else focus_label()):
+            m = mark()
+            type_text("10", "id=answer")
+            key("enter", target="id=answer")
+            conf = wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 6)
+            if conf and "Pay" in selection("id=notices"):
+                run.check("the payment waits for the person's confirmation, naming the jar", jar_name in selection("id=notices"), selection("id=notices"))
+                time.sleep(0.2)
+                key("esc")
+                run.expect("Escape cancels it", ["Not paid", "Cancelled"], m, 10)
+            else:
+                said = wait(lambda: next((e for e in said_since(m) if "paid" in (e.get("text") or "").lower() or "afford" in (e.get("text") or "").lower()), None), 10)
+                run.check("or the grid's refusal is said (no money here)", said, said["text"] if said else focus_label())
+        # //pay from Say, by name with the amount
+        back_to_chat()
+        m = mark()
+        say_in_app(f"//pay {jar_name} 3")
+        run.expect("//pay NAME AMOUNT: the amount given goes straight on (to the confirmation, or the refusal here)", ["L$3"], m, 8)
+        if "Enter confirms" in " ".join(e.get("text") or "" for e in said_since(m)):
+            key("esc")
+        back_to_chat()
+        m = mark()
+        say_in_app(f"//pay Access Nobody {nonce}")
+        run.expect("//pay of nothing there says so", ["Nobody and nothing called"], m, 8)
+        # buying, free: the confirmation, then it arrives
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        if select_in("id=objects", box_name):
+            menu = key("apps")
+            time.sleep(0.5)
+            run.check("a vendor's menu has Buy and Take a copy", find("type=MenuItem;name~=Buy") and find("type=MenuItem;name~=Take a copy"), focus_label())
+            run.check("and no Pay", not find("type=MenuItem;name~=Pay"), "")
+            key("esc")
+        back_to_chat()
+        m = mark()
+        say_in_app(f"//buy {box_name}")
+        if run.expect("//buy NAME: its confirmation", ["Enter confirms"], m, 10):
+            time.sleep(1)   # (a key just as it appears isn't taken: "Press again to confirm")
+            m = mark()
+            key("enter")
+            run.expect("bought, free", ["Bought"], m, 10)
+            run.check("it's in the inventory", wait(lambda: any(box_name in n for f in (root, api("LLInventory", "getBasicFolderID", ft_name="object")["id"]) for n in inv_items(f)), 15), "")
+        back_to_chat()
+        m = mark()
+        say_in_app(f"//buy {jar_name}")
+        run.expect("//buy of what's not for sale says so", ["isn't for sale"], m, 10)
+    finally:
+        back_to_chat()
+        v(f"derez {jar_name}", timeout=20)
+        v(f"derez {box_name}", timeout=20)
+
+
 def describing(run, nonce):
     """M5 without the assistant (the test runs with --no-assistant): the first Control+D says plainly that describing
     needs it, then what the lists know, and the keys after it only what the lists know; with the renderer out of sight, SojournDescribe's pictures aimed at
@@ -3847,6 +3977,15 @@ def describing_looks(run, nonce):
         rv = timed_look(subject=vid, detail="brief")
         vp = (rv.get("pictures") or [{}])[0]
         run.check("the visitor's look said to have loaded", loaded(vp.get("subject_look") or ""), (vp.get("subject_look") or "none")[:200])
+        if os.environ.get("SOJOURN_TEST_AVATAR_LIMIT"):
+            # over the limit: a stand-in around the person, whole in their own picture (describe-visitor.png to look at)
+            around = timed_look(subject="here", detail="brief")
+            stand_in = [e for p in around.get("pictures") or [] for e in p.get("seen") or [] if "stand-in" in (e.get("look") or "")]
+            run.check("over the limit: the visitor a stand-in in a picture around the person", stand_in, str((around.get("pictures") or [{}])[0].get("seen"))[:300])
+            run.check("and not in their own", "stand-in" not in (vp.get("subject_look") or ""), (vp.get("subject_look") or "")[:200])
+            if vp.get("png"):
+                import base64
+                (OUT / "describe-visitor.png").write_bytes(base64.b64decode(vp["png"]))
         if RELAY:
             back_to_chat()
             m = mark()
@@ -4336,6 +4475,32 @@ def building(run, nonce):
         run.expect("new cylinder: made beside her", ["Made a cylinder"], m, 25)
         build_cmd(f"name {leg}")
         wait(lambda: one(leg), 8)
+        m = mark()
+        build_cmd("link")
+        pick = wait_focus(lambda d: d["id"] in ("pickList", "pickName"), 6)
+        if run.check("link alone lists her objects to pick from", pick, label(pick) if pick else focus_label()):
+            type_text(box, "id=pickName")
+            time.sleep(0.3)
+            key("enter", target="id=pickName")
+            run.expect("the one picked is linked", ["Linked", box, "2 parts"], m, 15)
+            m = mark()
+            build_cmd("unlink")
+            run.expect("(apart again)", ["Unlinked all 2 parts"], m, 15)
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("f5")
+        if wait(lambda: find(f"type=ListItem;name~={box}, "), 10) and select_in("id=objects", box):
+            key("apps")
+            if run.check("Objects' menu on her own thing, with a build open: Link to what I'm editing", menu_open("Link to what I'm editing", 3), focus_label()):
+                m = mark()
+                key("i")
+                run.expect("and it links to what's being edited", ["Linked", box, "2 parts"], m, 15)
+                build_cmd(f"edit {leg}")
+                m = mark()
+                build_cmd("unlink")
+                run.expect("(apart again)", ["Unlinked all 2 parts"], m, 15)
+            else:
+                key("esc")
         m = mark()
         build_cmd(f"link {box}")
         run.expect("link NAME: linked, said with how many parts", ["Linked", "2 parts"], m, 15)

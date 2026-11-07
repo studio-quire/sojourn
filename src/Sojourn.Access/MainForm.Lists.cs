@@ -56,6 +56,7 @@ public sealed partial class MainForm
         Item("Offer &teleport", p => _ = PersonOpAsync("offerTeleport", p, $"Teleport offered to {p.Name}."));
         Item("&Request teleport", p => _ = PersonOpAsync("requestTeleport", p, $"Asked {p.Name} for a teleport."));
         Item("Always in&cognito with them", p => IncognitoWith(p.Id, p.Name));
+        Item("Bloc&k", p => _ = BlockAsync(p.Id, p.Name, "resident"));
         SoundItem(menu, () => list.FocusedItem?.Tag is PersonOps.Person p ? (p.Id, p.Name) : null, group: false);
         KeysOn(menu, ("&Describe", "Control+D"));
         MenuOn(list, menu);
@@ -81,6 +82,13 @@ public sealed partial class MainForm
             _objectMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_objects.FocusedItem?.Tag is PersonOps.Thing t) act(t); }));
         Item("&Touch", t => _ = ThingOpAsync("requestTouch", t, $"Touched {t.Name}."));
         Item("&Sit", t => _ = ThingOpAsync("requestSit", t, $"Sitting on {t.Name}."));
+        // as the viewer's pie menu offers them (ThingActions.For; the blind tester's tip jars, 2026-11-05)
+        Item("P&ay...", t => _ = PayThingAsync(t.PayTo, t.Name));
+        var payItem = _objectMenu.Items[^1];
+        Item("B&uy", t => _ = BuyThingAsync(t.Id, t.Name));
+        var buyItem = _objectMenu.Items[^1];
+        Item("Take a &copy", t => _ = TakeCopyAsync(t.Id, t.Name));
+        var copyItem = _objectMenu.Items[^1];
         Item("&Walk to", t => _ = _cmd.WalkAsync(t.Pos, t.Name, 1.5, $"//go tp object {t.Name}"));
         Item("&Beacon", t => _walk?.BeaconOn(t.Name, t.Id));
         Item("&Face", t => _ = _cmd.FacePointAsync(t.Pos, t.Name));
@@ -89,11 +97,14 @@ public sealed partial class MainForm
         Item("&Parts", _ => _parts.Focus());
         Item("&Move...", t => _ = MoveByWordsAsync(t));
         Item("&Edit (build)", t => EditThing(t.Id));
+        Item("L&ink to what I'm editing", t => _ = LinkThingAsync(t));
+        var linkItem = _objectMenu.Items[^1];
         // the person's own things back out of the world (the blind tester found no way to delete what she'd rezzed, 2026-11-01)
         Item("Ta&ke into your inventory", t => _ = TakeThingAsync(t));
         Item("De&lete", t => _ = DeleteThingAsync(t));
         // what she wears, off again from where she found it (the blind tester couldn't take a HUD off here, 2026-11-02)
         Item("Take &off", t => _ = TakeOffWornAsync(t));
+        Item("Bloc&k", t => _ = BlockAsync(t.Id, t.Name, "object"));
         // F5's refresh, here too so it can be found (the blind tester found no way to refresh, 2026-10-31)
         _objectMenu.Items.Add(new ToolStripMenuItem("&Refresh", null, (_, _) => _ = RefreshObjects(true)));
         // something worn is touched, described, its parts listed and taken off; the rest is for things in the world
@@ -104,9 +115,24 @@ public sealed partial class MainForm
             foreach (ToolStripItem i in _objectMenu.Items)
                 i.Visible = hud ? i.Text is "&Touch" or "&Describe" or "W&here" or "&Parts" or "Take &off" or "&Refresh"
                     : i.Text != "Take &off" && (mine || i.Text is not ("Ta&ke into your inventory" or "De&lete"));
+            payItem.Visible = sel is { Hud: false, Money: true };
+            buyItem.Visible = sel is { Hud: false, Mine: false, Sale: not null };
+            copyItem.Visible = sel is { Hud: false, MayCopy: true };
+            linkItem.Visible = sel is { Hud: false, Mine: true } && LinkableNow(sel);
+            // its own click action leads, as the viewer's left click does it
+            _objectMenu.Items.Remove(payItem);
+            _objectMenu.Items.Remove(buyItem);
+            int after = _objectMenu.Items.IndexOf(_objectMenu.Items.OfType<ToolStripItem>().First(i => i.Text == "&Sit")) + 1;
+            _objectMenu.Items.Insert(after, buyItem);
+            _objectMenu.Items.Insert(after, payItem);
+            if ((sel?.Click == "pay" ? payItem : sel?.Click == "buy" ? buyItem : null) is { Available: true } lead)   // (Visible reads false until the menu shows)
+            {
+                _objectMenu.Items.Remove(lead);
+                _objectMenu.Items.Insert(0, lead);
+            }
             if (sel != null)
-                Host?.Log.LogInformation("objects: actions on {Name} ({Where}): {Items}", sel.Name, sel.Hud ? "worn" : sel.Mine ? "yours, nearby" : "nearby",
-                    string.Join(", ", _objectMenu.Items.OfType<ToolStripItem>().Where(i => i.Visible).Select(i => i.Text.Replace("&", ""))));
+                Host?.Log.LogInformation("objects: actions on {Name} ({Where}, left click {Click}): {Items}", sel.Name, sel.Hud ? "worn" : sel.Mine ? "yours, nearby" : "nearby", sel.Click ?? "touch",
+                    string.Join(", ", _objectMenu.Items.OfType<ToolStripItem>().Where(i => i.Available).Select(i => i.Text.Replace("&", ""))));
         };
         KeysOn(_objectMenu, ("&Describe", "Control+D"), ("&Parts", "Tab"), ("&Edit (build)", "Control+B"), ("De&lete", "Delete"), ("Take &off", "Delete"), ("&Refresh", "F5"));
         MenuOn(_objects, _objectMenu);
@@ -274,7 +300,7 @@ public sealed partial class MainForm
             // object reaches only those who have it selected, so a list holding names for minutes missed renames
             var things = worn ? await WornAsync() : await _ops.ObjectsAsync(_set.ObjectsRange, _set.ObjectsRange > 30 ? 200 : 60, renew: asked ? 0 : 5);
             await ListDelay(_objects);
-            Fill(_objects, things.Select(t => (Text: t.Hud ? $"{t.Name}, {t.Text}" : $"{t.Name}, {_ops.Where(t.Pos)}{(t.Sit ? ", can sit" : t.Touch ? ", touchable" : "")}",
+            Fill(_objects, things.Select(t => (Text: t.Hud ? $"{t.Name}, {t.Text}" : $"{t.Name}, {_ops.Where(t.Pos)}{DealWords(t)}{(t.Sit ? ", can sit" : t.Touch ? ", touchable" : "")}",
                 Key: t.Id.ToString(), Tag: (object)t)).ToList(), worn ? "Nothing worn here yet." : "Nothing nearby.");
             if (first) Looking(_objects, "Objects nearby", false);
             if (asked) Reader?.Answer(things.Count == 0 ? (worn ? "Nothing worn here yet." : "Nothing nearby.")

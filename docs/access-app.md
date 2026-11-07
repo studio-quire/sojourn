@@ -206,7 +206,10 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   said with what's left ("Ignored Dance Ball's menu. 1 waiting."), the focus on the notice that took its place; on a
   confirmation, Enter confirms and Escape cancels; one whose words name only the first few ("and 40 more") says
   "Tab: the whole list.", and Tab reaches the notice's text with every name, a line each. A notice's keys as read end with "Delete Ignore" ("Keys: 1 Waltz, 2
-  Tango, 3 Block, Delete Ignore."), since the blind tester found no way to close a dance machine's menu (2026-10-31).
+  Tango, B Block, Delete Ignore."), since the blind tester found no way to close a dance machine's menu (2026-10-31). Block is on B, never a
+  number. After an answer the next notice is said with its keys ("Next: ..."): the answer's own words cut off NVDA reading it, and on a ski ball's
+  two questions and a menu a number went to something unheard and blocked an object (2026-11-05). A script asking the same again while its question
+  waits makes no second notice.
   An answered menu leaves the list; one its object sends again (a dance machine's, after each pick) is picked by
   itself, and replaces any earlier one from that object, as in the viewer. The Applications key (or Shift+F10) on a
   notice: its keys as a menu, each with the key that presses it ("Green, 2"), then Reply... and Ignore (Delete); a
@@ -530,10 +533,11 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 |---|---|
 | `//go [tp] N [dir]` | walk (tp: teleport) N metres ahead, or toward N, NNE ... NNW (16 points, or words), or left, right, back |
 | `//go [tp] xyz X,Y[,Z]` | to region coordinates (Z defaults to your height) |
-| `//go [tp] person NAME` / `object NAME` | to the nearest person whose name starts with NAME / object whose name has it |
+| `//go [tp] person NAME` / `object NAME` / `NAME` | to the nearest person whose name starts with NAME / object whose name has it; a name alone is a person, else an object |
 | `//find person NAME` / `object NAME` (or just `//find NAME`) | "Kestrel is 4 m away, two o'clock, to the northeast, at your level." |
 | `//face DEG` / `DIR` / `left`/`right`/`around` / `person NAME` / `object NAME` | turn; degrees are SL's (0 east, counter-clockwise), as Radegast's |
 | `//sit NAME` / `//sit ground`, `//stand` (`//unsit`) | sit on the nearest thing with that name, on the ground; stand |
+| `//block NAME` / `//unblock NAME` / `//blocks` | block someone or something nearby, take one off, the list (Control+Shift+Y, Enter or Delete unblocks; Block is also on a person's and an object's Applications key, and on B in a notice) |
 | `//follow NAME` / `//follow NAME METRES` / `//follow stop` / `//follow` | follow as they move (2.5 m behind where they'll be in a moment, around what's in the way; at the wheel, Driving after someone, below), stop, or say who; said: when you're with them and they've stopped, when they sit, when they're getting away, when they're gone |
 | `//tp list` / `N` / `NAME` / `Region/X/Y/Z` / an SLurl | landmarks in "Radegast Landmarks" (else Landmarks), by number or name; or a place |
 | `//status [doing|region|parcel|location|money|time|music]` | any or all of them; music: what the parcel's stream is playing ("Playing: ...", in the whole status only when the parcel has music) |
@@ -545,6 +549,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//scriptinfo` | the scripts in what you're wearing, per attachment and its point, and how many run |
 | `//beacon NAME` / `//beacon off` / `//beacon` | a sound on the nearest person or thing by name to walk to (walk mode's beacon, below), off, or where it is |
 | `//touch NAME` / `OBJECT PART` / `NAME face DIR` | touch a thing or part by name within 10 m, on a face if given (Parts and faces, below) |
+| `//pay NAME` / `NAME 50`, `//buy NAME` | pay someone here or something within 30 m, buy something within 30 m (Paying and buying things, below) |
 | `//switch` / `flip` / `main` / `branch` | the next rail switch and how it's set; throw it; set it to the main line or the branch, throwing it only if it isn't already (walk mode's W and Shift+W; Rail switches, below) |
 | `//stop` | as Space in walk mode, from anywhere: seated on something moving, stop it by its controls (Stopping a vehicle, below); otherwise stop a walk, a follow or a route |
 | `//ride` / `stop` / `describe` / `more` | record a ride: start (or, recording, how it's going), stop, have it told, tell more (walk mode's C and Shift+C; Walk mode > Recording a ride) |
@@ -1221,7 +1226,7 @@ reachable by typing, with a list to browse. A first version for her and her part
   counter-clockwise from above, Second Life's positive), `turn 45 right`, `turn 90 around x`; `where` (and `what`);
   `look` (the assistant describes it, as Control+D there does); `duplicate` (beside it to her right, or `duplicate by
   2 m left`), `delete`, `take` (the whole object; a part's delete says to unlink first); `link NAME` (another of hers
-  joined to this one, this one's root staying the root), `unlink`; `edit NAME`, `part 2`, `root`, `next`, `previous`;
+  joined to this one, this one's root staying the root), `link` alone her objects within 30 m to pick from, Objects' menu Link to what I'm editing on one of hers while a build is open, and a name several share taking the nearest and saying so, `unlink`; `edit NAME`, `part 2`, `root`, `next`, `previous`;
   in Content `add NAME` (from her inventory), `remove NAME`, `copy NAME`; `undo [N]`, `redo`; `help`; `done`. `help` (and
   Build > Build commands) opens the commands in a window to arrow through, a command a line, as F1's keys (said whole as
   one answer, the blind tester asked for it six times in her first quarter hour of building, 2026-11-03); `shapes` lists
@@ -1480,6 +1485,11 @@ What the model gets (SojournDescribe, `Sojourn.Session/Offscreen/DescribeApi.cs`
 - Each picture lists what's visible in it by name (a 16 x 9 grid of picks through it: who and what, where in the
   picture, how much of it, and where from you, "4 metres, two o'clock"), with how much the subject fills; the names go
   beside each picture as well as in the facts, so they stick to what's seen.
+- **A person asked about is drawn whole** (Claude Opus 5.5, 2026-11-06; the blind tester's club night, where several were
+  "too complex for your viewer to draw"). The complexity limit (350,000 here) makes a plain stand-in of anyone over it, but
+  a person's own pictures draw them whole for that batch (`OffscreenRenderer.DrawnWhole`, logged with their complexity),
+  unless the person chose never to draw them. In pictures around her a stand-in stays one, said so.
+  `SOJOURN_TEST_AVATAR_LIMIT=1` for `tools/access.py`'s step "describing a look" checks both.
 - **A look waited for and said as it had loaded** (Claude Opus 5.5, 2026-11-01). A surface whose texture hasn't loaded
   is drawn plain grey (or its material's own colour, often white), and the describer had named those as colours: on
   0.1.0.737 on the processor, the blind tester's partner beside her came out as "white hair, a light grey top with
@@ -1544,6 +1554,21 @@ What the model gets (SojournDescribe, `Sojourn.Session/Offscreen/DescribeApi.cs`
   clock's sides spelled out), uncertainty said in words and nothing invented, nothing about pictures or cameras, each
   detail checked before answering.
 
+### Paying and buying things
+
+`MainForm.Buying.cs` (Claude Opus 5.5, 2026-11-06; the blind tester couldn't pay a club's tip jars, as Objects had no Pay).
+In Objects (Alt+7) and Parts, on the Applications key or Enter, as the viewer's pie menu offers them (`ThingActions.For`):
+**Pay...** on what has a money event, it or a part (a pay goes to the part with the event, else the root), **Buy** on
+what's for sale and not hers, **Take a copy** where she may copy it. A thing whose left click is pay or buy has that item
+first. The list says it: "Tip Jar, 3 metres, eight o'clock, takes payment", "Vendor, 3 metres, ten o'clock, for sale,
+L$50" (a part: ", takes payment"). Pay asks the amount, the box named with what its pay window offers ("Amount in L$. Its
+pay buttons: L$10, L$50, or any amount"; "It takes only ..."; llSetPayPrice, the price suggested filled in, one that
+takes nothing said so); Buy asks the price afresh. Both go to her confirmation in Notices with her own key, as paying a
+person does. `//pay NAME` or `//pay NAME 50`: someone in the region by name, else a thing within 30 m, else a named part
+within 10; `//buy NAME`: the nearest within 30 m. An object in the region beside hers is paid through that region.
+`tools/access.py`'s step "paying and buying things" (the visitor's `tipjar` and `forsale`). The local grid has no money,
+so a paid confirmation and a paid purchase haven't run there: only the amount, the refusal and a free purchase.
+
 ### Sending a log
 
 Help > Send a log to Studio Quire, or `//sendlog` (`SendLog.cs`), for a tester to send us how a session went. With no
@@ -1573,6 +1598,9 @@ a display name the session never looked up (someone only the radar saw) but writ
 the viewer's "Display (username)", is that person's name too, wherever it comes: a radar HUD's "Display (username) is
 now in chat range" had sent display names whole in every log until 2026-11-03 (the usernames were replaced); those logs
 were scrubbed in `local/relay-logs` and deleted from the relay;
+an object named as a person (a chat relay, a small avatar's speaker) is that person talking, so its words are theirs,
+left out and caught where repeated: they'd gone out until 2026-11-06, those logs scrubbed and deleted the same way; a
+name of nothing but punctuation (".") is no name to replace, as it landed in every full stop ("ENE.person 23 or left");
 keys, capability URLs, the Windows account's folder and public IP addresses are masked. The assistant's replies and
 what it said about people stay, names replaced. A log from before the records isn't offered. `tools/logcheck` checks
 the filter on a synthetic log (`dotnet run --project tools/logcheck`; with a path, prints that log as it would go).

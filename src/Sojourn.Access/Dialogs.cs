@@ -29,15 +29,15 @@ public static class Dialogs
     /// Someone picked: the people listed (nearby, friends), narrowed as a name is typed; Enter on the list or in the
     /// box takes the one selected (in the box: the only match, or a full name the grid knows, by find).
     /// </summary>
-    public static Someone? Pick(IWin32Window owner, string title, List<Someone> people, Func<string, Task<Someone?>> find)
+    public static Someone? Pick(IWin32Window owner, string title, List<Someone> people, Func<string, Task<Someone?>> find, string listName = "People")
     {
         using var f = Frame(title);
         var box = new LineBox { Name = "pickName", AccessibleName = "Name", Width = 360 };
-        var list = new ListBox { Name = "pickList", AccessibleName = "People", Width = 360, Height = 220, IntegralHeight = false };
+        var list = new ListBox { Name = "pickList", AccessibleName = listName, Width = 360, Height = 220, IntegralHeight = false };
         var t = Table(f, 3);
         t.Controls.Add(new Label { Text = "&Name", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
         t.Controls.Add(box, 1, 0);
-        t.Controls.Add(new Label { Text = "&People", AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top }, 0, 1);
+        t.Controls.Add(new Label { Text = "&" + listName, AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top }, 0, 1);
         t.Controls.Add(list, 1, 1);
         t.Controls.Add(Buttons(f), 1, 2);
         Someone? chosen = null;

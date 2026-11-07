@@ -85,36 +85,62 @@ public sealed partial class OffscreenRenderer
             var shots = new List<Shot>();
             double lookLeft = LookWait(r.Software);
             bool stalled = false, dim = false;
-            foreach (var spec in specs)
+            var whole = DrawnWhole(r, c.Self.AgentID, sim, specs);
+            try
             {
-                // later shots share what the first one waited for: each gets what's left of twice the budget, at least a
-                // second, and what's left of the batch's wait for looks, at least two
-                double left = Math.Max(1, 2 * settle - Stopwatch.GetElapsedTime(t0).TotalSeconds);
-                var shot = Shoot(r, sim, spec, Math.Min(settle, left), spec.Daylight && (dark || dim), Math.Max(2, lookLeft), stalled);
-                // dim with the sun up (a club indoors: the blind tester's at Kings Stone, 2026-11-03, a face "I can't make
-                // out" and clothes "too dark to be sure of" in pictures whose looks had all loaded): measured, and a
-                // person's or thing's picture drawn again as at midday, as the rest of the batch is
-                if (spec.Daylight && !shot.Relit)
+                foreach (var spec in specs)
                 {
-                    float lum = Brightness(shot);
-                    _log($"the view out of sight: \"{spec.Label}\" came out at brightness {lum:0.00}{(lum < DimBelow ? $" (under {DimBelow:0.00}): drawn again as at midday" : "")}");
-                    if (lum < DimBelow)
+                    // later shots share what the first one waited for: each gets what's left of twice the budget, at least a
+                    // second, and what's left of the batch's wait for looks, at least two
+                    double left = Math.Max(1, 2 * settle - Stopwatch.GetElapsedTime(t0).TotalSeconds);
+                    var shot = Shoot(r, sim, spec, Math.Min(settle, left), spec.Daylight && (dark || dim), Math.Max(2, lookLeft), stalled);
+                    // dim with the sun up (a club indoors: the blind tester's at Kings Stone, 2026-11-03, a face "I can't make
+                    // out" and clothes "too dark to be sure of" in pictures whose looks had all loaded): measured, and a
+                    // person's or thing's picture drawn again as at midday, as the rest of the batch is
+                    if (spec.Daylight && !shot.Relit)
                     {
-                        dim = true;
-                        lookLeft -= shot.Waited;
-                        // what's in view has come already: only the new light to draw, no settling or waiting for looks again
-                        shot = Shoot(r, sim, spec, 0.3, true, 0, true);
+                        float lum = Brightness(shot);
+                        _log($"the view out of sight: \"{spec.Label}\" came out at brightness {lum:0.00}{(lum < DimBelow ? $" (under {DimBelow:0.00}): drawn again as at midday" : "")}");
+                        if (lum < DimBelow)
+                        {
+                            dim = true;
+                            lookLeft -= shot.Waited;
+                            // what's in view has come already: only the new light to draw, no settling or waiting for looks again
+                            shot = Shoot(r, sim, spec, 0.3, true, 0, true);
+                        }
                     }
+                    lookLeft -= shot.Waited;
+                    // a look that stopped arriving for one picture isn't waited for as long again in the next
+                    stalled |= shot.LookUnfinished;
+                    shots.Add(shot);
                 }
-                lookLeft -= shot.Waited;
-                // a look that stopped arriving for one picture isn't waited for as long again in the next
-                stalled |= shot.LookUnfinished;
-                shots.Add(shot);
+            }
+            finally
+            {
+                foreach (var id in whole) r.AvatarLimits.Overrides.TryRemove(id, out _);
             }
             _pictures += shots.Count;
             done(new ShotBatch(shots, sim.Handle));
             return true;
         }, PictureWait(settle), ct);
+
+    /// <summary>A person asked about is drawn whole for their pictures, however complex (a stand-in over the limit says
+    /// nothing of how they look: the blind tester's club night, 2026-11-05, "too complex for your viewer to draw"), since
+    /// this view is there for describing and it's one avatar for a moment. Not someone the person chose never to draw.
+    /// What it puts on, for the batch to take off again.</summary>
+    List<UUID> DrawnWhole(FrameRenderer r, UUID me, Simulator sim, IReadOnlyList<ShotSpec> specs)
+    {
+        var whole = new List<UUID>();
+        if (_s.World.Region(_s.GridKey, sim.Handle) is not { } w) return whole;
+        foreach (var id in specs.Select(s => s.Subject).Distinct())
+        {
+            if (id == UUID.Zero || id == me || w.AvatarById(id) is null || !r.AvatarLimits.Overrides.TryAdd(id, AvatarRender.Always)) continue;
+            whole.Add(id);
+            if (r.AvatarLimits.Status.FirstOrDefault(st => st.Id == id) is { Drawn: "jelly" } now)
+                _log($"the view out of sight: {id} drawn whole for their pictures, over the limit at complexity {now.Complexity}");
+        }
+        return whole;
+    }
 
     /// <summary>A picture's middle (the middle 60% across, 70% down: where its subject is framed) darker than this, as the
     /// mean of its pixels' sRGB luma (0-1), is drawn again as at midday. A guess at first (2026-11-03): each picture's

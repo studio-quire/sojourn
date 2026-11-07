@@ -23,6 +23,8 @@ public static class Linkset
         System.Numerics.Vector3 Pos, System.Numerics.Vector3 Scale, bool Touch, bool Sit, string? Desc, bool Hud, string RootName)
     {
         public string Words { get; init; } = "";
+        /// <summary>It has a money event of its own.</summary>
+        public bool Money { get; init; }
     }
 
     /// <summary>Names that say nothing: what a new prim is called on Second Life and OpenSim, and the root's own name on a
@@ -55,6 +57,7 @@ public static class Linkset
             var part = new Part(p.ID, root.ID, p.LocalID, i + 1, ordered.Count, name, i == 0 ? name.Length > 0 && name is not ("Object" or "Primitive")
                 : !Unnamed(name, rootName), p.PrimData.PCode == PCode.Prim ? ObjectViews.ShapeName(p) : "part", pos, V(p.Scale),
                 (flags & PrimFlags.Touch) != 0, p.ClickAction == ClickAction.Sit, desc, hud, rootName.Length > 0 ? rootName : "the object");
+            part = part with { Money = (flags & PrimFlags.Money) != 0 };
             list.Add(part with { Words = Words(part, rootName, rootPos, me, placed) });
         }
         return list;
@@ -75,6 +78,7 @@ public static class Linkset
             words = (p.Named ? $"{p.Name}, {number}, " : $"Part {p.Number} of {p.Count}, ") + what + (where.Length > 0 ? " " + where : "");
         }
         if (p.Desc != null && !p.Named) words += $", described as {p.Desc}";
+        if (p.Money) words += ", takes payment";
         if (p.Touch) words += ", touchable";
         if (p.Sit) words += ", can sit";
         return words;

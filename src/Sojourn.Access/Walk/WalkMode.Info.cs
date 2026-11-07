@@ -260,7 +260,7 @@ public sealed partial class WalkMode
             if (_seated && seated == false && !judged && now - _seatMovingAt < 5000 && _set.WalkText("vehicle"))
             {
                 Log($"off {_seatName ?? "the seat"} while it was moving, in {b.RegionName}");
-                Line($"You're off {_seatName ?? "your seat"}: it went on without you.");
+                Line($"You're off {_seatName ?? "your seat"}, while it was moving.");
             }
             _seated = seated.Value;
             if (b.Sitting) _seatName = b.SeatName ?? _seatName;
