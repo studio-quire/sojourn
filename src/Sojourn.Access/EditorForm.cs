@@ -4,7 +4,9 @@ namespace Sojourn.Access;
 /// A notecard or script open in a real edit control (a blind tester's wish: no going offline to Notepad): Control+S saves
 /// (said back, a script's compile errors read out and listed under the text), Escape closes, asking first when
 /// there are changes. Opened by the person's own key, so the focus starts in the text. A notecard that holds things has
-/// them in a list a Tab from the text (MainForm.Notecards.cs).
+/// them in a list a Tab from the text (MainForm.Notecards.cs). Moving around: Control+F finds, F3 and Shift+F3 the next
+/// and the one before; Control+G a line by number; F8 and Shift+F8 the last save's errors, line by line (the caret stays
+/// where it is until one of these is pressed); Control+L says where the caret is, as Radegast's does.
 /// </summary>
 public sealed class EditorForm : Form
 {
@@ -23,6 +25,9 @@ public sealed class EditorForm : Form
     readonly string _what;
     string _saved;
     bool _saving;
+    string _finding = "";
+    readonly List<(int Line, int Column, string Words)> _errorsAt = new();
+    int _errorOn = -1;
 
     /// <param name="save">Saves the text: what to say, a script's errors (null when none), and the text as it now is when
     /// saving changed it (null otherwise).</param>
@@ -68,10 +73,114 @@ public sealed class EditorForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
-        if (keyData == (Keys.Control | Keys.S)) { _ = SaveAsync(); return true; }
-        if (keyData == Keys.Escape) { Close(); return true; }
+        switch (keyData)
+        {
+            case Keys.Control | Keys.S: _ = SaveAsync(); return true;
+            case Keys.Escape: Close(); return true;
+            case Keys.Control | Keys.F: Find(); return true;
+            case Keys.F3: FindNext(+1); return true;
+            case Keys.Shift | Keys.F3: FindNext(-1); return true;
+            case Keys.Control | Keys.G: GoToLine(); return true;
+            case Keys.Control | Keys.L: SayWhere(); return true;
+            case Keys.F8: NextError(+1); return true;
+            case Keys.Shift | Keys.F8: NextError(-1); return true;
+            case Keys.F1:
+                _say("Control+S saves, Escape closes. Control+F finds, F3 the next, Shift+F3 the one before. Control+G goes to a line. "
+                     + "Control+L says the line and column. F8 goes to the next error from the last save, Shift+F8 the one before. Tab: the errors, then what it holds, then Save and Close.");
+                return true;
+        }
         if (keyData == (Keys.Control | Keys.Back) && ActiveControl == _text && TextKeys.DeleteWordBack(_text)) return true;
         return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    int LineCount => _text.GetLineFromCharIndex(Math.Max(0, _text.TextLength)) + 1;
+
+    string LineText(int line)
+    {
+        int start = _text.GetFirstCharIndexFromLine(line);
+        if (start < 0) return "";
+        int next = _text.GetFirstCharIndexFromLine(line + 1);
+        var words = next < 0 ? _text.Text[start..] : _text.Text[start..next];
+        words = words.TrimEnd('\r', '\n').Trim();
+        return words.Length == 0 ? "blank" : words;
+    }
+
+    /// <summary>The caret put there, the text scrolled to it and the focus in the text (the key asked for it).</summary>
+    void Place(int at, int length = 0)
+    {
+        _text.Focus();
+        _text.Select(at, length);
+        _text.ScrollToCaret();
+    }
+
+    void SayWhere()
+    {
+        int at = _text.SelectionStart, line = _text.GetLineFromCharIndex(at);
+        _say($"Line {line + 1} of {LineCount}, column {at - _text.GetFirstCharIndexFromLine(line) + 1}.");
+    }
+
+    void Find()
+    {
+        if (Dialogs.Ask(this, "Find", "Find", _finding) is not { } words) return;
+        _finding = words;
+        FindNext(+1, fromSelection: false);
+    }
+
+    void FindNext(int way, bool fromSelection = true)
+    {
+        if (_finding.Length == 0) { Find(); return; }
+        var text = _text.Text;
+        int start = _text.SelectionStart, found;
+        if (way > 0)
+        {
+            int from = Math.Min(text.Length, fromSelection ? start + Math.Max(1, _text.SelectionLength) : start);
+            found = text.IndexOf(_finding, from, StringComparison.OrdinalIgnoreCase);
+            if (found < 0) found = text.IndexOf(_finding, StringComparison.OrdinalIgnoreCase);
+        }
+        else
+        {
+            found = start > 0 ? text.LastIndexOf(_finding, start - 1, StringComparison.OrdinalIgnoreCase) : -1;
+            if (found < 0) found = text.LastIndexOf(_finding, StringComparison.OrdinalIgnoreCase);
+        }
+        if (found < 0) { _say($"{_finding} isn't in it."); return; }
+        bool round = way > 0 ? found < start : found > start;
+        Place(found, _finding.Length);
+        int line = _text.GetLineFromCharIndex(found);
+        _say($"{(round ? "From the other end: " : "")}Line {line + 1}: {LineText(line)}");
+    }
+
+    void GoToLine()
+    {
+        int lines = LineCount;
+        var words = Dialogs.Ask(this, "Go to line", $"Line number, 1 to {lines}", (_text.GetLineFromCharIndex(_text.SelectionStart) + 1).ToString());
+        if (words == null) return;
+        if (!int.TryParse(words, out int n) || n < 1 || n > lines) { _say($"{words} isn't a line here: 1 to {lines}."); return; }
+        Place(_text.GetFirstCharIndexFromLine(n - 1));
+        _say($"Line {n}: {LineText(n - 1)}");
+    }
+
+    void NextError(int way)
+    {
+        if (_errorsAt.Count == 0) { _say("No errors from the last save."); return; }
+        _errorOn = _errorOn < 0 ? (way > 0 ? 0 : _errorsAt.Count - 1) : (_errorOn + way + _errorsAt.Count) % _errorsAt.Count;
+        var (line, column, words) = _errorsAt[_errorOn];
+        var count = $"Error {_errorOn + 1} of {_errorsAt.Count}";
+        if (line < 1 || line > LineCount) { _say($"{count}: {words}"); return; }
+        int start = _text.GetFirstCharIndexFromLine(line - 1), next = _text.GetFirstCharIndexFromLine(line), length = next >= 0 ? next - start : _text.TextLength - start;
+        Place(start + Math.Clamp(column - 1, 0, Math.Max(0, length)));
+        _say($"{count}, line {line}, column {column}: {words} The line: {LineText(line - 1)}");
+    }
+
+    /// <summary>The errors box's lines, those saying where ("Line 3, column 5: ...") with their places, for F8.</summary>
+    void NoteErrors(string? errors)
+    {
+        _errorsAt.Clear();
+        _errorOn = -1;
+        foreach (var line in (errors ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(line, @"^Line (\d+), column (\d+): (.*)$");
+            _errorsAt.Add(m.Success ? (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), m.Groups[3].Value) : (0, 0, line));
+        }
     }
 
     async Task SaveAsync()
@@ -92,6 +201,7 @@ public sealed class EditorForm : Form
             if (said.StartsWith("Saved", StringComparison.Ordinal)) _saved = text;
             _errors.Text = errors ?? "";
             _errors.Visible = !string.IsNullOrEmpty(errors);
+            NoteErrors(errors);
             _say(said);
         }
         finally { _saving = false; }

@@ -859,6 +859,7 @@ public sealed partial class MainForm
             new("-", () => { }),
             new("New &folder", () => _ = NewFolderAsync(f)),
             new("New n&otecard", () => _ = NewNotecardAsync(p, f)),   // (Re&name has N)
+            new("New scr&ipt", () => _ = NewScriptAsync(p, f)),
             new("&Upload a file here...", () => _ = UploadAsync(f, null), "Control+U"),
             new("&Give to...", () => _ = GiveAsync(p, new() { f })),
             new("Cu&t", () => Clip(p, cut: true), "Control+X"),
@@ -1034,10 +1035,10 @@ public sealed partial class MainForm
             var w = await _ops.DoAsync("TesselInventory", script ? "writeScript" : "writeNotecard", new JsonObject { ["item_id"] = item.UUID.ToString(), ["text"] = text });
             if (PersonOps.Error(w) is { } we) return ($"Not saved: {we}", null, null);
             if (!script) return await NotecardSavedAsync(item, w);
-            var errors = (w["errors"] as JsonArray)?.Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).ToList() ?? new();
-            if (w["compiled"]?.GetValue<bool>() != false && errors.Count == 0) return ("Saved and compiled.", null, null);
-            var list = string.Join("\r\n", errors);
-            return ($"Saved; {errors.Count} {(errors.Count == 1 ? "error" : "errors")}: {string.Join(" ", errors.Take(3))}", list, null);
+            var errors = ScriptErrorLines((w["errors"] as JsonArray)?.Select(x => x?.ToString() ?? "").Where(x => x.Length > 0));
+            return w["compiled"]?.GetValue<bool>() == false && errors.Count == 0
+                ? ("Saved. This grid compiles a script only once it's inside an object.", null, null)
+                : ScriptSaved(errors);
         }, text => Reader?.Answer(text, keep: false), held);
         editor.FormClosed += (_, _) =>
         {
@@ -1227,6 +1228,16 @@ public sealed partial class MainForm
         if (name == null) { Reader?.Answer("No notecard made.", keep: false); return; }
         var r = await _ops.DoAsync("TesselInventory", "createNotecard", new JsonObject { ["name"] = name, ["folder_id"] = parent.UUID.ToString(), ["text"] = "" });
         if (PersonOps.Error(r) is { } e || !UUID.TryParse(r.Str("item_id"), out var id)) { Answer($"No notecard made: {PersonOps.Error(r)}"); return; }
+        RefreshInventory(parent.UUID);
+        if (await _ops.Session.Inventory.ItemAsync(id, CancellationToken.None) is { } item) await OpenAsync(p, item);
+    }
+
+    async Task NewScriptAsync(InvPane p, InventoryFolder parent)
+    {
+        var name = Dialogs.Ask(this, $"New script in {parent.Name}", "Script name");
+        if (name == null) { Reader?.Answer("No script made.", keep: false); return; }
+        var r = await _ops.DoAsync("TesselInventory", "createScript", new JsonObject { ["name"] = name, ["folder_id"] = parent.UUID.ToString(), ["text"] = NewScriptText });
+        if (PersonOps.Error(r) is { } e || !UUID.TryParse(r.Str("item_id"), out var id)) { Answer($"No script made: {PersonOps.Error(r)}"); return; }
         RefreshInventory(parent.UUID);
         if (await _ops.Session.Inventory.ItemAsync(id, CancellationToken.None) is { } item) await OpenAsync(p, item);
     }

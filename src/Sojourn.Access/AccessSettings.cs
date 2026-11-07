@@ -29,6 +29,9 @@ public sealed class AccessSettings
     public int ObjectsRange { get; set; } = 30;
     /// <summary>Lines cut off by typing said again once the keys rest (MainForm.CutLines.cs).</summary>
     public bool ReadCut { get; set; } = true;
+
+    /// <summary>Script errors from the person's own objects read out, as notices (Radegast and the viewers show them in chat).</summary>
+    public bool ScriptErrors { get; set; } = true;
     /// <summary>The builders' tab (MainForm.Builders.cs): on, the person can write to us and our replies are fetched and
     /// read out; off, no tab and the relay isn't asked.</summary>
     public bool Builders { get; set; } = true;
@@ -352,6 +355,9 @@ public sealed class AccessSettings
         api.Add("access_read_cut", new SettingsApi.Setting("access", "Sojourn Access: a line cut off by your typing said again once "
             + "the keys rest (off: only the review keys have it)", "on, off", () => ReadCut,
             SettingsApi.Switch("access_read_cut", on => { ReadCut = on; Save(); changed(); })));
+        api.Add("access_script_errors", new SettingsApi.Setting("access", "Sojourn Access: errors from scripts in the person's own objects read out "
+            + "and written in the nearby chat history (the same words at most once in half a minute)", "on, off", () => ScriptErrors,
+            SettingsApi.Switch("access_script_errors", on => { ScriptErrors = on; Save(); changed(); })));
         api.Add("access_builders", new SettingsApi.Setting("access", "Sojourn Access: the builders' tab (Control+Shift+B), where "
             + "the person writes to the Claude sessions building Sojourn Access through Studio Quire's relay (with their token) and "
             + "their replies are read out like an IM; off: no tab, and the relay isn't asked for replies", "on, off", () => Builders,

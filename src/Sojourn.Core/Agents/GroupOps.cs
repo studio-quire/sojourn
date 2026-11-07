@@ -323,18 +323,45 @@ public sealed class GroupOps
         var gid = Gid(a);
         var rid = a.Uuid("role_id") ?? UUID.Zero;
         if (!_s.State.Groups.ContainsKey(gid)) throw new LeapError("I'm not in that group");
-        if (rid != UUID.Zero)
-        {
-            // a title is one of my own roles'; the grid ignores any other
-            var roles = await RolesAsync(new JsonObject { ["group_id"] = gid.ToString() }, ct);
-            var role = (roles["roles"] as JsonArray)!.OfType<JsonObject>().FirstOrDefault(r => r["role_id"]?.GetValue<string>() == rid.ToString())
-                       ?? throw new LeapError("no such role in that group");
-            var me = c.Self.AgentID.ToString();
-            if (!(role["members"] as JsonArray)!.OfType<JsonObject>().Any(m => m["id"]?.GetValue<string>() == me))
-                throw new LeapError($"I don't have the role {role["name"]}, so its title isn't mine to wear");
-        }
+        // a title is one of my own roles'; the grid ignores any other
+        var mine = await TitlesOfAsync(gid, ct);
+        if (!mine.ContainsKey(rid)) throw new LeapError("that role isn't one of mine in that group, so its title isn't mine to wear");
         c.Groups.ActivateTitle(gid, rid);
-        return new JsonObject { ["title_role"] = rid.ToString() };
+        return new JsonObject { ["title_role"] = rid.ToString(), ["title"] = mine[rid].Title };
+    }
+
+    public async Task<JsonObject> TitlesAsync(JsonObject a, CancellationToken ct)
+    {
+        var titles = new JsonArray();
+        foreach (var (rid, t) in (await TitlesOfAsync(Gid(a), ct)).OrderBy(x => x.Value.Title, StringComparer.OrdinalIgnoreCase))
+            titles.Add(new JsonObject { ["role_id"] = rid.ToString(), ["title"] = t.Title, ["selected"] = t.Selected });
+        return new JsonObject { ["titles"] = titles };
+    }
+
+    Task<Dictionary<UUID, GroupTitle>> TitlesOfAsync(UUID gid, CancellationToken ct)
+    {
+        var c = C;
+        UUID req = UUID.Zero;
+        return AskAsync<GroupTitlesReplyEventArgs, Dictionary<UUID, GroupTitle>>(h => c.Groups.GroupTitlesReply += h, h => c.Groups.GroupTitlesReply -= h,
+            e => (e.GroupID == gid && (req == UUID.Zero || e.RequestID == req), e.Titles), () => req = c.Groups.RequestGroupTitles(gid), "group titles", ct);
+    }
+
+    /// <summary>Whether I get the group's notices and my profile lists it (the viewer's group General tab); each kept as it is
+    /// unless given.</summary>
+    public JsonObject Membership(JsonObject a)
+    {
+        var c = C;
+        var gid = Gid(a);
+        if (!_s.State.Groups.TryGetValue(gid, out var g)) throw new LeapError("I'm not in that group");
+        bool notices = a.Bool("notices") ?? g.AcceptNotices, listed = a.Bool("list_in_profile") ?? g.ListInProfile;
+        if (a.Has("notices") || a.Has("list_in_profile"))
+        {
+            c.Groups.SetGroupAcceptNotices(gid, notices, listed);
+            g.AcceptNotices = notices;   // (a struct: the copy goes back; the grid's next list of groups will say the same)
+            g.ListInProfile = listed;
+            _s.State.Groups[gid] = g;
+        }
+        return new JsonObject { ["notices"] = notices, ["list_in_profile"] = listed };
     }
 
     // ---------- notices ----------
@@ -368,9 +395,21 @@ public sealed class GroupOps
         foreach (var n in list.Where(n => n.NoticeID != UUID.Zero).OrderByDescending(n => n.Timestamp))
             arr.Add(new JsonObject
             {
-                ["notice_id"] = n.NoticeID.ToString(), ["time"] = n.Timestamp, ["from"] = n.FromName, ["subject"] = n.Subject,
+                ["notice_id"] = n.NoticeID.ToString(), ["time"] = (long)n.Timestamp, ["from"] = n.FromName, ["subject"] = n.Subject,
                 ["attachment"] = n.HasAttachment ? AgentInventory.AssetTypeLabel(n.AssetType) : null,
             });
         return new JsonObject { ["group_id"] = gid.ToString(), ["notices"] = arr };
+    }
+
+    /// <summary>A notice from the archive, whole: asked for by id, it comes as an IM of its own kind, subject and body joined by
+    /// a bar, as a new notice's are. (Its attachment, if any, isn't offered this way.)</summary>
+    public async Task<JsonObject> NoticeReadAsync(JsonObject a, CancellationToken ct)
+    {
+        var c = C;
+        var id = a.Uuid("notice_id") ?? throw new LeapError("need notice_id");
+        var im = await AskAsync<InstantMessageEventArgs, InstantMessage>(h => c.Self.IM += h, h => c.Self.IM -= h,
+            e => (e.IM.Dialog == InstantMessageDialog.GroupNoticeRequested, e.IM), () => c.Groups.RequestGroupNotice(id), "the notice", ct);
+        var parts = (im.Message ?? "").Split('|', 2);
+        return new JsonObject { ["subject"] = parts[0], ["message"] = parts.Length > 1 ? parts[1] : "", ["from"] = im.FromAgentName };
     }
 }

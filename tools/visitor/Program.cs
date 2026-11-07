@@ -284,6 +284,17 @@ static class Program
             case "quit": quit.Cancel(); return "bye";
             case "group": return await Group(rest);
             case "rez": return await Rez(rest);
+            case "boxes": return await Boxes(rest);
+            case "descr": return Descr(rest);
+            case "rights":
+                {
+                    var (who, onoff) = Split(rest);
+                    client.Friends.GrantRights(UUID.Parse(who), onoff == "on" ? FriendRights.CanSeeOnline | FriendRights.CanModifyObjects : FriendRights.CanSeeOnline);
+                    return "ok";
+                }
+            case "pet": return await Pet(rest);
+            case "unpet": return Unpet(rest);
+            case "whoops": return await Whoops(rest);
             case "chest": return await Chest(rest);
             case "treasure": return await Treasure(rest);
             case "tipjar": return await TipJar(rest);
@@ -544,6 +555,100 @@ static class Program
         Named(prim.LocalID, name);
         client.Objects.DeselectObject(sim, prim.LocalID);
         return $"rezzed {name} local {prim.LocalID} id {prim.ID}";
+    }
+
+    /// <summary>boxes NAME N X Y Z: N small boxes side by side from there, all called NAME (derez NAME takes them all).</summary>
+    static async Task<string> Boxes(string rest)
+    {
+        var w = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (w.Length < 5 || !int.TryParse(w[^4], out int n)) return "ERR boxes NAME N X Y Z";
+        var name = string.Join(" ", w[..^4]);
+        var at = new Vector3(float.Parse(w[^3]), float.Parse(w[^2]), float.Parse(w[^1]));
+        for (int i = 0; i < n; i++)
+        {
+            var prim = await RezBox(at + new Vector3(i % 10 * 0.3f, i / 10 * 0.3f, 0), new Vector3(0.2f));
+            if (prim == null) return $"ERR box {i} didn't come back";
+            Named(prim.LocalID, name);
+            client.Objects.DeselectObject(client.Network.CurrentSim, prim.LocalID);
+        }
+        return $"rezzed {n} of {name}";
+    }
+
+    /// <summary>descr NAME | WORDS: what a thing it rezzed says about itself.</summary>
+    static string Descr(string rest)
+    {
+        int bar = rest.IndexOf(" | ", StringComparison.Ordinal);
+        if (bar < 0) return "ERR descr NAME | WORDS";
+        var name = rest[..bar];
+        uint[] ids;
+        lock (rezzed) ids = named.Where(kv => kv.Value == name).Select(kv => kv.Key).ToArray();
+        foreach (var id in ids) client.Objects.SetDescription(client.Network.CurrentSim, id, rest[(bar + 3)..]);
+        return $"described {ids.Length}";
+    }
+
+    /// <summary>pet NAME X Y Z: a box with a touch script (and a money event), worn on the left shoulder: something
+    /// someone wears, for the tester to find and touch. unpet NAME takes it off.</summary>
+    static async Task<string> Pet(string rest)
+    {
+        if (NameAndPos(rest, "Access Pet") is not var (name, pos)) return "ERR pet [NAME] X Y Z";
+        var box = await RezBox(pos, new Vector3(0.2f));
+        if (box == null) return "ERR the pet didn't come back";
+        Named(box.LocalID, name);
+        var script = await UploadScript("Pet touch",
+            "default { state_entry() { llSay(0, \"pet ready\"); } touch_start(integer n) { llSay(0, \"pet touched by \" + llDetectedName(0)); } money(key who, integer n) { } }");
+        int mark = counter;
+        client.Inventory.CopyScriptToTask(box.LocalID, script, true);
+        if (!await Heard("pet ready", mark)) return $"ERR pet {name}: its script didn't say it was ready";
+        client.Objects.DeselectObject(client.Network.CurrentSim, box.LocalID);
+        client.Objects.AttachObject(client.Network.CurrentSim, box.LocalID, AttachmentPoint.LeftShoulder, Quaternion.Identity);
+        await Task.Delay(1500);
+        return $"pet {name} id {box.ID} local {box.LocalID}";
+    }
+
+    static string Unpet(string name)
+    {
+        uint[] ids;
+        lock (rezzed)
+        {
+            ids = named.Where(kv => kv.Value == name).Select(kv => kv.Key).ToArray();
+            foreach (var id in ids) { named.Remove(id); rezzed.Remove(id); }
+        }
+        foreach (var id in ids)
+            client.Network.SendPacket(new ObjectDetachPacket
+            {
+                AgentData = { AgentID = client.Self.AgentID, SessionID = client.Self.SessionID },
+                ObjectData = new[] { new ObjectDetachPacket.ObjectDataBlock { ObjectLocalID = id } },
+            });
+        return $"took off {ids.Length}";
+    }
+
+    /// <summary>whoops NAME X Y Z | WORDS: a box of the visitor's whose script says WORDS on the debug channel when touched,
+    /// as a script's error is said: the tester must never hear it.</summary>
+    static async Task<string> Whoops(string rest)
+    {
+        int bar = rest.IndexOf(" | ", StringComparison.Ordinal);
+        if (bar < 0 || NameAndPos(rest[..bar], null) is not var (name, pos)) return "ERR whoops NAME X Y Z | WORDS";
+        var box = await RezBox(pos, new Vector3(0.4f));
+        if (box == null) return "ERR it didn't come back";
+        Named(box.LocalID, name);
+        var script = await UploadScript("Whoops",
+            "default { state_entry() { llSay(0, \"whoops ready\"); } touch_start(integer n) { llSay(DEBUG_CHANNEL, \"" + rest[(bar + 3)..] + "\"); } }");
+        int mark = counter;
+        client.Inventory.CopyScriptToTask(box.LocalID, script, true);
+        if (!await Heard("whoops ready", mark)) return $"ERR whoops {name}: its script didn't say it was ready";
+        client.Objects.DeselectObject(client.Network.CurrentSim, box.LocalID);
+        return $"whoops {name} id {box.ID}";
+    }
+
+    static async Task<bool> Heard(string words, int after)
+    {
+        for (int i = 0; i < 40; i++)
+        {
+            await Task.Delay(250);
+            lock (heard)
+                if (heard.Any(l => l.Contains(words) && int.Parse(Regex.Match(l, "\"n\":(\\d+)").Groups[1].Value) > after)) return true;
+        }
+        return false;
     }
 
     static async Task<Primitive> RezBox(Vector3 pos, Vector3 scale)

@@ -79,6 +79,7 @@ public sealed class Commands
                 case "scriptinfo": await ScriptInfoAsync(); return true;
                 case "beacon": await BeaconAsync(rest); return true;
                 case "touch": if (Touch != null) await Touch(string.Join(" ", rest)); return true;
+                case "details": if (Details != null) await Details(string.Join(" ", rest)); return true;
                 case "pay": if (Pay != null) await Pay(string.Join(" ", rest)); return true;
                 case "buy": if (Buy != null) await Buy(string.Join(" ", rest)); return true;
                 case "switch": if (Switch != null) await Switch(string.Join(" ", rest)); return true;
@@ -147,6 +148,7 @@ public sealed class Commands
         ("scriptinfo", "//scriptinfo", "the scripts in what you're wearing, per attachment"),
         ("beacon", "//beacon NAME | //beacon off | //beacon",
             "a sound on someone or something to walk to (by hand in walk mode, or by //go), until you reach it; off; or where it is"),
+        ("details", "//details NAME", "whose something within 30 metres is, who made it, its description, what you may do with it"),
         ("touch", "//touch NAME | //touch OBJECT PART | //touch NAME face top (or bottom, front, far, left, right, inside, a number)",
             "touch the nearest thing or part within 10 metres with that name (an object whose only touchable part is a child: that part), on a face if given"),
         ("pay", "//pay NAME | //pay NAME 50",
@@ -1018,6 +1020,7 @@ public sealed class Commands
 
     /// <summary>`//touch`'s words, to the app's parts (MainForm.Parts.cs).</summary>
     public Func<string, Task>? Touch { get; set; }
+    public Func<string, Task>? Details { get; set; }
     public Func<string, Task>? Block { get; set; }
     public Func<string, Task>? Profile { get; set; }
     public Func<string, string, Task>? Self { get; set; }

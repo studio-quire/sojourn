@@ -146,7 +146,7 @@ Alt+number; Radegast's numbers where Radegast has the same area.
 | Alt+4 | Inventory | the tree ("Red Dress, skirt, worn"; "Hair, object, worn on Skull"; "..., favorite"; "..., marked"), Search, and Show (everything, worn, recent, trash, favorites) |
 | Alt+5 | Search | Search for (words), Look for (people, places, events, groups, classifieds), Results |
 | Alt+6 | Places | Landmarks (a tree: the Landmarks folder and the Favorites bar), Teleport history ("Bay City, Harbour, today 14:05"), Go to region (a box), Regions around ("Bay City, 3 people, next door to the north") |
-| Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touchable" (or ", can sit"), nearest first, within 30 m (Show: what you wear instead, Alt+Shift+7); Tab: the selected one's parts, then a part's faces (Parts and faces, below) |
+| Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touchable" (or ", can sit"), nearest first, within 30 m, the nearest 60 and then a row for more; Control+F filters by words (Show: what you wear instead, Alt+Shift+7, or what people nearby wear); Tab: the selected one's parts, then a part's faces, then the filter and Show (Objects nearby, Parts and faces, below) |
 | Alt+8 | Notices | what waits for an answer, newest first; the selected one's text, keys and reply box; Escape goes back where Control+N came from |
 | Alt+9 | Assistant | a typed request ("Ask the assistant"), its replies, its choices as buttons |
 | Alt+0 | Settings | first the assistant's provider and whether it works, its key or token row and OpenRouter's model (The assistant, below); then the ones that matter here (read-out and its kinds, mutes, timestamps, arrivals, earcons and volumes, the sound output and microphone, walk mode's cues). Each row leads with what it's about, so first-letter navigation finds it ("IM sound", "Footsteps (walk mode)", "Nearby chat read out"; no two rows start with the same three words); Enter, Space or Right moves one to its next value, Shift with them or Left to the one before (a sound's row plays it; Enter on the sound output or microphone opens the list of devices; on a row that has no steps, a number in a range or a word, Enter asks for it to be typed). Her keywords and what her auto responses say are rows too, typed, an auto response confirmed by her own key. A setting registered and named in neither `Shown` nor `NotRows` (`MainForm.Settings.cs`) still gets a row, at the end, by its bare name, and the settings step fails until it's placed |
@@ -216,17 +216,17 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   confirmation's Confirm and Cancel. Escape anywhere in the notices but on a confirmation (or in the reply box): back
   to the area and control Control+N came from, else to Say. Tab from the list reaches the notice's text, its reply box
   and its buttons ("1: Red", "Delete: Ignore").
-- **A person's actions are one list** (`MainForm.PersonActions.cs`), the same items with the same letters wherever their name is: People nearby (Enter opens them), Friends and Search (Enter: an IM), an IM's message box or history, and their profile (Applications key or its Actions button; there the window closes first). Send IM, Walk to, Face, Where, Describe, Follow, Beacon, Profile, Pay..., Give what you copied, Offer teleport, Request teleport, Offer friendship (a friend: Start a conference..., End friendship, confirmed), Always incognito with them, Block or Unblock, IM sound for NAME.... What needs them near says so when they aren't ("Kestrel isn't nearby, though online."), rather than the menu changing shape. A friend's What they may do has See when you're online, Find you on the map and Edit your objects, checked as they stand, each through her confirmation; edit rights are how a sighted helper helps without logging in as her. `//block NAME`, `//profile NAME` and `//friend NAME` find anyone by name: open conversations, friends, people nearby, then the grid. A new action goes in `PersonActions`, never a list's own menu. On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
-  tag, Group sound for NAME..., Leave (the grid asks in Notices). On a friend, Start a conference...: friends online in a list of check boxes, the one you were on marked, Space marking more, Enter starting it with two or more and going to its tab. In a group's message box or history: its sound; in anyone's, Cut, Copy, Paste, Select all after what's above, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
+- **A person's actions are one list** (`MainForm.PersonActions.cs`), the same items with the same letters wherever their name is: People nearby (Enter opens them), Friends and Search (Enter: an IM), an IM's message box or history, and their profile (Applications key or its Actions button; there the window closes first). Send IM, Walk to, Face, Where, Describe, Follow, Beacon, Profile, Pay..., Give what you copied, Offer teleport, Request teleport, Offer friendship (a friend: Start a conference..., End friendship, confirmed), Invite to a group... (Groups, below), Always incognito with them, Block or Unblock, IM sound for NAME.... What needs them near says so when they aren't ("Kestrel isn't nearby, though online."), rather than the menu changing shape. A friend's What they may do has See when you're online, Find you on the map and Edit your objects, checked as they stand, each through her confirmation; edit rights are how a sighted helper helps without logging in as her. `//block NAME`, `//profile NAME` and `//friend NAME` find anyone by name: open conversations, friends, people nearby, then the grid. A new action goes in `PersonActions`, never a list's own menu. On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
+  tag, Choose your title..., Members, Notices..., Receive its notices, List it in your profile (Groups, below), Group sound for NAME..., Leave (the grid asks in Notices). On a friend, Start a conference...: friends online in a list of check boxes, the one you were on marked, Space marking more, Enter starting it with two or more and going to its tab. In a group's message box or history: its sound; in anyone's, Cut, Copy, Paste, Select all after what's above, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
   its own window: a read-only text read line by line (name, born, partner, about, interests, picks, first life, web),
   Send IM, Pay, Give what you copied, Describe pictures, Actions..., Close (Escape). Pay asks the amount, then waits for the
   person's confirmation in Notices (refused at once when it can't be afforded). Give what you copied (also on a person
   nearby and a friend) gives what Control+C or Control+X last took in the inventory, each thing confirmed: the blind
   tester's Radegast habit of copying an item and giving it from the person (2026-10-31), beside the inventory's Give
-  to... On an object: Touch, Sit, Walk to, Beacon, Face, Describe, Where (with its floating
-  text), Parts, Move..., Take into your inventory, Delete (the last three on your own: Placing by words, below; Delete,
-  also the key, is confirmed in Notices and goes to the Trash); on something worn only Touch, Describe, Where, Parts and
-  Take off (Delete too: back into the inventory, never deleted; the blind tester found no way to take a HUD off there,
+  to... On an object: Touch, Sit, Walk to, Beacon, Face, Describe, Details, Where (with its floating
+  text), Contents, Parts, Move..., and Take into your inventory, Delete and Return to its owner where she may (Objects nearby,
+  below; Delete, also the key, is confirmed in Notices and goes to the Trash); on something worn only Touch, Describe, Details,
+  Where, Parts and Take off (Delete too: back into the inventory, never deleted; the blind tester found no way to take a HUD off there,
   2026-11-02). Each list menu's opening is a line in the session log with what it offered, on what (the inventory's
   too, with the item's words), so a log shows what she was given to choose from.
 - Lists: F5 refreshes; a list you're in never changes under you otherwise (it refreshes every 3 s while you're
@@ -250,7 +250,7 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   follow a wear or take-off as it lands ("worn" comes and goes within a second). The Applications key (or Shift+F10)
   lists every action: Wear, Add to outfit, Take off, Rez on the ground, Rez where you say..., Unbox, Give to..., Cut,
   Copy, Paste, Rename, Details (rights, maker, date), Delete; on a folder Replace outfit, Add to outfit, Take off the
-  folder's items, New folder, New notecard, Upload a file here (Control+U; Uploading, below); a notecard also Play as
+  folder's items, New folder, New notecard, New script, Upload a file here (Control+U; Uploading, below); a notecard also Play as
   a route (`//route`).
   - A gesture's words say whether it's active, and its trigger ("Clap, gesture, active, /clap"); Enter plays it (any
     gesture, active or not), and its Applications key has Play, Activate and Deactivate (for all the marked ones).
@@ -285,7 +285,8 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   - On an object, Attach to... lists every point with what it holds; Enter wears it there beside what's on it ("Wearing Hat on Chest."), for something whose own point is wrong. On a sound, Play plays it in the world where she stands, as the viewer's does, so people near hear it too; on an animation, Play and Stop it.
   - **The Trash**: Delete on what's already in it goes for good, the confirmation saying so. Empty the Trash, first on the Trash folder's menu and on anything in it, or `//emptytrash`, behind her confirmation.
   - A notecard or script opens in its own window, an edit control: Ctrl+S saves ("Saved.", or a script's compile
-    errors read out and listed under the text), Escape closes (asking first if changed).
+    errors read out and listed under the text), Escape closes (asking first if changed). Find, go to a line, go to an error and
+    the rest: Scripts, below.
   - **What a notecard holds** (`MainForm.Notecards.cs`, Core's `NotecardFile`; Radegast's Attachments, and SL's welcome
     cards carry landmarks and gifts this way). Opening one says so ("It holds 2 things: Harbour, landmark; Rules,
     notecard. Tab reaches them."), and a list a Tab from the text names each. Enter on one copies it into the inventory,
@@ -560,6 +561,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//scriptinfo` | the scripts in what you're wearing, per attachment and its point, and how many run |
 | `//beacon NAME` / `//beacon off` / `//beacon` | a sound on the nearest person or thing by name to walk to (walk mode's beacon, below), off, or where it is |
 | `//touch NAME` / `OBJECT PART` / `NAME face DIR` | touch a thing or part by name within 10 m, on a face if given (Parts and faces, below) |
+| `//details NAME` | whose a thing within 30 m is, who made it, its description, what she may do with it (else a named part within 10 m; Objects nearby, below) |
 | `//pay NAME` / `NAME 50`, `//buy NAME` | pay someone here or something within 30 m, buy something within 30 m (Paying and buying things, below) |
 | `//switch` / `flip` / `main` / `branch` | the next rail switch and how it's set; throw it; set it to the main line or the branch, throwing it only if it isn't already (walk mode's W and Shift+W; Rail switches, below) |
 | `//stop` | as Space in walk mode, from anywhere: seated on something moving, stop it by its controls (Stopping a vehicle, below); otherwise stop a walk, a follow or a route |
@@ -1074,6 +1076,53 @@ it's up"; "without pictures" only with no view, one given up, or no assistant.) 
   6-7 s, 0.4-3.6 s each, the processor never past 80%), the telling's length too short for her. Not seen yet: a
   waterslide or coaster, the longer telling.
 
+### Objects nearby
+
+`MainForm.Lists.cs`, `MainForm.Objects.cs` (Claude Opus 5.5, 2026-11-07; what's Radegast's own source for learning what's
+around you, and unnamed "Object" is the commonest thing a resident meets).
+
+- **The list.** A line says the name, where, its sale or payment, and ", can sit" or ", touchable", the last when it or any
+  part takes touches. Parts and faces are a Tab away (below).
+- **Past the nearest.** A page is the nearest 60 (200 when `access_objects_range` is over 30 m). With more in range the last
+  row says "More: 84 further on. Enter lists the next 60."; Enter there adds a page and reads the first thing it added. The
+  longer list stays until she's in another region, and F5 says the count ("120 objects, 24 more further on.").
+- **The filter** (`objectsFilter`; Control+F from the lists or Show, as in the inventory, Alt+L, or Tab after the faces). What's
+  typed is looked for, in any case, in the name, description and floating text of everything in range, not only the page, and the
+  list follows 0.4 s after a pause, said ("3 found."); Enter goes to the list, Escape clears it and goes to the list. The list's
+  name says it's on ("Objects nearby, with lever") until it's cleared, so arriving by Alt+7 later says why it's short. In a
+  busy place the names aren't all in: the filter asks for them nearest first, about 60 in its 3 s, and says what's left
+  ("3 found; 240 in range have no name from Second Life yet, F5 looks again"), going on by itself while the focus is out of the
+  list. On what she wears it goes by name.
+- **Details** (Alt+Enter on an object or a part, Details on their menus, `//details NAME`): said whole, for the review keys.
+  Name; "Yours", "Owned by Kestrel" or the group; "Made by Ann, 3 June 2024"; its description; what its floating text says; worn
+  where; how many parts; land impact; a sale; what she may do ("Yours to copy, modify and transfer; the next owner may copy.", or
+  "You may copy it.", "You may not change or copy it."); and scripted, takes touches, takes payment, temporary, physical, phantom.
+  A part's are the part's own name and description, the object's owner. Radegast keeps these in a pane; here they're asked for.
+- **What people nearby wear** (Show's third choice): "Pet, worn by Kestrel on Left Shoulder, 4 metres, two o'clock, touchable".
+  Touch, Pay where it takes payment, Describe, Details, Where and its parts, as a thing of her own worn has; nothing that moves it.
+  Never HUDs, which only their wearer has. What's listed is in view of the region only; Alt+7 goes back to things nearby.
+- **Touch** lands where `//touch` does. On the object when it takes touches; on the one part that does when only a part does (a
+  treasure chest's lid, the reason parts exist: "Touched part 2 of Treasure Chest."); with several, it says which and leaves it
+  to her, a Tab away ("Sofa itself takes no touches. 2 of its parts do: Left Cushion and Right Cushion. Tab reaches its parts.");
+  with none, it sends the touch as a click would and says "Nothing in it says it takes touches."
+- **Contents** (the object's menu, for its root; a part's menu, for that part): the build editor's Content tab with the focus in
+  its list, Escape coming back here; rows and keys in Building, below. Someone else's that shows nothing says so: "Nothing it
+  shows you: what's inside a thing shows to those who may change it, or when it sells its contents."
+- **Take, Delete, Return**, by the viewer's own rules: Take where it's hers, or she may change it and pass it on
+  (`enable_take`); Delete where it's hers or she may change it (`getFirstDeleteableObject`); Return on someone else's where she
+  may change it, or it stands on land that's hers or her group's by the region's own map (`Simulator.ParcelOverlay`), or she
+  manages the estate (`LLObjectEnableReturn`). The region decides in the end, and what it refuses is said. "Hers" goes by the
+  owner when it's known, not the region's flag alone: OpenSim sets the flag on a friend's she may edit too.
+  - All that isn't hers goes through her confirmation, naming the owner ("Return Box to its owner. Owner: Kestrel. It
+    leaves the world and goes to its owner's Lost and Found; only the owner can put it back."). A Take of her own, undone by
+    rezzing it, doesn't ask, and a Delete always does.
+  - Return sends away someone else's thing, so it's placed for that: it has no letter (only the arrows reach it, and no key
+    does), it's the end of the group Take, Delete, Return, with Block before that group and only Refresh after it, so a slip
+    from Refresh or from the menu's top by Up lands on something that still asks, and never on Block, which doesn't.
+  - Checked on the local grid: a friend's box with edit rights (Take and Return offered, each cancelled at its confirmation; Delete
+    confirmed, which OpenSim refuses, the refusal said) and the visitor's box on her own parcel (Return offered, cancelled, confirmed
+    and gone). Only Second Life can show a friend's thing actually taken, deleted or returned; there it's what the viewer offers.
+
 ### Parts and faces
 
 (M2, a blind tester's child prims: the sunken city's Treasure Chest 6 answers only on a child prim, which Radegast lists by name
@@ -1090,7 +1139,7 @@ from guided testing of Radegast, and no list changes while you're in it):
   unnamed ("described as Play"). Names come from selecting every part briefly, as the edit tool's linked parts are (on
   the local grid neither the root's selection nor a child's family properties brought a child's name). Enter touches
   that part (the part itself, never the root: the renderer's ray counts that part alone first); the Applications key:
-  Touch, Sit, Where, Describe, Faces. F5 reads them again.
+  Touch, Sit, Where, Describe, Details (Alt+Enter), Contents, Faces. F5 reads them again.
 - **Faces of X** (`faces`): the part's faces as the renderer out of sight drew them (`RegionScene.FaceList`: each
   face's mean normal, flatness, whether it faces inward), by direction from where you are, the side facing you first:
   "The side facing you, face 2", "The top, face 0", "The left side" and "The right side" as you face it, "The far
@@ -1100,7 +1149,7 @@ from guided testing of Radegast, and no list changes while you're in it):
   face is all that shows (a flat HUD's usual), else each with where on the part and how much ("Face 2, at the top left,
   about a third of it"). Without the renderer (`--no-render`, or a PC that can't run it), or on something worn on the
   body (not drawn out of sight), the list says so and parts are touched whole.
-- **Show** (`objectsShow`, after the lists; Alt+Shift+7 goes straight there): things nearby, or what you wear, HUDs first
+- **Show** (`objectsShow`, after the lists and the filter; Alt+Shift+7 goes straight there): things nearby, what people nearby wear (Objects nearby, above), or what you wear, HUDs first
   ("7Seas HUD, on HUD Top Right, 14 parts, touchable"), then everything attached to the body (a pet or a skirt with a
   menu, "Pet, on Left Shoulder, 3 parts"; the blind tester couldn't reach her worn things, 2026-11-01). Their
   buttons are parts like any other: their parts listed (a body attachment's without where-words: its offsets are in
@@ -1124,6 +1173,48 @@ from guided testing of Radegast, and no list changes while you're in it):
   touches and exactly one part does, that part (the chest's lid); `//touch OBJECT PART` ("//touch chest latch");
   `//touch NAME face top` (bottom, front, far, left, right, inside, or a number). When nothing nearby has the name, a
   part or read button of a HUD she wears ("//touch brake"). For routes and notecards.
+
+### Groups
+
+`MainForm.Groups.cs`; on a group in Alt+3's My groups, on its Applications key (Claude Opus 5.5, 2026-11-07).
+
+- **Choose your title...**: the titles her roles give her there, the one worn said so ("Queen Bee, worn"); Enter wears one
+  ("Your title in Builders is Queen Bee now."), saying when it won't show until she wears that group's tag, which is Wear its tag:
+  the two halves of a group tag are separate here as in the viewer, and neither does the other unasked. With one title it says so
+  and asks nothing. Core's `TesselGroups titles` is the viewer's own list (GroupTitlesRequest), and `title` checks against it.
+- **About the group** also says who founded it and her title there.
+- **Members**: everyone in a window of lines (`ShowText`), owners first, each with their title and whether they're online. Reading
+  only: nothing to do with one from there yet (`docs/access-gaps.md`).
+- **Notices...**: the archive, newest first, by subject, sender and date, and what's attached; Enter reads one whole in a
+  window, Escape back to the list, Escape again out. Attachments are said and not offered. Core's `noticeRead` asks for one and
+  takes the reply IM (GroupNoticeRequested), which isn't otherwise a notice.
+- **Receive its notices** and **List it in your profile**: checked items, each said back (`TesselGroups membership`).
+- **Invite to a group...** on a person's actions: the groups she may invite to, as the viewer's picker lists them; into the Everyone role,
+  so no confirmation (a role carrying powers has one).
+
+### Scripts
+
+`EditorForm.cs` (the keys, in notecards too), `MainForm.Scripts.cs` (Claude Opus 5.5, 2026-11-07).
+
+- **New script** on a folder's Applications key: asks a name, opens with the official viewer's starting text.
+- **In the editor**, keys of its own window, so they don't meet the main window's (F1 there says them):
+  - Control+L: "Line 12 of 40, column 5." (Radegast's key).
+  - Control+F: asks what to find (any case), keeps it, and goes there saying "Line 12: the line's words"; F3 the next, Shift+F3 the
+    one before, going round the ends said ("From the other end: ...").
+  - Control+G: a line by number, saying it.
+  - F8 and Shift+F8: the last save's errors in turn, "Error 1 of 2, line 3, column 5: Syntax error. The line: ...", the caret placed
+    there. Unlike Radegast's, the caret doesn't move by itself when a save finds errors: she's told how many, and F8 goes.
+    The errors box is still a Tab from the text.
+- **Inside an object**: in the build editor's Content tab (or Objects' Contents), Enter on a script or notecard opens it from the object in
+  the same window. Control+S there goes through her confirmation, as anything changing a script in an object does at the gate
+  (`object.content.save`): this window comes forward with it selected in Notices, Enter or Escape, and the editor comes back. A
+  notecard keeps what it holds as any other save. A script needs copy and modify on it, as in the viewer, and says so. A save that doesn't
+  compile stops a script, and one that was running when opened runs again once it compiles. Space on a script runs or stops it.
+- **Her own objects' errors** (`access_script_errors`, on; Alt+0 "Script errors from my objects read out"): `SocialFeed` turns debug-channel
+  lines from what she owns into notices, read out and in nearby chat's history: "Script error in Door: Math error". Other people's
+  never (the grid sends them to everyone in range, and no viewer shows them). The same words from the same object at most once in half
+  a minute, for a script failing in a loop. Muted by F6 as notices are; its sound is the notices' (off by default).
+- Not here: Mono or LSL's choice and Running in the editor itself, find and replace, opening from and saving to disk (`docs/access-gaps.md`).
 
 ### Placing by words
 
@@ -1297,7 +1388,7 @@ words are the local grid's until she's tried them.
   (position 0.1 m, size 0.05 m, rotations 15 degrees, hollow 5%, transparency 10%, glow 0.05...), a choice to the next
   or previous, a switch turned. F5 reads them again. A row that's still the same row keeps its place as its words
   change, so a change never moves her. Content's rows are what's inside ("Door, script, running"): Enter on a script
-  runs or stops it, Delete removes an item (confirmed).
+  or notecard opens it (Scripts, above), Space runs or stops a script, Delete removes an item (confirmed).
 - **What's on each tab**, the editor's own rows: General: name, description, creator, owner, group, share with group,
   anyone can move and copy, for sale (a price and original, copy or contents, or no), next owner can modify, copy and
   transfer, when left-clicked (0 touch ... 8 nothing). Object: edit linked and overall size on a linked object, where

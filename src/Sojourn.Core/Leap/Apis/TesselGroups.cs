@@ -28,8 +28,11 @@ public sealed class TesselGroups : SessionApi
         Op("assignRole", "{group_id, role_id, member}", a => g.AssignRole(a, true));
         Op("unassignRole", "{group_id, role_id, member}", a => g.AssignRole(a, false));
         Op("title", "{group_id, role_id}: wear that role's title (one of my roles; Everyone: the zero id)", (a, ct) => J(g.TitleAsync(a, ct)));
+        Op("titles", "{group_id} -> {titles: [{role_id, title, selected}]}: the titles I can wear in that group", (a, ct) => J(g.TitlesAsync(a, ct)));
+        Op("membership", "{group_id, notices?, list_in_profile?} -> {notices, list_in_profile}: whether I get its notices, whether my profile lists it", a => g.Membership(a));
         Op("notice", "{group_id, subject, message, item_id?}: to every member (an attachment needs copy+transfer)", (a, ct) => J(g.NoticeAsync(a, ct)));
         Op("notices", "{group_id} -> {notices: [{notice_id, time, from, subject, attachment}]}", (a, ct) => J(g.NoticesAsync(a, ct)));
+        Op("noticeRead", "{notice_id} -> {subject, message, from}: one from the archive, whole", (a, ct) => J(g.NoticeReadAsync(a, ct)));
         Op("powers", "-> {powers}: the power names roles can have", _ => new JsonObject { ["powers"] = Json.Strings(GroupOps.PowerList) });
     }
 

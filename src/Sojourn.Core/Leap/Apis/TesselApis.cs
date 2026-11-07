@@ -224,8 +224,10 @@ public sealed class TesselObjects : SessionApi
     public TesselObjects(AgentSession s) : base(s)
     {
         Op("nearby", "{dist=20, limit=40, fetch=true, timeout=4, attachments=false (true adds what other people wear, never HUDs; "
-            + "my own worn things are TesselAgent attachPoints), query?, renew? (seconds: scripted objects' names "
-            + "older than this asked again, as a script may have renamed them; 0 all of them)} -> {objects}", NearbyAsync);
+            + "my own worn things are TesselAgent attachPoints), worn_only=false (only what other people wear), query?, "
+            + "scan=false (with query: look through everything in range, not the nearest 200; names not in yet are asked for up to "
+            + "the timeout and counted as unnamed), renew? (seconds: scripted objects' names older than this asked again, as a "
+            + "script may have renamed them; 0 all of them)} -> {objects, more (in range or matching, past the limit), unnamed}", NearbyAsync);
         Op("get", "{ids, fetch=true, children=false, full=false, fresh=false (ask again even if known), timeout} -> {objects, missing?}; full adds "
             + "faces: {all: colour, alpha, texture, shiny, glow, fullbright, bump, repeats, tex_offset, tex_rotation, texgen; and each face "
             + "that differs, by number}, shape_asset: {sculpt_map, stitching, invert, mirror} or {mesh}, texture_anim if one runs", GetAsync);
@@ -251,17 +253,19 @@ public sealed class TesselObjects : SessionApi
         var limit = a.Int("limit", 40);
         var fetch = a.Bool("fetch", true);
         var timeout = TimeSpan.FromSeconds(a.Num("timeout", 4));
-        var attachments = a.Bool("attachments", false);
+        var wornOnly = a.Bool("worn_only", false);
+        var attachments = wornOnly || a.Bool("attachments", false);
         var query = a.Str("query")?.ToLowerInvariant();
+        var scan = query is not null && a.Bool("scan", false);
         var me = C.Self.SimPosition;
         // every region this agent sees (its own and connected neighbours), as the viewer lists them
-        var cands = S.VisibleRegions()
-            .SelectMany(rw => rw.Prims.Values.Where(p => S.Objects.Listable(rw, p, attachments))
+        var inRange = S.VisibleRegions()
+            .SelectMany(rw => rw.Prims.Values.Where(p => S.Objects.Listable(rw, p, attachments) && (!wornOnly || p.ParentID != 0))
                 .Select(p => (w: rw, p, d: Vector3.Distance(rw.RegionPosition(p) + S.FrameOffset(rw), me))))
             .Where(x => x.d <= dist)
             .OrderBy(x => x.d)
-            .Take(query is null ? limit : Math.Max(limit, 200))
             .ToList();
+        var cands = scan ? inRange : inRange.Take(query is null ? limit : Math.Max(limit, 200)).ToList();
         // renew: scripted objects' names older than this many seconds asked again and waited for (a script renames its
         // object, and the region tells only those who have it selected); 0 renews every scripted one (a list's F5)
         double? renew = a["renew"] is null ? null : a.Num("renew", 0);
@@ -279,24 +283,26 @@ public sealed class TesselObjects : SessionApi
                         .Select(x => x.p).ToList();
                 }
                 var rest = g.Select(x => x.p).Except(again).ToList();
-                var done = await Task.WhenAll(S.Objects.FetchAsync(g.Key, rest, timeout, ct, sim: sim), S.Objects.RenewAsync(g.Key, again, timeout, ct, sim));
+                var done = await Task.WhenAll(S.Objects.FetchAsync(g.Key, rest, timeout, ct, sim: sim, askUntilTimeout: scan), S.Objects.RenewAsync(g.Key, again, timeout, ct, sim));
                 timedOut |= !done.All(x => x);
             }
         var objs = new JsonArray();
         var missing = new JsonArray();
+        int more = query is null ? inRange.Count - cands.Count : 0, unnamed = 0;
         foreach (var (pw, p, _) in cands)
         {
             if (!pw.Prims.ContainsKey(p.LocalID)) { missing.Add(p.ID.ToString()); continue; }
+            if (p.Properties is null) unnamed++;
             var d = S.Objects.Describe(pw, p);
             if (query is not null)
             {
                 var hay = $"{d.Str("name")}\n{d.Str("desc")}\n{d.Str("text")}".ToLowerInvariant();
                 if (!hay.Contains(query)) continue;
+                if (objs.Count >= limit) { more++; continue; }
             }
             objs.Add(d);
-            if (objs.Count >= limit) break;
         }
-        var r = new JsonObject { ["objects"] = objs };
+        var r = new JsonObject { ["objects"] = objs, ["more"] = more, ["unnamed"] = unnamed };
         if (missing.Count > 0) r["missing"] = missing;
         if (timedOut) r["timed_out"] = true;
         return r;

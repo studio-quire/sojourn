@@ -31,6 +31,19 @@ public sealed partial class MainForm
         GroupItem("&About the group", g => _ = GroupInfoAsync(g.Id, g.Name));
         GroupItem("&Wear its tag", g => _ = ActivateGroupAsync(g.Id, g.Name));
         GroupItem("&No group tag", g => _ = ActivateGroupAsync(UUID.Zero, "no group"));
+        GroupItem("Choose your &title...", g => _ = ChooseTitleAsync(g));
+        GroupItem("&Members", g => _ = GroupMembersAsync(g));
+        GroupItem("N&otices...", g => _ = GroupNoticesAsync(g));
+        GroupItem("&Receive its notices", g => _ = GroupSwitchAsync(g, "notices"));
+        var noticesItem = (ToolStripMenuItem)_groupMenu.Items[^1];
+        GroupItem("List it in your &profile", g => _ = GroupSwitchAsync(g, "list_in_profile"));
+        var listedItem = (ToolStripMenuItem)_groupMenu.Items[^1];
+        _groupMenu.Opening += (_, _) =>
+        {
+            if (_groups.FocusedItem?.Tag is not MyGroup g || Host?.Session.State.Groups.TryGetValue(g.Id, out var now) != true) return;
+            noticesItem.Checked = now.AcceptNotices;
+            listedItem.Checked = now.ListInProfile;
+        };
         SoundItem(_groupMenu, () => _groups.FocusedItem?.Tag is MyGroup g ? (g.Id, g.Name) : null, group: true);
         GroupItem("&Leave", g => _ = LeaveGroupAsync(g));
         KeysOn(_groupMenu, ("Group &chat", "Enter"));

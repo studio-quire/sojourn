@@ -135,7 +135,29 @@ docstring with its checks in full):
   Life still has to show a save and a copy out on a real card, no-copy items with a shadow_id among them.
 - **every part**: the `treasure` chest's four parts listed and named, Enter on the lid heard by its script (not the
   root's), its faces (with the renderer "The top, face 0", Enter there heard as face 0; without, the list says it needs
-  the view), `//touch` by name, by part and by face.
+  the view), the object's line saying touchable and the menu's Touch landing on the lid, `//touch` by name, by part and by face.
+- **objects: details, the filter, past the nearest, what people wear** (`ACCESS_STEPS=objects:`, with the next; about 2 minutes, no
+  renderer needed): the visitor's boxes (`boxes NAME N X Y Z`) until over 60 are in range and one further (`descr`, with a word
+  only its description has). The More row, Enter on it reading the first thing added; Control+F's filter finding that one past the
+  page, its count said, the list named for it; Alt+Enter's details; a thing not hers offering no Take, Delete or Return, and the
+  Delete key saying so; no match said; Escape back in the whole list; the visitor's `pet` worn, listed by Show's third choice, whose
+  and where, Touch heard by its script, Pay on its menu and nothing that moves it, its details and parts.
+- **objects: a friend's thing, taken, deleted, returned**: a pal (`tp`, `rights ID on`, `rez`) leaves a box she may edit. Take,
+  Delete and Return offered; Return with no letter, second from the end, reached by Up twice; its confirmation naming the owner
+  and cancelled; Take's the same; Delete confirmed, OpenSim's refusal said. The About Land step returns the visitor's box from her parcel for real.
+- **groups: a title, its members, its notices** (`ACCESS_STEPS=groups:`; under a minute, no renderer needed): a group of hers,
+  made once and kept on the grid; two titles listed by Choose your title, the worn one said so, another worn by Enter and the
+  session's `titles` following; About saying it; Receive off and on; Members' window; the visitor's group (also kept, as the local grid's power to send notices goes by the title worn), a notice sent to it read from the archive and Escape back
+  to the list; the visitor invited from People nearby. OpenSim's own behaviour on titles and notices; only Second
+  Life shows a tag changing over someone's head.
+- **scripts: a new one, moving around in it, inside an object, its errors** (`ACCESS_STEPS=scripts:`; about 2 minutes, no renderer
+  needed): New script on the Scripts folder and its starting text; Control+L, Control+F, F3 and Shift+F3 round the ends, Control+G,
+  F8 with nothing; put in a box of hers (the script is deleted from nothing: it stays in the test account's Scripts), Objects' Contents
+  landing in the Content tab's list, Enter opening it from the object, a syntax error saved through the confirmation, back in the
+  editor, the errors said and F8 on one; fixed, compiled; Space stopping and starting it; `//touch` making it say a line on the debug channel,
+  read out and in the history, not twice in half a minute, nothing with the switch off, again with it on; the visitor's `whoops`
+  never read out. Second Life's compiler has its own wording and numbers its lines from nought, which the code allows for without
+  the local grid showing it; a real run-time error there is still to be seen.
 - **your HUDs**: a two-prim HUD made and worn (its script put in through the confirmation by keys); named by
   Ctrl+Shift+W and `//outfit`; Show: Your HUDs lists its parts; Enter on its button heard by its script.
 - **a HUD that's one picture of buttons**: a painted driver panel (a title and four labelled buttons, uploaded) on one
@@ -189,7 +211,7 @@ docstring with its checks in full):
   each way); a category, a landing point and routing; the visitor banned for an hour by name, confirmed, the until
   said and in the region's list, the Access tab listing him, Delete on his row lifting it after the confirmation, the
   focus back in the list; an allow cancelled at the confirmation; a box of hers counted on the Objects tab, with who
-  owns what; the covenant and the region read; for sale for L$100 confirmed and then not for sale; a divide cancelled;
+  owns what; the visitor's box on her parcel, Return offered on Objects' menu, cancelled, confirmed and gone from the region; the covenant and the region read; for sale for L$100 confirmed and then not for sale; a divide cancelled;
   abandoned through the confirmation (the Keeper's again); passes sold by the Keeper and one bought; Escape back to
   Say; `//land where` from Say. After, and before it starts (an interrupted run's leftovers), the Keeper reclaims what
   isn't his and joins Atelier into one parcel again; the box is taken and she's back where she was. Skipped, said so,

@@ -147,6 +147,7 @@ public sealed partial class MainForm : Form
         _cmd.Unblock = words => (Task)Invoke(() => UnblockWordsAsync(words));
         _cmd.Pay = words => (Task)Invoke(() => PayWordsAsync(words));
         _cmd.Buy = words => (Task)Invoke(() => BuyWordsAsync(words));
+        _cmd.Details = words => (Task)Invoke(() => DetailsWordsAsync(words));
         _cmd.Switch = words => (Task)Invoke(() => _walk.SwitchWordsAsync(words));
         _cmd.Outfit = () => (Task)Invoke(() => OutfitListAsync());
         _cmd.Upload = words => (Task)Invoke(() => UploadWordsAsync(words));
@@ -188,6 +189,7 @@ public sealed partial class MainForm : Form
         host.ScreenReader.Actions.ConfirmKeys = "Enter confirms, Escape cancels.";
         host.ScreenReader.Actions.ConfirmListKey = "Control N, then Tab: the whole list.";
         host.Feed.Joined += e => BeginInvoke(() => Joined(e));
+        host.Feed.OwnScriptErrors = () => _set.ScriptErrors;
         host.Session.OpenWebPage = offer => BeginInvoke(() => OpenLink(offer.Url));   // a script's llLoadURL, "Go to page" pressed
         StartEvents();
         _tick.Start();
@@ -542,6 +544,7 @@ public sealed partial class MainForm : Form
         Lists
         Applications key: a person's or object's actions, the same for a person in every list, their IM and their profile
         F5: refresh a list
+        On one of your groups, the Applications key: its chat, your title in it, its members and notices, whether you get them
 
         Reading out
         F6: mute read-out
@@ -573,7 +576,7 @@ public sealed partial class MainForm : Form
         R in walk mode, or //record: record a route by walking it
 
         Inventory
-        Enter: wear or open
+        Enter: wear, or open a notecard or script
         Space: mark
         Control+X, C and V: move and copy
         Delete: delete
@@ -586,6 +589,14 @@ public sealed partial class MainForm : Form
         F5: ask the grid for your inventory again
         On a sound or animation, the Applications key: Play; on an object: Attach to a point; on the Trash: Empty it
         In a notecard, Tab: what it holds; Enter copies one out, Enter again teleports by it or opens it
+        On a folder, the Applications key: New script, New notecard
+
+        In a notecard or script
+        Control+S: save, Escape: close
+        Control+F: find, F3 the next, Shift+F3 the one before
+        Control+G: go to a line
+        Control+L: the line and column you're on
+        F8: the next error from the last save, Shift+F8 the one before
 
         Building
         Control+B: the build editor, on what's selected in Objects, its parts or faces (else what you edited last)
@@ -593,6 +604,7 @@ public sealed partial class MainForm : Form
         help in its command box: the build commands; new box makes one
         Tab: its settings, then the tab, then the faces
         On a setting, Enter changes it, Right and Left step it; F5 reads them again
+        In content: Enter opens a script or notecard inside it, Space runs or stops a script, Delete removes one
         undo takes back the last change
         Escape: back where Control+B came from
         //build and a command, from any input
@@ -608,12 +620,16 @@ public sealed partial class MainForm : Form
         //land and a command, from any input
 
         Objects
-        Applications key or Enter: what you can do with it: touch, sit, Pay on what takes payment, Buy on what's for sale, Take a copy
-        //pay NAME or //pay NAME 50, //buy NAME: the same by name, from Say
-        Tab: the selected one's parts, then a part's faces
-        Enter: touch
-        Alt+Shift+7: what you wear instead (HUDs, then a pet or anything with a menu); Alt+7's Show switches back
+        Applications key or Enter: what you can do with it: touch, sit, Pay on what takes payment, Buy on what's for sale, Take a copy, Contents
+        Alt+Enter: its details: whose it is, who made it, its description, what you may do with it
+        Control+F: filter by words in its name, description or floating text; Enter goes to the list, Escape clears it
+        The list's last row, when there are more: Enter lists the next ones
+        //pay NAME or //pay NAME 50, //buy NAME, //details NAME: the same by name, from Say
+        Tab: the selected one's parts, then a part's faces, then the filter and Show
+        On a part or face, Enter: touch
+        Alt+Shift+7: what you wear instead (HUDs, then a pet or anything with a menu); Show also lists what people nearby wear; Alt+7 goes back
         Delete on something you wear: take it off
+        Take, Delete and Return where you may, on the menu; what isn't yours waits for your confirmation
 
         Voice
         F4 held: talk
@@ -843,9 +859,17 @@ public sealed partial class MainForm : Form
     /// key answers where it put them. Null when the person cancelled it here ("Cancelled." is all they hear).</summary>
     async Task<JsonObject?> ConfirmedAsync(string pump, string op, JsonObject args)
     {
+        if (await ConfirmedCallAsync(_ops.GatedAsync(pump, op, args), args) is not { } r) return null;
+        if (op is "delete" or "emptyTrash" && pump is "TesselInventory" or "TesselBuild" && PersonOps.Error(r) == null) _earcons?.Deleted();
+        return r;
+    }
+
+    /// <summary>The same for a call already under way whose gate holds these args. from: a window of its own the person is in
+    /// (a script's editor), this window coming forward for the answer and that one going back after.</summary>
+    async Task<JsonObject?> ConfirmedCallAsync(Task<JsonObject> call, JsonObject args, Form? from = null)
+    {
         var back = ActiveControl;
         var backPage = _areas.SelectedTab;
-        var call = _ops.GatedAsync(pump, op, args);
         PendingConfirm? mine = null;
         while (!call.IsCompleted)
         {
@@ -857,6 +881,7 @@ public sealed partial class MainForm : Form
             RealInput.Ours(() =>
             {
                 PollNotices();
+                if (from != null) Activate();
                 GoArea(_noticesPage);
                 if (_notices.Items["confirm"] is { Tag: Notice { Confirm: { } c } } item && ReferenceEquals(c.For, args))
                 {
@@ -874,9 +899,9 @@ public sealed partial class MainForm : Form
                 back.Focus();
                 FocusChanged();
             });
+        if (shown && from is { IsDisposed: false }) RealInput.Ours(from.Activate);
         // cancelled by the person here: "Cancelled." was said, and the op's refusal adds nothing for them
         if (shown && ReferenceEquals(_cancelledHere, mine)) return null;
-        if (op is "delete" or "emptyTrash" && pump is "TesselInventory" or "TesselBuild" && PersonOps.Error(r) == null) _earcons?.Deleted();
         return r;
     }
 

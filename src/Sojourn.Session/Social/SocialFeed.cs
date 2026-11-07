@@ -361,7 +361,7 @@ public sealed class SocialFeed
     {
         int type = I(d, "chat_type"), source = I(d, "source");
         // the viewer's script-error window, not chat (ChatType.Debug); start/stop typing never reach the log
-        if (type == (int)ChatType.Debug) return;
+        if (type == (int)ChatType.Debug) { ScriptError(d); return; }
         var msg = S(d, "message");
         var from = Id(d, "from_id");
         bool mine = from == _s.AgentId;
@@ -383,6 +383,30 @@ public sealed class SocialFeed
         msg = Shown(msg);
         Add(FeedKind.Nearby, null, null, from, name, msg.TrimStart(), style, mine, style == FeedStyle.Object ? ObjectLife(msg) : Life(FeedKind.Nearby, msg),
             mention: mention);
+    }
+
+    /// <summary>Script errors from the person's own objects joining the feed as notices (Sojourn Access: no window to look
+    /// in, so a script that breaks would otherwise be silence). Off here means the viewer's window has them.</summary>
+    public Func<bool>? OwnScriptErrors { get; set; }
+
+    readonly Dictionary<(UUID, string), double> _errorsSaid = new();
+
+    void ScriptError(JsonObject d)
+    {
+        if (OwnScriptErrors?.Invoke() != true) return;
+        var from = Id(d, "from_id");
+        var owner = Id(d, "owner_id");
+        if (owner != _s.AgentId && !(owner == UUID.Zero && _s.Region?.PrimById(from) is { } prim && (_s.State.PrimFlagsOf(prim) & PrimFlags.ObjectYouOwner) != 0)) return;
+        var msg = string.Join(", ", S(d, "message").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        // a script failing in a loop says the same thing over and over: once in half a minute
+        double now = Now;
+        lock (_errorsSaid)
+        {
+            if (_errorsSaid.TryGetValue((from, msg), out var at) && now - at < 30) return;
+            if (_errorsSaid.Count > 200) _errorsSaid.Clear();
+            _errorsSaid[(from, msg)] = now;
+        }
+        Add(FeedKind.Notice, null, null, from, "", $"Script error in {S(d, "from")}: {msg}", FeedStyle.Say, false, Life(FeedKind.Notice, msg));
     }
 
     void Im(JsonObject d)

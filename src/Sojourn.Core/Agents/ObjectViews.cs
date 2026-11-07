@@ -283,7 +283,7 @@ public sealed class ObjectViews
         void F(PrimFlags f, string n) { if ((flags & f) != 0) fl.Add(n); }
         F(PrimFlags.Touch, "touch"); F(PrimFlags.Money, "pay"); F(PrimFlags.Scripted, "scripted");
         F(PrimFlags.ObjectYouOwner, "mine"); F(PrimFlags.ObjectModify, "mod"); F(PrimFlags.ObjectCopy, "copy");
-        F(PrimFlags.ObjectMove, "move"); F(PrimFlags.Phantom, "phantom"); F(PrimFlags.Physics, "physics");
+        F(PrimFlags.ObjectMove, "move"); F(PrimFlags.ObjectTransfer, "transfer"); F(PrimFlags.Phantom, "phantom"); F(PrimFlags.Physics, "physics");
         F(PrimFlags.TemporaryOnRez, "temp"); F(PrimFlags.AllowInventoryDrop, "drop");
         o["flags"] = fl;
         if (p.IsAnimatedObject) o["animated"] = true;
@@ -339,9 +339,10 @@ public sealed class ObjectViews
         && DateTime.UtcNow - m.FetchedAt < TimeSpan.FromMinutes(5) && (!full || m.Full);
 
     /// <summary>Asks the region for properties of the prims that lack fresh ones (20/s), then waits until all are in
-    /// or the timeout passes. Returns true if all are fresh.</summary>
+    /// or the timeout passes. Returns true if all are fresh. askUntilTimeout: stop asking when the time's up, the rest
+    /// waiting for the next call (a filter over everything in range would otherwise hold its caller for minutes).</summary>
     public async Task<bool> FetchAsync(RegionWorld w, IReadOnlyList<Primitive> prims, TimeSpan timeout, CancellationToken ct,
-        bool force = false, Simulator? sim = null)
+        bool force = false, Simulator? sim = null, bool askUntilTimeout = false)
     {
         var c = _s.Client;
         sim ??= c?.Network.CurrentSim;
@@ -349,6 +350,7 @@ public sealed class ObjectViews
         var end = DateTime.UtcNow + timeout;
         foreach (var p in prims)
         {
+            if (askUntilTimeout && DateTime.UtcNow >= end) break;
             if (!force && Fresh(w, p, false)) continue;
             var meta = w.PropsMeta.GetOrAdd(p.ID, _ => new PropsMeta());
             if (!force && DateTime.UtcNow - meta.RequestedAt < TimeSpan.FromSeconds(5)) continue;

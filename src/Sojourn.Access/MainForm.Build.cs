@@ -136,7 +136,7 @@ public sealed partial class MainForm
             _beforeBuildPage = _areas.SelectedTab;
         }
         (UUID Id, int? Face, bool OnePart)? picked = null;
-        if (_objects.Focused && _objects.FocusedItem?.Tag is PersonOps.Thing { Hud: false } t) picked = (t.Id, null, false);
+        if (_objects.Focused && _objects.FocusedItem?.Tag is PersonOps.Thing { Hud: false } t && t.WornBy == UUID.Zero) picked = (t.Id, null, false);
         else if (_parts.Focused && _parts.FocusedItem?.Tag is Linkset.Part { Hud: false } p) picked = (p.Id, null, true);
         else if (_faces.Focused && _faces.FocusedItem?.Tag is FaceItem { Part.Hud: false } f) picked = (f.Part.Id, f.Face.Face, true);
         bool fresh = picked is { } pk && (pk.Id != _buildId || pk.OnePart != _buildOnePart);
@@ -504,7 +504,10 @@ public sealed partial class MainForm
             var contents = await ContentsAsync();
             items = contents == null ? new() : contents.Select(c => (ContentWords(c), "item:" + c.Id, (object)c)).ToList();
             _buildRows.AccessibleName = l.Whole ? $"Contents of the root of {l.RootName}" : $"Contents of {l.Name}";
-            RowsInto(_buildRows, items, contents == null ? "Its contents couldn't be read." : "Nothing inside. add NAME puts an item from your inventory in.");
+            bool mayChange = (Host!.Session.State.PrimFlagsOf(l.P) & PrimFlags.ObjectModify) != 0;
+            RowsInto(_buildRows, items, contents == null ? "Its contents couldn't be read."
+                : mayChange ? "Nothing inside. add NAME puts an item from your inventory in."
+                : "Nothing it shows you: what's inside a thing shows to those who may change it, or when it sells its contents.");
         }
         else
         {
@@ -564,6 +567,7 @@ public sealed partial class MainForm
         if (item?.Tag is ContentItem c)
         {
             if (e.KeyCode == Keys.Enter) { e.Handled = e.SuppressKeyPress = true; _ = GuardedAsync(() => ContentEnterAsync(c), c.Name); }
+            else if (e.KeyCode == Keys.Space && c.Running != null) { e.Handled = e.SuppressKeyPress = true; _ = GuardedAsync(() => ContentRunAsync(c), c.Name); }
             else if (e.KeyCode == Keys.Delete) { e.Handled = e.SuppressKeyPress = true; _ = GuardedAsync(() => RemoveContentAsync(c), c.Name); }
             return;
         }
@@ -1485,9 +1489,17 @@ public sealed partial class MainForm
 
     static string ContentWords(ContentItem c) => $"{c.Name}, {c.Type}{(c.Running is { } r ? r ? ", running" : ", not running" : "")}";
 
+    /// <summary>Enter on what's inside: a script or notecard opened to read and change, anything else said.</summary>
     async Task ContentEnterAsync(ContentItem c)
     {
-        if (c.Running is not { } running) { Answer($"{ContentWords(c)}. Delete removes it; copy {c.Name} puts a copy in your inventory."); return; }
+        if (c.Running != null || c.Type == "notecard") { await OpenContentAsync(c); return; }
+        Answer($"{ContentWords(c)}. Delete removes it; copy {c.Name} puts a copy in your inventory.");
+    }
+
+    /// <summary>A script's running switch (Space).</summary>
+    async Task ContentRunAsync(ContentItem c)
+    {
+        if (c.Running is not { } running) return;
         var r = await _ops.DoAsync("TesselBuild", "script", new JsonObject { ["id"] = _buildId.ToString(), ["item_id"] = c.Id.ToString(), ["running"] = !running });
         Answer(PersonOps.Error(r) is { } e ? $"Not changed: {Theirs(e)}" : $"{c.Name}: {(!running ? "running" : "not running")}.");
         await ShowBuildRowsAsync();

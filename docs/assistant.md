@@ -819,7 +819,7 @@ teleport home, and the assistant could neither see nor stop it.
 asks it too). `Confirmations.Classify` gates:
 - spending: pay, buy, group create; uploads where they cost L$ (not on loopback); joining a group with a fee. A pay
   above the known balance is refused by the gate, not passed.
-- deleting: TesselBuild delete/returnObjects/removeFromContents, `take` into Trash, inventory delete/emptyTrash and
+- deleting: TesselBuild delete/returnObjects/removeFromContents, `take` into Trash or of something not the person's, inventory delete/emptyTrash and
   `move` into Trash, parcelReturn, deletePick, deleteRole, and `temp` (temporary on rez: the region deletes it for
   good) on modify or modifyEach, or on rez of a no-copy item.
 - giving: give, addToContents into someone else's object, a group notice with an attachment.

@@ -816,8 +816,7 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   setting either way)? TWBlue keeps reading off by default as too chatty and relies on sounds; Mudlet reads.
 - F6 mutes the read-out here (the old add-on's key), but in Windows F6 moves between panes: keep it only if she used
   the add-on's key. Enter on a worn item takes it off: is one stray Enter too easy?
-- What "edit notecards without going back two versions" means (her list): the Radegast agents couldn't reproduce
-  losing versions in 2.54 (save, reopen, relog all kept the latest).
+- What "edit notecards without going back two versions" was: asked 2026-11-07, she never found out why it happened, and is trying notecards in Access; a card going back a version would be worth a log.
 - Her Radegast habit (through Tessel, 2026-10-30): Alt+5 to teleport around by SLurls, with mixed success there.
   Ours: Alt+5 is Search (places teleport from it), a SLurl on the clipboard is Control+G, typed is `//tp`. Is that
   close enough, and what fails for her in Radegast's?

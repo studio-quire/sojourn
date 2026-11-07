@@ -172,7 +172,7 @@ ROLES = {"landCommand": {"Edit"}, "landRows": {"List", "DataGrid", "Table"}, "la
          "results": {"List", "DataGrid", "Table"}, "friends": {"List", "DataGrid", "Table"}, "groups": {"List", "DataGrid", "Table"},
          "profileText": {"Edit", "Document"}, "keysText": {"Edit", "Document"}}
 
-VK = {"back": 8, "minus": 189, "equals": 187, "tab": 9, "enter": 13, "ctrl": 17, "esc": 27, "space": 32, "del": 46, "oem_open": 219, "oem_close": 221, "f1": 112, "f3": 114, "f4": 115, "f5": 116, "f6": 117, "f10": 121, "apps": 93, "alt": 18, "pgup": 33, "pgdn": 34,
+VK = {"back": 8, "minus": 189, "equals": 187, "tab": 9, "enter": 13, "ctrl": 17, "esc": 27, "space": 32, "del": 46, "oem_open": 219, "oem_close": 221, "f1": 112, "f3": 114, "f4": 115, "f5": 116, "f6": 117, "f8": 119, "f10": 121, "apps": 93, "alt": 18, "pgup": 33, "pgdn": 34,
       "home": 36, "end": 35, "up": 38, "down": 40, "left": 37, "right": 39,
       **{str(d): 48 + d for d in range(10)}, **{c: ord(c.upper()) for c in "abcdefghijklmnopqrstuvwxyz"}}
 
@@ -1403,6 +1403,10 @@ def session(run, procs):
         ("a person's actions, the same everywhere", lambda: person_actions(run, nonce, tester_id)),
         ("more commands", lambda: more_commands(run)),
         ("paying and buying things", lambda: paying_and_buying(run, nonce)),
+        ("objects: details, the filter, past the nearest, what people wear", lambda: objects_more(run, nonce)),
+        ("objects: a friend's thing, taken, deleted, returned", lambda: objects_rights(run, nonce, tester_id)),
+        ("groups: a title, its members, its notices", lambda: groups_menu(run, nonce, tester_id)),
+        ("scripts: a new one, moving around in it, inside an object, its errors", lambda: scripts_editing(run, nonce)),
         ("describing", lambda: describing(run, nonce)),
         ("describing a look as it loads", lambda: describing_looks(run, nonce)),
         ("review keys and arrivals", lambda: review_and_arrivals(run, nonce)),
@@ -4330,6 +4334,486 @@ def more_commands(run):
     run.check("//status music answers", said, said or " / ".join(e.get("text") or "" for e in said_since(m)) or "nothing said")
 
 
+def object_row(name):
+    """The Objects list's row with these words, once it's there, or None."""
+    got = wait(lambda: find(f"type=ListItem;name~={name}"), 15)
+    return got[0] if got else None
+
+
+def menu_names():
+    """The open menu's items, in order (without the menu bar's, which UI Automation lists after them)."""
+    names = list(dict.fromkeys(d["name"] for d in (wait(lambda: find("type=MenuItem"), 4) or [])))
+    return names[:names.index("World")] if "World" in names else names
+
+
+def objects_more(run, nonce):
+    """Objects past its list and menu (docs/access-app.md > Objects nearby): more than a page of things in range, the list's
+    last row saying so and Enter landing on the first thing it adds; Control+F's filter finding something beyond the nearest
+    60 by words only in its description, its count said, the list named for it, Escape clearing it; Alt+Enter's details
+    (owner, description, what she may do); what she can't take, delete or return not offered, and Delete saying so; Show's
+    third choice listing what the visitor wears, touched and read as a thing in the world is."""
+    x, y, z, _ = tester_where()
+    crowd, far, word = f"Access Crowd {nonce}", f"Access Far {nonce}", f"zebra{nonce}"
+    pet = f"Access Pet {nonce}"
+    r = api("TesselObjects", "nearby", 20, dist=30, limit=1, fetch=False)
+    have = len(r.get("objects") or []) + (r.get("more") or 0)
+    print(f"     ({have} things within 30 m before the crowd)")
+    try:
+        need = max(0, 64 - have)
+        if need:
+            made = v(f"boxes {crowd} {need} {x + 2:.1f} {y - 6:.1f} {z:.1f}", timeout=90)
+            if not run.check("(the visitor's crowd of small boxes is out)", made.startswith("rezzed"), made):
+                return
+        # the far one is further than the crowd, so past the nearest 60 (and under 30 m)
+        dx = 27 if x < 200 else -27
+        made = v(f"rez {far} {x + dx:.1f} {y:.1f} {z:.1f}", timeout=30)
+        v(f"descr {far} | A thing called {word}, a test.", timeout=10)
+        if not run.check("(the far box is out)", " id " in made, made):
+            return
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("f5")
+        more = wait(lambda: find("type=ListItem;name~=More: "), 25)
+        if run.check("past a page, the list's last row says how many more", more and "Enter lists the next" in more[0]["name"], more[0]["name"] if more else str(len(find("type=ListItem")))):
+            rows = len(list_items("id=objects"))
+            key("end")
+            run.check("(End reaches it)", wait(lambda: "More: " in selected_text("id=objects"), 4), selected_text("id=objects"))
+            m = mark()
+            key("enter")
+            read = wait(lambda: (lambda t: t if t and "More: " not in t else None)(last_item_read(m)), 20)
+            run.check("Enter on it reads the first thing it adds, and the list has grown", read and len(list_items("id=objects")) > rows, f"{read or focus_label()}, {rows} -> {len(list_items('id=objects'))}")
+        # the filter, by a word only its description has
+        key("ctrl+f")
+        d = wait_focus(lambda d: d["id"] == "objectsFilter", 4)
+        if run.check("Control+F goes to the filter", d, focus_label()):
+            m = mark()
+            type_text(word, "id=objectsFilter")
+            run.expect("what it finds is said", ["1 found"], m, 25)
+            m = mark()
+            key("enter", target="id=objectsFilter")
+            run.check("Enter goes to the list, on the far box, past the nearest 60, and it's read", wait(lambda: far in last_item_read(m), 8), last_item_read(m) or focus_label())
+            run.check("the list is named for the filter", any(p["name"].endswith(f", with {word}") for p in find("id=objects")), json.dumps([p["name"] for p in find("id=objects")]))
+            m = mark()
+            key("alt+enter")
+            if run.expect("Alt+Enter: its details", [far + ".", "Owned by " + VNAME, f"Description: A thing called {word}", "You may not change or copy it"], m, 12):
+                said = next(e["text"] for e in said_since(m) if "Owned by" in (e.get("text") or ""))
+                print(f"     ({said})")
+            # not hers: no Take, Delete or Return on the menu, and the Delete key says so
+            key("enter")
+            names = menu_names()
+            run.check("a thing of someone else's offers Details and Contents, and no Take, Delete or Return", "Details" in " ".join(names) and "Contents" in " ".join(names)
+                      and not any(n.startswith(("Take into", "Delete", "Return")) for n in names), " | ".join(names))
+            key("esc")
+            m = mark()
+            key("del")
+            run.expect("Delete on it says it isn't hers", ["isn't yours to delete"], m, 6)
+            # with no match, then cleared
+            key("ctrl+f")
+            wait_focus(lambda d: d["id"] == "objectsFilter", 4)
+            m = mark()
+            type_text("q", "id=objectsFilter")
+            run.expect("a filter finding nothing says so, and how to clear it", ["Nothing here has", "clears the filter"], m, 25)
+            key("esc", target="id=objectsFilter")
+            run.check("Escape clears it, back in the whole list", wait(lambda: find("type=ListItem;name~=More: ") and focused()["id"] != "objectsFilter", 12), focus_label())
+        key("alt+l")
+        run.check("Alt+L goes to the filter too", wait_focus(lambda d: d["id"] == "objectsFilter", 4), focus_label())
+        key("esc", target="id=objectsFilter")
+        wait(lambda: focused()["id"] != "objectsFilter", 8)
+        # what the visitor wears
+        made = v(f"pet {pet} {x + 1:.1f} {y + 3:.1f} {z:.1f}", timeout=40)
+        if run.check("(the visitor wears a pet)", " id " in made, made):
+            u("setfocus id=objectsShow")
+            wait_focus(lambda d: d["id"] == "objectsShow", 3)
+            key("home")
+            key("down")
+            key("down")
+            row = object_row(f"{pet}, worn by {VNAME} on Left Shoulder")
+            if run.check("Show's third choice lists what people nearby wear, whose and where", row and "metres" in row["name"], row["name"] if row else " | ".join(list_items("id=objects"))):
+                run.check("and says it takes touches", "touchable" in row["name"], row["name"])
+                u("setfocus id=objects")
+                wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 3)
+                select_in("id=objects", pet)
+                key("enter")
+                names = menu_names()
+                run.check("its menu: Touch first, Pay, the reading ones, nothing that moves it", names and "Touch" in names[0] and any("Pay" in n for n in names)
+                          and not any(n.startswith(("Walk", "Edit", "Move", "Take", "Delete", "Return", "Sit")) for n in names), " | ".join(names))
+                n = visitor_n()
+                m = mark()
+                key("t")
+                run.expect("Touch from the menu", [f"Touched {pet}"], m, 8)
+                run.heard_by_visitor("its script takes the touch", lambda d: f"pet touched by {TNAME}" in d["msg"], n, 10, "pet touched")
+                m = mark()
+                key("alt+enter")
+                run.expect("Alt+Enter: worn, and where", [pet, "Worn on Left Shoulder"], m, 10)
+                key("tab")
+                d = wait_focus(lambda d: d["id"] == "parts" or d["type"] == "ListItem", 4)
+                run.check("Tab reaches its parts", d and find(f"id=parts"), focus_label())
+    finally:
+        back_to_chat()
+        key("alt+7")
+        back_to_chat()
+        v(f"unpet {pet}", timeout=20)
+        v(f"derez {far}", timeout=20)
+        v(f"derez {crowd}", timeout=30)
+
+
+def objects_rights(run, nonce, tester_id):
+    """A friend who lets her edit their things (a sighted helper's way in, the other way round): one of theirs here offers
+    Take, Delete and Return; Take and Return each wait for her confirmation, which names the owner, and Escape leaves it where
+    it is; Return has no letter, so the arrows alone reach it (and it isn't next to the menu's first item); Delete confirmed
+    is done, or refused in words (OpenSim refuses a friend's). Returning for real is the About Land step's, on her own land: the region lets the land's owner."""
+    box = f"Access Friend Box {nonce}"
+    pal = PAL_PORTS[0]
+    if not pal_up(0):
+        run.check("(a friend is logged in)", False, "no pal")
+        return
+    x, y, z, _ = tester_where()
+    try:
+        arrived = tcp(pal, f"tp Atelier {x + 6:.0f} {y + 6:.0f} {z:.0f}", 40)
+        tcp(pal, f"rights {tester_id} on", 10)
+        made = tcp(pal, f"rez {box} {x + 2:.1f} {y + 3:.1f} {z:.1f}", 30)
+        if not run.check("(the friend's box is out, with edit rights)", " id " in made, f"{arrived} / {made}"):
+            return
+        box_id = re.search(r" id ([0-9a-f-]{36})", made)[1]
+        def flags():
+            return (api("TesselObjects", "get", 15, ids=[box_id]).get("objects") or [{}])[0].get("flags") or []
+        run.check("(the region says she may change it)", wait(lambda: "mod" in flags(), 15), json.dumps(flags()))
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("f5")
+        object_row(box)
+        if not run.check("(selected)", select_in("id=objects", box), selected_text("id=objects")):
+            return
+        key("apps")
+        names = menu_names()
+        run.check("a friend's thing she may edit offers Take, Delete and Return", all(any(n.startswith(w) for n in names) for w in ("Take into", "Delete", "Return")), " | ".join(names))
+        ret = next((n for n in names if n.startswith("Return")), "")
+        run.check("Return is well away from the menu's top, and second from the end (Refresh, then it, going up)", names.index(ret) > 5 and names[-1].startswith("Refresh") and names[-2] == ret, " | ".join(names))
+        run.check("Return has no letter", not (menu_keys(f"type=MenuItem;name~=Return") or "").strip(" |"), menu_keys("type=MenuItem;name~=Return"))
+        key("up")
+        key("up")
+        m = mark()
+        key("enter")
+        confirm_in_notices(run, "Return", m, answer="esc")
+        run.expect("the confirmation names the owner", ["Owner: Access Palone"], m, 3)
+        run.expect("Escape cancels the return", ["Cancelled"], m, 8)
+        run.check("back on the box, still there", wait(lambda: focused()["id"] == "objects" or focused()["type"] == "ListItem", 6) and box in selected_text("id=objects") and flags(), focus_label())
+        key("apps")
+        menu_names()
+        m = mark()
+        key("k")
+        confirm_in_notices(run, "Take", m, answer="esc")
+        run.expect("Take waits for her confirmation too, naming the owner", ["Owner: Access Palone"], m, 3)
+        run.expect("Escape cancels the take", ["Cancelled"], m, 8)
+        wait(lambda: focused()["id"] == "objects" or focused()["type"] == "ListItem", 6)
+        m = mark()
+        key("del")
+        confirm_in_notices(run, "Delete", m)
+        # (OpenSim refuses a friend's delete, as the region may: then the refusal is what's said, and it stays)
+        said = wait(lambda: next((e["text"] for e in said_since(m) if (e.get("text") or "").startswith(("Deleted", "Not deleted"))), None), 25)
+        run.check("Delete, confirmed: done, or the region's refusal said", said, " | ".join(e.get("text") or "" for e in said_since(m)))
+        if said and said.startswith("Deleted"):
+            run.check("gone from the region", wait(lambda: not flags(), 15), json.dumps(flags()))
+    finally:
+        back_to_chat()
+        try:
+            tcp(pal, f"rights {tester_id} off", 10)
+            tcp(pal, f"derez {box}", 10)
+            tcp(pal, "tp %s %d %d %d" % PAL_START, 40)
+        except (OSError, ToolError):
+            pass
+
+
+GROUP_NAME, NOTICE_GROUP = "Access Titles", "Access Notices"
+
+
+def notice_group(run, tester_id):
+    """The visitor's group the tester is in, which sends the notices (on this grid a member's power to send goes by the title
+    worn, so her own group's can't be relied on): made and joined once, kept on the grid. Its id, or None."""
+    mine = [g for g in api("LLAgent", "getGroups").get("groups", []) if g["name"] == NOTICE_GROUP]
+    if mine:
+        return mine[0]["id"]
+    # (made by a run that stopped before she joined: the visitor's already)
+    import sqlite3
+    db = sqlite3.connect(ROOT / "local" / "grid" / "bin" / "groups.db")
+    known = db.execute("select GroupID from os_groups_groups where Name = ?", (NOTICE_GROUP,)).fetchone()
+    db.close()
+    gid = known[0] if known else v(f"group create {NOTICE_GROUP}", timeout=25)
+    if not run.check("(the visitor's group is made)", re.fullmatch(r"[0-9a-f-]{36}", gid or ""), gid):
+        return None
+    v(f"group invite {gid} {tester_id}", timeout=10)
+    if not open_newest_notice(run, [NOTICE_GROUP]):
+        return None
+    time.sleep(1.2)   # (a key just as it appears isn't taken)
+    key("1")
+    run.check("(she's joined it)", wait(lambda: any(g["name"] == NOTICE_GROUP for g in api("LLAgent", "getGroups").get("groups", [])), 15), focus_label())
+    back_to_chat()
+    return gid
+
+
+def groups_menu(run, nonce, tester_id):
+    """A group's menu past its chat and tag (docs/access-app.md > Groups), on a group of her own, kept on the grid once made:
+    her two titles listed, the worn one said so, another worn by Enter and the region's list following, and About saying it;
+    the members in a window; notices off, one sent, read from the archive by Enter, on again; someone nearby invited."""
+    mine = [g for g in api("LLAgent", "getGroups").get("groups", []) if g["name"] == GROUP_NAME]
+    if mine:
+        gid = mine[0]["id"]
+    else:
+        made = gated(run, "a group of her own", "TesselGroups", "create", 40, name=GROUP_NAME, charter="For the test's titles")
+        if not (made and made.get("group_id")):
+            return
+        gid = made["group_id"]
+        wait(lambda: any(g["name"] == GROUP_NAME for g in api("LLAgent", "getGroups").get("groups", [])), 15)
+
+    def menu(letter, group=GROUP_NAME):
+        """The group's menu, then a letter."""
+        key("alt+3")
+        wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
+        u("setfocus id=groups")
+        wait_focus(lambda d: d["id"] == "groups" or d["type"] == "ListItem", 4)
+        if not select_in("id=groups", group):
+            return False
+        key("apps")
+        if not wait(lambda: find("type=MenuItem;name~=Choose your title"), 4):
+            return False
+        key(letter)
+        return True
+
+    def titles():
+        return api("TesselGroups", "titles", 15, group_id=gid).get("titles") or []
+
+    try:
+        have = titles()
+        run.check("(she has two titles there)", len(have) >= 2, json.dumps(have))
+        if run.check("(the group's menu, Choose your title)", menu("t"), focus_label()):
+            d = wait_focus(lambda d: d["id"] == "chooseList" or d["type"] == "ListItem", 5)
+            rows = list(dict.fromkeys(x["name"] for x in find("type=ListItem") if any(x["name"].startswith(t["title"] or "no title") for t in have)))
+            run.check("her titles are listed, the worn one said so", d and sum(r.endswith(", worn") for r in rows) == 1, " | ".join(rows) or focus_label())
+            worn = next((i for i, t in enumerate(have) if t["selected"]), 0)
+            other = have[1 - worn if worn < 2 else 0]
+            key("down" if worn == 0 else "up")
+            m = mark()
+            key("enter")
+            run.expect("Enter wears it, said back", [f"Your title in {GROUP_NAME} is {other['title']} now"], m, 15)
+            run.check("the region says so", wait(lambda: any(t["selected"] and t["role_id"] == other["role_id"] for t in titles()), 10), json.dumps(titles()))
+            m = mark()
+            if run.check("(the group's menu, About)", menu("a"), focus_label()):
+                run.expect("About says the title", [f"Your title: {other['title']}"], m, 15)
+        api("TesselGroups", "membership", 10, group_id=gid, notices=True)
+        m = mark()
+        if run.check("(the group's menu, Receive its notices)", menu("r"), focus_label()):
+            run.expect("Receive turned off, said back", ["You won't get", "they stay in its archive"], m, 10)
+            run.check("(off in the session)", any(g["id"] == gid and not g["notices"] for g in api("LLAgent", "getGroups")["groups"]), "")
+        m = mark()
+        if run.check("(the group's menu, Receive its notices again)", menu("r"), focus_label()):
+            run.expect("Receive back on", ["You'll get"], m, 10)
+        if run.check("(the group's menu, Members)", menu("m"), focus_label()):
+            d = wait_focus(lambda d: d["id"] == "keysText", 20)
+            text = value_of("id=keysText") if d else ""
+            run.check("the members in a window, with her, and what her title says", TNAME in text and GROUP_NAME in text, text[:200] or focus_label())
+            key("esc")
+        # the archive, on the visitor's group
+        noticed = notice_group(run, tester_id)
+        if noticed:
+            subject = f"Access Notice {nonce}"
+            api("TesselGroups", "membership", 10, group_id=noticed, notices=False)
+            v(f"group notice {noticed} {subject} | The body of it, {nonce}.", timeout=10)
+            time.sleep(2)
+            if run.check("(the group's menu, Notices)", menu("o", NOTICE_GROUP), focus_label()):
+                d = wait_focus(lambda d: d["id"] == "chooseList" or d["type"] == "ListItem", 10)
+                row = wait(lambda: find(f"type=ListItem;name~={subject}"), 5)
+                if run.check("its notices are listed: subject, who, when", row and VNAME in row[0]["name"], row[0]["name"] if row else focus_label()):
+                    print(f"     ({row[0]['name']})")
+                    select_in("id=chooseList", subject)
+                    key("enter")
+                    d = wait_focus(lambda d: d["id"] == "keysText", 15)
+                    text = value_of("id=keysText") if d else ""
+                    run.check("Enter reads one whole", f"The body of it, {nonce}." in text, text[:200] or focus_label())
+                    key("esc")
+                    d = wait_focus(lambda d: d["id"] == "chooseList" or d["type"] == "ListItem", 5)
+                    run.check("Escape comes back to the list", d and find(f"type=ListItem;name~={subject}"), focus_label())
+                key("esc")
+        # someone nearby invited
+        key("alt+3")
+        wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
+        if select_in("id=people", VNAME):
+            key("apps")
+            run.check("a person's menu has Invite to a group", wait(lambda: find("type=MenuItem;name~=Invite to a group"), 4), focus_label())
+            m = mark()
+            key("v")
+            # (only groups she may invite to are offered; this grid's power goes by the title worn, so there may be none)
+            d = wait(lambda: (lambda f: f if f and (f["id"] == "chooseList" or f["type"] == "ListItem" and find("id=chooseList")) else None)(focused())
+                     or any("lets you invite" in (e.get("text") or "") for e in said_since(m)), 6)
+            if run.check("Invite asks which, among those she may invite to, or says there's none", d, focus_label()):
+                if d is not True:
+                    m = mark()
+                    key("enter")
+                    run.expect("and says so", [f"Invited {VNAME} to"], m, 10)
+    finally:
+        back_to_chat()
+
+
+def scripts_editing(run, nonce):
+    """Scripts (docs/access-app.md > Scripts). By keys: New script on a folder, opening with the viewer's starting text;
+    Control+L saying the line and column, Control+F, F3 and Shift+F3 finding round the ends, Control+G a line. Inside her own box:
+    Contents reaching it, Enter opening it from the object, a syntax error saved through her confirmation, the errors said and F8
+    placing the caret on one, a fix saved and compiled; Space stopping and starting it. Its script's error on the debug channel read
+    out, once for the same words in half a minute, not with the switch off, and another's never."""
+    x, y, z, _ = tester_where()
+    name, boxname, other = f"Access Script {nonce}", f"Access Scripted {nonce}", f"Access Whoops {nonce}"
+    word = f"boom{nonce}"
+    box_id = None
+    try:
+        # a new script from a folder's menu
+        folder = api("LLInventory", "getBasicFolderID", ft_name="lsltext")["id"]
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        clear_search()
+        if run.check("(the Scripts folder selected)", select_in("id=inventory", "Scripts", tries=300), selected_text("id=inventory")):
+            key("apps")
+            run.check("a folder's menu has New script", wait(lambda: find("type=MenuItem;name~=New script"), 4), focus_label())
+            key("i")
+            ask = wait_focus(lambda d: d["id"] == "answer", 5)
+            if run.check("it asks the name", ask, focus_label()):
+                type_text(name, "id=answer")
+                key("enter", target="id=answer")
+                d = wait_focus(lambda d: d["id"] == "editorText", 25)
+                text = value_of("id=editorText") if d else ""
+                if run.check("it opens in the editor with the starting text", "Hello, Avatar!" in text, text[:80] or focus_label()):
+                    m = mark()
+                    key("ctrl+l")
+                    run.expect("Control+L: the line and column", ["Line 1 of 13, column 1."], m, 4)
+                    key("ctrl+f")
+                    wait_focus(lambda d: d["id"] == "answer", 4)
+                    type_text("llSay", "id=answer")
+                    m = mark()
+                    key("enter", target="id=answer")
+                    run.expect("Control+F finds it, saying the line", ['Line 5: llSay(0, "Hello, Avatar!");'], m, 5)
+                    wait_focus(lambda d: d["id"] == "editorText", 3)
+                    m = mark()
+                    key("f3")
+                    run.expect("F3: the next", ['Line 10: llSay(0, "Touched.");'], m, 5)
+                    m = mark()
+                    key("f3")
+                    run.expect("F3 again goes round", ["From the other end: Line 5"], m, 5)
+                    m = mark()
+                    key("shift+f3")
+                    run.expect("Shift+F3: the one before, round the other way", ["From the other end: Line 10"], m, 5)
+                    key("ctrl+g")
+                    wait_focus(lambda d: d["id"] == "answer", 4)
+                    u("set id=answer | 3")
+                    m = mark()
+                    key("enter", target="id=answer")
+                    run.expect("Control+G: a line by number", ["Line 3: state_entry()"], m, 5)
+                    wait_focus(lambda d: d["id"] == "editorText", 3)
+                    m = mark()
+                    key("ctrl+l")
+                    run.expect("Control+L there", ["Line 3 of 13, column 1."], m, 4)
+                    m = mark()
+                    key("f8")
+                    run.expect("F8 with no errors says so", ["No errors from the last save."], m, 4)
+                    key("esc")
+                    wait(lambda: not find("id=editor"), 6)
+        back_to_chat()
+        # a box of hers with a script in it
+        made = api("TesselBuild", "create", 20, name=boxname, shape="box", pos=[x + 1.5, y + 2, z], scale=[0.5, 0.5, 0.5])
+        box_id = made.get("id")
+        item_id = inv_items(folder).get(name)
+        if not run.check("(her box is out)", box_id, json.dumps(made)) or not run.check("(the script found)", item_id, ""):
+            return
+        src = 'default { state_entry() { llSay(0, "scripted ready"); } touch_start(integer n) { llSay(DEBUG_CHANNEL, "%s"); } }' % word
+        api("TesselInventory", "writeScript", 20, item_id=item_id, text=src)
+        gated(run, "the script put in", "TesselBuild", "addToContents", 30, id=box_id, item_id=item_id)
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("f5")
+        object_row(boxname)
+        if not run.check("(selected)", select_in("id=objects", boxname), selected_text("id=objects")):
+            return
+        key("apps")
+        wait(lambda: find("type=MenuItem;name~=Contents"), 4)
+        key("n")
+        row = wait(lambda: find(f"type=ListItem;name~={name}, script"), 15)
+        run.check("Contents: the build editor's Content tab, the focus in its list", row and wait(lambda: focused()["id"] == "buildRows" or focused()["type"] == "ListItem", 4), focus_label())
+        run.check("the row says it's running", row and "running" in row[0]["name"], row[0]["name"] if row else "")
+        select_in("id=buildRows", name)
+        key("enter")
+        d = wait_focus(lambda d: d["id"] == "editorText", 20)
+        text = value_of("id=editorText") if d else ""
+        if run.check("Enter opens the script from the object", word in text, text[:80] or focus_label()):
+            u(f"set id=editorText | default {{ state_entry() {{ llSay(0, oops{nonce}); }} }}")
+            m = mark()
+            key("ctrl+s")
+            confirm_in_notices(run, "Replace", m)
+            d = wait_focus(lambda d: d["id"] == "editorText", 10)
+            run.check("after her confirmation, back in the editor", d, focus_label())
+            said = wait(lambda: next((e["text"] for e in said_since(m) if "Saved" in (e.get("text") or "")), None), 25)
+            if run.check("a syntax error: saved, with the errors said", said and "error" in said, said or " | ".join(e.get("text") or "" for e in said_since(m))):
+                print(f"     ({said})")
+                print(f"     (errors box: {value_of('id=editorErrors')!r})")
+                m = mark()
+                key("f8")
+                got = wait(lambda: next((e["text"] for e in said_since(m) if "Error 1 of" in (e.get("text") or "")), None), 5)
+                run.check("F8 goes to it: which, where, the line", got and "line 1" in got and "The line:" in got, got or "")
+                print(f"     ({got})")
+            u("set id=editorText | " + src)
+            m = mark()
+            key("ctrl+s")
+            confirm_in_notices(run, "Replace", m)
+            run.expect("fixed: saved and compiled", ["Saved and compiled."], m, 25)
+            key("esc")
+            wait(lambda: not find("id=editor"), 6)
+            d = wait_focus(lambda d: d["id"] == "buildRows" or d["type"] == "ListItem", 6)
+            run.check("closed, back in the contents", d, focus_label())
+            select_in("id=buildRows", name)
+            m = mark()
+            key("space")
+            run.expect("Space stops it", ["not running"], m, 10)
+            m = mark()
+            key("space")
+            run.expect("Space starts it", [f"{name}: running"], m, 10)
+        key("esc")
+        # its errors
+        time.sleep(2)
+        back_to_chat()
+        m = mark()
+        say_in_app(f"//touch {boxname}")
+        run.expect("a script's error in her own thing is read out, naming it", [f"Script error in {boxname}: {word}"], m, 15)
+        run.check("and is in the chat history", word in history_tail(), history_tail()[-200:])
+        time.sleep(1)
+        m = mark()
+        say_in_app(f"//touch {boxname}")
+        time.sleep(3)
+        run.check("the same words again aren't said again", not any(f"Script error" in (e.get("text") or "") for e in said_since(m)), "")
+        # past the half minute: nothing with the switch off, and said again with it on
+        setting("access_script_errors", "off")
+        time.sleep(31)
+        m = mark()
+        say_in_app(f"//touch {boxname}")
+        time.sleep(3)
+        run.check("with the switch off, nothing", not any(f"Script error" in (e.get("text") or "") for e in said_since(m)), "")
+        setting("access_script_errors", "on")
+        m = mark()
+        say_in_app(f"//touch {boxname}")
+        run.expect("on again, said again", [f"Script error in {boxname}: {word}"], m, 15)
+        made = v(f"whoops {other} {x + 3:.1f} {y + 2:.1f} {z:.1f} | whoops{nonce}", timeout=40)
+        if run.check("(the visitor's box with an error of its own)", " id " in made, made):
+            time.sleep(1)
+            m = mark()
+            say_in_app(f"//touch {other}")
+            time.sleep(4)
+            run.check("someone else's script's error isn't read out", not any(f"whoops{nonce}" in (e.get("text") or "") for e in said_since(m)), "")
+    finally:
+        back_to_chat()
+        setting("access_script_errors", "on")
+        v(f"derez {other}", timeout=20)
+        if box_id:
+            try:
+                api("TesselBuild", "take", 30, ids=[box_id])
+            except Exception:
+                pass
+
+
 def paying_and_buying(run, nonce):
     """Objects' Pay, Buy and Take a copy, and //pay and //buy (the blind tester's tip jars, 2026-11-05; docs/access-app.md
     > Paying and buying things): the visitor's jar says it takes payment, its left click (pay) leads its menu, Pay names
@@ -4926,7 +5410,7 @@ def parts(run):
                   label(f) if f else focus_label())
         if VIEWLESS:
             said = " | ".join(list_items("id=faces"))
-            run.check("without the renderer, the faces list says they need it", "need the view" in said, said)
+            run.check("without the renderer, the faces list says they need it", "need the 3D view" in said, said)
         else:
             faces = wait(lambda: (lambda fs: fs if any(", face " in x for x in fs) else None)(list_items("id=faces")), 10)
             run.check("its faces are listed by direction ('The top, face 0', the side facing you)", faces and any(
@@ -4938,6 +5422,18 @@ def parts(run):
                 key("enter")
                 run.expect("Enter on the top touches it there", [f"Touched part 2 of {CHEST}, the top"], m, 10)
                 run.heard_by_visitor("the lid's script detects face 0", lambda d: "chest lid touched" in d["msg"] and d["msg"].endswith("face 0"), n, 10, "face 0")
+        # the menu's Touch, on the object: landing where //touch does, on its one touchable part
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        if select_in("id=objects", CHEST + ","):
+            run.check("the chest's line says it's touchable, by its lid", "touchable" in selected_text("id=objects"), selected_text("id=objects"))
+            key("enter")
+            wait(lambda: find("type=MenuItem"), 4)
+            n = visitor_n()
+            m = mark()
+            key("t")
+            run.expect("the menu's Touch lands on its one touchable part", [f"Touched part 2 of {CHEST}"], m, 15)
+            run.heard_by_visitor("(the lid's script says so)", lambda d: "chest lid touched" in d["msg"], n, 10, "chest lid touched")
         back_to_chat()
         n = visitor_n()
         m = mark()
@@ -5118,7 +5614,7 @@ def building(run, nonce):
             key("apps")
             if run.check("Objects' menu on her own thing, with a build open: Link to what I'm editing", menu_open("Link to what I'm editing", 3), focus_label()):
                 m = mark()
-                key("i")
+                key("g")
                 run.expect("and it links to what's being edited", ["Linked", box, "2 parts"], m, 15)
                 build_cmd(f"edit {leg}")
                 m = mark()
@@ -5952,6 +6448,40 @@ def about_land(run, nonce, tester_id):
         run.expect("region: the region read, and that she doesn't manage it", ["Region: Atelier", "You manage it: no"], m, 15)
         run.check("(not named twice)", not any("Region: Region:" in (x.get("text") or "") for x in said_since(m)), "")
 
+        # someone else's thing on her land: Objects' menu offers Return, through her confirmation, and it goes home
+        ox, oy, oz, _ = tester_where()
+        stray = f"Access Stray {nonce}"
+        put = v(f"rez {stray} {ox + 2:.1f} {oy + 2:.1f} {oz:.1f}", timeout=30)
+        if run.check("(the visitor's box on her land)", " id " in put, put):
+            stray_id = re.search(r" id ([0-9a-f-]{36})", put)[1]
+            key("alt+7")
+            wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+            key("f5")
+            object_row(stray)
+            if run.check("(selected in Objects)", select_in("id=objects", stray), selected_text("id=objects")):
+                key("apps")
+                names = menu_names()
+                run.check("someone's thing on her land offers Return, not Take or Delete", any(n.startswith("Return") for n in names)
+                          and not any(n.startswith(("Take into", "Delete")) for n in names), " | ".join(names))
+                key("up")
+                key("up")
+                m = mark()
+                key("enter")
+                confirm_in_notices(run, "Return", m, answer="esc")
+                run.expect("Return's confirmation names the owner", ["Owner: " + VNAME], m, 3)
+                run.expect("Escape leaves it", ["Cancelled"], m, 8)
+                run.check("(still there)", (api("TesselObjects", "get", 15, ids=[stray_id]).get("objects") or []), "")
+                wait(lambda: focused()["id"] == "objects" or focused()["type"] == "ListItem", 6)
+                key("apps")
+                menu_names()
+                key("up")
+                key("up")
+                m = mark()
+                key("enter")
+                confirm_in_notices(run, "Return", m)
+                run.expect("confirmed, it's returned", [f"Returned {stray} to its owner"], m, 25)
+                run.check("gone from the region", wait(lambda: not (api("TesselObjects", "get", 15, ids=[stray_id]).get("objects") or []), 10), "")
+            back_to_chat()
         # for sale and off again; a divide cancelled; abandoned
         m = mark()
         land_cmd("for sale 100")

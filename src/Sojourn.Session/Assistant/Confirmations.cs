@@ -148,7 +148,8 @@ public sealed partial class Confirmations
         ("TesselObjects", "buy") or ("TesselGroups", "create") => Kind.Spend,
         ("TesselAgent", "upload" or "uploadMesh" or "uploadClips") => UploadCosts(op, a) ? Kind.Spend : null,
         ("TesselBuild", "delete" or "returnObjects" or "removeFromContents") => Kind.Delete,
-        ("TesselBuild", "take") => a.Has("folder_id") && InTrash(a.Uuid("folder_id")) ? Kind.Delete : null,
+        // (a thing that isn't the person's, taken: it leaves its owner's hands, as a return does)
+        ("TesselBuild", "take") => a.Has("folder_id") && InTrash(a.Uuid("folder_id")) || !a.Bool("copy", false) && Ids(a).Any(id => !OwnedByMe(id)) ? Kind.Delete : null,
         ("TesselInventory", "move") => InTrash(a.Uuid("folder_id")) ? Kind.Delete : null,
         ("TesselInventory", "delete" or "emptyTrash") => Kind.Delete,
         ("TesselAgent", "parcelReturn" or "deletePick") or ("TesselGroups", "deleteRole") => Kind.Delete,
@@ -252,7 +253,9 @@ public sealed partial class Confirmations
     bool OwnedByMe(UUID? id)
     {
         if (id is not { } oid || _s.Region?.PrimById(oid) is not { } p || _s.Client is not { } c) return false;
-        return p.Properties?.OwnerID == c.Self.AgentID || (_s.State.PrimFlagsOf(p) & PrimFlags.ObjectYouOwner) != 0;
+        // (the owner when known: OpenSim sets the flag on a friend's they let you edit too)
+        if (p.Properties is { } props) return props.OwnerID == c.Self.AgentID;
+        return (_s.State.PrimFlagsOf(p) & PrimFlags.ObjectYouOwner) != 0;
     }
 
     async Task<string?> AskAsync(Kind kind, string pump, string op, JsonObject a,
@@ -323,11 +326,17 @@ public sealed partial class Confirmations
             case ("TesselAgent", "upload" or "uploadMesh" or "uploadClips"):
                 return UploadAsk(a);
             case ("TesselBuild", "delete"):
-                return (Lang.F("Delete {0}", await ObjectsAsync(a)), Lang.T("They go to your Trash."));
+                return (Lang.F("Delete {0}", await ObjectsAsync(a)), Ids(a).All(id => OwnedByMe(id)) ? Lang.T("They go to your Trash.")
+                    : Join(await OwnerNoteAsync(a), Lang.T(Ids(a).Count == 1 ? "It may not be possible to get it back." : "It may not be possible to get them back.")));
+            case ("TesselBuild", "take") when !a.Has("folder_id") || !InTrash(a.Uuid("folder_id")):
+                return (Lang.F("Take {0} into your inventory", await ObjectsAsync(a)),
+                    Join(await OwnerNoteAsync(a), Lang.T(Ids(a).Count == 1 ? "It leaves the world and becomes yours." : "They leave the world and become yours.")));
             case ("TesselBuild", "take"):
                 return (Lang.F("Delete {0}", await ObjectsAsync(a)), Lang.T("Taken into your Trash."));
             case ("TesselBuild", "returnObjects"):
-                return (Lang.F("Return {0} to their owners", await ObjectsAsync(a)), "");
+                return Ids(a).Count == 1
+                    ? (Lang.F("Return {0} to its owner", await ObjectsAsync(a)), Join(await OwnerNoteAsync(a), Lang.T("It leaves the world and goes to its owner's Lost and Found; only the owner can put it back.")))
+                    : (Lang.F("Return {0} to their owners", await ObjectsAsync(a)), Join(await OwnerNoteAsync(a), Lang.T("They leave the world and go to their owners' Lost and Found; only the owners can put them back.")));
             case ("TesselBuild", "removeFromContents"):
             {
                 var (obj, item) = await TaskItemAsync(a);
@@ -587,6 +596,22 @@ public sealed partial class Confirmations
             else names.Add(await NameAsync(id));
         }
         return names;
+    }
+
+    /// <summary>Whose objects an op's ids are ("Owner: Kestrel."), or nothing if that isn't known: a person being asked to
+    /// send away or take something should hear whose it is.</summary>
+    async Task<string> OwnerNoteAsync(JsonObject a)
+    {
+        var names = new List<string>();
+        foreach (var id in Ids(a))
+        {
+            if (_s.Region is not { } w || w.PrimById(id) is not { } prim || _s.Objects.RootOf(w, prim).Properties is not { } props) continue;
+            var name = props.GroupID != UUID.Zero && props.OwnerID == props.GroupID
+                ? (_s.State.Groups.TryGetValue(props.GroupID, out var g) ? g.Name : Lang.T("a group"))
+                : await NameAsync(props.OwnerID);
+            if (!names.Contains(name)) names.Add(name);
+        }
+        return names.Count > 0 ? Lang.F("Owner: {0}.", string.Join(", ", names)) : "";
     }
 
     async Task<string> OwnersAsync(JsonObject a)

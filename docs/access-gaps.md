@@ -29,49 +29,19 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 
 ## Ranked
 
-### 4. Objects: no details, no filter, thin menu
-- **Radegast:** "your main source for learning what is around you", in its guide. Each line has its owner; the details pane has
-  description, hover text, owner, creator, prim count, permissions. A word filter, rezzed/attached/both, sort by name. Contents,
-  Return, Point at, Stand up; Take and Delete wherever the region allows.
-- **Access:** a line has name, where, sale or payment, can sit or touchable. No details item: owner, creator and description
-  are only behind Edit (build) > General, a route nobody would guess. No filter: `//find` gives the nearest one only (Radegast
-  gives every match), and the list stops at the nearest 60 within 30 m (200 beyond). Nobody else's worn things. No Contents item
-  (Edit, then type `content`). Take, Delete and Return: `Mine` only, so nothing group-owned or a friend's with edit rights,
-  and no Return at all here. As read, the menu's Touch goes to the root, where `//touch` picks an object's only touchable
-  child, so the treasure chest case can say Touched and do nothing from the menu (Tab to its parts works).
-- **Where:** `MainForm.Lists.cs` `BuildObjects`, `MainForm.Parts.cs` (a filter box in its layout, passed as `nearby`'s `query`),
-  `nearby` `attachments=true`, `TesselBuild returnObjects`, `TesselObjects get` for details.
-- **Size:** S each, M together.
-- **Matters: high.** Unnamed "Object" is the commonest thing she meets; owner and description are what say what it is, and a
-  filter is the way through a busy place's scenery.
+### 5. Groups: running one
+- **Radegast:** Members & Roles (assign, eject, ban), new notice with an attachment, New Group, a participant list in group chat, a notice's attachment taken.
+- **Access:** chat, its tag, her title, About, members to read, the notices archive to read, notices on or off, listing in her profile, inviting someone in the Everyone role (`docs/access-app.md` > Groups). Nothing yet for sending a notice, a role, ejecting, or who's in the chat now.
+- **Where:** `MainForm.Groups.cs`. `TesselGroups` has `roles`, `notice`, `eject`, `assignRole`, `create`, `update`; `SojournPeople groupChat` has who's in chat.
+- **Size:** M: a member list with actions instead of a window of lines.
+- **Matters: high** for anyone who runs a club or a group, and nobody who does has asked yet. **Question for her:** does she, or anyone she knows, run a group from Access, and which of sending a notice, roles, eject or ban would they want first?
 
-### 5. Groups: only chat, the tag and one spoken paragraph
-- **Radegast:** General (charter, founder, fee, show in search, receive notices, list in profile, my active title), Members &
-  Roles (list, last login, assign, invite, eject, ban), Notices (archive, read, attachment, new notice with an attachment), New
-  Group, and a participant list in group chat.
-- **Access:** Group chat, Wear its tag, No group tag, Leave, a sound, and `GroupInfoAsync` saying members, joining and charter once.
-  No choice of title, so the group-tag task on the sighted-helper list (#141) is half done: which group, not which title.
-- **Where:** a group window as the profile's, from `MainForm.People.cs`. `TesselGroups` has `title`, `roles`, `members`, `notice`,
-  `notices`, `invite`, `eject`, `assignRole`, `create`, `update`; `SojournPeople groupChat` has who's in chat. `notices` gives subjects
-  only: reading one's body needs a small new op.
-- **Size:** L in all. Title S (do it alone first), notices M, members and invite M.
-- **Matters: high** for anyone who runs a club or a group, and for reading a notice missed; the guide teaches notices. Title is
-  medium-high by itself, on the list of what sends people to a sighted helper.
-
-### 6. Scripts and contents: only inventory scripts, and no way to move around in them
-- **Radegast:** New Script; open and save scripts and notecards inside an object; compile errors with line and column and the
-  cursor moved to the first; Mono and Running; find and replace; open from and save to disk; a key saying the line and column;
-  script errors in chat.
-- **Access:** `EditorForm` on inventory items, errors in a box as text. No New script in the folder menu (`createScript` exists).
-  Enter on a script in a prim's contents only toggles running; on a notecard it says to copy it out. No find, no go to the error,
-  no line key, no Mono or Running, no disk. Runtime errors from her own objects never arrive: `SocialFeed` drops debug-channel
-  chat, and `Scripts.OnDebugChat` reports only to the editor's published objects.
-- **Where:** `FolderActions`; `MainForm.Build.cs` `ContentEnterAsync` with Core's `Scripts/ScriptEditor.cs` (it already saves task
-  notecards, on the bridge's RPC); `EditorForm`; an Access switch in the feed for her own objects' errors.
+### 6. Scripts and contents: what's left
+- **Radegast:** Mono and Running in the editor; find and replace; open from and save to disk.
+- **Access:** New script, find, go to a line or error, the line key, opening and saving inside an object, her own objects' errors said (`docs/access-app.md` > Scripts). Nothing for those three, and replace would be typed by hand.
 - **Notecards:** what a card holds can be listed and copied out, but nothing can be added to one or taken off it (an item's marker deleted comes back at the end), and a card in an object's contents can't be copied out of directly.
-- **Size:** New script and runtime errors S; find, go to error and the line key S; in-object editing M; adding and removing a card's items S.
-- **Matters: high for the tester and her partner** (scripting in the viewer is on her stated list, and she welcomed Radegast's
-  in-object editing when it came), low for most others. Without errors said, a script that breaks is silence.
+- **Size:** each S.
+- **Matters: medium for the tester and her partner**, low for most others. **Question for her:** does a script she writes run on Mono by default as she'd want, and would she use disk or replace?
 
 ### 7. Her own profile, and a profile picture
 - **Radegast:** own profile from her name in the near list; About saves on leaving the field; Interests; Picks (detail, teleport,
@@ -86,7 +56,7 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
   someone who can't recognise a face or a look.
 
 ### 9. Inventory housekeeping: what's left
-- **Radegast:** Empty Lost and Found; Paste as Link; New Script; search by creator and description; sort by date; Expand All; Backup to disk.
+- **Radegast:** Empty Lost and Found; Paste as Link; search by creator and description; sort by date; Expand All; Backup to disk.
 - **Access:** none of these. Recent is the last 24 hours only. Does F5 drop what the grid no longer has, as well as fetch what it does? Not checked (`AgentInventory.ReloadAsync`).
 - **Where:** `ItemActions` and `FolderActions` in `MainForm.Inventory.cs`; `link` is an op.
 - **Size:** S each; search fields S; Backup M.
@@ -156,12 +126,12 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 - **Size:** S; friends' places S-M.
 - **Matters: medium-low.**
 
-### 18. Someone else's attachments and animations
-- **Radegast:** Attachments on a person (listed, touchable) and Animations (what they're playing).
-- **Access:** Describe's fallback names what they wear, once. Nothing to touch.
-- **Where:** People menu, `nearby` `attachments=true`, parts as for her own.
-- **Size:** S-M.
-- **Matters: medium-low.** A pet or a tip jar someone wears is out of reach.
+### 18. One person's attachments, and animations
+- **Radegast:** Attachments on a person and Animations (what they're playing).
+- **Access:** Objects' Show lists what everyone nearby wears, touchable, so a pet or a tip jar is in reach; there's no way from a person's own menu to just theirs, and nothing on what they're playing.
+- **Where:** People menu, `nearby` `worn_only` by whose it is.
+- **Size:** S.
+- **Matters: low.**
 
 ### 19. Links other than a person's read raw
 - **Radegast:** `resolve_uris_as_plaintext` (#133, raised by a JAWS user).
@@ -205,18 +175,16 @@ All S, all low:
 - `//scriptinfo` takes no `parcel`. `//thread`, `//threads` and `//kill` are absent, so a route using them pauses there.
 - `//siminfo` lacks CPU class and data centre; `//parcelinfo` lacks ban and access list sizes and traffic.
 - The status bar lacks the parcel and its no-fly and no-build marks (`//status parcel` has them).
-- MU* `:` emotes; Show: Gestures in the inventory; Stand up on Objects' menu.
+- MU* `:` emotes; Show: Gestures in the inventory; Stand up on Objects' menu; a sort by name in Objects; `//find` saying every match, not the nearest one.
 - Alt+3 is People and Alt+6 Places, against Radegast's Groups and Map; Alt+8 and Alt+9 are Notices and the assistant, against Media and
   Voice. Chosen, but "familiar where Radegast works" is only partly so, and there's no key to Groups.
-- F1 says Enter touches under Objects, meaning a part; on an object Enter opens the menu.
 
 ## The sighted-helper list, what isn't closed
 
 - **Checking an outfit:** by names without the assistant, by picture with it. A box worn by mistake shows only by its name.
 - **Rezzing and placing:** done, without `//place`, so not in a route.
 - **Land settings:** parcels done; estate at item 20.
-- **Group tags:** which group, not which title: item 5.
-- **Unboxing:** only from the inventory, and only where she can rez; the failure doesn't suggest a sandbox. Item 4 for a box already out.
+- **Unboxing:** only from the inventory, and only where she can rez; the failure doesn't suggest a sandbox. A box already out: Contents, then `copy NAME` for each thing.
 - **HUD games:** a HUD that's one picture of buttons is read by the assistant, so with no token only numbered faces remain. Nothing to do
   short of a local reader, but the plan's "without an account" doesn't reach here and should say so.
 - **A profile picture:** nothing: item 7.

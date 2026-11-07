@@ -111,24 +111,48 @@ public sealed class PersonOps(AgentSession s)
         public bool MayCopy { get; init; }
         /// <summary>What the viewer's left click would do: "pay", "buy", "sit"...; null: touch.</summary>
         public string? Click { get; init; }
+        /// <summary>The region says the person may change it (a friend's with edit rights, a group's), and pass it on.</summary>
+        public bool Modify { get; init; }
+        public bool Transfer { get; init; }
+        /// <summary>One of its parts takes touches, though the root itself may not.</summary>
+        public bool PartTouch { get; init; }
+        /// <summary>Someone else wears it: who, and on what.</summary>
+        public UUID WornBy { get; init; }
+        public string? WornByName { get; init; }
+        public string? Point { get; init; }
     }
+
+    /// <summary>A page of Objects nearby: what's listed, how many more past it, how many in range have no name yet.</summary>
+    public sealed record Nearby(List<Thing> Things, int More, int Unnamed);
 
     /// <summary>Objects around (root objects, not attachments), nearest first; query: words in the name, description
     /// or floating text. renew: scripted ones' names older than this many seconds asked again (0: all of them), as a
     /// script may have renamed its object (a self-naming sofa).</summary>
-    public async Task<List<Thing>> ObjectsAsync(double within = 30, int limit = 60, string? query = null, double? renew = null)
+    public async Task<List<Thing>> ObjectsAsync(double within = 30, int limit = 60, string? query = null, double? renew = null) =>
+        (await NearbyAsync(within, limit, query, renew)).Things;
+
+    /// <summary>As ObjectsAsync, for the list itself: scan looks through everything in range for a query, not the nearest
+    /// 200; others: only what other people wear.</summary>
+    public async Task<Nearby> NearbyAsync(double within, int limit, string? query = null, double? renew = null, bool scan = false, bool others = false)
     {
         var args = new JsonObject { ["dist"] = within, ["limit"] = limit, ["timeout"] = 3 };
         if (!string.IsNullOrWhiteSpace(query)) args["query"] = query.Trim();
         if (renew is { } secs) args["renew"] = secs;
+        if (scan) args["scan"] = true;
+        if (others) args["worn_only"] = true;
         var r = await ReadAsync("TesselObjects", "nearby", args);
         var list = new List<Thing>();
-        // a part's money event counts for its object: the region says it on that part alone
+        // a part's money event or touch counts for its object: the region says it on that part alone
         var childMoney = new Dictionary<UUID, UUID>();
+        var childTouch = new HashSet<UUID>();
         if (s.Region is { } region)
             foreach (var p in region.Prims.Values)
-                if (p.ParentID != 0 && (s.State.PrimFlagsOf(p) & PrimFlags.Money) != 0 && region.Prims.TryGetValue(p.ParentID, out var parent))
-                    childMoney.TryAdd(parent.ID, p.ID);
+            {
+                if (p.ParentID == 0 || !region.Prims.TryGetValue(p.ParentID, out var parent)) continue;
+                var pf = s.State.PrimFlagsOf(p);
+                if ((pf & PrimFlags.Money) != 0) childMoney.TryAdd(parent.ID, p.ID);
+                if ((pf & PrimFlags.Touch) != 0) childTouch.Add(parent.ID);
+            }
         foreach (var o in (r["objects"] as JsonArray ?? new()).OfType<JsonObject>())
         {
             if (!UUID.TryParse(o.Str("id"), out var id) || o["pos"] is not JsonArray pos || pos.Count < 3) continue;
@@ -139,13 +163,24 @@ public sealed class PersonOps(AgentSession s)
             list.Add(new Thing(id, name, new Vector3((float)pos[0]!.GetValue<double>(), (float)pos[1]!.GetValue<double>(), (float)pos[2]!.GetValue<double>()),
                 o["dist"]?.GetValue<double>() ?? 0, o.Str("click_action") == "sit", flags.Contains("touch"), o.Str("text"))
             {
-                Mine = flags.Contains("mine"), MayCopy = flags.Contains("copy"), Click = o.Str("click_action"),
+                Mine = IsMine(o, flags), MayCopy = flags.Contains("copy"), Click = o.Str("click_action"),
                 Sale = (o["sale"] as JsonObject)?.Str("type"), Price = (o["sale"] as JsonObject)?["price"]?.GetValue<int>() ?? 0,
                 Money = rootMoney || kidMoney, PayTo = rootMoney || !kidMoney ? id : payPart,
+                Modify = flags.Contains("mod"), Transfer = flags.Contains("transfer"), PartTouch = childTouch.Contains(id),
+                WornBy = UUID.TryParse(o.Str("attached_to"), out var by) ? by : UUID.Zero,
+                WornByName = UUID.TryParse(o.Str("attached_to"), out var who) ? PersonName(who) : null,
+                Point = o.Str("attach_point"),
             });
         }
-        return list.OrderBy(t => t.Dist).ToList();
+        return new Nearby(list.OrderBy(t => t.Dist).ToList(), r.Int("more", 0), r.Int("unnamed", 0));
     }
+
+    /// <summary>The person's own by the region's flag and its owner: OpenSim sets the flag on a friend's that the friend
+    /// lets them edit too, and those aren't theirs to take as their own.</summary>
+    public bool IsMine(JsonObject o, HashSet<string?> flags) => flags.Contains("mine")
+        && (!UUID.TryParse(o.Str("owner_id"), out var owner) || owner == s.AgentId);
+
+    string PersonName(UUID id) => s.Names.Complete(id, s.Region?.AvatarById(id)?.Name ?? "someone");
 
     /// <summary>"4 m, two o'clock" from the avatar, or null when it doesn't know where it is.</summary>
     public string? Where(Vector3 pos, bool full = false)

@@ -27,19 +27,21 @@ public sealed partial class MainForm
     Sojourn.Session.Collision.LocalCollision? _rays;
 
     bool ShowingWorn => _objectsShow.SelectedIndex == 1;
+    bool ShowingOthers => _objectsShow.SelectedIndex == 2;
 
     void BuildParts()
     {
         _parts = List("parts", "Parts");
         _faces = List("faces", "Faces");
         _objectsShow = new ComboBox { Name = "objectsShow", AccessibleName = "Show", DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
-        _objectsShow.Items.AddRange(new object[] { "Things nearby", "What you wear, HUDs first" });
+        _objectsShow.Items.AddRange(new object[] { "Things nearby", "What you wear, HUDs first", "What people nearby wear" });
         _objectsShow.SelectedIndex = 0;
         _objectsShow.SelectedIndexChanged += (_, _) =>
         {
-            _objects.AccessibleName = ShowingWorn ? "What you wear" : "Objects nearby";
+            _objects.AccessibleName = ObjectsName;
             _ = RefreshObjects(_objectsShow.Focused);
         };
+        BuildObjectsFilter();
 
         _partMenu = new ContextMenuStrip { Name = "partMenu", AccessibleName = "Actions" };
         void PartItem(string text, Action<Linkset.Part> act) =>
@@ -57,19 +59,23 @@ public sealed partial class MainForm
         _partMenu.Opening += (_, _) =>
         {
             var p = _parts.FocusedItem?.Tag as Linkset.Part;
-            var of = p is { Hud: false } && _objects.FocusedItem?.Tag is PersonOps.Thing t && t.Id == p.Root ? t : null;
-            payPart.Visible = p is { Hud: false, Money: true } || of is { Money: true };
+            var thing = p != null && _objects.FocusedItem?.Tag is PersonOps.Thing t && t.Id == p.Root ? t : null;
+            var of = p is { Hud: false } ? thing : null;
+            // (something someone else wears: a tip jar pays as one in the world does)
+            payPart.Visible = p is { Hud: false, Money: true } || of is { Money: true } || thing != null && thing.WornBy != UUID.Zero && (thing.Money || p!.Money);
             buyPart.Visible = of is { Mine: false, Sale: not null };
             copyPart.Visible = of is { MayCopy: true };
         };
-        PartItem("W&here", p => Answer(p.Hud ? $"{PartName(p)} is {(OnHud(p.Root) ? "on your HUD" : "part of something you're wearing")}." : $"{PartName(p)} is {_ops.Where(L(p.Pos), full: true)}."));
+        PartItem("W&here", p => Answer(p.Hud ? $"{PartName(p)} is {(OnHud(p.Root) ? "on your HUD" : WornByMe(p.Root) ? "part of something you're wearing" : "part of something someone's wearing")}." : $"{PartName(p)} is {_ops.Where(L(p.Pos), full: true)}."));
         PartItem("&Describe", p => _ = DescribeAsync(Of(p)));
+        PartItem("Deta&ils", p => _ = ThingDetailsAsync(p.Id, PartName(p)));
+        PartItem("Co&ntents", p => { if (p.Hud) Answer("What's inside worn things shows once they're out in the world."); else _ = ContentsOfAsync(p.Id, onePart: true); });
         PartItem("&Faces", p => { _faces.Focus(); });
         PartItem("&Edit this part (build)", p => { if (!p.Hud) EditThing(p.Id, null, onePart: true); else Answer("Worn things are edited once they're out in the world."); });
         PartItem("Cop&y its settings to what I'm editing", p => _ = GuardedAsync(() => CopyToEditingAsync(p.Id), PartName(p)));
         var copySettingsPart = _partMenu.Items[^1];
         _partMenu.Opening += (_, _) => copySettingsPart.Visible = _parts.FocusedItem?.Tag is Linkset.Part { Hud: false } q && q.Id != _buildId && BuildPrim() != null;
-        KeysOn(_partMenu, ("&Touch", "Enter"), ("&Describe", "Control+D"), ("&Faces", "Tab"), ("&Edit this part (build)", "Control+B"));
+        KeysOn(_partMenu, ("&Touch", "Enter"), ("&Describe", "Control+D"), ("Deta&ils", "Alt+Enter"), ("&Faces", "Tab"), ("&Edit this part (build)", "Control+B"));
         MenuOn(_parts, _partMenu);
         _parts.KeyDown += (_, e) => PartKey(e);
         _parts.SelectedIndexChanged += (_, _) => { if (_parts.FocusedItem?.Tag is Linkset.Part p && p.Id != _facesOf) _ = RefreshFacesAsync(p); };
@@ -85,7 +91,7 @@ public sealed partial class MainForm
         MenuOn(_faces, _faceMenu);
         _faces.KeyDown += (_, e) =>
         {
-            if (e.KeyCode == Keys.Enter && _faces.FocusedItem?.Tag is FaceItem or HudFaceItem) { e.Handled = e.SuppressKeyPress = true; FaceEnter(); }
+            if (e.KeyCode == Keys.Enter && !e.Alt && _faces.FocusedItem?.Tag is FaceItem or HudFaceItem) { e.Handled = e.SuppressKeyPress = true; FaceEnter(); }
             else if (e.KeyCode == Keys.F5 && _parts.FocusedItem?.Tag is Linkset.Part p) { e.Handled = true; _ = RefreshFacesAsync(p, said: true); }
         };
 
@@ -94,22 +100,27 @@ public sealed partial class MainForm
             if (_objects.FocusedItem?.Tag is PersonOps.Thing t && t.Id != _partsOf && !_parts.Focused && !_faces.Focused) _ = RefreshPartsAsync(t);
         };
 
-        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4 };
+        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 4 };
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 30));
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 25));
-        t.Controls.Add(new Label { Text = "Sh&ow", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-        t.Controls.Add(_objectsShow, 1, 0);
+        // (a label's letter goes to the next control after it in Tab order: each label takes its control's place)
+        t.Controls.Add(new Label { Text = "Fi&lter", AutoSize = true, Anchor = AnchorStyles.Left, TabIndex = 3 }, 0, 0);
+        t.Controls.Add(_objectsFilterBox, 1, 0);
+        t.Controls.Add(new Label { Text = "Sh&ow", AutoSize = true, Anchor = AnchorStyles.Left, TabIndex = 4 }, 2, 0);
+        t.Controls.Add(_objectsShow, 3, 0);
         t.Controls.Add(_objects, 0, 1);
-        t.SetColumnSpan(_objects, 2);
+        t.SetColumnSpan(_objects, 4);
         t.Controls.Add(_parts, 0, 2);
-        t.SetColumnSpan(_parts, 2);
+        t.SetColumnSpan(_parts, 4);
         t.Controls.Add(_faces, 0, 3);
-        t.SetColumnSpan(_faces, 2);
-        _objects.TabIndex = 0; _parts.TabIndex = 1; _faces.TabIndex = 2; _objectsShow.TabIndex = 3;
+        t.SetColumnSpan(_faces, 4);
+        _objects.TabIndex = 0; _parts.TabIndex = 1; _faces.TabIndex = 2; _objectsFilterBox.TabIndex = 3; _objectsShow.TabIndex = 4;
         _objectsPage.Controls.Add(t);
         Fill(_parts, new(), "No object selected.");
         Fill(_faces, new(), "No part selected.");
@@ -124,8 +135,9 @@ public sealed partial class MainForm
 
     void PartKey(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Enter && _parts.FocusedItem?.Tag is Linkset.Part or HudButtonItem or ReadButtonsItem) { e.Handled = e.SuppressKeyPress = true; PartEnter(); }
+        if (e.KeyCode == Keys.Enter && !e.Alt && _parts.FocusedItem?.Tag is Linkset.Part or HudButtonItem or ReadButtonsItem) { e.Handled = e.SuppressKeyPress = true; PartEnter(); }
         else if (e.KeyCode == Keys.F5 && _objects.FocusedItem?.Tag is PersonOps.Thing t) { e.Handled = true; _ = RefreshPartsAsync(t, said: true); }
+        else if (e.KeyData == (Keys.Alt | Keys.Enter) && _parts.FocusedItem?.Tag is Linkset.Part d) { e.Handled = e.SuppressKeyPress = true; _ = ThingDetailsAsync(d.Id, PartName(d)); }
     }
 
     /// <summary>Enter (or Touch) on the parts list: a part touched, a HUD's read button pressed, or its buttons read.</summary>
@@ -157,7 +169,8 @@ public sealed partial class MainForm
         _partsOf = t.Id;
         _parts.AccessibleName = $"Parts of {t.Name}";
         if (!same) Fill(_parts, new(), "Finding its parts.");
-        var parts = await PartsOfAsync(t.Id, t.Hud, placed: !t.Hud || OnHud(t.Id));
+        bool worn = t.Hud || t.WornBy != UUID.Zero;
+        var parts = await PartsOfAsync(t.Id, worn, placed: !worn || OnHud(t.Id));
         if (version != _partsVersion || IsDisposed) return;
         if (parts == null) { Fill(_parts, new(), $"{t.Name} isn't here any more."); return; }
         var items = parts.Select(p => (p.Words, p.Id.ToString(), (object)p)).ToList();
@@ -206,7 +219,7 @@ public sealed partial class MainForm
             return;
         }
         if (p.Hud) { Fill(_faces, new(), OnHud(p.Root) ? $"Faces need the 3D view. {ViewWords.Down(_view)} Enter on the part touches it."
-            : "Faces of what you wear on your body aren't drawn here: Enter on the part touches it."); return; }
+            : "Faces of what's worn on a body aren't drawn here: Enter on the part touches it."); return; }
         if (ViewWords.Gone(_view)) { Fill(_faces, new(), $"Faces need the 3D view. {ViewWords.Down(_view)} Enter on the part touches it."); return; }
         Fill(_faces, new(), "Finding its faces.");
         var set = await _view!.FacesAsync(p.Id);
@@ -268,6 +281,8 @@ public sealed partial class MainForm
     /// <summary>Whether a worn object (by its root) is on a HUD point rather than the body.</summary>
     bool OnHud(UUID root) => Host?.Session.Region?.PrimById(root) is { } p && (int)p.PrimData.AttachmentPoint is >= 31 and <= 38;
 
+    bool WornByMe(UUID root) => Host?.Session.Region?.PrimById(root) is { } p && _ops.Client is { } c && p.ParentID == c.Self.LocalID;
+
     /// <summary>What the person wears, for the objects list's Show: HUDs first, then what's attached to the body (a pet or
     /// a skirt with a menu is touched as a HUD is; the blind tester couldn't reach her worn things, 2026-11-01). Thing.Hud
     /// marks them all as worn.</summary>
@@ -285,8 +300,9 @@ public sealed partial class MainForm
             var point = Sojourn.Core.Agents.ObjectViews.AttachPointName((int)p.PrimData.AttachmentPoint);
             int count = Host.Session.Objects.Linkset(w, p).Count;
             bool touch = Host.Session.Objects.Linkset(w, p).Any(x => (Host.Session.State.PrimFlagsOf(x) & PrimFlags.Touch) != 0);
-            return (Hud: hud, Thing: new PersonOps.Thing(p.ID, name, default, 0, false, touch,
-                $"on {point}, {(count == 1 ? "1 part" : $"{count} parts")}{(touch ? ", touchable" : "")}") { Hud = true });
+            bool rootTouch = (Host.Session.State.PrimFlagsOf(p) & PrimFlags.Touch) != 0;
+            return (Hud: hud, Thing: new PersonOps.Thing(p.ID, name, default, 0, false, rootTouch,
+                $"on {point}, {(count == 1 ? "1 part" : $"{count} parts")}{(touch ? ", touchable" : "")}") { Hud = true, PartTouch = touch && !rootTouch });
         }).OrderBy(x => x.Hud ? 0 : 1).ThenBy(x => x.Thing.Name, StringComparer.OrdinalIgnoreCase).Select(x => x.Thing).ToList();
     }
 

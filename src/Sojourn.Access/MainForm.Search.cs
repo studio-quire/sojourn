@@ -208,8 +208,10 @@ public sealed partial class MainForm
         var fee = Json.AsDouble(r["fee"]) is { } f && f > 0 ? $"joining costs L${f:0}" : "joining is free";
         var open = r["open_enrollment"]?.GetValue<bool>() == true ? $"anyone may join, {fee}" : "by invitation";
         var mine = r["member"]?.GetValue<bool>() == true ? " You're a member." : "";
+        if (r["member"]?.GetValue<bool>() == true && await WornTitleAsync(id) is { } title) mine += $" Your title: {title}.";
+        var founder = r.Str("founder") is { Length: > 0 } fd ? $" Founded by {fd}." : "";
         var charter = r.Str("charter") is { Length: > 0 } ch ? $" Charter: {ch.Trim()}" : "";
-        Answer($"{r.Str("name") ?? name}: {(members == 1 ? "1 member" : $"{members} members")}, {open}.{mine}{charter}",
+        Answer($"{r.Str("name") ?? name}: {(members == 1 ? "1 member" : $"{members} members")}, {open}.{founder}{mine}{charter}",
             charter.Length > 0 ? LineFrom.People : LineFrom.App);
     }
 

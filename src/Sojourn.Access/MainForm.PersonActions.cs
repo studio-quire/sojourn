@@ -34,6 +34,7 @@ public sealed partial class MainForm
         list.Add(new("&Request teleport", () => _ = PersonIdOpAsync("requestTeleport", id, $"Asked {name} for a teleport.")));
         if (!friend) list.Add(new("Offer frie&ndship", () => _ = PersonIdOpAsync("offerFriendship", id, $"Friendship offered to {name}.")));
         if (friend) list.Add(new("Start a co&nference...", () => _ = StartConferenceAsync(new Friend(id, name, true))));
+        if (Host?.Session.State.Groups.IsEmpty == false) list.Add(new("In&vite to a group...", () => _ = InviteAsync(id, name)));
         list.Add(new("Always in&cognito with them", () => IncognitoWith(id, name)));
         list.Add(new(blocked ? "Unbloc&k" : "Bloc&k", () => _ = blocked ? UnblockAsync(new Blocked(id, name, "resident")) : BlockAsync(id, name, "resident")));
         list.Add(new(SoundItemText(name, group: false), () => ChooseImSound(id, name, group: false)));

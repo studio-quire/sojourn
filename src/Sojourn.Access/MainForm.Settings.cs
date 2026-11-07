@@ -28,6 +28,7 @@ public sealed partial class MainForm
         ("announce_music", "Music titles read out"),
         ("access_read_mine", "My own lines read back"),
         ("access_read_cut", "Lines cut off by my typing said again"),
+        ("access_script_errors", "Script errors from my objects read out"),
         ("access_objects_range", "How far Objects nearby lists, metres"),
         ("access_mute_all", "Mute all read-out (F6)"),
         ("access_timestamps", "Times in the histories"),

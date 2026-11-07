@@ -56,7 +56,7 @@ public sealed partial class MainForm
         _objectMenu = new ContextMenuStrip { Name = "objectMenu", AccessibleName = "Actions" };
         void Item(string text, Action<PersonOps.Thing> act) =>
             _objectMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_objects.FocusedItem?.Tag is PersonOps.Thing t) act(t); }));
-        Item("&Touch", t => _ = ThingOpAsync("requestTouch", t, $"Touched {t.Name}."));
+        Item("&Touch", t => _ = TouchThingAsync(t));
         Item("&Sit", t => _ = ThingOpAsync("requestSit", t, $"Sitting on {t.Name}."));
         // as the viewer's pie menu offers them (ThingActions.For; the blind tester's tip jars, 2026-11-05)
         Item("P&ay...", t => _ = PayThingAsync(t.PayTo, t.Name));
@@ -69,34 +69,54 @@ public sealed partial class MainForm
         Item("&Beacon", t => _walk?.BeaconOn(t.Name, t.Id));
         Item("&Face", t => _ = _cmd.FacePointAsync(t.Pos, t.Name));
         Item("&Describe", t => _ = DescribeAsync(Of(t)));
-        Item("W&here", t => Answer(t.Hud ? $"{t.Name} is worn {t.Text}." : $"{t.Name} is {_ops.Where(t.Pos, full: true)}.{(string.IsNullOrWhiteSpace(t.Text) ? "" : $" Its sign says: {t.Text}")}"));
+        Item("Deta&ils", t => _ = ThingDetailsAsync(t.Id, t.Name));
+        Item("W&here", t => Answer(t.Hud ? $"{t.Name} is worn {t.Text}."
+            : t.WornBy != UUID.Zero ? $"{t.Name} is worn by {t.WornByName} on {t.Point}, {_ops.Where(t.Pos, full: true)}."
+            : $"{t.Name} is {_ops.Where(t.Pos, full: true)}.{(string.IsNullOrWhiteSpace(t.Text) ? "" : $" Its sign says: {t.Text}")}"));
+        Item("Co&ntents", t => _ = ContentsOfAsync(t.Id, onePart: false));
+        var contentsItem = _objectMenu.Items[^1];
         Item("&Parts", _ => _parts.Focus());
         Item("&Move...", t => _ = MoveByWordsAsync(t));
+        var moveItem = _objectMenu.Items[^1];
         Item("&Edit (build)", t => EditThing(t.Id));
-        Item("L&ink to what I'm editing", t => _ = LinkThingAsync(t));
+        var editItem = _objectMenu.Items[^1];
+        Item("Link to what I'm editin&g", t => _ = LinkThingAsync(t));
         var linkItem = _objectMenu.Items[^1];
         Item("Cop&y its settings to what I'm editing", t => _ = GuardedAsync(() => CopyToEditingAsync(t.Id), t.Name));
         var copySettings = _objectMenu.Items[^1];
-        // the person's own things back out of the world (the blind tester found no way to delete what she'd rezzed, 2026-11-01)
+        Item("Bl&ock", t => _ = BlockAsync(t.Id, t.Name, "object"));
+        var blockItem = _objectMenu.Items[^1];
+        // what may leave the world together, each through her confirmation where it isn't hers, and well away from what's
+        // pressed every day: Return has no letter of its own, so only the arrows reach it (the blind tester found no way to
+        // delete what she'd rezzed, 2026-11-01)
         Item("Ta&ke into your inventory", t => _ = TakeThingAsync(t));
+        var takeItem = _objectMenu.Items[^1];
         Item("De&lete", t => _ = DeleteThingAsync(t));
+        var deleteItem = _objectMenu.Items[^1];
+        Item("Return to its owner...", t => _ = ReturnThingAsync(t));
+        var returnItem = _objectMenu.Items[^1];
         // what she wears, off again from where she found it (the blind tester couldn't take a HUD off here, 2026-11-02)
         Item("Take &off", t => _ = TakeOffWornAsync(t));
-        Item("Bloc&k", t => _ = BlockAsync(t.Id, t.Name, "object"));
+        var offItem = _objectMenu.Items[^1];
         // F5's refresh, here too so it can be found (the blind tester found no way to refresh, 2026-10-31)
         _objectMenu.Items.Add(new ToolStripMenuItem("&Refresh", null, (_, _) => _ = RefreshObjects(true)));
-        // something worn is touched, described, its parts listed and taken off; the rest is for things in the world
+        // something worn is touched, described, its parts listed; what's in the world has the rest
         _objectMenu.Opening += (_, _) =>
         {
             var sel = _objects.FocusedItem?.Tag as PersonOps.Thing;
-            bool hud = sel is { Hud: true }, mine = sel is { Mine: true };
+            bool mine = sel is { Hud: true }, others = sel != null && sel.WornBy != UUID.Zero, world = sel != null && !mine && !others;
             foreach (ToolStripItem i in _objectMenu.Items)
-                i.Visible = hud ? i.Text is "&Touch" or "&Describe" or "W&here" or "&Parts" or "Take &off" or "&Refresh"
-                    : i.Text != "Take &off" && (mine ? i.Text != "Bloc&k" : i.Text is not ("Ta&ke into your inventory" or "De&lete"));
-            payItem.Visible = sel is { Hud: false, Money: true };
-            buyItem.Visible = sel is { Hud: false, Mine: false, Sale: not null };
-            copyItem.Visible = sel is { Hud: false, MayCopy: true };
-            linkItem.Visible = copySettings.Visible = sel is { Hud: false, Mine: true } && LinkableNow(sel);
+                i.Visible = world || i.Text is "&Touch" or "&Describe" or "Deta&ils" or "W&here" or "&Parts" or "&Refresh";
+            offItem.Visible = mine;
+            contentsItem.Visible = moveItem.Visible = editItem.Visible = world;
+            blockItem.Visible = world && sel is { Mine: false };
+            takeItem.Visible = world && MayTake(sel!);
+            deleteItem.Visible = world && MayDelete(sel!);
+            returnItem.Visible = world && MayReturn(sel!);
+            payItem.Visible = (world || others) && sel is { Money: true };
+            buyItem.Visible = world && sel is { Mine: false, Sale: not null };
+            copyItem.Visible = world && sel is { MayCopy: true };
+            linkItem.Visible = copySettings.Visible = world && sel is { Mine: true } && LinkableNow(sel);
             // its own click action leads, as the viewer's left click does it
             _objectMenu.Items.Remove(payItem);
             _objectMenu.Items.Remove(buyItem);
@@ -109,14 +129,16 @@ public sealed partial class MainForm
                 _objectMenu.Items.Insert(0, lead);
             }
             if (sel != null)
-                Host?.Log.LogInformation("objects: actions on {Name} ({Where}, left click {Click}): {Items}", sel.Name, sel.Hud ? "worn" : sel.Mine ? "yours, nearby" : "nearby", sel.Click ?? "touch",
+                Host?.Log.LogInformation("objects: actions on {Name} ({Where}, left click {Click}): {Items}", sel.Name, mine ? "worn" : others ? "worn by someone" : sel.Mine ? "yours, nearby" : "nearby", sel.Click ?? "touch",
                     string.Join(", ", _objectMenu.Items.OfType<ToolStripItem>().Where(i => i.Available).Select(i => i.Text.Replace("&", ""))));
         };
-        KeysOn(_objectMenu, ("&Describe", "Control+D"), ("&Parts", "Tab"), ("&Edit (build)", "Control+B"), ("De&lete", "Delete"), ("Take &off", "Delete"), ("&Refresh", "F5"));
+        KeysOn(_objectMenu, ("&Describe", "Control+D"), ("Deta&ils", "Alt+Enter"), ("&Parts", "Tab"), ("&Edit (build)", "Control+B"), ("De&lete", "Delete"), ("Take &off", "Delete"), ("&Refresh", "F5"));
         MenuOn(_objects, _objectMenu);
         _objects.KeyDown += (_, e) => ListKey(_objects, _objectMenu, e, RefreshObjects);
         _objects.KeyDown += (_, e) =>
         {
+            if (e.KeyCode == Keys.Enter && _objects.FocusedItem?.Name == MoreRow) { e.Handled = e.SuppressKeyPress = true; MoreObjects(); return; }
+            if (e.KeyData == (Keys.Alt | Keys.Enter) && _objects.FocusedItem?.Tag is PersonOps.Thing d) { e.Handled = e.SuppressKeyPress = true; _ = ThingDetailsAsync(d.Id, d.Name); return; }
             if (e.KeyData != Keys.Delete || _objects.FocusedItem?.Tag is not PersonOps.Thing t) return;
             e.Handled = e.SuppressKeyPress = true;
             if (t.Hud) _ = TakeOffWornAsync(t);
@@ -125,11 +147,13 @@ public sealed partial class MainForm
         BuildParts();
     }
 
-    /// <summary>One of the person's things in the world into their inventory's Objects folder, as the viewer's Take.</summary>
+    /// <summary>A thing in the world into the person's inventory's Objects folder, as the viewer's Take: theirs at once,
+    /// someone else's (the viewer offers it where they may change it and pass it on) after their confirmation.</summary>
     async Task TakeThingAsync(PersonOps.Thing t)
     {
-        if (!t.Mine) { Answer($"{t.Name} isn't yours to take."); return; }
-        var r = await _ops.DoAsync("TesselBuild", "take", new JsonObject { ["ids"] = new JsonArray(t.Id.ToString()) });
+        if (!MayTake(t)) { Answer($"{t.Name} isn't yours to take."); return; }
+        var args = new JsonObject { ["ids"] = new JsonArray(t.Id.ToString()) };
+        if ((t.Mine ? await _ops.DoAsync("TesselBuild", "take", args) : await ConfirmedAsync("TesselBuild", "take", args)) is not { } r) return;
         Answer(PersonOps.Error(r) is { } e ? $"Not taken: {e}" : $"Took {t.Name} into your inventory.");
         await Task.Delay(500);
         _ = RefreshObjects(false);
@@ -144,12 +168,12 @@ public sealed partial class MainForm
         _ = RefreshObjects(false);
     }
 
-    /// <summary>One of the person's things in the world deleted into their Trash, after their confirmation (Notices).</summary>
+    /// <summary>A thing in the world deleted, after the person's confirmation (Notices): theirs goes to their Trash.</summary>
     async Task DeleteThingAsync(PersonOps.Thing t)
     {
-        if (!t.Mine) { Answer($"{t.Name} isn't yours to delete."); return; }
+        if (!MayDelete(t)) { Answer($"{t.Name} isn't yours to delete."); return; }
         if (await ConfirmedAsync("TesselBuild", "delete", new JsonObject { ["ids"] = new JsonArray(t.Id.ToString()) }) is not { } r) return;
-        Answer(PersonOps.Error(r) is { } e ? $"Not deleted: {e}" : $"Deleted {t.Name} (in the Trash).");
+        Answer(PersonOps.Error(r) is { } e ? $"Not deleted: {e}" : t.Mine ? $"Deleted {t.Name} (in the Trash)." : $"Deleted {t.Name}.");
         await Task.Delay(500);
         _ = RefreshObjects(false);
     }
@@ -158,13 +182,13 @@ public sealed partial class MainForm
     {
         var r = await _ops.DoAsync("LLAgent", op, new JsonObject { ["obj_uuid"] = t.Id.ToString() });
         Answer(PersonOps.Error(r) is { } e ? $"Didn't work: {e}" : done);
-        if (op == "requestTouch" && PersonOps.Error(r) is null && !t.Hud) _route?.Touched(t.Name);   // (a route being recorded keeps it)
+        if (op == "requestTouch" && PersonOps.Error(r) is null && !t.Hud && t.WornBy == UUID.Zero) _route?.Touched(t.Name);   // (a route being recorded keeps it)
     }
 
     void ListKey(ListView list, ContextMenuStrip menu, KeyEventArgs e, Func<bool, Task> refresh)
     {
         if (e.KeyCode == Keys.F5) { e.Handled = true; _ = refresh(true); }
-        else if (e.KeyCode == Keys.Enter && list.FocusedItem?.Tag != null)
+        else if (e.KeyCode == Keys.Enter && !e.Alt && list.FocusedItem?.Tag != null)
         {
             e.Handled = e.SuppressKeyPress = true;
             ShowListMenu(list, menu);
@@ -270,19 +294,23 @@ public sealed partial class MainForm
         if (_objectsBusy) { _objectsAgain = asked || _objectsAgain == true; return; }
         _objectsBusy = true;
         bool first = _objects.Items.Count == 0;
-        if (first) Looking(_objects, "Objects nearby", true);
+        if (first) Looking(_objects, ObjectsName, true);
         try
         {
-            bool worn = ShowingWorn;
+            bool worn = ShowingWorn, others = ShowingOthers;
+            var filter = ObjectsFilter;
             // scripted things' names asked again (F5 all of them, else those over 5 s old): a script renaming its
             // object reaches only those who have it selected, so a list holding names for minutes missed renames
-            var things = worn ? await WornAsync() : await _ops.ObjectsAsync(_set.ObjectsRange, _set.ObjectsRange > 30 ? 200 : 60, renew: asked ? 0 : 5);
+            var page = worn ? WornPage(await WornAsync(), filter)
+                : await _ops.NearbyAsync(_set.ObjectsRange, ObjectsLimit, filter, renew: filter != null ? null : asked ? 0 : 5, scan: filter != null, others: others);
+            var things = page.Things;
             await ListDelay(_objects);
-            Fill(_objects, things.Select(t => (Text: t.Hud ? $"{t.Name}, {t.Text}" : $"{t.Name}, {_ops.Where(t.Pos)}{DealWords(t)}{(t.Sit ? ", can sit" : t.Touch ? ", touchable" : "")}",
-                Key: t.Id.ToString(), Tag: (object)t)).ToList(), worn ? "Nothing worn here yet." : "Nothing nearby.");
-            if (first) Looking(_objects, "Objects nearby", false);
-            if (asked) Reader?.Answer(things.Count == 0 ? (worn ? "Nothing worn here yet." : "Nothing nearby.")
-                : worn ? WornCount(things) : $"{things.Count} objects.", keep: false);
+            var items = things.Select(t => (Text: ObjectLine(t), Key: t.Id.ToString(), Tag: (object)t)).ToList();
+            if (page.More > 0) items.Add(($"More: {page.More} further on. Enter lists the next {Math.Min(page.More, ObjectsPage)}.", MoreRow, null!));
+            Fill(_objects, items, ObjectsEmpty(filter));
+            LandAfterMore();
+            _objects.AccessibleName = ObjectsName;
+            if (asked) Reader?.Answer(ObjectsCount(things, page, filter), keep: false);
             // the parts below follow the object selected, unless the person is in them
             // (or the same one renamed: "Parts of" its new name)
             if (_objects.FocusedItem?.Tag is PersonOps.Thing sel && (sel.Id != _partsOf || _parts.AccessibleName != $"Parts of {sel.Name}")
@@ -292,7 +320,7 @@ public sealed partial class MainForm
         finally
         {
             _objectsBusy = false;
-            if (first) Looking(_objects, "Objects nearby", false);
+            if (first) Looking(_objects, ObjectsName, false);
         }
         if (_objectsAgain is { } again) { _objectsAgain = null; await RefreshObjects(again); }
     }
