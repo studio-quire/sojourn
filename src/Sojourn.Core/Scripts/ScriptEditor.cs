@@ -283,7 +283,7 @@ public sealed class ScriptEditor
                 await Task.Delay(300, ct);
             }
             if (vm is not null) _vm[created.UUID] = vm;
-            if (type == "notecard" && p.Str("text") is { } text) await SaveNotecardAsync(prim, created.UUID, text, ct);
+            if (type == "notecard" && p.Str("text") is { } text) await SaveNotecardAsync(prim, created.UUID, NotecardFile.Asset(text), ct);
             var result = new JsonObject
             {
                 ["item_id"] = created.UUID.ToString(), ["name"] = created.Name, ["description"] = created.Description,
@@ -314,8 +314,13 @@ public sealed class ScriptEditor
                    ?? throw new RpcFail(-32602, "Invalid params: Item not found in object");
         if (item.AssetType == AssetType.Notecard)
         {
-            await SaveNotecardAsync(prim, itemId, content, ct);
-            return new JsonObject { ["success"] = true, ["prim_id"] = primId.ToString(), ["item_id"] = itemId.ToString() };
+            // read first, so what's embedded stays; if the card can't be read nothing is saved, rather than risk losing it
+            var was = await c.Assets.RequestInventoryAssetAsync(_savedAsset.TryGetValue(itemId, out var had) ? had : item.AssetUUID, item.UUID, prim.ID, item.OwnerID, item.AssetType, true, UUID.Random(), ct)
+                      ?? throw new RpcFail(-32001, "Timeout: the notecard couldn't be read, and saving over it unread could lose what's embedded in it");
+            await SaveNotecardAsync(prim, itemId, NotecardFile.Parse(was.AssetData).Saved(content, out var moved), ct);
+            var saved = new JsonObject { ["success"] = true, ["prim_id"] = primId.ToString(), ["item_id"] = itemId.ToString() };
+            if (moved.Count > 0) saved["moved_to_end"] = new JsonArray(moved.Select(m => (JsonNode)m).ToArray());
+            return saved;
         }
         var vm = p.Str("vm") ?? (_vm.TryGetValue(itemId, out var v) ? v : "mono");
         var running = p.Bool("running") ?? await RunningAsync(prim.ID, itemId, ct);
@@ -456,29 +461,12 @@ public sealed class ScriptEditor
     static string Describe(OSDMap m, byte[]? raw) =>
         m.Count > 0 ? OSDParser.SerializeJsonString(m) : $"unexpected reply: {Encoding.UTF8.GetString(raw ?? Array.Empty<byte>())[..Math.Min(200, raw?.Length ?? 0)]}";
 
-    async Task SaveNotecardAsync(Primitive prim, UUID itemId, string text, CancellationToken ct)
+    async Task SaveNotecardAsync(Primitive prim, UUID itemId, byte[] content, CancellationToken ct)
     {
         var c = C;
-        var (ok, status, _, asset) = await c.Inventory.RequestUpdateNotecardTaskAsync(NotecardAsset(text), itemId, prim.ID, ct);
+        var (ok, status, _, asset) = await c.Inventory.RequestUpdateNotecardTaskAsync(content, itemId, prim.ID, ct);
         if (!ok) throw new RpcFail(-32603, $"Upload failed: {status}");
         if (asset != UUID.Zero && asset != itemId) _savedAsset[itemId] = asset; else _savedAsset.TryRemove(itemId, out _);
-    }
-
-    static byte[] NotecardAsset(string text)
-    {
-        var body = Encoding.UTF8.GetBytes(text);
-        var head = $"Linden text version 2\n{{\nLLEmbeddedItems version 1\n{{\ncount 0\n}}\nText length {body.Length}\n";
-        return Encoding.UTF8.GetBytes(head).Concat(body).Concat(Encoding.UTF8.GetBytes("}\n")).ToArray();
-    }
-
-    static string NotecardText(string asset)
-    {
-        var m = Regex.Match(asset, @"Text length (\d+)\n", RegexOptions.Singleline);
-        if (!m.Success) return asset;
-        var start = m.Index + m.Length;
-        var bytes = Encoding.UTF8.GetBytes(asset[start..]);
-        var len = Math.Min(int.Parse(m.Groups[1].Value), bytes.Length);
-        return Encoding.UTF8.GetString(bytes, 0, len);
     }
 
     async Task<JsonNode> GetAsync(JsonObject p, CancellationToken ct)
@@ -498,8 +486,8 @@ public sealed class ScriptEditor
         var assetId = _savedAsset.TryGetValue(itemId, out var saved) ? saved : item.AssetUUID;
         var asset = await c.Assets.RequestInventoryAssetAsync(assetId, item.UUID, prim.ID, item.OwnerID, item.AssetType, true, UUID.Random(), ct)
                     ?? throw new RpcFail(-32001, "Timeout: asset fetch failed");
-        var text = Encoding.UTF8.GetString(asset.AssetData ?? Array.Empty<byte>()).TrimEnd('\0');
-        if (item.AssetType == AssetType.Notecard) text = NotecardText(text);
+        var text = item.AssetType == AssetType.Notecard ? NotecardFile.Parse(asset.AssetData).Readable
+            : Encoding.UTF8.GetString(asset.AssetData ?? Array.Empty<byte>()).TrimEnd('\0');
         return new JsonObject { ["success"] = true, ["prim_id"] = primId.ToString(), ["item_id"] = itemId.ToString(), ["content"] = text };
     }
 

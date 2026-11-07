@@ -266,9 +266,12 @@ transparency, glow, full bright, shininess 0-3, bumpiness 0-17, mapping, repeats
 add, remove, copy out, scripts run or stopped); faces by direction from the prim's own volume, so without the renderer
 too; a value every face shares said once; each change said back once the region shows it; where it is with what it
 rests on and touches, by the collision model's rays and the prims' boxes, no picture; new prims set down on what's
-under the spot; linking and unlinking; undo in one history with the assistant's; permissions, a sale, temporary and
-deleting through her confirmation; `look` (Control+D there) has the assistant describe it. Checked on the local grid
-by the hidden-desktop step, with and without the renderer. Land settings (2026-11-03; `docs/access-app.md` > About
+under the spot; linking and unlinking; all of a linked object as the official editor's Edit linked off, where a linked
+object starts, or one part as Edit linked on, every answer saying which (2026-11-07); copying one prim's settings to another;
+locked, repeats per metre, flip, a flexible path's force and a light's projector; undo in one history with the assistant's;
+permissions, a sale, temporary and deleting through her confirmation; `look` (Control+D there) has the assistant describe it.
+Used on Second Life by the blind tester since 2026-11-06 (single prims and linking); everything else checked on the local grid
+by the hidden-desktop steps, with and without the renderer. Land settings (2026-11-03; `docs/access-app.md` > About
 Land): the About Land area on Control+L, on the parcel she stands on, laid out as the build editor: a command box
 taking About Land's tab names and settings as words ("options", "fly off", "ban NAME for 2 hours", "for sale 500",
 "buy"), a settings list per tab (Enter changes, Right and Left step) and the tabs as a list: General, Covenant,
@@ -279,9 +282,9 @@ brush; each change through SojournLand and said once the region shows it; who ma
 behind her confirmation, the other switches at her press as the viewer's checkboxes. Checked on the local grid by the
 hidden-desktop step on a parcel divided off and sold to her for it. Left: for land, Second Life itself (real prices, a
 covenant, group land and its powers, mainland), the parcel's picture and media's other settings, the estate tools as
-keys (they're ops the assistant reaches), and every word and what asks first judged by her; for building, Second Life itself, the
-rows left out (locked, force, projectors, reflection probes, PBR materials, repeats per metre, flip), a whole linked
-set or several prims at once, copying one prim's settings to another, the assistant saying what a change did by
+keys (they're ops the assistant reaches), and every word and what asks first judged by her; for building, scale on all parts,
+locked and copying on Second Life itself, the rows left out (reflection probes, PBR materials), several separate objects at
+once, a face as a copy's source, the assistant saying what a change did by
 itself (now on asking), and every word and default judged by her and her partner; for uploads, Second Life itself
 (real fees, an account's mesh upload rights, the large-texture price), a picture described by the assistant before it
 goes up, 2048-pixel pictures, levels of detail and physics from files, a blind tester's verdict.
@@ -736,7 +739,9 @@ On the builders' line and five logs (our words). What's built from it is in `doc
   number went to whatever was selected, which she hadn't heard (the answer's words cut NVDA off): Yes, Yes, then Block on
   the question when she likely meant a run, then 6, then No twice. So the same question asked again makes no second
   notice, the next notice is said after an answer with its keys, Block is on B and never a number, and there's a block
-  list to undo it (Control+Shift+Y): nothing could unblock in Access before. Whether that's how she heard it is a question.
+  list to undo it (Control+Shift+Y): nothing could unblock in Access before. That evening, on 926, she blocked an object by the
+  notice's Block button by accident, and unblocked it; so the buttons are a way to slip too (the key on the ski run isn't known), and
+  "Blocked" now says what undoes it. Her own things no longer offer Block in Objects (it shared K with Take).
 - **A lift's top**: `//go` to her partner found no way to walk and no teleport that would land (a parcel with a landing
   point), and her `//go` without the word `person` only got the usage. He offered her a teleport, which worked. Now
   `//go NAME` takes a name alone and the line says asking for an offer may work.
@@ -912,9 +917,10 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
     touching Wall" what she wants to hear, too much, or too little?
   - Resizing keeps the middle where it was (as the sighted editor does), so a box resting on the floor floats or sinks
     and is said so: should a resting prim keep its underside where it is instead?
-  - For her partner: what would he add or change first (the rows left out are locked, flexible force, projectors,
-    reflection probes, PBR materials, repeats per metre, flip), and should editing a whole linked object at once come
-    before anything else?
+  - For her partner: what would he add or change first (the rows left out are reflection probes and PBR materials)?
+  - On a linked object (after the next build): is starting on all of it right (the official editor's default), or would she
+    rather stay on the part she was on and ask for all of it? "This part only." at the end of each change on a part: useful, or
+    too much once she knows? Should all of it turn round its root, as now, or its middle, as the official editor's mouse tool?
   - Should the assistant say what a change did to the look by itself, or only on "look" (as now: each costs a call)?
 - Voice: does she use voice chat? Is F4 held a good talk key (Scroll Lock, Pause and F12 are choices), and would she
   want who starts speaking said by itself (off now; Ctrl+Shift+V says it on asking)?

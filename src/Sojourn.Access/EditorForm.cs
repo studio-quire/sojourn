@@ -3,7 +3,8 @@ namespace Sojourn.Access;
 /// <summary>
 /// A notecard or script open in a real edit control (a blind tester's wish: no going offline to Notepad): Control+S saves
 /// (said back, a script's compile errors read out and listed under the text), Escape closes, asking first when
-/// there are changes. Opened by the person's own key, so the focus starts in the text.
+/// there are changes. Opened by the person's own key, so the focus starts in the text. A notecard that holds things has
+/// them in a list a Tab from the text (MainForm.Notecards.cs).
 /// </summary>
 public sealed class EditorForm : Form
 {
@@ -17,14 +18,16 @@ public sealed class EditorForm : Form
         Name = "editorErrors", AccessibleName = "Errors", Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill,
         BackColor = SystemColors.Window, Height = 70, Visible = false,
     };
-    readonly Func<string, Task<(string Said, string? Errors)>> _save;
+    readonly Func<string, Task<(string Said, string? Errors, string? Now)>> _save;
     readonly Action<string> _say;
     readonly string _what;
     string _saved;
     bool _saving;
 
-    /// <param name="save">Saves the text: what to say, and a script's errors (null when none).</param>
-    public EditorForm(string what, string name, string text, Func<string, Task<(string Said, string? Errors)>> save, Action<string> say)
+    /// <param name="save">Saves the text: what to say, a script's errors (null when none), and the text as it now is when
+    /// saving changed it (null otherwise).</param>
+    /// <param name="embedded">What a notecard holds, listed under the text (null when nothing).</param>
+    public EditorForm(string what, string name, string text, Func<string, Task<(string Said, string? Errors, string? Now)>> save, Action<string> say, ListView? embedded = null)
     {
         _what = what;
         _save = save;
@@ -46,14 +49,16 @@ public sealed class EditorForm : Form
         var row = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
         row.Controls.Add(save1);
         row.Controls.Add(close);
-        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        t.RowStyles.Add(embedded == null ? new RowStyle(SizeType.AutoSize) : new RowStyle(SizeType.Absolute, 110));
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         t.Controls.Add(_text, 0, 0);
         t.Controls.Add(_errors, 0, 1);
-        t.Controls.Add(row, 0, 2);
-        _text.TabIndex = 0; _errors.TabIndex = 1; row.TabIndex = 2;
+        if (embedded != null) { t.Controls.Add(embedded, 0, 2); embedded.TabIndex = 2; }
+        t.Controls.Add(row, 0, 3);
+        _text.TabIndex = 0; _errors.TabIndex = 1; row.TabIndex = 3;
         Controls.Add(t);
         ActiveControl = _text;
         Shown += (_, _) => { _text.SelectionStart = 0; _text.SelectionLength = 0; _text.Focus(); };
@@ -77,7 +82,13 @@ public sealed class EditorForm : Form
         {
             var text = _text.Text;
             _say("Saving.");
-            var (said, errors) = await _save(text.Replace("\r\n", "\n"));
+            var (said, errors, now) = await _save(text.Replace("\r\n", "\n"));
+            if (now != null && _text.Text == text)
+            {
+                var at = _text.SelectionStart;
+                text = _text.Text = now.Replace("\r\n", "\n").Replace("\n", "\r\n");
+                _text.SelectionStart = Math.Min(at, text.Length);
+            }
             if (said.StartsWith("Saved", StringComparison.Ordinal)) _saved = text;
             _errors.Text = errors ?? "";
             _errors.Visible = !string.IsNullOrEmpty(errors);

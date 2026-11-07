@@ -37,7 +37,7 @@ public sealed class BuildUndo
         string? Name, string? Desc, Material Mat, PrimFlags Flags, PhysicsShapeType? PhysicsShape,
         Primitive.LightData? Light, Primitive.LightImage? Projector, Primitive.FlexibleData? Flexi, Primitive.SculptData? Sculpt,
         ClickAction Click, bool Animated, JsonObject? Probe, UUID[]? Pbr, Dictionary<int, string>? Overrides,
-        PermissionMask Next, PermissionMask Group, PermissionMask Everyone, SaleType Sale, int Price, UUID GroupId);
+        PermissionMask Next, PermissionMask Group, PermissionMask Everyone, SaleType Sale, int Price, UUID GroupId, bool Locked);
 
     internal enum Kind { Edit, Created, Linked, Unlinked }
 
@@ -192,7 +192,8 @@ public sealed class BuildUndo
             p.ClickAction, p.IsAnimatedObject, ObjectViews.ProbeOf?.Invoke(w.Handle, p.LocalID),
             RenderMaterialsOf?.Invoke(w.Handle, p.LocalID)?.ToArray(), ov,
             props?.Permissions.NextOwnerMask ?? 0, props?.Permissions.GroupMask ?? 0, props?.Permissions.EveryoneMask ?? 0,
-            props?.SaleType ?? SaleType.Not, props?.SalePrice ?? 0, props?.GroupID ?? UUID.Zero);
+            props?.SaleType ?? SaleType.Not, props?.SalePrice ?? 0, props?.GroupID ?? UUID.Zero,
+            root.Properties is { } lockedBy && (lockedBy.Permissions.OwnerMask & PermissionMask.Move) == 0);
     }
 
     static Primitive.LightData Clone(Primitive.LightData l) => new()
@@ -240,7 +241,7 @@ public sealed class BuildUndo
 
     static readonly HashSet<string> PermParts = new() { "perms", "sale", "group" };
     /// <summary>Parts that live in the object's properties, which the region sends only when asked or selected.</summary>
-    static readonly HashSet<string> PropParts = new() { "name", "desc", "perms", "sale", "group" };
+    static readonly HashSet<string> PropParts = new() { "name", "desc", "perms", "sale", "group", "locked" };
 
     static List<Entry> Pick(List<Entry> stack, int steps, UUID? only)
     {
@@ -347,23 +348,25 @@ public sealed class BuildUndo
         var o = c.Objects;
         uint id = p.LocalID;
         bool Has(string part) => parts.Contains(part);
-        if (Has("place") || Has("scale"))
-        {
-            byte type = 0;
-            var data = new List<byte>();
-            if (Has("place")) { type |= (byte)(UpdateType.Position | UpdateType.Rotation); data.AddRange(was.Pos.GetBytes()); data.AddRange(was.Rot.GetBytes()); }
-            if (Has("scale"))
-            {
-                if (!Has("place") && !was.Root) { type |= (byte)UpdateType.Position; data.AddRange(p.Position.GetBytes()); }
-                type |= (byte)UpdateType.Scale;
-                data.AddRange(was.Scale.GetBytes());
-            }
-            if (was.Root) type |= (byte)UpdateType.Linked;
+        void Update(UpdateType type, IEnumerable<byte> data) =>
             c.Network.SendPacket(new MultipleObjectUpdatePacket
             {
                 AgentData = { AgentID = c.Self.AgentID, SessionID = c.Self.SessionID },
-                ObjectData = new[] { new MultipleObjectUpdatePacket.ObjectDataBlock { ObjectLocalID = id, Type = type, Data = data.ToArray() } },
+                ObjectData = new[] { new MultipleObjectUpdatePacket.ObjectDataBlock { ObjectLocalID = id, Type = (byte)type, Data = data.ToArray() } },
             }, sim);
+        if (was.Root)
+        {
+            // a root's place takes its linked set with it; its size is its own (with the linked flag, the region would
+            // scale every part by it)
+            if (Has("place")) Update(UpdateType.Position | UpdateType.Rotation | UpdateType.Linked, was.Pos.GetBytes().Concat(was.Rot.GetBytes()));
+            if (Has("scale")) Update(UpdateType.Position | UpdateType.Scale, (Has("place") ? was.Pos : w.RegionPosition(p)).GetBytes().Concat(was.Scale.GetBytes()));
+        }
+        else
+        {
+            // a child's: its place, then its size with its place as the viewer sends it (the local grid's region ignores
+            // the three in one message)
+            if (Has("place")) Update(UpdateType.Position | UpdateType.Rotation, was.Pos.GetBytes().Concat(was.Rot.GetBytes()));
+            if (Has("scale")) Update(UpdateType.Position | UpdateType.Scale, (Has("place") ? was.Pos : p.Position).GetBytes().Concat(was.Scale.GetBytes()));
         }
         if (Has("shape") || Has("flexi")) o.SetShape(sim, id, was.Shape);
         if (Has("faces") && was.Te is { } te) o.SetTextures(sim, id, new Primitive.TextureEntry(te, 0, te.Length), p.MediaURL ?? "");
@@ -413,6 +416,7 @@ public sealed class BuildUndo
             Mask(PermissionWho.Everyone, was.Everyone, PermissionMask.Copy | PermissionMask.Move);
         }
         if (Has("sale")) o.SetSaleInfo(sim, id, was.Sale, was.Price);
+        if (Has("locked")) BuildOps.SetLocked(c, sim, id, was.Locked);
         if (Has("group")) o.SetObjectsGroup(sim, new List<uint> { id }, was.GroupId);
         if (Has("pbr")) await RestorePbrAsync(c, sim, w, p, was, ct);
     }

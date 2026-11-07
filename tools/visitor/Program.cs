@@ -26,6 +26,9 @@
 //   fmenu UUID | ftext UUID | fperm UUID | fgive UUID     the fixture sends that avatar a script menu (Red, Green,
 //                                                         Blue; says "picked X"), a text box ("typed X"), a request
 //                                                         to animate it ("permission N") or the notecard
+//   embedcard NAME UUID                                   a notecard NAME holding a landmark ("NAME Landmark", its place
+//                                                         in the text's second line) and a notecard ("NAME Inner", at the
+//                                                         end), full rights, in the viewer's own format, offered to UUID
 //   fmenu12 UUID                                          a script menu of twelve (One ... Ten, Next, Back)
 //   fdance UUID                                           a dance machine's menu (Waltz, Tango): each pick says
 //                                                         "danced X" and sends the menu again
@@ -252,6 +255,7 @@ static class Program
                     client.Inventory.GiveItem(item.UUID, item.Name, AssetType.Notecard, UUID.Parse(rest), false);
                     return "offered " + item.Name;
                 }
+            case "embedcard": return await EmbedCard(rest);
             case "pos": case "whereis":
                 {
                     client.Self.SimRotation.GetEulerAngles(out _, out _, out var yaw);
@@ -1028,6 +1032,42 @@ static class Program
         var body = Encoding.UTF8.GetBytes(CardText);
         var asset = Encoding.UTF8.GetBytes("Linden text version 2\n{\nLLEmbeddedItems version 1\n{\ncount 0\n}\nText length " + body.Length + "\n")
             .Concat(body).Concat(Encoding.UTF8.GetBytes("}\n")).ToArray();
+        await UploadCard(item, asset);
+        card = item;
+        return item;
+    }
+
+    // A notecard holding two items as the official viewer writes them (LLInventoryItem::exportLegacyStream, by hand:
+    // LibreMetaverse's Encode isn't the same text), each in the text at its private-use place character
+    static async Task<string> EmbedCard(string rest)
+    {
+        var parts = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var name = string.Join(' ', parts[..^1]);
+        var to = UUID.Parse(parts[^1]);
+        var landmark = await client.Inventory.CreateItemAsync(client.Inventory.FindFolderForType(FolderType.Landmark), name + " Landmark", "a place", AssetType.Landmark, UUID.Zero,
+            InventoryType.Landmark, PermissionMask.All) ?? throw new Exception("couldn't create the landmark");
+        var inner = await client.Inventory.CreateItemAsync(client.Inventory.FindFolderForType(FolderType.Notecard), name + " Inner", "", AssetType.Notecard, UUID.Zero,
+            InventoryType.Notecard, PermissionMask.All) ?? throw new Exception("couldn't create the inner notecard");
+        await UploadCard(inner, Encoding.UTF8.GetBytes("Linden text version 2\n{\nLLEmbeddedItems version 1\n{\ncount 0\n}\nText length 12\ninner words\n}\n"));
+        static string Block(int index, InventoryItem it, string type) =>
+            "{\next char index " + index + "\n\tinv_item\t0\n\t{\n\t\titem_id\t" + it.UUID + "\n\t\tparent_id\t" + UUID.Zero + "\n\tpermissions 0\n\t{\n"
+            + "\t\tbase_mask\t7fffffff\n\t\towner_mask\t7fffffff\n\t\tgroup_mask\t00000000\n\t\teveryone_mask\t00000000\n\t\tnext_owner_mask\t7fffffff\n"
+            + "\t\tcreator_id\t" + client.Self.AgentID + "\n\t\towner_id\t" + client.Self.AgentID + "\n\t\tlast_owner_id\t" + client.Self.AgentID + "\n\t\tgroup_id\t" + UUID.Zero + "\n\t}\n"
+            + "\t\tasset_id\t" + it.AssetUUID + "\n\t\ttype\t" + type + "\n\t\tinv_type\t" + type + "\n\t\tflags\t00000000\n"
+            + "\tsale_info\t0\n\t{\n\t\tsale_type\tnot\n\t\tsale_price\t10\n\t}\n\t\tname\t" + it.Name + "|\n\t\tdesc\t" + it.Description + "|\n\t\tcreation_date\t1700000000\n\t}\n}\n";
+        var inv = inner;
+        var text = "Welcome to the harbour.\nGo there: " + char.ConvertFromUtf32(0x100000) + " today.\nAnd read this: " + char.ConvertFromUtf32(0x100001) + "\n";
+        var asset = "Linden text version 2\n{\nLLEmbeddedItems version 1\n{\ncount 2\n" + Block(0, landmark, "landmark") + Block(1, inv, "notecard") + "}\nText length "
+                    + Encoding.UTF8.GetByteCount(text) + "\n" + text + "}\n";
+        var outer = await client.Inventory.CreateItemAsync(client.Inventory.FindFolderForType(FolderType.Notecard), name, "embeds two", AssetType.Notecard, UUID.Zero,
+            InventoryType.Notecard, PermissionMask.All) ?? throw new Exception("couldn't create the notecard");
+        await UploadCard(outer, Encoding.UTF8.GetBytes(asset));
+        client.Inventory.GiveItem(outer.UUID, outer.Name, AssetType.Notecard, to, false);
+        return "offered " + name;
+    }
+
+    static async Task UploadCard(InventoryItem item, byte[] asset)
+    {
         var cap = client.Network.CurrentSim.Caps.CapabilityURI("UpdateNotecardAgentInventory");
         if (cap != null)
         {
@@ -1039,11 +1079,10 @@ static class Program
             {
                 var done = await (await http.PostAsync(WebUtility.HtmlDecode(uploader), new ByteArrayContent(asset))).Content.ReadAsStringAsync();
                 if (!done.Contains("complete")) Console.WriteLine("notecard text upload: " + done);
+                if (Regex.Match(done, "<key>new_asset</key>\\s*<uuid>([^<]+)<") is { Success: true } made) item.AssetUUID = new UUID(made.Groups[1].Value);
             }
             else Console.WriteLine("notecard text upload refused: " + first);
         }
-        card = item;
-        return item;
     }
 
     static string Cleanup()

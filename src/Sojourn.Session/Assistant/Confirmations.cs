@@ -127,6 +127,11 @@ public sealed partial class Confirmations
                 foreach (var id in Ids(a))
                     if (_s.Region?.PrimById(id)?.Properties?.Name is { Length: > 0 } pn) _wasNamed.TryAdd(id, pn);
                 break;
+            case ("TesselBuild", "modifyEach"):
+                foreach (var e in Edits(a).Where(e => e.Has("name")))
+                    foreach (var id in Ids(e))
+                        if (_s.Region?.PrimById(id)?.Properties?.Name is { Length: > 0 } pn) _wasNamed.TryAdd(id, pn);
+                break;
         }
     }
 
@@ -149,6 +154,8 @@ public sealed partial class Confirmations
         ("TesselAgent", "parcelReturn" or "deletePick") or ("TesselGroups", "deleteRole") => Kind.Delete,
         // temporary objects are deleted by the region within a minute
         ("TesselBuild", "modify") when a.Bool("temp", false) => Kind.Delete,
+        ("TesselBuild", "modifyEach") when Edits(a).Any(e => e.Bool("temp", false)) => Kind.Delete,
+        ("TesselBuild", "modifyEach") => Edits(a).Any(e => e.Select(kv => kv.Key).Any(PermKeys.Contains)) ? Kind.Permissions : null,
         ("TesselBuild", "rez") when a.Bool("temp", false) && !Copyable(a.Uuid("item_id")) => Kind.Delete,
         ("TesselAgent", "give") => Kind.Give,
         ("TesselBuild", "addToContents") => !OwnedByMe(ContentsOps.PrimId(a)) ? Kind.Give : AddsScript(a) ? Kind.Script : null,
@@ -196,8 +203,13 @@ public sealed partial class Confirmations
     {
         var ids = a.UuidList("ids");
         if (a.Uuid("id") is { } one && !ids.Contains(one)) ids.Add(one);
+        foreach (var e in Edits(a))
+            if (e.Uuid("id") is { } each && !ids.Contains(each)) ids.Add(each);
         return ids;
     }
+
+    /// <summary>TesselBuild modifyEach's edits (none for anything else).</summary>
+    static List<JsonObject> Edits(JsonObject a) => (a["edits"] as JsonArray)?.OfType<JsonObject>().ToList() ?? new();
 
     static UUID? InventoryTarget(JsonObject a) => a.Uuid("id") ?? a.Uuid("item_id") ?? a.Uuid("folder_id");
 
@@ -337,7 +349,7 @@ public sealed partial class Confirmations
                 return (Lang.T("Delete one of your profile picks"), "");
             case ("TesselGroups", "deleteRole"):
                 return (Lang.T("Delete a group role"), "");
-            case ("TesselBuild", "modify") when kind == Kind.Delete:
+            case ("TesselBuild", "modify" or "modifyEach") when kind == Kind.Delete:
                 return (Lang.F("Make {0} temporary", await ObjectsAsync(a)), Join(Lang.T("The region deletes temporary objects within a minute, for good (not to Trash)."), PermDetail(a)));
             case ("TesselBuild", "rez") when kind == Kind.Delete:
                 return (Lang.F("Rez {0} as a temporary object", ItemName(a.Uuid("item_id"))),
@@ -432,6 +444,7 @@ public sealed partial class Confirmations
 
     static string PermDetail(JsonObject a)
     {
+        if (Edits(a) is { Count: > 0 } edits) a = edits[0];   // (a linked object's parts, all changed alike)
         var parts = new List<string>();
         if (a.Str("next_perms") is { } np) parts.Add(Lang.F("next owner can: {0}", Letters(np)));
         if (a.Str("everyone_perms") is { } ep) parts.Add(Lang.F("everyone can: {0}", Letters(ep)));
@@ -535,6 +548,14 @@ public sealed partial class Confirmations
     {
         var ids = Ids(a);
         if (ids.Count == 0) return Lang.T("a new object");
+        // every part of one linked object: said as that
+        if (ids.Count > 1 && _s.Region is { } w && w.PrimById(ids[0]) is { } first)
+        {
+            var root = _s.Objects.RootOf(w, first);
+            var set = _s.Objects.Linkset(w, root);
+            if (set.Count == ids.Count && set.All(p => ids.Contains(p.ID)))
+                return Lang.F("{0}, all {1} parts", await NameAsync(root.ID), ids.Count);
+        }
         var names = new List<string>();
         foreach (var id in ids.Take(5)) names.Add(await NameAsync(id));
         if (ids.Count > 5) names.AddRange(await RestNamesAsync(ids.Skip(5).ToList()));

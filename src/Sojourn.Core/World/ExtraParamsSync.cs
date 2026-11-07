@@ -37,10 +37,11 @@ public static class ExtraParamsSync
 
     static void Clear(Simulator sim, uint localId, byte[] data, int pos)
     {
-        if (data is null || pos >= data.Length) return;
+        if (data is null || pos > data.Length) return;
         if (!sim.ObjectsPrimitives.TryGetValue(localId, out var p)) return;
         bool light = false, image = false;
-        int count = data[pos++];
+        // (an update with no parameters at all may carry no count: the local grid's, once its last one's taken off)
+        int count = pos < data.Length ? data[pos++] : 0;
         for (int k = 0; k < count && pos + 6 <= data.Length; k++)
         {
             ushort type = Utils.BytesToUInt16(data, pos);

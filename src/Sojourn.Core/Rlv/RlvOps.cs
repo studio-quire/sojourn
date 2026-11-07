@@ -15,7 +15,7 @@ public static class RlvOps
     static readonly HashSet<string> Rez = new() { "create", "rez", "duplicate" };
     static readonly HashSet<string> Edit = new()
     {
-        "modify", "link", "unlink", "take", "delete", "returnObjects", "contents", "addToContents", "copyFromContents",
+        "modify", "modifyEach", "copyFrom", "link", "unlink", "take", "delete", "returnObjects", "contents", "addToContents", "copyFromContents",
         "removeFromContents", "script", "select",
     };
 

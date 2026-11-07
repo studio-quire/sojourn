@@ -407,7 +407,7 @@ public sealed partial class MainForm
     {
         var err = await Host!.Session.Notify.RespondAsync(n.Id, response);
         bool blocked = n.Block >= 0 && response.ContainsKey(n.Buttons[n.Block].Name);
-        Reader?.Answer(err != null ? $"{label} didn't go through: {err}" : blocked ? $"Blocked {Sender(n)}." : $"{label}, done.");
+        Reader?.Answer(err != null ? $"{label} didn't go through: {err}" : blocked ? $"Blocked {Sender(n)}. Control+Shift+Y undoes it." : $"{label}, done.");
         if (err == null) _ = SayNextNoticeAsync(n);
     }
 

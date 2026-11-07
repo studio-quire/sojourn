@@ -1010,23 +1010,47 @@ public sealed partial class MainForm
         RefreshInventory(Store?.RootFolder?.UUID ?? UUID.Zero, box.ParentUUID);
     }
 
-    async Task OpenAsync(InvPane p, InventoryItem item)
+    /// <param name="from">The window to go back to on closing it (a card opened from another's list), else the tree.</param>
+    async Task OpenAsync(InvPane p, InventoryItem item, Form? from = null)
     {
         bool script = item.AssetType == AssetType.LSLText;
         var r = await _ops.ReadAsync("TesselInventory", script ? "readScript" : "readNotecard", new JsonObject { ["item_id"] = item.UUID.ToString() });
         if (PersonOps.Error(r) is { } e) { Answer($"Couldn't open {item.Name}: {e}"); return; }
-        var editor = new EditorForm(script ? "Script" : "Notecard", item.Name, r.Str("text") ?? "", async text =>
+        EditorForm? editor = null;
+        var (held, heldSaid) = script ? (null, null) : EmbeddedList(p, item, r, () => editor);
+        editor = new EditorForm(script ? "Script" : "Notecard", item.Name, r.Str("text") ?? "", async text =>
         {
             var w = await _ops.DoAsync("TesselInventory", script ? "writeScript" : "writeNotecard", new JsonObject { ["item_id"] = item.UUID.ToString(), ["text"] = text });
-            if (PersonOps.Error(w) is { } we) return ($"Not saved: {we}", null);
-            if (!script) return ("Saved.", null);
+            if (PersonOps.Error(w) is { } we) return ($"Not saved: {we}", null, null);
+            if (!script) return await NotecardSavedAsync(item, w);
             var errors = (w["errors"] as JsonArray)?.Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).ToList() ?? new();
-            if (w["compiled"]?.GetValue<bool>() != false && errors.Count == 0) return ("Saved and compiled.", null);
+            if (w["compiled"]?.GetValue<bool>() != false && errors.Count == 0) return ("Saved and compiled.", null, null);
             var list = string.Join("\r\n", errors);
-            return ($"Saved; {errors.Count} {(errors.Count == 1 ? "error" : "errors")}: {string.Join(" ", errors.Take(3))}", list);
-        }, text => Reader?.Answer(text, keep: false));
-        editor.FormClosed += (_, _) => { if (!IsDisposed) { Activate(); p.Tree.Focus(); } };
+            return ($"Saved; {errors.Count} {(errors.Count == 1 ? "error" : "errors")}: {string.Join(" ", errors.Take(3))}", list, null);
+        }, text => Reader?.Answer(text, keep: false), held);
+        editor.FormClosed += (_, _) =>
+        {
+            if (IsDisposed) return;
+            if (from is { IsDisposed: false }) { from.Activate(); return; }
+            Activate();
+            p.Tree.Focus();
+        };
+        if (heldSaid != null) editor.Shown += (_, _) => Reader?.Answer(heldSaid, keep: false);
         editor.Show(this);
+    }
+
+    /// <summary>What a notecard's save says: what it held is still there, and any whose marker had gone from the text, now
+    /// at its end (the text coming back with the marker in it).</summary>
+    async Task<(string Said, string? Errors, string? Now)> NotecardSavedAsync(InventoryItem item, JsonObject w)
+    {
+        var moved = (w["moved_to_end"] as JsonArray)?.Select(x => x?.ToString() ?? "").ToList() ?? new();
+        if (moved.Count > 0)
+        {
+            var now = await _ops.ReadAsync("TesselInventory", "readNotecard", new JsonObject { ["item_id"] = item.UUID.ToString() });
+            var (names, its) = moved.Count == 1 ? (moved[0], "its place was gone from the text, so it's at the end now") : (string.Join(" and ", moved), "their places were gone from the text, so they're at the end now");
+            return ($"Saved, with what it holds. {names}: {its}.", null, PersonOps.Error(now) == null ? now.Str("text") : null);
+        }
+        return (w["embedded_kept"]?.GetValue<int>() is { } kept and > 0 ? $"Saved, with the {(kept == 1 ? "thing" : $"{kept} things")} it holds." : "Saved.", null, null);
     }
 
     /// <summary>A notecard of `//go` lines (a blind tester's routes) played step by step (Commands.PlayRouteAsync).</summary>

@@ -288,6 +288,18 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   - F5 shows it again (the tree doesn't change under you otherwise; your actions refresh what they touched).
   - A notecard or script opens in its own window, an edit control: Ctrl+S saves ("Saved.", or a script's compile
     errors read out and listed under the text), Escape closes (asking first if changed).
+  - **What a notecard holds** (`MainForm.Notecards.cs`, Core's `NotecardFile`; Radegast's Attachments, and SL's welcome
+    cards carry landmarks and gifts this way). Opening one says so ("It holds 2 things: Harbour, landmark; Rules,
+    notecard. Tab reaches them."), and a list a Tab from the text names each. Enter on one copies it into the inventory,
+    in the folder for its kind ("Copied Harbour into Landmarks. Enter again teleports there."); on a landmark or a
+    notecard Enter again teleports or opens it; the Applications key has the same. In the text each thing's place reads
+    as a marker, "[landmark: Harbour]", which can be moved like any words. Saving keeps them ("Saved, with the 2 things
+    it holds."), whoever saves: every writer (`writeNotecard`, an object's `object.content.save`) goes through
+    `NotecardFile.Saved`, which keeps the asset's embedded block byte for byte and puts back the place of any item whose
+    marker has gone from the text, at the end, saying so, since the official viewer drops an item with no place in the
+    text at its next save. A card that can't be read just then isn't saved at all. `copyFromNotecard` posts the viewer's
+    capability itself, LibreMetaverse's own call sending an empty body. Adding to a card and taking off it aren't here
+    (`docs/access-gaps.md`, item 6).
   - Unbox rezzes the box 2 m ahead, copies what's inside into a new folder named after it at the top of the inventory,
     then puts the box away (deleted when the inventory still has it, taken back when it was no-copy). Rez on the ground
     sets an object down 2 m ahead with its bottom on the terrain (or the floor you stand on, when that's well above
@@ -1208,7 +1220,9 @@ M6's second part (Claude Opus 5.5, 2026-11-02; `MainForm.Build.cs`, `BuildRows.c
 design for a blind builder's editor (`docs/access.md` > M6): the official editor's tab names
 and settings as the words, so blind and sighted builders share them; one prim at a time; faces by direction; a value
 every face shares said once ("all sides"); metres and degrees, never quaternions; numbered choices; any setting
-reachable by typing, with a list to browse. A first version for her and her partner to react to.
+reachable by typing, with a list to browse. A first version for her and her partner to react to. On Second Life since
+2026-11-06: she built an igloo and a tunnel and linked them, a sighted friend confirming; the rest of this section's
+words are the local grid's until she's tried them.
 - **The Build area**: Control+B (the official viewer's Build key), Build > Edit, Objects' or a part's Applications key
   > Edit, or `//build`; it has no Alt+number (all ten are taken). Control+B on an object in Objects edits its root; on a
   part, that part; on a face, that part with that face picked; elsewhere, what was edited last. Arriving says what's
@@ -1226,13 +1240,57 @@ reachable by typing, with a list to browse. A first version for her and her part
   torus, tube, ring, cone, pyramid; where in Placing by words' terms, 2 metres ahead unless said); `move a metre to my
   left`, `move by 20 cm up`, `move to 128 64 25`; `size 1 1 0.2` or `size 0.5`; `scale 2`; `turn 90` (left,
   counter-clockwise from above, Second Life's positive), `turn 45 right`, `turn 90 around x`; `where` (and `what`);
-  `look` (the assistant describes it, as Control+D there does); `duplicate` (beside it to her right, or `duplicate by
-  2 m left`), `delete`, `take` (the whole object; a part's delete says to unlink first); `link NAME` (another of hers
-  joined to this one, this one's root staying the root), `link` alone her objects within 30 m to pick from, Objects' menu Link to what I'm editing on one of hers while a build is open, and a name several share taking the nearest and saying so, `unlink`; `edit NAME`, `part 2`, `root`, `next`, `previous`;
+  `look` (the assistant describes it, as Control+D there does); `duplicate` (beside it to her right, clear of all of it, or
+  `duplicate by 2 m left`), `delete`, `take` (always the whole object, said so; a part's delete says to unlink first);
+  `link NAME` (another of hers joined to this one, this one's root staying the root), `link` alone her objects within 30 m
+  to pick from, Objects' menu Link to what I'm editing on one of hers while a build is open, and a name several share taking
+  the nearest and saying so, `unlink`; `edit NAME` (a part of this object by that very name first, then an object, then a
+  part with it in its name), `part 2`, `part NAME`, `root`, `next`, `previous`, `parts`, `all parts`, `edit linked on` and
+  `off` (A linked object, below); `lock`, `unlock`; `copy from NAME` (Copying settings, below);
+  `size`, `position`, `rotation` alone say them;
   in Content `add NAME` (from her inventory), `remove NAME`, `copy NAME`; `undo [N]`, `redo`; `help`; `done`. `help` (and
   Build > Build commands) opens the commands in a window to arrow through, a command a line, as F1's keys (said whole as
   one answer, the blind tester asked for it six times in her first quarter hour of building, 2026-11-03); `shapes` lists
   the shapes; `rename X` is `name X` (as she typed it).
+- **A linked object** (2026-11-07): as the official editor's Edit linked, the same word, on or off. Off is where a linked
+  object starts, as the viewer's default: after `link`, from Objects, by `edit NAME`, or by `all parts`
+  (`whole` is taken but not offered, since it sounds as "hole"): "Editing all 2 parts of Igloo: 6 by 4 by 3 metres overall;
+  ...". On is one part: `part 2`, `part tunnel`, `next`, `previous`, `root`, a part from Objects' parts list, `edit linked
+  on`: "Editing tunnel, part 2 of Igloo, this part only: ..." ("the root of 2 parts, by itself (moving or turning it moves
+  them all)" for the root, as the region has it). It's the one target, not a mode behind it: every arrival says which, and
+  the Object tab has an Edit linked row. On all parts:
+  - `move` and position, and `turn` and rotation: the root's, its parts going with it; turning is round the root, so the root
+    stays where it is, as the official editor's spinners do (its mouse tool turns round the middle). "All 2 parts moved with it.",
+    "All 2 parts turned round the root."
+  - `scale 2`: every part's size and its distance from the root, sent as each part's own (one undo step), "Scaled all 2 parts
+    of Igloo by 2: 12 by 8 by 6 metres overall", read back from the region; `scale` says how far it can go where a part
+    would pass 1 cm or 64 m. Second Life's links reach about 54 m: noted, not refused. `size` alone is the overall size; `size
+    1 1 1` says it's each part's own and points at `scale`. The official editor sends one message for this; ours is part by part
+    because a scale with the linked flag is the region's own reckoning, which only OpenSim is here to check.
+  - colours and the Texture tab, material, when left-clicked, next owner's permissions, share, anyone can: every part, one
+    undo step and, for permissions, one confirmation ("Change permissions of Igloo, all 2 parts"). Read together, a value they
+    share said once as "all sides" is: "Colour: red (255, 0, 0), all 2 parts"; else "red on 1 part; blue on 1 part" (three values,
+    then "others").
+  - name, description, sale, Content: the root's, as the object's. Physical, temporary and phantom: the region keeps them
+    for the linked object as one, so they say "All 2 parts." from a part too. Locked goes to every part from a part too,
+    and reads by the root's (the local grid's region keeps a part's own rights apart from it).
+  - shape rows, a part's size and Features are each part's own (the official editor greys them): hidden from the list, and typed
+    they say how to pick a part. Faces too: the faces list holds one line saying so.
+  - where it is and what it rests on and touches is all of it's: what's under its lowest part, what's against any part, its own
+    parts aside.
+  On one part, a change ends "This part only.". `parts` lists them by number and name, in a window past 8. Worn things aren't
+  edited at all yet.
+- **Copying settings** (2026-11-07, the official editor's Copy and Paste buttons as a typed line; `TesselBuild copyFrom`):
+  `copy from Wall` takes everything but the name, place and permissions: shape (with the flexible path), size, rotation,
+  material, colour, texture, features. `copy colour from part 2`, `copy shape and size from Wall`: any of those. Colour is
+  colour and transparency; texture is the Texture tab's other rows, on every side, or one side if she's picked a face
+  (the same number on the source). The source is hers: a part of this object (`part 2`, `root`, its name), an object within 30 m,
+  `part 3 of Wall`; or Objects' or a part's menu, Copy its settings to what I'm editing. Said back once the region shows it
+  ("Copied colour from Wall to Dome. Colour: green (0, 255, 0), all sides."), one undo step. On all parts, only what goes to
+  every part (material, colour, texture); shape, size, rotation or features asked for by name say they're each part's own. Held
+  back and said: a mesh's or sculpt's shape; a texture from a prim she may not copy and transfer (the official viewer's rule for
+  pasting one); PBR materials, which don't go by these settings. `copy NAME` with no `from` is Content's as before, and words that
+  aren't settings ("copy cup from shelf") too.
 - **The settings list**: the tab chosen, a row each, named "Object settings of Table" ("Texture settings of Table, the
   top, face 0"). Rows read "Hollow: 50 percent", "Phantom: off", "Bumpiness: 5 bricks", "Colour: red (255, 0, 0), all
   sides". Enter changes one: a switch turns, a choice opens its numbered list (the one it has checked), anything else
@@ -1243,18 +1301,22 @@ reachable by typing, with a list to browse. A first version for her and her part
   runs or stops it, Delete removes an item (confirmed).
 - **What's on each tab**, the editor's own rows: General: name, description, creator, owner, group, share with group,
   anyone can move and copy, for sale (a price and original, copy or contents, or no), next owner can modify, copy and
-  transfer, when left-clicked (0 touch ... 8 nothing). Object: where (below), physical, temporary, phantom, position X
+  transfer, when left-clicked (0 touch ... 8 nothing). Object: edit linked and overall size on a linked object, where
+  (below), locked, physical, temporary, phantom, position X
   (east), Y (north) and Z (height) in the region, size X, Y and Z, rotation X, Y and Z in degrees as the editor shows
   them, material (0 stone ... 6 rubber), building block type (0 box ... 6 ring; a mesh or sculpt says so), and the
   shape's rows as the editor shows them for that type: path cut, hollow (percent), twist (degrees), taper, top shear,
   slice (straight paths), dimple (a sphere), hole size, profile cut, radius, revolutions and skew (torus, tube, ring).
   On a straight path the editor's Path cut is the profile's begin and end and Slice the path's; the rows follow it, so
   "path cut 0 0.5" does what the sighted editor's spinners would. Features: flexible path with softness, gravity,
-  drag, wind and tension; light with its colour, intensity, radius and falloff; physics shape type. Texture: the face
+  drag, wind, tension and force; light with its colour, intensity, radius and falloff, and a projector (a texture, its field of
+  view, focus and ambiance); physics shape type. Texture: the face
   (or all sides), texture (plywood, blank, transparent, or a texture in her inventory by name; one not in her
   inventory is said so), colour (a name or 0-255 numbers, said as the nearest of 29 names: "close to orange (240, 130,
   20)"), transparency, glow, full bright, shininess (0-3), bumpiness (0-17, the editor's order, as scripts number
-  them), mapping, repeats, texture rotation, offset.
+  them), mapping, repeats (said without a sign), repeats per metre (reckoned along each face's own axes, as the official
+  editor: every side's repeats go at once), flip horizontal and vertical (the official editor's Flip: a negative repeat, kept when
+  the repeats change; a negative repeats typed flips too), texture rotation, offset.
 - **Faces**: the faces list has "All sides (7 faces)" then each face by direction from where she is, with its number
   ("The top, face 0", "The side facing you, face 2", Parts and faces' words). They come from the prim's own volume,
   built on the processor as the viewer builds it (`VolumeBuilder`, the port of llvolume.cpp), so they're there with no
@@ -1262,7 +1324,7 @@ reachable by typing, with a list to browse. A first version for her and her part
   then its faces are listed by number. Picking one (Down, or Enter, which also opens Texture) makes Texture's rows that
   face's; with all sides, a value every face shares is said once ("Colour: red, all sides") and one that differs apart
   ("Full bright: off on 6 sides; on on the top, face 0"). A change on all sides goes to every face, each keeping its own
-  other half of a pair it doesn't share (repeats, offset).
+  other half of a pair it doesn't share (repeats, offset), one undo step and one texture entry.
 - **Said back**: a change goes through `TesselBuild modify` and is said once the region shows it ("Hollow: 50
   percent."), or "Sent; Second Life hasn't shown the change yet." after 3 s. Moving, sizing, turning and changing the
   type also say where it is now. A refusal is the region's or the op's words in her terms ("You can't edit Table: you
@@ -1278,15 +1340,20 @@ reachable by typing, with a list to browse. A first version for her and her part
   rez in Radegast, the smallest first test), named Object until she names them, and become
   what's edited ("Made a box, half a metre each way, 2 metres ahead. Editing it."). Resizing keeps the middle where it
   was, as the viewer's editor does, so a resized box can end up floating or sunk; it's said.
+- **Locked** (2026-11-07, the Object tab's first switch, `lock`, `unlock`, `locked on`): as the official editor's box, the
+  owner's own move and modify rights off, on every part. A move or a change says "Igloo is locked, so that wasn't changed:
+  locked off frees it"; `take` and `delete` ask for it to be unlocked first (the official viewer asks whether she's sure). The
+  summary says so. Something she owns with no modify rights isn't called locked, which goes by the move right as the viewer's box does.
 - **Her confirmation** (Notices, as everywhere): permissions (share, anyone can, next owner), a sale, temporary on (the
   region deletes it within a minute), delete, removing from Content, adding a new script, and an undo that deletes what
   was made. Undo and redo are `SojournBuild undo` and `redo`, one history with the assistant's edits and the headset's
   hand moves; each command or row change is one step, said by what it changed ("Undone: changed rotation on Table.").
-- **Not yet**: locked (no op), the flexible path's force, a light's projector and the newer reflection probe, PBR
-  materials (all are `TesselBuild modify` keys the assistant uses, so it's rows only), repeats per metre, the texture's
-  flip, align media; editing a whole linked set at once (as the viewer's Edit linked off: here it's always one prim,
-  the root moving the whole); editing something worn; copying settings from one prim to another; selecting several
-  prims. Second Life itself (only the local grid is checked), and the blind tester's and her partner's verdict.
+- **Not yet**: the newer reflection probe and PBR materials (`TesselBuild modify` keys the assistant uses, so rows only, but a
+  probe's state isn't read without the renderer), align media; moving the root alone with its parts left where they are (the
+  official editor's Edit linked on does; here the root always takes them); stretching all of a linked object along one axis;
+  several separate objects at once; a face as the source of a copy; editing something worn. On Second Life, only single prims and
+  `link` have been tried (2026-11-06): scale on all parts, locked, copying, flip and repeats per metre are the local grid's, and
+  every word is the blind tester's and her partner's to judge.
 
 ### About Land
 

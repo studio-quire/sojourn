@@ -14,6 +14,20 @@ public sealed record PrimLook(Primitive P, PrimFlags Flags, bool IsRoot, int Num
     Func<UUID, string?> TextureName)
 {
     public string? Where { get; init; }
+    /// <summary>A whole linked object being edited (the official editor's Edit linked off): each part as read, root
+    /// first; null when it's one prim.</summary>
+    public IReadOnlyList<PrimLook>? Parts { get; init; }
+    public bool Whole => Parts != null;
+    /// <summary>All of a whole object's extent along the region's east, north and up, in metres.</summary>
+    public System.Numerics.Vector3 Overall { get; init; }
+    /// <summary>The prim its object's root is (what's locked goes by it).</summary>
+    public Primitive? RootPrim { get; init; }
+    /// <summary>The Locked box: the owner has taken their own move and modify rights off it (no modify rights alone
+    /// isn't locked: something bought may come so). It's the object's: the root's, since a region may keep a part's own
+    /// rights apart from the lock (the local grid's does).</summary>
+    public bool Locked => (Flags & PrimFlags.ObjectYouOwner) != 0
+        && ((RootPrim ?? P).Properties is { } pr ? (pr.Permissions.OwnerMask & PermissionMask.Move) == 0 : (Flags & PrimFlags.ObjectMove) == 0);
+    public bool Projecting => P.LightMap is { LightTexture: var lt } && lt != UUID.Zero;
     public string Shape => ObjectViews.ShapeName(P);
     public bool Made => Shape is "mesh" or "sculpt";
     public bool Circular => ((byte)P.PrimData.PathCurve & 0xf0) is not (0x10 or 0x80);
@@ -93,7 +107,10 @@ public static class BuildRows
         new("next_transfer", "General", "Next owner can transfer", RowKind.Switch, new[] { "next owner can transfer", "next owner transfer", "next transfer" }, All),
         new("click", "General", "When left-clicked", RowKind.Choice, new[] { "when left-clicked", "when left clicked", "when clicked", "click action", "click" }, All),
         // Object
+        new("edit_linked", "Object", "Edit linked", RowKind.Switch, Array.Empty<string>(), l => l.Count > 1),
         new("where", "Object", "Where", RowKind.Info, new[] { "where" }, All),
+        new("overall", "Object", "Overall size", RowKind.Text, new[] { "overall size", "overall" }, l => l.Whole),
+        new("locked", "Object", "Locked", RowKind.Switch, new[] { "locked", "lock" }, All),
         new("physical", "Object", "Physical", RowKind.Switch, new[] { "physical" }, All),
         new("temp", "Object", "Temporary", RowKind.Switch, new[] { "temporary on rez", "temporary", "temp" }, All),
         new("phantom", "Object", "Phantom", RowKind.Switch, new[] { "phantom" }, All),
@@ -123,17 +140,23 @@ public static class BuildRows
         new("revolutions", "Object", "Revolutions", RowKind.Number, new[] { "revolutions" }, l => !l.Made && l.Ring),
         new("skew", "Object", "Skew", RowKind.Number, new[] { "skew" }, l => !l.Made && l.Ring),
         // Features
+        new("parts_own", "Features", "All parts", RowKind.Info, Array.Empty<string>(), l => l.Whole),
         new("flexible", "Features", "Flexible path", RowKind.Switch, new[] { "flexible path", "flexible", "flexi" }, l => !l.Made && !l.Circular),
         new("softness", "Features", "Softness", RowKind.Number, new[] { "softness" }, l => l.Flexible),
         new("gravity", "Features", "Gravity", RowKind.Number, new[] { "gravity" }, l => l.Flexible),
         new("drag", "Features", "Drag", RowKind.Number, new[] { "drag" }, l => l.Flexible),
         new("wind", "Features", "Wind", RowKind.Number, new[] { "wind" }, l => l.Flexible),
         new("tension", "Features", "Tension", RowKind.Number, new[] { "tension" }, l => l.Flexible),
+        new("force", "Features", "Force, X, Y and Z", RowKind.Text, new[] { "force" }, l => l.Flexible),
         new("light", "Features", "Light", RowKind.Switch, new[] { "light" }, All),
         new("light_colour", "Features", "Light colour", RowKind.Colour, new[] { "light colour", "light color" }, l => l.LightOn),
         new("intensity", "Features", "Light intensity", RowKind.Number, new[] { "light intensity", "intensity" }, l => l.LightOn),
         new("light_radius", "Features", "Light radius", RowKind.Number, new[] { "light radius" }, l => l.LightOn),
         new("falloff", "Features", "Light falloff", RowKind.Number, new[] { "light falloff", "falloff" }, l => l.LightOn),
+        new("projector", "Features", "Projector", RowKind.Texture, new[] { "projector" }, l => l.LightOn),
+        new("projector_fov", "Features", "Field of view", RowKind.Number, new[] { "field of view", "fov" }, l => l.LightOn && l.Projecting),
+        new("focus", "Features", "Focus", RowKind.Number, new[] { "focus" }, l => l.LightOn && l.Projecting),
+        new("ambiance", "Features", "Ambiance", RowKind.Number, new[] { "ambiance" }, l => l.LightOn && l.Projecting),
         new("physics_shape", "Features", "Physics shape type", RowKind.Choice, new[] { "physics shape type", "physics shape" }, All),
         // Texture: of the face chosen, or all sides
         new("face", "Texture", "Face", RowKind.Info, Array.Empty<string>(), All),
@@ -148,6 +171,9 @@ public static class BuildRows
         new("repeats.u", "Texture", "Repeats, horizontal", RowKind.Number, new[] { "horizontal repeats", "repeats horizontal" }, All),
         new("repeats.v", "Texture", "Repeats, vertical", RowKind.Number, new[] { "vertical repeats", "repeats vertical" }, All),
         new("repeats", "Texture", "Repeats, horizontal and vertical", RowKind.Pair, new[] { "repeats" }, Never),
+        new("repeats_m", "Texture", "Repeats per metre", RowKind.Number, new[] { "repeats per metre", "repeats per meter", "per metre", "per meter" }, All),
+        new("flip.u", "Texture", "Flip, horizontal", RowKind.Switch, new[] { "flip horizontal", "horizontal flip" }, All),
+        new("flip.v", "Texture", "Flip, vertical", RowKind.Switch, new[] { "flip vertical", "vertical flip" }, All),
         new("tex_rotation", "Texture", "Texture rotation", RowKind.Number, new[] { "texture rotation" }, All),
         new("offset.u", "Texture", "Offset, horizontal", RowKind.Number, new[] { "horizontal offset", "offset horizontal" }, All),
         new("offset.v", "Texture", "Offset, vertical", RowKind.Number, new[] { "vertical offset", "offset vertical" }, All),
@@ -159,6 +185,25 @@ public static class BuildRows
 
     /// <summary>The tab a setting is on, by its key.</summary>
     public static string TabOf(string key) => Defs.FirstOrDefault(d => d.Key == key)?.Tab ?? "Object";
+
+    static readonly HashSet<string> ShapeRows = new()
+    {
+        "type", "made", "cut", "hollow", "twist", "taper", "top_shear", "slice", "dimple", "hole_size", "profile_cut", "radius", "revolutions", "skew",
+    };
+
+    /// <summary>A setting only one part at a time can have, as the official editor greys these out with a whole linked
+    /// object chosen: its size, its shape, its Features.</summary>
+    public static bool OnesOwn(string key) => key.StartsWith("size.") || ShapeRows.Contains(key) || TabOf(key) == "Features" && key != "parts_own";
+
+    /// <summary>What's said for one of those on a whole linked object.</summary>
+    public static string OwnWords(PrimLook l, string key) =>
+        $"{Defs.FirstOrDefault(d => d.Key == key)?.Label ?? key} is each part's own: part 2, next or root picks one. You're editing all {l.Count} parts.";
+
+    /// <summary>On a whole linked object, a setting that goes to every part (read together, a value they share said once,
+    /// as "all sides"). The rest are the object's: its name, sale, place and turn are its root's, the region keeps
+    /// physical, temporary and phantom for a linked object as one, and locked is sent to every part but goes by the root.</summary>
+    static bool EveryPart(Def d) => d.Tab == "Texture" && d.Key != "face"
+        || d.Key is "share" or "anyone_move" or "anyone_copy" or "next_modify" or "next_copy" or "next_transfer" or "click" or "material";
 
     /// <summary>A typed command's setting and the value after its name ("hollow 50": hollow and "50"); null when it names
     /// none. The value keeps its case (a name or description as typed).</summary>
@@ -183,13 +228,14 @@ public static class BuildRows
 
     /// <summary>The rows a tab shows for this prim (Texture's for one face, or all sides when face is null).</summary>
     public static List<BuildRow> For(PrimLook l, string tab, int? face) =>
-        Defs.Where(d => d.Tab.Equals(tab, StringComparison.OrdinalIgnoreCase) && d.Shows(l)).Select(d => Row(l, d, face)).ToList();
+        Defs.Where(d => d.Tab.Equals(tab, StringComparison.OrdinalIgnoreCase) && d.Shows(l) && !(l.Whole && OnesOwn(d.Key))).Select(d => Row(l, d, face)).ToList();
 
     /// <summary>One setting's row, shown or not (a command can read any).</summary>
     public static BuildRow? Row(PrimLook l, string key, int? face) => Defs.FirstOrDefault(d => d.Key == key) is { } d ? Row(l, d, face) : null;
 
     static BuildRow Row(PrimLook l, Def d, int? face)
     {
+        if (l.Parts is { } all && EveryPart(d)) return EveryPartRow(all, d);
         var p = l.P;
         var props = l.Props;
         var pd = p.PrimData;
@@ -227,6 +273,11 @@ public static class BuildRows
             }
             case "click": return Pick(ClickWords, Math.Clamp((int)p.ClickAction, 0, ClickWords.Length - 1));
             case "where": return R(l.Where ?? "not worked out yet");
+            case "edit_linked": return Sw(!l.Whole);
+            case "overall":
+                return R($"{N(l.Overall.X)} by {N(l.Overall.Y)} by {N(l.Overall.Z)} metres (east to west, south to north, height)", "2", "Scale all of it by (2 doubles it, 0.5 halves it)");
+            case "parts_own": return R("each part has its own features: part 2, next or root picks one");
+            case "locked": return Sw(l.Locked);
             case "physical": return Sw((l.Flags & PrimFlags.Physics) != 0);
             case "temp": return Sw((l.Flags & PrimFlags.TemporaryOnRez) != 0, "delete");
             case "phantom": return Sw((l.Flags & PrimFlags.Phantom) != 0);
@@ -259,21 +310,33 @@ public static class BuildRows
             case "drag": return Num(p.Flexible?.Drag ?? 2, "", 0.5, 2);
             case "wind": return Num(p.Flexible?.Wind ?? 0, "", 0.5, 2);
             case "tension": return Num(p.Flexible?.Tension ?? 1, "", 0.5, 2);
+            case "force":
+            {
+                var fo = p.Flexible?.Force ?? Vector3.Zero;
+                return R($"{N(fo.X, 2)}, {N(fo.Y, 2)}, {N(fo.Z, 2)}", $"{N(fo.X, 2)} {N(fo.Y, 2)} {N(fo.Z, 2)}", "Force (X, Y and Z, each -10 to 10)");
+            }
             case "light": return Sw(l.LightOn);
             case "light_colour":
                 return p.Light is { } lc ? R(ColourWords(lc.Color), Rgb(lc.Color), "Light colour (a name, or red, green and blue 0 to 255)") : R("white");
             case "intensity": return Num(p.Light?.Intensity ?? 1, "", 0.1, 2, "Light intensity (0 to 1)");
             case "light_radius": return Num(p.Light?.Radius ?? 10, " metres", 1, 1, "Light radius in metres (0 to 20)");
             case "falloff": return Num(p.Light?.Falloff ?? 0.75, "", 0.25, 2, "Light falloff (0 to 2)");
+            case "projector":
+                return R(l.Projecting ? TextureWords(l, p.LightMap!.LightTexture) : "off", l.Projecting ? TextureWords(l, p.LightMap!.LightTexture) : "off",
+                    "Projector (a texture to cast: blank, plywood, or a texture's name in your inventory; or off)");
+            case "projector_fov": return Num(Math.Round((p.LightMap?.Params.X ?? Math.PI / 2) * 180 / Math.PI, 1), " degrees", 5, 1, "Field of view in degrees (0 to 170)");
+            case "focus": return Num(p.LightMap?.Params.Y ?? 0, "", 1, 2, "Focus (-20 to 20)");
+            case "ambiance": return Num(p.LightMap?.Params.Z ?? 0, "", 0.1, 2, "Ambiance (0 to 1)");
             case "physics_shape":
                 return Pick(PhysicsShapes, p.PhysicsProps is { } ph ? (int)ph.PhysicsShapeType : -1);
             case "face": return R(face is { } f ? l.FaceName(f) : $"all sides ({(l.Faces == 1 ? "1 face" : $"{l.Faces} faces")})");
         }
         // a face's settings: of the face chosen, or every face's, a value they share said once
-        string Faces(Func<Primitive.TextureEntryFace, string> words)
+        string Faces(Func<Primitive.TextureEntryFace, string> words) => FacesBy(i => words(l.Face(i)));
+        string FacesBy(Func<int, string> words)
         {
-            if (face is { } one) return words(l.Face(one));
-            var groups = Enumerable.Range(0, Math.Max(1, l.Faces)).GroupBy(i => words(l.Face(i))).OrderByDescending(g => g.Count()).ToList();
+            if (face is { } one) return words(one);
+            var groups = Enumerable.Range(0, Math.Max(1, l.Faces)).GroupBy(words).OrderByDescending(g => g.Count()).ToList();
             if (groups.Count == 1) return $"{groups[0].Key}, all sides";
             return string.Join("; ", groups.Select((g, i) => i == 0 && g.Count() > 1 && groups.Count <= 3
                 ? $"{g.Key} on {g.Count()} sides" : $"{g.Key} on {string.Join(" and ", g.Select(l.FaceName))}"));
@@ -294,8 +357,16 @@ public static class BuildRows
             case "shiny": return FacePick(Shininess, f => (int)f.Shiny >> 6);
             case "bump": return FacePick(Bumps, f => (int)f.Bump is var b && b < Bumps.Length ? b : -1);
             case "mapping": return FacePick(Mappings, f => f.TexMapType == MappingType.Planar ? 1 : 0);
-            case "repeats.u": return FaceNum(f => f.RepeatU, "", 0.5, 2, "Horizontal repeats");
-            case "repeats.v": return FaceNum(f => f.RepeatV, "", 0.5, 2, "Vertical repeats");
+            // (a negative repeat is the official editor's Flip, said on its own row)
+            case "repeats.u": return FaceNum(f => Math.Abs(f.RepeatU), "", 0.5, 2, "Horizontal repeats");
+            case "repeats.v": return FaceNum(f => Math.Abs(f.RepeatV), "", 0.5, 2, "Vertical repeats");
+            case "repeats_m":
+            {
+                double Per(int i) => Math.Abs(l.Face(i).RepeatU) / Along(p.Scale, TexAxes(i).S);
+                return R(FacesBy(i => N(Per(i), 2)), N(Per(face ?? 0), 2), "Repeats per metre") with { Value = Per(face ?? 0), Step = 0.5 };
+            }
+            case "flip.u": return R(Faces(f => f.RepeatU < 0 ? "on" : "off")) with { Value = shown.RepeatU < 0 ? 1 : 0 };
+            case "flip.v": return R(Faces(f => f.RepeatV < 0 ? "on" : "off")) with { Value = shown.RepeatV < 0 ? 1 : 0 };
             case "repeats": return R(Faces(f => $"{N(f.RepeatU, 2)} by {N(f.RepeatV, 2)}"), $"{N(shown.RepeatU, 2)} {N(shown.RepeatV, 2)}");
             case "tex_rotation": return FaceNum(f => Math.Round(f.Rotation * 180 / Math.PI, 1), " degrees", 15, 1, "Texture rotation in degrees");
             case "offset.u": return FaceNum(f => f.OffsetU, "", 0.05, 2, "Horizontal offset (-1 to 1)");
@@ -305,12 +376,56 @@ public static class BuildRows
         return R("?");
     }
 
+    /// <summary>A setting across all of a whole object's parts: what they share said once, else how many have what.</summary>
+    static BuildRow EveryPartRow(IReadOnlyList<PrimLook> parts, Def d)
+    {
+        var rows = parts.Select(x => Row(x, d, null)).ToList();
+        string Value(BuildRow r)
+        {
+            var v = r.Words[(d.Label.Length + 2)..];
+            return v.EndsWith(", all sides", StringComparison.Ordinal) ? v[..^11] : v;
+        }
+        var groups = rows.GroupBy(Value).OrderByDescending(g => g.Count()).ToList();
+        static string Many(int n) => n == 1 ? "1 part" : $"{n} parts";
+        var said = groups.Count == 1 ? $"{groups[0].Key}, all {parts.Count} parts"
+            : string.Join("; ", groups.Take(3).Select(g => $"{g.Key} on {Many(g.Count())}"))
+              + (groups.Count > 3 ? $"; others on {Many(groups.Skip(3).Sum(g => g.Count()))}" : "");
+        return rows[0] with { Words = $"{d.Label}: {said}" };
+    }
+
+    /// <summary>The prim's axes a face's horizontal and vertical repeats run along (LLPrimitive::getTESTAxes), as the
+    /// official editor's Repeats per metre reckons them.</summary>
+    static (int S, int T) TexAxes(int face) => face switch { 0 => (0, 1), 1 => (0, 2), 2 => (1, 2), 3 => (0, 2), 4 => (1, 2), _ => (0, 1) };
+
+    static double Along(Vector3 scale, int axis) => axis == 0 ? scale.X : axis == 1 ? scale.Y : scale.Z;
+
     // --- a change -------------------------------------------------------------------------------------------------------
 
     /// <summary>A setting changed to the value typed: TesselBuild modify's keys (several sets where faces must each keep
     /// a part of a pair they don't share), or why not, in words. texture: a texture's words to what modify takes.</summary>
     public static (List<JsonObject>? Args, string? Error) Change(PrimLook l, string key, string value, int? face, Func<string, (string? Id, string? Error)> texture)
     {
+        if (l.Parts is { } all)
+        {
+            if (OnesOwn(key)) return (null, OwnWords(l, key));
+            if (Defs.FirstOrDefault(d => d.Key == key) is { } every && EveryPart(every))
+            {
+                var found = new Dictionary<string, (string?, string?)>();
+                (string?, string?) Once(string words) => found.TryGetValue(words, out var known) ? known : found[words] = texture(words);
+                var edits = new List<JsonObject>();
+                foreach (var part in all)
+                {
+                    var (args, why) = Change(part, key, value, null, Once);
+                    if (args == null) return (null, why);
+                    foreach (var edit in args)
+                    {
+                        edit["id"] = part.P.ID.ToString();
+                        edits.Add(edit);
+                    }
+                }
+                return (edits, null);
+            }
+        }
         var v = value.Trim();
         var p = l.P;
         var pd = p.PrimData;
@@ -330,6 +445,14 @@ public static class BuildRows
         }
         JsonArray Arr(params double[] xs) => new(xs.Select(x => (JsonNode)Math.Round(x, 5)).ToArray());
         JsonObject Face(JsonObject o) { if (face is { } f) o["face"] = f; return o; }
+        // a pair per face: one call where every face (or the one chosen) comes to the same, else a set each
+        (List<JsonObject>?, string?) EachFace(string name, Func<int, (double, double)> want)
+        {
+            var faces = face is { } chosen ? new[] { chosen } : Enumerable.Range(0, Math.Max(1, l.Faces)).ToArray();
+            var same = faces.Select(want).Distinct().ToList();
+            if (same.Count == 1) return Ok(Face(new JsonObject { [name] = Arr(same[0].Item1, same[0].Item2) }));
+            return (faces.Select(f => new JsonObject { ["face"] = f, [name] = Arr(want(f).Item1, want(f).Item2) }).ToList(), null);
+        }
         int? Choice(string[] names, int first = 0)
         {
             var w = v.ToLowerInvariant();
@@ -381,6 +504,8 @@ public static class BuildRows
             }
             case "click":
                 return Choice(ClickWords) is { } ci ? Ok(new JsonObject { ["click_action"] = ClickOps[ci] }) : No($"When left-clicked: {Choices(ClickWords)}.");
+            case "locked":
+                return On() is { } lk ? Ok(new JsonObject { ["locked"] = lk }) : No("Locked: on or off.");
             case "physical" or "temp" or "phantom":
                 return On() is { } fo ? Ok(new JsonObject { [key == "temp" ? "temp" : key == "physical" ? "physics" : "phantom"] = fo }) : No($"{label}: on or off.");
             case "pos.x" or "pos.y" or "pos.z":
@@ -450,6 +575,28 @@ public static class BuildRows
                 if (n < lo || n > hi) return No($"{label}: {N(lo)} to {N(hi)}.");
                 return Ok(new JsonObject { ["flexi"] = Flexi(p, key, n) });
             }
+            case "force":
+            {
+                var ns = Numbers(v, false);
+                if (ns.Count != 3 || ns.Any(n => Math.Abs(n) > 10)) return No("Force: X, Y and Z, each from -10 to 10.");
+                var fx = Flexi(p, null, 0);
+                fx["force"] = Arr(ns[0], ns[1], ns[2]);
+                return Ok(new JsonObject { ["flexi"] = fx });
+            }
+            case "projector":
+            {
+                if (v.ToLowerInvariant() is "off" or "no" or "none") return Ok(new JsonObject { ["projector"] = false });
+                var (id, why) = texture(v);
+                return id == null ? No(why ?? "No such texture.") : Ok(new JsonObject { ["projector"] = new JsonObject { ["texture"] = id } });
+            }
+            case "projector_fov" or "focus" or "ambiance":
+            {
+                if (!l.Projecting) return No($"{label}: a projector first (projector and a texture).");
+                if (!Number(out var n)) return No($"{label}: a number.");
+                var (lo, hi, name) = key switch { "projector_fov" => (0.0, 170.0, "fov"), "focus" => (-20.0, 20.0, "focus"), _ => (0.0, 1.0, "ambiance") };
+                if (n < lo || n > hi) return No($"{label}: {N(lo)} to {N(hi)}.");
+                return Ok(new JsonObject { ["projector"] = new JsonObject { ["texture"] = p.LightMap!.LightTexture.ToString(), [name] = n } });
+            }
             case "light":
                 if (On() is not { } lo2) return No("Light: on or off.");
                 return Ok(new JsonObject { ["light"] = lo2 ? Light(p, null, null) : false });
@@ -497,14 +644,30 @@ public static class BuildRows
                 bool rep = key.StartsWith("repeats"), u = key.EndsWith(".u");
                 if (!rep && Math.Abs(n) > 1) return No($"{label}: -1 to 1.");
                 if (rep && (n == 0 || Math.Abs(n) > 100)) return No($"{label}: not 0, and -100 to 100.");
-                // one call where every face keeps the same other half; else a call per face, each keeping its own
-                var faces = face is { } one ? new[] { one } : Enumerable.Range(0, Math.Max(1, l.Faces)).ToArray();
-                double Other(int f) => rep ? (u ? l.Face(f).RepeatV : l.Face(f).RepeatU) : (u ? l.Face(f).OffsetV : l.Face(f).OffsetU);
-                var groups = faces.GroupBy(Other).ToList();
-                var name = rep ? "repeats" : "tex_offset";
-                if (groups.Count == 1)
-                    return Ok(Face(new JsonObject { [name] = u ? Arr(n, groups[0].Key) : Arr(groups[0].Key, n) }));
-                return (faces.Select(f => new JsonObject { ["face"] = f, [name] = u ? Arr(n, Other(f)) : Arr(Other(f), n) }).ToList(), null);
+                // each face keeps its own other half, and a repeat its flip unless the number typed is negative
+                double Kept(double now) => rep && n > 0 && now < 0 ? -n : n;
+                if (!rep) return EachFace("tex_offset", f => u ? (n, l.Face(f).OffsetV) : (l.Face(f).OffsetU, n));
+                return EachFace("repeats", f => u ? (Kept(l.Face(f).RepeatU), l.Face(f).RepeatV) : (l.Face(f).RepeatU, Kept(l.Face(f).RepeatV)));
+            }
+            case "repeats_m":
+            {
+                if (!Number(out var n) || n <= 0) return No("Repeats per metre: a number above 0.");
+                // along each face's own axes, as the official editor does it: what the prim's size makes of that number
+                (double, double) Want(int f)
+                {
+                    var (s, t) = TexAxes(f);
+                    double U = Along(p.Scale, s) * n, V = Along(p.Scale, t) * n;
+                    return (l.Face(f).RepeatU < 0 ? -U : U, l.Face(f).RepeatV < 0 ? -V : V);
+                }
+                var faces = face is { } chosen ? new[] { chosen } : Enumerable.Range(0, Math.Max(1, l.Faces)).ToArray();
+                if (faces.Any(f => Math.Abs(Want(f).Item1) > 100 || Math.Abs(Want(f).Item2) > 100)) return No($"Repeats per metre: {N(n)} would be over 100 repeats on a side of this size.");
+                return EachFace("repeats", Want);
+            }
+            case "flip.u" or "flip.v":
+            {
+                if (On() is not { } on) return No($"{label}: on or off.");
+                double Signed(double now) => on ? -Math.Abs(now) : Math.Abs(now);
+                return EachFace("repeats", f => key == "flip.u" ? (Signed(l.Face(f).RepeatU), l.Face(f).RepeatV) : (l.Face(f).RepeatU, Signed(l.Face(f).RepeatV)));
             }
         }
         return No($"{label} can't be changed here yet.");

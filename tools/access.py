@@ -1375,12 +1375,17 @@ def session(run, procs):
         ("two questions and a menu", lambda: notice_pile(run, tester_id)),
         ("a confirmation left waiting", lambda: confirm_left_waiting(run, nonce)),
         ("inventory", lambda: inventory(run, nonce)),
+        ("notecards with things in them", lambda: notecards_embedded(run, nonce, tester_id)),
         ("every part", lambda: parts(run)),
         ("your HUDs", lambda: huds(run, nonce)),
         ("a HUD that's one picture of buttons", lambda: hud_picture(run, nonce)),
         ("gestures", lambda: gestures(run, nonce)),
         ("placing by words", lambda: placing(run, nonce)),
         ("building with her own hands", lambda: building(run, nonce)),
+        ("building a linked object", lambda: building_linked(run, nonce)),
+        ("building: copying settings", lambda: building_copy(run, nonce)),
+        ("building: locked, repeats per metre, flip and the Features rows", lambda: building_rows(run, nonce)),
+        ("going by name, and blocking by name", lambda: going_and_blocking(run, nonce)),
         ("uploads", lambda: uploads(run, nonce)),
         ("About Land, her own parcel", lambda: about_land(run, nonce, tester_id)),
         ("two inventory panes", lambda: two_panes(run, nonce)),
@@ -2824,7 +2829,7 @@ def notice_pile(run, tester_id):
     run.expect("after an answer, what's next is said with its keys", ["Next:", "Access Menu", "Keys:"], m, 6)
     m = mark()
     key("b")
-    run.expect("B blocks what sent it, saying what", ["Blocked Access Fixture"], m, 6)
+    run.expect("B blocks what sent it, saying what", ["Blocked ", "Control+Shift+Y undoes it"], m, 6)
     key("ctrl+shift+y")
     d = wait_focus(lambda d: d["id"] == "blocksList", 5)
     if run.check("Control+Shift+Y lists what's blocked", d and "Access Fixture" in selection("id=blocksList"), selection("id=blocksList") if d else focus_label()):
@@ -3210,6 +3215,168 @@ def inv_search(words, expect_first):
             time.sleep(2)
     wait_focus(lambda d: d["id"] == "inventory", 3)
     return wait(lambda: (lambda s: s if expect_first in s else None)(selection("id=inventory")), 5)
+
+
+def asset_bytes(asset_id):
+    """An asset as the local grid stores it."""
+    import sqlite3
+    db = sqlite3.connect(f"file:{ROOT / 'local' / os.environ.get('SOJOURN_GRID', 'grid') / 'bin' / 'Asset.db'}?mode=ro", uri=True)
+    try:
+        row = db.execute("select Data from assets where UUID = ?", (asset_id or "",)).fetchone()
+    finally:
+        db.close()
+    return bytes(row[0]) if row else None
+
+
+def notecards_embedded(run, nonce, tester_id):
+    """A card holding a landmark and a notecard, from the visitor, in the viewer's own format. Opened by keys: its places
+    read as markers, the things said and listed a Tab from the text, Enter copying one out and Enter again using it
+    (the landmark teleports, the notecard opens). Saved by Control+S, by the op with no places in the text at all, and
+    inside an object (object.content.save): every item still there, the asset's embedded block byte for byte, the places
+    where they were, or at the end when they'd gone (said)."""
+    name = f"Access Embed {nonce}"
+    m = mark()
+    v(f"embedcard {name} {tester_id}")
+    if not run.expect("(the visitor offers a card with two things in it)", [name], m, NOTICE_SECS) or not open_newest_notice(run, [name]):
+        return
+    key("1")
+    folder = api("LLInventory", "getBasicFolderID", ft_name="notecard")["id"]
+    card = wait(lambda: inv_items(folder).get(name), 10)
+    if not run.check("(kept, in Notecards)", card, ", ".join(inv_items(folder))):
+        return
+    land, inner = f"[landmark: {name} Landmark]", f"[notecard: {name} Inner]"
+    read = api("TesselInventory", "readNotecard", item_id=card)
+    run.check("the op lists both", [e["name"] for e in read.get("embedded", [])] == [f"{name} Landmark", f"{name} Inner"], json.dumps(read)[:300])
+    run.check("each place in its text reads as a marker", f"Go there: {land} today." in read.get("text", "") and inner in read.get("text", ""), ascii(read.get("text")))
+
+    key("alt+4")
+    wait_focus(lambda d: d["id"] == "inventory", 4)
+    inv_search(name, name)
+    m = mark()
+    key("enter")
+    ed = wait_focus(lambda d: d["id"] == "editorText", 6)
+    if not run.check("Enter opens it, the focus in the text", ed, label(ed) if ed else focus_label()):
+        return
+    run.expect("what it holds is said on opening", ["It holds 2 things", f"{name} Landmark, landmark", f"{name} Inner, notecard", "Tab reaches them"], m, 5)
+    run.check("the markers in the edit box", land in value_of("id=editorText"), value_of("id=editorText")[:120])
+    tree_check(run, "a notecard holding things", must=("editorText", "editorEmbedded"))
+
+    m = mark()
+    key("tab")
+    d = wait_focus(lambda d: d["type"] == "ListItem" and name in d["name"] or d["id"] == "editorEmbedded", 4)
+    run.check("Tab reaches the list, on the landmark", d and "Landmark, landmark" in selection("id=editorEmbedded"), label(d) if d else focus_label())
+    lm_folder = api("LLInventory", "getBasicFolderID", ft_name="landmark")["id"]
+    m = mark()
+    key("enter")
+    run.expect("Enter copies it out, saying where and what's next", [f"Copied {name} Landmark into", "Enter again teleports"], m, 25)
+    copied = wait(lambda: inv_items(lm_folder).get(f"{name} Landmark"), 8)
+    run.check("the copy is in the inventory", copied, ", ".join(inv_items(lm_folder)))
+    if copied:
+        where = api("TesselInventory", "landmark", item_id=copied)
+        run.check("and it's a landmark that says where it points", where.get("pos") or where.get("region"), json.dumps(where)[:200])
+    m = mark()
+    key("enter")
+    run.expect("Enter again teleports by it", [f"Teleporting to {name} Landmark"], m, 6)
+    run.expect("and arrives", ["Arrived in"], m, 30)
+    f = focused()
+    run.check("the focus stays in the list", f and (f["id"] == "editorEmbedded" or f["type"] == "ListItem"), label(f) if f else "nothing")
+
+    key("down")
+    time.sleep(0.4)
+    key("apps")
+    if run.check("its Applications menu has Copy", menu_open("Copy into your inventory"), focus_label()):
+        run.check("and Open for a notecard, no Teleport", find("type=MenuItem;name=Open") and not find("type=MenuItem;name=Teleport there"), json.dumps([d["name"] for d in find("type=MenuItem")]))
+        key("esc")
+        time.sleep(0.5)
+    m = mark()
+    key("enter")
+    run.expect("Enter copies the notecard", [f"Copied {name} Inner into", "Enter again opens it"], m, 25)
+    key("enter")
+    nested = wait(lambda: "inner words" in value_of("id=editorText"), 8)
+    run.check("Enter again opens it", nested, value_of("id=editorText")[:80])
+    key("esc")
+    back = wait_focus(lambda d: d["type"] == "ListItem" or d["id"] in ("editorEmbedded", "editorText"), 4)
+    run.check("Escape comes back to the card's window", back, label(back) if back else focus_label())
+
+    # the old asset, for the byte check
+    before = asset_bytes(next((i.get("asset_id") for i in api("LLInventory", "getDirectDescendants", folder_id=folder).get("items", {}).values() if i.get("name") == name), None))
+    head = before[:before.index(b"Text length ")] if before else b""
+    run.check("(the card's asset read from the grid, 2 items in its head)", b"count 2" in head, repr(before[:80]) if before else "no asset")
+
+    # Control+S, words added
+    u("setfocus id=editorText")
+    wait_focus(lambda d: d["id"] == "editorText", 3)
+    key("ctrl+end")
+    type_text("Added by keys.")
+    m = mark()
+    key("ctrl+s")
+    run.expect("Control+S says it kept them", ["Saved, with the 2 things it holds."], m, 15)
+    after = api("TesselInventory", "readNotecard", item_id=card)
+    run.check("still both", len(after.get("embedded", [])) == 2, json.dumps(after)[:300])
+    run.check("each place where it was, the words added", f"Go there: {land} today." in after.get("text", "") and "Added by keys." in after.get("text", ""), ascii(after.get("text")))
+
+    # a marker deleted in the box: at the end, said, and the box shows it
+    u(f"set id=editorText | Go to the harbour today, and read this: {inner}")
+    time.sleep(0.3)
+    m = mark()
+    key("ctrl+s")
+    run.expect("a marker taken out: saved, said to be at the end", [f"{name} Landmark", "at the end now"], m, 15)
+    run.check("the box shows it at the end", wait(lambda: value_of("id=editorText").rstrip().endswith(land), 4), value_of("id=editorText")[-80:])
+    m = mark()
+    key("esc")
+    gone = wait_focus(lambda d: d["id"] == "inventory", 4)
+    run.check("nothing left to ask about on closing", gone and not find("type=Window;name~=Save the changes"), focus_label())
+
+    # the op: a model's rewrite with no places in it
+    w = api("TesselInventory", "writeNotecard", item_id=card, text="A model's rewrite, without the places.\n")
+    run.check("the op's rewrite with no markers names both as moved", len(w.get("moved_to_end", [])) == 2, json.dumps(w)[:300])
+    after = api("TesselInventory", "readNotecard", item_id=card)
+    run.check("and both are kept, at the end", len(after.get("embedded", [])) == 2 and after.get("text", "").endswith(inner), ascii(after.get("text")))
+    saved = asset_bytes(w.get("asset_id"))
+    run.check("the asset's embedded block is byte for byte what came", saved is not None and saved.startswith(head) and head, repr(saved[:80]) if saved else "no asset")
+    a = api("TesselInventory", "writeNotecard", item_id=card, text="Appended.", append=True)
+    after = api("TesselInventory", "readNotecard", item_id=card)
+    run.check("append keeps them too, with no place moved", not a.get("moved_to_end") and len(after.get("embedded", [])) == 2 and "Appended." in after.get("text", ""), ascii(after.get("text")))
+    copied2 = api("TesselInventory", "copyFromNotecard", 25, item_id=card, name=f"{name} Inner")
+    run.check("what's embedded still copies out after all that", copied2.get("item_id"), json.dumps(copied2)[:200])
+
+    # the same card inside an object: its own writer, on the bridge's RPC, its save waiting for her confirmation
+    x, y, z, _ = tester_where()
+    box = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y, z], scale=[0.4, 0.4, 0.4], name=f"Access Embed Box {nonce}")["id"]
+    api("TesselBuild", "addToContents", 20, id=box, item_id=card)
+    items = wait(lambda: api("TesselBuild", "contents", 20, id=box, running=False).get("items"), 8) or []
+    inside = next((i for i in items if i.get("name") == name), None)
+    if run.check("(the card put in a box)", inside, json.dumps(items)[:200]):
+        def rpc(method, **params):
+            req = urllib.request.Request(f"http://127.0.0.1:{API_PORT}/rpc", json.dumps({"method": method, "params": params, "timeout": 30}).encode(),
+                                         {"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=40) as r:
+                return json.load(r).get("result") or {}
+        got = rpc("object.content.get", prim_id=box, item_id=inside["item_id"])
+        run.check("object.content.get reads markers", inner in got.get("content", ""), ascii(got)[:300])
+        import threading
+        saved_in = {}
+
+        def save():
+            saved_in.update(rpc("object.content.save", prim_id=box, item_id=inside["item_id"], content="Rewritten inside the box.\n"))
+        t = threading.Thread(target=save, daemon=True)
+        t.start()
+        time.sleep(1.5)
+        key("ctrl+n")
+        wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 4)
+        time.sleep(1.2)   # it arms 0.8 s after it's shown
+        key("enter")
+        t.join(30)
+        run.check("object.content.save names both as moved", len(saved_in.get("moved_to_end", [])) == 2, json.dumps(saved_in)[:300])
+        got = rpc("object.content.get", prim_id=box, item_id=inside["item_id"])
+        run.check("and they're still in it", land in got.get("content", "") and inner in got.get("content", "") and "Rewritten" in got.get("content", ""), ascii(got)[:300])
+    back_to_chat()
+    # tidied (this run's and any an interrupted one left), through the confirmation as anyone's
+    api("TesselBuild", "take", 30, ids=[box], folder_id=folder)
+    time.sleep(1)
+    left = [i for f in (lm_folder, folder) for n, i in inv_items(f).items() if n and n.startswith("Access Embed ")]
+    if left:
+        gated(run, "the step's things deleted", "TesselInventory", "delete", 30, ids=left, purge=True)
 
 
 def inv_items(folder):
@@ -4491,7 +4658,7 @@ def building(run, nonce):
             type_text(box, "id=pickName")
             time.sleep(0.3)
             key("enter", target="id=pickName")
-            run.expect("the one picked is linked", ["Linked", box, "2 parts"], m, 15)
+            run.expect("the one picked is linked, saying what editing all of it means the first time", ["Linked", box, "2 parts", "editing all of it", "go to every part"], m, 15)
             m = mark()
             build_cmd("unlink")
             run.expect("(apart again)", ["Unlinked all 2 parts"], m, 15)
@@ -4540,10 +4707,615 @@ def building(run, nonce):
 def build_leftovers():
     """The build step's prims still out (this run's or an interrupted one's), taken back into the inventory: a delete by
     the agent API would wait for the person's confirmation."""
-    for name in ("Access Build ", "Access Leg "):
+    for name in ("Access Build ", "Access Leg ", "Access Wall ", "Access Dome "):
         for o in api("TesselObjects", "nearby", dist=40, query=name).get("objects", []):
             if o.get("name", "").startswith(name):
+                if "mine" in o.get("flags", []) and "mod" not in o.get("flags", []):   # (left locked)
+                    api("TesselBuild", "modify", ids=[o["id"]], locked=False)
+                    time.sleep(0.5)
                 api("TesselBuild", "take", 30, ids=[o["id"]])
+
+
+def build_object(name):
+    """An object as the region has it, with its parts: {"root": ..., "kids": [...]}, by its name, or None."""
+    found = [o for o in api("TesselObjects", "nearby", dist=40, query=name).get("objects") or [] if o.get("name") == name]
+    if not found:
+        return None
+    got = api("TesselObjects", "get", ids=[found[0]["id"]], children=True, fresh=True).get("objects") or []
+    return {"root": got[0], "kids": got[0].get("children") or []} if got else None
+
+
+def build_new(run, shape, name, where="2 metres ahead"):
+    """A prim made and named by commands, the one being edited after."""
+    m = mark()
+    build_cmd(f"new {shape} {where}")
+    run.expect(f"(made {name})", ["Made a"], m, 25)
+    m = mark()
+    build_cmd(f"name {name}")
+    run.expect(f"(named {name})", [f"Name: {name}"], m, 10)
+
+
+def close(a, b, within=0.03):
+    return all(abs(x - y) <= within for x, y in zip(a, b))
+
+
+def building_linked(run, nonce):
+    """A linked object as the official editor's Edit linked off has it: after link, and from Objects, all of it is what's
+    edited, and every answer says so; scale, moves and turns take every part (undone as one step), colours go to every
+    part and a value they share is said once; a part picked by number or name is said to be that part alone, one value
+    apart said on all parts; what's each part's own says how to pick one; a confirmation for permissions comes once for
+    all the parts; duplicate takes the width of all of it; take says all of it."""
+    box, leg = f"Access Build {nonce}", f"Access Leg {nonce}"
+    try:
+        build_leftovers()
+        back_to_chat()
+        build_new(run, "box", box, "2 metres ahead")
+        build_new(run, "cylinder", leg, "3 metres ahead")
+        m = mark()
+        build_cmd(f"link {box}")
+        run.expect("link NAME: says you're editing all of it", ["Linked", "2 parts", "editing all of it"], m, 15)
+        # (it was the cylinder that was being edited, so it's the root)
+        o = wait(lambda: (lambda b: b if b and len(b["kids"]) == 1 else None)(build_object(leg)), 8)
+        if not run.check("(the region has them linked, the one edited the root)", o, json.dumps(o and o["root"].get("name"))):
+            return
+        kid0 = o["kids"][0]
+        root0 = o["root"]
+        m = mark()
+        build_cmd("what")
+        run.expect("what: all of it, how big overall", [f"Editing all 2 parts of {leg}", "metres overall"], m, 8)
+        m = mark()
+        build_cmd("object")
+        run.expect("its Object tab has Edit linked off and the overall size", ["Edit linked: off", "Overall size:"], m, 8)
+        m = mark()
+        build_cmd("hollow 50")
+        run.expect("a part's own setting says how to pick a part", ["Hollow is each part's own", "part 2"], m, 6)
+        m = mark()
+        build_cmd("size 1 1 1")
+        run.expect("size on all of it says scale does that", ["Size is each part's own", "scale 2"], m, 6)
+        m = mark()
+        build_cmd("face top")
+        run.expect("a face on all of it says faces are a part's", ["Faces are each part's own"], m, 6)
+
+        # moving and turning
+        m = mark()
+        build_cmd("move by 50 cm up")
+        run.expect("move: said to move all of it", ["Position:", "All 2 parts moved with it"], m, 12)
+        o = wait(lambda: (lambda b: b if b and abs(b["kids"][0]["pos"][2] - kid0["pos"][2] - 0.5) < 0.05 else None)(build_object(leg)), 6)
+        run.check("both parts half a metre higher", o and abs(o["root"]["pos"][2] - root0["pos"][2] - 0.5) < 0.05, json.dumps(o and o["kids"][0]["pos"]))
+        m = mark()
+        build_cmd("undo")
+        run.expect("(undone)", ["Undone"], m, 15)
+        wait(lambda: (lambda b: b if b and abs(b["root"]["pos"][2] - root0["pos"][2]) < 0.05 else None)(build_object(leg)), 6)
+        m = mark()
+        build_cmd("turn 90")
+        run.expect("turn: said to turn all of it round the root", ["Rotation:", "All 2 parts turned round the root"], m, 12)
+        o = wait(lambda: (lambda b: b if b and math.dist(b["kids"][0]["pos"], kid0["pos"]) > 0.3 else None)(build_object(leg)), 6)
+        if run.check("the other part swung round the root", o, json.dumps(o and o["kids"][0]["pos"])):
+            run.check("(at the same distance)", abs(math.dist(o["kids"][0]["pos"], o["root"]["pos"]) - math.dist(kid0["pos"], root0["pos"])) < 0.05, "")
+        m = mark()
+        build_cmd("undo")
+        run.expect("(undone)", ["Undone"], m, 15)
+        wait(lambda: (lambda b: b if b and math.dist(b["kids"][0]["pos"], kid0["pos"]) < 0.05 else None)(build_object(leg)), 6)
+
+        # scale: every part, and how far apart they are
+        m = mark()
+        build_cmd("scale 2")
+        run.expect("scale 2: all of it, said overall", [f"Scaled all 2 parts of {leg} by 2", "metres overall"], m, 15)
+        o = wait(lambda: (lambda b: b if b and abs(b["kids"][0]["scale"][0] - kid0["scale"][0] * 2) < 0.02 else None)(build_object(leg)), 6)
+        if run.check("the other part twice the size", o, json.dumps(build_object(leg)["kids"][0]["scale"])):
+            run.check("the root twice the size", close(o["root"]["scale"], [x * 2 for x in root0["scale"]]), json.dumps(o["root"]["scale"]))
+            run.check("and twice as far from the root", abs(math.dist(o["kids"][0]["pos"], o["root"]["pos"]) - 2 * math.dist(kid0["pos"], root0["pos"])) < 0.05,
+                      f'{math.dist(o["kids"][0]["pos"], o["root"]["pos"]):.2f} from {math.dist(kid0["pos"], root0["pos"]):.2f}')
+        m = mark()
+        build_cmd("undo")
+        run.expect("undo takes the scale back as one step, said in the editor's words", ["Undone", "on 2 parts"], m, 15)
+        o = wait(lambda: (lambda b: b if b and close(b["kids"][0]["scale"], kid0["scale"]) else None)(build_object(leg)), 6)
+        run.check("every part back: sizes", o and close(o["root"]["scale"], root0["scale"]), json.dumps(o and o["root"]["scale"]))
+        run.check("every part back: the distance", o and close(o["kids"][0]["pos"], kid0["pos"], 0.05), json.dumps(o and o["kids"][0]["pos"]))
+        m = mark()
+        build_cmd("scale 1000")
+        run.expect("a scale past what a part can be says how far it goes", ["Scale 1000", "between 1 centimetre and 64 metres", "from scale"], m, 6)
+
+        # settings go to every part, and are said so
+        m = mark()
+        build_cmd("colour red")
+        run.expect("colour red: said once for all the parts", ["Colour: red (255, 0, 0), all 2 parts"], m, 12)
+        full = api("TesselObjects", "get", ids=[o["root"]["id"] if o else root0["id"], kid0["id"]], full=True).get("objects") or []
+        run.check("every part red in the region", len(full) == 2 and all(f["faces"]["all"]["color"][:3] == [1, 0, 0] for f in full), json.dumps([f.get("faces", {}).get("all", {}).get("color") for f in full]))
+        m = mark()
+        build_cmd(f"part {box}")
+        run.expect("part NAME: that part, said to be that part alone", [f"Editing {box}, part 2 of {leg}", "this part only"], m, 10)
+        m = mark()
+        build_cmd("colour blue")
+        run.expect("a change on a part says so", ["Colour: blue", "This part only"], m, 12)
+        m = mark()
+        build_cmd("root")
+        run.expect("root: the root by itself, said what moves with it", ["the root of 2 parts, by itself", "moves them all"], m, 10)
+        m = mark()
+        build_cmd("all parts")
+        run.expect("all parts: all of it again", [f"Editing all 2 parts of {leg}"], m, 10)
+        m = mark()
+        build_cmd("colour")
+        run.expect("what they don't share said by how many", ["Colour:", "on 1 part", "red", "blue"], m, 6)
+        m = mark()
+        build_cmd("edit linked on")
+        run.expect("edit linked on: one part", ["the root of 2 parts, by itself"], m, 10)
+        m = mark()
+        build_cmd("edit linked")
+        run.expect("edit linked says which", ["Edit linked is on"], m, 6)
+        m = mark()
+        build_cmd("edit linked off")
+        run.expect("edit linked off: all of it", [f"Editing all 2 parts of {leg}"], m, 10)
+        m = mark()
+        build_cmd("parts")
+        run.expect("parts: by number and name", ["has 2 parts", f"1 {leg}, the root", f"2 {box}"], m, 6)
+
+        # a part's name once it's linked in
+        m = mark()
+        build_cmd(f"edit {box}")
+        run.expect("edit NAME finds a part linked in", [f"Editing {box}, part 2 of {leg}"], m, 10)
+        m = mark()
+        build_cmd("phantom on")
+        run.expect("what's the whole object's is said to be, from a part", ["Phantom: on", "All 2 parts"], m, 12)
+        m = mark()
+        build_cmd("phantom off")
+        run.expect("(off again)", ["Phantom: off"], m, 12)
+        build_cmd(f"edit {leg}")
+        time.sleep(1)
+
+        # permissions: one confirmation for all of them
+        m = mark()
+        build_cmd("next owner copy on")
+        confirm_in_notices(run, "all 2 parts", m)
+        run.expect("next owner copy on: said for all the parts", ["Next owner can copy: on, all 2 parts"], m, 15)
+        time.sleep(1)
+        conf = api("LLNotifications", "listChannelNotifications", channel="Visible").get("notifications") or []
+        run.check("(no second confirmation)", not [n for n in conf if "permissions" in json.dumps(n).lower()], json.dumps(conf)[:200])
+        got = api("TesselObjects", "get", ids=[root0["id"], kid0["id"]], fresh=True).get("objects") or []
+        run.check("every part changed in the region", len(got) == 2 and all("C" in g["perms"]["next"] for g in got), json.dumps([g.get("perms", {}).get("next") for g in got]))
+        back_to_build = wait_focus(lambda d: d["id"] == "buildCommand", 5)
+        run.check("the focus back in the command box", back_to_build, focus_label())
+        m = mark()
+        build_cmd("undo")
+        confirm_in_notices(run, "Undo", m)
+        run.expect("(undone)", ["Undone"], m, 15)
+
+        # Objects: all of it; its Parts: that part
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("f5")
+        if wait(lambda: find(f"type=ListItem;name~={leg}, "), 10) and select_in("id=objects", leg):
+            m = mark()
+            key("ctrl+b")
+            run.expect("Control+B on it in Objects: all of it", [f"Editing all 2 parts of {leg}"], m, 10)
+            wait_focus(lambda d: d["id"] == "buildCommand", 4)
+
+        # duplicate clears all of it, not just the part being edited
+        was = build_object(leg)
+        m = mark()
+        build_cmd("duplicate")
+        run.expect("duplicate: all of it, said", ["Copied", "all 2 parts", "editing the copy"], m, 25)
+        time.sleep(1)
+        copies = [c for c in api("TesselObjects", "nearby", dist=40, query=leg).get("objects") or [] if c.get("name") == leg]
+        run.check("(two of them now, each of 2 parts)", len(copies) == 2 and all(c.get("prims") == 2 for c in copies), json.dumps([c.get("prims") for c in copies]))
+        if len(copies) == 2:
+            parts = lambda c: [c["id"]] + [k["id"] for k in (api("TesselObjects", "get", ids=[c["id"]], children=True)["objects"][0].get("children") or [])]
+            everything = api("TesselObjects", "get", ids=parts(copies[0]) + parts(copies[1])).get("objects") or []
+            sets = {}
+            for e in everything:
+                sets.setdefault(e.get("root_id") or e["id"], []).append(e)
+            spans = list(sets.values())
+
+            def span(ps, d):
+                ends = [sum(a * b for a, b in zip(q["pos"][:2], d)) for q in ps]
+                reach = [(abs(q["scale"][0] * d[0]) + abs(q["scale"][1] * d[1])) / 2 for q in ps]
+                return min(e - r for e, r in zip(ends, reach)), max(e + r for e, r in zip(ends, reach))
+            mid = lambda ps: [sum(q["pos"][i] for q in ps) / len(ps) for i in (0, 1)]
+            dx, dy = mid(spans[1])[0] - mid(spans[0])[0], mid(spans[1])[1] - mid(spans[0])[1]
+            n = math.hypot(dx, dy) or 1
+            a0, a1 = span(spans[0], (dx / n, dy / n))
+            b0, b1 = span(spans[1], (dx / n, dy / n))
+            run.check("the copy's beside it, clear of all of it", b0 >= a1 - 0.3, f"{a0:.2f}..{a1:.2f} and {b0:.2f}..{b1:.2f}")
+        m = mark()
+        build_cmd("take")
+        run.expect("take: said to be all of it", ["Took", "all 2 parts"], m, 15)
+        m = mark()
+        build_cmd(f"edit {leg}")
+        run.expect("(the first one)", [f"Editing all 2 parts of {leg}"], m, 10)
+        m = mark()
+        build_cmd("part 2")
+        run.expect("(part 2)", [f"part 2 of {leg}"], m, 10)
+        m = mark()
+        build_cmd("delete")
+        run.expect("delete on a part says it takes all of it, and how to do either", ["deleting takes all of the object", "unlink", "all parts then delete"], m, 6)
+        m = mark()
+        build_cmd("unlink")
+        run.expect("unlink a part: that one only", ["Unlinked", "object of its own"], m, 15)
+        m = mark()
+        build_cmd("what")
+        run.expect("what's left of a pair is one prim again, no parts said", [f"Editing {box}:"], m, 10)
+    finally:
+        build_leftovers()
+
+
+def building_copy(run, nonce):
+    """Copying a prim's settings to another (the official editor's Copy and Paste, by typed words): a wall with a shape, a
+    colour and a texture's repeats; just its colour to a new prim, then its shape, then everything; said what went and how
+    it is now; one undo step; from a part by number; to all of a linked object what can go to every part; what's each part's
+    own asked for by name says so; from Objects' menu; from something not there, and in Content the item's copy still works."""
+    wall, dome = f"Access Wall {nonce}", f"Access Dome {nonce}"
+    try:
+        build_leftovers()
+        back_to_chat()
+        build_new(run, "cylinder", wall, "2 metres ahead")
+        for line, said in (("size 1.5 0.4 2", "Size: 1.5 by 0.4 by 2 metres"), ("hollow 30", "Hollow: 30 percent"), ("colour green", "Colour: green"),
+                           ("shininess 2", "Shininess: 2"), ("material glass", "Material: 2 glass"), ("repeats per metre 2", "Repeats per metre: 2")):
+            m = mark()
+            build_cmd(line)
+            run.expect(f"(the wall: {line})", [said], m, 12)
+        walls = build_object(wall)
+        if not run.check("(the wall's out)", walls, ""):
+            return
+        wall_face = api("TesselObjects", "get", ids=[walls["root"]["id"]], full=True)["objects"][0]["faces"]
+        build_new(run, "box", dome, "3 metres ahead")
+        dome_id = build_object(dome)["root"]["id"]
+
+        def dome_now():
+            return api("TesselObjects", "get", ids=[dome_id], full=True, fresh=True)["objects"][0]
+
+        m = mark()
+        build_cmd(f"copy colour from {wall}")
+        run.expect("copy colour from NAME: said, and how it is now", ["Copied colour from " + wall, "Colour: green"], m, 12)
+        now = wait(lambda: (lambda d: d if d["faces"]["all"]["color"][:3] == [0, 1, 0] else None)(dome_now()), 5)
+        run.check("colour only: green in the region, still a box", now and now["shape"] == "box", json.dumps(dome_now().get("shape")))
+        m = mark()
+        build_cmd("undo")
+        run.expect("undo takes a copy back", ["Undone", "copied colour"], m, 15)
+        now = wait(lambda: (lambda d: d if d["faces"]["all"]["color"][:3] == [1, 1, 1] else None)(dome_now()), 5)
+        run.check("(white again)", now, json.dumps(dome_now()["faces"]["all"]["color"]))
+        m = mark()
+        build_cmd(f"copy shape from {wall}")
+        run.expect("copy shape: its shape, not its size", ["Copied shape from " + wall, "Now a cylinder 0.5 by 0.5 by 0.5 metres"], m, 12)
+        m = mark()
+        build_cmd("hollow")
+        run.expect("(hollow with it)", ["Hollow: 30 percent"], m, 6)
+        m = mark()
+        build_cmd(f"copy shape and size from {wall}")
+        run.expect("two at once", ["Copied shape and size from", "Now a cylinder 1.5 by 0.4 by 2 metres"], m, 12)
+        m = mark()
+        build_cmd(f"copy from {wall}")
+        run.expect("copy from NAME: everything, said", ["Copied shape, size, rotation, material, colour, texture and features from " + wall, "Colour: green", "Material: 2 glass"], m, 15)
+        now = wait(lambda: (lambda d: d if d["faces"]["all"].get("shiny") == "medium" and d.get("material") == "glass" else None)(dome_now()), 5)
+        run.check("texture settings and material on it in the region", now, json.dumps(dome_now().get("material")))
+        if now:
+            run.check("repeats as the wall's", json.dumps(now["faces"].get("all", {}).get("repeats")) == json.dumps(wall_face.get("all", {}).get("repeats")),
+                      json.dumps(now["faces"].get("all", {}).get("repeats")))
+            run.check("still where it was: its place isn't copied", math.dist(now["pos"], build_object(wall)["root"]["pos"]) > 0.3, "")
+            run.check("still its own name", now.get("name") == dome, now.get("name"))
+        m = mark()
+        build_cmd(f"copy from {dome}")
+        run.expect("copying from itself says so", ["the one you're editing"], m, 8)
+        m = mark()
+        build_cmd("copy from nothing like this")
+        run.expect("nothing by that name says so", ["Nothing called nothing like this"], m, 8)
+        m = mark()
+        build_cmd("copy something odd")
+        run.expect("not a setting nor anything inside: says both", ["Nothing called something odd inside it", "copy from NAME"], m, 8)
+
+        # to all of a linked object: what goes to every part
+        m = mark()
+        build_cmd(f"colour red")
+        run.expect("(the dome red)", ["Colour: red"], m, 12)
+        build_cmd(f"edit {wall}")
+        time.sleep(1)
+        m = mark()
+        build_cmd(f"link {dome}")
+        run.expect("(the two linked)", ["Linked", "2 parts"], m, 15)
+        m = mark()
+        build_cmd("copy colour from part 2")
+        run.expect("copy from part 2, to all of it", ["Copied colour from " + dome, "all 2 parts", "Colour: red", "all 2 parts"], m, 12)
+        m = mark()
+        build_cmd(f"copy shape from part 2")
+        run.expect("what's each part's own, asked for by name, says so", ["Shape: each part's own"], m, 8)
+        m = mark()
+        build_cmd(f"copy from part 2")
+        run.expect("everything to all of it: only what goes to every part", ["Copied material, colour and texture", "all 2 parts"], m, 12)
+        m = mark()
+        build_cmd("unlink")
+        run.expect("(apart again)", ["Unlinked all 2 parts"], m, 15)
+
+        # by the menus: Objects' Copy its settings to what I'm editing
+        build_cmd(f"edit {wall}")
+        time.sleep(1)
+        m = mark()
+        build_cmd("colour yellow")
+        run.expect("(the wall yellow)", ["Colour: yellow"], m, 12)
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("f5")
+        if wait(lambda: find(f"type=ListItem;name~={dome}, "), 10) and select_in("id=objects", dome):
+            key("apps")
+            if run.check("Objects' menu with a build open: Copy its settings to what I'm editing", menu_open("Copy its settings to what I'm editing", 3), focus_label()):
+                m = mark()
+                key("y")
+                run.expect("and it copies to what's being edited", ["Copied", f"from {dome} to {wall}", "Colour: red"], m, 15)
+            else:
+                key("esc")
+        back_to_chat()
+    finally:
+        build_leftovers()
+
+
+def building_rows(run, nonce):
+    """The rows left out of the first version. Locked: on the Object tab; a move, a change, take and delete said refused
+    with what frees it; for all of a linked object; off again. Repeats per metre by each face's axes, as the official
+    editor reckons them; flip as negative repeats, repeats said without their sign and keeping it. Force on a flexible
+    path; a projector with its field of view."""
+    box, leg = f"Access Build {nonce}", f"Access Leg {nonce}"
+
+    def box_now():
+        return api("TesselObjects", "get", ids=[build_object(box)["root"]["id"]], full=True, fresh=True)["objects"][0]
+
+    try:
+        build_leftovers()
+        back_to_chat()
+        build_new(run, "box", box, "2 metres ahead")
+        m = mark()
+        build_cmd("object")
+        run.expect("Locked is on the Object tab", ["Locked: off"], m, 8)
+        m = mark()
+        build_cmd("lock")
+        run.expect("lock: said back once the region shows it", ["Locked: on"], m, 12)
+        # (the local grid's region keeps the owner's modify letter and goes by move, as the official viewer's box reads it)
+        o = wait(lambda: (lambda b: b if b and "V" not in b["root"]["perms"]["owner"] else None)(build_object(box)), 6)
+        run.check("the owner's move right off in the region", o, json.dumps(build_object(box)["root"]["perms"]))
+        was = build_object(box)["root"]["pos"]
+        m = mark()
+        build_cmd("move by 50 cm up")
+        run.expect("a move on a locked one says it's locked and what frees it", ["locked", "locked off frees it"], m, 8)
+        time.sleep(1)
+        run.check("it hasn't moved", close(build_object(box)["root"]["pos"], was), json.dumps(build_object(box)["root"]["pos"]))
+        m = mark()
+        build_cmd("colour red")
+        run.expect("a change likewise", ["locked", "locked off frees it"], m, 8)
+        m = mark()
+        build_cmd("take")
+        run.expect("take asks for it to be unlocked first", ["locked: locked off first"], m, 6)
+        m = mark()
+        build_cmd("delete")
+        run.expect("delete too", ["locked: locked off first"], m, 6)
+        m = mark()
+        build_cmd("what")
+        run.expect("arriving says so", ["It's locked"], m, 8)
+        m = mark()
+        build_cmd("unlock")
+        run.expect("unlock: free again", ["Locked: off"], m, 12)
+        o = wait(lambda: (lambda b: b if b and "V" in b["root"]["perms"]["owner"] else None)(build_object(box)), 6)
+        run.check("its rights back in the region", o, json.dumps(build_object(box)["root"]["perms"]))
+        m = mark()
+        build_cmd("locked on")
+        run.expect("(locked on)", ["Locked: on"], m, 12)
+        m = mark()
+        build_cmd("undo")
+        run.expect("undo frees it too", ["Undone", "locked"], m, 15)
+        wait(lambda: (lambda b: b if b and "V" in b["root"]["perms"]["owner"] else None)(build_object(box)), 6)
+
+        # on a linked object: every part, from a part too
+        build_new(run, "box", leg, "3 metres ahead")
+        m = mark()
+        build_cmd(f"link {box}")
+        run.expect("(linked)", ["Linked", "2 parts"], m, 15)
+        m = mark()
+        build_cmd("part 2")
+        run.expect("(part 2)", ["part 2 of"], m, 10)
+        m = mark()
+        build_cmd("locked on")
+        run.expect("locked from a part: said to be all the parts", ["Locked: on", "All 2 parts"], m, 12)
+        got = wait(lambda: (lambda b: b if b and "V" not in b["root"]["perms"]["owner"] else None)(build_object(leg)), 6)
+        run.check("the object locked in the region", got, json.dumps(build_object(leg)["root"]["perms"]))
+        m = mark()
+        build_cmd("move by 50 cm up")
+        run.expect("a part of it won't move either", ["locked", "locked off frees it"], m, 8)
+        m = mark()
+        build_cmd("all parts")
+        run.expect("all of it, said locked", [f"Editing all 2 parts of {leg}", "It's locked"], m, 10)
+        m = mark()
+        build_cmd("locked")
+        run.expect("locked read on all of it", ["Locked: on"], m, 6)
+        m = mark()
+        build_cmd("unlock")
+        run.expect("unlock on all of it", ["Locked: off", "All 2 parts"], m, 12)
+        wait(lambda: (lambda b: b if b and "V" in b["root"]["perms"]["owner"] else None)(build_object(leg)), 6)
+        m = mark()
+        build_cmd("unlink")
+        run.expect("(apart again)", ["Unlinked all 2 parts"], m, 15)
+
+        # repeats per metre, by each side's own axes
+        build_cmd(f"edit {box}")
+        time.sleep(1)
+        m = mark()
+        build_cmd("size 2 1 0.5")
+        run.expect("(a box 2 by 1 by 0.5)", ["Size: 2 by 1 by 0.5 metres"], m, 12)
+        m = mark()
+        build_cmd("repeats per metre 3")
+        run.expect("repeats per metre: said back", ["Repeats per metre: 3, all sides"], m, 12)
+        faces = wait(lambda: (lambda d: d["faces"] if d["faces"].get("0", {}).get("repeats") == [6, 3] or d["faces"].get("all", {}).get("repeats") == [6, 3] else None)(box_now()), 6)
+        run.check("each side by its own size: the top 6 by 3, as the official editor reckons it", faces, json.dumps(box_now()["faces"])[:300])
+        if faces:
+            run.check("every side's at once (they go as one texture entry, none undoing another)",
+                      faces.get("1", {}).get("repeats") == [6, 1.5] and faces.get("2", {}).get("repeats") == [3, 1.5], json.dumps(faces)[:400])
+        m = mark()
+        build_cmd("undo")
+        run.expect("one undo step for all of them", ["Undone", "repeats"], m, 15)
+        wait(lambda: (lambda d: d if d["faces"].get("all", {}).get("repeats") == [1, 1] and "0" not in d["faces"] or d["faces"].get("0", {}).get("repeats") is None else None)(box_now()), 6)
+
+        # flip: a negative repeat, said apart, kept when the repeats change
+        m = mark()
+        build_cmd("face top")
+        run.expect("(the top)", ["Face: the top"], m, 6)
+        m = mark()
+        build_cmd("flip horizontal on")
+        run.expect("flip: said back", ["Flip, horizontal: on"], m, 12)
+        def top_repeats():
+            f = box_now()["faces"]
+            return f.get("0", {}).get("repeats") or f.get("all", {}).get("repeats")
+        rep = wait(lambda: (lambda r: r if r and r[0] < 0 else None)(top_repeats()), 6)
+        run.check("a negative horizontal repeat in the region", rep, json.dumps(top_repeats()))
+        m = mark()
+        build_cmd("horizontal repeats")
+        run.expect("repeats said without the sign", ["Repeats, horizontal: 1"], m, 6)
+        run.check("(not a minus)", not any("Repeats, horizontal: -" in (e.get("text") or "") for e in said_since(m)), "")
+        m = mark()
+        build_cmd("horizontal repeats 2")
+        run.expect("(two repeats)", ["Repeats, horizontal: 2"], m, 12)
+        rep = wait(lambda: (lambda r: r if r and r[0] == -2 else None)(top_repeats()), 6)
+        run.check("the flip kept when the repeats change", rep, json.dumps(top_repeats()))
+        m = mark()
+        build_cmd("flip horizontal off")
+        run.expect("flip off", ["Flip, horizontal: off"], m, 12)
+        m = mark()
+        build_cmd("flip vertical on")
+        run.expect("vertical too", ["Flip, vertical: on"], m, 12)
+        m = mark()
+        build_cmd("all sides")
+        run.expect("(all sides)", ["All sides"], m, 5)
+        m = mark()
+        build_cmd("flip vertical")
+        run.expect("all sides: the one side apart", ["Flip, vertical: off on", "on on the top, face 0"], m, 6)
+
+        # the Features rows
+        m = mark()
+        build_cmd("flexible on")
+        run.expect("(a flexible path)", ["Flexible path: on"], m, 12)
+        m = mark()
+        build_cmd("force 1 0 -2")
+        run.expect("force: said back", ["Force, X, Y and Z: 1, 0, -2"], m, 12)
+        got = wait(lambda: (lambda d: d if d.get("flexi", {}).get("force") == [1, 0, -2] else None)(box_now()), 6)
+        run.check("force in the region", got, json.dumps(box_now().get("flexi")))
+        m = mark()
+        build_cmd("flexible off")
+        run.expect("(rigid again)", ["Flexible path: off"], m, 12)
+        m = mark()
+        build_cmd("light on")
+        run.expect("(a light)", ["Light: on"], m, 12)
+        m = mark()
+        build_cmd("light off")
+        run.expect("light off: said back", ["Light: off"], m, 12)
+        m = mark()
+        build_cmd("light on")
+        run.expect("(a light again)", ["Light: on"], m, 12)
+        m = mark()
+        build_cmd("projector blank")
+        run.expect("projector: said back", ["Projector: blank"], m, 12)
+        m = mark()
+        build_cmd("field of view 45")
+        run.expect("its field of view", ["Field of view: 45 degrees"], m, 12)
+        m = mark()
+        build_cmd("features")
+        run.expect("all on the Features tab", ["Features:", "Projector: blank", "Field of view: 45 degrees", "Focus:", "Ambiance:"], m, 8)
+        m = mark()
+        build_cmd("projector off")
+        run.expect("projector off", ["Projector: off"], m, 12)
+        m = mark()
+        build_cmd("light off")
+        run.expect("(no light)", ["Light: off"], m, 12)
+    finally:
+        build_leftovers()
+
+
+def going_and_blocking(run, nonce):
+    """//go every way it takes a destination (a number, xyz, a person and an object by their words, and a name alone, a
+    person before an object), and //block, //blocks and //unblock by name: what the visitor says stops being heard, the
+    list opens, Enter takes one off."""
+    post = f"Access Post {nonce}"
+    tp_back = TESTER_START
+
+    def walked(line, what, words):
+        m = mark()
+        say_in_app(line)
+        run.expect(what, words, m, 10)
+        return run.expect(f"({line}: finished)", ["Finished walking"], m, 40)
+
+    vid = visitor_id()
+    try:
+        back_to_chat()
+        m = mark()
+        say_in_app(f"//tp {REGION}/{tp_back[0]}/{tp_back[1]}/{tp_back[2]}")
+        run.expect("(back at the start)", ["Arrived"], m, 30)
+        time.sleep(2)
+        x, y, z, _ = tester_where()
+        vx, vy, _ = visitor_where()
+        if math.dist((x, y), (vx, vy)) > 20:
+            run.check("(the visitor is near)", False, f"visitor at {vx:.0f}, {vy:.0f}; tester at {x:.0f}, {y:.0f}")
+            return
+        px, py = x + 4, y - 4
+        print(f"     ({v(f'rez {post} {px:.1f} {py:.1f} {z:.1f}')})")
+        time.sleep(1.5)
+
+        walked("//go 3", "//go NUMBER: ahead by that many metres", ["Walking", "ahead"])
+        walked("//go 2 south", "//go NUMBER and a direction", ["Walking", "to the south"])
+        walked(f"//go xyz {x + 1:.0f},{y + 1:.0f}", "//go xyz", ["Walking", f"{x + 1:.0f}, {y + 1:.0f}"])
+        vfirst = VISITOR[0]
+        walked(f"//go person {vfirst}", "//go person NAME", ["Walking", VNAME])
+        walked(f"//go object {post}", "//go object NAME", ["Walking", post])
+        walked(f"//go {VNAME}", "//go NAME alone: a person, by their whole name", ["Walking", VNAME])
+        walked(f"//go {vfirst}", "//go NAME alone: a person, by the first of it", ["Walking", VNAME])
+        walked(f"//go {post}", "//go NAME alone: an object, when no one's called that", ["Walking", post])
+        m = mark()
+        say_in_app("//go nobody by this name")
+        run.expect("//go a name nothing has: says so", ["No object called nobody by this name"], m, 8)
+        # a person is looked for before an object: a post named as the visitor's first name
+        print(f"     ({v(f'rez {vfirst} {px + 3:.1f} {py:.1f} {z:.1f}')})")
+        time.sleep(1.5)
+        walked(f"//go {vfirst}", "//go NAME that's a person's and an object's: the person", ["Walking", VNAME])
+        print(f"     ({v(f'derez {vfirst}')})")
+
+        # blocking by name
+        m = mark()
+        say_in_app(f"//block {vfirst}")
+        run.expect("//block NAME: someone nearby, by a part of their name", ["Blocked " + VNAME, "Control+Shift+Y"], m, 8)
+        muted = api("TesselAgent", "mutes").get("mutes") or []
+        run.check("(on the block list)", any(b.get("id") == vid for b in muted), json.dumps(muted)[:200])
+        m = mark()
+        v(f"say Blocked line {nonce}")
+        time.sleep(3)
+        run.check("what they say stops reaching her", not any(f"Blocked line {nonce}" in (e.get("text") or "") for e in said_since(m)), "")
+        m = mark()
+        say_in_app(f"//block {post}")
+        run.expect("//block NAME: something nearby", ["Blocked " + post], m, 8)
+        m = mark()
+        say_in_app("//block nobody by this name")
+        run.expect("//block a name nothing has: says so", ["Nothing called nobody by this name nearby"], m, 8)
+        m = mark()
+        say_in_app("//blocks")
+        d = wait_focus(lambda d: d["id"] == "blocksList", 5)
+        if run.check("//blocks: the list, the focus in it", d, focus_label()):
+            items = [e["name"] for e in find("type=ListItem")]
+            run.check("both listed, said which is which", any(VNAME in n and "a person" in n for n in items) and any(post in n and "an object" in n for n in items), " | ".join(items))
+            m = mark()
+            key("enter")
+            run.expect("Enter there unblocks the one selected", ["Unblocked"], m, 8)
+        back_to_chat()
+        now = api("TesselAgent", "mutes").get("mutes") or []
+        run.check("(one left on the list)", len([b for b in now if post in b.get("name", "") or b.get("id") == vid]) == 1, json.dumps(now)[:200])
+        for name in (post, VNAME):
+            if any(name in b.get("name", "") for b in api("TesselAgent", "mutes").get("mutes") or []):
+                m = mark()
+                say_in_app(f"//unblock {name}")
+                run.expect(f"//unblock NAME: {name}", ["Unblocked " + name], m, 8)
+        run.check("nothing of the step's left blocked", not [b for b in api("TesselAgent", "mutes").get("mutes") or [] if post in b.get("name", "") or b.get("id") == vid], "")
+        m = mark()
+        say_in_app("//unblock nobody by this name")
+        run.expect("//unblock a name not on the list: says so", ["Nothing called nobody by this name on your block list"], m, 8)
+        m = mark()
+        v(f"say Unblocked line {nonce}")
+        run.expect("unblocked, they're heard again", [f"Unblocked line {nonce}"], m, 8)
+    finally:
+        for b in api("TesselAgent", "mutes").get("mutes") or []:
+            if post in b.get("name", "") or b.get("id") == vid:
+                api("TesselAgent", "unmute", id=b.get("id"), name=b.get("name"))
+        print(f"     ({v(f'derez {post}')})")
+        print(f"     ({v(f'derez {VISITOR[0]}')})")
 
 
 LAND_PLOT = (24, 8, 48, 32)        # About Land's parcel, divided off Atelier for the step, away from the other steps' spots

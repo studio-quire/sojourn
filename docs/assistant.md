@@ -821,9 +821,9 @@ asks it too). `Confirmations.Classify` gates:
   above the known balance is refused by the gate, not passed.
 - deleting: TesselBuild delete/returnObjects/removeFromContents, `take` into Trash, inventory delete/emptyTrash and
   `move` into Trash, parcelReturn, deletePick, deleteRole, and `temp` (temporary on rez: the region deletes it for
-  good) on modify, or on rez of a no-copy item.
+  good) on modify or modifyEach, or on rez of a no-copy item.
 - giving: give, addToContents into someone else's object, a group notice with an attachment.
-- permissions: perm/sale keys on create/modify/duplicate/rez, inventory perms, parcelSet, parcelEject, group roles and
+- permissions: perm/sale keys on create/modify/modifyEach/duplicate/rez, inventory perms, parcelSet, parcelEject, group roles and
   settings, a group invite into a role beyond Everyone, granting a script's permission request, joining an experience
   (an experience's permission prompt, ScriptQuestionExperience: yes lets its scripts act wherever it runs without
   asking again; its no and "block experience" aren't gated).

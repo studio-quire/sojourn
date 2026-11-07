@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using LibreMetaverse;
 using LibreMetaverse.Assets;
+using LibreMetaverse.StructuredData;
 using Sojourn.Core.Leap;
 
 namespace Sojourn.Core.Agents;
@@ -419,14 +420,6 @@ public sealed class InventoryOps
 
     // ---------- notecards ----------
 
-    public static byte[] NotecardAsset(string text) => Encoding.UTF8.GetBytes(NotecardBody(text));
-
-    static string NotecardBody(string text)
-    {
-        var body = Encoding.UTF8.GetByteCount(text);
-        return $"Linden text version 2\n{{\nLLEmbeddedItems version 1\n{{\ncount 0\n}}\nText length {body}\n{text}}}\n";
-    }
-
     public async Task<JsonObject> CreateNotecardAsync(JsonObject a, CancellationToken ct)
     {
         var c = C;
@@ -440,17 +433,17 @@ public sealed class InventoryOps
         var item = await c.Inventory.CreateItemAsync(folder, name, a.Str("desc") ?? "", AssetType.Notecard, UUID.Zero,
             InventoryType.Notecard, next, cts.Token) ?? throw new LeapError("the notecard item wasn't created");
         var text = a.Str("text") ?? "";
-        var asset = await SaveNotecardAsync(item, text, cts.Token);
+        var asset = await SaveNotecardAsync(item, NotecardFile.Asset(text), cts.Token);
         var j = _s.Inventory.ItemJson(item);
         j["asset_id"] = asset.ToString();
         j["item_id"] = item.UUID.ToString();
         return j;
     }
 
-    async Task<UUID> SaveNotecardAsync(InventoryItem item, string text, CancellationToken ct)
+    async Task<UUID> SaveNotecardAsync(InventoryItem item, byte[] content, CancellationToken ct)
     {
         var c = C;
-        var (ok, status, _, asset) = await c.Inventory.RequestUploadNotecardAssetAsync(NotecardAsset(text), item.UUID, ct);
+        var (ok, status, _, asset) = await c.Inventory.RequestUploadNotecardAssetAsync(content, item.UUID, ct);
         if (!ok) throw new LeapError($"saving the notecard failed: {status}");
         if (asset != UUID.Zero) item.AssetUUID = asset;
         return asset;
@@ -463,22 +456,35 @@ public sealed class InventoryOps
         if (item.AssetType != AssetType.Notecard) throw new LeapError($"{item.Name} isn't a notecard");
         if ((item.Permissions.OwnerMask & PermissionMask.Modify) == 0) throw new LeapError($"{item.Name} is no-modify");
         var text = a.Str("text") ?? throw new LeapError("need text");
-        if (a.Bool("append", false)) text = (await ReadTextAsync(item, ct)).Text + text;
-        var asset = await SaveNotecardAsync(item, text, ct);
-        return new JsonObject { ["item_id"] = item.UUID.ToString(), ["asset_id"] = asset.ToString(), ["length"] = text.Length };
+        // read first, so what's embedded stays; if the card can't be read nothing is saved, rather than risk losing it
+        NotecardFile was;
+        try { was = item.AssetUUID == UUID.Zero ? NotecardFile.Empty : await ReadFileAsync(item, ct); }
+        catch (Exception e) when (e is LeapError or OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            throw new LeapError($"couldn't read {item.Name} just now, and saving over it unread could lose what's embedded in it");
+        }
+        if (a.Bool("append", false)) text = was.RawText + text;
+        var asset = await SaveNotecardAsync(item, was.Saved(text, out var moved), ct);
+        var o = new JsonObject { ["item_id"] = item.UUID.ToString(), ["asset_id"] = asset.ToString(), ["length"] = text.Length };
+        if (was.Items.Count > 0) o["embedded_kept"] = was.Items.Count;
+        if (moved.Count > 0) o["moved_to_end"] = new JsonArray(moved.Select(m => (JsonNode)m).ToArray());
+        return o;
     }
 
     public async Task<JsonObject> ReadNotecardAsync(JsonObject a, CancellationToken ct)
     {
         var item = await ItemAsync(a, ct);
         if (item.AssetType != AssetType.Notecard) throw new LeapError($"{item.Name} isn't a notecard");
-        var (text, embedded) = await ReadTextAsync(item, ct);
-        var o = new JsonObject { ["item_id"] = item.UUID.ToString(), ["name"] = item.Name, ["text"] = text };
-        if (embedded.Count > 0)
+        var file = await ReadFileAsync(item, ct);
+        var o = new JsonObject { ["item_id"] = item.UUID.ToString(), ["name"] = item.Name, ["text"] = file.Readable };
+        if (file.Items.Count > 0)
         {
             var arr = new JsonArray();
-            foreach (var e in embedded)
-                arr.Add(new JsonObject { ["item_id"] = e.UUID.ToString(), ["name"] = e.Name, ["type"] = AgentInventory.AssetName(e.AssetType) });
+            for (int i = 0; i < file.Items.Count; i++)
+            {
+                var e = file.Items[i];
+                arr.Add(new JsonObject { ["item_id"] = e.UUID.ToString(), ["name"] = e.Name, ["type"] = AgentInventory.AssetName(e.AssetType), ["kind"] = AgentInventory.AssetTypeLabel(e.AssetType), ["marker"] = file.Marker(i) });
+            }
             o["embedded"] = arr;
         }
         return o;
@@ -490,7 +496,7 @@ public sealed class InventoryOps
         var c = C;
         var card = await ItemAsync(a, ct);
         if (card.AssetType != AssetType.Notecard) throw new LeapError($"{card.Name} isn't a notecard");
-        var (_, embedded) = await ReadTextAsync(card, ct);
+        var embedded = (await ReadFileAsync(card, ct)).Items;
         var want = a.Uuid("embedded_id");
         var name = a.Str("name");
         var item = embedded.FirstOrDefault(e => e.UUID == want || (want is null && name is not null && string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase)))
@@ -498,8 +504,29 @@ public sealed class InventoryOps
         var folder = a.Uuid("folder_id") ?? _s.Inventory.FolderFor(FolderForAsset(item.AssetType));
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(20));
-        var made = await c.Inventory.RequestCopyItemFromNotecardAsync(UUID.Zero, card.UUID, folder, item.UUID, cts.Token) as InventoryItem
-                   ?? throw new LeapError($"{item.Name} didn't arrive (it needs copy rights)");
+        // the capability as the viewer posts it: LibreMetaverse 3.2.0's call posts an empty body (its map, turned into a
+        // string), which fails, then falls back on a UDP packet regions may not handle
+        await _s.Inventory.EnsureLoadedAsync(folder, cts.Token);
+        InventoryItem? New(IEnumerable<UUID> had) => c.Inventory.Store!.GetContents(folder).OfType<InventoryItem>()
+            .FirstOrDefault(i => i.AssetType == item.AssetType && i.Name == item.Name && !had.Contains(i.UUID));
+        var had = c.Inventory.Store!.GetContents(folder).Select(n => n.UUID).ToHashSet();
+        InventoryItem? made = null;
+        try
+        {
+            if (c.Network.CurrentSim?.Caps?.CapabilityURI("CopyInventoryFromNotecard") is { } cap)
+            {
+                var (resp, _) = await c.HttpCapsClient.PostAsync(cap, OSDFormat.Xml, new OSDMap
+                {
+                    ["notecard-id"] = OSD.FromUUID(card.UUID), ["object-id"] = OSD.FromUUID(UUID.Zero), ["item-id"] = OSD.FromUUID(item.UUID),
+                    ["folder-id"] = OSD.FromUUID(folder), ["callback-id"] = OSD.FromInteger(0),
+                }, cts.Token);
+                if (!resp.IsSuccessStatusCode) throw new LeapError($"{item.Name} didn't copy: the grid refused it (it needs copy and transfer rights)");
+            }
+            else _ = c.Inventory.RequestCopyItemFromNotecardAsync(UUID.Zero, card.UUID, folder, item.UUID, cts.Token);
+            // it lands by BulkUpdateInventory, by UDP or the event queue, and only the store hears of both
+            while ((made = New(had)) == null) await Task.Delay(200, cts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new LeapError($"{item.Name} didn't arrive (it needs copy and transfer rights)"); }
         var j = _s.Inventory.ItemJson(made);
         j["item_id"] = made.UUID.ToString();
         return j;
@@ -511,10 +538,11 @@ public sealed class InventoryOps
         var item = await _s.Inventory.ItemAsync(id, ct) ?? throw new LeapError($"no inventory item {id}");
         if (item.AssetType == AssetType.Link && await _s.Inventory.ItemAsync(item.AssetUUID, ct) is { } target) item = target;
         if (item.AssetType != AssetType.Notecard) throw new LeapError($"{item.Name} isn't a notecard");
-        return await ReadTextAsync(item, ct);
+        var file = await ReadFileAsync(item, ct);
+        return (file.Readable, file.Items);
     }
 
-    async Task<(string Text, List<InventoryItem> Embedded)> ReadTextAsync(InventoryItem item, CancellationToken ct)
+    async Task<NotecardFile> ReadFileAsync(InventoryItem item, CancellationToken ct)
     {
         var c = C;
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -522,11 +550,7 @@ public sealed class InventoryOps
         var owner = InLibrary(item.UUID) ? LibraryOwner : item.OwnerID;
         var asset = await c.Assets.RequestInventoryAssetAsync(item.AssetUUID, item.UUID, UUID.Zero, owner, AssetType.Notecard, true, UUID.Random(), cts.Token)
                     ?? throw new LeapError("the notecard's text didn't arrive");
-        var raw = asset.AssetData ?? Array.Empty<byte>();
-        if (raw.Length == 0) return ("", new List<InventoryItem>());
-        var card = new AssetNotecard(asset.AssetID, raw);
-        if (card.Decode()) return (card.BodyText ?? "", card.EmbeddedItems ?? new List<InventoryItem>());
-        return (Encoding.UTF8.GetString(raw).TrimEnd('\0'), new List<InventoryItem>());
+        return NotecardFile.Parse(asset.AssetData);
     }
 
     // ---------- scripts in my inventory ----------

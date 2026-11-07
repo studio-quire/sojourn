@@ -8,7 +8,8 @@ namespace Sojourn.Access;
 
 /// <summary>
 /// Building with her own hands (docs/access.md > M6; a 2009 editor design for blind builders):
-/// the Build area, Control+B (the official viewer's Build key), on one prim at a time. Its command box takes the official
+/// the Build area, Control+B (the official viewer's Build key), on one prim at a time, or all of a linked object as the
+/// official editor's Edit linked off has it ("all parts", where a linked object starts). Its command box takes the official
 /// editor's tab names and settings as typed words ("object", "hollow 50", "face top", "fullbright on", "new box 2 metres
 /// ahead", "undo"), so any setting is reachable without walking a menu; its settings list browses a tab, each setting a
 /// row (Enter changes it, Right and Left step it); its faces list names faces by direction and picks the one Texture's
@@ -26,6 +27,10 @@ public sealed partial class MainForm
     ComboBox _buildTab = null!;
     UUID _buildId;
     int? _buildFace;
+    /// <summary>Edit linked on: one part of a linked object is being edited, not all of it. The target's a part already
+    /// when it's a child; this tells the root part alone from the whole object.</summary>
+    bool _buildOnePart;
+    bool _buildAllExplained, _buildPartExplained;
     Control? _beforeBuild;
     TabPage? _beforeBuildPage;
     List<FaceShape>? _buildShapes;
@@ -38,6 +43,7 @@ public sealed partial class MainForm
     int _buildHistoryAt;
     Dictionary<UUID, string>? _textureNames;
     long _textureNamesAt;
+    readonly Dictionary<UUID, (string Key, int Count)> _partFaceCounts = new();
 
     sealed record ContentItem(UUID Id, string Name, string Type, bool? Running);
 
@@ -129,21 +135,21 @@ public sealed partial class MainForm
             _beforeBuild = ActiveControl;
             _beforeBuildPage = _areas.SelectedTab;
         }
-        (UUID Id, int? Face)? picked = null;
-        if (_objects.Focused && _objects.FocusedItem?.Tag is PersonOps.Thing { Hud: false } t) picked = (t.Id, null);
-        else if (_parts.Focused && _parts.FocusedItem?.Tag is Linkset.Part { Hud: false } p) picked = (p.Id, null);
-        else if (_faces.Focused && _faces.FocusedItem?.Tag is FaceItem { Part.Hud: false } f) picked = (f.Part.Id, f.Face.Face);
-        bool fresh = picked is { } pk && pk.Id != _buildId;
-        if (picked is { } pick) SetBuildTarget(pick.Id, pick.Face);
+        (UUID Id, int? Face, bool OnePart)? picked = null;
+        if (_objects.Focused && _objects.FocusedItem?.Tag is PersonOps.Thing { Hud: false } t) picked = (t.Id, null, false);
+        else if (_parts.Focused && _parts.FocusedItem?.Tag is Linkset.Part { Hud: false } p) picked = (p.Id, null, true);
+        else if (_faces.Focused && _faces.FocusedItem?.Tag is FaceItem { Part.Hud: false } f) picked = (f.Part.Id, f.Face.Face, true);
+        bool fresh = picked is { } pk && (pk.Id != _buildId || pk.OnePart != _buildOnePart);
+        if (picked is { } pick) SetBuildTarget(pick.Id, pick.Face, pick.OnePart);
         GoArea(_buildPage);
         _ = GuardedAsync(() => BuildArrivedAsync(fresh), "the build editor");
     }
 
-    void EditThing(UUID id, int? face = null)
+    void EditThing(UUID id, int? face = null, bool onePart = false)
     {
         if (!_buildPage.ContainsFocus) { _beforeBuild = ActiveControl; _beforeBuildPage = _areas.SelectedTab; }
-        bool fresh = id != _buildId;
-        SetBuildTarget(id, face);
+        bool fresh = id != _buildId || onePart != _buildOnePart;
+        SetBuildTarget(id, face, onePart);
         GoArea(_buildPage);
         _ = GuardedAsync(() => BuildArrivedAsync(fresh), "the build editor");
     }
@@ -157,6 +163,7 @@ public sealed partial class MainForm
             Answer("Build. Nothing to edit yet: new box makes one, or choose something in Objects (Alt+7) and press Control+B." + intro);
             return;
         }
+        await ReadPartsAsync();
         if (fresh || _buildWhere == null) await BuildWhereAsync();
         await ShowBuildFacesAsync();
         await ShowBuildRowsAsync();
@@ -186,12 +193,35 @@ public sealed partial class MainForm
         if (want != UUID.Zero) await _ops.ReadAsync("TesselObjects", "select", new JsonObject { ["ids"] = new JsonArray(want.ToString()), ["add"] = true });
     }
 
-    void SetBuildTarget(UUID id, int? face = null)
+    /// <summary>What's edited next: a linked object's root means all of it, as the official editor's default, unless one
+    /// part is asked for.</summary>
+    void SetBuildTarget(UUID id, int? face = null, bool onePart = false)
     {
-        if (id != _buildId) { _buildWhere = null; _buildShapes = null; _buildShapesOf = UUID.Zero; }
+        if (id != _buildId) { _buildShapes = null; _buildShapesOf = UUID.Zero; }
+        if (id != _buildId || onePart != _buildOnePart) _buildWhere = null;
         _buildId = id;
         _buildFace = face;
+        _buildOnePart = onePart;
         _ = BuildSelectAsync();
+    }
+
+    /// <summary>The object's prims, root first, numbered as the editor numbers its parts.</summary>
+    List<Primitive> BuildLinkset()
+    {
+        if (Host?.Session is not { } s || s.Region is not { } w || BuildPrim() is not { } p) return new();
+        var root = s.Objects.RootOf(w, p);
+        var ordered = new List<Primitive> { root };
+        ordered.AddRange(s.Objects.Linkset(w, root).Where(x => x.LocalID != root.LocalID).OrderBy(x => x.LocalID));
+        return ordered;
+    }
+
+    /// <summary>The parts' names and permissions, asked for where they aren't known yet.</summary>
+    async Task ReadPartsAsync()
+    {
+        if (Host?.Session is not { } s || s.Region is not { } w) return;
+        var missing = BuildLinkset().Where(x => x.Properties == null).ToList();
+        if (missing.Count > 0)
+            try { await s.Objects.FetchAsync(w, missing, TimeSpan.FromSeconds(3), CancellationToken.None); } catch (Exception) { /* said as not known yet */ }
     }
 
     // --- what's being edited ----------------------------------------------------------------------------------------
@@ -203,9 +233,7 @@ public sealed partial class MainForm
     {
         if (Host?.Session is not { } s || s.Region is not { } w || BuildPrim() is not { } p) return null;
         var root = s.Objects.RootOf(w, p);
-        var set = s.Objects.Linkset(w, root);
-        var ordered = new List<Primitive> { root };
-        ordered.AddRange(set.Where(x => x.LocalID != root.LocalID).OrderBy(x => x.LocalID));
+        var ordered = BuildLinkset();
         int number = Math.Max(1, ordered.FindIndex(x => x.LocalID == p.LocalID) + 1);
         var pos = w.RegionPosition(p);
         var rot = w.RegionRotation(p);
@@ -218,10 +246,39 @@ public sealed partial class MainForm
         string own = p.Properties?.Name ?? "";
         string name = number == 1 ? (own.Length > 0 ? own : "the object")
             : Linkset.Unnamed(own, rootName) ? $"part {number} of {rootName}" : $"{own}, part {number} of {rootName}";
-        return new PrimLook(p, s.State.PrimFlagsOf(p), number == 1, number, ordered.Count, name, rootName, pos, rot, count, FaceName,
-            id => s.Names.Complete(id, "someone not known yet"),
-            id => s.State.Groups.TryGetValue(id, out var g) ? g.Name : "a group you're not in",
-            TextureName) { Where = _buildWhere };
+        string NameOf(UUID id) => s.Names.Complete(id, "someone not known yet");
+        string GroupOf(UUID id) => s.State.Groups.TryGetValue(id, out var g) ? g.Name : "a group you're not in";
+        var look = new PrimLook(p, s.State.PrimFlagsOf(p), number == 1, number, ordered.Count, name, rootName, pos, rot, count, FaceName, NameOf, GroupOf, TextureName) { Where = _buildWhere, RootPrim = root };
+        if (_buildOnePart || number != 1 || ordered.Count == 1) return look;
+        // all of it: each part read in its own right, by number where faces are concerned
+        var parts = ordered.Select((x, i) => i == 0 ? look : new PrimLook(x, s.State.PrimFlagsOf(x), false, i + 1, ordered.Count,
+            Linkset.Unnamed(x.Properties?.Name ?? "", rootName) ? $"part {i + 1} of {rootName}" : $"{x.Properties!.Name}, part {i + 1} of {rootName}",
+            rootName, w.RegionPosition(x), w.RegionRotation(x), PartFaceCount(x), f => $"face {f}", NameOf, GroupOf, TextureName) { RootPrim = root }).ToList();
+        return look with { Name = $"all {ordered.Count} parts of {rootName}", Parts = parts, Overall = OverallOf(parts) };
+    }
+
+    int PartFaceCount(Primitive x)
+    {
+        var key = ShapeKey(x);
+        if (_partFaceCounts.TryGetValue(x.ID, out var known) && known.Key == key) return known.Count;
+        int count = BuildShapes.Faces(x, default, System.Numerics.Quaternion.Identity)?.Count ?? Math.Max(1, Host?.Session.Materials.FaceCount(x) ?? 1);
+        _partFaceCounts[x.ID] = (key, count);
+        return count;
+    }
+
+    static string ShapeKey(Primitive p) => $"{p.Scale}{p.PrimData.profileCurve}{p.PrimData.PathCurve}{p.PrimData.ProfileBegin}{p.PrimData.ProfileEnd}{p.PrimData.PathBegin}"
+        + $"{p.PrimData.PathEnd}{p.PrimData.ProfileHollow}{p.PrimData.PathTwist}{p.PrimData.PathScaleX}{p.PrimData.PathScaleY}";
+
+    static BuildShapes.Box BoxOf(LibreMetaverse.Vector3 pos, LibreMetaverse.Quaternion q, LibreMetaverse.Vector3 scale) =>
+        new(new(pos.X, pos.Y, pos.Z), new(q.X, q.Y, q.Z, q.W), new(scale.X / 2, scale.Y / 2, scale.Z / 2));
+
+    /// <summary>How far all the parts reach east, north and up, end to end.</summary>
+    static System.Numerics.Vector3 OverallOf(IEnumerable<PrimLook> parts)
+    {
+        var boxes = parts.Select(x => BoxOf(x.Pos, x.Rot, x.P.Scale)).ToList();
+        float Span(System.Numerics.Vector3 axis) =>
+            boxes.Max(b => System.Numerics.Vector3.Dot(b.Centre, axis) + b.Reach(axis)) - boxes.Min(b => System.Numerics.Vector3.Dot(b.Centre, axis) - b.Reach(axis));
+        return new(Span(System.Numerics.Vector3.UnitX), Span(System.Numerics.Vector3.UnitY), Span(System.Numerics.Vector3.UnitZ));
     }
 
     static string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
@@ -230,8 +287,7 @@ public sealed partial class MainForm
     /// it has drawn it; kept while the prim's shape, size and turn stay the same.</summary>
     List<FaceShape>? BuildFaceShapes(Primitive p, LibreMetaverse.Vector3 pos, LibreMetaverse.Quaternion rot)
     {
-        var key = $"{pos}{rot}{p.Scale}{p.PrimData.profileCurve}{p.PrimData.PathCurve}{p.PrimData.ProfileBegin}{p.PrimData.ProfileEnd}{p.PrimData.PathBegin}"
-                  + $"{p.PrimData.PathEnd}{p.PrimData.ProfileHollow}{p.PrimData.PathTwist}{p.PrimData.PathScaleX}{p.PrimData.PathScaleY}";
+        var key = $"{pos}{rot}{ShapeKey(p)}";
         if (_buildShapesOf == p.ID && _buildShapesKey == key && _buildShapes != null) return _buildShapes;
         var shapes = BuildShapes.Faces(p, new(pos.X, pos.Y, pos.Z), new(rot.X, rot.Y, rot.Z, rot.W));
         if (shapes == null && _view != null && !ViewWords.Gone(_view))
@@ -296,10 +352,32 @@ public sealed partial class MainForm
     string BuildSummary()
     {
         if (BuildLook() is not { } l) return "Nothing to edit: it isn't here any more.";
+        var rights = l.Locked ? " It's locked: locked off frees it."
+            : (l.Flags & PrimFlags.ObjectModify) != 0 ? "" : (l.Flags & PrimFlags.ObjectMove) != 0 ? " You may move it, not change it." : " It isn't yours to change.";
+        var where = l.Where ?? _ops.Where(l.Pos) ?? "here";
+        if (l.Parts is { } parts)
+        {
+            int may = parts.Count(x => (x.Flags & PrimFlags.ObjectModify) != 0);
+            if (rights.Length == 0 && may < parts.Count) rights = $" You may change {may} of them.";
+            return $"Editing {l.Name}: {BuildRows.N(l.Overall.X)} by {BuildRows.N(l.Overall.Y)} by {BuildRows.N(l.Overall.Z)} metres overall; {where}.{rights}{AllExplained()}";
+        }
         var size = $"{BuildRows.N(l.P.Scale.X)} by {BuildRows.N(l.P.Scale.Y)} by {BuildRows.N(l.P.Scale.Z)} metres";
-        var whole = l.Count == 1 ? "" : l.IsRoot ? $", the root of {l.Count} parts (moving it moves them all)" : "";
-        var rights = (l.Flags & PrimFlags.ObjectModify) != 0 ? "" : (l.Flags & PrimFlags.ObjectMove) != 0 ? " You may move it, not change it." : " It isn't yours to change.";
-        return $"Editing {l.Name}{whole}: {ShapeWords(l)} {size}; {l.Where ?? _ops.Where(l.Pos) ?? "here"}.{rights}";
+        var scope = l.Count == 1 ? "" : l.IsRoot ? $", the root of {l.Count} parts, by itself (moving or turning it moves them all)" : ", this part only";
+        var hint = "";
+        if (l.Count > 1 && !_buildPartExplained)
+        {
+            _buildPartExplained = true;
+            hint = " all parts edits all of it.";
+        }
+        return $"Editing {l.Name}{scope}: {ShapeWords(l)} {size}; {where}.{rights}{hint}";
+    }
+
+    /// <summary>What all parts means, the first time it's met.</summary>
+    string AllExplained()
+    {
+        if (_buildAllExplained) return "";
+        _buildAllExplained = true;
+        return " Moving, turning, scale, colours and textures go to every part; part 2, next or root picks one.";
     }
 
     static string ShapeWords(PrimLook l) => l.Shape switch
@@ -323,8 +401,11 @@ public sealed partial class MainForm
     {
         if (Host?.Session is not { } s || s.Region is not { } w || BuildPrim() is not { } p) return null;
         var pos = w.RegionPosition(p);
-        var q = w.RegionRotation(p);
-        var box = new BuildShapes.Box(new(pos.X, pos.Y, pos.Z), new(q.X, q.Y, q.Z, q.W), new(p.Scale.X / 2, p.Scale.Y / 2, p.Scale.Z / 2));
+        // one prim, or all of a linked object: what's under its lowest part and against any of them, its own parts aside
+        var prims = BuildLook() is { Whole: true } ? BuildLinkset() : new List<Primitive> { p };
+        var boxes = prims.Select(x => BoxOf(w.RegionPosition(x), w.RegionRotation(x), x.Scale)).ToList();
+        var own = prims.Select(x => x.LocalID).ToHashSet();
+        var box = boxes.MinBy(b => b.Bottom);
         var parts = new List<string>();
         if (_ops.Where(pos) is { } from) parts.Add(from);
         float bottom = box.Bottom;
@@ -340,7 +421,7 @@ public sealed partial class MainForm
                     origins.Add(new(corner.X, corner.Y, bottom + 0.03f));
                 }
             var rays = origins.Select(o => (o, -System.Numerics.Vector3.UnitZ, 64f)).ToList();
-            if (await _rays.CollideManyAsync(rays, new HashSet<uint> { p.LocalID }) is { } batch)
+            if (await _rays.CollideManyAsync(rays, own) is { } batch)
             {
                 var hits = batch.Hits.Where(h => h != null).Select(h => h!.Value).ToList();
                 if (hits.Count > 0)
@@ -351,7 +432,7 @@ public sealed partial class MainForm
             }
         }
         // the ground there (the collision model may not have the terrain, or nothing was under it)
-        var g = await _ops.ReadAsync("TesselAgent", "ground", new JsonObject { ["points"] = new JsonArray(new JsonArray((double)pos.X, (double)pos.Y)) });
+        var g = await _ops.ReadAsync("TesselAgent", "ground", new JsonObject { ["points"] = new JsonArray(new JsonArray((double)box.Centre.X, (double)box.Centre.Y)) });
         double? ground = (g["heights"] as JsonArray)?.FirstOrDefault() is JsonValue hv && hv.TryGetValue<double>(out var gz) ? gz : null;
         if (under == null && ground is { } gd) under = ((float)(bottom - gd), "the ground");
         if (under is { } u)
@@ -361,22 +442,16 @@ public sealed partial class MainForm
         }
         if (ground is { } gr && bottom < gr - 0.03) parts.Add($"sunk {Len(gr - bottom)} into the ground");
         // against it: other prims' boxes (not avatars or anything worn)
-        var me = box;
-        var near2 = w.Prims.Values.Where(x => x.LocalID != p.LocalID && x.PrimData.PCode == PCode.Prim && !s.Objects.IsAttachment(w, x, out _, out _))
-            .Select(x =>
-            {
-                var xp = w.RegionPosition(x);
-                var xq = w.RegionRotation(x);
-                return (Prim: x, Box: new BuildShapes.Box(new(xp.X, xp.Y, xp.Z), new(xq.X, xq.Y, xq.Z, xq.W), new(x.Scale.X / 2, x.Scale.Y / 2, x.Scale.Z / 2)));
-            })
-            .Where(x => System.Numerics.Vector3.Distance(x.Box.Centre, me.Centre) < x.Box.Radius + me.Radius + 0.05f)
-            .Select(x => (x.Prim, Gap: BuildShapes.Gap(me, x.Box)))
+        var near2 = w.Prims.Values.Where(x => !own.Contains(x.LocalID) && x.PrimData.PCode == PCode.Prim && !s.Objects.IsAttachment(w, x, out _, out _))
+            .Select(x => (Prim: x, Box: BoxOf(w.RegionPosition(x), w.RegionRotation(x), x.Scale)))
+            .Select(x => (x.Prim, Gap: boxes.Where(b => System.Numerics.Vector3.Distance(x.Box.Centre, b.Centre) < x.Box.Radius + b.Radius + 0.05f)
+                .Select(b => BuildShapes.Gap(b, x.Box)).DefaultIfEmpty(float.MaxValue).Min()))
             .Where(x => x.Gap <= 0.01f).OrderBy(x => x.Gap).Take(6).ToList();
         if (near2.Count > 0)
         {
             var named = new List<string>();
             var into = new List<string>();
-            bool rough = !BuildShapes.IsPlainBox(p);
+            bool rough = prims.Any(x => !BuildShapes.IsPlainBox(x));
             foreach (var (x, gap) in near2)
             {
                 var n = await PrimNameAsync(x.LocalID, p);
@@ -428,7 +503,7 @@ public sealed partial class MainForm
         {
             var contents = await ContentsAsync();
             items = contents == null ? new() : contents.Select(c => (ContentWords(c), "item:" + c.Id, (object)c)).ToList();
-            _buildRows.AccessibleName = $"Contents of {l.Name}";
+            _buildRows.AccessibleName = l.Whole ? $"Contents of the root of {l.RootName}" : $"Contents of {l.Name}";
             RowsInto(_buildRows, items, contents == null ? "Its contents couldn't be read." : "Nothing inside. add NAME puts an item from your inventory in.");
         }
         else
@@ -459,6 +534,12 @@ public sealed partial class MainForm
     {
         if (BuildLook() is not { } l) { Fill(_buildFaces, new(), "No faces: nothing to edit yet."); return; }
         await Task.Yield();
+        if (l.Whole)
+        {
+            _buildFaces.AccessibleName = $"Faces of {l.Name}";
+            Fill(_buildFaces, new() { ($"All sides of all {l.Count} parts. Faces are each part's own: part 2, next or root picks one.", "all", null!) }, "No faces.");
+            return;
+        }
         var items = new List<(string Text, string Key, object Tag)> { ($"All sides ({(l.Faces == 1 ? "1 face" : $"{l.Faces} faces")})", "all", null!) };
         var shapes = _buildShapesOf == l.P.ID ? _buildShapes : null;
         for (int i = 0; i < l.Faces; i++)
@@ -497,6 +578,7 @@ public sealed partial class MainForm
 
     async Task RefreshBuildAsync(bool said)
     {
+        await ReadPartsAsync();
         await BuildWhereAsync();
         await ShowBuildFacesAsync();
         await ShowBuildRowsAsync(said);
@@ -569,10 +651,18 @@ public sealed partial class MainForm
     /// for permissions, a sale or temporary; then said back as the region shows it.</summary>
     async Task ApplyBuildAsync(string key, string value)
     {
+        if (key == "edit_linked") { await EditLinkedAsync(value); return; }
+        if (key == "overall") { await ScaleAsync(value); return; }
         if (BuildLook() is not { } l) { Answer(NothingToEdit); return; }
         var face = BuildRows.TabOf(key) == "Texture" ? _buildFace : null;
         var (args, error) = BuildRows.Change(l, key, value, face, TextureFor);
         if (args == null) { Answer(error ?? "Not changed."); return; }
+        // what keeps it safe, whichever part is being edited: every part of the object, as the Locked box on all of it
+        if (key == "locked" && l.Count > 1)
+        {
+            var locked = args[0]["locked"];
+            args = BuildLinkset().Select(x => new JsonObject { ["id"] = x.ID.ToString(), ["locked"] = locked?.DeepClone() }).ToList();
+        }
         var before = BuildRows.Row(l, key, face)?.Words;
         if (!await ModifyAsync(args)) return;
         var after = await EchoAsync(key, face, before);
@@ -581,40 +671,70 @@ public sealed partial class MainForm
         await ShowBuildRowsAsync();
         if (key.StartsWith("size.") || key.StartsWith("rot.") || key == "type") await ShowBuildFacesAsync();
         Answer(after == null ? $"Sent; Second Life hasn't shown the change yet. F5 reads the settings again."
-            : $"{after}.{(placed && _buildWhere is { } wh ? $" {Cap(wh)}." : "")}");
+            : $"{after}.{ScopeWords(l, key)}{(placed && _buildWhere is { } wh ? $" {Cap(wh)}." : "")}");
+    }
+
+    /// <summary>Whether a change just said went to this part or all of it, where the setting's own words don't say.</summary>
+    static string ScopeWords(PrimLook l, string key)
+    {
+        if (l.Count == 1) return "";
+        if (key is "physical" or "temp" or "phantom" or "locked") return $" All {l.Count} parts.";
+        if (key.StartsWith("pos.")) return l.IsRoot ? $" All {l.Count} parts moved with it." : " This part only.";
+        if (key.StartsWith("rot.")) return l.IsRoot ? $" All {l.Count} parts turned round the root." : " This part only.";
+        return l.Whole ? "" : " This part only.";
     }
 
     const string NothingToEdit = "Nothing to edit: new box makes one, or choose something in Objects (Alt+7) and press Control+B.";
 
-    /// <summary>TesselBuild modify on the prim being edited, each set of keys in turn; a refusal said in the person's
-    /// terms. False when it didn't go (refused, or cancelled at the confirmation).</summary>
+    /// <summary>TesselBuild modify on the prim being edited (or the prim a set names), several sets as one undo step and
+    /// one confirmation; a refusal said in the person's terms. False when it didn't go (refused, or cancelled at the
+    /// confirmation).</summary>
     async Task<bool> ModifyAsync(List<JsonObject> sets)
     {
         foreach (var a in sets)
+            if (!a.ContainsKey("id")) a["id"] = _buildId.ToString();
+        bool gate = sets.Any(a => a.Select(kv => kv.Key).Any(Gated.Contains) || a["temp"] is JsonValue tv && tv.TryGetValue<bool>(out var temp) && temp);
+        var (op, args) = sets.Count == 1 ? ("modify", sets[0]) : ("modifyEach", new JsonObject { ["edits"] = new JsonArray(sets.ToArray<JsonNode>()) });
+        var r = gate ? await ConfirmedAsync("TesselBuild", op, args) : await _ops.DoAsync("TesselBuild", op, args);
+        if (r == null) return false;   // ("Cancelled." was said)
+        if (PersonOps.Error(r) is { } e)
         {
-            a["id"] = _buildId.ToString();
-            bool gate = a.Select(kv => kv.Key).Any(Gated.Contains) || a["temp"] is JsonValue tv && tv.TryGetValue<bool>(out var temp) && temp;
-            var r = gate ? await ConfirmedAsync("TesselBuild", "modify", a) : await _ops.DoAsync("TesselBuild", "modify", a);
-            if (r == null) return false;   // ("Cancelled." was said)
-            if (PersonOps.Error(r) is { } e) { Answer($"Not changed: {Theirs(e)}"); return false; }
+            Answer(BuildLook() is { Locked: true } l ? $"{Cap(l.Name)} is locked, so that wasn't changed: locked off frees it." : $"Not changed: {Theirs(e)}");
+            return false;
         }
         return true;
     }
 
     /// <summary>The op's words are the assistant's ("I don't have modify rights"): said as the person's.</summary>
-    static string Theirs(string e) => e.Replace("I can't", "You can't").Replace("I don't", "you don't").Replace("I'm", "you're").Replace(" my ", " your ");
+    static string Theirs(string e) => e.Replace("I can't", "You can't").Replace("I don't", "you don't").Replace("I'm", "you're").Replace(" my ", " your ").Replace(" isn't mine", " isn't yours");
 
-    /// <summary>The setting's words once the region shows them changed (up to 3 s), or null.</summary>
+    /// <summary>The setting's words once the region shows them changed (up to 3 s), or null. On all of a linked object,
+    /// once they've settled too, the parts' updates arriving one by one.</summary>
     async Task<string?> EchoAsync(string key, int? face, string? before)
     {
-        if (BuildRows.TabOf(key) == "General" && Host?.Session is { } s && s.Region is { } w && BuildPrim() is { } p)
-            try { await s.Objects.RenewAsync(w, new[] { p }, TimeSpan.FromSeconds(3), CancellationToken.None); } catch (Exception) { }
-        for (int i = 0; i < 20; i++)
+        bool whole = BuildLook() is { Whole: true };
+        async Task RenewAsync()
         {
-            if (BuildLook() is { } l && BuildRows.Row(l, key, face) is { } r && r.Words != before) return r.Words;
+            if (Host?.Session is { } s && s.Region is { } w && BuildPrim() is { } p)
+                try { await s.Objects.RenewAsync(w, whole || key == "locked" ? BuildLinkset() : new List<Primitive> { p }, TimeSpan.FromSeconds(3), CancellationToken.None); } catch (Exception) { }
+        }
+        bool inProperties = BuildRows.TabOf(key) == "General" || key == "locked";
+        if (inProperties) await RenewAsync();
+        string? seen = null;
+        int same = 0;
+        for (int i = 0; i < 30; i++)
+        {
+            if (BuildLook() is { } l && BuildRows.Row(l, key, face) is { } r && r.Words != before)
+            {
+                if (!whole) return r.Words;
+                if (r.Words == seen && ++same >= 3) return seen;
+                if (r.Words != seen) { seen = r.Words; same = 0; }
+            }
+            if (i == 20 && seen == null) return null;
+            if (whole && inProperties && i % 5 == 4) await RenewAsync();
             await Task.Delay(150);
         }
-        return null;
+        return seen;
     }
 
     // --- typed commands ----------------------------------------------------------------------------------------------
@@ -631,11 +751,14 @@ public sealed partial class MainForm
         Shapes: box, cylinder, prism, sphere, torus, tube, ring, cone, pyramid. type sphere changes the one you're editing; shapes lists them
         Faces: face top, face 2, face north. all sides: every face
         Moving: move a metre to my left, move by 20 cm up, move to 128 64 25
-        Turning: turn 90 left, turn 45 around x. Sizing all of it: scale 2
+        Turning: turn 90 left, turn 45 around x. Sizing: scale 2 doubles every side
         where: where it is, what it rests on and touches. what: what it is. look: the assistant describes it
-        The whole object: duplicate, delete, take
         Joining: link tunnel joins the object called tunnel to this one, which stays the root. link alone lists your objects to pick from. unlink takes a part out again
-        Parts: edit NAME, part 2, root, next, previous
+        All of a linked object: all parts, or edit linked off, where a linked object starts. Moving, turning, scale, colours and textures go to every part
+        One part: part 2, part tunnel, edit tunnel, root, next, previous, or edit linked on. It's said which. parts lists them
+        Always all of it: duplicate, delete, take, locked, physical, temporary, phantom
+        Locked: lock, or locked on, keeps it from being moved or changed by a slip. unlock, or locked off, frees it
+        Copying settings: copy from wall takes everything but its name and place, from an object or part of yours. copy colour from part 2. Any of shape, size, rotation, material, colour, texture, features
         In content: add NAME, remove NAME, copy NAME
         undo, redo. done, or Escape, goes back
         """;
@@ -675,8 +798,8 @@ public sealed partial class MainForm
     static readonly string[] BuildVerbs =
     {
         "help", "shapes", "new", "edit", "done", "what", "where", "face", "move", "turn", "scale", "duplicate", "delete", "take",
-        "link", "unlink", "part", "root", "next", "previous", "add", "remove", "copy", "undo", "redo", "look", "general", "object",
-        "features", "texture", "content", "type",
+        "link", "unlink", "part", "parts", "root", "next", "previous", "add", "remove", "copy", "undo", "redo", "look", "general", "object",
+        "features", "texture", "content", "type", "size", "position", "rotation", "unlock", "all parts", "edit linked",
     };
 
     async Task BuildCommandCoreAsync(string text)
@@ -695,6 +818,7 @@ public sealed partial class MainForm
             case "help" or "?" or "commands": ShowBuildHelp(); return;
             case "shapes" or "types" or "kinds": Answer(ShapesWords); return;
             case "new" or "make" or "create": await NewPrimAsync(rest); return;
+            case "edit" when rest.StartsWith("linked", StringComparison.OrdinalIgnoreCase): await EditLinkedAsync(rest[6..]); return;
             case "edit" when rest.Length > 0: await EditNamedAsync(rest); return;
             case "edit": GoBuild(); return;
             case "done" or "close" or "exit": BuildBack(); return;
@@ -710,9 +834,25 @@ public sealed partial class MainForm
                 return;
             case "face" or "side": PickFace(rest); return;
             case "all" when rest is "sides" or "faces": PickFace("all"); return;
+            // (all parts is the word offered: "whole" sounds as "hole", a setting here)
+            case "all" when rest.Equals("parts", StringComparison.OrdinalIgnoreCase) || rest.Equals("of it", StringComparison.OrdinalIgnoreCase):
+            case "whole" when rest.Length == 0 || rest.Equals("object", StringComparison.OrdinalIgnoreCase):
+                await AllPartsAsync(l);
+                return;
+            case "parts": SayParts(l); return;
+            case "lock" when rest.Length == 0: await ApplyBuildAsync("locked", "on"); return;
+            case "unlock" when rest.Length == 0: await ApplyBuildAsync("locked", "off"); return;
             case "move" or "put" or "place": await MoveBuildAsync(rest); return;
             case "turn" or "rotate" or "spin": await TurnAsync(rest); return;
             case "scale": await ScaleAsync(rest); return;
+            case "size" when rest.Length == 0:
+                Answer(BuildRows.Row(l, l.Whole ? "overall" : "size.x", null) is { } oa && l.Whole ? oa.Words + "." : $"{Said(l, "size")}.");
+                return;
+            case "position" or "pos" when rest.Length == 0: Answer($"{Said(l, "pos")}."); return;
+            case "rotation" when rest.Length == 0: Answer($"{Said(l, "rot")}."); return;
+            case "size" when l.Whole:
+                Answer($"Size is each part's own: scale 2 sizes all of it, or part 2, next or root picks a part. You're editing all {l.Count} parts.");
+                return;
             case "size" when BuildRows.Numbers(rest, true) is { Count: 1 or 3 } sz:
                 await SetVectorAsync("scale", sz.Count == 1 ? new[] { sz[0], sz[0], sz[0] } : sz.ToArray(), "Size");
                 return;
@@ -728,10 +868,19 @@ public sealed partial class MainForm
             case "duplicate": await DuplicateAsync(l, rest); return;
             case "link": await LinkAsync(l, rest); return;
             case "unlink": await UnlinkAsync(l); return;
-            case "part" or "root" or "next" or "previous" or "prev": await PartStepAsync(l, verb, rest); return;
+            // (alone: "next owner copy off" is a setting)
+            case "part":
+            case "root" or "next" or "previous" or "prev" when rest.Length == 0:
+                await PartStepAsync(l, verb, rest);
+                return;
             case "add": await AddContentAsync(rest); return;
             case "remove" when rest.Length > 0: await RemoveContentNamedAsync(rest); return;
-            case "copy" when rest.Length > 0: await CopyContentAsync(rest); return;
+            case "copy" when rest.Length > 0:
+                if (System.Text.RegularExpressions.Regex.Match(rest, @"^(?:(?<what>.*?)\s+)?from\s+(?<source>.+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase) is { Success: true } cm
+                    && CopyWhat(cm.Groups["what"].Value) is { } what)
+                    await CopySettingsAsync(l, what, cm.Groups["what"].Length > 0, cm.Groups["source"].Value);
+                else await CopyContentAsync(rest);
+                return;
             case "look" or "describe": DescribeBuild(l); return;
         }
         if (BuildRows.Match(t) is not { } m)
@@ -744,6 +893,7 @@ public sealed partial class MainForm
         }
         if (m.Value.Length == 0)
         {
+            if (l.Whole && BuildRows.OnesOwn(m.Key)) { Answer(BuildRows.OwnWords(l, m.Key)); return; }
             var face = BuildRows.TabOf(m.Key) == "Texture" ? _buildFace : null;
             if (m.Key == "where") await BuildWhereAsync();
             Answer((BuildRows.Row(BuildLook() ?? l, m.Key, face)?.Words ?? m.Key) + ".");
@@ -776,6 +926,12 @@ public sealed partial class MainForm
     {
         if (BuildLook() is not { } l) return;
         var w = words.Trim().ToLowerInvariant();
+        if (l.Whole)
+        {
+            Answer(w is "" or "all" or "all sides" or "all faces" or "every face" or "every side" ? $"All sides of all {l.Count} parts."
+                : $"Faces are each part's own: part 2, next or root picks one. You're editing all {l.Count} parts.");
+            return;
+        }
         if (w is "" ) { Answer($"Face: {(_buildFace is { } f0 ? l.FaceName(f0) : "all sides")}. face top, face 2, or all sides."); return; }
         if (w is "all" or "all sides" or "all faces" or "every face" or "every side")
         {
@@ -816,12 +972,7 @@ public sealed partial class MainForm
     {
         if (BuildLook() is not { } before) return;
         var key = args.ContainsKey("scale") ? "size" : args.ContainsKey("pos") ? "pos" : "rot";
-        string Words(PrimLook l) => key switch
-        {
-            "size" => $"Size: {BuildRows.N(l.P.Scale.X)} by {BuildRows.N(l.P.Scale.Y)} by {BuildRows.N(l.P.Scale.Z)} metres",
-            "pos" => $"Position: {BuildRows.N(l.Pos.X, 2)}, {BuildRows.N(l.Pos.Y, 2)}, {BuildRows.N(l.Pos.Z, 2)}",
-            _ => $"Rotation: {BuildRows.N(BuildRows.Euler(l.Rot).X, 1)}, {BuildRows.N(BuildRows.Euler(l.Rot).Y, 1)}, {BuildRows.N(BuildRows.Euler(l.Rot).Z, 1)} degrees",
-        };
+        string Words(PrimLook l) => Said(l, key);
         var was = Words(before);
         if (!await ModifyAsync(new List<JsonObject> { args })) return;
         string? now = null;
@@ -833,8 +984,17 @@ public sealed partial class MainForm
         await BuildWhereAsync();
         await ShowBuildRowsAsync();
         await ShowBuildFacesAsync();
-        Answer(now == null ? $"{label} sent; Second Life hasn't shown the change yet." : $"{now}. {Cap(_buildWhere ?? "")}.");
+        Answer(now == null ? $"{label} sent; Second Life hasn't shown the change yet."
+            : $"{now}.{ScopeWords(before, key == "size" ? "size.x" : key + ".x")} {Cap(_buildWhere ?? "")}.");
     }
+
+    /// <summary>Its size, position or rotation, as said back.</summary>
+    static string Said(PrimLook l, string key) => key switch
+    {
+        "size" => $"Size: {BuildRows.N(l.P.Scale.X)} by {BuildRows.N(l.P.Scale.Y)} by {BuildRows.N(l.P.Scale.Z)} metres",
+        "pos" => $"Position: {BuildRows.N(l.Pos.X, 2)}, {BuildRows.N(l.Pos.Y, 2)}, {BuildRows.N(l.Pos.Z, 2)}",
+        _ => $"Rotation: {BuildRows.N(BuildRows.Euler(l.Rot).X, 1)}, {BuildRows.N(BuildRows.Euler(l.Rot).Y, 1)}, {BuildRows.N(BuildRows.Euler(l.Rot).Z, 1)} degrees",
+    };
 
     /// <summary>move WORDS: where from the person ("a metre to my left", "2 metres ahead"), set down on what's under the
     /// spot; "by 20 cm up" from where it is; "to 128 64 25" in the region.</summary>
@@ -885,7 +1045,41 @@ public sealed partial class MainForm
         if (BuildLook() is not { } l) return;
         if (BuildRows.Numbers(words.Replace("%", " percent"), false) is not { Count: 1 } n || n[0] <= 0) { Answer("scale 2 doubles it; scale 0.5 halves it."); return; }
         double f = words.Contains('%') || words.Contains("percent") ? n[0] / 100 : n[0];
+        if (l.Parts is { } parts) { await ScaleAllAsync(l, parts, f); return; }
         await SetVectorAsync("scale", new[] { l.P.Scale.X * f, l.P.Scale.Y * f, l.P.Scale.Z * f }, "Size");
+    }
+
+    /// <summary>scale on all of a linked object: every part's size and its distance from the root, each sent as a part's
+    /// own (the region takes those from any viewer), one undo step. Second Life's link distance is the region's to hold
+    /// to, so it's noted and read back rather than refused.</summary>
+    async Task ScaleAllAsync(PrimLook l, IReadOnlyList<PrimLook> parts, double f)
+    {
+        static double Least(LibreMetaverse.Vector3 s) => Math.Min(Math.Min(s.X, s.Y), s.Z);
+        static double Most(LibreMetaverse.Vector3 s) => Math.Max(Math.Max(s.X, s.Y), s.Z);
+        double low = parts.Max(x => 0.01 / Least(x.P.Scale)), high = parts.Min(x => 64 / Most(x.P.Scale));
+        if (f < low || f > high)
+        {
+            Answer($"Scale {BuildRows.N(f)}: each part has to stay between 1 centimetre and 64 metres, so this one goes from scale {BuildRows.N(low)} to {BuildRows.N(high)}.");
+            return;
+        }
+        var was = l.Overall;
+        var sets = parts.Select(x =>
+        {
+            var set = new JsonObject { ["id"] = x.P.ID.ToString(), ["scale"] = Xyz(x.P.Scale.X * f, x.P.Scale.Y * f, x.P.Scale.Z * f) };
+            if (!x.IsRoot) set["local_pos"] = Xyz(x.P.Position.X * f, x.P.Position.Y * f, x.P.Position.Z * f);
+            return set;
+        }).ToList();
+        if (!await ModifyAsync(sets)) return;
+        var want = was * (float)f;
+        bool Shown() => BuildLook() is { Whole: true } n && System.Numerics.Vector3.Distance(n.Overall, want) < 0.01f + want.Length() * 0.005f;
+        for (int i = 0; i < 30 && !Shown(); i++) await Task.Delay(150);
+        await BuildWhereAsync();
+        await ShowBuildRowsAsync();
+        if (BuildLook() is not { Whole: true } now) return;
+        var overall = $"{BuildRows.N(now.Overall.X)} by {BuildRows.N(now.Overall.Y)} by {BuildRows.N(now.Overall.Z)} metres overall";
+        var far = now.Overall.Length() > 54 ? " Second Life's links reach about 54 metres, so that may not hold there." : "";
+        Answer(Shown() ? $"Scaled {l.Name} by {BuildRows.N(f)}: {overall}.{far} {Cap(_buildWhere ?? "")}."
+            : $"Scale {BuildRows.N(f)} sent, and Second Life shows {overall} so far: not all of it may have taken. undo goes back.{far}");
     }
 
     // --- making, copying, linking, deleting -------------------------------------------------------------------------
@@ -934,11 +1128,11 @@ public sealed partial class MainForm
         }
         else
         {
-            // beside it to the person's right, a little more than its width
-            var reach = new BuildShapes.Box(default, new(l.Rot.X, l.Rot.Y, l.Rot.Z, l.Rot.W), new(p.Scale.X / 2, p.Scale.Y / 2, p.Scale.Z / 2));
+            // beside it to the person's right, a little more than the width of all of it
             var h = (_ops.Me()?.Heading ?? 0) * Math.PI / 180;
             var right = new System.Numerics.Vector3((float)Math.Cos(h), (float)-Math.Sin(h), 0);
-            double step = 2 * reach.Reach(right) + 0.05;
+            var boxes = BuildLinkset().Select(x => BoxOf(w.RegionPosition(x), w.RegionRotation(x), x.Scale)).ToList();
+            double step = boxes.Max(b => System.Numerics.Vector3.Dot(b.Centre, right) + b.Reach(right)) - boxes.Min(b => System.Numerics.Vector3.Dot(b.Centre, right) - b.Reach(right)) + 0.05;
             (ox, oy) = (right.X * step, right.Y * step);
         }
         var r = await _ops.DoAsync("TesselBuild", "duplicate", new JsonObject { ["id"] = root.ID.ToString(), ["offset"] = Xyz(ox, oy, oz) });
@@ -950,10 +1144,11 @@ public sealed partial class MainForm
 
     async Task DeleteBuildAsync(PrimLook l)
     {
-        if (!l.IsRoot) { Answer($"That's {l.Name}: deleting takes the whole object. unlink first to delete only this part, or root then delete for the whole object."); return; }
+        if (!l.IsRoot) { Answer($"That's {l.Name}: deleting takes all of the object. unlink first to delete only this part, or all parts then delete for all of it."); return; }
+        if (l.Locked) { Answer($"{Cap(l.RootName)} is locked: locked off first."); return; }
         if (await ConfirmedAsync("TesselBuild", "delete", new JsonObject { ["ids"] = new JsonArray(_buildId.ToString()) }) is not { } r) return;
         if (PersonOps.Error(r) is { } e) { Answer($"Not deleted: {Theirs(e)}"); return; }
-        Answer($"Deleted {l.RootName} (in the Trash). undo brings it back.");
+        Answer($"Deleted {l.RootName}{(l.Count > 1 ? $", all {l.Count} parts" : "")} (in the Trash). undo brings it back.");
         SetBuildTarget(UUID.Zero);
         await RefreshBuildAsync(said: false);
     }
@@ -961,10 +1156,11 @@ public sealed partial class MainForm
     async Task TakeBuildAsync(PrimLook l)
     {
         if (Host?.Session is not { } s || s.Region is not { } w || BuildPrim() is not { } p) return;
+        if (l.Locked) { Answer($"{Cap(l.RootName)} is locked: locked off first."); return; }
         var root = s.Objects.RootOf(w, p);
         var r = await _ops.DoAsync("TesselBuild", "take", new JsonObject { ["ids"] = new JsonArray(root.ID.ToString()) });
         if (PersonOps.Error(r) is { } e) { Answer($"Not taken: {Theirs(e)}"); return; }
-        Answer($"Took {l.RootName} into your inventory (Objects).");
+        Answer($"Took {l.RootName}{(l.Count > 1 ? $", all {l.Count} parts," : "")} into your inventory (Objects).");
         SetBuildTarget(UUID.Zero);
         await RefreshBuildAsync(said: false);
     }
@@ -1017,9 +1213,13 @@ public sealed partial class MainForm
         var r = await _ops.DoAsync("TesselBuild", "link", new JsonObject { ["ids"] = new JsonArray(root.ID.ToString(), other.Id.ToString()) });
         if (PersonOps.Error(r) is { } e) { Answer($"Not linked: {Theirs(e)}"); return; }
         var newRoot = UUID.TryParse(r.Str("root_id"), out var nr) ? nr : root.ID;
+        // all of it from here, as the official editor leaves a linked object chosen; what's joined it wants selecting too
+        _buildSelected = UUID.Zero;
+        SetBuildTarget(newRoot);
         await RefreshBuildAsync(said: false);
         var count = s.Objects.Linkset(w, w.PrimById(newRoot) ?? root).Count;
-        Answer($"Linked {other.Name} to {l.RootName}: {count} parts, {(newRoot == root.ID ? $"{l.RootName}'s root still the root" : $"{other.Name}'s root the root now")}. unlink takes a part out again; undo too.{also}");
+        Answer($"Linked {other.Name} to {l.RootName}: {count} parts, {(newRoot == root.ID ? $"{l.RootName}'s root still the root" : $"{other.Name}'s root the root now")}. "
+               + $"You're editing all of it.{AllExplained()} unlink takes a part out again; undo too.{also}");
     }
 
     async Task UnlinkAsync(PrimLook l)
@@ -1027,6 +1227,7 @@ public sealed partial class MainForm
         if (l.Count == 1) { Answer($"{Cap(l.Name)} is one prim; nothing to unlink."); return; }
         var r = await _ops.DoAsync("TesselBuild", "unlink", new JsonObject { ["id"] = _buildId.ToString() });
         if (PersonOps.Error(r) is { } e) { Answer($"Not unlinked: {Theirs(e)}"); return; }
+        SetBuildTarget(_buildId);
         await RefreshBuildAsync(said: false);
         Answer(l.IsRoot ? $"Unlinked all {l.Count} parts of {l.RootName}: each is an object of its own now; still editing the one that was the root."
             : $"Unlinked {l.Name}: it's an object of its own now, still the one being edited.");
@@ -1056,31 +1257,73 @@ public sealed partial class MainForm
             "flexi" => "flexible path", "click_action" => "when left-clicked", "next_perms" => "next owner's permissions",
             "everyone_perms" => "anyone's permissions", "group_perms" => "sharing with the group", "radius_offset" => "radius",
             var k => k.Replace('_', ' '),
-        });
+        }).Replace(" prims", " parts");
 
+    /// <summary>edit NAME: a part of this object by that very name first (once linked in, it's no object of its own any
+    /// more), then an object nearby, then a part with the name in it.</summary>
     async Task EditNamedAsync(string name)
     {
+        await ReadPartsAsync();
+        void EditPart(Primitive part) => EditThing(part.ID, null, part.ParentID != 0);
+        if (PartNamed(name, exact: true) is { } exact) { EditPart(exact); return; }
         var hit = (await _ops.ObjectsAsync(30, 60, name)).FirstOrDefault(t => t.Name.Contains(name, StringComparison.OrdinalIgnoreCase));
-        if (hit == null) { Answer($"Nothing called {name} within 30 metres."); return; }
-        EditThing(hit.Id);
+        if (hit != null) { EditThing(hit.Id); return; }
+        if (PartNamed(name, exact: false) is { } part) { EditPart(part); return; }
+        Answer($"Nothing called {name} within 30 metres.");
+    }
+
+    Primitive? PartNamed(string name, bool exact)
+    {
+        var w = name.Trim();
+        return BuildLinkset().FirstOrDefault(x => x.Properties?.Name is { } n && (exact ? n.Equals(w, StringComparison.OrdinalIgnoreCase) : n.Contains(w, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>all parts, or edit linked off: all of the linked object from here.</summary>
+    async Task AllPartsAsync(PrimLook l)
+    {
+        if (l.Count == 1) { Answer($"{Cap(l.Name)} is one prim: nothing's linked to it."); return; }
+        SetBuildTarget(BuildLinkset()[0].ID);
+        await RefreshBuildAsync(said: false);
+        Answer(BuildSummary());
+    }
+
+    /// <summary>edit linked: the official editor's checkbox, as words and as a row. On is one part, off all of them.</summary>
+    async Task EditLinkedAsync(string words)
+    {
+        if (BuildLook() is not { } l) { Answer(NothingToEdit); return; }
+        if (l.Count == 1) { Answer($"Edit linked: {l.Name} is one prim, so there's nothing linked to choose between."); return; }
+        var w = words.Trim().ToLowerInvariant();
+        if (w == "on" && l.Whole) { await PartStepAsync(l, "root", ""); return; }
+        if (w == "off" && !l.Whole) { await AllPartsAsync(l); return; }
+        Answer(l.Whole ? $"Edit linked is off: you're editing all {l.Count} parts. edit linked on, or part 2, picks one."
+            : $"Edit linked is on: you're editing {l.Name}. edit linked off, or all parts, edits all of it.");
+    }
+
+    /// <summary>parts: the object's parts by number and name (in a window to arrow through when there are many).</summary>
+    void SayParts(PrimLook l)
+    {
+        if (l.Count == 1) { Answer($"{Cap(l.Name)} is one prim."); return; }
+        var lines = BuildLinkset().Select((x, i) => $"{i + 1} {(i == 0 ? $"{l.RootName}, the root" : Linkset.Unnamed(x.Properties?.Name ?? "", l.RootName) ? "not named" : x.Properties!.Name)}").ToList();
+        if (lines.Count <= 8) { Answer($"{Cap(l.RootName)} has {lines.Count} parts: {string.Join("; ", lines)}."); return; }
+        Answer($"{Cap(l.RootName)}'s {lines.Count} parts, in a window to arrow through. Escape closes it.");
+        BeginInvoke(() => ShowText($"Parts of {l.RootName}", string.Join("\n", lines)));
     }
 
     /// <summary>part N, root, next, previous: another prim of the same object.</summary>
     async Task PartStepAsync(PrimLook l, string verb, string rest)
     {
         if (Host?.Session is not { } s || s.Region is not { } w || BuildPrim() is not { } p) return;
-        var root = s.Objects.RootOf(w, p);
-        var ordered = new List<Primitive> { root };
-        ordered.AddRange(s.Objects.Linkset(w, root).Where(x => x.LocalID != root.LocalID).OrderBy(x => x.LocalID));
+        var ordered = BuildLinkset();
+        await ReadPartsAsync();
         int at = verb switch
         {
             "root" => 1,
             "next" => l.Number % ordered.Count + 1,
             "previous" or "prev" => (l.Number + ordered.Count - 2) % ordered.Count + 1,
-            _ => int.TryParse(rest, out var n) ? n : -1,
+            _ => int.TryParse(rest, out var n) ? n : (PartNamed(rest, exact: true) ?? PartNamed(rest, exact: false)) is { } named ? ordered.FindIndex(x => x.LocalID == named.LocalID) + 1 : -1,
         };
-        if (at < 1 || at > ordered.Count) { Answer($"part 1 to {ordered.Count} ({l.RootName} has {ordered.Count} part{(ordered.Count == 1 ? "" : "s")})."); return; }
-        SetBuildTarget(ordered[at - 1].ID);
+        if (at < 1 || at > ordered.Count) { Answer($"part 1 to {ordered.Count}, or a part's name ({l.RootName} has {ordered.Count} part{(ordered.Count == 1 ? "" : "s")})."); return; }
+        SetBuildTarget(ordered[at - 1].ID, null, onePart: true);
         if (ordered[at - 1].Properties == null)
             try { await s.Objects.FetchAsync(w, new[] { ordered[at - 1] }, TimeSpan.FromSeconds(2), CancellationToken.None); } catch (Exception) { }
         await RefreshBuildAsync(said: false);
@@ -1089,11 +1332,143 @@ public sealed partial class MainForm
 
     void DescribeBuild(PrimLook l) => _ = DescribeAsync(BuildSubject(l));
 
-    Subject BuildSubject(PrimLook l) => new(_buildId.ToString(), "view", l.Name,
-        $"Describe {l.Name}, the prim I'm building, as it is now: its shape, size and colours, and how it sits with what's around it");
+    Subject BuildSubject(PrimLook l) => new(_buildId.ToString(), "view", l.Whole ? l.RootName : l.Name, l.Whole
+        ? $"Describe {l.RootName}, the linked object I'm building, all of it as it is now: its parts, their shapes, sizes and colours, how they join, and how it sits with what's around it"
+        : $"Describe {l.Name}, the prim I'm building, as it is now: its shape, size and colours, and how it sits with what's around it");
 
     /// <summary>Control+D in the editor: the prim being edited.</summary>
     Subject? BuildDescribeSubject() => _buildPage.ContainsFocus && BuildLook() is { } l ? BuildSubject(l) : null;
+
+    // --- copying settings from another prim ---------------------------------------------------------------------------
+
+    static readonly string[] EveryCopy = { "shape", "size", "rotation", "material", "colour", "texture", "features" };
+    /// <summary>What goes to every part of a linked object; the rest are each part's own.</summary>
+    static readonly string[] CopyToAll = { "material", "colour", "texture" };
+
+    /// <summary>"shape and colour": what's to be copied; everything when nothing's named; null when it isn't such words.</summary>
+    static List<string>? CopyWhat(string words)
+    {
+        var picked = new List<string>();
+        foreach (var w in words.ToLowerInvariant().Split(new[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (w is "and" or "its" or "the") continue;
+            if (w is "everything" or "all" or "settings") return EveryCopy.ToList();
+            var one = w switch
+            {
+                "shape" or "size" or "rotation" or "material" or "colour" or "features" or "texture" => w,
+                "color" => "colour", "textures" => "texture", "feature" => "features",
+                _ => null,
+            };
+            if (one == null) return null;
+            if (!picked.Contains(one)) picked.Add(one);
+        }
+        return picked.Count == 0 ? EveryCopy.ToList() : picked;
+    }
+
+    static string AndList(List<string> words) => words.Count < 2 ? string.Concat(words) : $"{string.Join(", ", words.Take(words.Count - 1))} and {words[^1]}";
+
+    /// <summary>copy [WHAT] from SOURCE: a part of this object (part 2, root, its name), an object nearby by name, or part
+    /// 2 of an object nearby.</summary>
+    async Task CopySettingsAsync(PrimLook l, List<string> what, bool named, string source)
+    {
+        var (from, also, error) = await CopySourceAsync(source.Trim());
+        if (from == null) { Answer(error!); return; }
+        await CopyToBuildAsync(l, from, what, named, also);
+    }
+
+    async Task<(Primitive? Prim, string Also, string? Error)> CopySourceAsync(string words)
+    {
+        if (Host?.Session is not { } s || s.Region is not { } w) return (null, "", "Not in a region yet.");
+        await ReadPartsAsync();
+        async Task<(PersonOps.Thing? Thing, string Also)> ObjectCalled(string name)
+        {
+            var called = (await _ops.ObjectsAsync(30, 60, name)).Where(t => t.Name.Contains(name, StringComparison.OrdinalIgnoreCase)).ToList();
+            var exact = called.Where(t => t.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (exact.Count > 0) called = exact;
+            var mine = called.Where(t => t.Mine).ToList();
+            if (mine.Count > 0) called = mine;
+            return (called.FirstOrDefault(), called.Count > 1 ? $" That's the nearest of {called.Count} called {name}." : "");
+        }
+        if (words.Equals("root", StringComparison.OrdinalIgnoreCase)) return (BuildLinkset().FirstOrDefault(), "", null);
+        var m = System.Text.RegularExpressions.Regex.Match(words, @"^part\s+(\d+)(?:\s+of\s+(.+))?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (m.Success)
+        {
+            int n = int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
+            var set = BuildLinkset();
+            var of = "this object";
+            var said = "";
+            if (m.Groups[2].Success)
+            {
+                var (thing, also) = await ObjectCalled(m.Groups[2].Value.Trim());
+                if (thing == null || w.PrimById(thing.Id) is not { } obj) return (null, "", $"Nothing called {m.Groups[2].Value.Trim()} within 30 metres to copy from.");
+                set = new List<Primitive> { obj };
+                set.AddRange(s.Objects.Linkset(w, obj).Where(x => x.LocalID != obj.LocalID).OrderBy(x => x.LocalID));
+                of = thing.Name;
+                said = also;
+            }
+            return n >= 1 && n <= set.Count ? (set[n - 1], said, null) : (null, "", $"{Cap(of)} has parts 1 to {set.Count}.");
+        }
+        if (PartNamed(words, exact: true) is { } part) return (part, "", null);
+        var (near, note) = await ObjectCalled(words);
+        if (near != null && w.PrimById(near.Id) is { } prim) return (prim, note, null);
+        if (PartNamed(words, exact: false) is { } some) return (some, "", null);
+        return (null, "", $"Nothing called {words} within 30 metres to copy from.");
+    }
+
+    /// <summary>Objects' and Parts' menus: everything from that one to what's being edited.</summary>
+    async Task CopyToEditingAsync(UUID from)
+    {
+        if (Host?.Session is not { } s || s.Region is not { } w || w.PrimById(from) is not { } prim || BuildLook() is not { } l) { Answer("Nothing is being edited: Control+B on something first."); return; }
+        await CopyToBuildAsync(l, prim, EveryCopy.ToList(), named: false, "");
+    }
+
+    async Task CopyToBuildAsync(PrimLook l, Primitive from, List<string> what, bool named, string also)
+    {
+        if (l.Whole)
+        {
+            var own = what.Where(x => !CopyToAll.Contains(x)).ToList();
+            if (named && own.Count > 0) { Answer($"{Cap(AndList(own))}: each part's own. part 2, next or root picks one; you're editing all {l.Count} parts."); return; }
+            what = what.Where(CopyToAll.Contains).ToList();
+        }
+        if (from.ID == _buildId && !l.Whole) { Answer($"That's the one you're editing, {l.Name}."); return; }
+        var targets = l.Whole ? BuildLinkset() : new List<Primitive> { l.P };
+        string Reading() => string.Join("|", targets.Select(x => $"{ShapeKey(x)}{x.Rotation}{x.PrimData.Material}{Convert.ToBase64String(x.Textures?.GetBytes() ?? Array.Empty<byte>())}{x.Light?.Intensity}{x.Flexible?.Softness}"));
+        var was = Reading();
+        var args = new JsonObject
+        {
+            ["from"] = from.ID.ToString(),
+            ["ids"] = new JsonArray(targets.Select(x => (JsonNode)x.ID.ToString()).ToArray()),
+            ["what"] = new JsonArray(what.Select(x => (JsonNode)x).ToArray()),
+        };
+        if (_buildFace is { } face) args["face"] = face;
+        var r = await _ops.DoAsync("TesselBuild", "copyFrom", args);
+        if (PersonOps.Error(r) is { } e) { Answer($"Not copied: {Theirs(e)}"); return; }
+        // said once the region shows it, and its updates have settled
+        string seen = was;
+        int same = 0;
+        for (int i = 0; i < 25 && same < 3; i++)
+        {
+            await Task.Delay(150);
+            var now = Reading();
+            if (now != seen) { seen = now; same = 0; }
+            else if (now != was) same++;
+        }
+        await RefreshBuildAsync(said: false);
+        var fromName = from.Properties?.Name is { Length: > 0 } fn ? fn : "that prim";
+        var copied = (r["copied"] as JsonArray)?.Select(x => x?.ToString() ?? "").ToList() ?? what;
+        var look = BuildLook() ?? l;
+        var said = new List<string>();
+        if (!look.Whole && (copied.Contains("shape") || copied.Contains("size")))
+            said.Add($"Now {ShapeWords(look)} {BuildRows.N(look.P.Scale.X)} by {BuildRows.N(look.P.Scale.Y)} by {BuildRows.N(look.P.Scale.Z)} metres");
+        if (copied.Contains("rotation") && !look.Whole) said.Add(Said(look, "rot"));
+        if (copied.Contains("material")) said.Add(BuildRows.Row(look, "material", null)!.Words);
+        if (copied.Contains("colour")) said.Add(BuildRows.Row(look, "colour", _buildFace)!.Words);
+        if (copied.Contains("texture")) said.Add(BuildRows.Row(look, "texture", _buildFace)!.Words);
+        var left = (r["left"] as JsonArray)?.OfType<JsonObject>().Select(x => $" Not its {x.Str("what")}: {x.Str("why")}.").ToList() ?? new();
+        var where = !look.Whole && (copied.Contains("shape") || copied.Contains("size") || copied.Contains("rotation")) && _buildWhere is { } wh ? $" {Cap(wh)}." : "";
+        var unseen = seen == was ? " Second Life hasn't shown a change: it may have been so already." : "";
+        Answer($"Copied {AndList(copied)} from {fromName} to {look.Name}.{unseen}{(said.Count > 0 ? $" {string.Join("; ", said)}." : "")}{where}{string.Concat(left)}{also}");
+    }
 
     // --- content: what's inside the prim ------------------------------------------------------------------------------
 
@@ -1136,7 +1511,7 @@ public sealed partial class MainForm
     async Task CopyContentAsync(string name)
     {
         var c = (await ContentsAsync())?.FirstOrDefault(x => x.Name.Contains(name, StringComparison.OrdinalIgnoreCase));
-        if (c == null) { Answer($"Nothing called {name} inside it."); return; }
+        if (c == null) { Answer($"Nothing called {name} inside it. To copy a prim's settings: copy from NAME, or copy colour from NAME."); return; }
         var r = await _ops.DoAsync("TesselBuild", "copyFromContents", new JsonObject { ["id"] = _buildId.ToString(), ["item_id"] = c.Id.ToString() });
         Answer(PersonOps.Error(r) is { } e ? $"Not copied: {Theirs(e)}" : $"Copied {c.Name} into your inventory.");
     }

@@ -65,7 +65,10 @@ public sealed partial class MainForm
         PartItem("W&here", p => Answer(p.Hud ? $"{PartName(p)} is {(OnHud(p.Root) ? "on your HUD" : "part of something you're wearing")}." : $"{PartName(p)} is {_ops.Where(L(p.Pos), full: true)}."));
         PartItem("&Describe", p => _ = DescribeAsync(Of(p)));
         PartItem("&Faces", p => { _faces.Focus(); });
-        PartItem("&Edit this part (build)", p => { if (!p.Hud) EditThing(p.Id); else Answer("Worn things are edited once they're out in the world."); });
+        PartItem("&Edit this part (build)", p => { if (!p.Hud) EditThing(p.Id, null, onePart: true); else Answer("Worn things are edited once they're out in the world."); });
+        PartItem("Cop&y its settings to what I'm editing", p => _ = GuardedAsync(() => CopyToEditingAsync(p.Id), PartName(p)));
+        var copySettingsPart = _partMenu.Items[^1];
+        _partMenu.Opening += (_, _) => copySettingsPart.Visible = _parts.FocusedItem?.Tag is Linkset.Part { Hud: false } q && q.Id != _buildId && BuildPrim() != null;
         KeysOn(_partMenu, ("&Touch", "Enter"), ("&Describe", "Control+D"), ("&Faces", "Tab"), ("&Edit this part (build)", "Control+B"));
         MenuOn(_parts, _partMenu);
         _parts.KeyDown += (_, e) => PartKey(e);

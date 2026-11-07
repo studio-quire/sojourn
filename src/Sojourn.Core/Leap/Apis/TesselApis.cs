@@ -446,6 +446,9 @@ public sealed class TesselBuild : SessionApi
             + "normal {texture, repeats?, offset?, rotation?} or false, specular {texture, color?, glossiness? 0-255, environment? 0-255, repeats?, "
             + "offset?, rotation?} or false, alpha_mode (none|blend|mask|emissive, alpha_cutoff); projector {texture, fov? degrees, focus?, "
             + "ambiance?} or false. SojournBuild undo takes a modify back", Modify);
+        Op("modifyEach", "sojourn: {edits: [{id, ...modify's keys}]}: several prims or faces with keys of their own, as one undo step; every prim's rights are checked before anything's sent", ModifyEach);
+        Op("copyFrom", "sojourn: {from, id | ids, what?: [shape, size, rotation, material, colour, texture, features] (all of them by default), face?} -> {copied, left: [{what, why}]}: "
+            + "a prim of mine's settings put on others, one undo step; left: what couldn't go (a model's shape, a texture I may not copy and transfer)", (a, ct) => Task.FromResult<JsonNode?>(S.Build.CopyFrom(a)));
         Op("duplicate", "{id, offset=[0,0,.5], ...modify} -> {id}", (a, ct) => Wrap(S.Build.DuplicateAsync(a, ct)));
         Op("rez", "{item_id, pos?, ...modify} -> {id}", (a, ct) => Wrap(S.Build.RezAsync(a, ct)));
         Op("link", "{ids} -> {root_id, linked}: once the region has linked them", (a, ct) => Wrap(S.Build.LinkAsync(a, ct)));
@@ -466,6 +469,33 @@ public sealed class TesselBuild : SessionApi
     }
 
     static async Task<JsonNode?> Wrap(Task<JsonObject> t) => await t;
+
+    async Task<JsonNode?> ModifyEach(JsonObject a, CancellationToken ct)
+    {
+        var w = W;
+        var edits = (a["edits"] as JsonArray)?.OfType<JsonObject>().ToList() ?? throw new LeapError("need edits: [{id, ...keys}]");
+        var byPrim = new List<(Primitive P, List<JsonObject> Sets)>();
+        foreach (var e in edits)
+        {
+            var id = e.Uuid("id") ?? throw new LeapError("each edit needs an id");
+            var p = w.PrimById(id) ?? throw new LeapError($"object not found: {id}");
+            S.Build.Check(p, e);
+            if (byPrim.FirstOrDefault(x => x.P.ID == id) is { Sets: { } had }) had.Add(e);
+            else byPrim.Add((p, new List<JsonObject> { e }));
+        }
+        var keys = edits.SelectMany(e => e.Select(kv => kv.Key)).Where(k => k is not ("id" or "face")).Distinct().Take(6);
+        var pending = new List<Task>();
+        using (S.Undo.Batch($"changed {string.Join(", ", keys)} on {byPrim.Count} prim{(byPrim.Count == 1 ? "" : "s")}"))
+            foreach (var (p, sets) in byPrim)
+            {
+                if (sets.Count > 1 && sets.All(BuildOps.OnlyFaces)) S.Build.ModifyFaces(p, sets);
+                else
+                    foreach (var e in sets)
+                        if (S.Build.Modify(p, (JsonObject)e.DeepClone()) is { } t) pending.Add(t);
+            }
+        await Task.WhenAll(pending).WaitAsync(ct);
+        return new JsonObject();
+    }
 
     async Task<JsonNode?> Modify(JsonObject a, CancellationToken ct)
     {

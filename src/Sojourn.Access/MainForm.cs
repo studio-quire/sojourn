@@ -576,6 +576,7 @@ public sealed partial class MainForm : Form
         Alt+Shift+4: a second pane, Alt+4 back to the first
         Control+M: move what's marked into the folder selected in the other pane
         Control+U: upload a picture, sound, animation or model (on a folder: into it)
+        In a notecard, Tab: what it holds; Enter copies one out, Enter again teleports by it or opens it
 
         Building
         Control+B: the build editor, on what's selected in Objects, its parts or faces (else what you edited last)

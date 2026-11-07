@@ -31,10 +31,10 @@ public sealed class TesselInventory : SessionApi
         Op("copy", "{id, dest_id?, name?} -> item (or {folder_id, items}): copy an item or folder, mine or the Library's, into my inventory",
             (a, ct) => J(inv.CopyAsync(a, ct)));
         Op("createNotecard", "{name, text?, desc?, folder_id?, next_perms?} -> {item_id, asset_id}", (a, ct) => J(inv.CreateNotecardAsync(a, ct)));
-        Op("readNotecard", "{item_id} -> {text, embedded?}", (a, ct) => J(inv.ReadNotecardAsync(a, ct)));
+        Op("readNotecard", "{item_id} -> {text, embedded?}: each embedded item's place in the text reads as its marker, [landmark: Harbour]", (a, ct) => J(inv.ReadNotecardAsync(a, ct)));
         Op("copyFromNotecard", "{item_id, embedded_id | name, folder_id?} -> item: copy an item embedded in a notecard into my inventory",
             (a, ct) => J(inv.CopyFromNotecardAsync(a, ct)));
-        Op("writeNotecard", "{item_id, text, append?}: replace (or add to) a notecard's text", (a, ct) => J(inv.WriteNotecardAsync(a, ct)));
+        Op("writeNotecard", "{item_id, text, append?} -> {embedded_kept?, moved_to_end?}: replace (or add to) a notecard's text; what's embedded always stays, at its marker in the text or else moved to the end", (a, ct) => J(inv.WriteNotecardAsync(a, ct)));
         Op("createScript", "{name, text?, target=mono, desc?, folder_id?, next_perms?} -> {item_id, compiled, errors}: a script in my inventory",
             (a, ct) => J(inv.CreateScriptAsync(a, ct)));
         Op("writeScript", "{item_id, text, target=mono} -> {compiled, errors}", (a, ct) => J(inv.WriteScriptAsync(a, ct)));

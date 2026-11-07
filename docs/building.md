@@ -241,6 +241,11 @@ wear, so they're the region's Top Scripts (`SojournLand topScripts`, estate mana
 
 ## Contents and taking
 
+`TesselBuild modifyEach {edits: [{id, ...keys}]}`: several prims or faces with keys of their own, one undo step and one
+confirmation, rights checked first, a prim's face sets as one texture entry (a modify a face would undo the one before). `TesselBuild
+copyFrom {from, ids, what?, face?}`: the official editor's Copy and Paste, one undo step, saying what couldn't go. `modify`'s
+`locked`: the Object tab's Locked box, the owner's own move and modify rights (the owner can always unlock).
+
 `TesselBuild take {..., separate: true}`: an item each (Firestorm's take separately: one DeRezObject per root) rather
 than one combined. `SojournBuild saveBack {id}`: Save Object Back to Object Contents (DeRez destination 2 to the
 object's `FromTaskID`, refused for worn objects and things not rezzed from contents); confirmed as a delete, since it

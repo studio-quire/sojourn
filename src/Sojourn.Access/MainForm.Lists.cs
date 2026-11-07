@@ -99,6 +99,8 @@ public sealed partial class MainForm
         Item("&Edit (build)", t => EditThing(t.Id));
         Item("L&ink to what I'm editing", t => _ = LinkThingAsync(t));
         var linkItem = _objectMenu.Items[^1];
+        Item("Cop&y its settings to what I'm editing", t => _ = GuardedAsync(() => CopyToEditingAsync(t.Id), t.Name));
+        var copySettings = _objectMenu.Items[^1];
         // the person's own things back out of the world (the blind tester found no way to delete what she'd rezzed, 2026-11-01)
         Item("Ta&ke into your inventory", t => _ = TakeThingAsync(t));
         Item("De&lete", t => _ = DeleteThingAsync(t));
@@ -114,11 +116,11 @@ public sealed partial class MainForm
             bool hud = sel is { Hud: true }, mine = sel is { Mine: true };
             foreach (ToolStripItem i in _objectMenu.Items)
                 i.Visible = hud ? i.Text is "&Touch" or "&Describe" or "W&here" or "&Parts" or "Take &off" or "&Refresh"
-                    : i.Text != "Take &off" && (mine || i.Text is not ("Ta&ke into your inventory" or "De&lete"));
+                    : i.Text != "Take &off" && (mine ? i.Text != "Bloc&k" : i.Text is not ("Ta&ke into your inventory" or "De&lete"));
             payItem.Visible = sel is { Hud: false, Money: true };
             buyItem.Visible = sel is { Hud: false, Mine: false, Sale: not null };
             copyItem.Visible = sel is { Hud: false, MayCopy: true };
-            linkItem.Visible = sel is { Hud: false, Mine: true } && LinkableNow(sel);
+            linkItem.Visible = copySettings.Visible = sel is { Hud: false, Mine: true } && LinkableNow(sel);
             // its own click action leads, as the viewer's left click does it
             _objectMenu.Items.Remove(payItem);
             _objectMenu.Items.Remove(buyItem);

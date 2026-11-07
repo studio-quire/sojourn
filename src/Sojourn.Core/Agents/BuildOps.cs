@@ -259,7 +259,8 @@ public sealed class BuildOps
             // a child's size goes with its (local) position, as the viewer sends it: a scale alone on a linked child
             // once threw it ~177 m away on SL (Tessel's notes)
             var sc = Vector3.Clamp(scale, new Vector3(0.001f), new Vector3(256)).GetBytes();
-            if (isRoot) SendObjectUpdate(c, sim, p.LocalID, (byte)UpdateType.Scale, sc);
+            // (a linked root's by itself too, as the viewer's Edit linked sends it: no linked flag, so its parts stay put)
+            if (isRoot && _s.Objects.Linkset(w, p).Count == 1) SendObjectUpdate(c, sim, p.LocalID, (byte)UpdateType.Scale, sc);
             else SendObjectUpdate(c, sim, p.LocalID, (byte)(UpdateType.Position | UpdateType.Scale), (pos ?? p.Position).GetBytes().Concat(sc).ToArray());
         }
 
@@ -385,6 +386,7 @@ public sealed class BuildOps
         // the edit floater's General tab: "Anyone can: Move / Copy", "Share with group" (group: modify, copy, move)
         if (a.Str("everyone_perms") is { } ep) SetMask(c, sim, p, PermissionWho.Everyone, ObjectViews.PermMask(ep), PermissionMask.Copy | PermissionMask.Move);
         if (a.Str("group_perms") is { } gp) SetMask(c, sim, p, PermissionWho.Group, ObjectViews.PermMask(gp), PermissionMask.Modify | PermissionMask.Copy | PermissionMask.Move);
+        if (a.Bool("locked") is { } locked) SetLocked(c, sim, p.LocalID, locked);
         if (a.Str("click_action") is { } ca)
         {
             var action = ObjectViews.ClickActionFrom(ca) ?? throw new LeapError("unknown click_action");
@@ -397,6 +399,44 @@ public sealed class BuildOps
         }
         return materials is null ? null : _s.Materials.SendAsync(p, materials, CancellationToken.None);
     }
+
+    /// <summary>Whether modify would refuse these keys on this prim, before anything is sent to any prim of a batch.</summary>
+    internal void Check(Primitive p, JsonObject a)
+    {
+        CheckKeys(a);
+        RequireRights(p, a);
+    }
+
+    /// <summary>Several of a prim's faces, each with keys of its own, sent as one texture entry: a modify per face would
+    /// start each from the entry as the region last showed it and undo the one before.</summary>
+    internal void ModifyFaces(Primitive p, IReadOnlyList<JsonObject> sets)
+    {
+        foreach (var a in sets)
+        {
+            Check(p, a);
+            ResolveTexture(a);
+        }
+        var te = p.Textures is { } cur ? new Primitive.TextureEntry(cur) : new Primitive.TextureEntry(Primitive.TextureEntry.WHITE_TEXTURE);
+        foreach (var a in sets)
+        {
+            if (a.Num("face") is { } fnum)
+            {
+                var fi = (int)fnum;
+                if (fi < 0 || fi >= 9) throw new LeapError("no such face");
+                ApplyFace(a, te.CreateFace((uint)fi));
+            }
+            else
+            {
+                if (te.DefaultTexture is not null) ApplyFace(a, te.DefaultTexture);
+                foreach (var f in te.FaceTextures.Where(f => f is not null)) ApplyFace(a, f);
+            }
+        }
+        _s.Undo.Edit(p, new[] { "faces" }, $"changed {string.Join(", ", sets.SelectMany(a => a.Select(kv => kv.Key)).Where(k => FaceKeys.Contains(k)).Distinct().Take(6))} on {p.Properties?.Name ?? "an object"}");
+        C.Objects.SetTextures(Sim, p.LocalID, te, p.MediaURL ?? "");
+    }
+
+    /// <summary>Whether these keys are all a face's (so sets of them on one prim can go as one texture entry).</summary>
+    internal static bool OnlyFaces(JsonObject a) => a.All(kv => Stripped.Contains(kv.Key) || FaceKeys.Contains(kv.Key) || kv.Key == "face");
 
     // ---------- projector (the Features tab's light texture: LLLightImageParams, extra param 0x40) ----------
 
@@ -463,6 +503,10 @@ public sealed class BuildOps
     }
 
     static bool Off(JsonObject a, string key) => a[key] is JsonValue v && v.TryGetValue<bool>(out var on) && !on;
+
+    /// <summary>The edit floater's Locked box: the owner's own move and modify rights (LLPanelObject::onCommitLock).</summary>
+    internal static void SetLocked(GridClient c, Simulator sim, uint localId, bool locked) =>
+        c.Objects.SetPermissions(sim, new List<uint> { localId }, PermissionWho.Owner, PermissionMask.Move | PermissionMask.Modify, !locked);
 
     static void SetMask(GridClient c, Simulator sim, Primitive p, PermissionWho who, PermissionMask want, PermissionMask settable)
     {
@@ -656,7 +700,7 @@ public sealed class BuildOps
         "pos", "local_pos", "rot", "rot_euler", "local_rot", "local_rot_euler", "scale", "shape",
         "color", "alpha", "texture", "repeats", "glow", "fullbright", "shiny", "face", "tex_offset", "tex_rotation", "bump", "texgen",
         "sculpt", "light", "flexi", "name", "desc", "material", "phantom", "physics", "physics_shape", "temp", "sale",
-        "next_perms", "everyone_perms", "group_perms", "click_action", "reflection_probe", "animated", "projector",
+        "next_perms", "everyone_perms", "group_perms", "click_action", "reflection_probe", "animated", "projector", "locked",
         // MaterialOps: PBR (glTF) materials and their overrides, the legacy normal and specular maps, the diffuse alpha mode
         "pbr", "normal", "specular", "alpha_mode", "alpha_cutoff",
     };
@@ -675,6 +719,7 @@ public sealed class BuildOps
         if (a.Has("shiny")) ShinyFrom(a["shiny"]);
         if (a.Has("reflection_probe")) ProbeFrom(a["reflection_probe"]);
         if (a.Has("animated") && a.Bool("animated") is null) throw new LeapError("animated takes true or false");
+        if (a.Has("locked") && a.Bool("locked") is null) throw new LeapError("locked takes true or false");
     }
 
     /// <summary>The region ignores edits by someone without modify rights, without a word.</summary>
@@ -695,7 +740,10 @@ public sealed class BuildOps
             throw new LeapError($"I can't move {p.Properties?.Name ?? "that object"}: I don't have move rights on it");
         if (keys.Contains("sale") && (f & PrimFlags.ObjectYouOwner) == 0)
             throw new LeapError($"only its owner can put {p.Properties?.Name ?? "that object"} up for sale");
-        if (keys.Any(k => !PlacementKeys.Contains(k) && k != "sale")) RequireModify(p, "edit");
+        // (a locked object of mine has no modify rights until it's unlocked)
+        if (keys.Contains("locked") && (f & PrimFlags.ObjectYouOwner) == 0)
+            throw new LeapError($"only its owner can lock or unlock {p.Properties?.Name ?? "that object"}");
+        if (keys.Any(k => !PlacementKeys.Contains(k) && k != "sale" && k != "locked")) RequireModify(p, "edit");
     }
 
     /// <summary>Waits (up to 4 s) for the region's updates to show a change.</summary>
@@ -972,6 +1020,117 @@ public sealed class BuildOps
     }
 
     uint ParentOf(RegionWorld w, uint local) => w.Prims.TryGetValue(local, out var p) ? p.ParentID : uint.MaxValue;
+
+    // ---------- copying one prim's settings to others ----------
+
+    static readonly string[] CopyParts = { "shape", "size", "rotation", "material", "colour", "texture", "features" };
+
+    /// <summary>TesselBuild copyFrom: settings of a prim of mine put on others, as the official editor's Copy and Paste
+    /// buttons do, one undo step. shape: its type and shape rows, the flexible path with them; size; rotation; material;
+    /// colour: colour and transparency on every side; texture: the Texture tab's other settings on every side (or one
+    /// side's, by face); features: flexible, light and projector. A mesh's or sculpt's shape can't go on a prim by these
+    /// settings, and a texture goes only from a prim I may copy and transfer (the viewer's rule for pasting one): what's
+    /// held back comes back in "left", and is only an error when nothing else could go.</summary>
+    public JsonObject CopyFrom(JsonObject a)
+    {
+        var w = W;
+        var sim = Sim;
+        var c = C;
+        var src = w.PrimById(a.Uuid("from") ?? throw new LeapError("need from")) ?? throw new LeapError("what to copy from isn't in view");
+        var name = src.Properties?.Name is { Length: > 0 } sn ? sn : "that object";
+        var flags = _s.State.PrimFlagsOf(src);
+        if ((flags & PrimFlags.ObjectYouOwner) == 0) throw new LeapError($"{name} isn't mine, so its settings can't be copied");
+        var want = new HashSet<string>((a["what"] as JsonArray)?.Select(x => x?.ToString() ?? "") ?? CopyParts);
+        if (want.FirstOrDefault(x => !CopyParts.Contains(x)) is { } unknown) throw new LeapError($"what to copy: {unknown} isn't one of {string.Join(", ", CopyParts)}");
+        var left = new JsonArray();
+        void HoldBack(string what, string why) { if (want.Remove(what)) left.Add(new JsonObject { ["what"] = what, ["why"] = why }); }
+        if (src.PrimData.PCode != PCode.Prim || src.Sculpt is { } sc && sc.SculptTexture != UUID.Zero) HoldBack("shape", "its shape comes from a model");
+        if ((flags & PrimFlags.ObjectCopy) == 0 || (flags & PrimFlags.ObjectTransfer) == 0) HoldBack("texture", "it isn't yours to copy and transfer");
+        if (want.Count == 0) throw new LeapError($"nothing could be copied from {name}: {string.Join("; ", left.OfType<JsonObject>().Select(l => $"{l.Str("what")}: {l.Str("why")}"))}");
+        var targets = a.UuidList("ids");
+        if (a.Uuid("id") is { } one && !targets.Contains(one)) targets.Add(one);
+        targets.Remove(src.ID);
+        if (targets.Count == 0) throw new LeapError("nothing to copy to");
+        var prims = targets.Select(id => w.PrimById(id) ?? throw new LeapError($"object not found: {id}")).ToList();
+        foreach (var t in prims) RequireModify(t, "change");
+        int? face = a.Num("face") is { } fn ? (int)fn : null;
+        var from = src.Textures;
+        var parts = new List<string>();
+        if (want.Contains("shape")) parts.AddRange(new[] { "shape", "flexi", "sculpt" });
+        if (want.Contains("size")) parts.Add("scale");
+        if (want.Contains("rotation")) parts.Add("place");
+        if (want.Contains("material")) parts.Add("material");
+        if (want.Contains("colour") || want.Contains("texture")) parts.Add("faces");
+        if (want.Contains("features")) parts.AddRange(new[] { "flexi", "light", "projector" });
+        var said = string.Join(", ", want.OrderBy(x => Array.IndexOf(CopyParts, x)));
+        using (_s.Undo.Batch($"copied {said} from {name} to {prims.Count} prims"))
+            foreach (var t in prims)
+            {
+                _s.Undo.Edit(t, parts, $"copied {said} from {name} to {t.Properties?.Name ?? "an object"}");
+                // the flexible path first: turning it off goes by the shape, which the copied shape then replaces
+                if (want.Contains("shape") || want.Contains("features")) CopyFlexible(c, sim, src, t);
+                if (want.Contains("shape"))
+                {
+                    if (t.Sculpt is { } ts && ts.SculptTexture != UUID.Zero) c.Objects.SetExtraParamOff(sim, t.LocalID, ExtraParamType.Sculpt);
+                    c.Objects.SetShape(sim, t.LocalID, new Primitive.ConstructionData(src.PrimData));
+                }
+                if (want.Contains("features"))
+                {
+                    if (src.Light is { Intensity: > 0 } l) c.Objects.SetLight(sim, t.LocalID, l);
+                    else if (t.Light is not null) c.Objects.SetExtraParamOff(sim, t.LocalID, ExtraParamType.Light);
+                    var image = src.LightMap is { LightTexture: var lt } lm && lt != UUID.Zero ? new Primitive.LightImage { LightTexture = lt, Params = lm.Params } : null;
+                    if (image is not null || t.LightMap is { LightTexture: var tl } && tl != UUID.Zero) SendProjector(c, sim, t.LocalID, image);
+                }
+                if (want.Contains("size")) Modify(t, new JsonObject { ["scale"] = Json.Arr(src.Scale) }, record: false);
+                if (want.Contains("rotation"))
+                {
+                    var q = w.RegionRotation(src);
+                    Modify(t, new JsonObject { ["rot"] = new JsonArray((double)q.X, (double)q.Y, (double)q.Z, (double)q.W) }, record: false);
+                }
+                if (want.Contains("material")) c.Objects.SetMaterial(sim, t.LocalID, src.PrimData.Material);
+                if ((want.Contains("colour") || want.Contains("texture")) && from is not null)
+                    c.Objects.SetTextures(sim, t.LocalID, CopiedFaces(t, from, face, want.Contains("colour"), want.Contains("texture")), t.MediaURL ?? "");
+            }
+        if (want.Contains("texture") && BuildUndo.RenderMaterialsOf?.Invoke(w.Handle, src.LocalID) is { } pbr && pbr.Any(m => m != UUID.Zero))
+            left.Add(new JsonObject { ["what"] = "PBR materials", ["why"] = "those don't go by the texture settings" });
+        return new JsonObject { ["copied"] = Json.Strings(want.OrderBy(x => Array.IndexOf(CopyParts, x))), ["left"] = left, ["to"] = prims.Count };
+    }
+
+    static void CopyFlexible(GridClient c, Simulator sim, Primitive src, Primitive t)
+    {
+        bool flexible = ((byte)src.PrimData.PathCurve & 0xf0) == 0x80 && src.Flexible is not null;
+        if (flexible) c.Objects.SetFlexible(sim, t.LocalID, src.Flexible!);
+        else if (((byte)t.PrimData.PathCurve & 0xf0) == 0x80)
+        {
+            var d = new Primitive.ConstructionData(t.PrimData) { PathCurve = PathCurve.Line };
+            c.Objects.SetShape(sim, t.LocalID, d);
+            c.Objects.SetExtraParamOff(sim, t.LocalID, ExtraParamType.Flexible);
+        }
+    }
+
+    /// <summary>The target's texture entry with the source's colour and transparency, and or its other settings, on every
+    /// side, or on one (the same number on the source).</summary>
+    static Primitive.TextureEntry CopiedFaces(Primitive t, Primitive.TextureEntry from, int? face, bool colour, bool texture)
+    {
+        var te = t.Textures is { } cur ? new Primitive.TextureEntry(cur) : new Primitive.TextureEntry(Primitive.TextureEntry.WHITE_TEXTURE);
+        void Put(Primitive.TextureEntryFace to, Primitive.TextureEntryFace f)
+        {
+            if (colour) to.RGBA = f.RGBA;
+            if (!texture) return;
+            to.TextureID = f.TextureID;
+            to.RepeatU = f.RepeatU; to.RepeatV = f.RepeatV;
+            to.OffsetU = f.OffsetU; to.OffsetV = f.OffsetV;
+            to.Rotation = f.Rotation;
+            to.Bump = f.Bump; to.Shiny = f.Shiny; to.Fullbright = f.Fullbright;
+            to.TexMapType = f.TexMapType; to.Glow = f.Glow;
+            to.MaterialID = f.MaterialID;
+        }
+        if (face is { } one) { Put(te.CreateFace((uint)one), from.GetFace((uint)one)); return te; }
+        if (te.DefaultTexture is { } d && from.DefaultTexture is { } fd) Put(d, fd);
+        for (uint i = 0; i < te.FaceTextures.Length; i++)
+            if (te.FaceTextures[i] is not null || from.FaceTextures[i] is not null) Put(te.CreateFace(i), from.GetFace(i));
+        return te;
+    }
 
     public async Task<JsonObject> LinkAsync(JsonObject a, CancellationToken ct)
     {

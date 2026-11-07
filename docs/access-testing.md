@@ -122,6 +122,14 @@ docstring with its checks in full):
   take off, Show: Worn (a worn body part's Delete refused at once), rez on the ground, unbox, give through the picker
   and the confirmation, and the run's folders deleted through the confirmation (cancelled once first: only
   "Cancelled.", the focus back in the tree; a worn item in the folder taken off first, as its confirmation says).
+- **notecards with things in them** (`ACCESS_STEPS=notecards`; about a minute, no renderer needed): the visitor's
+  `embedcard` offers a card holding a landmark and a notecard, written as the official viewer writes them, each at its
+  place in the text. By keys: markers in the text, what it holds said on opening, Tab to the list, Enter copying the
+  landmark out and Enter again teleporting by it, the notecard copied and opened from its copy, Escape back; Control+S
+  keeping both; a marker taken out coming back at the end, said. By the ops: a rewrite with no places in it keeping both
+  (the new asset's embedded block byte for byte the old one's, read from the grid's `Asset.db`), `append`, a copy out
+  after all that, and the same card in a box through `object.content.save`, confirmed by keys. Only the local grid: Second
+  Life still has to show a save and a copy out on a real card, no-copy items with a shadow_id among them.
 - **every part**: the `treasure` chest's four parts listed and named, Enter on the lid heard by its script (not the
   root's), its faces (with the renderer "The top, face 0", Enter there heard as face 0; without, the list says it needs
   the view), `//touch` by name, by part and by face.
@@ -142,6 +150,9 @@ docstring with its checks in full):
   its place, Ctrl+Shift+G's menu with triggers as keys playing one, World > Gestures, the inventory's words, Play and
   Deactivate (its trigger then said as typed) and Activate again.
 - **placing by words**: a block rezzed "a metre to my left" (within 0.3 m, on the ground), then moved "by 50 cm up".
+- **building a linked object**, **building: copying settings**, **building: locked, repeats per metre, flip and the Features
+  rows** (`ACCESS_STEPS=building` runs them with the first; each checks the region as well as what's said) and **going by name,
+  and blocking by name** (`//go` by a number, xyz, person, object and a name alone; `//block`, `//blocks`, `//unblock`).
 - **building with her own hands** (about 2 minutes; the faces need no renderer, so it runs the same with
   `ACCESS_NO_RENDER=1`): Control+B's editor and its controls named; by typed commands, a box made 2 metres ahead with
   its underside on the ground, named, sized, hollowed and coloured, each said back once the region shows it; `face top`
