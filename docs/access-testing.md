@@ -105,14 +105,18 @@ docstring with its checks in full):
   Control+1 to 9, a notice's keys on its Applications key, Escape from Notices back where Control+N came from,
   the no-conversations line, Control+Page Up and Down, the StatusBar with the location. Alt alone and F10 aren't
   pressed (WinForms opens the menu bar for them only in the foreground window, which a hidden desktop never has).
-- **settings**: Alt+0's rows (no two starting with the same three words, Right and Left stepping), SojournSettings
+- **settings**: Alt+0's groups: Page Down through all of them, each heading said and selected and the list named for it, round
+  both ends; the list of groups a Tab away by arrows and a letter, back by Tab and Enter; a heading's Enter, Left and Right;
+  back on the same row after leaving, and Alt+0 pressed there; every registered setting with a row in a group or left out on
+  purpose, Everything being all the rows and only those, A to Z. Then the rows (no two starting with the same three words,
+  Right and Left stepping), SojournSettings
   refusing to lower `access_answers_without_key`, the music and world sounds starting at 0.15 and 0.5 (applied once),
   the music's volume stepped, `//status music`; the answers-without-a-key row and its description in plain words; the
   sound output row stepping the default and the first device, Ctrl+Shift+O (world audio goes to a file whatever is
   chosen, so the PC's devices are never played to).
 - **settings typed and in words**: a switch stepped (Group invitations turned away), a number typed (Hover height, its range in
   the question), the keywords typed and in the op, an auto response typed and confirmed by her own key. The settings step also
-  checks every registered setting has a row or is left out on purpose, and no row says only the assistant can change it.
+  checks no row says only the assistant can change it.
 - **the quit question**: Alt+F4 asks, Escape stays.
 - **a script menu**, **a text box**, **a permission question**: answered by keys; a menu's announcement said again
   when a key cuts it off (not when silenced by Control alone, nor once answered in Notices); a menu of twelve, minus and equals pressing Next and

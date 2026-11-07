@@ -66,7 +66,7 @@ public sealed partial class MainForm
             return true;
         }
         if (!RealInput.Person) { Reader?.Answer(RealInput.Why, keep: false); return true; }
-        if (!v.Enabled) { Reader?.Answer("Voice chat is off: Alt+0 turns it on.", keep: false); return true; }
+        if (!v.Enabled) { Reader?.Answer("Voice chat is off: Alt+0, the Voice group, turns it on.", keep: false); return true; }
         if (v.OffHere) Reader?.Answer("Voice is off here: nobody hears you.", keep: false);
         else if (_micGone) Reader?.Answer("No microphone: nobody hears you until one is plugged in.", keep: false);
         Host!.Voice!.KeyDown();
@@ -121,14 +121,14 @@ public sealed partial class MainForm
     string KeyName => TalkKey switch { Keys.Scroll => "Scroll Lock", Keys.Pause => "Pause", Keys.F12 => "F12", _ => "F4" };
 
     string VoiceOff() => Host?.Voice == null ? "Voice chat isn't running (Sojourn Access was started without it)."
-        : Host.Voice.Voice.Available ? "Voice chat is off: Alt+0 turns it on."
+        : Host.Voice.Voice.Available ? "Voice chat is off: Alt+0, the Voice group, turns it on."
         : SoundWords.Missing(Host) is { } why ? $"No voice chat. {why}" : $"Voice chat can't run here: {Host.Voice.Voice.Status}.";
 
     /// <summary>Control+Shift+V and `//voice`: who's in voice and who's speaking now, your mic, where you are.</summary>
     void SayVoice()
     {
         if (Voice is not { } v) { Answer(VoiceOff()); return; }
-        if (!v.Enabled) { Answer("Voice chat is off: Alt+0 turns it on."); return; }
+        if (!v.Enabled) { Answer("Voice chat is off: Alt+0, the Voice group, turns it on."); return; }
         var me = _ops.Client?.Self.AgentID ?? UUID.Zero;
         var peers = v.Peers.Where(p => p.Id != me).ToList();
         string Name(UUID id) => Host!.Session.Names.DisplayName(id) ?? Host.Session.Names.Legacy(id) ?? "someone";

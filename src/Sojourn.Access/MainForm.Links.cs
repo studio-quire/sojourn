@@ -25,6 +25,14 @@ public sealed partial class MainForm
     static IEnumerable<string> LinksIn(string text) =>
         LinkIn.Matches(text).Select(m => m.Value.TrimEnd('.', ',', ';', ':', '!', '?', ')', ']', '\'', '"'));
 
+    /// <summary>The first link in some text opened (a notecard's Control+K); false with none.</summary>
+    bool OpenFirstLink(string text)
+    {
+        if (LinksIn(text).FirstOrDefault() is not { } url) return false;
+        OpenLink(url);
+        return true;
+    }
+
     void NoteLinks(string text, string from)
     {
         foreach (var url in LinksIn(text))

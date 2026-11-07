@@ -71,6 +71,7 @@ public sealed partial class MainForm
                 ? $"Line {row}, column {d.Int("column", 0)}: {d.Str("message")}" : d.Str("message") ?? "").Where(x => x.Length > 0).ToList() ?? new();
             return ScriptSaved(ScriptErrorLines(diags));
         }, text => Reader?.Answer(text, keep: false));
+        editor.OpenFirstLink = OpenFirstLink;
         editor.FormClosed += (_, _) =>
         {
             if (IsDisposed) return;

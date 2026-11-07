@@ -48,7 +48,7 @@ Anyone can switch the assistant on with what they already have (built 2026-10-29
 client the provider and its key are chosen **only in the launcher** (the user, 2026-10-29; `docs/launcher.md`); the
 headset's settings menu shows the model choices for whatever was chosen there (Claude's model and effort rows with a
 Claude account or key; with OpenRouter its model, plus Claude's rows for Claude through it) and a trouble note on the
-first row when it doesn't work. Sojourn Access, which ships and starts on its own, keeps them in Alt+0's first rows.
+first row when it doesn't work. Sojourn Access, which ships and starts on its own, keeps them in Alt+0's Assistant group.
 The providers:
 - **claude** (the default): the Claude subscription Claude Code is signed in to on this PC (`claude`, then `/login`).
   Offered only when running from the repo (`ProviderKeys.ClaudeOffered`): packaged and public builds offer no

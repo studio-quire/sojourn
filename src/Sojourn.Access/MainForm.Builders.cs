@@ -24,8 +24,8 @@ public sealed partial class MainForm
         + "day later; each is read out like an IM as it arrives, and any that came while Sojourn Access was closed are said after "
         + "you log in. Only what you type here goes, kept with our replies on Studio Quire's relay for 90 days. Type in the Message "
         + "box and press Enter to send.";
-    const string BuildersNoToken = "Messages to the builders go with a token from Studio Quire, pasted into the key row at the top of "
-        + "Alt+0, and you don't have one here. You can reach the people making Sojourn Access through Tessel (tesselwright) in "
+    const string BuildersNoToken = "Messages to the builders go with a token from Studio Quire, pasted into the key row in "
+        + "Alt+0's Assistant group, and you don't have one here. You can reach the people making Sojourn Access through Tessel (tesselwright) in "
         + $"Second Life, or on the issues page, {IssuesPage}.";
 
     BuildersLine? _line;
@@ -56,7 +56,7 @@ public sealed partial class MainForm
     {
         if (!_set.Builders)
         {
-            Answer("Messages to the builders are turned off. Alt+0's row Messages with the builders turns them on.");
+            Answer("Messages to the builders are turned off. Alt+0, General, Messages with the builders, turns them on.");
             return;
         }
         var cv = BuildersTab();

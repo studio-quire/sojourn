@@ -160,7 +160,7 @@ MAX_TABS = 25                      # Tab stops walked before calling the order e
 NAMED_TYPES = {"Edit", "Document", "Button", "CheckBox", "RadioButton", "ComboBox", "List", "Tree", "Tab", "TabItem",
                "Slider", "Spinner", "DataGrid", "Table", "Hyperlink", "MenuItem", "SplitButton"}
 # the contract's controls (AutomationId = WinForms Name) and the UIA types that would be right for them
-ROLES = {"landCommand": {"Edit"}, "landRows": {"List", "DataGrid", "Table"}, "landTab": {"ComboBox"}, "buildCommand": {"Edit"}, "buildRows": {"List", "DataGrid", "Table"}, "buildTab": {"ComboBox"}, "buildFaces": {"List", "DataGrid", "Table"},
+ROLES = {"settings": {"List", "DataGrid", "Table"}, "settingsGroup": {"ComboBox"}, "landCommand": {"Edit"}, "landRows": {"List", "DataGrid", "Table"}, "landTab": {"ComboBox"}, "buildCommand": {"Edit"}, "buildRows": {"List", "DataGrid", "Table"}, "buildTab": {"ComboBox"}, "buildFaces": {"List", "DataGrid", "Table"},
          "chatInput": {"Edit"}, "chatHistory": {"Edit", "Document"}, "chatPeople": {"List", "DataGrid", "Table"}, "conversations": {"Tab"},
          "convInput": {"Edit"}, "convHistory": {"Edit", "Document"}, "people": {"List", "DataGrid", "Table"},
          "objects": {"List", "DataGrid", "Table"}, "notices": {"List", "DataGrid", "Table"},
@@ -2506,30 +2506,163 @@ def keys(run, nonce):
     run.check("the keys left the focus in the Say box", f and f["id"] == "chatInput", label(f) if f else "nothing")
 
 
+def settings_group(group):
+    """Alt+0 on a group by its name, by Page Down as she'd go: only that group's rows are in the list then. Whether it got there."""
+    key("alt+0")
+    wait_focus(lambda d: d["id"] == "settings" or d["type"] == "ListItem", 4)
+    for _ in range(14):
+        if any(d["name"] == f"{group} settings" for d in find("id=settings")):
+            return wait(lambda: find(f"type=ListItem;name~={group}, group "), 6)
+        key("pgdn")
+        time.sleep(0.25)
+    return None
+
+
+def settings_groups(run):
+    """Going between Alt+0's groups by every way there is, and that every setting has a row in one. Returns False if there's no walking them."""
+    if not run.check("(Alt+0 on its first group)", settings_group("Reading out"), focus_label()):
+        return False
+    key("home")
+    heading = wait(lambda: selected_text("id=settings"), 4) or ""
+    m = re.fullmatch(r"Reading out, group 1 of (\d+): .*", heading)
+    run.check("its first row says the group and how many, and the keys", m and "Page Down: the next group" in heading and "Tab: the list of groups" in heading, heading)
+    if not m:
+        return False
+    total = int(m[1])
+
+    # Page Down through them all, each heading said and selected, and read for its rows
+    rows_of = {}
+    for i in range(1, total + 1):
+        heading = wait(lambda: next((n for n in list_items("id=settings") if f", group {i} of {total}" in n), None), 5)
+        if not run.check(f"(group {i}'s heading in the list)", heading, " | ".join(list_items("id=settings"))[:200]):
+            return False
+        name = heading.split(",")[0]
+        run.check(f"{name}: the list named for it, the heading selected",
+                  any(d["name"] == f"{name} settings" for d in find("id=settings")) and selected_text("id=settings") == heading, f"{selected_text('id=settings')}")
+        rows_of[name] = [r for r in list_items("id=settings") if r != heading]
+        if i < total:
+            m = mark()
+            key("pgdn")
+            run.expect(f"Page Down from {name}: the next group said", [f"group {i + 1} of {total}"], m, 5)
+    focus = focused()
+    run.check("the focus still in the list after them all", focus and (focus["id"] == "settings" or focus["type"] == "ListItem"), focus_label())
+    m = mark()
+    key("pgdn")
+    run.expect("Page Down from the last: round to the first", [f"Reading out, group 1 of {total}"], m, 5)
+    m = mark()
+    key("pgup")
+    run.expect("Page Up from the first: round to the last", [f"group {total} of {total}"], m, 5)
+    key("pgdn")
+
+    names = list(rows_of)
+    every = rows_of[names[-1]]
+    run.check("the groups have plain names, each its own first letter", len({n[0] for n in names}) == len(names), ", ".join(names))
+    empty = [n for n, r in rows_of.items() if not r]
+    run.check("no group is empty", not empty, ", ".join(empty) or ", ".join(f"{n} {len(r)}" for n, r in rows_of.items()))
+    run.check("the last is every setting, A to Z", names[-1] == "Everything" and every == sorted(every, key=str.upper), f"{len(every)} rows")
+    placed = {r for n in names[:-1] for r in rows_of[n]}
+    run.check("every row in Everything is in a group, and the other way round", placed == set(every), "; ".join(sorted(placed ^ set(every))[:6]) or f"{len(placed)} rows")
+    run.check("no row twice in a group", all(len(r) == len(set(r)) for r in rows_of.values()), "")
+    run.check("no row says only the assistant can change it", not [r for r in every if "asking the assistant" in r], "")
+    # each row leads with what differs: no two rows begin with the same three words (first-letter navigation, the review)
+    starts = {}
+    for r in every:
+        starts.setdefault(" ".join(r.split(":")[0].split()[:3]).lower(), []).append(r)
+    shared = [v for v in starts.values() if len(v) > 1]
+    run.check("no two settings rows start with the same three words", every and not shared, "; ".join(" / ".join(v) for v in shared[:4]) or f"{len(every)} rows")
+
+    # every setting decided: a row in a group with its own words, or left out on purpose (anything else gets a row by its
+    # bare name, at the end of General, and this fails until it's placed)
+    source = (ROOT / "src" / "Sojourn.Access" / "MainForm.Settings.cs").read_text(encoding="utf-8")
+    table = source[:source.index("void BuildSettings")]
+    labelled = re.findall(r'\("([@a-z_0-9]+)", "([^"]+)"\)', table)
+    labels = dict(labelled)
+    run.check("each row's words are in one place", len(labels) == len(labelled), f"{len(labels)} rows")
+    # (a row without words of its own has them in another group; the assistant's are said by ProviderItems)
+    homeless = [n for n in re.findall(r'\("([@a-z_0-9]+)", null\)', table) if n not in labels and n not in ("@provider", "@key", "@model", "@data", "@auto")]
+    run.check("a row in a second group has its words in its first", not homeless, ", ".join(homeless))
+    left_out = set(re.findall(r'"([a-z_0-9]+)"', source[source.index("NotRows = new()"):source.index("void BuildSettings")]))
+    all_settings = set(api("SojournSettings", "get", 20).get("settings", {}))
+    unplaced = sorted(all_settings - set(labels) - left_out)
+    run.check("every setting has a row or is left out on purpose", not unplaced, ", ".join(unplaced) or f"{len(all_settings)} settings")
+    bare = [n.replace("_", " ") + ":" for n in unplaced]
+    run.check("anything unplaced still has a row, at the end of General and in Everything",
+              all(any(r.startswith(b) for r in rows_of["General"][-max(1, len(bare)):]) and any(r.startswith(b) for r in every) for b in bare), ", ".join(bare) or "nothing unplaced")
+    no_row = sorted(n for n in all_settings & set(labels) - left_out if not any(r.startswith(labels[n] + ":") for r in placed))
+    run.check("and every setting with a row is in a group", not no_row, ", ".join(no_row) or f"{len(placed)} rows in {len(names) - 1} groups")
+
+    # the groups a Tab away, as the editors' tabs are: arrows, a letter, back by Tab or Enter
+    group_box = lambda: value_of("id=settingsGroup") or selection("id=settingsGroup")
+    d = None
+    key("home")
+    key("tab")
+    d = wait_focus(lambda d: d["id"] == "settingsGroup", 4)
+    if run.check("Tab: the list of groups, named Group", d and d["name"] == "Group", label(d) if d else focus_label()):
+        run.check("it says where it stands", wait(lambda: group_box() == f"Reading out, 1 of {total}", 3), group_box())
+        m = mark()
+        key("down")
+        run.check("Down: the next group, with its place", wait(lambda: group_box() == f"Sounds, 2 of {total}", 3), group_box())
+        run.check("and the list behind it follows", wait(lambda: any(d["name"] == "Sounds settings" for d in find("id=settings")) and find("type=ListItem;name~=Music volume"), 3), "")
+        time.sleep(1)
+        told = [e.get("text") or "" for e in focus_events_since(m) if "list item" in (e.get("text") or "") or e.get("role") == "list item"]
+        run.check("with no focus event from the list, which she isn't in", not told, "; ".join(told[:3]))
+        key("tab")
+        d = wait_focus(lambda d: d["id"] == "settings" or d["type"] == "ListItem", 4)
+        run.check("Tab: back in the list, on its heading", d and selected_text("id=settings").startswith(f"Sounds, group 2 of {total}"), selected_text("id=settings"))
+        key("shift+tab")
+        wait_focus(lambda d: d["id"] == "settingsGroup", 4)
+        key("w")
+        run.check("a letter goes to the group that starts with it", wait(lambda: group_box() == f"Walking, 3 of {total}", 3), group_box())
+        key("enter")
+        d = wait_focus(lambda d: d["id"] == "settings" or d["type"] == "ListItem", 4)
+        run.check("Enter: back in the list, on its heading", d and selected_text("id=settings").startswith(f"Walking, group 3 of {total}"), selected_text("id=settings"))
+
+    # on a heading: Enter to the first setting, Left and Right to the other groups, changing nothing
+    if settings_group("Walking"):
+        key("home")
+        wait(lambda: selected_text("id=settings").startswith("Walking, group"), 3)
+        was = setting("walk_steps")
+        key("enter")
+        run.check("Enter on a heading: the group's first setting, not changed",
+                  wait(lambda: selected_text("id=settings").startswith("Footsteps (walk mode)"), 3) and setting("walk_steps") == was, selected_text("id=settings"))
+        # back where she left: the same group and row, and Alt+0 pressed there says where that is
+        run.check("(the row: Footsteps' volume)", select_in("id=settings", "Footsteps' volume", 8), selected_text("id=settings"))
+        back_to_chat()
+        m = mark()
+        key("alt+0")
+        d = wait_focus(lambda d: d["id"] == "settings" or d["type"] == "ListItem", 4)
+        run.check("leaving and coming back by Alt+0: the same row", d and wait(lambda: "Footsteps' volume" in selected_text("id=settings"), 3)
+                  and any(g["name"] == "Walking settings" for g in find("id=settings")), selected_text("id=settings"))
+        arrived_in_list(run, "back in Settings", m, lambda t: "Footsteps' volume" in t)
+        m = mark()
+        key("alt+0")
+        run.expect("Alt+0 pressed there: the group, how many, and the row", [f"Walking, group 3 of {total}", "Footsteps' volume"], m, 5)
+        m = mark()
+        key("pgdn")
+        run.expect("Page Down from a row: the next group's heading", [f"Driving and trains, group 4 of {total}"], m, 5)
+        arrived_in_list(run, "Page Down from a row", m, lambda t: "Driving and trains, group 4" in t)
+        m = mark()
+        key("left")
+        run.expect("Left on a heading: the group before", [f"Walking, group 3 of {total}"], m, 5)
+        m = mark()
+        key("right")
+        run.expect("Right on a heading: the next", [f"Driving and trains, group 4 of {total}"], m, 5)
+    return True
+
+
 def settings(run):
     key("alt+0")
-    d = wait_focus(lambda d: d["name"] == "Settings" or d["type"] == "ListItem", 4)
+    d = wait_focus(lambda d: d["id"] == "settings" or d["type"] == "ListItem", 4)
     run.check("Alt+0 goes to the Settings list", d, label(d) if d else focus_label())
     if not d:
         return
-    tree_check(run, "settings", must=())
+    tree_check(run, "settings", must=("settings", "settingsGroup"))
+    if not settings_groups(run):
+        return
+    settings_group("Reading out")
     item = wait(lambda: find("type=ListItem;name~=Nearby chat read out"), 4)
     if not run.check("it has 'Nearby chat read out'", item, label(item[0]) if item else "not listed"):
         return
-    # each row leads with what differs: no two rows begin with the same three words (first-letter navigation, the review)
-    rows = list_items("id=settings")
-    starts = {}
-    for r in rows:
-        starts.setdefault(" ".join(r.split(":")[0].split()[:3]).lower(), []).append(r)
-    shared = [v for v in starts.values() if len(v) > 1]
-    run.check("no two settings rows start with the same three words", rows and not shared, "; ".join(" / ".join(v) for v in shared[:4]) or f"{len(rows)} rows")
-    # every setting decided: a row with its own words, or left out on purpose (anything else gets a row by its bare name)
-    source = (ROOT / "src" / "Sojourn.Access" / "MainForm.Settings.cs").read_text(encoding="utf-8")
-    listed = set(re.findall(r'\("([a-z_0-9]+)", "', source[:source.index("void BuildSettings")])) | set(re.findall(r'"([a-z_0-9]+)"', source[source.index("NotRows = new()"):source.index("void BuildSettings")]))
-    all_settings = set(api("SojournSettings", "get", 20).get("settings", {}))
-    missing = sorted(all_settings - listed)
-    run.check("every setting has a row or is left out on purpose", not missing, ", ".join(missing) or f"{len(all_settings)} settings")
-    run.check("no row says only the assistant can change it", not [r for r in rows if "asking the assistant" in r], "")
     key("home")
     for _ in range(40):
         if "Nearby chat read out" in selection("id=settings"):
@@ -2573,6 +2706,7 @@ def settings(run):
     run.check("kept in the session's settings, applied once (later choices are the person's)",
               abs((kept.get("musicVolume") or 0) - 0.15) < 0.001 and marked == 1, detail)
     # stepping a volume: Enter up, Shift+Enter down (down from 0.25 no longer goes by way of 2)
+    settings_group("Sounds")
     item = wait(lambda: find("type=ListItem;name~=Music volume"), 4)
     if run.check("Alt+0 has the music's volume", item, label(item[0]) if item else "not listed"):
         key("home")
@@ -2589,6 +2723,7 @@ def settings(run):
 
     # the answers-without-a-key row in plain words (the blind tester asked what "answers without a physical key:
     # refused" meant, 2026-10-31): who it's for, and to leave it with a keyboard
+    settings_group("General")
     row = wait(lambda: find("type=ListItem;name~=Answers from a braille display"), 4)
     run.check("the answers row says who it's for and to leave it with a keyboard",
               row and "dictation or on-screen keyboard: refused" in row[0]["name"] and "leave it if you use a keyboard" in row[0]["name"],
@@ -2601,6 +2736,7 @@ def settings(run):
     # put her on her TV's HDMI output, 2026-11-01): Enter on the Alt+0 row opens the list of devices, each said with what
     # it is; Space steps, Shift+Space back; Control+Shift+O the next, with where it stands. (The test's world audio goes
     # to a file whatever is chosen, so the PC's own devices are never opened or played to.)
+    settings_group("Sounds")
     row = wait(lambda: find("type=ListItem;name~=Sound output: speakers or headphones"), 4)
     if run.check("Alt+0 has the sound output, the default first", row and ": the default" in row[0]["name"], label(row[0]) if row else "not listed"):
         devices = api("SojournAudio", "devices").get("speakers") or []
@@ -3592,13 +3728,10 @@ def person_actions(run, nonce, tester_id):
 def settings_rows(run, nonce):
     """Alt+0's rows that used to be the assistant's alone: a switch stepped, a number typed (away minutes by steps), the
     keywords typed and in the op, an auto response typed and confirmed by her own key."""
-    key("alt+0")
-    wait_focus(lambda d: d["id"] == "settings" or d["type"] == "ListItem", 4)
-    wait(lambda: find("type=ListItem;name~=Group invitations turned away"), 6)
-
-    def row(words):
+    def row(group, words):
         for attempt in range(4):   # (UI Automation can lose the list for a moment as it fills after a change)
             try:
+                settings_group(group)
                 u("setfocus id=settings")
                 return select_in("id=settings", words, tries=130)
             except ToolError:
@@ -3606,7 +3739,7 @@ def settings_rows(run, nonce):
         return False
 
     get = lambda name: api("SojournSettings", "get", name=name)["settings"][name]["value"]
-    if run.check("(the row: Group invitations turned away)", row("Group invitations turned away"), selected_text("id=settings")):
+    if run.check("(the row: Group invitations turned away)", row("People and offers", "Group invitations turned away"), selected_text("id=settings")):
         was = get("reject_group_invites")
         m = mark()
         key("enter")
@@ -3614,7 +3747,7 @@ def settings_rows(run, nonce):
         run.check("and the session has it", wait(lambda: get("reject_group_invites") != was, 3), str(get("reject_group_invites")))
         key("enter")
         wait(lambda: get("reject_group_invites") == was, 3)
-    if run.check("(the row: Hover height)", row("Hover height"), selected_text("id=settings")):
+    if run.check("(the row: Hover height)", row("My avatar", "Hover height"), selected_text("id=settings")):
         key("enter")
         d = wait_focus(lambda d: d["id"] == "answer", 4)
         if run.check("a number is typed: Enter asks for it, its range in the question", d and "-2 to 2" in d["name"], label(d) if d else focus_label()):
@@ -3628,7 +3761,7 @@ def settings_rows(run, nonce):
             u("set id=answer | 0")
             key("enter")
             wait(lambda: abs(float(get("hover_height"))) < 0.01, 4)
-    if run.check("(the row: Keywords)", row("Keywords that count"), selected_text("id=settings")):
+    if run.check("(the row: Keywords)", row("Chat", "Keywords that count"), selected_text("id=settings")):
         key("enter")
         wait_focus(lambda d: d["id"] == "answer", 4)
         word = f"zebra{nonce}"
@@ -3639,13 +3772,13 @@ def settings_rows(run, nonce):
         words = api("SojournSocial", "status").get("keywords", {}).get("words", [])
         run.check("and they're the keywords", word in words and "heron" in words, json.dumps(words))
         run.check("the row says them", wait(lambda: find(f"type=ListItem;name~=Keywords that count as a mention: {word}"), 4), "")
-        row("Keywords that count")
+        row("Chat", "Keywords that count")
         key("enter")
         wait_focus(lambda d: d["id"] == "answer", 4)
         u("set id=answer | ")
         key("enter")
         wait(lambda: not api("SojournSocial", "status").get("keywords", {}).get("words"), 4)
-    if run.check("(the row: Auto response in Do not disturb)", row("Auto response in"), selected_text("id=settings")):
+    if run.check("(the row: Auto response in Do not disturb)", row("People and offers", "Auto response in"), selected_text("id=settings")):
         words = f"Away at the shore {nonce}."
         key("enter")
         wait_focus(lambda d: d["id"] == "answer", 4)
@@ -3660,7 +3793,7 @@ def settings_rows(run, nonce):
         run.check("and it's kept", api("SojournPeople", "status").get("dnd_response") == words, json.dumps(api("SojournPeople", "status"))[:200])
         back = wait_focus(lambda d: d["id"] == "settings" or d["type"] == "ListItem", 4)
         run.check("the focus back on the row", back, focus_label())
-        row("Auto response in")
+        row("People and offers", "Auto response in")
         key("enter")
         wait_focus(lambda d: d["id"] == "answer", 4)
         u("set id=answer | ")
@@ -3711,6 +3844,18 @@ def notecards_embedded(run, nonce, tester_id):
     run.expect("what it holds is said on opening", ["It holds 2 things", f"{name} Landmark, landmark", f"{name} Inner, notecard", "Tab reaches them"], m, 5)
     run.check("the markers in the edit box", land in value_of("id=editorText"), value_of("id=editorText")[:120])
     tree_check(run, "a notecard holding things", must=("editorText", "editorEmbedded"))
+
+    # links: Enter makes a new line in a card, so Control+K opens the one on the caret's line
+    m = mark()
+    key("ctrl+k")
+    run.expect("Control+K with no link on the line says so", ["No link on this line."], m, 4)
+    type_text("https://example.com/card ")
+    wait(lambda: "example.com/card" in value_of("id=editorText"), 3, 0.2)
+    m = mark()
+    key("ctrl+k")
+    run.expect("Control+K opens the link on the line", ["Opening example.com"], m, 4)
+    key("ctrl+z")
+    run.check("(the link typed for it undone)", wait(lambda: "example.com/card" not in value_of("id=editorText"), 3, 0.2), value_of("id=editorText")[:80])
 
     m = mark()
     key("tab")
@@ -7574,8 +7719,7 @@ def incognito(run, nonce):
     m = mark()
     v(f"say {secret}")
     run.expect("(what's said nearby is still read out)", [secret], m, 8)
-    key("alt+0")
-    wait_focus(lambda d: d["name"] == "Settings" or d["type"] == "ListItem", 4)
+    settings_group("Incognito")
     row = wait(lambda: find("type=ListItem;name~=Incognito (Control+Shift+I): on"), 5)
     run.check("Alt+0 shows it on", row, " | ".join(n for n in list_items("id=settings") if "ncognito" in n))
     back_to_chat()
@@ -7882,8 +8026,7 @@ def sound_map(run, tester_id):
     finally:
         setting("earcon_nearby", "off")
 
-    key("alt+0")
-    if wait_focus(lambda d: d["name"] == "Settings" or d["type"] == "ListItem", 4) and select_in("id=settings", "IM sound"):
+    if settings_group("Sounds") and select_in("id=settings", "IM sound"):
         t0 = time.time()
         m = mark()
         key("enter")
@@ -10248,8 +10391,7 @@ def package_check():
             check("Alt+9's box is the assistant's, not 'not in this build'", ask_name == "Ask the assistant", ask_name)
             back_to_chat()
             # Alt+0: no Claude account in a packaged build, the saved one shown as none chosen; a token or key otherwise
-            key("alt+0")
-            wait_focus(lambda d: d["name"] == "Settings" or d["type"] == "ListItem", 4)
+            settings_group("Assistant")
             row = wait(lambda: find("type=ListItem;name~=Provider for the assistant:"), 5)
             names = [d["name"] for d in find("type=ListItem")] if row else []
             shown = next((n for n in names if n.startswith("Provider for the assistant:")), "")

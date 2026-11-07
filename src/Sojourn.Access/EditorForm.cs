@@ -82,11 +82,12 @@ public sealed class EditorForm : Form
             case Keys.Shift | Keys.F3: FindNext(-1); return true;
             case Keys.Control | Keys.G: GoToLine(); return true;
             case Keys.Control | Keys.L: SayWhere(); return true;
+            case Keys.Control | Keys.K: OpenLinkHere(); return true;
             case Keys.F8: NextError(+1); return true;
             case Keys.Shift | Keys.F8: NextError(-1); return true;
             case Keys.F1:
                 _say("Control+S saves, Escape closes. Control+F finds, F3 the next, Shift+F3 the one before. Control+G goes to a line. "
-                     + "Control+L says the line and column. F8 goes to the next error from the last save, Shift+F8 the one before. Tab: the errors, then what it holds, then Save and Close.");
+                     + "Control+L says the line and column. Control+K opens the link on the line. F8 goes to the next error from the last save, Shift+F8 the one before. Tab: the errors, then what it holds, then Save and Close.");
                 return true;
         }
         if (keyData == (Keys.Control | Keys.Back) && ActiveControl == _text && TextKeys.DeleteWordBack(_text)) return true;
@@ -111,6 +112,18 @@ public sealed class EditorForm : Form
         _text.Focus();
         _text.Select(at, length);
         _text.ScrollToCaret();
+    }
+
+    /// <summary>The app's way of opening the first link in some text; false when there's none. Enter makes a new line here,
+    /// so links in a card have a key of their own (the blind tester, 2026-11-07).</summary>
+    public Func<string, bool>? OpenFirstLink;
+
+    void OpenLinkHere()
+    {
+        var text = _text.Text;
+        int at = Math.Min(_text.SelectionStart, text.Length);
+        int from = at == 0 ? 0 : text.LastIndexOf('\n', at - 1) + 1, to = text.IndexOf('\n', at);
+        if (OpenFirstLink?.Invoke(text[from..(to < 0 ? text.Length : to)]) != true) _say("No link on this line.");
     }
 
     void SayWhere()

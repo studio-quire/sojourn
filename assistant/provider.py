@@ -586,29 +586,29 @@ class Provider:
     def how(self):
         """What the person is told when it isn't working: why, and how to switch it on."""
         access = self.app == "access"
-        where = "Alt+0, the assistant's provider" if access else "the launcher's settings"
+        where = "Alt+0's Assistant group" if access else "the launcher's settings"
         noun = "token" if self.kind == "relay" else "key"
         if self.state == "allowance":
             return (f"The assistant can't answer: {self.words} It starts again on {first_of_next_month()}. "
                     "Everything else works without it.")
         if self.state in ("no_key", "refused", "credits"):
-            how = (f"Copy your {noun}, then {'choose its row in Alt+0 and paste it' if access else 'paste it into the key box in the launcher'}"
+            how = (f"Copy your {noun}, then {'choose its row in the Assistant group of Alt+0 and paste it' if access else 'paste it into the key box in the launcher'}"
                    if self.state == "no_key" else f"Put in another {noun} or choose another provider")
             return f"The assistant is off: {self.words} {how} ({where})."
         if self.state == "none":
             return ("The assistant is off until you choose how it runs: with "
                     + ("a token from Studio Quire, or your own " if relay_offered(self.app) else "your own ")
                     + "Anthropic or OpenRouter key. Copy it, then "
-                    f"{'choose the assistant key row in Alt+0 and paste it' if access else 'paste it into the key box in the launcher (its settings)'}. "
+                    f"{'choose the key row in the Assistant group of Alt+0 and paste it' if access else 'paste it into the key box in the launcher (its settings)'}. "
                     "Everything else works without it.")
         if self.state == "no_tools":
-            return f"The assistant is off: {self.words} Choose another model ({'Alt+0' if access else 'settings, assistant, openrouter model'})."
+            return f"The assistant is off: {self.words} Choose another model ({"Alt+0's Assistant group" if access else 'settings, assistant, openrouter model'})."
         if self.state == "no_private":
             return (f"The assistant can't answer: {self.words} Choose another model, or allow data collection "
-                    f"({'Alt+0' if access else "the launcher's settings"}).")
+                    f"({"Alt+0's Assistant group" if access else "the launcher's settings"}).")
         return (f"The assistant is off: {self.words} To switch it on, sign in to Claude Code on this PC with a Claude "
                 f"subscription, or use your own Anthropic or OpenRouter key{', or a token from Studio Quire' if relay_offered(self.app) else ''}: copy it, then "
-                f"{'choose the assistant key row in Alt+0' if access else 'paste it into the key box in the launcher (its settings)'}. "
+                f"{'choose the key row in the Assistant group of Alt+0' if access else 'paste it into the key box in the launcher (its settings)'}. "
                 "Everything else works without it.")
 
     def status(self):

@@ -20,7 +20,7 @@ public sealed partial class MainForm
     {
         if (ProviderKeys.RelayToken() is null)
         {
-            Answer("Sending a log needs a token from Studio Quire, pasted into the key row at the top of Alt+0. "
+            Answer("Sending a log needs a token from Studio Quire, pasted into the key row in Alt+0's Assistant group. "
                 + $"Without one, problems can be reported on the issues page, {IssuesPage}.");
             return;
         }
@@ -160,7 +160,7 @@ sealed class SendLogForm : Form
     {
         if (_sending) return;
         if (Filtered(out var why) is not { } r) { Speak(why!); return; }
-        if (ProviderKeys.RelayToken() is not { } token) { Speak("The Studio Quire token isn't kept any more: Alt+0's key row takes it."); return; }
+        if (ProviderKeys.RelayToken() is not { } token) { Speak("The Studio Quire token isn't kept any more: the key row in Alt+0's Assistant group takes it."); return; }
         _sending = true;
         _send.Enabled = _review.Enabled = false;
         Speak("Sending.");

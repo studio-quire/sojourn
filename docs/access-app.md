@@ -68,7 +68,7 @@ own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access 0.1.0.
   error reports and update checks off, and its own `LOCALAPPDATA` under `<data folder>/assistant/claude/local` (its
   cache, MCP logs holding the tools' calls among it, follows LOCALAPPDATA, not CLAUDE_CONFIG_DIR) (`provider.py`
   `env`).
-- **Providers when packaged**: an Anthropic key, OpenRouter and the studio relay only, in Alt+0's first rows (no
+- **Providers when packaged**: an Anthropic key, OpenRouter and the studio relay only, in Alt+0's Assistant group (no
   Claude-account sign-in: CLAUDE.md's decision of 2026-10-30; `ProviderKeys.ClaudeOffered`). A saved "claude" (older
   builds' default) gives way at settings load to a key or token already kept, else it reads "none chosen yet" and the
   assistant says once, in Alt+9's history and on the first Control+D, that it's off until a token or key is pasted
@@ -149,12 +149,44 @@ Alt+number; Radegast's numbers where Radegast has the same area.
 | Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touchable" (or ", can sit"), nearest first, within 30 m, the nearest 60 and then a row for more; Control+F filters by words (Show: what you wear instead, Alt+Shift+7, or what people nearby wear); Tab: the selected one's parts, then a part's faces, then the filter and Show (Objects nearby, Parts and faces, below) |
 | Alt+8 | Notices | what waits for an answer, newest first; the selected one's text, keys and reply box; Escape goes back where Control+N came from |
 | Alt+9 | Assistant | a typed request ("Ask the assistant"), its replies, its choices as buttons |
-| Alt+0 | Settings | first the assistant's provider and whether it works, its key or token row and OpenRouter's model (The assistant, below); then the ones that matter here (read-out and its kinds, mutes, timestamps, arrivals, earcons and volumes, the sound output and microphone, walk mode's cues). Each row leads with what it's about, so first-letter navigation finds it ("IM sound", "Footsteps (walk mode)", "Nearby chat read out"; no two rows start with the same three words); Enter, Space or Right moves one to its next value, Shift with them or Left to the one before (a sound's row plays it; Enter on the sound output or microphone opens the list of devices; on a row that has no steps, a number in a range or a word, Enter asks for it to be typed). Her keywords and what her auto responses say are rows too, typed, an auto response confirmed by her own key. A setting registered and named in neither `Shown` nor `NotRows` (`MainForm.Settings.cs`) still gets a row, at the end, by its bare name, and the settings step fails until it's placed |
+| Alt+0 | Settings | the settings in named groups, one group at a time in a list, the groups a Tab away (Settings, below) |
 
 Pressing the Alt+number of the area you're in reads it again ("Inventory: Red Dress, skirt, worn.").
 
 Two more areas have no Alt+number: Build, the build editor, on Control+B (Building, below), and About Land, on
 Control+L (About Land, below).
+
+### Settings
+
+`MainForm.Settings.cs`, over SojournSettings, the same settings the assistant changes. The rows grew past a hundred in one
+list; a blind tester, offered groups or a box narrowing the list as you type, chose groups.
+- **The groups**, in order: Reading out, Sounds, Walking, Driving and trains, People and offers, Chat, Voice, Assistant,
+  Incognito, My avatar, General, Everything. Each name's first letter is its own. What's changed most in a group comes first
+  (Sounds starts with the volumes). A row someone could look for in either of two groups is in both (Residents' voices,
+  volume is in Voice and Sounds; arrivals and departures in People and offers and Reading out). Everything is every row,
+  A to Z, for when you don't know where one is, or like the long list.
+- **The list** shows one group, named for it ("Sounds settings"). Its first row is the group's heading: "Sounds, group 2 of
+  12: volumes, the parcel's music, where sound comes out, and the sound for each kind of thing." The first group's also says
+  the keys. Home reaches it from anywhere in the group.
+- **Page Down and Page Up** go to the next group and the one before, round the ends, landing on the heading, which is said.
+  It's said as well as being the row the focus lands on: NVDA drops a focus event for the position it's already on, and
+  heading to heading is one. On a heading, nothing is there to change, so Right and Left do the same (Page Down takes Fn on
+  many laptops), and Enter or Space go to the group's first setting. Plain Page Up and Page Down aren't anyone's: nothing
+  else in Access uses them (their Control forms are the conversations' ring), NVDA's use NVDA, or Control+Alt in a table,
+  and JAWS's use Insert.
+- **Tab** reaches the groups, a list named Group, as the build editor's and About Land's tabs: "Sounds, 2 of 12". The arrows go
+  through them, the settings list following behind; a letter goes straight to a group; Tab, Shift+Tab or Enter goes back to
+  the settings, on the heading if the group changed.
+- **Coming back**: Alt+0 lands in the settings list, in the group and on the row you left (for as long as the app runs; it
+  starts at Reading out). Alt+0 pressed there says where you are: "Walking, group 3 of 12. Footsteps' volume: quiet."
+- **A row** leads with what it's about, so first-letter navigation finds it within the group ("IM sound", "Footsteps (walk
+  mode)", "Nearby chat read out"; no two rows start with the same three words); Enter, Space or Right moves one to its next
+  value, Shift with them or Left to the one before (a sound's row plays it; Enter on the sound output or microphone opens the
+  list of devices; on a row that has no steps, a number in a range or a word, Enter asks for it to be typed). Her keywords
+  and what her auto responses say are rows too, typed, an auto response confirmed by her own key. The assistant's provider,
+  key or token and OpenRouter's model are in Assistant (The assistant, below).
+- **No setting falls off**: one registered and named in neither `SettingsGroups` nor `NotRows` still gets a row, by its bare
+  name, at the end of General and in Everything, and the settings step fails until it's placed.
 
 ### The menu bar
 
@@ -835,10 +867,12 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
 
 **A mistyped command**: the build box puts a word it doesn't know back in the box to correct, with what it most likely was (`Typos.cs`: a known word with the space left out, or a slip or two away: "Did you mean hollow?"); `//` commands say the same, and Control+Up brings the line back (the blind tester's building, 2026-11-06).
 
+**A newer build** (`MainForm.Updates.cs`): once after logging in, a packaged build asks GitHub for its front door's newest release, and says so if that's newer, with the page in the history and Control+Shift+K's list; silent when it can't tell. Test builds are folders, and the blind tester went on running older ones without knowing, once while saving a notecard on a build that lost what's embedded.
+
 **How far Objects lists**: Alt+0's "How far Objects nearby lists" (`access_objects_range`, 10 to 125 m, 30 by default,
 the nearest 200 past 30 m). Beyond the draw distance (128 m by default) the region sends nothing.
 
-**Links** (`MainForm.Links.cs`; Claude Opus 5.5, 2026-11-04, the blind tester's ask): Enter on a line of a history opens
+**Links** (`MainForm.Links.cs`; Claude Opus 5.5, 2026-11-04, the blind tester's ask): Control+K in a notecard or script opens the first link on the caret's line (Enter makes a new line there). Enter on a line of a history opens
 the first link on it; Control+Shift+K (`//links`, the Read-out menu) lists the last 50 seen in chat, IMs and notices, newest
 first, with who said them, Enter opening one. A web page (http or https only) goes to her browser, an SLurl teleports, a
 person's `secondlife:///app/agent` link opens their profile; any other `secondlife:` link is refused in words. A script's
@@ -1578,7 +1612,7 @@ gestures are the inventory's gesture items activated (OpenSim marks the item; Se
 
 ### The assistant
 
-Alt+9. It works once a provider that works is chosen in Alt+0's first rows (from the repo: the Claude account signed
+Alt+9. It works once a provider that works is chosen in Alt+0's Assistant group (from the repo: the Claude account signed
 in here, an Anthropic key, OpenRouter or the studio relay, with the venv set up by `python tools/assistant.py setup`;
 packaged: the last three only, Packaging above; `docs/assistant.md` > Switching it on); without one it says once why
 and how to choose, and everything else works. A key or token goes in on the key row (Enter, a password box, Control+V

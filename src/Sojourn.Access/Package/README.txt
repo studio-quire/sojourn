@@ -46,7 +46,7 @@ Control+R repeats the last thing read out; Control+1 to Control+9 read the last 
 
 Sound
 
-World sounds and the parcel's music start quieter than in other viewers, so they don't drown your screen reader. Alt+0 (settings) changes their levels.
+World sounds and the parcel's music start quieter than in other viewers, so they don't drown your screen reader. Alt+0 (settings), in the Sounds group, changes their levels.
 
 If Sojourn Access says at login that sounds can't play because Windows' media features are missing, your Windows is an N edition, which leaves them out. Add them, then restart Sojourn Access. On Windows 11: Settings, System, Optional features, View features, then Media Feature Pack. On Windows 10: Settings, Apps, Apps and features, Optional features, Add a feature, then Media Feature Pack. Without them everything works but sound: no world sounds, music, voice chat or walk mode's sounds.
 
@@ -57,7 +57,7 @@ Sojourn Access draws the world out of sight, using your PC's graphics, to tell w
 [assistant]
 The assistant
 
-Sojourn Access has an AI assistant: it describes the people, things and places around you (Control+D, and Control+Shift+D for you and what you're wearing), and answers or does what you type in Alt+9. It's off until you choose how it runs, in Alt+0 (settings), in its first rows:
+Sojourn Access has an AI assistant: it describes the people, things and places around you (Control+D, and Control+Shift+D for you and what you're wearing), and answers or does what you type in Alt+9. It's off until you choose how it runs, in Alt+0 (settings), in the Assistant group (Tab, then A, then Tab again):
 
 With a token from Studio Quire, if the studio has given you one: go to the row "Key or token for the assistant", press Enter, paste the token with Control+V and press Enter. Studio Quire pays for what you use, up to a monthly allowance; if that runs out, the assistant says so and comes back on the first of the next month.
 

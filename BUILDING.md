@@ -182,7 +182,7 @@ machine-wide; otherwise `dotnet SojournAccess.dll` in that folder). A Start menu
 lets them start it from the Windows key by name, so it opens in front with the focus. In the login form Second Life
 is first in the grid list; they type their username and password, and answer the Terms of Service or an authenticator
 code there. Once logged in, F1 lists the keys; `docs/access-app.md` has them all. The assistant's provider is in
-Alt+0's first rows, where Enter on the key row opens a box for the key. Without a GPU that can run the view, Access
+Alt+0's Assistant group, where Enter on the key row opens a box for the key. Without a GPU that can run the view, Access
 still works with `--no-render` (no descriptions of the view; walking uses its collision model, which needs no GPU).
 
 ## Where to read more

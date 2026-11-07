@@ -1040,6 +1040,7 @@ public sealed partial class MainForm
                 ? ("Saved. This grid compiles a script only once it's inside an object.", null, null)
                 : ScriptSaved(errors);
         }, text => Reader?.Answer(text, keep: false), held);
+        editor.OpenFirstLink = OpenFirstLink;
         editor.FormClosed += (_, _) =>
         {
             if (IsDisposed) return;

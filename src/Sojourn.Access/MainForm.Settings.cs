@@ -4,141 +4,211 @@ using Sojourn.Session.Assistant;
 
 namespace Sojourn.Access;
 
-/// <summary>Settings (Alt+0): the ones that matter here, from SojournSettings (the same the assistant changes), each a
-/// list item "Nearby chat read out: on"; Enter, Space or Right moves it to its next value, Shift with them or Left to
-/// the one before, said back (a sound's row plays it
-/// at its new level, so each can be learned; a volume given as a number steps through a few levels).</summary>
+/// <summary>Settings (Alt+0): the ones that matter here, from SojournSettings (the same the assistant changes), in named
+/// groups: one list showing a group at a time, its first row a heading saying which group and of how many, Page Down and
+/// Page Up to the next and the one before, and the groups a Tab away as a list, as the build editor's and About Land's tabs
+/// are. Each row is a list item "Nearby chat read out: on"; Enter, Space or Right moves it to its next value, Shift with them
+/// or Left to the one before, said back (a sound's row plays it at its new level, so each can be learned; a volume given
+/// as a number steps through a few levels).</summary>
 public sealed partial class MainForm
 {
     TabPage _settingsPage = null!;
     ListView _settingsList = null!;
+    ComboBox _settingsGroup = null!;
+    Dictionary<string, string> _settingsRows = new();   // each row's words by its setting, as last read
+    List<string> _settingsUnplaced = new();
 
-    // each row leads with what it's about, so first-letter navigation finds it and the useful word comes first ("Sound
-    // for ..." on eleven rows, "Walk mode, ..." on twenty, hid both)
-    static readonly (string Name, string Label)[] Shown =
+    /// <summary>Holds: what its heading says is in it, so a group's found without going through it. A row with no label has
+    /// its words in another group: it belongs in both, as someone could look in either.</summary>
+    sealed record SettingsGroup(string Name, string Holds, (string Name, string? Label)[] Rows);
+
+    // each group's first letter is its own, so the groups' list goes to any by a letter; what's changed most in a group
+    // comes first. Each row leads with what it's about, so first-letter navigation finds it and the useful word comes
+    // first ("Sound for ..." on eleven rows, "Walk mode, ..." on twenty, hid both)
+    static readonly SettingsGroup[] SettingsGroups =
     {
-        ("screen_reader", "Screen reader read-out"),
-        ("announce_nearby", "Nearby chat read out"),
-        ("announce_objects", "Objects' chat read out"),
-        ("announce_ims", "IMs read out"),
-        ("announce_group", "Group chat read out"),
-        ("announce_notices", "Notices read out"),
-        ("announce_replies", "The assistant's replies read out"),
-        ("access_describing", "Describing model (economy or best)"),
-        ("announce_music", "Music titles read out"),
-        ("access_read_mine", "My own lines read back"),
-        ("access_read_cut", "Lines cut off by my typing said again"),
-        ("access_script_errors", "Script errors from my objects read out"),
-        ("access_objects_range", "How far Objects nearby lists, metres"),
-        ("access_mute_all", "Mute all read-out (F6)"),
-        ("access_timestamps", "Times in the histories"),
-        // (the blind tester asked what "answers without a physical key: refused" meant, 2026-10-31: the row says it plainly)
-        ("access_answers_without_key", "Answers from a braille display, dictation or on-screen keyboard"),
-        ("access_builders", "Messages with the builders (Control+Shift+B)"),
-        // (Radegast's auto-accept, which the blind tester was used to and missed, 2026-11-01)
-        ("auto_accept_inventory", "Items given to you, kept without asking"),
-        // (Radegast's, the blind tester asked for it, 2026-11-03)
-        ("auto_grant_animation", "Animation permission, given without asking"),
-        ("earcon_im", "IM sound"),
-        ("earcon_mention", "Mention sound (your name or a keyword)"),
-        ("earcon_menu", "Menu sound (a script menu or question)"),
-        ("earcon_offer", "Offer sound"),
-        ("earcon_group", "Group chat sound"),
-        ("earcon_nearby", "Nearby chat sound, from whoever spoke"),
-        ("earcon_objects", "Objects' chat sound, from the object"),
-        ("earcon_friends", "Friends online and offline sound"),
-        ("earcon_radar", "Arrivals and departures sound, from the person"),
-        ("earcon_notice", "Other notices sound"),
-        ("earcon_sent", "Your own line sent, sound"),
-        ("earcon_mic", "Mic opening and closing, sound"),
-        ("earcon_deleted", "Deleting something, sound"),
-        ("access_sounds_volume", "Sojourn Access's own sounds, volume"),
-        ("sounds_volume", "World's sounds, volume"),
-        ("music", "Parcel's music"),
-        ("music_volume", "Music volume"),
-        ("volume", "Overall volume"),
-        ("speakers", "Sound output: speakers or headphones (Control+Shift+O)"),
-        ("microphone", "Microphone for voice"),
-        ("radar_chat_range", "Chat range arrivals and departures"),
-        ("radar_draw_distance", "Draw distance arrivals and departures"),
-        ("radar_region", "Region arrivals and departures"),
-        ("walk_steps", "Footsteps (walk mode)"),
-        ("walk_steps_volume", "Footsteps' volume"),
-        ("walk_walls", "Bump warning (walk mode)"),
-        ("walk_walls_volume", "Bump warning's volume"),
-        ("walk_openings", "Openings and doors passed (walk mode)"),
-        ("walk_openings_volume", "Openings' volume"),
-        ("walk_edges", "Drops and water ahead (walk mode)"),
-        ("walk_edges_volume", "Drops' volume"),
-        ("walk_turns", "Turns: where you face after one (walk mode)"),
-        ("walk_turns_volume", "Turns' volume"),
-        ("walk_sonar", "Sonar sweep (walk mode, S)"),
-        ("walk_sonar_volume", "Sonar's volume"),
-        ("walk_beacon", "Beacon on where you're heading"),
-        ("walk_beacon_volume", "Beacon's volume"),
-        ("walk_beacon_duck", "Beacon: the world's sounds while it sounds"),
-        ("walk_marks", "Marks: doors, seats and touchable things (walk mode, O)"),
-        ("walk_marks_volume", "Marks' volume"),
-        ("walk_route", "Route recording's points (walk mode, R)"),
-        ("walk_route_volume", "Route points' volume"),
-        ("walk_follow", "Following someone: their stops and turns"),
-        ("walk_follow_volume", "Following's volume"),
-        ("walk_distance", "Distance walked, said when you pause (walk mode)"),
-        ("walk_distance_volume", "Distance walked's volume"),
-        ("walk_speed", "Speed while driving, said when it changes (V asks)"),
-        ("walk_vehicle", "Obstacles ahead while driving"),
-        ("walk_vehicle_volume", "Driving sounds' volume"),
-        ("walk_switch", "Rail switches ahead while riding (walk mode, W)"),
-        ("walk_switch_volume", "Rail switches' volume"),
-        // (the blind tester's train ran off the end of its track, 2026-11-01)
-        ("walk_track_end", "Track's end: stop the vehicle when it says the track ends"),
-        ("walk_turn_step", "Degrees a tap of Left or Right turns (walk mode)"),
-        ("walk_turn_rate", "Degrees a second Left or Right held turns (walk mode)"),
-        ("walk_teleport_fallback", "Teleport when a walk finds no way around"),
-        // (after what's changed often, so the arrows reach those first; a first letter finds any)
-        ("friends_only_ims", "Only friends and groups can IM or call you"),
-        ("reject_teleports", "Teleport offers turned away"),
-        ("@teleports", "Reply to teleport offers turned away"),
-        ("reject_friendships", "Friendship offers turned away"),
-        ("@friendships", "Reply to friendship offers turned away"),
-        ("reject_group_invites", "Group invitations turned away"),
-        ("reject_p2p_calls", "One-to-one voice calls turned away"),
-        ("reject_group_calls", "Group voice calls turned away"),
-        ("reject_conference_calls", "Conference voice calls turned away"),
-        ("@dnd", "Auto response in Do not disturb"),
-        ("away_after", "Away after this many minutes without you"),
-        ("@away", "Auto response while away"),
-        ("typing_indicator", "Others told when you're writing"),
-        ("typing_animation", "Typing animation on your avatar"),
-        ("hover_height", "Hover height, metres"),
-        ("maturity", "Highest rating of region you go into"),
-        ("money_notices", "L$ received and spent, said"),
-        ("mention_alerts", "Mentions of you, an alert"),
-        ("keyword_alerts", "Keywords, an alert"),
-        ("@keywords", "Keywords that count as a mention"),
-        ("radar_age_alert", "New accounts arriving, up to this many days old"),
-        ("translate_chat", "Translate other people's lines"),
-        ("translator", "Translator"),
-        ("translate_to", "Translated into, a language code"),
-        ("rlv", "RLV, scripts controlling what you wear and do"),
-        ("ao", "Animation overrider"),
-        ("ao_stands", "Animation overrider's stands"),
-        ("incognito", "Incognito (Control+Shift+I)"),
-        ("incognito_sees", "Assistant sees during incognito"),
-        ("incognito_while_im", "While you're in an IM, incognito"),
-        ("incognito_here", "This parcel always incognito"),
-        ("voice_chat", "Voice chat"),
-        ("voice_mode", "Push to talk or open mic"),
-        ("voice_volume", "Residents' voices, volume"),
-        ("voice_hear_from", "Voice heard from"),
-        ("access_talk_key", "Talk key"),
-        ("access_voice_speakers", "Who starts speaking in voice, said"),
-        ("access_view_rate", "View out of sight, frames a second (0 for a slow PC)"),
+        new("Reading out", "what's said aloud, and what isn't", new (string, string?)[]
+        {
+            ("access_mute_all", "Mute all read-out (F6)"),
+            ("announce_nearby", "Nearby chat read out"),
+            ("announce_objects", "Objects' chat read out"),
+            ("announce_ims", "IMs read out"),
+            ("announce_group", "Group chat read out"),
+            ("announce_notices", "Notices read out"),
+            ("announce_replies", "The assistant's replies read out"),
+            ("announce_music", "Music titles read out"),
+            ("access_read_mine", "My own lines read back"),
+            ("access_read_cut", "Lines cut off by my typing said again"),
+            ("access_script_errors", "Script errors from my objects read out"),
+            ("money_notices", "L$ received and spent, said"),
+            ("radar_chat_range", null),
+            ("radar_draw_distance", null),
+            ("radar_region", null),
+            ("access_voice_speakers", null),
+            ("screen_reader", "Screen reader read-out"),
+        }),
+        new("Sounds", "volumes, the parcel's music, where sound comes out, and the sound for each kind of thing", new (string, string?)[]
+        {
+            ("volume", "Overall volume"),
+            ("music_volume", "Music volume"),
+            ("sounds_volume", "World's sounds, volume"),
+            ("voice_volume", null),
+            ("access_sounds_volume", "Sojourn Access's own sounds, volume"),
+            ("music", "Parcel's music"),
+            ("speakers", "Sound output: speakers or headphones (Control+Shift+O)"),
+            ("earcon_im", "IM sound"),
+            ("earcon_mention", "Mention sound (your name or a keyword)"),
+            ("earcon_menu", "Menu sound (a script menu or question)"),
+            ("earcon_offer", "Offer sound"),
+            ("earcon_group", "Group chat sound"),
+            ("earcon_nearby", "Nearby chat sound, from whoever spoke"),
+            ("earcon_objects", "Objects' chat sound, from the object"),
+            ("earcon_friends", "Friends online and offline sound"),
+            ("earcon_radar", "Arrivals and departures sound, from the person"),
+            ("earcon_notice", "Other notices sound"),
+            ("earcon_sent", "Your own line sent, sound"),
+            ("earcon_mic", "Mic opening and closing, sound"),
+            ("earcon_deleted", "Deleting something, sound"),
+        }),
+        new("Walking", "walk mode's cues and their volumes, and how far a turn goes", new (string, string?)[]
+        {
+            ("walk_steps", "Footsteps (walk mode)"),
+            ("walk_steps_volume", "Footsteps' volume"),
+            ("walk_walls", "Bump warning (walk mode)"),
+            ("walk_walls_volume", "Bump warning's volume"),
+            ("walk_openings", "Openings and doors passed (walk mode)"),
+            ("walk_openings_volume", "Openings' volume"),
+            ("walk_edges", "Drops and water ahead (walk mode)"),
+            ("walk_edges_volume", "Drops' volume"),
+            ("walk_turns", "Turns: where you face after one (walk mode)"),
+            ("walk_turns_volume", "Turns' volume"),
+            ("walk_sonar", "Sonar sweep (walk mode, S)"),
+            ("walk_sonar_volume", "Sonar's volume"),
+            ("walk_beacon", "Beacon on where you're heading"),
+            ("walk_beacon_volume", "Beacon's volume"),
+            ("walk_beacon_duck", "Beacon: the world's sounds while it sounds"),
+            ("walk_marks", "Marks: doors, seats and touchable things (walk mode, O)"),
+            ("walk_marks_volume", "Marks' volume"),
+            ("walk_route", "Route recording's points (walk mode, R)"),
+            ("walk_route_volume", "Route points' volume"),
+            ("walk_follow", "Following someone: their stops and turns"),
+            ("walk_follow_volume", "Following's volume"),
+            ("walk_distance", "Distance walked, said when you pause (walk mode)"),
+            ("walk_distance_volume", "Distance walked's volume"),
+            ("walk_turn_step", "Degrees a tap of Left or Right turns (walk mode)"),
+            ("walk_turn_rate", "Degrees a second Left or Right held turns (walk mode)"),
+            ("walk_teleport_fallback", "Teleport when a walk finds no way around"),
+        }),
+        new("Driving and trains", "your speed, what's ahead, rail switches and the track's end", new (string, string?)[]
+        {
+            ("walk_speed", "Speed while driving, said when it changes (V asks)"),
+            ("walk_vehicle", "Obstacles ahead while driving"),
+            ("walk_vehicle_volume", "Driving sounds' volume"),
+            ("walk_switch", "Rail switches ahead while riding (walk mode, W)"),
+            ("walk_switch_volume", "Rail switches' volume"),
+            // (the blind tester's train ran off the end of its track, 2026-11-01)
+            ("walk_track_end", "Track's end: stop the vehicle when it says the track ends"),
+        }),
+        new("People and offers", "who can reach you, what's turned away or kept, auto responses, arrivals and departures", new (string, string?)[]
+        {
+            ("radar_chat_range", "Chat range arrivals and departures"),
+            ("radar_draw_distance", "Draw distance arrivals and departures"),
+            ("radar_region", "Region arrivals and departures"),
+            ("radar_age_alert", "New accounts arriving, up to this many days old"),
+            ("friends_only_ims", "Only friends and groups can IM or call you"),
+            // (Radegast's auto-accept, which the blind tester was used to and missed, 2026-11-01)
+            ("auto_accept_inventory", "Items given to you, kept without asking"),
+            // (Radegast's, the blind tester asked for it, 2026-11-03)
+            ("auto_grant_animation", "Animation permission, given without asking"),
+            ("reject_teleports", "Teleport offers turned away"),
+            ("@teleports", "Reply to teleport offers turned away"),
+            ("reject_friendships", "Friendship offers turned away"),
+            ("@friendships", "Reply to friendship offers turned away"),
+            ("reject_group_invites", "Group invitations turned away"),
+            ("reject_p2p_calls", "One-to-one voice calls turned away"),
+            ("reject_group_calls", "Group voice calls turned away"),
+            ("reject_conference_calls", "Conference voice calls turned away"),
+            ("@dnd", "Auto response in Do not disturb"),
+            ("away_after", "Away after this many minutes without you"),
+            ("@away", "Auto response while away"),
+        }),
+        new("Chat", "mentions and keywords, translation, typing, and times in the histories", new (string, string?)[]
+        {
+            ("mention_alerts", "Mentions of you, an alert"),
+            ("keyword_alerts", "Keywords, an alert"),
+            ("@keywords", "Keywords that count as a mention"),
+            ("translate_chat", "Translate other people's lines"),
+            ("translator", "Translator"),
+            ("translate_to", "Translated into, a language code"),
+            ("typing_indicator", "Others told when you're writing"),
+            ("typing_animation", null),
+            ("access_timestamps", "Times in the histories"),
+            ("access_read_mine", null),
+            ("access_read_cut", null),
+        }),
+        new("Voice", "voice chat, how you talk, the microphone, and who you hear", new (string, string?)[]
+        {
+            ("voice_chat", "Voice chat"),
+            ("voice_mode", "Push to talk or open mic"),
+            ("access_talk_key", "Talk key"),
+            ("microphone", "Microphone for voice"),
+            ("speakers", null),
+            ("voice_volume", "Residents' voices, volume"),
+            ("voice_hear_from", "Voice heard from"),
+            ("access_voice_speakers", "Who starts speaking in voice, said"),
+            ("earcon_mic", null),
+            ("reject_p2p_calls", null),
+            ("reject_group_calls", null),
+            ("reject_conference_calls", null),
+        }),
+        new("Assistant", "its provider and key, auto mode, and the describing model", new (string, string?)[]
+        {
+            // (their words are ProviderItems')
+            ("@provider", null),
+            ("@key", null),
+            ("@model", null),
+            ("@data", null),
+            ("@auto", null),
+            ("access_describing", "Describing model (economy or best)"),
+            ("announce_replies", null),
+        }),
+        new("Incognito", "whether it's on, what the assistant sees, and when it starts by itself", new (string, string?)[]
+        {
+            ("incognito", "Incognito (Control+Shift+I)"),
+            ("incognito_sees", "Assistant sees during incognito"),
+            ("incognito_while_im", "While you're in an IM, incognito"),
+            ("incognito_here", "This parcel always incognito"),
+        }),
+        new("My avatar", "hover height, animations and RLV", new (string, string?)[]
+        {
+            ("hover_height", "Hover height, metres"),
+            ("ao", "Animation overrider"),
+            ("ao_stands", "Animation overrider's stands"),
+            ("typing_animation", "Typing animation on your avatar"),
+            ("auto_grant_animation", null),
+            ("rlv", "RLV, scripts controlling what you wear and do"),
+        }),
+        new("General", "region ratings, how far Objects nearby lists, messages with the builders, and answers without a keyboard", new (string, string?)[]
+        {
+            ("maturity", "Highest rating of region you go into"),
+            ("access_objects_range", "How far Objects nearby lists, metres"),
+            ("access_builders", "Messages with the builders (Control+Shift+B)"),
+            // (the blind tester asked what "answers without a physical key: refused" meant, 2026-10-31: the row says it plainly)
+            ("access_answers_without_key", "Answers from a braille display, dictation or on-screen keyboard"),
+            ("access_view_rate", "View out of sight, frames a second (0 for a slow PC)"),
+        }),
+        new("Everything", "every setting, A to Z", Array.Empty<(string, string?)>()),
     };
 
+    static readonly SettingsGroup UnplacedGroup = SettingsGroups[^2];
+
+    static readonly (string Name, string Label)[] Shown =
+        SettingsGroups.SelectMany(g => g.Rows).Where(r => r.Label != null).Select(r => (r.Name, r.Label!)).ToArray();
+
     /// <summary>What isn't a row on purpose: what only shows on a screen, what has its own key, or a list kept by its own
-    /// list. Anything registered and in neither table still gets a row, at the end, by its setting's name, so a new setting
-    /// can't end up reachable only by asking the assistant; the settings step fails until it's in one of them.</summary>
+    /// list. Anything registered and in neither table still gets a row, at the end of General and in Everything, by its
+    /// setting's name, so a new setting can't end up reachable only by asking the assistant; the settings step fails until
+    /// it's in one of them.</summary>
     static readonly HashSet<string> NotRows = new()
     {
         "access_im_sounds", "access_muted_sources", "access_view_size", "away", "do_not_disturb", "alert_sound", "ao_lock_folders",
@@ -149,10 +219,28 @@ public sealed partial class MainForm
     void BuildSettings()
     {
         _settingsPage = new TabPage("Settings") { Name = "settingsPage", AccessibleName = "Settings" };
-        _settingsList = List("settings", "Settings");
+        _settingsList = List("settings", $"{SettingsGroups[0].Name} settings");
+        _settingsGroup = new ComboBox { Name = "settingsGroup", AccessibleName = "Group", DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
+        // (a closed list says only the item, so the item carries where it stands)
+        _settingsGroup.Items.AddRange(SettingsGroups.Select((g, i) => (object)$"{g.Name}, {i + 1} of {SettingsGroups.Length}").ToArray());
+        _settingsGroup.SelectedIndex = 0;
+        _settingsGroup.SelectedIndexChanged += (_, _) => ShowSettingsGroup(atHeading: true);
+        _settingsGroup.KeyDown += (_, e) =>
+        {
+            if (e.KeyData != Keys.Enter || _settingsGroup.DroppedDown) return;
+            e.Handled = e.SuppressKeyPress = true;
+            _settingsList.Focus();
+        };
         _settingsList.KeyDown += (_, e) =>
         {
+            if (e.KeyData is Keys.PageDown or Keys.PageUp)
+            {
+                e.Handled = e.SuppressKeyPress = true;
+                NextSettingsGroup(e.KeyData == Keys.PageDown ? 1 : -1);
+                return;
+            }
             var item = _settingsList.SelectedItems.Count > 0 ? _settingsList.SelectedItems[0] : _settingsList.FocusedItem;
+            if (item?.Name.StartsWith(HeadingRow) == true) { SettingsHeadingKey(e); return; }
             if (item?.Tag is string words && WordRows.Contains(words) && WordRowKey(words, e)) return;
             if (item?.Tag is string own && own.StartsWith('@') && ProviderKey(own, e)) return;
             if (e.KeyCode is not (Keys.Enter or Keys.Space or Keys.Left or Keys.Right) || e.Control || e.Alt || item?.Tag is not string name) return;
@@ -164,7 +252,80 @@ public sealed partial class MainForm
             if (DeviceRow(name)) { _ = NextDeviceAsync(name, e.Shift || e.KeyCode == Keys.Left ? -1 : 1); return; }
             _ = NextValueAsync(name, e.Shift || e.KeyCode == Keys.Left ? -1 : 1, typing: e.KeyCode is Keys.Enter or Keys.Space);
         };
-        _settingsPage.Controls.Add(_settingsList);
+
+        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        t.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        t.Controls.Add(_settingsList, 0, 0);
+        t.SetColumnSpan(_settingsList, 2);
+        t.Controls.Add(new Label { Text = "Group", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+        t.Controls.Add(_settingsGroup, 1, 1);
+        _settingsList.TabIndex = 0; _settingsGroup.TabIndex = 1;
+        _settingsPage.Controls.Add(t);
+    }
+
+    // --- the groups
+
+    const string HeadingRow = "#";
+
+    SettingsGroup ShownGroup => SettingsGroups[Math.Max(0, _settingsGroup.SelectedIndex)];
+    string SettingsListName => $"{ShownGroup.Name} settings";
+    string GroupWhere => $"{ShownGroup.Name}, group {Math.Max(0, _settingsGroup.SelectedIndex) + 1} of {SettingsGroups.Length}";
+
+    /// <summary>The first group's heading says the keys too: it's what's heard on first coming here.</summary>
+    string SettingsHeading() => $"{GroupWhere}: {ShownGroup.Holds}."
+        + (ShownGroup == SettingsGroups[0] ? " Page Down: the next group. Tab: the list of groups." : "");
+
+    IEnumerable<string> RowsOfGroup(SettingsGroup g)
+    {
+        if (g == SettingsGroups[^1]) return _settingsRows.OrderBy(r => r.Value, StringComparer.OrdinalIgnoreCase).Select(r => r.Key);
+        var rows = g.Rows.Select(r => r.Name).Where(_settingsRows.ContainsKey);
+        return g == UnplacedGroup ? rows.Concat(_settingsUnplaced) : rows;
+    }
+
+    /// <summary>The group chosen into the list, from what was last read: the row she's on kept, or at its heading.</summary>
+    void ShowSettingsGroup(bool atHeading = false)
+    {
+        _settingsList.AccessibleName = SettingsListName;
+        if (_settingsRows.Count == 0) { Fill(_settingsList, new(), "No settings (not logged in?)."); return; }
+        var items = new List<(string, string, object)> { (SettingsHeading(), HeadingRow + ShownGroup.Name, null!) };
+        items.AddRange(RowsOfGroup(ShownGroup).Select(name => (_settingsRows[name], name, (object)name)));
+        if (atHeading) _settingsList.Items.Clear();   // (Fill keeps the row she's on, which can be in the next group too)
+        Fill(_settingsList, items, "");
+    }
+
+    /// <summary>Page Down, Page Up: the next group or the one before, round the ends, at its heading. The focus stays in the
+    /// list, on what's often the same position in it, and NVDA drops a focus event for the position it's on (its
+    /// isDuplicateIAccessibleEvent), so the heading is said as well: if the row's read too it's the same words.</summary>
+    void NextSettingsGroup(int dir)
+    {
+        _settingsGroup.SelectedIndex = (_settingsGroup.SelectedIndex + dir + SettingsGroups.Length) % SettingsGroups.Length;
+        Reader?.Answer(SettingsHeading(), keep: false);
+    }
+
+    /// <summary>On a heading nothing's there to change, so Enter and Space go to the group's first setting and Left and Right
+    /// to the other groups (Page Down and Page Up take Fn and arrows on many laptops).</summary>
+    void SettingsHeadingKey(KeyEventArgs e)
+    {
+        if (e.Control || e.Alt || e.KeyCode is not (Keys.Enter or Keys.Space or Keys.Left or Keys.Right)) return;
+        e.Handled = e.SuppressKeyPress = true;
+        if (e.KeyCode is Keys.Left or Keys.Right) { NextSettingsGroup(e.KeyCode == Keys.Left ? -1 : 1); return; }
+        if (_settingsList.Items.Count < 2) return;
+        _settingsList.Items[1].Selected = true;
+        _settingsList.Items[1].Focused = true;
+    }
+
+    /// <summary>Alt+0: Settings as she left it, the same group and row; pressed while there, where that is said (an area's
+    /// key reads it again).</summary>
+    void GoSettings()
+    {
+        bool there = _areas.SelectedTab == _settingsPage;
+        GoArea(_settingsPage);
+        if (!there) return;
+        var row = _settingsList.FocusedItem;
+        Reader?.Answer(row == null || row.Name.StartsWith(HeadingRow) ? SettingsHeading() : $"{GroupWhere}. {row.Text}.", keep: false);
     }
 
     /// <summary>Answers without a physical key: back to refuse by anything, to hello (a safeguard lowered) only by the
@@ -194,22 +355,25 @@ public sealed partial class MainForm
     async Task RefreshSettings()
     {
         bool first = _settingsList.Items.Count == 0;
-        if (first) Looking(_settingsList, "Settings", true);
+        if (first) Looking(_settingsList, SettingsListName, true);
         try
         {
             var all = (await SettingsOp(new JsonObject(), "get"))["settings"] as JsonObject ?? new();
             var words = await WordRowValuesAsync();
-            var items = new List<(string, string, object)>();
+            var rows = new Dictionary<string, string>();
             foreach (var (name, label) in Shown)
-                if (words.TryGetValue(name, out var said)) items.Add(($"{label}: {said}", name, name));
-                else if (all[name] is JsonObject s) items.Add(($"{label}: {ValueWords(name, Value(s["value"]))}", name, name));
+                if (words.TryGetValue(name, out var said)) rows[name] = $"{label}: {said}";
+                else if (all[name] is JsonObject s) rows[name] = $"{label}: {ValueWords(name, Value(s["value"]))}";
             var named = Shown.Select(r => r.Name).ToHashSet();
+            var unplaced = new List<string>();
             foreach (var (name, node) in all.Where(kv => !named.Contains(kv.Key) && !NotRows.Contains(kv.Key)).OrderBy(kv => kv.Key))
-                if (node is JsonObject s) items.Add(($"{name.Replace('_', ' ')}: {ValueWords(name, Value(s["value"]))}", name, name));
-            if (items.Count > 0) items.InsertRange(0, ProviderItems());
-            Fill(_settingsList, items, "No settings (not logged in?).");
+                if (node is JsonObject s) { rows[name] = $"{name.Replace('_', ' ')}: {ValueWords(name, Value(s["value"]))}"; unplaced.Add(name); }
+            if (rows.Count > 0)
+                foreach (var (text, key, _) in ProviderItems()) rows[key] = text;
+            (_settingsRows, _settingsUnplaced) = (rows, unplaced);
+            ShowSettingsGroup();
         }
-        finally { if (first) Looking(_settingsList, "Settings", false); }
+        finally { if (first) Looking(_settingsList, SettingsListName, false); }
     }
 
     // --- whose models the assistant runs on (docs/assistant.md > Switching it on): the person's own rows here, never the

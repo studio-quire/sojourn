@@ -219,6 +219,7 @@ public sealed partial class MainForm : Form
         if (Reader is { } r) r.Greeting = "Sojourn Access. F1 for keys.";
         _arrived = true;
         _ = ReadFavoritesAfterLoadingAsync();
+        _ = SayIfNewerBuildAsync();
     }
 
     void Tick()
@@ -546,6 +547,14 @@ public sealed partial class MainForm : Form
         F5: refresh a list
         On one of your groups, the Applications key: its chat, your title in it, its members and notices, whether you get them
 
+        Settings
+        Alt+0: settings, in groups, back on the row you left
+        In Settings, Page Down and Page Up: the next group and the one before
+        On a group's first row, Right and Left too; Enter: its first setting
+        In Settings, Tab: the list of groups, by the arrows or a letter; Tab or Enter back to the settings
+        Alt+0 again: which group you're in
+        On a setting, Enter, Space or Right: its next value; with Shift, or Left, the one before
+
         Reading out
         F6: mute read-out
         Shift+F6: mute this conversation
@@ -696,7 +705,7 @@ public sealed partial class MainForm : Form
             case Keys.Alt | Keys.Shift | Keys.D7: GoWorn(); return true;
             case Keys.Alt | Keys.D8: GoArea(_noticesPage); return true;
             case Keys.Alt | Keys.D9: GoArea(_assistantPage); return true;
-            case Keys.Alt | Keys.D0: GoArea(_settingsPage); return true;
+            case Keys.Alt | Keys.D0: GoSettings(); return true;
             case Keys.Control | Keys.Tab: Ring(+1); return true;
             case Keys.Control | Keys.Shift | Keys.Tab: Ring(-1); return true;
             // the same ring (a tab control would switch only the strip it's in, and not from everywhere)
@@ -799,7 +808,7 @@ public sealed partial class MainForm : Form
             return Host?.Session.Online == true ? SoundWords.Missing(Host) ?? "Sounds are off in this session (--no-sounds), music too." : null;
         var m = audio.Music;
         if (m.ParcelUrl.Length == 0) return null;
-        if (!Host.Settings.Music) return "This parcel has music; it's turned off (Alt+0, The parcel's music).";
+        if (!Host.Settings.Music) return "This parcel has music; it's turned off (Alt+0, Sounds, Parcel's music).";
         return m.State switch
         {
             "playing" => m.Title is { Length: > 0 } t ? $"Playing: {t}." : "Music playing, no title given.",

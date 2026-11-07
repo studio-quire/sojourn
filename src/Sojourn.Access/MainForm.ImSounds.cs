@@ -31,7 +31,7 @@ public sealed partial class MainForm
         _set.SetImSound(id, sound);
         var line = $"{(group ? $"{name} group chat" : $"IMs from {name}")}: {sound ?? "the usual sound"}.";
         if (sound != null && _set.EarconLevel(group ? "group" : "im") <= 0)
-            line += group ? " Group chat sounds are off: Alt+0, Group chat sound, turns them on." : " IM sounds are off: Alt+0, IM sound, turns them on.";
+            line += group ? " Group chat sounds are off: Alt+0, Sounds, Group chat sound, turns them on." : " IM sounds are off: Alt+0, Sounds, IM sound, turns them on.";
         Answer(line);
     }
 

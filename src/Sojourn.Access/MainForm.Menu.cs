@@ -73,7 +73,7 @@ public sealed partial class MainForm
             Later("What you wea&r, to touch", "Alt+Shift+7", GoWorn),
             Later("&Notices", "Alt+8", () => GoArea(_noticesPage)),
             Later("The &assistant", "Alt+9", () => GoArea(_assistantPage)),
-            Later("Se&ttings", "Alt+0", () => GoArea(_settingsPage)),
+            Later("Se&ttings", "Alt+0", GoSettings),
             new ToolStripSeparator(),
             Later("The ne&west notice", "Control+N", NewestNotice),
             Later("C&onversations", null, () => GoArea(_conversationsPage)),

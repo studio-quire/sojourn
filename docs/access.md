@@ -755,6 +755,10 @@ On the builders' line and five logs (our words). What's built from it is in `doc
 - **Her log's filter**: objects named as a person (someone speaking through one, a relay or a tiny avatar's) kept their
   words in shared logs. Fixed in Send a log; 17 local copies scrubbed and the 10 still on the relay deleted.
 
+### Notecards, settings and an old build (the blind tester, 2026-11-07)
+
+On the builders' line and log `tester-20261107T150406-3fe8fa` (our words). She doesn't mind Alt+0's long list herself but wants it better organised, and chose groups over a box that narrows it. Editing and saving a notecard worked, on 0.1.0.929, an older build than she'd been told to use, without her knowing: a line at login now says when a newer build is out. She found links in notecards couldn't be opened: Control+K now. Play on a sound in the world, as the official viewer does, is fine.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
