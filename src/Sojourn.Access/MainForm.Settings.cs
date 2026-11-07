@@ -81,7 +81,9 @@ public sealed partial class MainForm
         ("walk_route", "Route recording's points (walk mode, R)"),
         ("walk_route_volume", "Route points' volume"),
         ("walk_follow", "Following someone: their stops and turns"),
+        ("walk_follow_volume", "Following's volume"),
         ("walk_distance", "Distance walked, said when you pause (walk mode)"),
+        ("walk_distance_volume", "Distance walked's volume"),
         ("walk_speed", "Speed while driving, said when it changes (V asks)"),
         ("walk_vehicle", "Obstacles ahead while driving"),
         ("walk_vehicle_volume", "Driving sounds' volume"),
@@ -92,6 +94,34 @@ public sealed partial class MainForm
         ("walk_turn_step", "Degrees a tap of Left or Right turns (walk mode)"),
         ("walk_turn_rate", "Degrees a second Left or Right held turns (walk mode)"),
         ("walk_teleport_fallback", "Teleport when a walk finds no way around"),
+        // (after what's changed often, so the arrows reach those first; a first letter finds any)
+        ("friends_only_ims", "Only friends and groups can IM or call you"),
+        ("reject_teleports", "Teleport offers turned away"),
+        ("@teleports", "Reply to teleport offers turned away"),
+        ("reject_friendships", "Friendship offers turned away"),
+        ("@friendships", "Reply to friendship offers turned away"),
+        ("reject_group_invites", "Group invitations turned away"),
+        ("reject_p2p_calls", "One-to-one voice calls turned away"),
+        ("reject_group_calls", "Group voice calls turned away"),
+        ("reject_conference_calls", "Conference voice calls turned away"),
+        ("@dnd", "Auto response in Do not disturb"),
+        ("away_after", "Away after this many minutes without you"),
+        ("@away", "Auto response while away"),
+        ("typing_indicator", "Others told when you're writing"),
+        ("typing_animation", "Typing animation on your avatar"),
+        ("hover_height", "Hover height, metres"),
+        ("maturity", "Highest rating of region you go into"),
+        ("money_notices", "L$ received and spent, said"),
+        ("mention_alerts", "Mentions of you, an alert"),
+        ("keyword_alerts", "Keywords, an alert"),
+        ("@keywords", "Keywords that count as a mention"),
+        ("radar_age_alert", "New accounts arriving, up to this many days old"),
+        ("translate_chat", "Translate other people's lines"),
+        ("translator", "Translator"),
+        ("translate_to", "Translated into, a language code"),
+        ("rlv", "RLV, scripts controlling what you wear and do"),
+        ("ao", "Animation overrider"),
+        ("ao_stands", "Animation overrider's stands"),
         ("incognito", "Incognito (Control+Shift+I)"),
         ("incognito_sees", "Assistant sees during incognito"),
         ("incognito_while_im", "While you're in an IM, incognito"),
@@ -99,8 +129,20 @@ public sealed partial class MainForm
         ("voice_chat", "Voice chat"),
         ("voice_mode", "Push to talk or open mic"),
         ("voice_volume", "Residents' voices, volume"),
+        ("voice_hear_from", "Voice heard from"),
         ("access_talk_key", "Talk key"),
         ("access_voice_speakers", "Who starts speaking in voice, said"),
+        ("access_view_rate", "View out of sight, frames a second (0 for a slow PC)"),
+    };
+
+    /// <summary>What isn't a row on purpose: what only shows on a screen, what has its own key, or a list kept by its own
+    /// list. Anything registered and in neither table still gets a row, at the end, by its setting's name, so a new setting
+    /// can't end up reachable only by asking the assistant; the settings step fails until it's in one of them.</summary>
+    static readonly HashSet<string> NotRows = new()
+    {
+        "access_im_sounds", "access_muted_sources", "access_view_size", "away", "do_not_disturb", "alert_sound", "ao_lock_folders",
+        "ao_lockmeister", "ao_opencollar", "chat_bubbles", "crash_reports", "hover_tips", "hover_tip_delay", "lip_sync", "selection_beams",
+        "stats_hardware_ids", "tag_friend_colour", "tag_group_titles", "tags_through_walls", "walk_track_end_phrases",
     };
 
     void BuildSettings()
@@ -110,6 +152,7 @@ public sealed partial class MainForm
         _settingsList.KeyDown += (_, e) =>
         {
             var item = _settingsList.SelectedItems.Count > 0 ? _settingsList.SelectedItems[0] : _settingsList.FocusedItem;
+            if (item?.Tag is string words && WordRows.Contains(words) && WordRowKey(words, e)) return;
             if (item?.Tag is string own && own.StartsWith('@') && ProviderKey(own, e)) return;
             if (e.KeyCode is not (Keys.Enter or Keys.Space or Keys.Left or Keys.Right) || e.Control || e.Alt || item?.Tag is not string name) return;
             e.Handled = e.SuppressKeyPress = true;
@@ -118,7 +161,7 @@ public sealed partial class MainForm
             // a device row: Enter opens the list of devices (stepping onto the next one blind isn't choosing it)
             if (DeviceRow(name) && e.KeyCode == Keys.Enter && !e.Shift) { _ = DeviceListAsync(name, item); return; }
             if (DeviceRow(name)) { _ = NextDeviceAsync(name, e.Shift || e.KeyCode == Keys.Left ? -1 : 1); return; }
-            _ = NextValueAsync(name, e.Shift || e.KeyCode == Keys.Left ? -1 : 1);
+            _ = NextValueAsync(name, e.Shift || e.KeyCode == Keys.Left ? -1 : 1, typing: e.KeyCode is Keys.Enter or Keys.Space);
         };
         _settingsPage.Controls.Add(_settingsList);
     }
@@ -154,9 +197,14 @@ public sealed partial class MainForm
         try
         {
             var all = (await SettingsOp(new JsonObject(), "get"))["settings"] as JsonObject ?? new();
+            var words = await WordRowValuesAsync();
             var items = new List<(string, string, object)>();
             foreach (var (name, label) in Shown)
-                if (all[name] is JsonObject s) items.Add(($"{label}: {ValueWords(name, Value(s["value"]))}", name, name));
+                if (words.TryGetValue(name, out var said)) items.Add(($"{label}: {said}", name, name));
+                else if (all[name] is JsonObject s) items.Add(($"{label}: {ValueWords(name, Value(s["value"]))}", name, name));
+            var named = Shown.Select(r => r.Name).ToHashSet();
+            foreach (var (name, node) in all.Where(kv => !named.Contains(kv.Key) && !NotRows.Contains(kv.Key)).OrderBy(kv => kv.Key))
+                if (node is JsonObject s) items.Add(($"{name.Replace('_', ' ')}: {ValueWords(name, Value(s["value"]))}", name, name));
             if (items.Count > 0) items.InsertRange(0, ProviderItems());
             Fill(_settingsList, items, "No settings (not logged in?).");
         }
@@ -288,6 +336,7 @@ public sealed partial class MainForm
 
     static string Value(JsonNode? v) => v switch
     {
+        JsonArray list => list.Count == 0 ? "none" : string.Join(", ", list.Select(x => x?.ToString())),
         JsonValue b when b.TryGetValue<bool>(out var on) => on ? "on" : "off",
         null => "none",
         _ => v.ToString(),
@@ -312,8 +361,9 @@ public sealed partial class MainForm
         _ => value.Replace('_', ' '),
     };
 
-    /// <summary>The setting's next value (dir 1: Enter or Space) or the one before (-1: with Shift), round the ends.</summary>
-    async Task NextValueAsync(string name, int dir = 1)
+    /// <summary>The setting's next value (dir 1: Enter or Space) or the one before (-1: with Shift), round the ends. One
+    /// with no steps (a number in a range, a word) is typed: Enter or Space asks for it.</summary>
+    async Task NextValueAsync(string name, int dir = 1, bool typing = false)
     {
         var one = (await SettingsOp(new JsonObject { ["name"] = name }, "get"))["settings"]?[name] as JsonObject;
         if (one == null) return;
@@ -326,7 +376,12 @@ public sealed partial class MainForm
         bool isNumber = one["value"] is JsonValue num && double.TryParse(num.ToJsonString(), System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out was) && (one.Str("values") ?? "") == "0-2";
         if (isNumber) values = new[] { "0", "0.15", "0.25", "0.5", "0.75", "1", "1.5", "2" };
-        if (values.Length < 2) { Reader?.Answer($"{ValueWords(name, now)}. This one is changed by asking the assistant.", keep: false); return; }
+        if (values.Length < 2)
+        {
+            if (typing) await TypedValueAsync(name, one, now);
+            else Reader?.Answer($"{ValueWords(name, now)}. Enter types another.", keep: false);
+            return;
+        }
         string next;
         if (isNumber)
         {
@@ -342,13 +397,92 @@ public sealed partial class MainForm
         }
         // a switch takes true or false; a choice (screen_reader: auto, on, off) takes its word; a number its value
         bool isSwitch = one["value"] is JsonValue cur && cur.TryGetValue<bool>(out _);
+        // (choices that are numbers, away_after's minutes, go as numbers)
+        bool numeric = one["value"]?.GetValueKind() == System.Text.Json.JsonValueKind.Number;
         JsonNode value = isSwitch ? JsonValue.Create(next == "on")
-            : isNumber ? JsonValue.Create(double.Parse(next, System.Globalization.CultureInfo.InvariantCulture)) : JsonValue.Create(next);
+            : isNumber || numeric ? JsonValue.Create(double.Parse(next, System.Globalization.CultureInfo.InvariantCulture)) : JsonValue.Create(next);
         var r = await SettingsOp(new JsonObject { [name] = value }, "set");
         if (PersonOps.Error(r) is { } e) { Reader?.Answer($"Not changed: {e}"); return; }
         await RefreshSettings();
         var label = Shown.FirstOrDefault(s => s.Name == name).Label ?? name;
         Reader?.Answer($"{label}: {ValueWords(name, next)}.");
         _earcons?.Preview(name);
+    }
+
+    /// <summary>A setting typed: its range is in the question; a refusal is said in the setting's own words.</summary>
+    async Task TypedValueAsync(string name, JsonObject one, string now)
+    {
+        var label = Shown.FirstOrDefault(s => s.Name == name).Label ?? name.Replace('_', ' ');
+        var text = Dialogs.Ask(this, label, $"{label} ({one.Str("values")})", now == "none" ? "" : now, allowEmpty: true);
+        if (text == null) { Reader?.Answer("Not changed.", keep: false); return; }
+        JsonNode value = one["value"] is JsonArray
+            ? new JsonArray(text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(w => (JsonNode)w!).ToArray())
+            : double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n) ? JsonValue.Create(n) : JsonValue.Create(text);
+        var r = await SettingsOp(new JsonObject { [name] = value }, "set");
+        if (PersonOps.Error(r) is { } e) { Reader?.Answer($"Not changed: {e}"); return; }
+        await RefreshSettings();
+        Reader?.Answer($"{label}: {(text.Length == 0 ? "none" : ValueWords(name, text))}.");
+    }
+
+    // --- rows of words: what she'd want said for her, and her keywords, kept by their own ops
+
+    static readonly HashSet<string> WordRows = new() { "@keywords", "@dnd", "@away", "@teleports", "@friendships" };
+
+    async Task<Dictionary<string, string>> WordRowValuesAsync()
+    {
+        var keywords = await _ops.ReadAsync("SojournSocial", "status");
+        var status = await _ops.ReadAsync("SojournPeople", "status");
+        var rejects = await _ops.ReadAsync("SojournPeople", "rejects");
+        var words = (keywords["keywords"]?["words"] as JsonArray)?.Select(w => w?.ToString() ?? "").ToList() ?? new();
+        return new()
+        {
+            ["@keywords"] = words.Count == 0 ? "none" : string.Join(", ", words),
+            ["@dnd"] = status.Str("dnd_response") ?? "",
+            ["@away"] = status["away_response_on"]?.GetValue<bool>() == true ? status.Str("away_response") ?? "" : "off",
+            ["@teleports"] = rejects.Str("teleports_response") ?? "",
+            ["@friendships"] = rejects.Str("friendships_response") ?? "",
+        };
+    }
+
+    bool WordRowKey(string row, KeyEventArgs e)
+    {
+        if (e.KeyCode is not (Keys.Enter or Keys.Space) || e.Control || e.Alt) return false;
+        e.Handled = e.SuppressKeyPress = true;
+        _ = AskWordRowAsync(row);
+        return true;
+    }
+
+    async Task AskWordRowAsync(string row)
+    {
+        var label = Shown.First(s => s.Name == row).Label;
+        var now = (await WordRowValuesAsync())[row];
+        var question = row == "@keywords" ? "Words or phrases, commas between them" : row == "@away" ? "What it says; empty turns it off" : "What it says; empty goes back to the standard sentence";
+        var text = Dialogs.Ask(this, label, question, now is "none" or "off" ? "" : now, allowEmpty: true);
+        if (text == null) { Reader?.Answer("Not changed.", keep: false); return; }
+        if (row == "@keywords")
+        {
+            var words = text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            var k = await _ops.DoAsync("SojournSocial", "keywords", new JsonObject { ["words"] = new JsonArray(words.Select(w => (JsonNode)w!).ToArray()) });
+            if (PersonOps.Error(k) is { } ke) { Reader?.Answer($"Not changed: {ke}"); return; }
+            await RefreshSettings();
+            Reader?.Answer(words.Length == 0 ? "No keywords now." : $"Keywords: {string.Join(", ", words)}. The Keywords, an alert row turns their alerts on and off.");
+            return;
+        }
+        var args = new JsonObject { ["kind"] = row[1..], ["text"] = text };
+        if (row == "@away") args["on"] = text.Length > 0;
+        // her own words sent for her: the exact text confirmed, as the op asks
+        if (await ConfirmedAsync("SojournPeople", "setResponse", args) is not { } r) return;
+        if (PersonOps.Error(r) is { } e) { Reader?.Answer($"Not changed: {e}"); return; }
+        await RefreshSettings();
+        Reader?.Answer($"{label}: {(await WordRowValuesAsync())[row].TrimEnd('.')}.");
+    }
+
+    /// <summary>The grid's own preference; the VR client registers its copy among its own rows.</summary>
+    void AddMaturitySetting(Sojourn.Session.Control.SettingsApi api)
+    {
+        var s = Host!.Session;
+        api.Add("maturity", new Sojourn.Session.Control.SettingsApi.Setting("you", "the highest rating of region you go into, up to what the account allows (beyond it is refused with why); the grid keeps it with the account",
+            string.Join(", ", Sojourn.Core.Agents.AgentSession.Maturities), () => JsonValue.Create(s.Maturity), _ => "maturity: changed through the grid")
+            { SetAsync = (v, ct) => s.SetMaturityAsync(v.ToString().Trim().ToLowerInvariant(), ct) });
     }
 }

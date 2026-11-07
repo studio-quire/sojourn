@@ -1,6 +1,6 @@
 # Sojourn Access: what it lacks next to Radegast
 
-Written by Claude Opus 5.5, 2026-11-07. Agent-facing. The plan (`docs/access.md`, M1) says Access does everything Radegast
+Written by Claude Opus 5.5, 2026-11-07. Agent-facing. The plan (`docs/access.md`, M1) aims for everything Radegast
 does, and the first tester's want is the same. On 2026-11-06 objects turned out to have no Pay or Buy and nothing could be
 unblocked, so that claim had never been checked. This is the check: gaps and partial matches only, ranked. Take an entry
 off when it's closed.
@@ -8,7 +8,8 @@ off when it's closed.
 **How it was checked.** `docs/radegast.md` feature by feature, then the tasks blind residents hand to a sighted person, each
 against what Access exposes in its code at `3d47ccf`: the menus in `MainForm.*.cs`, `ProcessCmdKey`, `Commands.cs`, the rows
 in Alt+0's `Shown`. An op in Core or Session counted only for the size guess. Reading only: nothing built or run, no
-screen reader, no grid, so items 1 and 2 (bugs from reading their paths) want reproducing on the local grid before the fix.
+screen reader, no grid. Its two bugs from reading were reproduced on the local grid when they were fixed: the notecards as read;
+conferences differently, a line of one being taken for an IM from whoever spoke.
 Radegast's side is radegast.md's word, itself read from source and never run. Not reviewed closely: walk mode's and rides'
 internals, how each notice kind reads. Not counted as gaps: Radegast's pictures and 3D window, fonts and colours, tray,
 tab highlights, plugins.
@@ -22,39 +23,11 @@ worn things; the two auto-accepts; Control+Shift+L; favourites and start places;
 the delete sound. All are in the code as described. The `//` set's syntax, Alt+0's volumes and the Land and Build areas match
 or pass Radegast except as listed.
 
-**Why so much is missing.** Three causes, worth fixing as causes:
-- Actions on a person are written out per list, so each list has a different subset (item 3).
-- Alt+0 is a hand-kept list over SojournSettings; a setting not on it can only be changed by asking the assistant (item 8).
-- Core was built for the assistant, so most of this is ops with no key. Most sizes below are small for that reason.
+**Why so much is missing.** Core was built for the assistant, so most of this is ops with no key. Most sizes below are small for that reason. Two other causes are fixed: a person's actions are one list (`PersonActions`), and a setting can't fall off Alt+0 (`docs/access-app.md` > Areas).
 
 Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for one agent. Numbers stay as first ranked, so references hold when an entry goes.
 
 ## Ranked
-
-### 2. Conference chat: a reply fails, and she can't start one (bug and gap)
-- **Radegast:** several friends selected, IM: a conference. Replies go to the session. The tester asked for this in Radegast's early years.
-- **Access:** `SocialFeed.Im` makes every non-p2p session `FeedKind.Group`; `Joined` opens it with `group: true`; `SendImAsync`
-  then sends `group_id`, and `TesselIM send` refuses with "not a member of that group". So she's invited in, hears them, and
-  each line says "Not sent". The tab is titled "(group)" too. Starting one: lists are `MultiSelect = false`, and
-  `TesselIM conference` is never called.
-- **Where:** `MainForm.Chat.cs` `SendImAsync` (`session_id` unless it's really her group), `Conversation.Group`'s title; a
-  Start a conference item on Friends, with several marked or picked (`Dialogs.Pick`).
-- **Size:** S each.
-- **Matters: high.** People start these on anyone; she looks as if she's ignoring them.
-
-### 3. Actions on a person differ by list; an IM has almost none
-- **Radegast:** IM toolbar: Profile, Pay, Offer Teleport. Profile: Start IM, Add Friend, Offer and Request Teleport, Pay, Mute,
-  Give. Friends: rights (see online, see on map, modify objects). Near list: all of it plus Follow, Walk To and the rest.
-- **Access:** an IM's Applications key has its sound and the edit items. Offer friendship exists only on Search results. Block
-  exists only on People nearby and `//block`, which finds only someone nearby, so someone sending unwanted IMs from afar can't be
-  blocked. The profile window has IM, Pay, Give and Describe only. Friends has no Block, Walk to or Where, Search no Give or
-  Block. Friend rights aren't anywhere. No `//profile NAME` or `//friend NAME`.
-- **Where:** one `PersonActions(id, name)` in `MainForm.People.cs`, used by `PeopleList`, friends, `ResultActions`,
-  `ConversationMenu` and the profile's buttons; the ops all exist (`offerFriendship`, `mute`, `friendRights`, `offerTeleport`).
-  Rights behind `ConfirmedAsync`, as the op says.
-- **Size:** S-M.
-- **Matters: high.** Daily. Blocking from an IM is safety; giving a partner edit rights is how a sighted helper helps without
-  logging in as her, which is what the plan wants to end.
 
 ### 4. Objects: no details, no filter, thin menu
 - **Radegast:** "your main source for learning what is around you", in its guide. Each line has its owner; the details pane has
@@ -112,38 +85,19 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 - **Matters: medium-high.** Not daily, but there's no way at all, and the picture is a named task. Notes are cheap and useful to
   someone who can't recognise a face or a look.
 
-### 8. Settings only the assistant can change
-- **Radegast:** Preferences has them all as controls.
-- **Access:** registered in the session but not on Alt+0's `Shown`: `reject_teleports`, `reject_friendships`, `reject_group_invites`,
-  `friends_only_ims`, `money_notices`, `typing_animation`, `typing_indicator`, `away_after`, `hover_height`, `mention_alerts`,
-  `keyword_alerts`, `rlv`, `reject_group_calls`, `reject_conference_calls`, translation. Radegast's auto response (`setResponse`) and
-  her keywords (`SojournSocial keywords`) have no way in, though the Mention sound row promises keywords. `maturity` is registered
-  only by the VR client, so isn't there at all (item 10).
-- **Where:** `MainForm.Settings.cs` `Shown`, a typed row for words (as `@key`); `AccessSettings.Register` for what's the client's.
+### 9. Inventory housekeeping: what's left
+- **Radegast:** Empty Lost and Found; Paste as Link; New Script; search by creator and description; sort by date; Expand All; Backup to disk.
+- **Access:** none of these. Recent is the last 24 hours only. Does F5 drop what the grid no longer has, as well as fetch what it does? Not checked (`AgentInventory.ReloadAsync`).
+- **Where:** `ItemActions` and `FolderActions` in `MainForm.Inventory.cs`; `link` is an op.
+- **Size:** S each; search fields S; Backup M.
+- **Matters: medium.**
+
+### 10. Putting herself right: what's left
+- **Radegast:** Set Appearance, Always Run; Health in the status bar.
+- **Access:** Shift runs in walk mode only, so `//go` always walks.
+- **Where:** `MainForm.Self.cs`, `Movement.AlwaysRun`, `Self.Health` in `//status`.
 - **Size:** S.
-- **Matters: medium-high.** A flat breach of the stance, and very cheap. RLV in particular can't be turned on without a token.
-
-### 9. Inventory housekeeping
-- **Radegast:** Empty Trash and Lost and Found; Attach to (point list) and Attach to HUD; Play and Stop for sounds and animations;
-  Paste as Link; New Script; search by creator and description; sort by date; Reload Inventory; Expand All; Backup to disk.
-- **Access:** none of these. Worth noting: nothing ever leaves the Trash (`DeleteAsync` sends no `purge`, so Delete in Show: Trash
-  does nothing new), and each Unbox of a copyable box adds its rezzed copy to it. F5 re-shows the local store, never asking the grid
-  again, where Radegast's reload is how stale folders get mended. Recent is the last 24 hours only.
-- **Where:** `ItemActions` and `FolderActions` in `MainForm.Inventory.cs`. Ops: `emptyTrash`, `delete` with `purge`, `attach` with
-  `point`, `attachPoints`, `playSound`, `playAnimation`, `stopAnimation`, `link`.
-- **Size:** S each; search fields S; refetch S-M; Backup M.
-- **Matters: medium-high.** Attach to a point is how you wear something whose default is wrong, and Play is the only way she can
-  tell what a sound is. Trash grows without end.
-
-### 10. Putting herself right: rebake, stop animations and the rest
-- **Radegast:** World and Tools: Rebake Textures, Set Appearance, Stop All Animations, Set Hover Height, Change Display Name, Set
-  Access Level, Always Run; Health in the status bar.
-- **Access:** none. Shift runs in walk mode only, so `//go` always walks.
-- **Where:** `MainForm.Menu.cs` World. Ops: `rebake`, `stopAnimating`, `hoverHeight`, `setDisplayName`, `AgentSession.Access`'s
-  `SetAgentAccessAsync`, `Movement.AlwaysRun`, `Self.Health` in `//status`.
-- **Size:** S each, S-M together.
-- **Matters: medium-high.** When someone tells her she's grey or stuck in a pose, these are what you do, and she can't see whether it's
-  so; a maturity preference set low stops her entering regions with no way to change it.
+- **Matters: medium-low.**
 
 ### 11. The password is typed at every login
 - **Radegast:** Remember; its guide's first step.
@@ -262,8 +216,7 @@ All S, all low:
 - **Rezzing and placing:** done, without `//place`, so not in a route.
 - **Land settings:** parcels done; estate at item 20.
 - **Group tags:** which group, not which title: item 5.
-- **Unboxing:** only from the inventory, and only where she can rez; the failure doesn't suggest a sandbox. Item 4 for a box already out, item
-  9 for the copies left in the Trash.
+- **Unboxing:** only from the inventory, and only where she can rez; the failure doesn't suggest a sandbox. Item 4 for a box already out.
 - **HUD games:** a HUD that's one picture of buttons is read by the assistant, so with no token only numbered faces remain. Nothing to do
   short of a local reader, but the plan's "without an account" doesn't reach here and should say so.
 - **A profile picture:** nothing: item 7.

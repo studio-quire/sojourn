@@ -182,7 +182,7 @@ public sealed class AccessWiring : IDisposable
                 continue;
             }
             var kind = e.Style == FeedStyle.Object ? AnnounceKind.Objects
-                : e.Kind == FeedKind.Nearby ? AnnounceKind.Nearby : e.Kind == FeedKind.Group ? AnnounceKind.Group : AnnounceKind.Ims;
+                : e.Kind == FeedKind.Nearby ? AnnounceKind.Nearby : e.Kind == FeedKind.Group && !e.Conference ? AnnounceKind.Group : AnnounceKind.Ims;
             if (Shaped(e, Line(e)) is { } said) Announcer.Say(kind, said, from: LogWords.FromOf(e));
         }
     }

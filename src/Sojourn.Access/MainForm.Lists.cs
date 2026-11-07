@@ -40,25 +40,7 @@ public sealed partial class MainForm
     (ListView, ContextMenuStrip) PeopleList(string name, string menuName)
     {
         var list = List(name, "People nearby");
-        var menu = new ContextMenuStrip { Name = menuName, AccessibleName = "Actions" };
-        void Item(string text, Action<PersonOps.Person> act) =>
-            menu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (list.FocusedItem?.Tag is PersonOps.Person p) act(p); }));
-        Item("Send &IM", p => StartIm(p.Id, p.Name));
-        Item("&Walk to", p => _ = _cmd.WalkAsync(p.Pos, p.Name, 1.5, $"//go tp person {p.Name}"));
-        Item("&Face", p => _ = _cmd.FacePointAsync(p.Pos, p.Name));
-        Item("W&here", p => Answer($"{p.Name} is {_ops.Where(p.Pos, full: true)}."));
-        Item("&Describe", p => _ = DescribeAsync(Of(p)));
-        Item("F&ollow", p => _cmd.Follow(p));
-        Item("&Beacon", p => _walk?.BeaconOn(p.Name, p.Id));
-        Item("&Profile", p => _ = ProfileAsync(p.Id, p.Name));
-        Item("P&ay...", p => _ = PayAsync(p.Id, p.Name));
-        Item("&Give what you copied", p => _ = GiveCopiedAsync(p.Id, p.Name));
-        Item("Offer &teleport", p => _ = PersonOpAsync("offerTeleport", p, $"Teleport offered to {p.Name}."));
-        Item("&Request teleport", p => _ = PersonOpAsync("requestTeleport", p, $"Asked {p.Name} for a teleport."));
-        Item("Always in&cognito with them", p => IncognitoWith(p.Id, p.Name));
-        Item("Bloc&k", p => _ = BlockAsync(p.Id, p.Name, "resident"));
-        SoundItem(menu, () => list.FocusedItem?.Tag is PersonOps.Person p ? (p.Id, p.Name) : null, group: false);
-        KeysOn(menu, ("&Describe", "Control+D"));
+        var menu = PersonMenu(menuName, () => list.FocusedItem?.Tag is PersonOps.Person p ? (p.Id, p.Name) : null);
         MenuOn(list, menu);
         list.KeyDown += (_, e) => ListKey(list, menu, e, asked => RefreshPeople(asked, list));
         return (list, menu);
@@ -66,12 +48,6 @@ public sealed partial class MainForm
 
     /// <summary>The People nearby list the focus is in, if it's in one.</summary>
     ListView? PeopleFocused => _people.Focused ? _people : _chatPeople.Focused ? _chatPeople : null;
-
-    async Task PersonOpAsync(string op, PersonOps.Person p, string done)
-    {
-        var r = await _ops.DoAsync("TesselAgent", op, new JsonObject { ["to"] = p.Id.ToString() });
-        Answer(PersonOps.Error(r) is { } e ? $"Didn't go: {e}" : done);
-    }
 
     void BuildObjects()
     {

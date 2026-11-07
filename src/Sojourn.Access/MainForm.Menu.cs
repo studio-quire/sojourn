@@ -47,6 +47,12 @@ public sealed partial class MainForm
             Item("Descri&be where you are", null, () => _ = _cmd.RunAsync("//describe")),
             Item("Describe &me", "Control+Shift+D", () => DescribeKey(me: true)),
             new ToolStripSeparator(),
+            Item("Rebake &your look", "//rebake", () => _ = RebakeAsync()),
+            Item("Stop all a&nimations", "//stopanimations", () => _ = StopAnimationsAsync()),
+            Later("Hover height...", "//hover", AskHover),
+            Later("Display name...", "//displayname", () => _ = AskDisplayNameAsync()),
+            Later("Highest rating of region...", "//maturity", AskMaturity),
+            new ToolStripSeparator(),
             Item("Who's in &voice", "Control+Shift+V", SayVoice),
             _micItem = Item("&Open mic", "Shift+F4", ToggleVoiceMode),
             OutputMenu());

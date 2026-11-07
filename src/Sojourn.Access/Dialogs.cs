@@ -79,6 +79,42 @@ public static class Dialogs
     }
 
     /// <summary>
+    /// Several people picked from a list of check boxes: Space marks one, a first letter finds one, Enter takes those
+    /// marked (and the one selected if none is). `first` starts marked. Null when cancelled.
+    /// </summary>
+    public static List<Someone>? PickMany(IWin32Window owner, string title, string listName, List<Someone> people, UUID first)
+    {
+        using var f = Frame(title);
+        var list = new CheckedListBox { Name = "pickMany", AccessibleName = listName, Width = 360, Height = 220, IntegralHeight = false, CheckOnClick = false };
+        foreach (var p in people) list.Items.Add(new Shown(p), p.Id == first);
+        if (list.Items.Count > 0) list.SelectedIndex = 0;
+        var t = Table(f, 2);
+        t.Controls.Add(new Label { Text = "&" + listName, AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top }, 0, 0);
+        t.Controls.Add(list, 1, 0);
+        t.Controls.Add(Buttons(f), 1, 1);
+        f.ActiveControl = list;
+        if (f.ShowDialog(owner) != DialogResult.OK) return null;
+        var chosen = list.CheckedItems.OfType<Shown>().Select(s => s.P).ToList();
+        if (chosen.Count == 0 && list.SelectedItem is Shown one) chosen.Add(one.P);
+        return chosen;
+    }
+
+    /// <summary>One of a list of words: the arrows or a first letter, Enter takes it, Escape leaves it. Its index, or null.</summary>
+    public static int? Choose(IWin32Window owner, string title, string listName, IReadOnlyList<string> words, int current)
+    {
+        using var f = Frame(title);
+        var list = new ListBox { Name = "chooseList", AccessibleName = listName, Width = 360, Height = 260, IntegralHeight = false };
+        foreach (var w in words) list.Items.Add(w);
+        list.SelectedIndex = Math.Clamp(current, 0, words.Count - 1);
+        var t = Table(f, 2);
+        t.Controls.Add(new Label { Text = "&" + listName, AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top }, 0, 0);
+        t.Controls.Add(list, 1, 0);
+        t.Controls.Add(Buttons(f), 1, 1);
+        f.ActiveControl = list;
+        return f.ShowDialog(owner) == DialogResult.OK && list.SelectedIndex >= 0 ? list.SelectedIndex : null;
+    }
+
+    /// <summary>
     /// One of a list of sounds chosen by ear: each played as the selection reaches it (the arrows, a first letter), the
     /// one in use selected and said so; Enter takes the one selected, Escape leaves it as it was. Its index, or null.
     /// </summary>

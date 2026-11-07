@@ -135,6 +135,15 @@ public sealed class AgentInventory
     readonly Dictionary<UUID, Task<bool>> _walks = new();
     CancellationToken _life;
 
+    /// <summary>Everything of mine asked of the grid again (the viewer has no such button; Radegast's Reload Inventory): how
+    /// stale folders get mended. True when every folder answered. The Library is left as it is.</summary>
+    public Task<bool> ReloadAsync(CancellationToken ct)
+    {
+        if (C.Inventory.Store?.RootFolder is not { } root) return Task.FromResult(false);
+        foreach (var id in _loaded.Keys.Where(id => !_s.InventoryOps.InLibrary(id)).ToList()) _loaded.TryRemove(id, out _);
+        return LoadSubtreeAsync(root.UUID, ct);
+    }
+
     /// <summary>Every folder under <paramref name="root"/> (itself included) fetched into the store; true when all of
     /// them answered. One walk per root at a time, shared by whoever asks, and it runs on for the session when a caller
     /// stops waiting (<paramref name="ct"/> only ends the wait), so asking again picks up where it got to.</summary>

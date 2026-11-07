@@ -311,7 +311,8 @@ public sealed partial class AgentSession
         // it apart by that id being one of your groups (LLViewerChatterBoxInvitation: gAgent.isInGroup)
         var isGroup = im.Dialog == InstantMessageDialog.SessionSend || im.GroupIM
             || im.Dialog is InstantMessageDialog.SessionGroupStart or InstantMessageDialog.SessionAdd
-            || (im.IMSessionID != UUID.Zero && IsMyGroup(im.IMSessionID));
+            || (im.IMSessionID != UUID.Zero && IsMyGroup(im.IMSessionID))
+            || ConferenceLine(me, im);
         if (!isGroup)
         {
             var sid = im.IMSessionID != UUID.Zero ? im.IMSessionID : me ^ im.FromAgentID;
@@ -328,8 +329,22 @@ public sealed partial class AgentSession
             Name = isMyGroup ? GroupName(groupSid) : BucketString(im.BinaryBucket) is { Length: > 0 } n ? n : "Conference",
         });
         if (isMyGroup && s.Type == "p2p") { Retype(s); s.Ready = true; }   // its lines are reaching us: we're in it
+        else if (s.Type == "p2p")
+        {
+            s.Type = "conference";
+            s.OtherId = UUID.Zero;
+            if (BucketString(im.BinaryBucket) is { Length: > 0 } named) s.Name = named;
+        }
         return s;
     }
+
+    /// <summary>A conference's line that came as an ordinary IM: SL's event queue sends them as dialog 0 (so does its
+    /// invitation), and only the session says so, not being the one a pair of people share (the viewer's computeSessionID).
+    /// An offline IM's session is the grid's transaction, so it's never one.</summary>
+    static bool ConferenceLine(UUID me, InstantMessage im) =>
+        im.Dialog == InstantMessageDialog.MessageFromAgent && !im.GroupIM && im.Offline != InstantMessageOnline.Offline
+        && im.FromAgentID != UUID.Zero && im.FromAgentID != me
+        && im.IMSessionID != UUID.Zero && im.IMSessionID != (me ^ im.FromAgentID);
 
     /// <summary>A session kept as p2p (from history, or before the group list came) whose id is one of your groups: the
     /// group's chat. Sending to it joins the session first, as for any group.</summary>
@@ -390,6 +405,13 @@ public sealed partial class AgentSession
 
     void OnGroupChatJoined(GroupChatJoinedEventArgs e)
     {
+        // a conference we started: the region names its session; lines come under that id, and replies go to it
+        if (e.Success && e.SessionID != UUID.Zero && e.SessionID != e.TmpSessionID && State.Ims.TryRemove(e.TmpSessionID, out var asked))
+        {
+            asked.Id = e.SessionID;
+            var there = State.Ims.GetOrAdd(e.SessionID, asked);
+            if (there != asked) there.Started = asked.Started;
+        }
         if (State.Ims.TryGetValue(e.SessionID, out var s) || State.Ims.TryGetValue(e.TmpSessionID, out s))
         {
             s.Ready = e.Success;

@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using LibreMetaverse;
+using Sojourn.Core;
 using Sojourn.Session.Social;
 
 namespace Sojourn.Access;
@@ -159,10 +160,11 @@ public sealed partial class MainForm
     const string NoConversationsText = "No conversations yet. An IM from someone opens one here; in People nearby, the Applications key then Send IM starts one.";
 
     /// <summary>The conversation's tab, made if new: it waits; nothing moves the focus.</summary>
-    Conversation Open(string sessionId, string title, bool group, UUID other)
+    Conversation Open(string sessionId, string title, bool group, UUID other, bool conference = false)
     {
         if (_convs.TryGetValue(sessionId, out var cv)) return cv;
         var label = group ? $"{title} (group)" : title;
+        if (conference && !title.Contains("conference", StringComparison.OrdinalIgnoreCase)) label = $"{title} (conference)";
         var page = new TabPage(label) { Name = "conv:" + sessionId, AccessibleName = label };
         var input = InputBox("convInput", $"Message to {label}");
         var history = HistoryBox("convHistory", $"Conversation with {label}");
@@ -230,7 +232,7 @@ public sealed partial class MainForm
     async Task SendImAsync(Conversation cv, string text)
     {
         var args = new JsonObject { ["message"] = text };
-        if (cv.Group) args["group_id"] = cv.SessionId;
+        if (cv.Group) args["group_id"] = cv.SessionId;   // (a conference is neither this nor to someone: it goes by its session)
         else if (cv.Other != UUID.Zero) args["to"] = cv.Other.ToString();
         else args["session_id"] = cv.SessionId;
         var r = await SendInPartsAsync(text, "TesselIM", "send", args);
@@ -245,6 +247,25 @@ public sealed partial class MainForm
         var cv = Open(session, name, group: false, who);
         _conversations.SelectedTab = cv.Page;
         GoArea(_conversationsPage);
+    }
+
+    /// <summary>A conference with friends picked in a list (Space marks, Enter starts), the focused friend marked to begin
+    /// with: the focus goes to its input, as with an IM started.</summary>
+    async Task StartConferenceAsync(Friend first)
+    {
+        var all = _ops.Client?.Friends.FriendList.Values
+            .Select(f => new Friend(f.UUID, Host!.Session.Names.Complete(f.UUID, string.IsNullOrEmpty(f.Name) ? "a friend" : f.Name), f.IsOnline))
+            .Where(f => f.Online || f.Id == first.Id)
+            .OrderByDescending(f => f.Id == first.Id).ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase).ToList() ?? new();
+        var chosen = Dialogs.PickMany(this, "Start a conference with", "Friends online", all.Select(f => new Dialogs.Someone(f.Id, f.Name, "")).ToList(), first.Id);
+        if (chosen == null) { Reader?.Answer("No conference started.", keep: false); return; }
+        if (chosen.Count < 2) { Reader?.Answer("A conference needs two people or more: Space marks each; for one, Send IM.", keep: false); return; }
+        var r = await _ops.DoAsync("TesselIM", "conference", new JsonObject { ["ids"] = new JsonArray(chosen.Select(c => (JsonNode)c.Id.ToString()).ToArray()) });
+        if (PersonOps.Error(r) is { } e || r.Str("session_id") is not { } session) { Answer($"No conference started: {PersonOps.Error(r) ?? "the grid sent nothing back"}"); return; }
+        var cv = Open(session, $"Conference with {Join(chosen.Select(c => c.Name).ToList())}", group: false, UUID.Zero, conference: true);
+        _conversations.SelectedTab = cv.Page;
+        GoArea(_conversationsPage);
+        Answer($"Conference started with {Join(chosen.Select(c => c.Name).ToList())}. What you type here goes to them all.");
     }
 
     void CloseConversation()
@@ -280,7 +301,7 @@ public sealed partial class MainForm
                 AppendChat($"{e.Name} (to you): {e.Text}");
                 break;
             case FeedKind.Im or FeedKind.Group when e.Session != null:
-                var cv = Open(e.Session, e.SessionName ?? e.Name, e.Kind == FeedKind.Group, e.Kind == FeedKind.Im && !e.Mine ? e.From : UUID.Zero);
+                var cv = Open(e.Session, e.SessionName ?? e.Name, e.Kind == FeedKind.Group && !e.Conference, e.Kind == FeedKind.Im && !e.Mine ? e.From : UUID.Zero, e.Conference);
                 if (cv.Other == UUID.Zero && e.Kind == FeedKind.Im && !e.Mine) cv.Other = e.From;
                 Append(cv.History, HistoryLine(e, _set.Timestamps));
                 break;

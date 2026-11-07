@@ -48,6 +48,7 @@ public sealed class Earcons
             FeedKind.Nearby when e.Style == FeedStyle.Object => ("objects", CueSounds.Cue.EarObject, true),
             FeedKind.Nearby => ("nearby", CueSounds.Cue.EarNearby, true),
             FeedKind.Im => ("im", CueSounds.Cue.EarIm, false),
+            FeedKind.Group when e.Conference => ("im", CueSounds.Cue.EarIm, false),   // (off by default for a group: this is addressed to her)
             FeedKind.Group => ("group", CueSounds.Cue.EarGroup, false),
             FeedKind.Notice => e.NoticeName switch
             {
@@ -106,7 +107,7 @@ public sealed class Earcons
         var (kind, id) = e.Kind switch
         {
             FeedKind.Im when e.Style != FeedStyle.Object => ("im", e.From),
-            FeedKind.Group when UUID.TryParse(e.Session, out var g) => ("group", g),
+            FeedKind.Group when !e.Conference && UUID.TryParse(e.Session, out var g) => ("group", g),
             _ => ("", UUID.Zero),
         };
         return id != UUID.Zero && ImSounds.CueOf(_set.ImSoundOf(id)) is { } cue ? (kind, cue) : null;

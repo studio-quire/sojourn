@@ -747,7 +747,7 @@ public sealed partial class MainForm
                 Reader?.Answer("Reading your favorites again.", keep: false);
                 ReadFavorites(refresh: true).ContinueWith(_ => BeginInvoke(() => ShowInventory(p, said: true)), TaskScheduler.Default);
                 break;
-            case Keys.F5: ShowInventory(p, said: false); Reader?.Answer("Inventory shown again.", keep: false); break;
+            case Keys.F5: _ = ReloadInventoryAsync(p); break;
             case Keys.Apps or (Keys.Shift | Keys.F10): ShowInventoryMenu(p); break;
             default: handled = false; break;
         }
@@ -803,6 +803,12 @@ public sealed partial class MainForm
         if (one && target!.AssetType == AssetType.Notecard) list.Add(new("Play as a ro&ute", () => _ = PlayRouteAsync(target)));
         // (each menu's letters its own: Cu&t below has T)
         if (one && target!.AssetType == AssetType.Landmark) list.Add(new("Teleport the&re", () => _ = _cmd.TeleportLandmarkAsync(target.UUID, target.Name)));
+        if (one && target!.AssetType == AssetType.Sound) list.Add(new("P&lay", () => _ = PlaySoundAsync(target)));
+        if (one && target!.AssetType == AssetType.Animation)
+        {
+            list.Add(new("P&lay", () => _ = PlayAnimationAsync(target, play: true)));
+            list.Add(new("St&op it", () => _ = PlayAnimationAsync(target, play: false)));
+        }
         // gestures: Enter plays one; the chosen ones activated or deactivated together
         var gestures = items.Select(Target).Where(i => i.AssetType == AssetType.Gesture).ToList();
         if (one && gestures.Count == 1) list.Add(new("P&lay", () => _ = PlayGestureAsync(gestures[0].UUID)));
@@ -818,6 +824,7 @@ public sealed partial class MainForm
         {
             list.Add(new("&Rez on the ground", () => _ = RezAsync(target)));
             list.Add(new("Rez where you &say...", () => _ = RezAtAsync(target)));
+            list.Add(new("Attac&h to...", () => _ = AttachToAsync(p, target)));
             list.Add(new("&Unbox", () => _ = UnboxAsync(target)));
         }
         list.Add(new("-", () => { }));
@@ -835,6 +842,7 @@ public sealed partial class MainForm
         if (one) list.Add(new("D&etails", () => _ = DetailsAsync(items[0])));
         if (one) list.Add(new("Descri&be", () => DescribeKey(me: false), "Control+D"));
         list.Add(new("&Delete", () => _ = DeleteAsync(p), "Delete"));
+        if (chosen.All(InTrash)) list.Add(new("E&mpty the Trash", () => _ = EmptyTrashAsync(), "//emptytrash"));
         if (Marked(p).Count > 0) list.Add(new("Unmark a&ll", () => { Unmark(p); Reader?.Answer("Nothing marked.", keep: false); }));
         // what Enter does, the first action, says so (one item chosen: Enter acts on the selected one)
         if (one && list.Count > 0 && list[0].Text != "-") list[0] = list[0] with { Key = "Enter" };
@@ -865,6 +873,9 @@ public sealed partial class MainForm
         list.AddRange(FavoriteActions(p, new() { f }, folder: true));
         list.Add(new("Re&name", () => Rename(p), "F2"));
         list.Add(new("&Delete", () => _ = DeleteAsync(p), "Delete"));
+        // the Trash's own: first, as what it's opened for; and anything in it has it too
+        if (f.PreferredType == FolderType.Trash) list.Insert(0, new("E&mpty the Trash", () => _ = EmptyTrashAsync(), "//emptytrash"));
+        else if (InTrash(f)) list.Add(new("E&mpty the Trash", () => _ = EmptyTrashAsync(), "//emptytrash"));
         return list;
     }
 
@@ -1245,12 +1256,14 @@ public sealed partial class MainForm
     {
         var chosen = Chosen(p);
         if (chosen.Count == 0) return;
+        // what's in the Trash already goes for good, the confirmation saying so
+        bool forGood = chosen.All(InTrash);
         if (await ConfirmedAsync("TesselInventory", "delete", new JsonObject
             {
-                ["ids"] = new JsonArray(chosen.Select(c => (JsonNode)c.UUID.ToString()).ToArray()),
+                ["ids"] = new JsonArray(chosen.Select(c => (JsonNode)c.UUID.ToString()).ToArray()), ["purge"] = forGood,
             }) is not { } r) return;
         if (PersonOps.Error(r) is { } e) { Answer($"Not deleted: {e}"); return; }
-        Answer($"Deleted {Named(chosen)} (in the Trash).");
+        Answer(forGood ? $"Deleted {Named(chosen)} for good." : $"Deleted {Named(chosen)} (in the Trash).");
         Unmark(p);
         await Task.Delay(500);
         RefreshInventory(chosen.Select(c => c.ParentUUID).Append(_ops.Session.Inventory.FolderFor(FolderType.Trash)).ToArray());

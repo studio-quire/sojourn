@@ -147,6 +147,12 @@ public sealed class TesselIM : SessionApi
         }
         else throw new LeapError("need to, group_id or session_id");
 
+        if (!s.Ready && s.Type == "conference" && s.Started == null)
+        {
+            // from before a reconnect or a restart: asked to be let back in, as the invitation's answer
+            try { await c.Self.ChatterBoxAcceptInviteAsync(s.Id, ct); s.Ready = true; }
+            catch (Exception e) when (e is not OperationCanceledException) { throw new LeapError("that conference can't be rejoined; it may have ended (not sent)"); }
+        }
         if (!s.Ready)
         {
             s.Started ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -189,7 +195,12 @@ public sealed class TesselIM : SessionApi
         var tmp = UUID.Random();
         var s = S.State.Ims.GetOrAdd(tmp, _ => new ImSession { Id = tmp, Type = "conference", Name = "Conference", Ready = false });
         s.Started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await c.Self.StartIMConferenceAsync(ids, tmp, ct);
+        try { await c.Self.StartIMConferenceAsync(ids, tmp, ct); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            S.State.Ims.TryRemove(tmp, out _);
+            throw new LeapError($"this region can't start a conference ({e.Message})");
+        }
         try { await s.Started.Task.WaitAsync(TimeSpan.FromSeconds(20), ct); }
         catch { S.State.Ims.TryRemove(tmp, out _); throw new LeapError("conference didn't start"); }
         if (a.Str("message") is { Length: > 0 } msg)

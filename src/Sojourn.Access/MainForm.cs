@@ -141,6 +141,9 @@ public sealed partial class MainForm : Form
         _cmd.SendLog = () => BeginInvoke(() => RealInput.Ours(SendLog));
         _cmd.Touch = words => (Task)Invoke(() => TouchWordsAsync(words));
         _cmd.Block = words => (Task)Invoke(() => BlockWordsAsync(words));
+        _cmd.Profile = words => (Task)Invoke(() => ProfileWordsAsync(words));
+        _cmd.Friend = words => (Task)Invoke(() => FriendWordsAsync(words));
+        _cmd.Self = (verb, words) => (Task)Invoke(() => SelfWordsAsync(verb, words));
         _cmd.Unblock = words => (Task)Invoke(() => UnblockWordsAsync(words));
         _cmd.Pay = words => (Task)Invoke(() => PayWordsAsync(words));
         _cmd.Buy = words => (Task)Invoke(() => BuyWordsAsync(words));
@@ -169,6 +172,7 @@ public sealed partial class MainForm : Form
         _set.Register(host.SettingsApi, () => BeginInvoke(() => { RefreshHistories(); _walk?.ApplyFootsteps(); }), view, host.Audio?.Sounds);
         StartIncognito();
         AddIncognitoSettings(host.SettingsApi);
+        AddMaturitySetting(host.SettingsApi);
         StartVoiceKeys();
         StartDeviceWords();
         AddVoiceSettings(host.SettingsApi);
@@ -391,6 +395,8 @@ public sealed partial class MainForm : Form
             if (e.Session == _focusedSource) return HistoryLine(e, stamp: false);
             if (first && e.Kind == FeedKind.Im && e.Style != FeedStyle.Object)
                 return e.Style == FeedStyle.Emote ? $"New IM: {e.Name} {e.Text}" : $"{e.Name}, new IM: {e.Text}";
+            if (first && e.Conference)
+                return e.Style == FeedStyle.Emote ? $"New conference: {e.Name} {e.Text}" : $"{e.Name}, new conference: {e.Text}";
         }
         return line;
     }
@@ -513,6 +519,7 @@ public sealed partial class MainForm : Form
         Control+Tab or Control+Page Down: the next conversation (IMs and group chats), with Shift or Page Up the one before
         Control+W: close a conversation
         In a conversation, the Applications key: a sound of its own for their IMs
+        On Friends, the Applications key: start a conference with several of them
         Tab and Shift+Tab: between the history and where you type
         In nearby chat, Tab from Say: the history, then the people nearby
 
@@ -533,7 +540,7 @@ public sealed partial class MainForm : Form
         Escape: back where Control+N came from
 
         Lists
-        Applications key: a person's or object's actions; a profile from any list of people
+        Applications key: a person's or object's actions, the same for a person in every list, their IM and their profile
         F5: refresh a list
 
         Reading out
@@ -576,6 +583,8 @@ public sealed partial class MainForm : Form
         Alt+Shift+4: a second pane, Alt+4 back to the first
         Control+M: move what's marked into the folder selected in the other pane
         Control+U: upload a picture, sound, animation or model (on a folder: into it)
+        F5: ask the grid for your inventory again
+        On a sound or animation, the Applications key: Play; on an object: Attach to a point; on the Trash: Empty it
         In a notecard, Tab: what it holds; Enter copies one out, Enter again teleports by it or opens it
 
         Building
@@ -615,6 +624,9 @@ public sealed partial class MainForm : Form
         Other
         Control+Shift+B: write to the builders of Sojourn Access (Claude sessions at Studio Quire)
         Control+Shift+I: incognito on and off
+        //rebake: when you're told you look grey or blurred
+        //stopanimations: when you're told you're stuck in a pose
+        //hover, //displayname, //maturity: say each; with a value, change it
         //about: which version this is
         F1: this list
         """;
@@ -864,7 +876,7 @@ public sealed partial class MainForm : Form
             });
         // cancelled by the person here: "Cancelled." was said, and the op's refusal adds nothing for them
         if (shown && ReferenceEquals(_cancelledHere, mine)) return null;
-        if (op == "delete" && pump is "TesselInventory" or "TesselBuild" && PersonOps.Error(r) == null) _earcons?.Deleted();
+        if (op is "delete" or "emptyTrash" && pump is "TesselInventory" or "TesselBuild" && PersonOps.Error(r) == null) _earcons?.Deleted();
         return r;
     }
 

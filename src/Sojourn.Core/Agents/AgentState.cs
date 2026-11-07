@@ -7,8 +7,8 @@ namespace Sojourn.Core.Agents;
 /// <summary>One IM conversation, as TesselIM reports it.</summary>
 public sealed class ImSession
 {
-    public required UUID Id { get; init; }
-    public required string Type { get; set; }       // p2p | group | conference (a group's chat first taken for p2p is retyped)
+    public required UUID Id { get; set; }           // (a conference we start: the region's own id replaces the one we asked with)
+    public required string Type { get; set; }       // p2p | group | conference (a group's chat or conference first taken for p2p is retyped)
     public string Name { get; set; } = "";
     public UUID OtherId { get; set; }
     public int Unread { get; set; }

@@ -359,7 +359,21 @@ public sealed class InventoryOps
 
     public async Task<JsonObject> EmptyTrashAsync(CancellationToken ct)
     {
-        await C.Inventory.EmptyTrashAsync(ct);
+        // not LibreMetaverse's EmptyTrash: without the inventory service it names every item in one packet, which throws on
+        // a Trash of any size, and with the service a failure is only logged. This asks for the folder's descendants to go
+        // and looks at what's left, so a Trash that didn't empty isn't said to have. Having succeeded, LibreMetaverse drops
+        // the Trash folder itself from the store too, after which looking for it by type finds the root (and everything
+        // is taken to be in the Trash), so it's put back
+        var c = C;
+        var trash = _s.Inventory.FolderFor(FolderType.Trash);
+        var store = c.Inventory.Store ?? throw new LeapError("the inventory isn't loaded yet");
+        if (!store.TryGetValue<InventoryFolder>(trash, out var folder) || folder.PreferredType != FolderType.Trash) throw new LeapError("the Trash folder isn't known yet");
+        await c.Inventory.RemoveDescendantsAsync(trash, ct);
+        if (store.Contains(trash))
+        {
+            if (store.GetContents(trash).Count > 0) throw new LeapError("the grid didn't empty the Trash");
+        }
+        else store.UpdateNodeFor(folder);
         return new JsonObject();
     }
 

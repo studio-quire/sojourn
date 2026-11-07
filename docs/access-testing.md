@@ -110,6 +110,9 @@ docstring with its checks in full):
   the music's volume stepped, `//status music`; the answers-without-a-key row and its description in plain words; the
   sound output row stepping the default and the first device, Ctrl+Shift+O (world audio goes to a file whatever is
   chosen, so the PC's devices are never played to).
+- **settings typed and in words**: a switch stepped (Group invitations turned away), a number typed (Hover height, its range in
+  the question), the keywords typed and in the op, an auto response typed and confirmed by her own key. The settings step also
+  checks every registered setting has a row or is left out on purpose, and no row says only the assistant can change it.
 - **the quit question**: Alt+F4 asks, Escape stays.
 - **a script menu**, **a text box**, **a permission question**: answered by keys; a menu's announcement said again
   when a key cuts it off (not when silenced by Control alone, nor once answered in Notices); a menu of twelve, minus and equals pressing Next and
@@ -210,6 +213,10 @@ docstring with its checks in full):
   within 5 m of the landmark.
 - **two inventory panes**: Alt+4 again reading the first, Alt+Shift+4 opening the second, a search there, Ctrl+M moving
   marked notecards across, Ctrl+W closing it.
+- **inventory housekeeping and putting herself right**: F5 asking the grid; an object attached to Chest by the point list; Play on
+  a sound and an animation from the Library where it has them (the animation seen on her, then `//stopanimations`); `//emptytrash`
+  cancelled, then confirmed, a card sent to the Trash by Delete gone; `//rebake`, `//hover`, `//maturity` and `//displayname`'s words.
+  It empties the test account's Trash. Second Life alone shows a display name changed, a rating changed and real hover.
 - **incognito**: on and said, the title without the region, SojournSettings refusing it off, a line read out but not
   logged, off.
 - **voice keys**: without voice F4 and Ctrl+Shift+V say so; with `ACCESS_VOICE=1`, F4 opening and closing the mic with
@@ -218,6 +225,13 @@ docstring with its checks in full):
   region's positions; the session's autopilot stopping about its stop distance short.
 - **places and a route**: Go to region, a landmark made and teleported to from the tree, the history, regions around,
   and a route notecard played by `//route` to its last point.
+- **a conference**: the visitor's `conferenceline` (a hand-made packet: dialog 0, a session that isn't the pair's, as Second
+  Life sends one): said as a new conference, the focus staying, a tab not called a group, a reply recorded on that session
+  with no "Not sent", Control+W; Friends' Start a conference asking who, Escape starting nothing, one alone refused, two
+  marked saying why the local grid can't start one.
+- **a person's actions, the same everywhere**: People nearby, Friends, an IM's Applications key, Search and the profile each
+  offering the same items; a friend's edit right given and taken back by keys through the confirmation; Block and Unblock from
+  Friends; `//block` on someone not nearby and `//unblock`, `//profile`, `//friend` by name.
 - **search, profiles, pay**: people and places searched, a profile opened, Enter opening an IM, Pay asking the amount
   (the local grid has no money, so its refusal is what's said). Ctrl+G isn't tested (the clipboard is the person's
   desktop's).

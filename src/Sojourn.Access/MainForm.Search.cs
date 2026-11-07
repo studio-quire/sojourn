@@ -159,14 +159,19 @@ public sealed partial class MainForm
     void ShowResultMenu(Found f)
     {
         _resultMenu.Items.Clear();
-        foreach (var a in ResultActions(f))
-        {
-            var act = a;
-            _resultMenu.Items.Add(new ToolStripMenuItem(a.Text, null, (_, _) => act.Do()));
-        }
+        if (f.Kind == "person") AddPersonItems(_resultMenu, f.Id, PersonNameOf(f), enterIms: true);
+        else
+            foreach (var a in ResultActions(f))
+            {
+                var act = a;
+                _resultMenu.Items.Add(new ToolStripMenuItem(a.Text, null, (_, _) => act.Do()));
+            }
         var r = _results.FocusedItem?.Bounds ?? Rectangle.Empty;
         _resultMenu.Show(_results, new Point(r.Left + 10, r.Bottom));
     }
+
+    /// <summary>A person found, as "Shown (legacy name)" reads in the list, by the name they show.</summary>
+    static string PersonNameOf(Found f) => f.Name.Split(" (")[0];
 
     List<InvAction> ResultActions(Found f)
     {
@@ -174,12 +179,7 @@ public sealed partial class MainForm
         switch (f.Kind)
         {
             case "person":
-                list.Add(new("Send &IM", () => StartIm(f.Id, f.Name.Split(" (")[0])));
-                list.Add(new("&Profile", () => _ = ProfileAsync(f.Id, f.Name)));
-                list.Add(new("Offer &teleport", () => _ = PersonIdOpAsync("offerTeleport", f.Id, $"Teleport offered to {f.Name}.")));
-                list.Add(new("&Request teleport", () => _ = PersonIdOpAsync("requestTeleport", f.Id, $"Asked {f.Name} for a teleport.")));
-                list.Add(new("Offer &friendship", () => _ = PersonIdOpAsync("offerFriendship", f.Id, $"Friendship offered to {f.Name}.")));
-                list.Add(new("P&ay...", () => _ = PayAsync(f.Id, f.Name)));
+                list.AddRange(PersonActions(f.Id, PersonNameOf(f)));
                 break;
             case "group":
                 list.Add(new("&About the group", () => _ = GroupInfoAsync(f.Id, f.Name)));

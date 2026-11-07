@@ -54,6 +54,11 @@ public sealed class Commands
                 case "help": Help(string.Join(" ", rest)); return true;
                 case "links": Links?.Invoke(); return true;
                 case "block": if (Block != null) await Block(string.Join(" ", rest)); return true;
+                case "rebake" or "stopanimations" or "hover" or "displayname" or "maturity" or "emptytrash":
+                    if (Self != null) await Self(verb, string.Join(" ", rest));
+                    return true;
+                case "profile": if (Profile != null) await Profile(string.Join(" ", rest)); return true;
+                case "friend": if (Friend != null) await Friend(string.Join(" ", rest)); return true;
                 case "unblock": if (Unblock != null) await Unblock(string.Join(" ", rest)); return true;
                 case "blocks": if (Unblock != null) await Unblock(""); return true;
                 case "about" or "version": _say(About?.Invoke() ?? "Sojourn Access."); return true;
@@ -162,7 +167,15 @@ public sealed class Commands
         ("voice", "//voice | //voice answer | //voice decline", "who's in voice and speaking, your mic; or answer or decline a call ringing"),
         ("imsound", "//imsound NAME SOUND | //imsound NAME usual | //imsound NAME | //imsound",
             "a sound of its own for someone's IMs, or a group's chat, in place of the usual one; usual takes it back; with only a name, theirs; with nothing, the sounds and who has one"),
-        ("block", "//block NAME", "block someone or something nearby: what they say, send or ask stops reaching you"),
+        ("block", "//block NAME", "block anyone by name, or something nearby: what they say, send or ask stops reaching you"),
+        ("rebake", "//rebake", "send your look to the grid again: when you're told you look grey or blurred"),
+        ("stopanimations", "//stopanimations", "stop every animation on you, stand up if seated, and take back what scripts were allowed to animate you: when you're told you're stuck in a pose"),
+        ("hover", "//hover | //hover N", "your hover height, or change it, from -2 to 2 metres, so your feet meet the floor"),
+        ("displayname", "//displayname | //displayname NAME", "your display name and when it can change; or change it, after you confirm"),
+        ("maturity", "//maturity | //maturity general, moderate or adult", "the highest rating of region you go into, and how high your account may go; or change it"),
+        ("emptytrash", "//emptytrash", "delete everything in the Trash for good, after you confirm"),
+        ("profile", "//profile NAME", "anyone's profile, by name"),
+        ("friend", "//friend NAME", "offer anyone friendship, by name"),
         ("unblock", "//unblock NAME", "take someone or something off your block list"),
         ("blocks", "//blocks", "your block list, as Control+Shift+Y: Enter or Delete unblocks one"),
         ("links", "//links", "the links seen in chat, IMs and notices, as Control+Shift+K: Enter opens one"),
@@ -1006,6 +1019,9 @@ public sealed class Commands
     /// <summary>`//touch`'s words, to the app's parts (MainForm.Parts.cs).</summary>
     public Func<string, Task>? Touch { get; set; }
     public Func<string, Task>? Block { get; set; }
+    public Func<string, Task>? Profile { get; set; }
+    public Func<string, string, Task>? Self { get; set; }
+    public Func<string, Task>? Friend { get; set; }
     public Func<string, Task>? Unblock { get; set; }
     public Func<string, Task>? Pay { get; set; }
     public Func<string, Task>? Buy { get; set; }

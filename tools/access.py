@@ -1367,6 +1367,7 @@ def session(run, procs):
         ("the assistant's last answer", lambda: assistant_answer(run, nonce)),
         ("the menu bar and the review's new keys", lambda: menu_bar(run, nonce, tester_id)),
         ("settings", lambda: settings(run)),
+        ("settings typed and in words", lambda: settings_rows(run, nonce)),
         ("the quit question", lambda: quit_question(run)),
         ("a script menu", lambda: notice_menu(run, tester_id)),
         ("a dance machine's menu, ignored", lambda: notice_dance(run, tester_id)),
@@ -1389,6 +1390,7 @@ def session(run, procs):
         ("uploads", lambda: uploads(run, nonce)),
         ("About Land, her own parcel", lambda: about_land(run, nonce, tester_id)),
         ("two inventory panes", lambda: two_panes(run, nonce)),
+        ("inventory housekeeping and putting herself right", lambda: housekeeping(run, nonce)),
         ("incognito", lambda: incognito(run, nonce)),
         ("voice keys", lambda: voice_keys(run)),
         ("the window's controls again", lambda: tree_check(run, "nearby chat, after use")),
@@ -1397,6 +1399,8 @@ def session(run, procs):
         ("the assistant's walk", lambda: pilot_walk(run)),
         ("places and a route", lambda: places(run, nonce)),
         ("search, profiles, pay", lambda: search_and_people(run)),
+        ("a conference", lambda: conferences(run, nonce, tester_id)),
+        ("a person's actions, the same everywhere", lambda: person_actions(run, nonce, tester_id)),
         ("more commands", lambda: more_commands(run)),
         ("paying and buying things", lambda: paying_and_buying(run, nonce)),
         ("describing", lambda: describing(run, nonce)),
@@ -2515,6 +2519,13 @@ def settings(run):
         starts.setdefault(" ".join(r.split(":")[0].split()[:3]).lower(), []).append(r)
     shared = [v for v in starts.values() if len(v) > 1]
     run.check("no two settings rows start with the same three words", rows and not shared, "; ".join(" / ".join(v) for v in shared[:4]) or f"{len(rows)} rows")
+    # every setting decided: a row with its own words, or left out on purpose (anything else gets a row by its bare name)
+    source = (ROOT / "src" / "Sojourn.Access" / "MainForm.Settings.cs").read_text(encoding="utf-8")
+    listed = set(re.findall(r'\("([a-z_0-9]+)", "', source[:source.index("void BuildSettings")])) | set(re.findall(r'"([a-z_0-9]+)"', source[source.index("NotRows = new()"):source.index("void BuildSettings")]))
+    all_settings = set(api("SojournSettings", "get", 20).get("settings", {}))
+    missing = sorted(all_settings - listed)
+    run.check("every setting has a row or is left out on purpose", not missing, ", ".join(missing) or f"{len(all_settings)} settings")
+    run.check("no row says only the assistant can change it", not [r for r in rows if "asking the assistant" in r], "")
     key("home")
     for _ in range(40):
         if "Nearby chat read out" in selection("id=settings"):
@@ -2766,6 +2777,8 @@ def notice_ids(words=""):
 
 def quit_question(run):
     """Alt+F4 in world asks first (it's next to Alt+4): Escape stays, the focus back where it was."""
+    back_to_chat()
+    wait_focus(lambda d: d["id"] == "chatInput", 3)
     key("alt+f4")
     d = wait_focus(lambda d: d["id"] == "quitYes", 4)
     if not run.check("Alt+F4 in world asks first, the focus on Quit", d, label(d) if d else focus_label()):
@@ -3217,6 +3230,440 @@ def inv_search(words, expect_first):
     return wait(lambda: (lambda s: s if expect_first in s else None)(selection("id=inventory")), 5)
 
 
+def conferences(run, nonce, tester_id):
+    """A conference's line as Second Life sends one (dialog 0, a session that isn't the pair's): said as new, with the IM's
+    sound, a tab of its own that isn't called a group, the focus staying; a reply going by the session, with no "Not
+    sent". OpenSim passes a session's message on to nobody, so the session's own record is what's checked, not anyone
+    hearing it. Then Friends' Start a conference, friends marked in a list; the local grid starts none, so it's seen to
+    say so. Second Life alone shows a reply heard and a conference started."""
+    for form, what in (("conferenceline", "as Second Life's event queue sends one"),):   # (a session's own dialog 17 doesn't reach another agent here)
+        back_to_chat()
+        text = f"a {form} line {nonce}"
+        m = mark()
+        v(f"{form} {tester_id} {text}")
+        run.expect(f"a conference's line, {what}, is said as a new conference", [VNAME, "new conference", text], m, 10)
+        f = focused()
+        run.check("the focus stays in the Say box", f and f["id"] == "chatInput", label(f) if f else "nothing")
+        key("ctrl+tab")
+        d = wait_focus(lambda d: d["id"] == "convInput" and "Conference" in d["name"], 4)
+        if run.check("Control+Tab reaches its tab, not called a group", d and "(group)" not in d["name"], label(d) if d else focus_label()):
+            reply = f"a reply to {form} {nonce}"
+            m = mark()
+            type_text(reply)
+            key("enter")
+
+            def sent():
+                for s in api("TesselIM", "sessions").get("sessions", []):
+                    if s["type"] == "conference" and any(reply in l.get("message", "") for l in api("TesselIM", "history", session_id=s["session_id"]).get("messages", [])):
+                        return s
+            went = wait(sent, 8, 0.5)
+            run.check("a reply goes by the conference's session, not to whoever spoke", went and went["session_id"] == visitor_id() and went["other_id"].startswith("00000000"),
+                      json.dumps(went) if went else json.dumps(api("TesselIM", "sessions"))[:400])
+            bad = [e.get("text") for e in said_since(m) if "Not sent" in (e.get("text") or "")]
+            run.check("with no Not sent", not bad, "; ".join(bad) or "none")
+            run.check("and it's in the history", reply in value_of("id=convHistory"), value_of("id=convHistory")[-120:])
+            m = mark()
+            key("ctrl+w")
+            run.expect("Control+W leaves it", ["Closed"], m, 5)
+    # starting one, from Friends
+    key("alt+2")
+    if not wait_focus(lambda d: d["id"] == "friends" or d["type"] == "ListItem", 4):
+        return
+    online = wait(lambda: "online" in selection("id=friends"), 6)
+    if not run.check("(a friend online selected)", online, selection("id=friends")):
+        return
+    key("apps")
+    if run.check("Friends' Applications key has Start a conference", menu_open("Start a conference..."), focus_label()):
+        key("n")
+        d = wait_focus(lambda d: d["id"] == "pickMany" or d["type"] in ("CheckBox", "ListItem") and d["id"] != "friends", 4)
+        run.check("it asks who, in a list", d, focus_label())
+        m = mark()
+        key("esc")
+        run.expect("Escape starts nothing", ["No conference started"], m, 4)
+        key("apps")
+        menu_open("Start a conference...")
+        key("n")
+        wait_focus(lambda d: d["id"] == "pickMany" or d["type"] in ("CheckBox", "ListItem") and d["id"] != "friends", 4)
+        m = mark()
+        key("enter")
+        run.expect("one alone isn't a conference, said", ["two people or more"], m, 4)
+        key("apps")
+        menu_open("Start a conference...")
+        key("n")
+        wait_focus(lambda d: d["id"] == "pickMany" or d["type"] in ("CheckBox", "ListItem") and d["id"] != "friends", 4)
+        key("down")
+        key("space")
+        m = mark()
+        key("enter")
+        run.expect("two marked: started, or why it can't be here", ["onference"], m, 25)
+        print("     said:", [e.get("text") for e in said_since(m)][-2:])
+
+
+def library_item(kind):
+    """The id of the first thing of a kind in the grid's Library, a few folders deep; None if there's none."""
+    open_ = [api("TesselInventory", "library")["root_id"]]
+    for _ in range(40):
+        if not open_:
+            return None
+        r = api("LLInventory", "getDirectDescendants", folder_id=open_.pop(0))
+        for k, val in (r.get("items") or {}).items():
+            if val.get("asset_type") == kind:
+                return k
+        open_ += list((r.get("categories") or {}).keys())
+    return None
+
+
+def housekeeping(run, nonce):
+    """Item by item, by keys: F5 asking the grid; Attach to a point; Play on a sound and an animation; Delete in the Trash
+    going for good and Empty the Trash, both behind the confirmation; //rebake, //stopanimations, //hover, //displayname
+    (the grid may have none), //maturity."""
+    back_to_chat()
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+    folder = api("TesselInventory", "createFolder", name=f"Access House {nonce}", parent_id=root)["folder_id"]
+    box_name, card_name = f"Access Hat {nonce}", f"Access Gone {nonce}"
+    x, y, z, _ = tester_where()
+    box = api("TesselBuild", "create", 20, shape="box", pos=[x - 2, y + 2, z], scale=[0.3, 0.3, 0.3], name=box_name)["id"]
+    api("TesselBuild", "take", 30, ids=[box], folder_id=folder)
+    box_item = wait(lambda: inv_items(folder).get(box_name), 10)
+    card = api("TesselInventory", "createNotecard", name=card_name, text="to be deleted", folder_id=folder)["item_id"]
+    key("alt+4")
+    wait_focus(lambda d: d["id"] == "inventory", 4)
+
+    m = mark()
+    key("f5")
+    run.expect("F5 asks the grid again, saying so", ["Asking the grid for your inventory again"], m, 4)
+    run.expect("and when it has", ["Inventory read again"], m, 60)
+
+    if box_item and inv_search(box_name, box_name):
+        key("apps")
+        if run.check("an object's menu has Attach to", menu_open("Attach to..."), focus_label()):
+            key("h")
+            d = wait_focus(lambda d: d["id"] == "chooseList" or d["type"] == "ListItem", 6)
+            run.check("it lists the points", d, focus_label())
+            run.check("(Chest chosen)", select_in("id=chooseList", "Chest"), selected_text("id=chooseList"))
+            m = mark()
+            key("enter")
+            run.expect("Enter attaches there, saying where", [f"Wearing {box_name} on Chest"], m, 15)
+
+            def on_chest():
+                for pt in api("TesselAgent", "attachPoints").get("points", []):
+                    if any(o.get("item_id") == box_item for o in pt.get("objects", [])):
+                        return pt["name"]
+            where = wait(on_chest, 8)
+            run.check("and it's on that point", where == "Chest", str(where))
+            api("TesselAgent", "detach", item_id=box_item)
+            time.sleep(1)
+
+    for kind, word in (("sound", "sound"), ("animatn", "animation")):
+        item = library_item(kind)
+        if not item:
+            print(f"     (no {word} in the Library: Play on one not tried)")
+            continue
+        made = api("TesselInventory", "copy", id=item, dest_id=folder)
+        name = made.get("name") or next((n for n, i in inv_items(folder).items() if i == made.get("item_id")), None)
+        if run.check(f"(a {word} from the Library)", name, json.dumps(made)[:160]) and inv_search(name, name):
+            key("apps")
+            if run.check(f"a {word}'s menu has Play", menu_open("Play"), focus_label()):
+                if word == "animation":
+                    run.check("and Stop it", menu_open("Stop it", 1), "")
+                m = mark()
+                key("l")
+                run.expect(f"Play on a {word} says so", ["Playing " + name], m, 8)
+                if word == "animation":
+                    run.check("it's playing on her", wait(lambda: any(a.get("name") == name for a in api("LLAgent", "animations").get("animations", [])), 4),
+                              json.dumps(api("LLAgent", "animations"))[:200])
+                    m = mark()
+                    say_in_app("//stopanimations")
+                    run.expect("//stopanimations stops it", ["Stopped"], m, 8)
+                    key("alt+4")
+                    wait_focus(lambda d: d["id"] == "inventory", 4)
+
+    # the Trash: Delete moves there, Delete there goes for good, Empty the Trash
+    trash = api("LLInventory", "getBasicFolderID", ft_name="trash")["id"]
+    second = f"Access Gone Too {nonce}"
+    api("TesselInventory", "createNotecard", name=second, text="to be deleted for good", folder_id=folder)
+    for name in (card_name, second):
+        if inv_search(name, name):
+            m = mark()
+            key("del")
+            confirm_in_notices(run, "Move to Trash", m)
+            run.expect("Delete: into the Trash", ["in the Trash"], m, 8)
+            wait_focus(lambda d: d["id"] == "inventory", 4)
+    run.check("it's in the Trash", wait(lambda: card_name in inv_items(trash) and second in inv_items(trash), 6), ", ".join(inv_items(trash)))
+    # Delete in Show: Trash, words narrowing it to the one
+    clear_search()
+    key("ctrl+f")
+    wait_focus(lambda d: d["id"] == "inventorySearch", 3)
+    type_text(second, "id=inventorySearch")
+    key("tab")
+    if wait_focus(lambda d: d["id"] == "inventoryShow", 3):
+        key("down")
+        key("down")
+        key("down")
+        listed = wait(lambda: find(f"type=TreeItem;name~={second}"), 6)
+        if run.check("Show: Trash lists it", listed, "; ".join(label(t) for t in find("type=TreeItem")[:4]) or "nothing"):
+            u("setfocus id=inventory")
+            wait_focus(lambda d: d["id"] == "inventory", 3)
+            if run.check("(it's selected)", select_in("id=inventory", second), selected_text("id=inventory")):
+                m = mark()
+                key("del")
+                confirm_in_notices(run, "Delete for good", m)
+                run.expect("Delete in the Trash goes for good, said", [f"Deleted {second} for good"], m, 8)
+                run.check("and it's gone from the Trash", wait(lambda: second not in inv_items(trash), 6), ", ".join(inv_items(trash)))
+                wait_focus(lambda d: d["id"] == "inventory", 4)
+        key("ctrl+f")
+        wait_focus(lambda d: d["id"] == "inventorySearch", 3)
+        key("tab")
+        wait_focus(lambda d: d["id"] == "inventoryShow", 3)
+        key("up")
+        key("up")
+        key("up")
+    clear_search()
+    m = mark()
+    say_in_app("//emptytrash")
+    conf = wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 6)
+    run.check("//emptytrash waits for her confirmation", conf and "Empty your Trash" in selection("id=notices"), selection("id=notices"))
+    time.sleep(1.2)
+    key("esc")
+    run.expect("cancelled, nothing goes", ["Cancelled"], m, 5)
+    run.check("still in the Trash", card_name in inv_items(trash), "")
+    back_to_chat()
+    m = mark()
+    say_in_app("//emptytrash")
+    wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 6)
+    time.sleep(1.2)
+    key("enter")
+    run.expect("confirmed, it's emptied", ["The Trash is empty"], m, 10)
+    run.check("and nothing's in it", wait(lambda: not inv_items(trash), 8), ", ".join(inv_items(trash)))
+    run.check("the Trash is still the Trash", api("LLInventory", "getBasicFolderID", ft_name="trash")["id"] == trash, "")
+    back_to_chat()
+
+    # putting herself right
+    m = mark()
+    say_in_app("//rebake")
+    run.expect("//rebake", ["Rebaking"], m, 6)
+    m = mark()
+    say_in_app("//hover 0.2")
+    run.expect("//hover N", ["Hover height: 0.2"], m, 6)
+    run.check("the setting has it", abs(float(api("SojournSettings", "get", name="hover_height")["settings"]["hover_height"]["value"]) - 0.2) < 0.01, "")
+    m = mark()
+    say_in_app("//hover")
+    run.expect("//hover says it", ["Hover height: 0.2"], m, 6)
+    say_in_app("//hover 0")
+    m = mark()
+    say_in_app("//maturity")
+    run.expect("//maturity says it and how high the account may go", ["rated up to", "may go up to"], m, 6)
+    m = mark()
+    say_in_app("//displayname")
+    got = wait(lambda: said_since(m), 10)
+    print("     //displayname:", got[-1].get("text") if got else "nothing said")
+    run.check("//displayname says something", got, "")
+    # the rest of the run's things, as anyone's
+    gated(run, "the step's folder deleted", "TesselInventory", "delete", 30, ids=[folder], purge=True)
+
+
+PERSON_ITEMS = ["Send IM", "Walk to", "Face", "Where", "Describe", "Follow", "Beacon", "Pay...", "Give what you copied", "Offer teleport",
+                "Request teleport", "Always incognito with them"]
+
+
+def person_actions(run, nonce, tester_id):
+    """One set of actions on a person: People nearby, Friends, an IM's Applications key, Search and the profile offer the
+    same items; a friend's rights by keys through the confirmation; Block and Unblock from a friend's row; someone not
+    nearby blocked by name, a profile and a friendship offer by name."""
+    def offered(where, extra=()):
+        names = {d["name"] for d in find("type=MenuItem")}
+        lacking = [i for i in PERSON_ITEMS + list(extra) if i not in names]
+        run.check(f"{where} offers the same", not lacking, "lacks " + ", ".join(lacking) if lacking else f"{len(names)} items")
+        return names
+
+    back_to_chat()
+    # People nearby
+    key("alt+3")
+    wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
+    if wait(lambda: VNAME in selection("id=people"), 6):
+        key("apps")
+        if menu_open("Send IM"):
+            names = offered("People nearby", ["Profile"])
+            run.check("with friendship or its ending", "Offer friendship" in names or "End friendship" in names, "")
+            run.check("and Block", "Block" in names or "Unblock" in names, "")
+            key("esc")
+            time.sleep(0.4)
+    # Friends: rights, Block and Unblock
+    key("alt+2")
+    wait_focus(lambda d: d["id"] == "friends" or d["type"] == "ListItem", 4)
+    if run.check("(a friend online selected)", wait(lambda: "online" in selection("id=friends"), 6), selection("id=friends")):
+        friend = selection("id=friends").split(",")[0]
+        friend_id = next((f.get("id") for f in api("TesselAgent", "friends").get("friends", []) if friend in (f.get("display_name"), f.get("username"), f.get("name"))), friend)
+        key("apps")
+        if menu_open("Send IM"):
+            names = offered("Friends", ["Profile", "End friendship", "What they may do", "Start a conference..."])
+            run.check("with no offer of friendship to a friend", "Offer friendship" not in names, "")
+            key("y")
+            if run.check("What they may do opens the three rights", menu_open("Edit your objects"), focus_label()):
+                m = mark()
+                key("e")
+                conf = wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 6)
+                run.check("a right waits for her confirmation", conf and "edit" in selection("id=notices").lower(), selection("id=notices"))
+                time.sleep(1.2)
+                key("enter")
+                run.expect("given, said", [friend, "can edit your objects now"], m, 8)
+                wait_focus(lambda d: d["id"] == "friends" or d["type"] == "ListItem", 4)
+                key("apps")
+                menu_open("Send IM")
+                key("y")
+                menu_open("Edit your objects")
+                m = mark()
+                key("e")
+                wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 6)
+                time.sleep(1.2)
+                key("enter")
+                run.expect("and taken back", [friend, "can't edit your objects now"], m, 8)
+                wait_focus(lambda d: d["id"] == "friends" or d["type"] == "ListItem", 4)
+            else:
+                key("esc")
+                key("esc")
+        m = mark()
+        key("apps")
+        menu_open("Send IM")
+        key("k")
+        run.expect("Block from Friends", ["Blocked " + friend], m, 6)
+        run.check("on the block list", any(b.get("name") == friend or friend in (b.get("name") or "") for b in api("TesselAgent", "mutes").get("mutes", [])), friend)
+        time.sleep(0.5)
+        key("apps")
+        if run.check("the same key's item is Unblock now", menu_open("Unblock"), focus_label()):
+            m = mark()
+            key("k")
+            run.expect("Unblock", ["Unblocked", friend], m, 6)
+    # an IM's Applications key
+    back_to_chat()
+    m = mark()
+    text = f"an IM for its menu {nonce}"
+    v(f"im {tester_id} {text}")
+    run.expect("(an IM arrives)", [text], m, 10)
+    key("ctrl+tab")
+    if wait_focus(lambda d: d["id"] == "convInput", 4):
+        key("apps")
+        if run.check("an IM's Applications key has the person's actions", menu_open("Send IM"), focus_label()):
+            names = offered("An IM", ["Profile"])
+            run.check("and Block", "Block" in names or "Unblock" in names, "")
+            run.check("and still Copy and Paste", "Copy" in names and "Paste" in names, "")
+            key("esc")
+            time.sleep(0.4)
+        key("ctrl+w")
+    # Search
+    back_to_chat()
+    key("alt+5")
+    wait_focus(lambda d: d["id"] == "searchWords", 4)
+    u("set id=searchWords | Access Visitor")
+    key("enter")
+    if wait_focus(lambda d: d["id"] == "results" or d["type"] == "ListItem", 8) and wait(lambda: "Visitor" in selection("id=results"), 8):
+        key("apps")
+        if run.check("a person in Search has them too", menu_open("Send IM"), focus_label()):
+            offered("Search", ["Profile"])
+            key("esc")
+    # by name, from anywhere
+    back_to_chat()
+    far = f"{KEEPER[0]} {KEEPER[1]}"
+    m = mark()
+    say_in_app(f"//block {far}")
+    if run.expect("//block NAME reaches someone not nearby", ["Blocked " + far], m, 8):
+        m = mark()
+        say_in_app(f"//unblock {far}")
+        run.expect("//unblock takes them off", [far], m, 6)
+    say_in_app(f"//profile {VNAME}")
+    if run.check("//profile NAME opens their profile", wait_focus(lambda d: d["id"] == "profileText", 8), focus_label()):
+        key("apps")
+        if run.check("its Applications key has the actions", menu_open("Send IM"), focus_label()):
+            names = offered("The profile")
+            run.check("but no Profile", "Profile" not in names, "")
+            key("esc")
+            time.sleep(0.4)
+        key("esc")
+    back_to_chat()
+    m = mark()
+    say_in_app(f"//friend {far}")
+    run.expect("//friend NAME offers friendship", ["Friendship offered to " + far], m, 8)
+
+
+def settings_rows(run, nonce):
+    """Alt+0's rows that used to be the assistant's alone: a switch stepped, a number typed (away minutes by steps), the
+    keywords typed and in the op, an auto response typed and confirmed by her own key."""
+    key("alt+0")
+    wait_focus(lambda d: d["id"] == "settings" or d["type"] == "ListItem", 4)
+    wait(lambda: find("type=ListItem;name~=Group invitations turned away"), 6)
+
+    def row(words):
+        for attempt in range(4):   # (UI Automation can lose the list for a moment as it fills after a change)
+            try:
+                u("setfocus id=settings")
+                return select_in("id=settings", words, tries=130)
+            except ToolError:
+                time.sleep(1)
+        return False
+
+    get = lambda name: api("SojournSettings", "get", name=name)["settings"][name]["value"]
+    if run.check("(the row: Group invitations turned away)", row("Group invitations turned away"), selected_text("id=settings")):
+        was = get("reject_group_invites")
+        m = mark()
+        key("enter")
+        run.expect("a switch steps, said", ["Group invitations turned away:"], m, 5)
+        run.check("and the session has it", wait(lambda: get("reject_group_invites") != was, 3), str(get("reject_group_invites")))
+        key("enter")
+        wait(lambda: get("reject_group_invites") == was, 3)
+    if run.check("(the row: Hover height)", row("Hover height"), selected_text("id=settings")):
+        key("enter")
+        d = wait_focus(lambda d: d["id"] == "answer", 4)
+        if run.check("a number is typed: Enter asks for it, its range in the question", d and "-2 to 2" in d["name"], label(d) if d else focus_label()):
+            u("set id=answer | 0.25")
+            m = mark()
+            key("enter")
+            run.expect("said back", ["Hover height, metres: 0.25"], m, 8)
+            run.check("and the session has it", wait(lambda: abs(float(get("hover_height")) - 0.25) < 0.01, 4), str(get("hover_height")))
+            key("enter")
+            wait_focus(lambda d: d["id"] == "answer", 4)
+            u("set id=answer | 0")
+            key("enter")
+            wait(lambda: abs(float(get("hover_height"))) < 0.01, 4)
+    if run.check("(the row: Keywords)", row("Keywords that count"), selected_text("id=settings")):
+        key("enter")
+        wait_focus(lambda d: d["id"] == "answer", 4)
+        word = f"zebra{nonce}"
+        u(f"set id=answer | {word}, heron")
+        m = mark()
+        key("enter")
+        run.expect("keywords typed, said", [f"Keywords: {word}, heron"], m, 6)
+        words = api("SojournSocial", "status").get("keywords", {}).get("words", [])
+        run.check("and they're the keywords", word in words and "heron" in words, json.dumps(words))
+        run.check("the row says them", wait(lambda: find(f"type=ListItem;name~=Keywords that count as a mention: {word}"), 4), "")
+        row("Keywords that count")
+        key("enter")
+        wait_focus(lambda d: d["id"] == "answer", 4)
+        u("set id=answer | ")
+        key("enter")
+        wait(lambda: not api("SojournSocial", "status").get("keywords", {}).get("words"), 4)
+    if run.check("(the row: Auto response in Do not disturb)", row("Auto response in"), selected_text("id=settings")):
+        words = f"Away at the shore {nonce}."
+        key("enter")
+        wait_focus(lambda d: d["id"] == "answer", 4)
+        u(f"set id=answer | {words}")
+        m = mark()
+        key("enter")
+        conf = wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 6)
+        run.check("an auto response waits for her confirmation", conf, focus_label())
+        time.sleep(1.2)
+        key("enter")
+        run.expect("then it's said back", [f"Auto response in Do not disturb: {words}"], m, 8)
+        run.check("and it's kept", api("SojournPeople", "status").get("dnd_response") == words, json.dumps(api("SojournPeople", "status"))[:200])
+        back = wait_focus(lambda d: d["id"] == "settings" or d["type"] == "ListItem", 4)
+        run.check("the focus back on the row", back, focus_label())
+        row("Auto response in")
+        key("enter")
+        wait_focus(lambda d: d["id"] == "answer", 4)
+        u("set id=answer | ")
+        key("enter")
+        time.sleep(1.5)
+
+
 def asset_bytes(asset_id):
     """An asset as the local grid stores it."""
     import sqlite3
@@ -3325,6 +3772,8 @@ def notecards_embedded(run, nonce, tester_id):
     m = mark()
     key("esc")
     gone = wait_focus(lambda d: d["id"] == "inventory", 4)
+    if not gone:
+        print("     windows after Escape:", [d["name"] for d in find("type=Window")], "value:", ascii(value_of("id=editorText"))[:200])
     run.check("nothing left to ask about on closing", gone and not find("type=Window;name~=Save the changes"), focus_label())
 
     # the op: a model's rewrite with no places in it
@@ -5285,7 +5734,7 @@ def going_and_blocking(run, nonce):
         run.expect("//block NAME: something nearby", ["Blocked " + post], m, 8)
         m = mark()
         say_in_app("//block nobody by this name")
-        run.expect("//block a name nothing has: says so", ["Nothing called nobody by this name nearby"], m, 8)
+        run.expect("//block a name nothing has: says so", ["Nobody called"], m, 8)
         m = mark()
         say_in_app("//blocks")
         d = wait_focus(lambda d: d["id"] == "blocksList", 5)

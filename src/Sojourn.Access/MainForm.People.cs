@@ -23,19 +23,8 @@ public sealed partial class MainForm
     {
         _friends = List("friends", "Friends");
         _groups = List("groups", "My groups");
-        _friendMenu = new ContextMenuStrip { Name = "friendMenu", AccessibleName = "Actions" };
+        _friendMenu = PersonMenu("friendMenu", () => _friends.FocusedItem?.Tag is Friend f ? (f.Id, f.Name) : null, enterIms: true);
         _groupMenu = new ContextMenuStrip { Name = "groupMenu", AccessibleName = "Actions" };
-        void FriendItem(string text, Action<Friend> act) =>
-            _friendMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_friends.FocusedItem?.Tag is Friend f) act(f); }));
-        FriendItem("Send &IM", f => StartIm(f.Id, f.Name));
-        FriendItem("&Profile", f => _ = ProfileAsync(f.Id, f.Name));
-        FriendItem("&Describe", f => _ = DescribeAsync(Of(f)));
-        FriendItem("Offer &teleport", f => _ = PersonIdOpAsync("offerTeleport", f.Id, $"Teleport offered to {f.Name}."));
-        FriendItem("&Request teleport", f => _ = PersonIdOpAsync("requestTeleport", f.Id, $"Asked {f.Name} for a teleport."));
-        FriendItem("P&ay...", f => _ = PayAsync(f.Id, f.Name));
-        FriendItem("&Give what you copied", f => _ = GiveCopiedAsync(f.Id, f.Name));
-        SoundItem(_friendMenu, () => _friends.FocusedItem?.Tag is Friend f ? (f.Id, f.Name) : null, group: false);
-        FriendItem("&End friendship", f => _ = EndFriendshipAsync(f));
         void GroupItem(string text, Action<MyGroup> act) =>
             _groupMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_groups.FocusedItem?.Tag is MyGroup g) act(g); }));
         GroupItem("Group &chat", g => StartGroupChat(g));
@@ -44,7 +33,6 @@ public sealed partial class MainForm
         GroupItem("&No group tag", g => _ = ActivateGroupAsync(UUID.Zero, "no group"));
         SoundItem(_groupMenu, () => _groups.FocusedItem?.Tag is MyGroup g ? (g.Id, g.Name) : null, group: true);
         GroupItem("&Leave", g => _ = LeaveGroupAsync(g));
-        KeysOn(_friendMenu, ("Send &IM", "Enter"), ("&Describe", "Control+D"));
         KeysOn(_groupMenu, ("Group &chat", "Enter"));
         MenuOn(_friends, _friendMenu);
         MenuOn(_groups, _groupMenu);
@@ -173,12 +161,28 @@ public sealed partial class MainForm
         var pay = new Button { Name = "profilePay", Text = "P&ay...", AutoSize = true };
         var give = new Button { Name = "profileGive", Text = "&Give what you copied", AutoSize = true };
         var close = new Button { Name = "profileClose", Text = "Close", AutoSize = true, DialogResult = DialogResult.Cancel };
+        var more = new Button { Name = "profileActions", Text = "A&ctions...", AutoSize = true };
         // its pictures described by the assistant (Control+D here too; again for more)
         var describe = new Button { Name = "profileDescribe", Text = "&Describe pictures", AutoSize = true };
         var pictures = new Subject(id.ToString(), "profile", $"{shownName}'s profile pictures", $"Describe {shownName}'s profile pictures");
         describe.Click += (_, _) => _ = DescribeAsync(pictures);
+        // the same as every list's: the window closes, then it goes
+        var actions = new ContextMenuStrip { Name = "profileMenu", AccessibleName = "Actions" };
+        void ShowActions(Control on)
+        {
+            actions.Items.Clear();
+            AddPersonItems(actions, id, shownName, profile: false, first: form.Close);
+            actions.Show(on, new Point(10, Math.Min(on.Height, 40)));
+        }
+        more.Click += (_, _) => ShowActions(more);
         form.KeyDown += (_, e) =>
         {
+            if (e.KeyCode == Keys.Apps || e.KeyData == (Keys.Shift | Keys.F10))
+            {
+                e.Handled = e.SuppressKeyPress = true;
+                ShowActions(text);
+                return;
+            }
             if (e.KeyData != (Keys.Control | Keys.D)) return;
             e.Handled = e.SuppressKeyPress = true;
             _ = DescribeAsync(pictures);
@@ -189,11 +193,12 @@ public sealed partial class MainForm
         close.Click += (_, _) => form.Close();
         form.CancelButton = close;
         var row = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Bottom };
-        row.Controls.AddRange(new Control[] { im, pay, give, describe, close });
+        row.Controls.AddRange(new Control[] { im, pay, give, describe, more, close });
         form.Controls.Add(text);
         form.Controls.Add(row);
         form.ActiveControl = text;
         form.Shown += (_, _) => { text.SelectionStart = 0; text.SelectionLength = 0; };
         form.ShowDialog(this);
+        actions.Dispose();
     }
 }

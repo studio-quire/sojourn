@@ -40,9 +40,9 @@ HUD games, a profile picture. Each one closed also ends some account sharing.
   conversation in focus.
 - **Never move focus she didn't ask to move.** Radegast's oldest bug (new tabs and dialogs steal typing, 2009-2025).
   New things are announced and wait; a key goes to them.
-- **Works fully without a Claude account** (decided, the user, 2026-10-29). Everything Radegast does, and the new
-  spatial tools (bearings, routes, walk mode, sound), run with no assistant. The assistant (description, "do this for
-  me", building from words) is the layer above.
+- **Works fully without a Claude account** (decided, the user, 2026-10-29). The aim is everything Radegast does, and the
+  new spatial tools (bearings, routes, walk mode, sound), with no assistant; what it still lacks next to Radegast is in
+  `docs/access-gaps.md`. The assistant (description, "do this for me", building from words) is the layer above.
 - **Familiar where Radegast already works.** Her `//go xyz` routes live in notecards; they should run
   here verbatim. Alt+1-9 areas, Ctrl+Tab between conversations, Enter / Shift+Enter / Ctrl+Enter for
   say / whisper / shout, the Applications key for an item's actions.
@@ -161,8 +161,9 @@ answered by keys; Radegast's `//` set with its syntax (its object-search bugs no
 arrivals and departures (a switch); teleports by SLurl on the clipboard (Ctrl+G), landmarks, search and offers, the
 arrival said; inventory (tree, search, worn and recent, marking many, outfits, rez, unbox, cut/copy/paste, give and
 delete behind her confirmation, notecards and scripts in a real edit control); profiles, friends, groups and pay; the
-assistant as a typed request; incognito (Ctrl+Shift+I, off only by a physical key) and voice chat's keys. Left: a blind
-tester's verdict; voice is checked by the hidden-desktop test only without the voice server unless run with
+assistant as a typed request; incognito (Ctrl+Shift+I, off only by a physical key) and voice chat's keys. Left: what it
+still lacks of Radegast, ranked in `docs/access-gaps.md` (this milestone was never checked against it feature by feature
+until 2026-11-07); a blind tester's verdict; voice is checked by the hidden-desktop test only without the voice server unless run with
 `ACCESS_VOICE=1` (which needs `tools/grid.py voice up`).
 
 **M2. Her first new things** (M; `docs/access-app.md` > Parts and faces, Placing by words, the inventory's second

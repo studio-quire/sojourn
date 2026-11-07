@@ -29,6 +29,7 @@
 //   embedcard NAME UUID                                   a notecard NAME holding a landmark ("NAME Landmark", its place
 //                                                         in the text's second line) and a notecard ("NAME Inner", at the
 //                                                         end), full rights, in the viewer's own format, offered to UUID
+//   conferenceline UUID TEXT                              TEXT to UUID as a conference's line, as Second Life sends one
 //   fmenu12 UUID                                          a script menu of twelve (One ... Ten, Next, Back)
 //   fdance UUID                                           a dance machine's menu (Waltz, Tango): each pick says
 //                                                         "danced X" and sends the menu again
@@ -256,6 +257,25 @@ static class Program
                     return "offered " + item.Name;
                 }
             case "embedcard": return await EmbedCard(rest);
+            // a line of a conference as SL's event queue sends one: dialog 0, the session not the pair's. The session is the
+            // visitor's own id, so a reply into it (a session's message, addressed to the session's id) reaches the visitor;
+            // the packet by hand, as LibreMetaverse's InstantMessage turns that session into the pair's
+            case "conferenceline":
+                {
+                    var words = rest.Split(' ', 2);
+                    var packet = new ImprovedInstantMessagePacket();
+                    packet.AgentData.AgentID = client.Self.AgentID;
+                    packet.AgentData.SessionID = client.Self.SessionID;
+                    packet.MessageBlock.Dialog = (byte)InstantMessageDialog.MessageFromAgent;
+                    packet.MessageBlock.FromAgentName = Utils.StringToBytes(client.Self.Name);
+                    packet.MessageBlock.ID = client.Self.AgentID;
+                    packet.MessageBlock.ToAgentID = UUID.Parse(words[0]);
+                    packet.MessageBlock.Message = Utils.StringToBytes(words[1]);
+                    packet.MessageBlock.BinaryBucket = Encoding.UTF8.GetBytes("Visitor's Conference\0");
+                    packet.MessageBlock.RegionID = client.Network.CurrentSim.ID;
+                    client.Network.SendPacket(packet);
+                    return "ok";
+                }
             case "pos": case "whereis":
                 {
                     client.Self.SimRotation.GetEulerAngles(out _, out _, out var yaw);

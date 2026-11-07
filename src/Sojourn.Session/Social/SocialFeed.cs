@@ -21,6 +21,10 @@ public sealed record FeedEntry(long Seq, FeedKind Kind, string? Session, string?
     /// Empty for everything else.</summary>
     public Guid NoticeId { get; init; }
 
+    /// <summary>A line in a conference, which people start on anyone: addressed to the person as an IM is, though it's a
+    /// session of many like a group's chat (and comes as FeedKind.Group).</summary>
+    public bool Conference { get; init; }
+
     /// <summary>A notice's notification name (ScriptDialog, TeleportOffered, FriendOnlineOffline ...); null for
     /// everything else and for the region's own messages.</summary>
     public string? NoticeName { get; init; }
@@ -197,7 +201,7 @@ public sealed class SocialFeed
     }
 
     void Add(FeedKind kind, string? session, string? sessionName, UUID from, string name, string text, FeedStyle style, bool mine, double life,
-        Guid notice = default, bool mention = false, string? noticeName = null)
+        Guid notice = default, bool mention = false, string? noticeName = null, bool conference = false)
     {
         if (string.IsNullOrWhiteSpace(text) && notice == Guid.Empty) return;
         text = text.Trim();
@@ -207,7 +211,7 @@ public sealed class SocialFeed
         {
             double now = Now;
             e = new FeedEntry(++_seq, kind, session, sessionName, from, name, text, style, mine, now, alert ? Math.Max(life, 90) : life)
-                { NoticeId = notice, Alert = alert, NoticeName = noticeName };
+                { NoticeId = notice, Alert = alert, NoticeName = noticeName, Conference = conference };
             _entries.Add(e);
             if (_entries.Count > 60) _entries.RemoveRange(0, _entries.Count - 60);
             // a line arriving ends their typing
@@ -397,7 +401,7 @@ public sealed class SocialFeed
         if (msg.StartsWith("/me ") || msg.StartsWith("/me'")) { style = FeedStyle.Emote; msg = msg[3..].TrimStart(); }
         bool mention = Mentions(msg);
         msg = Shown(msg);
-        Add(kind, S(d, "session_id"), sessionName, from, name, msg, style, outgoing, Life(kind, msg), mention: mention);
+        Add(kind, S(d, "session_id"), sessionName, from, name, msg, style, outgoing, Life(kind, msg), mention: mention, conference: type == "conference");
     }
 
     /// <summary>The viewer's toasts, as one line each in our words: who, and what they offer or say. Answering them is

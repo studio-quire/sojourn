@@ -18,15 +18,17 @@ public sealed partial class MainForm
         Answer(PersonOps.Error(r) is { } e ? $"Not blocked: {e}" : $"Blocked {name}. Control+Shift+Y lists what you've blocked.");
     }
 
-    /// <summary>//block NAME: someone nearby, else something nearby, by name.</summary>
+    /// <summary>//block NAME: someone nearby, else someone in a conversation or a friend, else something nearby, else
+    /// anyone on the grid by name (someone sending unwanted IMs is rarely nearby).</summary>
     async Task BlockWordsAsync(string name)
     {
         name = name.Trim();
-        if (name.Length == 0) { Answer("//block NAME: someone or something nearby. //blocks lists what you've blocked."); return; }
+        if (name.Length == 0) { Answer("//block NAME: anyone by name, or something nearby. //blocks lists what you've blocked."); return; }
         if (await _ops.FindPersonAsync(name) is { } p) { await BlockAsync(p.Id, p.Name, "resident"); return; }
+        if (await FindForSoundAsync(name) is { Group: false } known) { await BlockAsync(known.Id, known.Name, "resident"); return; }
         var thing = (await _ops.ObjectsAsync(96, 5, name)).FirstOrDefault();
         if (thing != null) await BlockAsync(thing.Id, thing.Name, "object");
-        else Answer($"Nothing called {name} nearby.");
+        else if (await FindSomeoneAsync(name) is { } grid) await BlockAsync(grid.Id, grid.Name, "resident");
     }
 
     /// <summary>//unblock NAME: off the list by the name it's listed under (the whole name or part of it).</summary>

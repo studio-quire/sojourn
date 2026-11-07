@@ -58,15 +58,16 @@ public sealed partial class MainForm
             void Add(string text, string key, Action act) => menu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => act()) { ShortcutKeyDisplayString = key });
             var name = cv.Group && cv.Title.EndsWith(" (group)") ? cv.Title[..^8] : cv.Title;
             var id = cv.Group ? (UUID.TryParse(cv.SessionId, out var g) ? g : UUID.Zero) : cv.Other;
-            if (id != UUID.Zero)
-            {
-                menu.Items.Add(new ToolStripMenuItem(SoundItemText(name, cv.Group), null, (_, _) => ChooseImSound(id, name, cv.Group)) { Name = "imSoundItem" });
-                menu.Items.Add(new ToolStripSeparator());
-            }
-            if (!box.ReadOnly) Add("Cu&t", "Control+X", box.Cut);
-            Add("&Copy", "Control+C", box.Copy);
-            if (!box.ReadOnly) Add("&Paste", "Control+V", box.Paste);
-            Add("Select &all", "Control+A", box.SelectAll);
+            // someone's IM: the same as their name has in any list; a group's: its sound. The editing items after them
+            // have no letters then, the person's own items having those
+            bool person = !cv.Group && id != UUID.Zero;
+            if (person) AddPersonItems(menu, id, name);
+            else if (id != UUID.Zero) menu.Items.Add(new ToolStripMenuItem(SoundItemText(name, cv.Group), null, (_, _) => ChooseImSound(id, name, cv.Group)) { Name = "imSoundItem" });
+            if (id != UUID.Zero) menu.Items.Add(new ToolStripSeparator());
+            if (!box.ReadOnly) Add(person ? "Cut" : "Cu&t", "Control+X", box.Cut);
+            Add(person ? "Copy" : "&Copy", "Control+C", box.Copy);
+            if (!box.ReadOnly) Add(person ? "Paste" : "&Paste", "Control+V", box.Paste);
+            Add(person ? "Select all" : "Select &all", "Control+A", box.SelectAll);
             menu.Closed += (_, _) => BeginInvoke(menu.Dispose);
             menu.Show(box, new Point(10, Math.Min(box.Height, 40)));
         }

@@ -149,7 +149,7 @@ Alt+number; Radegast's numbers where Radegast has the same area.
 | Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touchable" (or ", can sit"), nearest first, within 30 m (Show: what you wear instead, Alt+Shift+7); Tab: the selected one's parts, then a part's faces (Parts and faces, below) |
 | Alt+8 | Notices | what waits for an answer, newest first; the selected one's text, keys and reply box; Escape goes back where Control+N came from |
 | Alt+9 | Assistant | a typed request ("Ask the assistant"), its replies, its choices as buttons |
-| Alt+0 | Settings | first the assistant's provider and whether it works, its key or token row and OpenRouter's model (The assistant, below); then the ones that matter here (read-out and its kinds, mutes, timestamps, arrivals, earcons and volumes, the sound output and microphone, walk mode's cues). Each row leads with what it's about, so first-letter navigation finds it ("IM sound", "Footsteps (walk mode)", "Nearby chat read out"; no two rows start with the same three words); Enter, Space or Right moves one to its next value, Shift with them or Left to the one before (a sound's row plays it; Enter on the sound output or microphone opens the list of devices) |
+| Alt+0 | Settings | first the assistant's provider and whether it works, its key or token row and OpenRouter's model (The assistant, below); then the ones that matter here (read-out and its kinds, mutes, timestamps, arrivals, earcons and volumes, the sound output and microphone, walk mode's cues). Each row leads with what it's about, so first-letter navigation finds it ("IM sound", "Footsteps (walk mode)", "Nearby chat read out"; no two rows start with the same three words); Enter, Space or Right moves one to its next value, Shift with them or Left to the one before (a sound's row plays it; Enter on the sound output or microphone opens the list of devices; on a row that has no steps, a number in a range or a word, Enter asks for it to be typed). Her keywords and what her auto responses say are rows too, typed, an auto response confirmed by her own key. A setting registered and named in neither `Shown` nor `NotRows` (`MainForm.Settings.cs`) still gets a row, at the end, by its bare name, and the settings step fails until it's placed |
 
 Pressing the Alt+number of the area you're in reads it again ("Inventory: Red Dress, skirt, worn.").
 
@@ -162,7 +162,7 @@ Control+L (About Land, below).
 as Radegast's menus are. World (teleport home, to the SLurl on the clipboard, set home here, landmark here, sit on the
 ground or stand up, fly or stop flying, walk mode, Recording a route (its keys and Discard), Gestures: the active ones to play, Away and Do not disturb as checked
 items, incognito, region info, About Land (Control+L) and the region's covenant, parcels in this region, status, what you're wearing, describe where you are, describe
-me, who's in voice, open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
+me, rebake, stop all animations, hover height, display name, highest rating of region (`MainForm.Self.cs`; each also a `//` command: `//rebake`, `//stopanimations`, `//hover`, `//displayname`, `//maturity`), who's in voice, open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
 Friends among them, the second inventory pane, the inventory's favorites, the newest notice, Conversations, the conversation ring, closing one),
 Read-out (mute all, mute this conversation, times, arrivals, Recent messages: the last nine as items with their
 Control+numbers, then back, forward, oldest, newest, mark, copy, copy the assistant's last answer), Build (the
@@ -216,14 +216,10 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   confirmation's Confirm and Cancel. Escape anywhere in the notices but on a confirmation (or in the reply box): back
   to the area and control Control+N came from, else to Say. Tab from the list reaches the notice's text, its reply box
   and its buttons ("1: Red", "Delete: Ignore").
-- Applications key (or Shift+F10, or Enter) on a person nearby: Send IM, Walk to, Face, Where, Follow, Beacon,
-  Profile, Pay..., Offer teleport, Request teleport, Always incognito with them, IM sound for NAME... (Earcons, below).
-  On a friend (Enter: an IM): Send IM, Profile, Offer or Request teleport, Pay..., IM sound for NAME..., End friendship
-  (confirmed). On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
-  tag, Group sound for NAME..., Leave (the grid asks in Notices). In a conversation's message box or history: IM (or
-  Group) sound for NAME..., then Cut, Copy, Paste, Select all, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
+- **A person's actions are one list** (`MainForm.PersonActions.cs`), the same items with the same letters wherever their name is: People nearby (Enter opens them), Friends and Search (Enter: an IM), an IM's message box or history, and their profile (Applications key or its Actions button; there the window closes first). Send IM, Walk to, Face, Where, Describe, Follow, Beacon, Profile, Pay..., Give what you copied, Offer teleport, Request teleport, Offer friendship (a friend: Start a conference..., End friendship, confirmed), Always incognito with them, Block or Unblock, IM sound for NAME.... What needs them near says so when they aren't ("Kestrel isn't nearby, though online."), rather than the menu changing shape. A friend's What they may do has See when you're online, Find you on the map and Edit your objects, checked as they stand, each through her confirmation; edit rights are how a sighted helper helps without logging in as her. `//block NAME`, `//profile NAME` and `//friend NAME` find anyone by name: open conversations, friends, people nearby, then the grid. A new action goes in `PersonActions`, never a list's own menu. On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
+  tag, Group sound for NAME..., Leave (the grid asks in Notices). On a friend, Start a conference...: friends online in a list of check boxes, the one you were on marked, Space marking more, Enter starting it with two or more and going to its tab. In a group's message box or history: its sound; in anyone's, Cut, Copy, Paste, Select all after what's above, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
   its own window: a read-only text read line by line (name, born, partner, about, interests, picks, first life, web),
-  Send IM, Pay, Give what you copied, Describe pictures, Close (Escape). Pay asks the amount, then waits for the
+  Send IM, Pay, Give what you copied, Describe pictures, Actions..., Close (Escape). Pay asks the amount, then waits for the
   person's confirmation in Notices (refused at once when it can't be afforded). Give what you copied (also on a person
   nearby and a friend) gives what Control+C or Control+X last took in the inventory, each thing confirmed: the blind
   tester's Radegast habit of copying an item and giving it from the person (2026-10-31), beside the inventory's Give
@@ -285,7 +281,9 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
     tree, Escape clears it; a search leaves the Trash out and says what it has there ("2 found, and 3 in the Trash
     (Show: Trash lists them)"); a long one says "Searching." first. Tab from Search reaches Show (Up/Down: everything,
     worn, recent: the last day's, trash: what's in the Trash, or with words what matches there).
-  - F5 shows it again (the tree doesn't change under you otherwise; your actions refresh what they touched).
+  - F5 asks the grid for every folder of yours again, said as it starts and ends, then shows it (Radegast's Reload Inventory, how stale folders get mended; the tree doesn't change under you otherwise; your actions refresh what they touched).
+  - On an object, Attach to... lists every point with what it holds; Enter wears it there beside what's on it ("Wearing Hat on Chest."), for something whose own point is wrong. On a sound, Play plays it in the world where she stands, as the viewer's does, so people near hear it too; on an animation, Play and Stop it.
+  - **The Trash**: Delete on what's already in it goes for good, the confirmation saying so. Empty the Trash, first on the Trash folder's menu and on anything in it, or `//emptytrash`, behind her confirmation.
   - A notecard or script opens in its own window, an edit control: Ctrl+S saves ("Saved.", or a script's compile
     errors read out and listed under the text), Escape closes (asking first if changed).
   - **What a notecard holds** (`MainForm.Notecards.cs`, Core's `NotecardFile`; Radegast's Attachments, and SL's welcome
@@ -452,6 +450,7 @@ the window's bottom-left corner and reads its name and its children's, so "Statu
   read back", `access_read_mine`, on by default, her wish): nearby once the region echoes them, so she hears they went
   out; IMs as they're sent (the grid echoes none). Each is read back once; typing on over it doesn't bring it back. A
   long line sent in parts isn't read back; "Sent in 3 parts." is said instead (Long lines, above).
+- A conference is read and sounds as an IM does, being addressed to her though it's a session of many ("Kestrel, new conference: ..." first, then its name), with the IM's switches and sound; its tab reads "Kestrel's Conference" or "NAME (conference)", and a reply goes to the session, so to everyone in it. Second Life sends a conference's lines as dialog 0, like an IM, so Core tells one by its session not being the pair's (`AgentSession.ConferenceLine`), as the viewer's `computeSessionID` would; before, the tab was the first speaker's and replies went to them alone. Checked on the local grid only by the session's own record, since OpenSim passes a session's message on to nobody, and it starts no conference; Second Life alone shows a reply heard and one started. Inviting someone into a conference already going isn't here.
 - One-off notices (friends online, alerts, a teleport that failed) are also status lines in the nearby chat history,
   as in Radegast.
 - Friends online at login are one line (`MainForm.FriendsOnline.cs`): the grid tells of every friend online as the
