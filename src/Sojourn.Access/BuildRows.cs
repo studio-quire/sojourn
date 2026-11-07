@@ -162,6 +162,9 @@ public static class BuildRows
 
     /// <summary>A typed command's setting and the value after its name ("hollow 50": hollow and "50"); null when it names
     /// none. The value keeps its case (a name or description as typed).</summary>
+    /// <summary>Every word a setting goes by, for a mistyped one.</summary>
+    public static IEnumerable<string> Words => ByAlias.Select(a => a.Alias);
+
     public static (string Key, string Value)? Match(string command)
     {
         var t = command.Trim();

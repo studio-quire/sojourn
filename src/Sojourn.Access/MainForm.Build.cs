@@ -671,6 +671,14 @@ public sealed partial class MainForm
         }
     }
 
+    /// <summary>The words the box takes besides the settings (BuildRows.Words), for a mistyped one.</summary>
+    static readonly string[] BuildVerbs =
+    {
+        "help", "shapes", "new", "edit", "done", "what", "where", "face", "move", "turn", "scale", "duplicate", "delete", "take",
+        "link", "unlink", "part", "root", "next", "previous", "add", "remove", "copy", "undo", "redo", "look", "general", "object",
+        "features", "texture", "content", "type",
+    };
+
     async Task BuildCommandCoreAsync(string text)
     {
         var t = text.Trim();
@@ -726,7 +734,14 @@ public sealed partial class MainForm
             case "copy" when rest.Length > 0: await CopyContentAsync(rest); return;
             case "look" or "describe": DescribeBuild(l); return;
         }
-        if (BuildRows.Match(t) is not { } m) { Answer($"No build command or setting {verb}. help lists them."); return; }
+        if (BuildRows.Match(t) is not { } m)
+        {
+            // what she typed back in the box to fix, rather than typed again
+            if (_buildCommand.Text.Length == 0) { _buildCommand.Text = text.Trim(); _buildCommand.SelectionStart = _buildCommand.Text.Length; }
+            var guess = Typos.Closest(verb, BuildVerbs.Concat(BuildRows.Words));
+            Answer($"No build command or setting {verb}.{(guess != null ? $" Did you mean {guess}?" : " help lists them.")} It's back in the box to correct.");
+            return;
+        }
         if (m.Value.Length == 0)
         {
             var face = BuildRows.TabOf(m.Key) == "Texture" ? _buildFace : null;

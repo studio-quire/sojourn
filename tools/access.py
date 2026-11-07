@@ -4417,6 +4417,15 @@ def building(run, nonce):
         build_cmd("hollow 50")
         run.expect("hollow 50: said back in percent", ["Hollow: 50 percent"], m, 10)
         m = mark()
+        build_cmd("hollo 40")
+        run.expect("a slip in a word: what it most likely was, and back in the box", ["Did you mean hollow?", "back in the box"], m, 6)
+        run.check("the mistyped line is in the box to correct", wait(lambda: value_of("id=buildCommand") == "hollo 40", 3, 0.2), value_of("id=buildCommand"))
+        u("set id=buildCommand |")
+        m = mark()
+        build_cmd("hollow50")
+        run.expect("no space: said with the space", ["Did you mean hollow 50?"], m, 6)
+        u("set id=buildCommand |")
+        m = mark()
         build_cmd("colour red")
         run.expect("colour red: said once for every side", ["Colour: red (255, 0, 0), all sides"], m, 10)
         m = mark()
@@ -8478,7 +8487,7 @@ def package_check():
             sidecar = wait(bundled_python, 30, 1)
             check("the assistant's sidecar runs on the package's own Python", sidecar,
                   f"pid {sidecar.pid}, {sidecar.exe()}" if sidecar else "no python.exe from the package under the app")
-            want = "relay: ready" if relay else "claude: none"
+            want = "relay: ready" if relay else "openrouter[^:]*: no_key"
             said = wait(lambda: re.search(rf"provider: {want}.*", log_text()), 60, 1)
             check(f"its provider checked ({want})", said, said[0][:200] if said else
                   "; ".join(re.findall(r"assistant: .*", log_text())[-4:])[:300])
@@ -8494,7 +8503,7 @@ def package_check():
             names = [d["name"] for d in find("type=ListItem")] if row else []
             shown = next((n for n in names if n.startswith("Provider for the assistant:")), "")
             check("Alt+0's provider row offers no Claude account",
-                  shown and "Claude account" not in " ".join(names) and ("Studio Quire" in shown if relay else "none chosen yet" in shown),
+                  shown and "Claude account" not in " ".join(names) and ("Studio Quire" in shown if relay else "no key yet" in shown),
                   shown or "no provider row")
             back_to_chat()
 
@@ -8516,7 +8525,7 @@ def package_check():
             key("ctrl+d")
             got = run.expect("Control+D answers", ["Describing needs the assistant"], m, 10)
             if got and assistant:
-                check("and says why it's off and how to switch it on", "Alt+0" in got["text"] and "Studio Quire" in got["text"],
+                check("and says why it's off and how to switch it on", "Alt+0" in got["text"] and ("Studio Quire" if relay else "OpenRouter") in got["text"],
                       got["text"][:300])
             wait(lambda: False, 1.5)
             m2 = mark()

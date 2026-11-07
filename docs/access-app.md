@@ -820,6 +820,8 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   named Guide but phantom are ridden as this log suggests, and on a throw, which part took the touch, whether a touch
   toggles, how long the description took to change and whether the rails' names followed.
 
+**A mistyped command**: the build box puts a word it doesn't know back in the box to correct, with what it most likely was (`Typos.cs`: a known word with the space left out, or a slip or two away: "Did you mean hollow?"); `//` commands say the same, and Control+Up brings the line back (the blind tester's building, 2026-11-06).
+
 **How far Objects lists**: Alt+0's "How far Objects nearby lists" (`access_objects_range`, 10 to 125 m, 30 by default,
 the nearest 200 past 30 m). Beyond the draw distance (128 m by default) the region sends nothing.
 

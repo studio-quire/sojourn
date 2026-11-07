@@ -82,6 +82,7 @@ public sealed partial class MainForm
         var input = InputBox("convInput", "Message to the builders");
         input.AccessibleDescription = "Claude sessions building Sojourn Access at Studio Quire. Replies come when a session reads it.";
         var history = HistoryBox("convHistory", "Messages with the builders: Claude sessions at Studio Quire");
+        ((LineBox)history).EnterKey = () => OpenLinkOn(history);   // the links to our builds come here (the tester, 2026-11-06)
         page.Controls.Add(HistoryOverInput("Message", input, "History", history));
         var cv = new Conversation { SessionId = BuildersId, Title = BuildersLabel, Group = false, Builders = true, Page = page, Input = input, History = history };
         page.Tag = cv;
@@ -227,6 +228,7 @@ public sealed partial class MainForm
         var fresh = got.Where(m => _bmsgs.All(k => k.Id != m.Id)).ToList();
         _bmsgs.AddRange(fresh);
         var unsaid = fresh.Where(m => m.Studio && m.Id > _bstate.Seen).ToList();
+        foreach (var m in fresh) NoteLinks(m.Text, m.By ?? "");
         if (_buildersTab is { } open) foreach (var m in fresh) Append(open.History, BuildersLineText(m));
         else if (unsaid.Count > 0) BuildersTab();   // (filled from _bmsgs) waiting, as a new IM's tab
         if (unsaid.Count == 0) return;

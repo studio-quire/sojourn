@@ -88,11 +88,18 @@ public sealed class Commands
                 case "voice": if (Voice != null) await Voice(string.Join(" ", rest)); return true;
                 case "imsound": if (ImSound != null) await ImSound(string.Join(" ", rest)); return true;
                 case "sendlog": SendLog?.Invoke(); return true;
-                default: _say($"No command {verb}. //help lists them."); return false;
+                default:
+                {
+                    var guess = Typos.Closest(verb, CommandWords);
+                    _say($"No command {verb}. {(guess != null ? $"Did you mean //{guess}? " : "")}Control+Up brings your line back; //help lists them.");
+                    return false;
+                }
             }
         }
         catch (Exception e) { _say($"//{verb} didn't work: {e.Message}"); return false; }
     }
+
+    IEnumerable<string> CommandWords => All.Select(u => u.Name);
 
     /// <summary>Radegast's parsing: words, "quoted words" as one, backslash escapes.</summary>
     static List<string> Split(string s)
