@@ -144,7 +144,7 @@ Alt+number; Radegast's numbers where Radegast has the same area.
 | Alt+3 | People | Nearby ("Kestrel Tester, 4 metres, two o'clock", nearest first), Friends ("Kestrel, online", online first), My groups ("Builders, tag worn") |
 | Control+Tab | Conversations | a tab per IM or group chat: its history over its input ("Message to Kestrel"); also View > Conversations; and the builders' tab (Control+Shift+B, Messages to the builders, below) |
 | Alt+4 | Inventory | the tree ("Red Dress, skirt, worn"; "Hair, object, worn on Skull"; "..., favorite"; "..., marked"), Search, and Show (everything, worn, recent, trash, favorites) |
-| Alt+5 | Search | Search for (words), Look for (people, places, events, groups, classifieds), Results |
+| Alt+5 | Search | Search for (words), Look for (people, places, events, groups, classifieds), Category and Day where they apply, Results |
 | Alt+6 | Places | Landmarks (a tree: the Landmarks folder and the Favorites bar), Teleport history ("Bay City, Harbour, today 14:05"), Go to region (a box), Regions around ("Bay City, 3 people, next door to the north") |
 | Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touchable" (or ", can sit"), nearest first, within 30 m, the nearest 60 and then a row for more; Control+F filters by words (Show: what you wear instead, Alt+Shift+7, or what people nearby wear); Tab: the selected one's parts, then a part's faces, then the filter and Show (Objects nearby, Parts and faces, below) |
 | Alt+8 | Notices | what waits for an answer, newest first; the selected one's text, keys and reply box; Escape goes back where Control+N came from |
@@ -194,13 +194,13 @@ list; a blind tester, offered groups or a box narrowing the list as you type, ch
 as Radegast's menus are. World (teleport home, to the SLurl on the clipboard, set home here, landmark here, sit on the
 ground or stand up, fly or stop flying, walk mode, Recording a route (its keys and Discard), Gestures: the active ones to play, Away and Do not disturb as checked
 items, incognito, region info, About Land (Control+L) and the region's covenant, parcels in this region, status, what you're wearing, describe where you are, describe
-me, rebake, stop all animations, hover height, display name, highest rating of region (`MainForm.Self.cs`; each also a `//` command: `//rebake`, `//stopanimations`, `//hover`, `//displayname`, `//maturity`), who's in voice, open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
+me, rebake, stop all animations, hover height, my profile, display name, highest rating of region (`MainForm.Self.cs`; each also a `//` command: `//rebake`, `//stopanimations`, `//hover`, `//displayname`, `//maturity`), log out, back to the login window (`//logout`: asked first, Enter goes and Escape stays; the app starts afresh there, the form filled in and the password typed again), who's in voice, open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
 Friends among them, the second inventory pane, the inventory's favorites, the newest notice, Conversations, the conversation ring, closing one),
 Read-out (mute all, mute this conversation, times, arrivals, Recent messages: the last nine as items with their
-Control+numbers, then back, forward, oldest, newest, mark, copy, copy the assistant's last answer), Build (the
+Control+numbers, then back, forward, oldest, newest, mark, copy, copy the assistant's last answer, links seen, chat logs, blocked), Build (the
 official viewer's Build menu: the build editor, Control+B; a new box; undo the last build change; the build
 commands; upload a file, Control+U) and Help (keys, the slash
-commands, send a log, message the builders, about).
+commands, send a log, message the builders, Newer build?, about; a newer build is also said once after logging in).
 
 - Each item shows its key beside it (`ShortcutKeyDisplayString`, which UI Automation gives screen readers as the item's
   accelerator key); the keys themselves stay in `ProcessCmdKey`, never the items' `ShortcutKeys`.
@@ -222,7 +222,7 @@ F1 shows them in a window, one a line under short headings, the focus in its rea
 focus goes back where it was. (A window because spoken they ran to some 2,000 characters, and the screen reader's stop
 key lost the rest.) Walk mode's F1 does the same with its own keys.
 
-- In any input: Enter says (or sends), Shift+Enter whispers, Ctrl+Enter shouts (nearby only); Ctrl+Up/Down bring back
+- In any input: Enter says (or sends), Shift+Enter whispers, Ctrl+Enter shouts (nearby only); `:waves` is an emote as `/me waves` (two letters at least after the colon, so `:)` and `:D` stay); Ctrl+Up/Down bring back
   earlier lines; Ctrl+Backspace deletes the word before the caret (`LineBox`, `TextKeys`: a plain Windows edit box
   types U+007F for it). Tab and Shift+Tab go between a history and its input (in nearby chat, Tab from Say reaches
   the history, then People nearby): the tab strips aren't Tab stops (Alt+number and Ctrl+Tab switch them). `/me`, `/7 text` (a
@@ -248,14 +248,14 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   confirmation's Confirm and Cancel. Escape anywhere in the notices but on a confirmation (or in the reply box): back
   to the area and control Control+N came from, else to Say. Tab from the list reaches the notice's text, its reply box
   and its buttons ("1: Red", "Delete: Ignore").
-- **A person's actions are one list** (`MainForm.PersonActions.cs`), the same items with the same letters wherever their name is: People nearby (Enter opens them), Friends and Search (Enter: an IM), an IM's message box or history, and their profile (Applications key or its Actions button; there the window closes first). Send IM, Walk to, Face, Where, Describe, Follow, Beacon, Profile, Pay..., Give what you copied, Offer teleport, Request teleport, Offer friendship (a friend: Start a conference..., End friendship, confirmed), Invite to a group... (Groups, below), Always incognito with them, Block or Unblock, IM sound for NAME.... What needs them near says so when they aren't ("Kestrel isn't nearby, though online."), rather than the menu changing shape. A friend's What they may do has See when you're online, Find you on the map and Edit your objects, checked as they stand, each through her confirmation; edit rights are how a sighted helper helps without logging in as her. `//block NAME`, `//profile NAME` and `//friend NAME` find anyone by name: open conversations, friends, people nearby, then the grid. A new action goes in `PersonActions`, never a list's own menu. On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
-  tag, Choose your title..., Members, Notices..., Receive its notices, List it in your profile (Groups, below), Group sound for NAME..., Leave (the grid asks in Notices). On a friend, Start a conference...: friends online in a list of check boxes, the one you were on marked, Space marking more, Enter starting it with two or more and going to its tab. In a group's message box or history: its sound; in anyone's, Cut, Copy, Paste, Select all after what's above, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
-  its own window: a read-only text read line by line (name, born, partner, about, interests, picks, first life, web),
-  Send IM, Pay, Give what you copied, Describe pictures, Actions..., Close (Escape). Pay asks the amount, then waits for the
+- **A person's actions are one list** (`MainForm.PersonActions.cs`), the same items with the same letters wherever their name is: People nearby (Enter opens them), Friends and Search (Enter: an IM), an IM's message box or history, and their profile (Applications key or its Actions button; there the window closes first). Send IM, Walk to, Face, Where, Describe, Follow, Beacon, Profile, Notes on them, Chat log, Pay..., Give what you copied, Offer teleport, Request teleport, Offer friendship (a friend: Start a conference..., End friendship, confirmed), Invite to a group... (Groups, below), Mute in voice or Unmute in voice, How loud in voice... (0 to 2, 1 as they come; both for you alone and kept), Always incognito with them, Block or Unblock, IM sound for NAME.... What needs them near says so when they aren't ("Kestrel isn't nearby, though online."), rather than the menu changing shape; Where on a friend elsewhere on the grid who lets you see them on the map says the region and spot ("Kestrel is in Bay City, at 128, 64."; `SojournPeople whereFriend`, as the viewers' Show on map). A friend's What they may do has See when you're online, Find you on the map and Edit your objects, checked as they stand, each through her confirmation; edit rights are how a sighted helper helps without logging in as her. `//block NAME`, `//profile NAME` and `//friend NAME` find anyone by name: open conversations, friends, people nearby, then the grid. A new action goes in `PersonActions`, never a list's own menu. On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
+  tag, Choose your title..., Members, Notices..., Chat log, Receive its notices, List it in your profile (Groups, below), Group sound for NAME..., Leave (the grid asks in Notices). On a friend, Start a conference...: friends online in a list of check boxes, the one you were on marked, Space marking more, Enter starting it with two or more and going to its tab. In a group's message box or history: its sound; in anyone's, Cut, Copy, Paste, Select all after what's above, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
+  its own window: a read-only text read line by line (name, born, partner, about, interests, picks, groups with their titles, first life, web), their picks and your notes on them a Tab on,
+  Send IM, Pay, Give what you copied, Describe pictures, Actions..., Close (Escape) (Your profile and notes, below). Pay asks the amount, then waits for the
   person's confirmation in Notices (refused at once when it can't be afforded). Give what you copied (also on a person
   nearby and a friend) gives what Control+C or Control+X last took in the inventory, each thing confirmed: the blind
   tester's Radegast habit of copying an item and giving it from the person (2026-10-31), beside the inventory's Give
-  to... On an object: Touch, Sit, Walk to, Beacon, Face, Describe, Details, Where (with its floating
+  to... On an object: Touch, Sit (on what she's sitting on, Stand up), Walk to, Beacon, Face, Describe, Details, Where (with its floating
   text), Contents, Parts, Move..., and Take into your inventory, Delete and Return to its owner where she may (Objects nearby,
   below; Delete, also the key, is confirmed in Notices and goes to the Trash); on something worn only Touch, Describe, Details,
   Where, Parts and Take off (Delete too: back into the inventory, never deleted; the blind tester found no way to take a HUD off there,
@@ -312,7 +312,7 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   - Ctrl+F goes to Search (from the tree or Show), where typing lists what matches flat with its folder ("2 found"), Enter goes back to the
     tree, Escape clears it; a search leaves the Trash out and says what it has there ("2 found, and 3 in the Trash
     (Show: Trash lists them)"); a long one says "Searching." first. Tab from Search reaches Show (Up/Down: everything,
-    worn, recent: the last day's, trash: what's in the Trash, or with words what matches there).
+    worn, recent: the last day's, trash: what's in the Trash, or with words what matches there, favorites, gestures: every one, active or not, each with its folder).
   - F5 asks the grid for every folder of yours again, said as it starts and ends, then shows it (Radegast's Reload Inventory, how stale folders get mended; the tree doesn't change under you otherwise; your actions refresh what they touched).
   - On an object, Attach to... lists every point with what it holds; Enter wears it there beside what's on it ("Wearing Hat on Chest."), for something whose own point is wrong. On a sound, Play plays it in the world where she stands, as the viewer's does, so people near hear it too; on an animation, Play and Stop it.
   - **The Trash**: Delete on what's already in it goes for good, the confirmation saying so. Empty the Trash, first on the Trash folder's menu and on anything in it, or `//emptytrash`, behind her confirmation.
@@ -343,7 +343,7 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   item is in); the Applications key has "Move to X, in the other pane" and "Copy to X, in the other pane"; Ctrl+X/C/V
   work across them. Ctrl+W in the second pane closes it. Actions refresh what they touched in both.
 - In Search (Alt+5): type, Enter searches (Tab to Look for, Up/Down to change what: people, places, events, groups,
-  classifieds; events need no words: Enter lists what's on now); the focus goes to the results ("4 found."). Enter on
+  classifieds; events need no words: Enter lists what's on now; Tab again: Category for places, events and classifieds, and for events Day, from on now to a week on); the focus goes to the results ("4 found."). A page of what the grid sends at a time: where it has more, a last row, "More results: Enter lists the next.", adds them under the rest with the focus on the first of them ("100 more, 200 in all."). People and classifieds come all at once from the grid. Enter on
   a person opens an IM, on a place, event or classified teleports there, on a group says its details; the
   Applications key has the rest (a person's Profile, teleports, friendship, Pay; a place's About; a group's Join, whose
   question comes to Notices).
@@ -405,6 +405,10 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
 - F4 (`access_talk_key`: f4, f12, scroll_lock, pause) held: talk in voice, with a click as the mic opens and closes;
   Shift+F4 push-to-talk or open mic; Ctrl+Shift+V who's in voice (Voice chat, below).
 
+### Links
+
+`MainForm.Links.cs`. Enter on a history's line opens the first link on it; Control+Shift+K (`//links`) lists the last ones seen, the newest first, with who said them. A web page opens in the browser, a place teleports, a person's link is their profile, a group's says About the group; nothing else opens. On the way to the screen reader, the histories, notices and profiles, a Second Life link reads as what it is: "Builders (a group)" (just "a group" the first time one she isn't in comes up, its name read for the next time), "Bay City (a place)" (with where, if two in a region have come up), "a parcel", "an event", "a classified", "Hat (an item)", "a link for viewers". Web pages read as they are. The words are remembered so Enter and Control+K still open them; a chat log's file keeps the link itself, and reads the same way in its window.
+
 ### Long lines
 
 A blind tester's wish (2026-11-02), after a pasted description lost its end in an IM: Second Life cuts a chat line or
@@ -444,7 +448,7 @@ people are, for Walk to and Face, is renewed), so nothing beside the Say box chu
 ### The status bar
 
 A StatusStrip at the very foot of the window, below the walk pad, holding one label named "Location: Atelier 64, 36,
-15, L$0" for the screen reader once in world (a label's name is all it reads of it): NVDA+End finds the status bar by
+15, Harbour, no fly, no build, L$0" (the parcel and its marks as `//status parcel` has them, asked again on moving a few metres, reaching a region or a minute on) for the screen reader once in world (a label's name is all it reads of it): NVDA+End finds the status bar by
 the window's bottom-left corner and reads its name and its children's, so "Status Location: ...".
 
 ### Read-out
@@ -578,9 +582,10 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//go [tp] N [dir]` | walk (tp: teleport) N metres ahead, or toward N, NNE ... NNW (16 points, or words), or left, right, back |
 | `//go [tp] xyz X,Y[,Z]` | to region coordinates (Z defaults to your height) |
 | `//go [tp] person NAME` / `object NAME` / `NAME` | to the nearest person whose name starts with NAME / object whose name has it; a name alone is a person, else an object |
-| `//find person NAME` / `object NAME` (or just `//find NAME`) | "Kestrel is 4 m away, two o'clock, to the northeast, at your level." |
+| `//find person NAME` / `object NAME` (or just `//find NAME`) | "Kestrel is 4 m away, two o'clock, to the northeast, at your level.": everyone and everything that matches, the nearest first, the first eight and how many more |
 | `//face DEG` / `DIR` / `left`/`right`/`around` / `person NAME` / `object NAME` | turn; degrees are SL's (0 east, counter-clockwise), as Radegast's |
 | `//sit NAME` / `//sit ground`, `//stand` (`//unsit`) | sit on the nearest thing with that name, on the ground; stand |
+| `//profile` / `//profile NAME`, `//notes NAME` | your own profile to change (Your profile and notes, below), or anyone's, by name; your notes on someone |
 | `//block NAME` / `//unblock NAME` / `//blocks` | block someone or something nearby, take one off, the list (Control+Shift+Y, Enter or Delete unblocks; Block is also on a person's and an object's Applications key, and on B in a notice) |
 | `//follow NAME` / `//follow NAME METRES` / `//follow stop` / `//follow` | follow as they move (2.5 m behind where they'll be in a moment, around what's in the way; at the wheel, Driving after someone, below), stop, or say who; said: when you're with them and they've stopped, when they sit, when they're getting away, when they're gone |
 | `//tp list` / `N` / `NAME` / `Region/X/Y/Z` / an SLurl | landmarks in "Radegast Landmarks" (else Landmarks), by number or name; or a place |
@@ -604,8 +609,10 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//build` / `//build COMMAND` | the build editor (Ctrl+B), or one of its commands on what's being edited, from any input (Building, below) |
 | `//land` / `//land COMMAND` | About Land (Ctrl+L), or one of its commands on the parcel shown (or the one you're on), from any input (About Land, below) |
 | `//describe [here|me|NAME|person NAME|object NAME|more]` | describe (Describing, below) |
-| `//voice` / `answer` / `decline` | who's in voice; answer or decline a call |
+| `//voice` / `answer` / `decline` / `mute NAME` / `unmute NAME` / `volume NAME N` | who's in voice, said with who's muted; answer or decline a call; one person muted, or how loud they are from 0 to 2 (1 as they come), for you alone and kept |
 | `//imsound NAME SOUND` / `NAME usual` / `NAME` / (nothing) | a sound of its own for someone's IMs or a group's chat; back to the usual; theirs; the sounds and who has one (Earcons, above) |
+| `//chatlog` / `//chatlog NAME` | the chat logs on this PC; the one with that in its name (Chat logs, below) |
+| `//logout` | log out and go back to the login window, after you say so |
 | `//about` | the version, the commit, the disclaimer and the data folder |
 | `//sendlog` | send a session's log to the studio (Sending a log, below) |
 | `//help [word]` | the commands |
@@ -1208,6 +1215,27 @@ from guided testing of Radegast, and no list changes while you're in it):
   `//touch NAME face top` (bottom, front, far, left, right, inside, or a number). When nothing nearby has the name, a
   part or read button of a HUD she wears ("//touch brake"). For routes and notecards.
 
+### Your profile and notes
+
+`MainForm.MyProfile.cs`. `//profile` with no name (or `//profile me`, or a link to yourself), World > My profile: a window, not modal, the focus in About.
+- **The words**: About, Wants to, Skills, Languages, First life, Web address, each a labelled box with its letter (Alt+A and so on). Control+S saves, as does Enter in a one-line box, as
+  Sa&ve; it's said ("Saved."), and anything the grid didn't keep is said and the box shows what it kept. Escape closes, asking first if there are changes. Only what changed is sent. A box
+  over the grid's 254 characters (Wants to, Skills, Languages, the address) says so rather than being cut. Wants to, Skills and Languages are the viewers' Interests; the check boxes other
+  viewers keep with them aren't shown and aren't touched.
+- **The picture**: a line naming it ("Portrait, a picture in your inventory.", "A picture that isn't in your inventory.", "No picture."), and it changes as soon as it's chosen, not on Control+S.
+  Choose a picture...: her inventory's pictures, the newest first, narrowed as a name is typed, Control+D describing the selected one (the assistant); Enter takes it, "Your profile picture is now
+  Portrait.". The last row takes it off, saying what it was: nothing else is next to it, and the first row, what a stray Enter takes, is always a picture. Upload a picture...: Windows' Open
+  window, the upload's own window and any fee confirmed in Notices as usual (Uploading, below), and then it's her picture. Describe it: the pictures on her profile now. In the inventory, a
+  texture's or snapshot's Applications key has Use as your profile picture, below the line that Enter's action comes from. On Second Life this goes through inventory, so an upload costs
+  the usual fee; the official viewer's free upload for profiles isn't here. A picture she lacks full rights to may be refused, said. The first life picture isn't here.
+- **Picks**: a list a Tab on. Enter reads one (its name, where, what's said about it); the Applications key has Teleport there, Change its words... (name and description; it stays where it is) and
+  Delete (Delete too), confirmed in Notices, the focus coming back to this window. New pick where you stand... asks a name and what to say about it. Whether the grid kept one is said, since a limit's refusal
+  comes as nothing.
+- **Someone else's picks** are the same list in their profile's window: Enter reads, the Applications key has Teleport there, the window closing first.
+- **Notes on someone** (only you see them): a box in their profile's window, a Tab or two on from its text, Alt+N; Notes on them on a person's Applications key and `//notes NAME` open it there. It's read-only until
+  the grid has answered, so nothing typed is overwritten. It's saved as the window closes, whichever way it closes, and said, as Radegast's on leaving the box. Typing over them is her own edit, as a notecard's is;
+  emptying a box that said something goes through her confirmation, as a delete.
+
 ### Groups
 
 `MainForm.Groups.cs`; on a group in Alt+3's My groups, on its Applications key (Claude Opus 5.5, 2026-11-07).
@@ -1543,6 +1571,14 @@ them. Laid out as the build editor is, with the official viewer's About Land tab
   and Second Life itself (only the local grid is checked, where land costs nothing and there's no covenant; there,
   who owns what comes without each owner's newest date). Her verdict on the words and on what asks first.
 
+### Chat logs
+
+`MainForm.ChatLogs.cs`, `ChatLogs.cs`; Alt+0's Chat group, Chat logs kept on this PC: all (the default, as in Radegast and the official viewer), conversations (IMs and group chat, no nearby chat), or off. Said once on arriving after the first build that has them.
+- **The files**: plain text, one a conversation, in the data folder's `chat-logs/GRID/ACCOUNT` ("Nearby chat.txt", "Kestrel - 1a2b3c4d.txt", the end of its session id, as display names change): each run of lines under a line with the date, each line with its time. They're other people's words, so they stay on this PC: Send a log only takes `logs/`, and the assistant's file tools and shell are refused them (`assistant/harness.py`; its `tools/assistant_guard.py` tries).
+- **Reading one**: Read-out > Chat logs (`//chatlog`), the logs with when each last changed, the most recent first, Enter reading one; `//chatlog NAME` the one with that in its name; Chat log on a person's Applications key, on a group's, and in a group's or conference's message box. It opens in a read-only window, as a notecard's, at the newest line: Control+F finds, Control+G goes to a line, Control+K opens a link, Escape closes. The list's Open the folder opens it in Windows, and its Delete (Delete too; last in the Tab order) asks in Notices: gone for good.
+- **A conversation opened again**: closing one no longer loses it. A new tab starts with its last 60 lines, under which "(Those are earlier lines. New ones follow.)", from the log, or with logs off from this session's memory (200 lines each; gone when the app closes). Nearby chat's history isn't filled at login: it's a different place by then. The session's `TesselIM history` isn't used, as `leave` drops it.
+- **Incognito**: nothing from a spell is written or remembered, seeing or blind, so a tab opened after one doesn't bring it back. What's on screen in an open tab stays as it is. Nor is anything kept with someone marked Always incognito with them, or any IM while IMs are incognito: their spell starts only once the conversation is in focus, so a first line would otherwise be kept.
+
 ### Incognito
 
 M1; `MainForm.Incognito.cs` over Session's Private/, the VR client's rules (`docs/assistant.md` > Incognito).
@@ -1554,7 +1590,7 @@ while you're in an IM (the conversation in focus is the VR feed's open IM here);
 Applications key has Always incognito with them (Session's Triggers: within chat range or an IM with them, ending by
 itself once neither holds). The reader keeps reading (on the desktop the window is the view); the review history drops
 the spell's lines when it ends; the session log pauses; the title says "incognito" instead of the region (the status
-bar adds ", incognito"). Access writes nothing of its own from a spell (its histories are on screen only).
+bar adds ", incognito"). Access writes nothing of its own from a spell: its histories are on screen, and its chat logs leave the spell out (Chat logs, above).
 
 ### Voice chat
 
@@ -1922,6 +1958,16 @@ it).
     judges posted keys and clicks as the hand's with every other rule on, and posted characters as typed.
     `SOJOURN_INPUT_LOG=path` logs each key's judgement and each focus or selection change with who made it, for a key
     refused in a real run. `tools/inputcheck` checks the judge (`docs/access-testing.md` > Input checks).
+- **The window's thread held** (`WindowWatch`, started by `Program`): a frozen window is silent to someone who can't see
+  it, and their keys go nowhere. A WinForms timer stamps the time four times a second and a thread of its own watches
+  the stamp (not a sent ping: a wait inside a COM call still answers those, while posted keys wait). Held 1 s or more is
+  logged when it ends ("window: its thread was held 2.3 s"), for a tester's log; at 5 s it's said ("The window isn't
+  answering. Waiting for it.") and "The window is back." when it is; from 30 s, each minute, it offers Control+Shift+Q,
+  registered as a hotkey only while the thread is held, which logs out if it can (3 s at most) and starts the app again
+  at the login window, the form filled in. NVDA hears it through its API; for another reader the announcer's
+  notification would wait on the held thread, so Windows' own voice (SAPI) says it, only with a reader running. The
+  test's `//holdwindow SECONDS` (with `SOJOURN_TEST_HOLD_WINDOW=1`) holds the thread; Control+Shift+Q and the SAPI
+  voice aren't in the scripted test (a hotkey takes real keys).
 - **An exception escaping on the window's thread** goes to the session log ("access: unhandled on the window's thread")
   and is said, at most once a minute, the app carrying on (`Program`: WinForms' own exception dialog would take the
   focus and sit on a Details button).
@@ -1944,9 +1990,12 @@ it).
     renamed ones moved, the words renewed, filled subfolders likewise), so a refresh after an action or F5 never
     empties and refills it. If the selected node went, its folder takes the selection (the top of the tree, at the
     top).
-  - With UI Automation, emptying is far worse: WinForms disconnects each item's UIA provider (made for every item once
-    a client walks the tree, as a test's `find id=...` does) one by one, 2-3 ms each (F5 with 4,500 open once took
-    12 s). NVDA reads the tree by MSAA (`ReaderTree`) and doesn't make them.
+  - With UI Automation, emptying costs more: WinForms disconnects each item's UIA provider (made for an item once a
+    client asks for it, and for each item selected once any client has asked for the tree) one by one. Each disconnect
+    walks the UIA server's list of references its clients hold; a client that releases its elements (a screen reader)
+    keeps that list short, but the test's QuireUia leaves references behind, and in a long run they made it seconds,
+    then minutes (F5 with 4,500 open once took 12 s; `docs/access-testing.md` > The test client's references). NVDA
+    reads the tree by MSAA (`ReaderTree`) anyway.
   - Measured by `python tools/invbench.py` (Inventory Big, 19,500 items, and Inventory Huge, 58,500, synthetic IARs
     loaded once; run on the hidden desktop with QuireUia's `stalls`: the window pinged every 20 ms, the longest it went
     without answering; a wait inside a COM call, as the UIA disconnects, still answers pings, so the app's own log says

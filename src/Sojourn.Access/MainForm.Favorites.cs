@@ -23,6 +23,7 @@ namespace Sojourn.Access;
 public sealed partial class MainForm
 {
     const int ShowFavorites = 4;
+    const int ShowOnlyGestures = 5;
     const string FavoritesNotHere = "Favorites aren't on this grid: Second Life keeps them in its inventory service, which this grid doesn't have.";
 
     InventoryMeta Meta => _ops.Session.InventoryMeta;

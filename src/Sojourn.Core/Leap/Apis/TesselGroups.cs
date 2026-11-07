@@ -13,7 +13,7 @@ public sealed class TesselGroups : SessionApi
     public TesselGroups(AgentSession s) : base(s)
     {
         var g = s.GroupOps;
-        Op("search", "{text} -> {groups: [{group_id, name, members}]}: groups listed in search", (a, ct) => J(g.SearchAsync(a, ct)));
+        Op("search", "{text, start?} -> {groups: [{group_id, name, members}]}: groups listed in search, a page at a time", (a, ct) => J(g.SearchAsync(a, ct)));
         Op("create", "{name, charter?, open_enrollment=false, show_in_list=true, fee=0, mature=false, insignia_id?} -> {group_id}: I'm its owner",
             (a, ct) => J(g.CreateAsync(a, ct)));
         Op("profile", "{group_id} -> {name, charter, founder, open_enrollment, fee, members, roles, member, my_powers?}", (a, ct) => J(g.ProfileAsync(a, ct)));

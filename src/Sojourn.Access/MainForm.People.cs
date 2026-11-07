@@ -34,6 +34,7 @@ public sealed partial class MainForm
         GroupItem("Choose your &title...", g => _ = ChooseTitleAsync(g));
         GroupItem("&Members", g => _ = GroupMembersAsync(g));
         GroupItem("N&otices...", g => _ = GroupNoticesAsync(g));
+        GroupItem("Chat lo&g", g => ChatLogOf(g.Id.ToString(), g.Name));
         GroupItem("&Receive its notices", g => _ = GroupSwitchAsync(g, "notices"));
         var noticesItem = (ToolStripMenuItem)_groupMenu.Items[^1];
         GroupItem("List it in your &profile", g => _ = GroupSwitchAsync(g, "list_in_profile"));
@@ -143,20 +144,29 @@ public sealed partial class MainForm
         Answer(r["balance"] is { } b ? $"Paid {name} L${amount}. You have L${b}." : $"Paying {name} L${amount}; the grid hasn't confirmed yet.");
     }
 
-    /// <summary>Someone's profile in its own window: a read-only text to read line by line, with IM, pay and close.</summary>
-    async Task ProfileAsync(UUID id, string name)
+    /// <summary>Someone's profile in its own window: a read-only text to read line by line, their picks, her notes on them
+    /// (saved as the window closes, as Radegast's on leaving the box), with IM, pay and close. Her own is her own window.</summary>
+    /// <param name="toNotes">The focus starts in the notes (a person's Notes item, //notes).</param>
+    async Task ProfileAsync(UUID id, string name, bool toNotes = false)
     {
+        if (id == _ops.Client?.Self.AgentID) { await MyProfileAsync(); return; }
+        var notesRead = _ops.ReadAsync("SojournPeople", "notes", new JsonObject { ["to"] = id.ToString() });
         var r = await _ops.ReadAsync("TesselAgent", "profile", new JsonObject { ["id"] = id.ToString() });
         if (PersonOps.Error(r) is { } e) { Answer($"Couldn't read {name}'s profile: {e}"); return; }
         var lines = new List<string> { r.Str("name") ?? name };
+        // (a link in someone's words: in Control+Shift+K's list once this window closes)
+        NoteLinks($"{r.Str("about")} {r.Str("first_life")}", r.Str("name") ?? name);
         if (r.Str("born") is { Length: > 0 } born) lines.Add($"Born {born}.");
         if (r.Str("partner") is { Length: > 0 } partner) lines.Add($"Partner: {partner}.");
         if (r.Str("about") is { Length: > 0 } about) { lines.Add(""); lines.Add("About:"); lines.Add(about.Trim()); }
         if (r["interests"] is JsonObject i)
             foreach (var (k, label) in new[] { ("want_to", "Wants to"), ("skills", "Skills"), ("languages", "Languages") })
                 if (i.Str(k) is { Length: > 0 } v) lines.Add($"{label}: {v.Trim()}");
-        if (r["picks"] is JsonArray picks && picks.Count > 0)
+        var picks = r["picks"] as JsonArray;
+        if (picks is { Count: > 0 })
             lines.Add("Picks: " + string.Join(", ", picks.OfType<JsonObject>().Select(p => p.Str("name"))) + ".");
+        if (r["groups"] is JsonArray { Count: > 0 } theirGroups)
+            lines.Add("Groups: " + string.Join(", ", theirGroups.OfType<JsonObject>().Select(g => g.Str("title") is { Length: > 0 } title ? $"{g.Str("name")}, as {title}" : g.Str("name"))) + ".");
         if (r.Str("first_life") is { Length: > 0 } fl) { lines.Add(""); lines.Add("First life:"); lines.Add(fl.Trim()); }
         if (r.Str("url") is { Length: > 0 } url) lines.Add($"Web: {url}");
         var shownName = r.Str("name") ?? name;
@@ -168,7 +178,7 @@ public sealed partial class MainForm
         var text = new TextBox
         {
             Name = "profileText", AccessibleName = "Profile", Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
-            Dock = DockStyle.Fill, BackColor = SystemColors.Window, Text = string.Join("\r\n", lines.Select(l => l.Replace("\r\n", "\n").Replace("\n", "\r\n"))),
+            Dock = DockStyle.Fill, BackColor = SystemColors.Window, Text = FriendlyLinks(string.Join("\r\n", lines.Select(l => l.Replace("\r\n", "\n").Replace("\n", "\r\n")))),
         };
         var im = new Button { Name = "profileIm", Text = "Send &IM", AutoSize = true };
         var pay = new Button { Name = "profilePay", Text = "P&ay...", AutoSize = true };
@@ -205,13 +215,63 @@ public sealed partial class MainForm
         give.Click += (_, _) => { form.Close(); _ = GiveCopiedAsync(id, shownName); };
         close.Click += (_, _) => form.Close();
         form.CancelButton = close;
-        var row = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Bottom };
+        var row = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
         row.Controls.AddRange(new Control[] { im, pay, give, describe, more, close });
-        form.Controls.Add(text);
-        form.Controls.Add(row);
-        form.ActiveControl = text;
-        form.Shown += (_, _) => { text.SelectionStart = 0; text.SelectionLength = 0; };
+        // the notes come from the grid in their own time: read-only until they have, so nothing typed can be overwritten
+        var notes = new LineBox
+        {
+            Name = "profileNotes", AccessibleName = $"Your notes on {shownName}, only you see them", Multiline = true, AcceptsReturn = true,
+            ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, MaxLength = 0, ReadOnly = true, BackColor = SystemColors.Window,
+        };
+        string? notesWere = null;
+        void NotesIn(JsonObject n)
+        {
+            if (notes.IsDisposed) return;
+            if (PersonOps.Error(n) != null) { notes.Text = "Your notes couldn't be read just now."; return; }
+            notesWere = (n.Str("notes") ?? "").TrimEnd().ReplaceLineEndings("\r\n");
+            notes.Text = notesWere;
+            notes.ReadOnly = false;
+            if (notes.Focused) notes.SelectionStart = notes.TextLength;
+        }
+        var table = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(4) };
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        int rows = 0, tab = 0;
+        void Row(string? label, Control c, RowStyle style)
+        {
+            table.RowStyles.Add(style);
+            if (label != null) table.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, TabIndex = tab++ }, 0, rows);
+            c.TabIndex = tab++;
+            table.Controls.Add(c, label != null ? 1 : 0, rows);
+            if (label == null) table.SetColumnSpan(c, 2);
+            rows++;
+        }
+        Row(null, text, new RowStyle(SizeType.Percent, 100));
+        if (picks is { Count: > 0 }) Row("Pic&ks", PicksList(form, id, picks, mine: false), new RowStyle(SizeType.Absolute, 90));
+        Row("&Notes", notes, new RowStyle(SizeType.Absolute, 80));
+        Row(null, row, new RowStyle(SizeType.AutoSize));
+        form.Controls.Add(table);
+        form.ActiveControl = toNotes ? notes : text;
+        form.Shown += async (_, _) =>
+        {
+            text.SelectionStart = 0;
+            text.SelectionLength = 0;
+            NotesIn(await notesRead);
+        };
         form.ShowDialog(this);
         actions.Dispose();
+        var typed = notes.Text.TrimEnd();
+        if (notesWere != null && typed != notesWere) await SaveNotesAsync(id, shownName, typed.ReplaceLineEndings("\n"));
+        form.Dispose();
+    }
+
+    /// <summary>Her notes on someone: typing over them is her own edit, as a notecard's is; clearing what was there goes
+    /// through her confirmation, as a delete.</summary>
+    async Task SaveNotesAsync(UUID id, string name, string text)
+    {
+        var args = new JsonObject { ["to"] = id.ToString(), ["text"] = text };
+        var r = text.Length == 0 ? await ConfirmedAsync("SojournPeople", "setNotes", args) : await _ops.DoAsync("SojournPeople", "setNotes", args);
+        if (r == null) return;
+        Answer(PersonOps.Error(r) is { } e ? $"Your notes on {name} weren't saved: {e}." : text.Length == 0 ? $"Your notes on {name} are cleared." : $"Your notes on {name} are saved.");
     }
 }

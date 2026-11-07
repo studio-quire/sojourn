@@ -63,7 +63,8 @@ public sealed partial class MainForm
             bool person = !cv.Group && id != UUID.Zero;
             if (person) AddPersonItems(menu, id, name);
             else if (id != UUID.Zero) menu.Items.Add(new ToolStripMenuItem(SoundItemText(name, cv.Group), null, (_, _) => ChooseImSound(id, name, cv.Group)) { Name = "imSoundItem" });
-            if (id != UUID.Zero) menu.Items.Add(new ToolStripSeparator());
+            if (!person) menu.Items.Add(new ToolStripMenuItem("Chat lo&g", null, (_, _) => ChatLogOf(cv.SessionId, name)));
+            if (id != UUID.Zero || !person) menu.Items.Add(new ToolStripSeparator());
             if (!box.ReadOnly) Add(person ? "Cut" : "Cu&t", "Control+X", box.Cut);
             Add(person ? "Copy" : "&Copy", "Control+C", box.Copy);
             if (!box.ReadOnly) Add(person ? "Paste" : "&Paste", "Control+V", box.Paste);

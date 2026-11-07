@@ -17,7 +17,7 @@ public sealed class SearchOps
     public SearchOps(AgentSession s) => _s = s;
     GridClient C => _s.Client ?? throw new NotConnected("viewer not connected");
 
-    const int DefaultLimit = 8, MaxLimit = 20;
+    const int DefaultLimit = 8, MaxLimit = 100;
     static readonly TimeSpan Quiet = TimeSpan.FromSeconds(1.2), Overall = TimeSpan.FromSeconds(8), Detail = TimeSpan.FromSeconds(4);
 
     public static readonly string[] PlaceCategories =

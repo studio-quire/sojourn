@@ -106,7 +106,7 @@ public sealed class GroupOps
         UUID q = UUID.Zero;
         var groups = await AskAsync<DirGroupsReplyEventArgs, List<DirectoryManager.GroupSearchData>>(
             h => c.Directory.DirGroupsReply += h, h => c.Directory.DirGroupsReply -= h,
-            e => (e.QueryID == q, e.MatchedGroups), () => q = c.Directory.StartGroupSearch(text, 0), "group search (does the grid have groups enabled?)", ct);
+            e => (e.QueryID == q, e.MatchedGroups), () => q = c.Directory.StartGroupSearch(text, a.Int("start", 0)), "group search (does the grid have groups enabled?)", ct);
         var arr = new JsonArray();
         foreach (var g in groups.Where(g => g.GroupID != UUID.Zero))
             arr.Add(new JsonObject { ["group_id"] = g.GroupID.ToString(), ["name"] = g.GroupName, ["members"] = g.Members });

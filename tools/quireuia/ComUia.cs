@@ -123,20 +123,30 @@ static class ComUia
                (hwnd is int h && h != 0 ? " hwnd=" + h.ToString("x") : "");
     }
 
+    // Each event's sender let go of at once, as a screen reader does, rather than when the GC finalizes its wrapper: an
+    // element held is a reference held in the app's UI Automation server (Server.Exact says what that costs)
     [ComVisible(true)]
     class Handlers : IUIAutomationFocusChangedEventHandler, IUIAutomationEventHandler, IUIAutomationNotificationEventHandler
     {
         public void HandleFocusChangedEvent(IUIAutomationElement sender)
         {
-            if (Watched(sender)) Server.Log("uia", "focus", Describe(sender));
+            try { if (Watched(sender)) Server.Log("uia", "focus", Describe(sender)); }
+            finally { Marshal.ReleaseComObject(sender); }
         }
 
         public void HandleAutomationEvent(IUIAutomationElement sender, int eventId)
         {
-            if (Watched(sender)) Server.Log("uia", eventId == UIA_LiveRegionChangedEventId ? "liveregion" : "event " + eventId, Describe(sender));
+            try { if (Watched(sender)) Server.Log("uia", eventId == UIA_LiveRegionChangedEventId ? "liveregion" : "event " + eventId, Describe(sender)); }
+            finally { Marshal.ReleaseComObject(sender); }
         }
 
         public void HandleNotificationEvent(IUIAutomationElement sender, int kind, int processing, string displayString, string activityId)
+        {
+            try { Notification(sender, kind, processing, displayString, activityId); }
+            finally { Marshal.ReleaseComObject(sender); }
+        }
+
+        static void Notification(IUIAutomationElement sender, int kind, int processing, string displayString, string activityId)
         {
             if (!Watched(sender)) return;
             string[] kinds = { "ItemAdded", "ItemRemoved", "ActionCompleted", "ActionAborted", "Other" };

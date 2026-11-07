@@ -43,18 +43,6 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 - **Size:** each S.
 - **Matters: medium for the tester and her partner**, low for most others. **Question for her:** does a script she writes run on Mono by default as she'd want, and would she use disk or replace?
 
-### 7. Her own profile, and a profile picture
-- **Radegast:** own profile from her name in the near list; About saves on leaving the field; Interests; Picks (detail, teleport,
-  new, delete); Notes on anyone; groups listed with titles. A picture is hard there too (on the sighted-helper list).
-- **Access:** no way even to read her own: the `people` op skips herself, and no menu or command opens it. Others' are read-only,
-  picks by name only, no groups, no Notes.
-- **Where:** `MainForm.People.cs` `ProfileAsync`, a World item and `//profile`. Ops: `profile` (`id` defaults to me), `setProfile`
-  (with `image_id`), `pick`, `createPick`, `deletePick`, `notes`, `setNotes`. `profile` doesn't return groups: small Core addition.
-  The picture: choose an inventory texture, Describe says what it is, the upload path is there.
-- **Size:** M.
-- **Matters: medium-high.** Not daily, but there's no way at all, and the picture is a named task. Notes are cheap and useful to
-  someone who can't recognise a face or a look.
-
 ### 9. Inventory housekeeping: what's left
 - **Radegast:** Empty Lost and Found; Paste as Link; search by creator and description; sort by date; Expand All; Backup to disk.
 - **Access:** none of these. Recent is the last 24 hours only. Does F5 drop what the grid no longer has, as well as fetch what it does? Not checked (`AgentInventory.ReloadAsync`).
@@ -87,20 +75,12 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 - **Size:** S-M.
 - **Matters: medium**, more if confirmed: not knowing who's speaking.
 
-### 13. Chat logs, and history after closing a conversation
-- **Radegast:** logs chat and IMs to files by default (`chat_log_dir`).
-- **Access:** histories live in the window. Control+W loses one; reopening starts empty although `TesselIM history` may hold it (check it
-  outlasts `leave`); nothing lasts past the session. The session log isn't for this.
-- **Where:** `MainForm.Chat.cs` `Open` (fill from history), `Joined`; per-conversation files with a switch, keeping nothing in incognito.
-- **Size:** fill S, files M.
-- **Matters: medium.** Rereading what someone said yesterday; a screen reader user reviews text more than most.
-
-### 14. Voice: who's muted
-- **Radegast:** participant list with mute each, mute and unmute all, levels, reconnect.
-- **Access:** Control+Shift+V says who's there. No muting one person short of blocking them, no one person's level, no reconnect.
-- **Where:** `MainForm.Voice.cs`, `//voice mute NAME` and a list. `VoiceApi` has `peerMute`, `peerVolume`.
-- **Size:** S-M.
-- **Matters: medium.** Voice is a main channel for her, and one loud neighbour matters more without other cues.
+### 14. Voice: what's left
+- **Radegast:** participant list, mute and unmute all, reconnect.
+- **Access:** one person muted and their loudness (a person's menu, `//voice mute`, `unmute`, `volume`), Control+Shift+V saying who's muted. No list to act from, no all at once, no reconnect. Muting and loudness aren't run against a voice server yet (`ACCESS_VOICE=1`).
+- **Where:** `MainForm.Voice.cs`.
+- **Size:** S.
+- **Matters: low-medium.**
 
 ### 15. Master Controls and Point at
 - **Radegast:** a sighted friend points at something in their viewer and it becomes the selected thing, to touch, sit on or pay; the
@@ -111,34 +91,12 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 - **Size:** M.
 - **Matters: medium.** Lets a helper help without the account.
 
-### 16. Search stops at 30
-- **Radegast:** 100 a page, next and previous, type and maturity filters, dates.
-- **Access:** the first 30, nothing more; no filters. `SojournSearch` takes `start`, `category`, `when`.
-- **Where:** `MainForm.Search.cs`.
-- **Size:** S.
-- **Matters: medium-low.**
-
-### 17. People beyond 96 m
-- **Radegast:** near list to 362 m, the region and its neighbours. Find online friends on the grid.
-- **Access:** `RefreshPeople` asks for 96 m, though `//go person` and `//find` reach 512 if she knows the name. Nothing says where a
-  friend elsewhere on the grid is.
-- **Where:** `MainForm.Lists.cs`, a setting as for objects; Friends' Where.
-- **Size:** S; friends' places S-M.
-- **Matters: medium-low.**
-
 ### 18. One person's attachments, and animations
 - **Radegast:** Attachments on a person and Animations (what they're playing).
 - **Access:** Objects' Show lists what everyone nearby wears, touchable, so a pet or a tip jar is in reach; there's no way from a person's own menu to just theirs, and nothing on what they're playing.
 - **Where:** People menu, `nearby` `worn_only` by whose it is.
 - **Size:** S.
 - **Matters: low.**
-
-### 19. Links other than a person's read raw
-- **Radegast:** `resolve_uris_as_plaintext` (#133, raised by a JAWS user).
-- **Access:** `SocialFeed.Plain` resolves `app/agent` only. `secondlife:///app/group/<uuid>/about` and others are read out as they are.
-- **Where:** `SocialFeed` or Access's `Shape`.
-- **Size:** S.
-- **Matters: medium-low.** Common in group invitations, and thirty-six characters of noise each.
 
 ### 20. Estate from the keys
 - **Radegast:** Eject from estate, Eject and Ban on a person; Restart for estate managers.
@@ -149,12 +107,10 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 - **Matters: low** daily, high for the rare blind estate owner.
 
 ### 21. The session itself
-- **Radegast:** Disconnect, Reconnect, New window for a second account, Clean Cache, Check For Updates, Log Viewer.
-- **Access:** Alt+F4 only. Another account means restarting (the app does that from the login form, which isn't reachable once in).
-  No update check inside the app: a tester learns of a build by being told.
-- **Where:** a File menu in `MainForm.Menu.cs`; `Program.cs`.
-- **Size:** S-M.
-- **Matters: low to medium.** Relogging is what people try when things go wrong.
+- **Radegast:** New window for a second account, Clean Cache, Log Viewer.
+- **Access:** World's Log out, Help's Newer build? Not these three.
+- **Size:** S each.
+- **Matters: low.**
 
 ### 22. Automation
 - **Radegast:** AutoSit (#156 asks for more of it), PseudoHome, LSL Helper.
@@ -172,10 +128,8 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 
 ### 24. Small things
 All S, all low:
-- `//scriptinfo` takes no `parcel`. `//thread`, `//threads` and `//kill` are absent, so a route using them pauses there.
+- `//scriptinfo` takes no `parcel`. `//thread`, `//threads` and `//kill` are absent, so a route using them pauses there: none of our commands can be stopped midway yet, so `//kill` would need that first. Worth asking whether any route she has uses them.
 - `//siminfo` lacks CPU class and data centre; `//parcelinfo` lacks ban and access list sizes and traffic.
-- The status bar lacks the parcel and its no-fly and no-build marks (`//status parcel` has them).
-- MU* `:` emotes; Show: Gestures in the inventory; Stand up on Objects' menu; a sort by name in Objects; `//find` saying every match, not the nearest one.
 - Alt+3 is People and Alt+6 Places, against Radegast's Groups and Map; Alt+8 and Alt+9 are Notices and the assistant, against Media and
   Voice. Chosen, but "familiar where Radegast works" is only partly so, and there's no key to Groups.
 
@@ -187,4 +141,3 @@ All S, all low:
 - **Unboxing:** only from the inventory, and only where she can rez; the failure doesn't suggest a sandbox. A box already out: Contents, then `copy NAME` for each thing.
 - **HUD games:** a HUD that's one picture of buttons is read by the assistant, so with no token only numbered faces remain. Nothing to do
   short of a local reader, but the plan's "without an account" doesn't reach here and should say so.
-- **A profile picture:** nothing: item 7.

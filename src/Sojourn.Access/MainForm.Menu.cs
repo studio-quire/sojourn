@@ -50,8 +50,11 @@ public sealed partial class MainForm
             Item("Rebake &your look", "//rebake", () => _ = RebakeAsync()),
             Item("Stop all a&nimations", "//stopanimations", () => _ = StopAnimationsAsync()),
             Later("Hover height...", "//hover", AskHover),
+            Later("My profile", "//profile", () => _ = MyProfileAsync()),
             Later("Display name...", "//displayname", () => _ = AskDisplayNameAsync()),
             Later("Highest rating of region...", "//maturity", AskMaturity),
+            new ToolStripSeparator(),
+            Later("Log out, back to the login window...", "//logout", AskLogOut),   // (no mnemonic, as About Land)
             new ToolStripSeparator(),
             Item("Who's in &voice", "Control+Shift+V", SayVoice),
             _micItem = Item("&Open mic", "Shift+F4", ToggleVoiceMode),
@@ -99,6 +102,7 @@ public sealed partial class MainForm
             Item("&Copy from the mark", "Control+Shift+C", CopyFromMark),
             Item("Copy the assistant's last ans&wer", "Control+Shift+L", CopyLastAnswer),
             Item("&Links seen", "Control+Shift+K", ShowLinks),
+            Later("Chat log&s...", "//chatlog", () => ShowChatLogs()),
             Item("Bloc&ked", "Control+Shift+Y", () => _ = ShowBlocksAsync()));
         reading.DropDownOpening += (_, _) =>
         {
@@ -120,6 +124,7 @@ public sealed partial class MainForm
             Item("&Slash commands", "//help", () => _ = _cmd.RunAsync("//help")),
             Later("Send a &log to Studio Quire", "//sendlog", SendLog),
             Later("&Message the builders (Claude, at Studio Quire)", "Control+Shift+B", GoBuilders),
+            Item("&Newer build?", null, () => _ = SayIfNewerBuildAsync(asked: true)),
             Item("&About Sojourn Access", "//about", () => _ = _cmd.RunAsync("//about")));
 
         MainMenuStrip = _menu;
@@ -195,6 +200,14 @@ public sealed partial class MainForm
         if (PersonOps.Error(r) is { } e) { Answer($"No landmark made: {e}."); return; }
         Answer($"Landmark {r.Str("name") ?? "made"}, in Landmarks.");
         RefreshInventory(Store?.RootFolder?.UUID ?? default);
+    }
+
+    /// <summary>Logging out to the login window, what people try when things go wrong; the app starts afresh there with the
+    /// form filled in, the password typed again. Asked first, as quitting is: Enter goes, Escape stays.</summary>
+    void AskLogOut()
+    {
+        if (QuitDialog.Ask(this, "Log out and go back to the login window?", "Log out?", "&Log out")) LogOutAsked?.Invoke();
+        else Reader?.Answer("Still here.", keep: false);
     }
 
     Task SitOrStandAsync() => _cmd.RunAsync(_ops.Client?.Self.SittingOn is > 0 ? "//stand" : "//sit ground");

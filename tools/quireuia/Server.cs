@@ -24,7 +24,7 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
   tree [PID] [DEPTH] [raw]  the UI Automation tree (control view unless raw)
   tabs [PID]                each visible tab control's children by the COM client, as a screen reader's UIA sees them
                             (the managed find leaves out a WinForms tab control's first and last tab items)
-  focus                     the focused element and its ancestors, and the foreground window
+  focus [up]                the focused element (up: and its ancestors), and the foreground window
   find SEL                  matching elements
   get SEL                   one element in detail, with its full value or text
   set SEL | TEXT            ValuePattern.SetValue
@@ -97,20 +97,27 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
 
     static void Serve(TcpClient c)
     {
-        using (c)
+        try
         {
-            var s = c.GetStream();
-            var r = new StreamReader(s, Encoding.UTF8);
-            var line = r.ReadLine() ?? "";
-            string reply;
-            try
+            using (c)
             {
-                lock (uiaLock) reply = Command(line.Replace("\\n", "\n"));
+                var s = c.GetStream();
+                var r = new StreamReader(s, Encoding.UTF8);
+                var line = r.ReadLine() ?? "";
+                string reply;
+                try
+                {
+                    lock (uiaLock) reply = Command(line.Replace("\\n", "\n"));
+                }
+                catch (Exception e) { reply = "ERR " + e.GetType().Name + ": " + e.Message; }
+                var b = Encoding.UTF8.GetBytes(reply.EndsWith("\n") ? reply : reply + "\n");
+                s.Write(b, 0, b.Length);
             }
-            catch (Exception e) { reply = "ERR " + e.GetType().Name + ": " + e.Message; }
-            var b = Encoding.UTF8.GetBytes(reply.EndsWith("\n") ? reply : reply + "\n");
-            s.Write(b, 0, b.Length);
         }
+        // whoever asked gave up meanwhile (a command held longer than its timeout): on a pool thread this would end the
+        // server, and with it every later step of the run
+        catch (IOException e) { Log("server", "reply lost", e.Message); }
+        catch (ObjectDisposedException e) { Log("server", "reply lost", e.Message); }
         if (quitting) listener.Stop();
     }
 
@@ -180,7 +187,7 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
             case "windows": return string.Join("\n", TopWindows(PidArg(arg)).Select(DescribeWindow));
             case "tree": return Tree(arg);
             case "tabs": return ComUia.TabsApart(PidArg(arg));
-            case "focus": return Focus();
+            case "focus": return Focus(arg == "up");
             case "find":
                 {
                     var found = Find(selPart, all: true);
@@ -386,7 +393,7 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
         }
     }
 
-    static string Focus()
+    static string Focus(bool ancestors)
     {
         var sb = new StringBuilder();
         var fg = Native.GetForegroundWindow();
@@ -407,9 +414,12 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
                 if (gi.hwndFocus != IntPtr.Zero)
                 {
                     sb.Append("thread focus: ");
-                    try { sb.Append(Describe(AutomationElement.FromHandle(gi.hwndFocus), true)); } catch { sb.Append(DescribeWindow(gi.hwndFocus)); }
+                    AutomationElement fe = null;
+                    try { fe = AutomationElement.FromHandle(gi.hwndFocus); sb.Append(Describe(fe, true)); } catch { sb.Append(DescribeWindow(gi.hwndFocus)); }
                     sb.AppendLine();
-                    var fe = AutomationElement.FromHandle(gi.hwndFocus);
+                    // (the ancestors only when asked: the run asks for the focus several times a second, and every
+                    // element is a reference left in the app: see Exact)
+                    if (!ancestors || fe == null) break;
                     var pw = TreeWalker.ControlViewWalker.GetParent(fe);
                     int k = 0;
                     while (pw != null && k++ < 30 && pw != AutomationElement.RootElement)
@@ -504,12 +514,13 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
         int pid = kv.TryGetValue("pid", out var ps) ? int.Parse(ps) : watchPid;
         int n = kv.TryGetValue("n", out var ns) ? int.Parse(ns) : 0;
         var result = new List<AutomationElement>();
+        var exact = Exact(kv);
         foreach (var h in TopWindows(pid))
         {
             AutomationElement top;
             try { top = AutomationElement.FromHandle(h); } catch { continue; }
             var candidates = new List<AutomationElement> { top };
-            candidates.AddRange(top.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>());
+            candidates.AddRange(top.FindAll(TreeScope.Descendants, exact).Cast<AutomationElement>());
             foreach (var e in candidates)
             {
                 if (Matches(e, kv)) result.Add(e);
@@ -517,6 +528,36 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
         }
         if (all) return result;
         return result.Count > n ? new List<AutomationElement> { result[n] } : new List<AutomationElement>();
+    }
+
+    /// <summary>The selector's exact parts as a condition UI Automation checks in the app's process, so only matches
+    /// come back as elements, not every element in the window; name~ and focused are checked here after.
+    ///
+    /// Why: every element the managed client (System.Windows.Automation) hands out leaves a reference in the app's UI
+    /// Automation server for as long as this process is connected (GC and finalizers don't let it go; a COM client that
+    /// releases its elements, as a screen reader does, leaves none: measured on a WinForms tree, 2026-11-07). The server
+    /// keeps them in a list it walks once for every reference whenever a provider is disconnected, which WinForms does
+    /// for each tree item as a tree is emptied and for every control as a window closes. A find walking the whole
+    /// window left one per element each time, some 290,000 late in a full run, and emptying the inventory's tree for a
+    /// search then held the window for over three minutes: "the client is busy", every later step failing.
+    /// docs/access-testing.md > The test client's references.</summary>
+    static Condition Exact(Dictionary<string, string> kv)
+    {
+        var parts = new List<Condition>();
+        foreach (var p in kv)
+        {
+            switch (p.Key)
+            {
+                case "name": parts.Add(new PropertyCondition(AutomationElement.NameProperty, p.Value)); break;
+                case "id": parts.Add(new PropertyCondition(AutomationElement.AutomationIdProperty, p.Value)); break;
+                case "class": parts.Add(new PropertyCondition(AutomationElement.ClassNameProperty, p.Value)); break;
+                case "type":
+                    var t = typeof(ControlType).GetField(p.Value)?.GetValue(null) as ControlType;
+                    if (t != null) parts.Add(new PropertyCondition(AutomationElement.ControlTypeProperty, t));
+                    break;
+            }
+        }
+        return parts.Count == 0 ? Condition.TrueCondition : parts.Count == 1 ? parts[0] : new AndCondition(parts.ToArray());
     }
 
     static bool Matches(AutomationElement e, Dictionary<string, string> kv)

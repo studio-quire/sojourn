@@ -116,7 +116,7 @@ public sealed partial class MainForm
     async Task SayOrPlayAsync(string text, string type)
     {
         if (await TriggeredAsync(text) is { } revised) { if (revised.Length > 0) await SayAsync(revised, type); return; }
-        await SayAsync(text, type);
+        await SayAsync(MuEmote(text), type);   // (after the triggers: a gesture's may start with a colon)
     }
 
     async Task SayAsync(string text, string type)
@@ -124,6 +124,11 @@ public sealed partial class MainForm
         var r = await SendInPartsAsync(text, "LLChatBar", "sendChat", new JsonObject { ["message"] = text, ["type"] = type });
         if (PersonOps.Error(r) is { } e) Answer($"Not said: {e}");
     }
+
+    /// <summary>MU*'s ":waves" as "/me waves", as Radegast takes it: two letters at least straight after the colon, so that
+    /// :) and :D stay what they are.</summary>
+    static string MuEmote(string text) =>
+        text.Length > 2 && text[0] == ':' && char.IsLetter(text[1]) && char.IsLetter(text[2]) ? "/me " + text[1..] : text;
 
     static void Remember(List<string> sent, string text)
     {
@@ -174,6 +179,7 @@ public sealed partial class MainForm
         page.Tag = cv;
         input.KeyDown += (_, e) => ConversationKey(cv, e);
         ConversationMenu(cv);
+        FillEarlier(cv);
         AddConversation(cv);
         return cv;
     }
@@ -231,6 +237,7 @@ public sealed partial class MainForm
 
     async Task SendImAsync(Conversation cv, string text)
     {
+        text = MuEmote(text);
         var args = new JsonObject { ["message"] = text };
         if (cv.Group) args["group_id"] = cv.SessionId;   // (a conference is neither this nor to someone: it goes by its session)
         else if (cv.Other != UUID.Zero) args["to"] = cv.Other.ToString();
@@ -289,21 +296,25 @@ public sealed partial class MainForm
     /// <summary>A line or notice joined the feed (on the UI thread): into its history. Notices still waiting go to the
     /// notices area by themselves (PollNotices); one-off notices (alerts, friends online, a teleport that failed) are
     /// status lines in nearby chat, as in Radegast.</summary>
-    void Joined(FeedEntry e)
+    /// <param name="spell">Incognito was on as it arrived: on screen, as anything is, and kept nowhere.</param>
+    void Joined(FeedEntry e, bool spell)
     {
         NoteLinks(e.Text, e.Name);
         switch (e.Kind)
         {
             case FeedKind.Nearby:
                 AppendChat(HistoryLine(e, _set.Timestamps));
+                Keep(ChatLogs.NearbyKey, "Nearby chat", HistoryLine(e, stamp: false), spell);
                 break;
             case FeedKind.Im when e.Style == FeedStyle.Object || e.Session?.StartsWith("object:") == true:
                 AppendChat($"{e.Name} (to you): {e.Text}");
+                Keep(ChatLogs.NearbyKey, "Nearby chat", $"{e.Name} (to you): {e.Text}", spell);
                 break;
             case FeedKind.Im or FeedKind.Group when e.Session != null:
                 var cv = Open(e.Session, e.SessionName ?? e.Name, e.Kind == FeedKind.Group && !e.Conference, e.Kind == FeedKind.Im && !e.Mine ? e.From : UUID.Zero, e.Conference);
                 if (cv.Other == UUID.Zero && e.Kind == FeedKind.Im && !e.Mine) cv.Other = e.From;
                 Append(cv.History, HistoryLine(e, _set.Timestamps));
+                Keep(e.Session, cv.Title, HistoryLine(e, stamp: false), spell, im: e.Kind == FeedKind.Im, other: cv.Other);
                 break;
             case FeedKind.Notice when e.NoticeId == Guid.Empty && !InFriendsBurst(e):
                 AppendChat(e.Name.Length > 0 ? (e.Text.Length > 0 && char.IsLower(e.Text[0]) ? $"{e.Name} {e.Text}" : $"{e.Name}: {e.Text}") : e.Text);
@@ -329,9 +340,10 @@ public sealed partial class MainForm
 
     /// <summary>Adds a line at the end without moving the person's place: while they're reviewing the history, the
     /// caret and selection stay where they are (Radegast's history jumped to the bottom on every line).</summary>
-    static void Append(TextBox box, string line)
+    void Append(TextBox box, string line)
     {
         if (box.IsDisposed) return;
+        line = FriendlyLinks(line);
         bool reviewing = box.Focused;
         int start = box.SelectionStart, length = box.SelectionLength;
         // keep the history to its last ~200,000 characters

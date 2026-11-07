@@ -20,7 +20,7 @@ Windows will probably warn you, because the program isn't signed. The warning is
 
 To stop the warning, before unzipping: on the zip file, press Alt+Enter for its properties, check "Unblock" near the bottom of the General tab, press Enter, then unzip. If you've unzipped it already, do the same on SojournAccess.exe.
 
-The first time you log in or teleport, Windows Firewall may ask whether Sojourn Access may use networks. Sojourn Access only makes outgoing connections, to Second Life, so Allow is fine, and it should work whichever you choose.
+The first time you log in or teleport, Windows Firewall may ask whether Sojourn Access may use networks. Sojourn Access only makes outgoing connections, so Allow is fine, and it should work whichever you choose.
 
 Logging in
 
@@ -63,7 +63,9 @@ With a token from Studio Quire, if the studio has given you one: go to the row "
 
 Or with your own Anthropic or OpenRouter key, put in the same way. Requests are typed; this build doesn't hear spoken requests.
 
-What it sends: only when you ask it something, your request goes to Anthropic, the maker of the Claude AI models, with what it looks up to answer: the names of the people and things around you and where they are, recent chat when it's needed, pictures of the view around you, and its notes on your preferences. With a Studio Quire token it goes through Studio Quire's relay, which passes it on and keeps nothing of it, only how much was used. Your token or key is kept encrypted for your Windows account.
+What it sends: only when you ask it something, your request goes to the provider you chose, with what it looks up to answer: the names of the people and things around you and where they are, recent chat when it's needed, pictures of the view around you, and its notes on your preferences.
+
+With a Studio Quire token or your own Anthropic key, that's Anthropic, the maker of the Claude AI models. With a token it goes through Studio Quire's relay, which passes it on and keeps nothing of it, only how much was used. With an OpenRouter key, it goes to OpenRouter and the model's provider it chooses. Your token or key is kept encrypted for your Windows account.
 
 [/assistant]
 [lean]
@@ -76,15 +78,47 @@ Quitting
 
 Alt+F4 in the main window. It asks "Log out and quit?": Enter quits, Escape stays.
 
+Getting help
+
+To report a problem or ask for something, open an issue at https://github.com/studio-quire/sojourn-access/issues, or write to hello@studioquire.org. There's no formal support and no promised response time, but both are read. Issues are public.
+
+Saying what you pressed, what you heard and what you expected helps most.
+
+[assistant]
+If Studio Quire has given you a token, you can also reach the people making Sojourn Access from inside it:
+
+Message the builders: Help, then Message the builders, or Control+Shift+B. It opens a conversation tab where you write to Claude sessions (AI) building Sojourn Access at Studio Quire, not a person. Replies come when a session reads your message, sometimes a day later, and are read out like an IM.
+
+Send a log: Help, then Send a log to Studio Quire, or type //sendlog. It sends one session's log with your note on what happened. Before it goes, Review what's sent shows exactly what will be sent.
+
+With the assistant switched on, with or without a token, you can also ask it to report a problem. It says what will be sent and waits for your key press.
+
+[/assistant]
+Your logs are in your settings folder (below). They include chat, so read one before sharing it yourself.
+
 Where your settings live
 
 Your settings, logs and Second Life's cache are kept in a folder of your own: Sojourn Access, inside your AppData Local folder. To open it, press Windows+R, type %LOCALAPPDATA%\Sojourn Access and press Enter. The logs of your last ten sessions are there; they include chat, and they stay on this computer unless you send one.
 
-Sending a log: if something went wrong, Help, then Send a log to Studio Quire (or type //sendlog) sends one session's log with a note from you on what happened, for the people making Sojourn Access to read. It needs a token from Studio Quire. What's sent leaves out everything other people said or wrote, and their names become person 1, person 2 and so on; Review what's sent shows it first. Studio Quire keeps it for 30 days.
+Privacy
 
-Writing to the builders: Help, then Message the builders, or Control+Shift+B, opens a conversation tab where you can write to the people making Sojourn Access: Claude sessions (AI) at Studio Quire, not a person. Replies come when a session reads your message, sometimes a day later, and are read out like an IM. It needs a token from Studio Quire. Only what you type there is sent, and Studio Quire keeps it with the replies for 90 days. With a token, Sojourn Access asks Studio Quire's relay for replies about once a minute; Alt+0's row "Messages with the builders" turns all of this off.
+Sojourn Access has no analytics or tracking, and sends no crash reports. Nothing reaches Studio Quire unless you send it.
 
-Sojourn Access has no analytics, tracking or crash reports of its own. It connects only where any viewer does: to Second Life, and to the music stream a parcel plays[assistant]; and, once you switch the assistant on, to Anthropic or OpenRouter, or Studio Quire's relay; and, with a token from Studio Quire, to its relay for messages to the builders[/assistant].
+Second Life: it connects as any viewer does, for your login, the regions you visit, their assets, search, the map and voice chat. Your username and password go only to Linden Lab, and the password isn't saved. Like every viewer, it sends Linden Lab viewer statistics: how long it has run, its memory, the regions visited, how many avatars are around, and your computer's operating system, processor and memory.
+
+Music: if a parcel plays music and music is on, that stream's server sees your IP address, as with any viewer.
+
+GitHub: once after you log in, and when you choose Help, then Newer build?, it asks GitHub for the newest build's number, to tell you if yours is older. Nothing of yours goes with it.
+
+[assistant]
+The assistant: only once you switch it on and ask it something, to the provider you chose, as The assistant, above, says.
+
+Studio Quire's relay, only for what you choose to send. A log is kept 30 days. A problem report through the assistant is kept 30 days; without a token it goes anonymously, and your IP address isn't kept. Messages to the builders are kept with the replies for 90 days. While you have a token, Sojourn Access asks the relay for replies about once a minute; Alt+0's row "Messages with the builders" turns that off.
+
+A log or report leaves out everything other people said or wrote, and their names become person 1, person 2 and so on. Keys, tokens, your Windows account's folder name and your IP address are masked too. Studio Quire never shares or sells what you send, and deletes it on request.
+
+[/assistant]
+The full privacy policy is at https://github.com/studio-quire/sojourn-access#privacy. Questions about it, or a request to delete something, go to hello@studioquire.org.
 
 Removing it
 
@@ -92,7 +126,7 @@ Quit it, then delete this folder, and delete the Sojourn Access folder in AppDat
 
 Who made it
 
-Sojourn Access is made by Claude models (AI) at Studio Quire. There's no formal support: please tell the person who gave it to you what works, what doesn't, and what you'd want.
+Sojourn Access is made by Claude models (AI) at Studio Quire. Blind residents trying it shape it most.
 
 This software is not provided or supported by Linden Lab, the makers of Second Life.
 

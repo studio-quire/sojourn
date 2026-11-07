@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Sojourn Access: Guideway. Sojourn's way to the horizon, as the tactile paving that guides a walk underfoot:
+       raised yellow bars on a clear day. Drawn on a 256 grid by Claude Opus 5.5; data-min/data-max (px) choose detail
+       per size (tools/icon.py); 24 px and under have their own shapes on 16's pixel grid. -->
+  <defs>
+    <clipPath id="tile"><rect x="16" y="16" width="224" height="224" rx="52"/></clipPath>
+    <linearGradient id="sky" x1="0" y1="16" x2="0" y2="116" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1D4FA8"/>
+      <stop offset="0.65" stop-color="#4F8EDB"/>
+      <stop offset="1" stop-color="#D9ECFA"/>
+    </linearGradient>
+    <linearGradient id="ground" x1="0" y1="116" x2="0" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7C93AC"/>
+      <stop offset="0.35" stop-color="#4A627D"/>
+      <stop offset="1" stop-color="#22374F"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="130" x2="0" y2="250" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFE97A"/>
+      <stop offset="1" stop-color="#FFD829"/>
+    </linearGradient>
+  </defs>
+
+  <g data-min="25">
+    <rect x="13" y="13" width="230" height="230" rx="55" fill="#0E2236"/>
+    <g clip-path="url(#tile)">
+      <rect x="16" y="16" width="224" height="100" fill="url(#sky)"/>
+      <rect x="16" y="116" width="224" height="124" fill="url(#ground)"/>
+      <path data-min="64" d="M54.1 203.3 L78.0 203.3 L51.3 250.0 L14.5 250.0 Z M81.5 170.9 L96.6 170.9 L84.7 191.6 L64.0 191.6 Z M94.1 156.0 L105.1 156.0 L99.4 166.0 L85.7 166.0 Z M101.4 147.5 L110.0 147.5 L106.6 153.3 L96.4 153.3 Z M106.0 141.9 L113.1 141.9 L110.9 145.8 L102.8 145.8 Z M94.9 203.3 L118.8 203.3 L114.0 250.0 L77.2 250.0 Z M107.2 170.9 L122.2 170.9 L120.1 191.6 L99.3 191.6 Z M112.8 156.0 L123.8 156.0 L122.8 166.0 L109.0 166.0 Z M116.1 147.5 L124.7 147.5 L124.1 153.3 L113.8 153.3 Z M118.2 141.9 L125.3 141.9 L124.9 145.8 L116.7 145.8 Z M137.2 203.3 L161.1 203.3 L178.8 250.0 L142.0 250.0 Z M133.8 170.9 L148.8 170.9 L156.7 191.6 L135.9 191.6 Z M132.2 156.0 L143.2 156.0 L147.0 166.0 L133.2 166.0 Z M131.3 147.5 L139.9 147.5 L142.2 153.3 L131.9 153.3 Z M130.7 141.9 L137.8 141.9 L139.3 145.8 L131.1 145.8 Z M178.0 203.3 L201.9 203.3 L241.5 250.0 L204.7 250.0 Z M159.4 170.9 L174.5 170.9 L192.0 191.6 L171.3 191.6 Z M150.9 156.0 L161.9 156.0 L170.3 166.0 L156.6 166.0 Z M146.0 147.5 L154.6 147.5 L159.6 153.3 L149.4 153.3 Z M142.9 141.9 L150.0 141.9 L153.2 145.8 L145.1 145.8 Z" fill="url(#bar)"/>
+      <path data-max="48" d="M128 120 L58 250 H18 Z M128 120 L110 250 H82 Z M128 120 L174 250 H146 Z M128 120 L238 250 H198 Z" fill="url(#bar)"/>
+      <rect data-max="48" x="16" y="116" width="224" height="16" fill="url(#ground)" opacity="0.85"/>
+    </g>
+    <rect data-min="64" x="17.5" y="17.5" width="221" height="221" rx="50.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="3"/>
+  </g>
+
+  <!-- 24 px and under: on 16's pixel grid (a pixel is 16 units) -->
+  <g data-max="24">
+    <rect x="16" y="16" width="224" height="224" rx="40" fill="#0E2236"/>
+    <rect x="32" y="32" width="192" height="64" rx="16" fill="#3F7FD0"/>
+    <rect x="32" y="64" width="192" height="32" fill="#3F7FD0"/>
+    <rect x="32" y="96" width="192" height="16" fill="#D9ECFA"/>
+    <path d="M32 112 H224 V208 Q224 224 208 224 H48 Q32 224 32 208 Z" fill="#3A516B"/>
+    <path d="M48 224 L80 160 H96 L80 224 Z M112 224 L120 160 H136 L144 224 Z M176 224 L160 160 H176 L208 224 Z" fill="#FFDD33"/>
+  </g>
+</svg>

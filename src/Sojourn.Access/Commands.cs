@@ -53,14 +53,20 @@ public sealed class Commands
             {
                 case "help": Help(string.Join(" ", rest)); return true;
                 case "links": Links?.Invoke(); return true;
+                case "chatlog" or "chatlogs": ChatLog?.Invoke(string.Join(" ", rest)); return true;
                 case "block": if (Block != null) await Block(string.Join(" ", rest)); return true;
                 case "rebake" or "stopanimations" or "hover" or "displayname" or "maturity" or "emptytrash":
                     if (Self != null) await Self(verb, string.Join(" ", rest));
                     return true;
                 case "profile": if (Profile != null) await Profile(string.Join(" ", rest)); return true;
+                case "notes": if (Notes != null) await Notes(string.Join(" ", rest)); return true;
                 case "friend": if (Friend != null) await Friend(string.Join(" ", rest)); return true;
                 case "unblock": if (Unblock != null) await Unblock(string.Join(" ", rest)); return true;
                 case "blocks": if (Unblock != null) await Unblock(""); return true;
+                case "holdwindow" when Environment.GetEnvironmentVariable("SOJOURN_TEST_HOLD_WINDOW") == "1":
+                    // (the scripted test's: the window's thread held, for WindowWatch)
+                    Thread.Sleep(TimeSpan.FromSeconds(double.Parse(rest[0], System.Globalization.CultureInfo.InvariantCulture)));
+                    return true;
                 case "about" or "version": _say(About?.Invoke() ?? "Sojourn Access."); return true;
                 case "describe": if (Describe != null) await Describe(string.Join(" ", rest)); return true;
                 case "go": return await GoAsync(rest);
@@ -94,6 +100,7 @@ public sealed class Commands
                 case "voice": if (Voice != null) await Voice(string.Join(" ", rest)); return true;
                 case "imsound": if (ImSound != null) await ImSound(string.Join(" ", rest)); return true;
                 case "sendlog": SendLog?.Invoke(); return true;
+                case "logout": LogOut?.Invoke(); return true;
                 default:
                 {
                     var guess = Typos.Closest(verb, CommandWords);
@@ -129,7 +136,7 @@ public sealed class Commands
     {
         ("go", "//go [tp] N [direction] | //go [tp] xyz X,Y[,Z] | //go [tp] person NAME | //go [tp] object NAME",
             "walk (or with tp, teleport) N metres ahead or toward a direction (N, NE, ENE... or left, right, back), to region coordinates, or to someone or something"),
-        ("find", "//find person NAME | //find object NAME", "where someone or something is"),
+        ("find", "//find person NAME | //find object NAME | //find NAME", "where everyone and everything with that name is, the nearest first"),
         ("describe", "//describe | //describe me | //describe NAME | //describe person NAME | //describe object NAME | //describe more",
             "the assistant describes where you are, you and what you're wearing, someone or something; more: the last one in detail"),
         ("face", "//face DEGREES | //face DIRECTION | //face person NAME | //face object NAME", "turn: degrees with 0 east, counter-clockwise, as in Second Life"),
@@ -166,7 +173,8 @@ public sealed class Commands
         ("land", "//land | //land COMMAND (options, fly off, ban NAME, for sale 500, buy, help)",
             "About Land (Control+L) on the parcel you're on, or one of its commands"),
         ("upload", "//upload | //upload PATH", "upload a picture, sound, animation or model: with no path, choose the file (Control+U)"),
-        ("voice", "//voice | //voice answer | //voice decline", "who's in voice and speaking, your mic; or answer or decline a call ringing"),
+        ("voice", "//voice | //voice answer | //voice decline | //voice mute NAME | //voice unmute NAME | //voice volume NAME N",
+            "who's in voice and speaking, your mic; answer or decline a call ringing; one person muted, or how loud they are from 0 to 2, for you alone"),
         ("imsound", "//imsound NAME SOUND | //imsound NAME usual | //imsound NAME | //imsound",
             "a sound of its own for someone's IMs, or a group's chat, in place of the usual one; usual takes it back; with only a name, theirs; with nothing, the sounds and who has one"),
         ("block", "//block NAME", "block anyone by name, or something nearby: what they say, send or ask stops reaching you"),
@@ -176,11 +184,14 @@ public sealed class Commands
         ("displayname", "//displayname | //displayname NAME", "your display name and when it can change; or change it, after you confirm"),
         ("maturity", "//maturity | //maturity general, moderate or adult", "the highest rating of region you go into, and how high your account may go; or change it"),
         ("emptytrash", "//emptytrash", "delete everything in the Trash for good, after you confirm"),
-        ("profile", "//profile NAME", "anyone's profile, by name"),
+        ("profile", "//profile | //profile NAME", "your own profile, to read and change; or anyone's, by name"),
+        ("notes", "//notes NAME", "your own notes on someone, by name, in their profile: only you see them"),
         ("friend", "//friend NAME", "offer anyone friendship, by name"),
         ("unblock", "//unblock NAME", "take someone or something off your block list"),
         ("blocks", "//blocks", "your block list, as Control+Shift+Y: Enter or Delete unblocks one"),
         ("links", "//links", "the links seen in chat, IMs and notices, as Control+Shift+K: Enter opens one"),
+        ("chatlog", "//chatlog | //chatlog NAME", "what's been said, kept on this PC: the logs, or the one with that name"),
+        ("logout", "//logout", "log out and go back to the login window, after you say so"),
         ("about", "//about", "which version of Sojourn Access this is, and where your settings and logs are"),
         ("sendlog", "//sendlog", "send a session's log to Studio Quire, with a note on what happened; other people's words are left out"),
         ("help", "//help [word]", "the commands"),
@@ -667,10 +678,22 @@ public sealed class Commands
         return null;
     }
 
+    /// <summary>//find: everyone or everything that matches, nearest first, as Radegast's says each; the first eight, and how many more.</summary>
     async Task FindAsync(List<string> a)
     {
-        if (await TargetAsync(a, "find") is not { } t) return;
-        _say($"{t.Name} is {_ops.Where(t.Pos, full: true) ?? "somewhere"}.");
+        if (a.Count == 0) { Help("find"); return; }
+        var kind = a[0].ToLowerInvariant();
+        bool person = kind == "person", obj = kind == "object";
+        var name = string.Join(" ", person || obj ? a.Skip(1) : a);
+        if (name.Length == 0) { Help("find"); return; }
+        var hits = new List<(string Name, Vector3 Pos, double Dist)>();
+        if (!obj) hits.AddRange((await _ops.FindPeopleAsync(name)).Select(p => (p.Name, p.Pos, p.Dist)));
+        if (!person) hits.AddRange((await _ops.ObjectsAsync(96, 40, name)).Select(t => (t.Name, t.Pos, t.Dist)));
+        if (hits.Count == 0) { _say($"No {(person ? "one" : obj ? "object" : "one or nothing")} called {name} nearby."); return; }
+        const int Most = 8;
+        var said = hits.OrderBy(h => h.Dist).Take(Most).Select(h => $"{h.Name} is {_ops.Where(h.Pos, full: true) ?? "somewhere"}.").ToList();
+        if (hits.Count > Most) said.Add($"And {hits.Count - Most} more.");
+        _say(string.Join(" ", said));
     }
 
     async Task FaceAsync(List<string> a)
@@ -1023,6 +1046,9 @@ public sealed class Commands
     public Func<string, Task>? Details { get; set; }
     public Func<string, Task>? Block { get; set; }
     public Func<string, Task>? Profile { get; set; }
+    public Func<string, Task>? Notes { get; set; }
+    public Action<string>? ChatLog { get; set; }
+    public Action? LogOut { get; set; }
     public Func<string, string, Task>? Self { get; set; }
     public Func<string, Task>? Friend { get; set; }
     public Func<string, Task>? Unblock { get; set; }

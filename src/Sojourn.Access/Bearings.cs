@@ -86,7 +86,7 @@ public sealed record Place(string Region, double X, double Y, double Z)
 public static class Places
 {
     static readonly Regex Slurl = new(
-        @"^(?:secondlife:///app/(?:teleport|region)/|secondlife://(?:/)?|https?://(?:maps|slurl)\.secondlife\.com/secondlife/|https?://slurl\.com/secondlife/|hop://[^/]+/)?" +
+        @"^(?:secondlife:///app/(?:teleport|region|worldmap)/|secondlife://(?:/)?|https?://(?:maps|slurl)\.secondlife\.com/secondlife/|https?://slurl\.com/secondlife/|hop://[^/]+/)?" +
         @"(?<region>[^/]+?)(?:/(?<x>-?[\d.]+)(?:/(?<y>-?[\d.]+)(?:/(?<z>-?[\d.]+))?)?)?/?$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 

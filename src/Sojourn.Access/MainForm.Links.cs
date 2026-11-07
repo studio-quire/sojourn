@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using LibreMetaverse;
+using Sojourn.Core;
 using Sojourn.Core.Access;
 
 namespace Sojourn.Access;
@@ -8,8 +10,10 @@ namespace Sojourn.Access;
 /// <summary>
 /// Links (docs/access-app.md > Links): Enter on a history's line opens the link on it, and Control+Shift+K or //links lists
 /// the last ones seen in chat, IMs and notices, whoever said them. A web page opens in the person's browser, a place
-/// teleports, a person's link is their profile; nothing else opens, whatever a line's link asks for. Written by Claude
-/// Opus 5.5, 2026-11-04, after the blind tester asked for clickable links.
+/// teleports, a person's link is their profile, a group's its details; nothing else opens, whatever a line's link asks
+/// for. On the way to the screen reader and the histories a Second Life link reads as what it is rather than its thirty-six
+/// characters of id (FriendlyLinks), with what the words stood for remembered so they still open; the logs keep the link
+/// itself. Written by Claude Opus 5.5, 2026-11-04, after the blind tester asked for clickable links.
 /// </summary>
 public sealed partial class MainForm
 {
@@ -18,6 +22,11 @@ public sealed partial class MainForm
     static readonly Regex PlaceLink = new(@"^(?:secondlife://|hop://|https?://(?:maps|slurl)\.secondlife\.com/secondlife/|https?://slurl\.com/secondlife/)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     static readonly Regex PersonLink = new(@"^secondlife:///app/agent/(?<id>[0-9a-f-]{36})/", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    static readonly Regex GroupLink = new(@"^secondlife:///app/group/(?<id>[0-9a-f-]{36})(?:/|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    static readonly Regex OtherAppLink = new(@"^secondlife:///app/(?<kind>[a-z_]+)(?:/(?<rest>[^?]*))?(?:\?(?<query>.*))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    /// <summary>The words a link reads as, and the link they stand for.</summary>
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _linkWords = new();
+    readonly System.Collections.Concurrent.ConcurrentDictionary<UUID, string> _groupNames = new();
 
     sealed record SeenLink(string Url, string From);
     readonly List<SeenLink> _links = new();   // the newest last
@@ -28,9 +37,66 @@ public sealed partial class MainForm
     /// <summary>The first link in some text opened (a notecard's Control+K); false with none.</summary>
     bool OpenFirstLink(string text)
     {
-        if (LinksIn(text).FirstOrDefault() is not { } url) return false;
+        if (LinkOn(text) is not { } url) return false;
         OpenLink(url);
         return true;
+    }
+
+    /// <summary>The first link in some text, as itself or as the words it reads as.</summary>
+    string? LinkOn(string text) => LinksIn(text).FirstOrDefault()
+        ?? _linkWords.Where(w => text.Contains(w.Key, StringComparison.Ordinal)).OrderBy(w => text.IndexOf(w.Key, StringComparison.Ordinal)).Select(w => w.Value).FirstOrDefault();
+
+    /// <summary>Second Life's links in a line as what they are: a group by name (once it's known; asked for the next time), a
+    /// place by its region, the rest by their kind. Web pages stay as they are, being what a screen reader user expects to
+    /// hear. Any thread.</summary>
+    string FriendlyLinks(string text)
+    {
+        if (!text.Contains("secondlife", StringComparison.OrdinalIgnoreCase) && !text.Contains("slurl.com", StringComparison.OrdinalIgnoreCase)) return text;
+        return LinkIn.Replace(text, m =>
+        {
+            var url = m.Value.TrimEnd('.', ',', ';', ':', '!', '?', ')', ']', '\'', '"');
+            var after = m.Value[url.Length..];
+            if (WordsFor(url) is not { } words) return m.Value;
+            // two places in one region are told apart by where
+            if (_linkWords.TryGetValue(words, out var had) && had != url && Places.Parse(url) is { } p) words = $"{p.Region} at {p.X:0}, {p.Y:0} (a place)";
+            if (_linkWords.Count > 1000) _linkWords.Clear();
+            _linkWords[words] = url;
+            return words + after;
+        });
+    }
+
+    string? WordsFor(string url)
+    {
+        if (PersonLink.Match(url) is { Success: true } person && UUID.TryParse(person.Groups["id"].Value, out var who))
+            return Host?.Session.Names.DisplayName(who) is { Length: > 0 } name ? $"{name} (a person)" : "someone (a person)";
+        if (GroupLink.Match(url) is { Success: true } group && UUID.TryParse(group.Groups["id"].Value, out var gid))
+            return GroupNameKnown(gid) is { Length: > 0 } g ? $"{g} (a group)" : "a group";
+        if (PlaceLink.IsMatch(url) && Places.Parse(url) is { } place) return $"{place.Region} (a place)";
+        if (OtherAppLink.Match(url) is not { Success: true } app) return null;
+        var named = System.Text.RegularExpressions.Regex.Match(app.Groups["query"].Value, @"(?:^|&)name=(?<n>[^&]+)") is { Success: true } q ? Uri.UnescapeDataString(q.Groups["n"].Value.Replace('+', ' ')) : null;
+        return app.Groups["kind"].Value.ToLowerInvariant() switch
+        {
+            "parcel" => "a parcel",
+            "event" => "an event",
+            "classified" => "a classified",
+            "inventory" => named != null ? $"{named} (an item)" : "an item",
+            "objectim" => named != null ? $"{named} (an object)" : "an object",
+            _ => "a link for viewers",
+        };
+    }
+
+    /// <summary>A group's name if it's one of hers or has been read; if not, read now for the next time it's said.</summary>
+    string? GroupNameKnown(UUID id)
+    {
+        if (Host?.Session.State.Groups.TryGetValue(id, out var mine) == true) return mine.Name;
+        if (_groupNames.TryGetValue(id, out var name)) return name;
+        _groupNames[id] = "";
+        _ = Task.Run(async () =>
+        {
+            var r = await _ops.ReadAsync("TesselGroups", "profile", new JsonObject { ["group_id"] = id.ToString() });
+            if (r.Str("name") is { Length: > 0 } n) _groupNames[id] = n;
+        });
+        return null;
     }
 
     void NoteLinks(string text, string from)
@@ -43,9 +109,11 @@ public sealed partial class MainForm
         if (_links.Count > LinksKept) _links.RemoveRange(0, _links.Count - LinksKept);
     }
 
-    static string LinkWords(string url)
+    string LinkWords(string url)
     {
         if (PersonLink.IsMatch(url)) return "a person's profile";
+        if (GroupLink.Match(url) is { Success: true } group && UUID.TryParse(group.Groups["id"].Value, out var gid))
+            return GroupNameKnown(gid) is { Length: > 0 } g ? $"{g}, a group" : "a group";
         if (PlaceLink.IsMatch(url)) return Places.Parse(url) is { } place ? $"{place.Region}, a place" : "something only a viewer can open";
         return Uri.TryCreate(url, UriKind.Absolute, out var u) ? $"{u.Host}{u.AbsolutePath.TrimEnd('/')}, a web page" : url;
     }
@@ -57,7 +125,7 @@ public sealed partial class MainForm
         int at = Math.Min(box.SelectionStart, text.Length);
         int from = at == 0 ? 0 : text.LastIndexOf('\n', at - 1) + 1, to = text.IndexOf('\n', at);
         var line = text[from..(to < 0 ? text.Length : to)];
-        if (LinksIn(line).FirstOrDefault() is not { } url) return false;
+        if (LinkOn(line) is not { } url) return false;
         OpenLink(url);
         return true;
     }
@@ -68,6 +136,11 @@ public sealed partial class MainForm
         {
             var id = new UUID(person.Groups["id"].Value);
             _ = ProfileAsync(id, id.ToString());
+            return;
+        }
+        if (GroupLink.Match(url) is { Success: true } group && UUID.TryParse(group.Groups["id"].Value, out var gid))
+        {
+            _ = GroupInfoAsync(gid, GroupNameKnown(gid) is { Length: > 0 } g ? g : "That group");
             return;
         }
         if (PlaceLink.IsMatch(url))

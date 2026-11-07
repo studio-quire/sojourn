@@ -25,6 +25,12 @@ public sealed class AccessSettings
     /// <summary>The person's own lines read back as they're sent (nearby once the region echoes them): a blind tester's
     /// wish, 2026-10-30, to hear that what she typed went out.</summary>
     public bool ReadMine { get; set; } = true;
+    /// <summary>How far People nearby lists, metres (the map's coarse places beyond what's in view, so their height is rough).</summary>
+    public int PeopleRange { get; set; } = 96;
+    /// <summary>What's written to chat logs on this PC (MainForm.ChatLogs.cs): all chat, conversations only, or nothing. On by
+    /// default as in Radegast and the official viewer; said once on arriving.</summary>
+    public string ChatLogs { get; set; } = "all";
+    public bool ChatLogsTold { get; set; }
     /// <summary>How far Objects nearby lists, metres: 30 by default, past the draw distance nothing's known.</summary>
     public int ObjectsRange { get; set; } = 30;
     /// <summary>Lines cut off by typing said again once the keys rest (MainForm.CutLines.cs).</summary>
@@ -348,6 +354,14 @@ public sealed class AccessSettings
         api.Add("access_read_mine", new SettingsApi.Setting("access", "Sojourn Access: the person's own lines (said, whispered, shouted, "
             + "emotes, IMs) read back in the same words as others', nearby once the region has echoed them", "on, off", () => ReadMine,
             SettingsApi.Switch("access_read_mine", on => { ReadMine = on; Save(); changed(); })));
+        string[] logs = { "all", "conversations", "off" };
+        api.Add("access_chat_logs", new SettingsApi.Setting("access", "Sojourn Access: what's kept in chat logs on this PC, never sent anywhere: all chat, "
+            + "conversations (IMs and group chat), or off; nothing from a spell of incognito either way", string.Join(", ", logs), () => ChatLogs,
+            SettingsApi.Choice("access_chat_logs", logs, i => { ChatLogs = logs[i]; Save(); changed(); })));
+        string[] peopleRanges = { "20", "50", "96", "200", "362", "512" };
+        api.Add("access_people_range", new SettingsApi.Setting("access", "Sojourn Access: how far People nearby lists, metres (what's in view, then the map's "
+            + "rough places, here and next door; Radegast's reaches 362)", string.Join(", ", peopleRanges), () => PeopleRange.ToString(),
+            SettingsApi.Choice("access_people_range", peopleRanges, i => { PeopleRange = int.Parse(peopleRanges[i]); Save(); changed(); })));
         string[] ranges = { "10", "20", "30", "50", "75", "100", "125" };
         api.Add("access_objects_range", new SettingsApi.Setting("access", "Sojourn Access: how far Objects nearby lists, metres (the nearest "
             + "200 at most; what's beyond the draw distance isn't known)", string.Join(", ", ranges), () => ObjectsRange.ToString(),

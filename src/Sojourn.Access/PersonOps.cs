@@ -96,6 +96,18 @@ public sealed class PersonOps(AgentSession s)
                ?? all.FirstOrDefault(p => p.Name.Contains(w, StringComparison.OrdinalIgnoreCase) || p.Username.Contains(w, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>Everyone whose name (display or user) starts with the words, else everyone whose has them, nearest first.</summary>
+    public async Task<List<Person>> FindPeopleAsync(string words)
+    {
+        var w = words.Trim().ToLowerInvariant();
+        if (w.Length == 0) return new();
+        var all = await PeopleAsync(512);
+        bool Starts(string n) => n.ToLowerInvariant().StartsWith(w) || n.ToLowerInvariant().Split(' ', '.').Any(part => part.StartsWith(w));
+        var starting = all.Where(p => Starts(p.Name) || Starts(p.Username)).ToList();
+        return starting.Count > 0 ? starting
+            : all.Where(p => p.Name.Contains(w, StringComparison.OrdinalIgnoreCase) || p.Username.Contains(w, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
     public sealed record Thing(UUID Id, string Name, Vector3 Pos, double Dist, bool Sit, bool Touch, string? Text)
     {
         /// <summary>Something the person wears (Objects' Show: what you wear; a HUD or on the body): Text says where.</summary>

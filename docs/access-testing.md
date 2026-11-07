@@ -7,8 +7,26 @@ testers said is `docs/access.md` > What a blind tester tells us.
 ## The scripted test
 
 `python tools/access.py test`: on the local grid, nothing on the visible desktop; it runs `build` and `tools` first. A
-full run takes a while (the walk-mode step alone about 4 minutes). Last full run 2026-10-30 evening: 510 of 511, the one failure a tab item
-the test couldn't see (fixed since in the test's client: Tab items, below).
+full run takes about an hour (the walk-mode step alone about 4 minutes). Last full run 2026-11-07: 1771 of 1798. The ones its steps caused have since been fixed in the test and those steps pass when run on their own; the rest followed from the stall below, whose steps also pass on their own.
+
+**The test client's references.** Every element QuireUia's managed UI Automation client (System.Windows.Automation)
+hands out stays a reference in the app's UIA server for as long as QuireUia is connected: GC and finalizers don't let it
+go. The server keeps them in a list and walks the whole list for each reference whenever a provider is disconnected,
+which WinForms does for every tree item as a tree is emptied (`TreeNode.Remove`), for list items, and for every control
+as a window closes. So a long run makes those slower and slower. When QuireUia's `find` walked the whole window, each
+find left a reference per element, some 290,000 late in a full run, and emptying the inventory's tree for a search (at
+`delete_by_search` after recording a route, three full runs of three on 2026-11-07) held the window for over three
+minutes: "the client is busy", every later step failing. The window's thread sat in `UiaDisconnectProvider`, waiting
+in a COM call on one of UIA's own threads, which was walking the list at a full core (so it still answered pings, and
+looked idle in `dotnet-stack`). Killing QuireUia freed the window at once. Since then (QuireUia, 2026-11-07) a find's
+exact parts (`id`, `name`, `type`, `class`) go to UIA as a condition checked in the app, so only matches come back
+(`name~` still walks the window, so use it sparingly); `focus` leaves out the ancestors unless asked (`focus up`); and
+event senders are let go of at once. A few references per command still stay. Measured on a WinForms tree of 300 rows
+in a window of its own, reading the server's list size with cdb: 40 whole-window finds left 12,000 before and about 120
+after. A COM client that releases its elements, as screen readers do, left none from 40 whole-window walks, so this is
+our test client's, not a reader's. Long runs of a stall's kind elsewhere ("Wearing" slow to come back, a notecard's
+window slow to close) are worth reading the same way first: `cdb -pv -p PID -c "~*k; q"` for every thread's stack
+(WinDbg's cdb; `UIAutomationCore!ObjectReferenceManager` busy on a thread is this).
 
 - `ACCESS_STEPS=inventory` runs only the steps whose names have those words (after the login's checks).
 - `ACCESS_NO_RENDER=1` starts the app with `--no-render`, nothing on the GPU, for the steps that don't need the view
@@ -114,6 +132,14 @@ docstring with its checks in full):
   the music's volume stepped, `//status music`; the answers-without-a-key row and its description in plain words; the
   sound output row stepping the default and the first device, Ctrl+Shift+O (world audio goes to a file whatever is
   chosen, so the PC's devices are never played to).
+- **my profile, notes**: `//profile`, its boxes changed and saved by Control+S and read back from the grid; Escape with changes asking; a picture uploaded from the window, its fee confirmed and the
+  focus back there; chosen by name, the first row a picture and the last taking it off; a texture's Use as your profile picture; a pick made, read, its words changed in place, deleted through Notices
+  and back in the window; notes saved as the window closes, there on opening again, emptied through Notices; an interest set alone leaving the others; one too long refused in words.
+- **chat logs**: nearby chat and an IM in their files, with the date's line; a conversation closed and opened again starting with its earlier lines; a spell of incognito in neither the files nor a reopened tab; conversations only, and off, written to no file but still remembered this session; Read-out > Chat logs reading one at its newest line, read-only; Delete through Notices; the assistant's rules naming them.
+- **search's further pages, people further off, links in words**: Category and Day only where they apply and a Tab apart; a page of one (`SOJOURN_TEST_GROUPS_PAGE`) with its last row, Enter on it; a friend next door listed at 512 metres and not at 96; a parcel's link and a place's said and written as their kinds and names, and Enter on the line still teleporting.
+- **small things from the gaps**: `//voice mute` with voice off said so; `:waves` as an emote, `:)` as itself, in nearby chat and an IM; `//find` saying every match; Objects' Sort A to Z and back; Stand up on what she's on; Show: Gestures; the status bar's parcel; Help's Newer build? both ways; World's Log out asked and Escape staying, then (the last step) going, a fresh process at the login window with the form filled in.
+- **the window held** (a few seconds): `//holdwindow 2` (the test's own command) logged when it ends and not said;
+  `//holdwindow 7` said as the window not answering, then back, and logged (`WindowWatch`).
 - **settings typed and in words**: a switch stepped (Group invitations turned away), a number typed (Hover height, its range in
   the question), the keywords typed and in the op, an auto response typed and confirmed by her own key. The settings step also
   checks no row says only the assistant can change it.

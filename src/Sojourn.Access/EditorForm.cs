@@ -22,6 +22,7 @@ public sealed class EditorForm : Form
     };
     readonly Func<string, Task<(string Said, string? Errors, string? Now)>> _save;
     readonly Action<string> _say;
+    readonly bool _readOnly;
     readonly string _what;
     string _saved;
     bool _saving;
@@ -32,8 +33,10 @@ public sealed class EditorForm : Form
     /// <param name="save">Saves the text: what to say, a script's errors (null when none), and the text as it now is when
     /// saving changed it (null otherwise).</param>
     /// <param name="embedded">What a notecard holds, listed under the text (null when nothing).</param>
-    public EditorForm(string what, string name, string text, Func<string, Task<(string Said, string? Errors, string? Now)>> save, Action<string> say, ListView? embedded = null)
+    /// <param name="readOnly">Something to read (a chat log): the same keys for moving around, nothing to save, the caret at the end.</param>
+    public EditorForm(string what, string name, string text, Func<string, Task<(string Said, string? Errors, string? Now)>> save, Action<string> say, ListView? embedded = null, bool readOnly = false)
     {
+        _readOnly = readOnly;
         _what = what;
         _save = save;
         _say = say;
@@ -51,6 +54,7 @@ public sealed class EditorForm : Form
         var close = new Button { Name = "editorClose", Text = "Close", AutoSize = true };
         save1.Click += async (_, _) => await SaveAsync();
         close.Click += (_, _) => Close();
+        if (readOnly) { _text.ReadOnly = true; _text.BackColor = SystemColors.Window; save1.Visible = false; }
         var row = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
         row.Controls.Add(save1);
         row.Controls.Add(close);
@@ -66,7 +70,13 @@ public sealed class EditorForm : Form
         _text.TabIndex = 0; _errors.TabIndex = 1; row.TabIndex = 3;
         Controls.Add(t);
         ActiveControl = _text;
-        Shown += (_, _) => { _text.SelectionStart = 0; _text.SelectionLength = 0; _text.Focus(); };
+        Shown += (_, _) =>
+        {
+            _text.SelectionStart = readOnly ? _text.TextLength : 0;
+            _text.SelectionLength = 0;
+            _text.Focus();
+            if (readOnly) _text.ScrollToCaret();
+        };
     }
 
     public string Current => _text.Text;
@@ -75,7 +85,7 @@ public sealed class EditorForm : Form
     {
         switch (keyData)
         {
-            case Keys.Control | Keys.S: _ = SaveAsync(); return true;
+            case Keys.Control | Keys.S: if (!_readOnly) _ = SaveAsync(); return true;
             case Keys.Escape: Close(); return true;
             case Keys.Control | Keys.F: Find(); return true;
             case Keys.F3: FindNext(+1); return true;
@@ -85,6 +95,9 @@ public sealed class EditorForm : Form
             case Keys.Control | Keys.K: OpenLinkHere(); return true;
             case Keys.F8: NextError(+1); return true;
             case Keys.Shift | Keys.F8: NextError(-1); return true;
+            case Keys.F1 when _readOnly:
+                _say("Escape closes. Control+F finds, F3 the next, Shift+F3 the one before. Control+G goes to a line. Control+L says the line and column. Control+K opens the link on the line.");
+                return true;
             case Keys.F1:
                 _say("Control+S saves, Escape closes. Control+F finds, F3 the next, Shift+F3 the one before. Control+G goes to a line. "
                      + "Control+L says the line and column. Control+K opens the link on the line. F8 goes to the next error from the last save, Shift+F8 the one before. Tab: the errors, then what it holds, then Save and Close.");

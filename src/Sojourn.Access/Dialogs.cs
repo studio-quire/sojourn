@@ -27,9 +27,10 @@ public static class Dialogs
 
     /// <summary>
     /// Someone picked: the people listed (nearby, friends), narrowed as a name is typed; Enter on the list or in the
-    /// box takes the one selected (in the box: the only match, or a full name the grid knows, by find).
+    /// box takes the one selected (in the box: the only match, or a full name the grid knows, by find). describe: what
+    /// Control+D does with the one selected.
     /// </summary>
-    public static Someone? Pick(IWin32Window owner, string title, List<Someone> people, Func<string, Task<Someone?>> find, string listName = "People")
+    public static Someone? Pick(IWin32Window owner, string title, List<Someone> people, Func<string, Task<Someone?>> find, string listName = "People", Action<Someone>? describe = null)
     {
         using var f = Frame(title);
         var box = new LineBox { Name = "pickName", AccessibleName = "Name", Width = 360 };
@@ -67,6 +68,13 @@ public static class Dialogs
             if (chosen == null) return;
             f.DialogResult = DialogResult.OK;
         }
+        if (describe != null)
+            f.KeyDown += (_, e) =>
+            {
+                if (e.KeyData != (Keys.Control | Keys.D) || list.SelectedItem is not Shown s) return;
+                e.Handled = e.SuppressKeyPress = true;
+                describe(s.P);
+            };
         f.AcceptButton = null;
         var ok = (Button)f.Tag!;
         ok.DialogResult = DialogResult.None;
@@ -170,18 +178,18 @@ public static class Dialogs
 /// <summary>Quitting while in world: "Log out and quit?", Quit (Enter) or Stay (Escape), the focus on Quit.</summary>
 static class QuitDialog
 {
-    public static bool Ask(IWin32Window owner)
+    public static bool Ask(IWin32Window owner, string question = "Log out and quit?", string title = "Quit Sojourn Access?", string yes = "&Quit")
     {
         using var f = new Form
         {
-            Name = "quit", Text = "Quit Sojourn Access?", AccessibleName = "Quit Sojourn Access?", FormBorderStyle = FormBorderStyle.FixedDialog,
+            Name = "quit", Text = title, AccessibleName = title, FormBorderStyle = FormBorderStyle.FixedDialog,
             MinimizeBox = false, MaximizeBox = false, StartPosition = FormStartPosition.CenterParent, AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink, ShowInTaskbar = false, Padding = new Padding(10),
         };
-        var quit = new Button { Name = "quitYes", Text = "&Quit", AutoSize = true, DialogResult = DialogResult.OK };
+        var quit = new Button { Name = "quitYes", Text = yes, AutoSize = true, DialogResult = DialogResult.OK };
         var stay = new Button { Name = "quitNo", Text = "&Stay", AutoSize = true, DialogResult = DialogResult.Cancel };
         var row = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
-        row.Controls.Add(new Label { Text = "Log out and quit?", AutoSize = true, Anchor = AnchorStyles.Left });
+        row.Controls.Add(new Label { Text = question, AutoSize = true, Anchor = AnchorStyles.Left });
         row.Controls.Add(quit);
         row.Controls.Add(stay);
         f.Controls.Add(row);

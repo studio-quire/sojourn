@@ -2,7 +2,7 @@
 
 The disclosures that go with any build of Sojourn or Sojourn Access handed to anyone, as Linden Lab's Third Party
 Viewer Policy asks of a viewer's distributor (`docs/tpv-policy.md`). Sojourn Access's own copy of this page, written for
-screen-reader users, is in its repository: https://github.com/studio-quire/sojourn-access.
+screen-reader users and with its own privacy policy, is in its repository: https://github.com/studio-quire/sojourn-access.
 
 ## Not Linden Lab's
 
@@ -33,7 +33,7 @@ program, its caches and logs, but keeps your saved logins, keys, settings, chat 
 
 **Sojourn Access** isn't installed. It runs from the folder it's unzipped into, adds no Start menu entries or services,
 changes no Windows settings, and never updates itself. To remove it, delete its folder and `%LOCALAPPDATA%\Sojourn
-Access`.
+Access`, and, if you gave its assistant a key or token, the `secrets` folder in `%LOCALAPPDATA%\Sojourn`.
 
 Neither needs an account with Studio Quire, an email address or anything else from you to install or remove.
 
@@ -58,45 +58,42 @@ https://github.com/studio-quire/sojourn-access/issues. Issues are read, but ther
 
 ## Privacy policy
 
-Studio Quire makes Sojourn and Sojourn Access. This policy covers both apps and Studio Quire's relay, and describes
-what the current code does (in effect from 2026-11-02).
+This is Sojourn's privacy policy, covering the app and Studio Quire's relay as Sojourn uses it. It describes what
+the current code does (in effect from 2026-11-02). Sojourn Access, the studio's viewer for using Second Life without
+sight, has its own privacy policy, in its repository: https://github.com/studio-quire/sojourn-access#privacy
 
-Studio Quire collects nothing on its own. Neither app has analytics or tracking. The only things that reach Studio
-Quire are ones you choose: in Sojourn Access, requests through the studio relay, if the studio gave you a token for
-it (below), and a session's log, if you send one (Help > Send a log); and in Sojourn a problem report (menu > about >
-report a problem, or by asking the assistant) or a crash report, which the launcher asks about after a crash unless
-you set crash reports to always or never. Other people's words are left out and their names replaced before a log
-or report leaves your computer; it goes to Studio Quire's relay (relay.studioquire.org) and is kept for 30 days. What
-Sojourn Access sends goes with your Studio Quire token, as yours; Sojourn's reports go without one, taken
-anonymously, at most three a day from one address, and your IP address isn't stored. Or you can save a report as a file and attach it to a GitHub issue
+Studio Quire collects nothing on its own. Sojourn has no analytics or tracking. The only things that reach Studio
+Quire are ones you choose: a problem report (menu > about > report a problem, or by asking the assistant) or a crash
+report, which the launcher asks about after a crash unless you set crash reports to always or never. Other people's
+words are left out and their names replaced before a report leaves your computer; it goes to Studio Quire's relay
+(relay.studioquire.org) without any account or token, taken anonymously, at most three a day from one address, and is
+kept for 30 days; your IP address isn't stored. Or you can save a report as a file and attach it to a GitHub issue
 yourself.
 
-**Without the assistant**, the apps connect only where any Second Life viewer does:
+**Without the assistant**, Sojourn connects only where any Second Life viewer does:
 - Linden Lab's servers: login, the regions you visit, their asset and texture services, the map, search and voice chat.
-  Your username and password go only to Linden Lab's login server. Like every viewer, both apps send the region the
-  viewer statistics Linden Lab asks for: how long the app has run, its frame rate, memory, the regions visited, how
+  Your username and password go only to Linden Lab's login server. Like every viewer, Sojourn sends the region the
+  viewer statistics Linden Lab asks for: how long it has run, its frame rate, memory, the regions visited, how
   many avatars are in view, and your computer's operating system, processor, memory and graphics card; not your
   network card's address or your disk's serial number, which the official viewer also sends, unless you turn that on.
 - A parcel's music stream, if music is on: the stream's server (chosen by the parcel's owner) sees your IP address,
   as with any viewer.
-- In Sojourn (not Sojourn Access), web pages and video shown on objects and parcels, from the sites they come from.
+- Web pages and video shown on objects and parcels, from the sites they come from.
   Media other people set up waits for your touch before it plays.
-- An installed Sojourn's update check: GitHub's API, once each time the launcher opens, asking for the list of
+- The update check of an installed Sojourn: GitHub's API, once each time the launcher opens, asking for the list of
   Sojourn's releases (GitHub sees your IP address, as with any visit); and GitHub's downloads, when you press update.
 - If you pick Whisper for speech recognition, its model is downloaded once from Hugging Face (about 460 MB). Parakeet,
   the default, comes with Sojourn.
 - If you choose OpenRouter, the list of models it offers is fetched from OpenRouter's public list (no key sent).
 
-Data stays on your computer: settings, chat and IM logs, caches, and in Sojourn your saved login (protected by Windows
-for your user account; Sojourn Access doesn't save passwords). You delete it by deleting the data folder.
+Data stays on your computer: settings, chat and IM logs, caches, and your saved login (protected by Windows for your
+user account). You delete it by deleting the data folder.
 
-**With the assistant**, what it needs to answer each request is sent to the AI provider you chose in the launcher (in
-Sojourn Access, Alt+0), under that provider's terms and privacy policy:
+**With the assistant**, what it needs to answer each request is sent to the AI provider you chose in the launcher,
+under that provider's terms and privacy policy:
 - your own Anthropic API key: to Anthropic, the maker of Claude;
 - your own OpenRouter key: to OpenRouter and the model's provider it routes to. "No data collection" is on by default:
-  OpenRouter then uses only providers that say they don't keep or train on prompts;
-- in Sojourn Access only, the studio relay, for people Studio Quire covers: to Anthropic on Studio Quire's key, through Studio Quire's relay,
-  which reads only how much each request cost (to keep to your monthly allowance) and stores nothing of what's said.
+  OpenRouter then uses only providers that say they don't keep or train on prompts.
 
 What's sent: your request (typed, or transcribed from your speech on your
 own computer), what it looks up to answer (for example names of people and things around you, recent chat when your
@@ -112,14 +109,14 @@ there while you hold the talk button; it's off unless you turn it on.
 from Sojourn to help you goes to its provider (Anthropic, for Claude Code) under your own account's terms, as anything
 else you ask it does. Sojourn sends nothing extra.
 
-**How what we hold is kept.** Logs and reports sent to Studio Quire are stored by its relay on Cloudflare, readable
+**How what we hold is kept.** Reports sent to Studio Quire are stored by its relay on Cloudflare, readable
 only with Studio Quire's own secret, never shared or sold, and deleted automatically after 30 days. The relay keeps no
 IP addresses: the daily limit on anonymous reports counts a one-way hash of your address and the date, discarded the
 next day. Cloudflare, which runs the relay, sees IP addresses as for any website it serves. On your computer, saved
 passwords and AI keys are encrypted by Windows for your account.
 
 Linden Lab may ask a viewer's makers to update or delete data received from Second Life. The only such data we hold is
-in logs and reports people chose to send (kept 30 days, other people's words already left out); we delete one on
+in reports people chose to send (kept 30 days, other people's words already left out); we delete one on
 request.
 
 **Questions and requests** go to the issues at https://github.com/studio-quire/sojourn/issues. Issues are public; to

@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json.Nodes;
 using LibreMetaverse;
 using Sojourn.Session.Control;
 using Sojourn.Session.Voice;
@@ -131,7 +133,7 @@ public sealed partial class MainForm
         if (!v.Enabled) { Answer("Voice chat is off: Alt+0, the Voice group, turns it on."); return; }
         var me = _ops.Client?.Self.AgentID ?? UUID.Zero;
         var peers = v.Peers.Where(p => p.Id != me).ToList();
-        string Name(UUID id) => Host!.Session.Names.DisplayName(id) ?? Host.Session.Names.Legacy(id) ?? "someone";
+        string Name(UUID id) => (Host!.Session.Names.DisplayName(id) ?? Host.Session.Names.Legacy(id) ?? "someone") + (v.PeerIsMuted(id) ? " (muted)" : "");
         var speaking = peers.Where(p => p.Speaking).Select(p => Name(p.Id)).ToList();
         var quiet = peers.Where(p => !p.Speaking).Select(p => Name(p.Id)).OrderBy(n => n).ToList();
         var where = v.CallInfo is { } call ? $"In a call with {call.With}." : v.OffHere ? "Voice is off here." : "Nearby voice.";
@@ -142,11 +144,49 @@ public sealed partial class MainForm
         Answer($"{where} {who.Trim()} {mic}");
     }
 
-    /// <summary>`//voice [answer | decline | who]`.</summary>
-    Task VoiceWordsAsync(string words)
+    /// <summary>One person's voice muted or unmuted, for her alone, and kept: the voice client's, on the account's block list
+    /// with its voice flag as the viewers keep it where there is one.</summary>
+    async Task VoiceMuteAsync(UUID id, string name, bool mute)
+    {
+        if (Voice == null) { Answer(VoiceOff()); return; }
+        var r = await _ops.DoAsync("SojournVoice", "peerMute", new JsonObject { ["id"] = id.ToString(), ["mute"] = mute });
+        Answer(PersonOps.Error(r) is { } e ? $"Not changed: {e}" : mute ? $"{name} muted in voice, for you alone. What they type still reaches you." : $"{name} unmuted in voice.");
+    }
+
+    /// <summary>One person's loudness for her: 0 to 2, 1 as they come.</summary>
+    async Task VoiceVolumeAsync(UUID id, string name, string? given = null)
+    {
+        if (Voice is not { } v) { Answer(VoiceOff()); return; }
+        var text = given ?? Dialogs.Ask(this, $"How loud {name} is in voice", "0 to 2; 1 is as they come", v.PeerVolume(id).ToString("0.##", CultureInfo.InvariantCulture));
+        if (text == null) { Reader?.Answer("Not changed.", keep: false); return; }
+        if (!double.TryParse(text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var volume) || volume is < 0 or > 2) { Answer($"{text} isn't from 0 to 2."); return; }
+        var r = await _ops.DoAsync("SojournVoice", "peerVolume", new JsonObject { ["id"] = id.ToString(), ["volume"] = volume });
+        Answer(PersonOps.Error(r) is { } e ? $"Not changed: {e}" : $"{name} at {volume.ToString("0.##", CultureInfo.InvariantCulture)} in voice, for you alone.");
+    }
+
+    /// <summary>`//voice [answer | decline | who | mute NAME | unmute NAME | volume NAME N]`.</summary>
+    async Task VoiceWordsAsync(string words)
     {
         var w = words.Trim().ToLowerInvariant();
         var v = Voice;
+        foreach (var verb in new[] { "mute ", "unmute ", "volume " })
+        {
+            if (!w.StartsWith(verb, StringComparison.Ordinal)) continue;
+            var rest = words.Trim()[verb.Length..].Trim();
+            string? level = null;
+            if (verb == "volume ")
+            {
+                int space = rest.LastIndexOf(' ');
+                if (space < 0) { Answer("//voice volume NAME and a number from 0 to 2; 1 is as they come."); return; }
+                level = rest[(space + 1)..];
+                rest = rest[..space].Trim();
+            }
+            if (Voice == null) { Answer(VoiceOff()); return; }
+            if (await FindByNameAsync(rest) is not { } who) return;
+            if (level != null) await VoiceVolumeAsync(who.Id, who.Name, level);
+            else await VoiceMuteAsync(who.Id, who.Name, verb == "mute ");
+            return;
+        }
         if (w is "answer" or "accept")
         {
             if (v?.Incoming is not { } call) Answer("Nobody is calling.");
@@ -158,7 +198,6 @@ public sealed partial class MainForm
             else { v.Decline(); Answer($"Declined {call.Name}'s call."); }
         }
         else SayVoice();
-        return Task.CompletedTask;
     }
 
     /// <summary>The slow tick: with access_voice_speakers on, someone starting to speak is said (each at most once in

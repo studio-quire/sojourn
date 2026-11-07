@@ -100,7 +100,7 @@ public sealed partial class MainForm
         };
         var search = new LineBox { Name = name == "inventory" ? "inventorySearch" : name + "Search", AccessibleName = title == "" ? "Search inventory" : "Search the second pane", Dock = DockStyle.Fill };
         var show = new ComboBox { Name = name == "inventory" ? "inventoryShow" : name + "Show", AccessibleName = title == "" ? "Show" : "Show, second pane", DropDownStyle = ComboBoxStyle.DropDownList, Width = 140 };
-        show.Items.AddRange(new object[] { "Everything", "Worn", "Recent", "Trash", "Favorites" });
+        show.Items.AddRange(new object[] { "Everything", "Worn", "Recent", "Trash", "Favorites", "Gestures" });
         show.SelectedIndex = 0;
         var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 2, Margin = Padding.Empty };
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -215,7 +215,7 @@ public sealed partial class MainForm
         }
         var words = p.Search.Text.Trim();
         var show = p.Show.SelectedIndex;
-        var mode = words.Length > 0 ? "search" : show == 1 ? "worn" : show == 2 ? "recent" : show == 3 ? "trash" : show == ShowFavorites ? "favorites" : "";
+        var mode = words.Length > 0 ? "search" : show == 1 ? "worn" : show == 2 ? "recent" : show == 3 ? "trash" : show == ShowFavorites ? "favorites" : show == ShowOnlyGestures ? "gestures" : "";
         if (show == ShowFavorites && FavoritesNotReady(p, said, focus)) return;
         if (mode == "")
         {
@@ -276,6 +276,7 @@ public sealed partial class MainForm
                     "worn" => "Nothing worn.",
                     "trash" => "The Trash is empty.",
                     "favorites" => "No favorites yet. Control+Shift+F on an item or folder adds it.",
+                    "gestures" => "No gestures in your inventory.",
                     _ => "Nothing new in the last day.",
                 }));
             tree.SelectedNode = (keep != null ? tree.Nodes[keep] : null) ?? tree.Nodes[0];
@@ -287,6 +288,7 @@ public sealed partial class MainForm
             Reader?.Answer(ordered.Count == 0 ? tree.Nodes[0].Text
                 : p.Mode == "worn" ? $"{many} worn."
                 : p.Mode == "favorites" ? $"{many} {(ordered.Count == 1 ? "favorite" : "favorites")}."
+                : p.Mode == "gestures" ? $"{many} {(ordered.Count == 1 ? "gesture" : "gestures")}."
                 : trashOnly ? $"{many} in the Trash."
                 : trashed.Length > 0 ? $"{many} found, and {trashed}." : $"{many} found.", keep: false);
         }
@@ -321,7 +323,9 @@ public sealed partial class MainForm
             "search" => n.Name.Contains(a.Words, StringComparison.OrdinalIgnoreCase)
                         && (a.Show != 1 || n is InventoryItem wi && a.Worn.Ids.Contains(Target(store, wi).UUID))
                         && (a.Show != 2 || n is InventoryItem ri && Utc(ri.CreationDate) >= since)
-                        && (a.Show != ShowFavorites || n is not InventoryItem { AssetType: AssetType.Link or AssetType.LinkFolder } && a.Favorite(n.UUID)),
+                        && (a.Show != ShowFavorites || n is not InventoryItem { AssetType: AssetType.Link or AssetType.LinkFolder } && a.Favorite(n.UUID))
+                        && (a.Show != ShowOnlyGestures || n is InventoryItem { AssetType: AssetType.Gesture }),
+            "gestures" => n is InventoryItem { AssetType: AssetType.Gesture },
             "worn" => n is InventoryItem it && it.AssetType is not (AssetType.Link or AssetType.LinkFolder) && a.Worn.Ids.Contains(it.UUID),
             "trash" => true,
             _ => n is InventoryItem rt && Utc(rt.CreationDate) >= since,
@@ -828,6 +832,8 @@ public sealed partial class MainForm
             list.Add(new("&Unbox", () => _ = UnboxAsync(target)));
         }
         list.Add(new("-", () => { }));
+        // (not Enter's, which takes what's above the line)
+        if (one && target!.AssetType == AssetType.Texture) list.Add(new("&Use as your profile picture", () => _ = SetPictureAsync(target.UUID, target.Name)));
         list.Add(new("&Give to...", () => _ = GiveAsync(p, chosen)));
         list.Add(new("Cu&t", () => Clip(p, cut: true), "Control+X"));
         list.Add(new("&Copy", () => Clip(p, cut: false), "Control+C"));

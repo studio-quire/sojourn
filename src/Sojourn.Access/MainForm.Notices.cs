@@ -126,7 +126,7 @@ public sealed partial class MainForm
         {
             if (!Guid.TryParse(n.Str("id"), out var id) || !s.Notify.Answerable(id)) continue;
             var (who, what, _) = Host.Feed.NoticeLine(n);
-            var words = Sentences(who.Length == 0 ? what : what.Length > 0 && char.IsLower(what[0]) ? $"{who} {what}" : $"{who}: {what}");
+            var words = FriendlyLinks(Sentences(who.Length == 0 ? what : what.Length > 0 && char.IsLower(what[0]) ? $"{who} {what}" : $"{who}: {what}"));
             var form = (n["form"] as JsonArray ?? new()).OfType<JsonObject>()
                 .Select(b => (Name: b.Str("name") ?? "", Text: b.Str("text") ?? "", Index: b["index"] is JsonValue v && v.TryGetValue<int>(out var i) ? i : 0))
                 .Where(b => b.Name.Length > 0).ToList();
@@ -134,7 +134,7 @@ public sealed partial class MainForm
             var buttons = form.Where(b => b.Index >= 0 && b.Name != "!!llTextBox!!" && !(n.Str("name") == "JoinGroup" && b.Name == "Info"))
                 .Concat(form.Where(b => b.Name == "Client_Side_Mute"))
                 .Select(b => (b.Name, b.Text.Length > 0 ? b.Text : b.Name)).ToList();
-            var detail = Speakable(n.Str("message") ?? "");
+            var detail = FriendlyLinks(Speakable(n.Str("message") ?? ""));
             list.Add(new Notice(id, null, words, detail, buttons, textBox, (n["payload"] as JsonObject)?.Str("object_id"), n.Str("name") ?? ""));
         }
         return list;

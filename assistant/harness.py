@@ -63,7 +63,8 @@ def secret_paths(own_slug):
     own = LOCAL.name if PACKAGED and LOCAL.parent == local_app else None
     out += children(USER / "AppData" / "Roaming") + children(local_app, keep=("Temp", own)) + [USER / "AppData" / "LocalLow"]
     if PACKAGED:
-        out += children(LOCAL, keep=("assistant",)) + [LOCAL / "assistant" / "claude" / ".claude.json"]
+        # (chat-logs named even before it exists: others' words, on this PC only)
+        out += children(LOCAL, keep=("assistant",)) + [LOCAL / "assistant" / "claude" / ".claude.json", LOCAL / "chat-logs"]
     out += [p for p in USER.glob(".*") if p.is_file() and re.search(r"cred|token|secret|sunshine|netrc|npmrc|pypirc|history", p.name, re.I)]
     return out
 
@@ -83,10 +84,11 @@ def unseen_globs():
     """What the client keeps of where the person has been and what they saw, unreadable always (so nothing from a
     private spell can be read after it either): every base dir's caches (textures, meshes, regions: local/<base>/cache)
     and pages' browser profile (local/<base>/media), screenshots (shots/, latest.png and other pictures at a base dir's
-    top), and the pictures, videos and build backups saved while private. One level under local/ only, so the
-    assistant's own local/assistant/work stays its own."""
+    top), and the pictures, videos and build backups saved while private, and Sojourn Access's chat logs, which are other
+    people's words and stay on this PC. One level under local/ only, so the assistant's own local/assistant/work stays
+    its own."""
     local = rule_path(ROOT / "local")
-    return ([f"{local}/*/cache/**", f"{local}/*/media/**", f"{local}/*/shots/**", f"{local}/*/*.png"]
+    return ([f"{local}/*/cache/**", f"{local}/*/media/**", f"{local}/*/shots/**", f"{local}/*/*.png", f"{local}/*/chat-logs/**"]
             + [f"{rule_path(USER / d / 'Sojourn')}/*{n}*" for d in ("Pictures", "Videos") for n in ("incognito", "private")]
             + [f"{rule_path(USER / 'Documents' / 'Sojourn' / 'Backups')}/*incognito*"])
 
@@ -215,7 +217,7 @@ def settings(home: Path, work: Path, auto=True):
 
 # shell commands refused before the classifier: credential stores and input into the client, spelled the usual ways
 SHELL_REFUSED = re.compile(
-    r"sl-main|local[\\/]+secrets|Sojourn[\\/]+secrets|SOJOURN_LOGINS|mfa_hash|account\.txt|\.credentials|\.claude\b|\.ssh\b|git-credential|\bcmdkey\b|"
+    r"chat-logs|sl-main|local[\\/]+secrets|Sojourn[\\/]+secrets|SOJOURN_LOGINS|mfa_hash|account\.txt|\.credentials|\.claude\b|\.ssh\b|git-credential|\bcmdkey\b|"
     r"vaultcmd|CredentialManager|StoredCredential|CredRead|Login Data|logins\.json|key4\.db|\bgh\s+auth\b|"
     r"winmouse|winkey|SendInput|PostMessage|SendMessage[AW]?\b|SendKeys|keybd_event|mouse_event|UIAutomation|"
     r"pyautogui|pywinauto|AutoHotkey|\bahk\b|AttachConsole|WriteConsoleInput|--password|Sojourn(VR)?\.(dll|exe)|client\.py['\"]?\s+(run|vr)|launcher\.py['\"]?\s+run|--launcher-answers|assistant\.py['\"]?\s+key|"

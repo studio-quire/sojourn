@@ -18,13 +18,18 @@ public sealed partial class MainForm
     const string ReleasesApi = "https://api.github.com/repos/studio-quire/sojourn-access/releases/latest";
     bool _askedNewest;
 
-    async Task SayIfNewerBuildAsync()
+    /// <param name="asked">Help's Newer build?: at once, and said either way.</param>
+    async Task SayIfNewerBuildAsync(bool asked = false)
     {
-        if (_askedNewest) return;
+        if (!asked && _askedNewest) return;
         _askedNewest = true;
         var test = Environment.GetEnvironmentVariable("SOJOURN_TEST_LATEST");
-        if (AppInfo.Version == "0.1.0.0" && test == null) return;   // a build in the repo
-        await Task.Delay(TimeSpan.FromSeconds(10));   // the arrival and what came with it heard first
+        if (AppInfo.Version == "0.1.0.0" && test == null)   // a build in the repo
+        {
+            if (asked) Answer("This build comes from the source, not a release.");
+            return;
+        }
+        if (!asked) await Task.Delay(TimeSpan.FromSeconds(10));   // the arrival and what came with it heard first
         string? latest = test, page = null;
         if (latest == null)
             try
@@ -35,8 +40,16 @@ public sealed partial class MainForm
                 latest = o?.Str("tag_name")?.TrimStart('v');
                 page = o?.Str("html_url");
             }
-            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { return; }
-        if (!Version.TryParse(latest, out var newest) || !Version.TryParse(AppInfo.Version, out var mine) || newest <= mine || IsDisposed) return;
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            {
+                if (asked) Answer("GitHub didn't answer, so I can't tell.");
+                return;
+            }
+        if (!Version.TryParse(latest, out var newest) || !Version.TryParse(AppInfo.Version, out var mine) || newest <= mine || IsDisposed)
+        {
+            if (asked && !IsDisposed) Answer($"You're on the newest, Sojourn Access {AppInfo.Version}.");
+            return;
+        }
         page ??= $"https://github.com/studio-quire/sojourn-access/releases/tag/v{latest}";
         var line = $"You're on Sojourn Access {AppInfo.Version}, and {latest} is out: {page}";
         Host?.Log.LogInformation("build: {Line}", line);

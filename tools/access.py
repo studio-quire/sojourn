@@ -1089,6 +1089,14 @@ def visitor_where():
     return tuple(float(m[i]) for i in (1, 2, 3))
 
 
+def near_visitor(within=8):
+    """The tester beside the visitor, wherever the steps before left her: its fixtures' scripts are heard by the visitor,
+    and placed from where she stands."""
+    if math.dist(tester_where()[:2], visitor_where()[:2]) > within:
+        say_in_app(f"//go tp person {VNAME}")
+        wait(lambda: math.dist(tester_where()[:2], visitor_where()[:2]) < within, 25, 1)
+
+
 def visitor_settled(secs=10):
     """Where the visitor stands once it has landed (it logs in at the start's height and falls to the ground)."""
     last = visitor_where()
@@ -1289,7 +1297,9 @@ def session(run, procs):
                # People's and Objects' first fills held back, as Second Life's objects wait for their names
                SOJOURN_TEST_LIST_DELAY_MS=str(LIST_DELAY_MS),
                SOJOURN_NO_BROWSER="1",   # a link says it's opening, and no browser comes up on the PC
+               SOJOURN_TEST_HOLD_WINDOW="1",   # //holdwindow SECONDS holds the window's thread (the window watch's step)
                SOJOURN_VOICE_OUT_FILE=str(HEARD), SOJOURN_WALK_LOG=str(OUT / "walk.log"),   # world audio to a file (local grid only), never the speakers
+               SOJOURN_TEST_GROUPS_PAGE="1",   # a page of groups so short that any search has a further one
                SOJOURN_TEST_UPLOAD_FEE=UPLOAD_FEES)   # uploads of some kinds confirmed as spending on the free local grid
     app_args = ["--grid", GRID_URI, "--user", f"{TESTER[0]} {TESTER[1]}", "--password", PASSWORD,
                 "--start", "uri:%s&%d&%d&%d" % (REGION, *TESTER_START), "--port", API_PORT, "--base", OUT / "app",
@@ -1401,6 +1411,11 @@ def session(run, procs):
         ("search, profiles, pay", lambda: search_and_people(run)),
         ("a conference", lambda: conferences(run, nonce, tester_id)),
         ("a person's actions, the same everywhere", lambda: person_actions(run, nonce, tester_id)),
+        ("my profile, notes", lambda: my_profile(run, nonce, tester_id)),
+        ("chat logs", lambda: chat_logs(run, nonce, tester_id)),
+        ("small things from the gaps", lambda: small_gaps(run, nonce, tester_id)),
+        ("the window held", lambda: window_held(run)),
+        ("search's further pages, people further off, links in words", lambda: search_more_and_links(run, nonce, tester_id)),
         ("more commands", lambda: more_commands(run)),
         ("paying and buying things", lambda: paying_and_buying(run, nonce)),
         ("objects: details, the filter, past the nearest, what people wear", lambda: objects_more(run, nonce)),
@@ -1426,17 +1441,50 @@ def session(run, procs):
         ("favorites in the inventory", lambda: favorites(run, nonce)),
         # (last: it logs out and in again, from the login form)
         ("favorite landmarks at login", lambda: favorite_starts(run, nonce, procs)),
+        ("logging out, back to the login window", lambda: log_out(run, procs)),
     ]
     only = [w.strip() for w in os.environ.get("ACCESS_STEPS", "").split(",") if w.strip()]
+    fresh_at = time.time()
     for name, step in steps:
         if only and not any(w in name for w in only):
             continue
+        if time.time() - fresh_at > FRESH_SERVER_SECS:
+            fresh_server(procs)
+            fresh_at = time.time()
         u(f"mark step: {name}")
         try:
             step()
         except Exception as e:
             check(f"{name} (the step stopped)", False, f"{type(e).__name__}: {e}")
         back_to_chat()
+
+
+FRESH_SERVER_SECS = 300
+
+
+def fresh_server(procs):
+    """QuireUia's server started afresh between steps, every five minutes: the managed UI Automation client it uses
+    leaves every element it hands out as a reference in the app's UIA server while it's connected, and each disconnect
+    there (a tree emptied, a window closed) walks them all, so a long run slowed the app to a stall (docs/access-testing.md
+    > The test client's references). A new connection starts with none."""
+    try:
+        u("quit", timeout=5)
+    except Exception:
+        pass
+    if wait(lambda: not alive(procs["server"]), 5, 0.3) is None:
+        kill(procs["server"])
+    n = len(events())
+    procs["server"] = launch_hidden([QUIREUIA, "serve", "--port", Q_PORT, "--log", EVENTS])
+    wait(lambda: u("help", timeout=5), 20)
+    if not wait(lambda: any(e.get("src") == "server" and e.get("kind") == "listening" and e.get("text") == "com notification"
+                            for e in events()[n:]), 15, 0.5):
+        print("     (QuireUia started afresh, but not listening for announcements yet)")
+    u(f"watch {procs['app']}")
+    try:
+        u(f"activate {procs['app']}")   # (the server's own small window may have taken the hidden desktop's foreground)
+    except ToolError as e:
+        print(f"     (activate after QuireUia started afresh: {e})")
+    u("mark QuireUia started afresh")
 
 
 def back_to_chat():
@@ -2510,11 +2558,13 @@ def settings_group(group):
     """Alt+0 on a group by its name, by Page Down as she'd go: only that group's rows are in the list then. Whether it got there."""
     key("alt+0")
     wait_focus(lambda d: d["id"] == "settings" or d["type"] == "ListItem", 4)
+    named = lambda: next((d["name"] for d in find("id=settings")), "")
     for _ in range(14):
-        if any(d["name"] == f"{group} settings" for d in find("id=settings")):
+        was = named()
+        if was == f"{group} settings":
             return wait(lambda: find(f"type=ListItem;name~={group}, group "), 6)
         key("pgdn")
-        time.sleep(0.25)
+        wait(lambda: named() != was, 3, 0.1)   # (late in a long run the list can take longer than a moment to change)
     return None
 
 
@@ -3623,7 +3673,7 @@ def person_actions(run, nonce, tester_id):
     if wait(lambda: VNAME in selection("id=people"), 6):
         key("apps")
         if menu_open("Send IM"):
-            names = offered("People nearby", ["Profile"])
+            names = offered("People nearby", ["Profile", "Notes on them"])
             run.check("with friendship or its ending", "Offer friendship" in names or "End friendship" in names, "")
             run.check("and Block", "Block" in names or "Unblock" in names, "")
             key("esc")
@@ -3695,8 +3745,12 @@ def person_actions(run, nonce, tester_id):
     key("alt+5")
     wait_focus(lambda d: d["id"] == "searchWords", 4)
     u("set id=searchWords | Access Visitor")
+    key("tab")
+    wait_focus(lambda d: d["id"] == "searchKind", 3)
+    key("home")   # (People: the step before may have left it on Places)
+    time.sleep(0.3)
     key("enter")
-    if wait_focus(lambda d: d["id"] == "results" or d["type"] == "ListItem", 8) and wait(lambda: "Visitor" in selection("id=results"), 8):
+    if wait_focus(lambda d: d["id"] == "results" or d["type"] == "ListItem", 8) and wait(lambda: "Visitor" in selection("id=results") and "Nothing" not in selection("id=results"), 8):
         key("apps")
         if run.check("a person in Search has them too", menu_open("Send IM"), focus_label()):
             offered("Search", ["Profile"])
@@ -3723,6 +3777,637 @@ def person_actions(run, nonce, tester_id):
     m = mark()
     say_in_app(f"//friend {far}")
     run.expect("//friend NAME offers friendship", ["Friendship offered to " + far], m, 8)
+
+
+def my_profile(run, nonce, tester_id):
+    """Her own profile (MainForm.MyProfile.cs): //profile, its boxes changed and saved by Control+S, checked in the grid's
+    answer; closing with changes asks; a picture chosen from the inventory by name, the top row of the list what a stray
+    Enter takes, taking it off the last row, said back; a pick made where she stands, read, changed in place, deleted behind
+    her confirmation and coming back to the window; notes on someone saved as their profile closes, read back, cleared
+    behind her confirmation; a texture's Use as your profile picture; and interests kept when only one is given."""
+    back_to_chat()
+    d = upload_fixtures(nonce)
+    pic_name = f"Portrait {nonce}"
+    ZERO = "00000000-0000-0000-0000-000000000000"
+    made = []
+    def mine():
+        return api("TesselAgent", "profile", timeout=30)
+
+    def open_mine():
+        say_in_app("//profile")
+        return wait_focus(lambda e: e["id"] == "myAbout", 12)
+
+    before = mine()
+    try:
+        # ---- the words
+        got = open_mine()
+        if not run.check("//profile with no name opens her own, in About", got, focus_label()):
+            return
+        run.check("the window's controls", all(find(f"id={i}") for i in ("myAbout", "myWantTo", "mySkills", "myLanguages", "myFirstLife", "myWeb", "myPicture", "myPicks", "mySave")), "")
+        about = f"Harp player {nonce}."
+        u("set id=myAbout | " + about)
+        u("set id=mySkills | " + f"Knots {nonce}")
+        m = mark()
+        key("ctrl+s")
+        run.expect("Control+S saves, said", ["Saved."], m, 15)
+        now = mine()
+        run.check("the grid has her About", now.get("about") == about, repr(now.get("about"))[:80])
+        run.check("and her Skills", (now.get("interests") or {}).get("skills") == f"Knots {nonce}", str(now.get("interests")))
+        # ---- closing with changes asks
+        u("set id=myWeb | https://example.com/" + nonce)
+        key("esc")
+        asked = wait(lambda: find("type=Button;name=No") and find("type=Button;name=Yes"), 5)
+        if run.check("Escape with changes asks first", asked, focus_label()):
+            key("esc")
+            time.sleep(0.5)
+            run.check("Cancel: still there, the words too", value_of("id=myWeb").endswith(nonce), value_of("id=myWeb"))
+        u("set id=myWeb | " + (before.get("url") or ""))
+        # ---- a picture from a file: the upload's windows and fee as usual, then it's hers
+        focus_on("myPictureUpload", tabs=20)
+        m = mark()
+        key("enter")
+        if open_dialog_pick(run, "Upload a picture", d / "Sunset.png"):
+            upload_window(run, "a picture")
+            key("tab")
+            wait_focus(lambda e: e["id"] == "uploadName", 3)
+            u("set id=uploadName |")
+            type_text(pic_name, "id=uploadName")
+            wait(lambda: value_of("id=uploadName") == pic_name, 3, 0.2)
+            m = mark()
+            key("enter", target="id=uploadName")
+            confirm_in_notices(run, f"Upload {pic_name}, a picture, for L$0", m)
+            made.append(pic_name)
+            run.expect("uploaded, said", [f"Uploaded {pic_name}"], m, 30)
+            run.expect("and it's her picture, said", [f"Your profile picture is now {pic_name}"], m, 15)
+            run.check("back in her profile's window", wait(lambda: (focused() or {}).get("id", "").startswith("my"), 5), focus_label())
+            run.check("the window's line names it", wait(lambda: pic_name in value_of("id=myPicture"), 4), value_of("id=myPicture"))
+            run.check("the grid has a picture set", mine().get("image_id") not in (None, "", ZERO), str(mine().get("image_id")))
+        # ---- the picture: chosen by name; Enter on the first row takes the newest, never "none"
+        focus_on("myPictureChoose", tabs=20)
+        run.check("(Tab reaches Choose a picture)", (focused() or {}).get("id") == "myPictureChoose", focus_label())
+        m = mark()
+        key("enter")
+        lst = wait_focus(lambda e: e["id"] == "pickList", 6)
+        run.expect("the pictures said, Control+D named", ["newest first", "Control+D"], m, 6)
+        if run.check("Choose a picture: a list, the focus in it", lst, focus_label()):
+            first = selection("id=pickList")
+            run.check("the first row selected is the newest picture", pic_name in first, first)
+            key("end")
+            run.check("taking it off is the last row", wait(lambda: "No picture" in selection("id=pickList"), 3), selection("id=pickList"))
+            u("set id=pickName | " + pic_name)
+            time.sleep(0.4)
+            m = mark()
+            key("enter", target="id=pickName")
+            run.expect("taken by name, said back", [f"Your profile picture is now {pic_name}"], m, 15)
+            wait(lambda: pic_name in value_of("id=myPicture"), 4)
+            run.check("the window's line names it", pic_name in value_of("id=myPicture"), value_of("id=myPicture"))
+        # ---- a pick where she stands
+        pick_name = f"Pick {nonce}"
+        focus_on("myPickNew", tabs=20)
+        key("enter")
+        if run.check("New pick asks its name", wait_focus(lambda e: e["id"] == "answer", 5), focus_label()):
+            u("set id=answer | " + pick_name)
+            key("enter")
+            wait(lambda: "What to say" in (focused() or {}).get("name", ""), 5)
+            u("set id=answer | Where the harp is")
+            m = mark()
+            key("enter")
+            run.expect("a pick made, said", [f"Pick {pick_name} made"], m, 15)
+            pid = next((p["pick_id"] for p in mine().get("picks", []) if p["name"] == pick_name), None)
+            if run.check("the grid has it", pid, str(mine().get("picks"))):
+                where = api("TesselAgent", "pick", pick_id=pid)
+                run.check("with what she said about it", where.get("desc") == "Where the harp is", str(where)[:120])
+                focus_on("myPicks", tabs=20)
+                wait(lambda: pick_name in selection("id=myPicks"), 3)
+                m = mark()
+                key("enter")
+                run.expect("Enter on a pick reads it", [pick_name, "Where the harp is"], m, 8)
+                key("apps")
+                if run.check("its menu", menu_open("Read it"), focus_label()):
+                    names = {x["name"] for x in find("type=MenuItem")}
+                    run.check("has Teleport there, Change its words, Delete", {"Teleport there", "Change its words...", "Delete"} <= names, str(names))
+                    key("esc")
+                    time.sleep(0.4)
+                # changed in place
+                key("apps")
+                if menu_open("Read it"):
+                    key("c")
+                    if wait_focus(lambda e: e["id"] == "answer", 5):
+                        u("set id=answer | " + pick_name + " two")
+                        key("enter")
+                        wait(lambda: "What to say" in (focused() or {}).get("name", ""), 5)
+                        m = mark()
+                        key("enter")
+                        run.expect("its words changed, said", [f"Changed {pick_name} two"], m, 15)
+                        edited = api("TesselAgent", "pick", pick_id=pid)
+                        run.check("still at the same place, the same words kept", edited.get("pos") == where.get("pos") and edited.get("desc") == "Where the harp is", str(edited)[:120])
+                # deleted through the confirmation, back in the window
+                wait(lambda: (focused() or {}).get("id") == "myPicks" or focus_on("myPicks", tabs=20), 3)
+                m = mark()
+                key("del")
+                run.check("Delete asks in Notices", wait_focus(lambda e: e["id"] == "notices" or e["type"] == "ListItem", 6), focus_label())
+                run.expect("naming the pick", [pick_name], m, 6)
+                time.sleep(1.2)
+                m = mark()
+                key("enter")
+                run.expect("confirmed: deleted, said", [f"Pick {pick_name} two deleted"], m, 15)
+                run.check("gone from the grid", not any(p["pick_id"] == pid for p in mine().get("picks", [])), str(mine().get("picks")))
+                run.check("back in her profile's window", wait_focus(lambda e: e["id"] in ("myPicks", "myAbout") or e["type"] == "ListItem" and find("id=myPicks"), 6), focus_label())
+        # ---- closing with nothing changed goes straight back
+        key("esc")
+        run.check("Escape with nothing changed closes it, back in Say", wait_focus(lambda e: e["id"] == "chatInput", 6), focus_label())
+        # ---- taken off
+        got = open_mine()
+        if got:
+            focus_on("myPictureChoose", tabs=20)
+            key("enter")
+            if wait_focus(lambda e: e["id"] == "pickList", 6):
+                key("end")
+                m = mark()
+                key("enter")
+                run.expect("the last row takes it off, saying what it was", ["No profile picture now", pic_name], m, 15)
+            run.check("the grid has none", mine().get("image_id") in (None, "", ZERO), str(mine().get("image_id")))
+            key("esc")
+            wait_focus(lambda e: e["id"] == "chatInput", 6)
+        # ---- from the inventory
+        key("alt+4")
+        wait_focus(lambda e: e["id"] == "inventory", 4)
+        inv_search(pic_name, pic_name)
+        key("apps")
+        if run.check("a picture's menu has Use as your profile picture", menu_open("Use as your profile picture"), focus_label()):
+            m = mark()
+            key("u")
+            run.expect("its key U, said back", [f"Your profile picture is now {pic_name}"], m, 15)
+        clear_search()
+        back_to_chat()
+        # ---- notes on someone
+        say_in_app(f"//notes {VNAME}")
+        if run.check("//notes NAME: their profile, the focus in the notes", wait_focus(lambda e: e["id"] == "profileNotes", 12), focus_label()):
+            wait(lambda: not re.search("readonly|read-only", str(find("id=profileNotes")), re.I), 8)
+            time.sleep(1.5)
+            run.check("the box says who they're on and that only she sees them", VNAME in (focused() or {}).get("name", "") and "only you" in (focused() or {}).get("name", ""), focus_label())
+            words = f"Plays the lute {nonce}"
+            u("set id=profileNotes | " + words)
+            m = mark()
+            key("esc")
+            run.expect("saved as the window closes, said", [f"notes on {VNAME} are saved"], m, 12)
+            run.check("the grid has them", api("SojournPeople", "notes", to=visitor_id()).get("notes") == words, str(api("SojournPeople", "notes", to=visitor_id()))[:120])
+            back_to_chat()
+            say_in_app(f"//profile {VNAME}")
+            if wait_focus(lambda e: e["id"] == "profileText", 12):
+                time.sleep(2)
+                run.check("opening again, there in the box", value_of("id=profileNotes") == words, value_of("id=profileNotes"))
+                key("tab")
+                run.check("Tab from the text reaches the notes", wait_focus(lambda e: e["id"] == "profileNotes", 3), focus_label())
+                u("set id=profileNotes | ")
+                key("esc")
+                run.check("cleared: asked in Notices, as a delete", wait_focus(lambda e: e["id"] == "notices" or e["type"] == "ListItem", 8), focus_label())
+                time.sleep(1.2)
+                m = mark()
+                key("enter")
+                run.expect("confirmed, said", [f"notes on {VNAME} are cleared"], m, 12)
+                run.check("gone from the grid", not api("SojournPeople", "notes", to=visitor_id()).get("notes"), "")
+        back_to_chat()
+        # ---- the op: an interest given alone leaves the others
+        api("TesselAgent", "setProfile", want_to="Sail", languages="English", timeout=30)
+        api("TesselAgent", "setProfile", skills=f"Rope {nonce}", timeout=30)
+        got_i = mine().get("interests") or {}
+        run.check("one interest set by the op leaves the others", got_i.get("want_to") == "Sail" and got_i.get("languages") == "English" and got_i.get("skills") == f"Rope {nonce}", str(got_i))
+        try:
+            too = str(api("TesselAgent", "setProfile", skills="x" * 400, timeout=30))
+        except ToolError as e:
+            too = str(e)
+        run.check("one too long for the grid is refused in words", "254 characters" in too, too[:120])
+    finally:
+        # as it was: the account is the test's, but the next run's checks start from here
+        restore = {k: before.get(k) or "" for k in ("about", "url", "first_life")}
+        interests = before.get("interests") or {}
+        restore.update({k: interests.get(k) or "" for k in ("want_to", "skills", "languages")})
+        restore["image_id"] = "none"
+        api("TesselAgent", "setProfile", timeout=30, **restore)
+
+        if made:
+            delete_by_search(run, pic_name)
+        back_to_chat()
+
+
+def chat_logs(run, nonce, tester_id):
+    """Chat logs (MainForm.ChatLogs.cs): what's said in nearby chat and an IM lands in files with the date's line; a tab
+    closed and opened again starts with its earlier lines; a spell of incognito is in neither; conversations only and off;
+    reading one, read-only at its newest line; deleting one through Notices; and the assistant's file rules naming them."""
+    back_to_chat()
+    def logs():
+        return {p.name: p.read_text(encoding="utf-8") for p in (OUT / "app" / "chat-logs").rglob("*.txt")}
+
+    def logged(words):
+        return any(words in text for text in logs().values())
+
+    def nearby(words):
+        v(f"say {words}")
+        return wait(lambda: words in value_of("id=chatHistory"), 8)
+
+    def im_and_open(words):
+        m = mark()
+        v(f"im {tester_id} {words}")
+        return run.expect(f"(the IM said: {words})", [words], m, 10)
+
+    def reopen():
+        """The conversation with the visitor closed (Control+W) and started again from the people list: the focus in its input."""
+        back_to_chat()
+        key("alt+3")
+        wait_focus(lambda e: e["id"] == "people" or e["type"] == "ListItem", 4)
+        wait(lambda: VNAME in selection("id=people"), 6)
+        key("apps")
+        menu_open("Send IM")
+        key("i")
+        return wait_focus(lambda e: e["id"] == "convInput", 5)
+
+    def close_conversation():
+        reopen()
+        key("ctrl+w")
+        time.sleep(0.5)
+
+    said = f"Nearby line {nonce}"
+    if run.check("(the visitor's line in the history)", nearby(said), value_of("id=chatHistory")[-120:]):
+        run.check("nearby chat in Nearby chat.txt", wait(lambda: said in logs().get("Nearby chat.txt", ""), 4), str(list(logs()))[:200])
+        text = logs().get("Nearby chat.txt", "")
+        run.check("under a line with the date", text.startswith("--- ") and str(time.localtime().tm_year) in text.splitlines()[0], text[:80])
+        run.check("each line with its time", re.search(r"\[\d\d:\d\d\] " + re.escape(VNAME) + ": " + re.escape(said), text), text[-120:])
+    first = f"First words {nonce}"
+    im_and_open(first)
+    wait(lambda: logged(first), 4)
+    im_file = next((n for n, t in logs().items() if first in t), "")
+    run.check("an IM in a file of its own, named for them", im_file.startswith(VNAME + " - "), im_file)
+    # ---- closed and opened again
+    close_conversation()
+    if run.check("Send IM again: its input", reopen(), focus_label()):
+        hist = value_of("id=convHistory")
+        run.check("the tab opened again starts with what was said", first in hist, hist[-200:])
+        run.check("and says they're earlier lines", hist.rstrip().endswith("New ones follow.)"), hist[-80:])
+    # ---- a spell of incognito: on screen, kept nowhere
+    secret_near, secret_im = f"Spell line {nonce}", f"Spell IM {nonce}"
+    back_to_chat()
+    key("ctrl+shift+i")
+    if run.check("(incognito on)", wait(lambda: api("SojournPrivate", "status").get("on"), 5), ""):
+        nearby(secret_near)
+        im_and_open(secret_im)
+        time.sleep(1)
+        run.check("in a spell, nothing written", not logged(secret_near) and not logged(secret_im), "")
+        back_to_chat()
+        key("ctrl+shift+i")
+        wait(lambda: not api("SojournPrivate", "status").get("on"), 5)
+        after = f"After the spell {nonce}"
+        im_and_open(after)
+        wait(lambda: logged(after), 4)
+        close_conversation()
+        if reopen():
+            hist = value_of("id=convHistory")
+            run.check("a tab opened after a spell has the lines around it", after in hist and first in hist, hist[-200:])
+            run.check("and nothing from it", secret_im not in hist, hist[-200:])
+        run.check("nor the files", not logged(secret_near) and not logged(secret_im), "")
+    # ---- conversations only, then off: not in the files, this session's memory still fills a tab
+    back_to_chat()
+    api("SojournSettings", "set", access_chat_logs="conversations")
+    only = f"Unlogged nearby {nonce}"
+    nearby(only)
+    time.sleep(0.5)
+    run.check("conversations only: nearby chat isn't written", not logged(only), "")
+    api("SojournSettings", "set", access_chat_logs="off")
+    off_im = f"Off IM {nonce}"
+    im_and_open(off_im)
+    time.sleep(0.5)
+    run.check("off: nothing written", not logged(off_im), "")
+    close_conversation()
+    if reopen():
+        hist = value_of("id=convHistory")
+        run.check("off: a tab opened again still has this session's lines", off_im in hist, hist[-200:])
+    api("SojournSettings", "set", access_chat_logs="all")
+    # ---- reading one
+    back_to_chat()
+    key("alt+r")
+    item = menu_open("Chat logs...")
+    if run.check("Read-out has Chat logs, //chatlog shown", item and menu_keys("type=MenuItem;name=Chat logs...").endswith("//chatlog"), focus_label()):
+        key("s")
+        if run.check("S: the list, the focus in it", wait_focus(lambda e: e["id"] == "chatLogsList", 5), focus_label()):
+            names = selection("id=chatLogsList")
+            run.check("the most recent first, with when", "today at" in names, names)
+            u(f"select type=ListItem;name~={VNAME}")
+            wait(lambda: VNAME in selection("id=chatLogsList"), 3)
+            key("enter")
+            if run.check("Enter: the log in its window", wait_focus(lambda e: e["id"] == "editorText", 5), focus_label()):
+                text = value_of("id=editorText")
+                run.check("with what was said", first in text and after in text, text[-200:])
+                type_text("x")
+                time.sleep(0.3)
+                run.check("and it can't be changed", value_of("id=editorText") == text, "")
+                key("esc")
+                run.check("Escape: back, with no question", wait_focus(lambda e: e["id"] == "chatInput", 5), focus_label())
+    say_in_app(f"//chatlog {VNAME}")
+    if run.check("//chatlog NAME opens that one", wait_focus(lambda e: e["id"] == "editorText", 8), focus_label()):
+        key("esc")
+        wait_focus(lambda e: e["id"] == "chatInput", 5)
+    # ---- deleting one: asked, for good
+    say_in_app("//chatlog")
+    if wait_focus(lambda e: e["id"] == "chatLogsList", 5):
+        u(f"select type=ListItem;name~={VNAME}")
+        wait(lambda: VNAME in selection("id=chatLogsList"), 3)
+        m = mark()
+        key("del")
+        run.check("Delete asks in Notices", wait_focus(lambda e: e["id"] == "notices" or e["type"] == "ListItem", 6), focus_label())
+        run.expect("naming the log", ["Delete your chat log of", VNAME], m, 6)
+        time.sleep(1.2)
+        m = mark()
+        key("enter")
+        run.expect("confirmed: said", [f"Deleted the chat log of {VNAME}"], m, 8)
+        run.check("gone from the folder", im_file not in logs(), str(list(logs()))[:200])
+    # ---- what the assistant's file tools are told
+    text = (ROOT / "assistant" / "harness.py").read_text(encoding="utf-8")
+    run.check("the assistant's rules name chat logs: file tools and shell", 'chat-logs/**' in text and 'r"chat-logs|' in text, "")
+    close_conversation()
+    back_to_chat()
+
+
+def search_more_and_links(run, nonce, tester_id):
+    """Search's further pages and its boxes for what's being looked for; People nearby's reach and a friend's Where; links
+    that read as what they are, and still open."""
+    ZERO = "00000000-0000-0000-0000-000000000000"
+    back_to_chat()
+    # ---- Category and Day only where they apply
+    key("alt+5")
+    wait_focus(lambda e: e["id"] == "searchWords", 4)
+    key("tab")
+    wait_focus(lambda e: e["id"] == "searchKind", 3)
+    key("home")   # (People: an earlier step may have left it on another)
+    run.check("looking for people: neither Category nor Day", wait(lambda: not find("id=searchCategory") and not find("id=searchDay"), 3), value_of("id=searchKind"))
+    key("down", "down")   # (Events)
+    run.check("Events: Category and Day", wait(lambda: find("id=searchCategory") and find("id=searchDay"), 3), value_of("id=searchKind"))
+    key("tab")
+    run.check("Tab reaches Category", wait_focus(lambda e: e["id"] == "searchCategory", 3), focus_label())
+    key("tab")
+    run.check("then Day, on now to begin with", wait_focus(lambda e: e["id"] == "searchDay", 3) and "On now" in value_of("id=searchDay"), focus_label())
+    key("down")
+    m = mark()
+    key("enter")
+    run.expect("Enter searches from there", ["Searching events"], m, 6)
+    run.expect("and answers", ["ound"], m, 20)
+    key("alt+5")
+    wait_focus(lambda e: e["id"] == "searchWords", 4)
+    key("tab")
+    wait_focus(lambda e: e["id"] == "searchKind", 3)
+    key("up")
+    run.check("Places: Category, no Day", wait(lambda: find("id=searchCategory") and not find("id=searchDay"), 3), value_of("id=searchKind"))
+    key("down", "down")   # (Groups)
+    run.check("Groups: neither", wait(lambda: not find("id=searchCategory"), 3), value_of("id=searchKind"))
+    # ---- a last row for more (SOJOURN_TEST_GROUPS_PAGE: a page of one, here)
+    words = "Access"
+    made = api("TesselGroups", "search", text=words).get("groups", [])
+    u("set id=searchWords | " + words)
+    m = mark()
+    key("enter")
+    if made:
+        run.expect("a full page says there are more", ["there are more"], m, 12)
+        got = wait_focus(lambda e: e["id"] == "results" or e["type"] == "ListItem", 4)
+        run.check("(the results in focus)", got, focus_label())
+        names = [x["name"] for x in find("id=results;type=ListItem")] or [selection("id=results")]
+        key("end")
+        run.check("the last row says Enter lists the next", wait(lambda: "More results" in selection("id=results"), 3), selection("id=results"))
+        m = mark()
+        key("enter")
+        run.expect("Enter on it looks further, saying what came", ["more"], m, 12)
+        run.check("a grid with nothing new: no last row left", wait(lambda: "More results" not in selection("id=results"), 5) or len(made) > 1, selection("id=results"))
+    else:
+        print("     (no group to find on this grid: the last row not checked)")
+    back_to_chat()
+    # ---- People nearby's reach
+    pal = f"{PALS[0][0]} {PALS[0][1]}"
+    # (from the corner nearest them: some 300 metres, the pals being next door at PAL_START)
+    start = tester_where()
+    say_in_app(f"//tp {REGION}/240/240/30")
+    wait(lambda: math.dist(tester_where()[:2], (240, 240)) < 4, 30, 1)
+    time.sleep(4)
+    listed = lambda: [x["name"] for x in find(f"type=ListItem;name~={pal}, ") if "metre" in x["name"]]
+    key("alt+3")
+    wait_focus(lambda e: e["id"] == "people" or e["type"] == "ListItem", 4)
+    key("f5")
+    time.sleep(1.5)
+    run.check("at 96 metres, a friend next door isn't listed", not listed(), str(listed())[:160])
+    api("SojournSettings", "set", access_people_range="512")
+    key("f5")
+    run.check("at 512, listed with how far", wait(lambda: listed(), 15, 0.5), str(api("TesselAgent", "people", dist=512))[:200])
+    api("SojournSettings", "set", access_people_range="96")
+    key("f5")
+    back_to_chat()
+    say_in_app(f"//tp {REGION}/{start[0]:.0f}/{start[1]:.0f}/{start[2]:.0f}")
+    wait(lambda: math.dist(tester_where()[:2], start[:2]) < 4, 30, 1)
+    # ---- a friend elsewhere on the grid
+    far_id = next((f.get("id") for f in api("TesselAgent", "friends").get("friends", []) if pal in (f.get("display_name"), f.get("username"), f.get("name"))), None)
+    if far_id:
+        tcp(PAL_PORTS[0], f"rights {tester_id} off", 5)   # (rights last between runs)
+        time.sleep(2)
+        try:
+            api("SojournPeople", "whereFriend", to=far_id)
+            refused = ""
+        except ToolError as e:
+            refused = str(e)
+        run.check("a friend who doesn't let her see them on the map: said", "don't let you see them on the map" in refused, refused)
+        tcp(PAL_PORTS[0], f"rights {tester_id} map", 5)
+        wait(lambda: any(f.get("id") == far_id and f.get("can_see_on_map") for f in api("TesselAgent", "friends").get("friends", [])), 5)
+        time.sleep(1.5)
+        try:
+            where = api("SojournPeople", "whereFriend", to=far_id)
+        except ToolError as e:
+            where = {"error": str(e)}
+        print(f"     (whereFriend: {where})")
+        run.check("one who does: which region they're in", where.get("region") == PAL_START[0], str(where))
+        tcp(PAL_PORTS[0], f"rights {tester_id} off", 5)
+    key("alt+2")
+    wait_focus(lambda e: e["id"] == "friends" or e["type"] == "ListItem", 4)
+    try:
+        u(f"select type=ListItem;name~={pal}, online")
+    except ToolError:
+        pass
+    if wait(lambda: pal in selection("id=friends"), 4):
+        key("apps")
+        if menu_open("Send IM"):
+            m = mark()
+            key("h")
+            # (next door, so within 512 metres, as coarse as the map's): from her, in metres
+            run.expect("Where on a friend next door says where, from her", [pal, "is"], m, 10)
+    back_to_chat()
+    # ---- links that read as what they are
+    if made:
+        gid, gname = made[0]["group_id"], made[0]["name"]
+        v(f"say first secondlife:///app/group/{gid}/about")
+        wait(lambda: "first " in value_of("id=chatHistory"), 8)
+        time.sleep(3)   # (a group she isn't in: its name read meanwhile, if it wasn't known)
+        m = mark()
+        v(f"say join secondlife:///app/group/{gid}/about today")
+        run.expect("a group's link said by its name", [f"join {gname} (a group) today"], m, 10)
+        wait(lambda: f"join {gname} (a group) today" in value_of("id=chatHistory"), 5)
+        key("tab")
+        wait_focus(lambda e: e["id"] == "chatHistory", 5)
+        key("ctrl+end")
+        key("up")
+        m = mark()
+        key("enter")
+        run.expect("Enter on that line: about the group", [gname, "member"], m, 10)
+        back_to_chat()
+    m = mark()
+    v(f"say go to secondlife:///app/teleport/{REGION}/60/60/24 or see secondlife:///app/parcel/{ZERO}/about ok")
+    run.expect("(the line said)", ["a parcel"], m, 10)
+    said = " | ".join(str(e.get("text") or e.get("name") or e) for e in said_since(m))
+    run.check("said: no thirty-six characters", "secondlife:" not in said, said[:200])
+    run.check("said: the place by its region, the rest by its kind", f"go to {REGION} (a place) or see a parcel ok" in said, said[:200])
+    wait(lambda: f"{REGION} (a place)" in value_of("id=chatHistory"), 5)
+    hist = value_of("id=chatHistory")
+    run.check("the history reads the same", f"{REGION} (a place)" in hist and "secondlife:" not in hist.splitlines()[-1], hist[-160:])
+    run.check("a chat log keeps the link itself", any(f"app/teleport/{REGION}/60/60/24" in p.read_text(encoding="utf-8") for p in (OUT / "app" / "chat-logs").rglob("Nearby chat.txt")), "")
+    m = mark()
+    key("tab")
+    wait_focus(lambda e: e["id"] == "chatHistory", 5)
+    key("ctrl+end")
+    key("enter")
+    run.expect("Enter on that line still opens what the words stand for", ["Teleporting", REGION], m, 8)
+    back_to_chat()
+    time.sleep(2)
+    say_in_app(f"//tp {REGION}/{start[0]:.0f}/{start[1]:.0f}/{start[2]:.0f}")   # (the next steps want the visitor in chat range)
+    wait(lambda: math.dist(tester_where()[:2], start[:2]) < 4, 30, 1)
+
+
+def small_gaps(run, nonce, tester_id):
+    """Small things from docs/access-gaps.md: one person's voice with voice off; MU* emotes in nearby chat and an IM; //find's
+    every match; Objects' Sort A to Z; Stand up where she sits; Show: Gestures; the status bar's parcel; Help's Newer
+    build?; World's Log out asked and Escape staying (its going is the last step's)."""
+    back_to_chat()
+    # ---- voice
+    m = mark()
+    say_in_app(f"//voice mute {VNAME}")
+    run.expect("//voice mute with no voice says why", ["oice"], m, 8)
+    # ---- emotes
+    m = mark()
+    say_in_app(f":waves {nonce}")
+    run.expect(":waves is an emote", [f"waves {nonce}"], m, 8)
+    wait(lambda: f"waves {nonce}" in value_of("id=chatHistory"), 5)
+    hist = value_of("id=chatHistory")
+    last = next((l for l in reversed(hist.splitlines()) if f"waves {nonce}" in l), "")
+    run.check("written as one, not with a colon", ": waves" not in last and ":waves" not in last and last.endswith(f"waves {nonce}"), last)
+    say_in_app(":)")
+    time.sleep(1)
+    run.check(":) stays as it is", any(l.endswith(": :)") for l in value_of("id=chatHistory").splitlines()), value_of("id=chatHistory")[-80:])
+    # ---- //find: every match
+    tag = f"Finder {nonce}"
+    x, y, z = tester_where()[:3]
+    r1 = api("TesselBuild", "create", 20, shape="box", name=tag, pos=[x + 2, y, z], scale=[0.5, 0.5, 0.5])
+    r2 = api("TesselBuild", "create", 20, shape="box", name=tag, pos=[x - 3, y, z], scale=[0.5, 0.5, 0.5])
+    ids = [r.get("id") for r in (r1, r2) if r.get("id")]
+    time.sleep(1.5)
+    m = mark()
+    say_in_app(f"//find object {tag}")
+    said = wait(lambda: next((str(e.get("text") or e.get("name")) for e in said_since(m) if tag in str(e)), None), 8, 0.3)
+    run.check("//find says each that matches", said and said.count(tag) == 2, str(said)[:200])
+    # ---- Stand up on what she's on, Sit on the rest; Sort A to Z
+    key("alt+7")
+    wait_focus(lambda e: e["id"] == "objects" or e["type"] == "ListItem", 6)
+    wait(lambda: selection("id=objects"), 6)
+    if ids:
+        api("LLAgent", "requestSit", 15, obj_uuid=ids[0])
+        time.sleep(2)
+        key("ctrl+f")
+        wait_focus(lambda e: e["id"] == "objectsFilter", 4)
+        type_text(tag, "id=objectsFilter")
+        wait(lambda: value_of("id=objectsFilter") == tag, 3, 0.2)
+        key("enter", target="id=objectsFilter")
+        wait(lambda: tag in selection("id=objects"), 6)
+        key("apps")
+        if menu_open("Touch"):
+            names = {x["name"] for x in find("type=MenuItem")}
+            run.check("on what she's sitting on, Stand up and not Sit", "Stand up" in names and "Sit" not in names, str(sorted(names))[:200])
+            if "Stand up" in names:
+                m = mark()
+                key("s")
+                run.expect("S stands her up", ["tand"], m, 8)
+            else:
+                key("esc")
+        time.sleep(1)
+        key("ctrl+f")
+        wait_focus(lambda e: e["id"] == "objectsFilter", 4)
+        key("esc")
+        key("alt+7")
+        wait_focus(lambda e: e["id"] == "objects" or e["type"] == "ListItem", 6)
+    key("apps")
+    if run.check("Objects' menu has Sort A to Z", menu_open("Sort A to Z"), focus_label()):
+        m = mark()
+        key("z")
+        run.expect("Z there says so", ["A to Z."], m, 6)
+        time.sleep(2)
+        firsts = [x["name"][0].lower() for x in find("type=ListItem") if "o'clock" in x["name"]]
+        run.check("the list by name", len(firsts) >= 2 and firsts == sorted(firsts), "".join(firsts))
+        key("apps")
+        run.check("and offers nearest first again", menu_open("Sort nearest first, Z"), focus_label())
+        m = mark()
+        key("z")
+        run.expect("back, said", ["Nearest first."], m, 6)
+    if ids:
+        try:
+            api("TesselBuild", "take", 30, ids=ids, folder_id=api("LLInventory", "getBasicFolderID", ft_name="object")["id"])
+        except Exception:
+            pass
+    back_to_chat()
+    # ---- Show: Gestures
+    key("alt+4")
+    wait_focus(lambda e: e["id"] == "inventory", 4)
+    key("alt+o")
+    if wait_focus(lambda e: e["id"] == "inventoryShow" or e["name"] == "Show", 4):
+        for _ in range(4):
+            key("down")
+            time.sleep(0.2)
+        m = mark()
+        key("down")
+        run.check("Show: Gestures, the last of them", wait(lambda: "Gestures" in (value_of("id=inventoryShow") or selection("id=inventoryShow")), 3), focus_label())
+        run.expect("what it found, said", ["gesture"], m, 6)
+        key("home")
+    back_to_chat()
+    # ---- the status bar
+    parcel = api("TesselAgent", "parcelInfo").get("name", "")
+    bar = lambda: " ".join(x["name"] for x in find("type=Text;name~=Location: "))
+    run.check("the status bar names the parcel", wait(lambda: parcel and parcel in bar(), 8), bar())
+    # ---- Help's Newer build?
+    key("alt+h")
+    if run.check("Help has Newer build?", menu_open("Newer build?"), focus_label()):
+        m = mark()
+        key("n")
+        run.expect("said either way (a build from the source, here)", ["source"], m, 6)
+    # ---- Log out: asked, Escape stays
+    key("alt+w")
+    if run.check("World has Log out", menu_open("Log out, back to the login window..."), focus_label()):
+        u("invoke type=MenuItem;name=Log out, back to the login window...")
+        run.check("it asks first, the focus on Log out", wait_focus(lambda e: e["id"] == "quitYes", 5), focus_label())
+        m = mark()
+        key("esc")
+        run.expect("Escape stays", ["Still here."], m, 5)
+    # (an item pressed by UI Automation leaves its menu open, which the focus doesn't show on a hidden desktop)
+    key("esc")
+    key("esc")
+    back_to_chat()
+
+
+def log_out(run, procs):
+    """World's Log out, going: the app logs out, a fresh process comes up at the login window with the form filled in but
+    for the password. Last of all: nothing after it has a session."""
+    global APP_PID
+    old = procs["app"]
+    say_in_app("//logout")
+    if not run.check("//logout asks", wait_focus(lambda e: e["id"] == "quitYes", 5), focus_label()):
+        return
+    key("enter")
+    run.check("Enter logs out", wait(lambda: not online(*TESTER), 30, 1), "")
+    run.check("the old process ends", wait(lambda: not alive(old), 30, 0.5), f"pid {old}")
+    fresh = wait(lambda: [pid for pid, what in ours() if what == "app" and pid != old], 20, 1)
+    new_pid = fresh[0] if fresh else None
+    form = new_pid and wait(lambda: next((l for l in u(f"windows {new_pid}").splitlines() if "log in" in l), None), 30, 1)
+    run.check("a fresh process, at the login window", form, str(fresh)[:200])
+    if new_pid:
+        APP_PID = procs["app"] = new_pid
 
 
 def settings_rows(run, nonce):
@@ -4323,6 +5008,32 @@ def clear_search():
         pass
 
 
+def window_held(run):
+    """WindowWatch.cs: the window's thread held (//holdwindow, the test's own command, sleeps on it) is noticed from
+    another thread. Held 2 s: logged when it ends, nothing said. Held 7 s: said at 5 s that the window isn't answering,
+    and that it's back when it is (with no reader here both are UI Automation notifications, which wait on the held
+    thread: they arrive after it, in order), and logged."""
+    def log_text():
+        return "".join(p.read_text(encoding="utf-8", errors="replace") for p in (OUT / "app" / "logs").glob("*.log"))
+    back_to_chat()
+    before = log_text().count("window: its thread was held")
+    m = mark()
+    say_in_app("//holdwindow 2")
+    got = wait(lambda: re.findall(r"window: its thread was held (\d+\.\d) s", log_text())[before:], 10, 0.5)
+    run.check("held 2 s: logged once it's over", got and 1.5 <= float(got[-1]) <= 3.5, f"{got}")
+    time.sleep(1)
+    run.check("held 2 s: nothing said of it", not any("answering" in (e.get("text") or "") for e in said_since(m)),
+              " | ".join(e.get("text") or "" for e in said_since(m)))
+    m = mark()
+    say_in_app("//holdwindow 7")
+    run.expect("held 7 s: said that the window isn't answering", ["The window isn't answering"], m, 15)
+    run.expect("and that it's back", ["The window is back"], m, 5)
+    text = log_text()
+    run.check("and logged: held 5 s, then how long", "window: its thread has been held 5 s" in text
+              and re.findall(r"window: its thread was held (\d+\.\d) s", text)[before + 1:] != [],
+              "; ".join(re.findall(r"window: its thread [^\r\n]*", text)[-3:]))
+
+
 def places(run, nonce):
     mark_name, route_name = f"Access Mark {nonce}", f"Access Route {nonce}"
     lm_folder = api("LLInventory", "getBasicFolderID", ft_name="landmark")["id"]
@@ -4497,6 +5208,7 @@ def objects_more(run, nonce):
     60 by words only in its description, its count said, the list named for it, Escape clearing it; Alt+Enter's details
     (owner, description, what she may do); what she can't take, delete or return not offered, and Delete saying so; Show's
     third choice listing what the visitor wears, touched and read as a thing in the world is."""
+    near_visitor()
     x, y, z, _ = tester_where()
     crowd, far, word = f"Access Crowd {nonce}", f"Access Far {nonce}", f"zebra{nonce}"
     pet = f"Access Pet {nonce}"
@@ -4804,6 +5516,7 @@ def scripts_editing(run, nonce):
     Contents reaching it, Enter opening it from the object, a syntax error saved through her confirmation, the errors said and F8
     placing the caret on one, a fix saved and compiled; Space stopping and starting it. Its script's error on the debug channel read
     out, once for the same words in half a minute, not with the switch off, and another's never."""
+    near_visitor()
     x, y, z, _ = tester_where()
     name, boxname, other = f"Access Script {nonce}", f"Access Scripted {nonce}", f"Access Whoops {nonce}"
     word = f"boom{nonce}"
@@ -7879,11 +8592,17 @@ def own_im_sound(run, tester_id):
     Applications key, after which the visitor's IMs ring the usual bells again."""
     visitor = visitor_id()
     back_to_chat()
+    near_visitor()
     run.check("(nobody has a sound of their own yet)", setting("access_im_sounds") == {}, json.dumps(setting("access_im_sounds")))
     key("shift+tab")
     wait_focus(lambda d: d["id"] == "chatPeople" or d["type"] == "ListItem", 4)
-    # (the nearest, and the only one there: the tester's other friends are a region away)
-    on = wait(lambda: next((c for c in find("type=ListItem;focused=1") if VNAME in c["name"]), None), 15, 0.5)
+    # (the nearest as a rule; a step before may have brought a friend near too)
+    on = None
+    for _ in range(4):
+        on = wait(lambda: next((c for c in find("type=ListItem;focused=1") if VNAME in c["name"]), None), 5, 0.5)
+        if on:
+            break
+        key("down")
     if not run.check("(People nearby beside chat, on the visitor)", on, label(on) if on else focus_label()):
         return
     key("apps")

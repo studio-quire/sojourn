@@ -1,0 +1,136 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+using Sojourn.Core;
+using Sojourn.Core.Agents;
+using Sojourn.Core.Leap;
+
+namespace Sojourn.Access;
+
+/// <summary>
+/// Chat logs on this PC: a plain text file a conversation, under the data folder's chat-logs/GRID/ACCOUNT, for rereading
+/// what someone said yesterday. These are other people's words: nothing here sends them anywhere, a log sent to Studio
+/// Quire only ever takes logs/ (LogShare), and the assistant's file tools can't read them (harness.py). Which conversation
+/// a file is stays in its name, by the end of its session id, as display names change: "Kestrel - 1a2b3c4d.txt". Each run
+/// of lines starts under a line with its date, so the lines themselves need only the time.
+/// </summary>
+public sealed class ChatLogs(string dir)
+{
+    public const string NearbyKey = "nearby";
+    const int TailBytes = 64 * 1024;
+
+    public sealed record Log(string Path, string Title, DateTime Last);
+
+    readonly Dictionary<string, string> _files = new();
+    readonly HashSet<string> _headed = new();
+    string _day = "";
+    static readonly Regex Ending = new(@" - [0-9a-f]{8}$", RegexOptions.Compiled);
+
+    public string Dir => dir;
+
+    static string Suffix(string key) => key.Replace("-", "") is { Length: >= 8 } s ? s[..8].ToLowerInvariant() : key;
+
+    string? Existing(string key)
+    {
+        if (_files.TryGetValue(key, out var known) && File.Exists(known)) return known;
+        if (!Directory.Exists(dir)) return null;
+        var pattern = key == NearbyKey ? "Nearby chat.txt" : $"* - {Suffix(key)}.txt";
+        var found = Directory.EnumerateFiles(dir, pattern).FirstOrDefault();
+        if (found != null) _files[key] = found;
+        return found;
+    }
+
+    static string SafeName(string title)
+    {
+        var chars = title.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray();
+        var name = new string(chars).Trim().TrimEnd('.');
+        if (name.Length > 60) name = name[..60].TrimEnd();
+        return name.Length > 0 ? name : "Someone";
+    }
+
+    /// <summary>A line added, under a new line with the date when the day or the run of lines has changed.</summary>
+    public void Add(string key, string title, string line)
+    {
+        var now = DateTime.Now;
+        var path = Existing(key);
+        if (path == null)
+        {
+            Directory.CreateDirectory(dir);
+            path = Path.Combine(dir, key == NearbyKey ? "Nearby chat.txt" : $"{SafeName(title)} - {Suffix(key)}.txt");
+            _files[key] = path;
+        }
+        var day = now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        if (day != _day) { _day = day; _headed.Clear(); }
+        var text = new StringBuilder();
+        if (_headed.Add(key)) text.Append("--- ").Append(now.ToString("dddd d MMMM yyyy", CultureInfo.CurrentCulture)).Append(" ---\r\n");
+        text.Append('[').Append(now.ToString("HH:mm", CultureInfo.InvariantCulture)).Append("] ").Append(line.ReplaceLineEndings("\r\n")).Append("\r\n");
+        File.AppendAllText(path, text.ToString(), new UTF8Encoding(false));
+    }
+
+    /// <summary>The conversation's last lines, for a tab opened again; none without a log.</summary>
+    public List<string> Tail(string key, int lines)
+    {
+        if (Existing(key) is not { } path) return new();
+        try
+        {
+            using var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            bool cut = f.Length > TailBytes;
+            if (cut) f.Seek(-TailBytes, SeekOrigin.End);
+            var all = new StreamReader(f, Encoding.UTF8).ReadToEnd().Split("\r\n", StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (cut && all.Count > 0) all.RemoveAt(0);   // (the seek landed inside it)
+            return all.Count > lines ? all.GetRange(all.Count - lines, lines) : all;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return new(); }
+    }
+
+    /// <summary>Every log, the most recent first, named as the conversation was when it began.</summary>
+    public List<Log> All()
+    {
+        if (!Directory.Exists(dir)) return new();
+        return Directory.EnumerateFiles(dir, "*.txt")
+            .Select(p => new Log(p, Ending.Replace(Path.GetFileNameWithoutExtension(p), ""), File.GetLastWriteTime(p)))
+            .OrderByDescending(l => l.Last).ToList();
+    }
+
+    public Log? Of(string key) => Existing(key) is { } path ? All().FirstOrDefault(l => l.Path == path) : null;
+
+    /// <summary>The log's words as a window shows them: at most the last two million characters, from a line's start.</summary>
+    public static string Read(string path)
+    {
+        const int Most = 2_000_000;
+        using var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var text = new StreamReader(f, Encoding.UTF8).ReadToEnd();
+        if (text.Length <= Most) return text;
+        var cut = text.IndexOf('\n', text.Length - Most) + 1;
+        return "(Only the last part: the whole log is in the file.)\r\n" + text[cut..];
+    }
+
+    /// <summary>A log deleted; false if it isn't one of these.</summary>
+    public bool Delete(string file)
+    {
+        var path = Path.GetFullPath(Path.Combine(dir, Path.GetFileName(file)));
+        if (!File.Exists(path) || !string.Equals(Path.GetExtension(path), ".txt", StringComparison.OrdinalIgnoreCase)) return false;
+        File.Delete(path);
+        foreach (var key in _files.Where(kv => kv.Value == path).Select(kv => kv.Key).ToList()) { _files.Remove(key); _headed.Remove(key); }
+        return true;
+    }
+}
+
+/// <summary>Deleting a chat log, as an op so her confirmation holds as for any delete. Nothing here reads one: what's in
+/// them stays out of the assistant's reach.</summary>
+public sealed class ChatLogApi : LeapApi
+{
+    public override string Name => "SojournChatLogs";
+    public override string Desc => "Sojourn Access's chat logs on this PC: only deleting one, after the person's confirmation";
+
+    public ChatLogApi(AgentSession s, ChatLogs logs) : base(s)
+    {
+        Op("delete", "{file, title}: a log deleted for good", a =>
+        {
+            var file = a.Str("file") ?? throw new LeapError("need file");
+            if (!logs.Delete(file)) throw new LeapError("no such log");
+            return new JsonObject();
+        });
+    }
+}

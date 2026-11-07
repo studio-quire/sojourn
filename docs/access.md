@@ -757,7 +757,7 @@ On the builders' line and five logs (our words). What's built from it is in `doc
 
 ### Notecards, settings and an old build (the blind tester, 2026-11-07)
 
-On the builders' line and log `tester-20261107T150406-3fe8fa` (our words). She doesn't mind Alt+0's long list herself but wants it better organised, and chose groups over a box that narrows it. Editing and saving a notecard worked, on 0.1.0.929, an older build than she'd been told to use, without her knowing: a line at login now says when a newer build is out. She found links in notecards couldn't be opened: Control+K now. Play on a sound in the world, as the official viewer does, is fine.
+On the builders' line and log `tester-20261107T150406-3fe8fa` (our words). She doesn't mind Alt+0's long list herself but wants it better organised, and chose groups over a box that narrows it. Editing and saving a notecard worked, on 0.1.0.929, an older build than she'd been told to use, without her knowing: a line at login now says when a newer build is out. She found links in notecards couldn't be opened: Control+K now. Play on a sound in the world, as the official viewer does, is fine. Paying an object worked, the first real payment (11:05; the build not checked, 947 or 955).
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 

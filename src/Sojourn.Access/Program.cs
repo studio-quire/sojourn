@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Sojourn.Core.Access;
 using Sojourn.Core.Agents;
 using Sojourn.Session.Login;
 
@@ -44,6 +46,7 @@ sealed class AccessApp : ApplicationContext
     readonly AccessSettings _settings;
     readonly LoginForm _login;
     readonly System.Windows.Forms.Timer _watch = new() { Interval = 250 };
+    readonly WindowWatch _held;
     MainForm? _main;
     LoginChoice? _sessionFor;
     bool _askedTerms, _shown;
@@ -58,7 +61,40 @@ sealed class AccessApp : ApplicationContext
         _login.Chosen += OnChosen;
         _login.FormClosed += (_, _) => { if (!_shown) _ = QuitAsync(); };
         _watch.Tick += (_, _) => Watch();
+        _held = new WindowWatch(SayWhileHeld, LogWhileHeld, RestartWhileHeld);
         _login.Show();
+    }
+
+    // --- the window's thread held (WindowWatch): all three on the watch's thread ------------------------------------------
+
+    /// <summary>NVDA's API works from any thread; a notification (any other reader's words, and the announcer's way when
+    /// NVDA refuses) would wait on the held thread, so Windows' own voice says it.</summary>
+    void SayWhileHeld(string text)
+    {
+        var said = _main?.Host?.ScreenReader?.Announcer;
+        var reader = said?.Reader ?? ScreenReaders.Running(null);
+        if (said?.Through == "NVDA") said.Answer(text, keep: false);
+        else if (said == null && reader == "NVDA" && _login.SayByNvda(text)) { }
+        else if (reader != null) WindowWatch.SayByWindows(text);
+        else said?.Answer(text, keep: false);   // (no reader here, as in the scripted test: it arrives when the thread does)
+    }
+
+    void LogWhileHeld(string line)
+    {
+        if (_main?.Host is { } host) host.Log.LogInformation("{Line}", line);
+        else Console.Error.WriteLine($"access: {line}");
+    }
+
+    void RestartWhileHeld()
+    {
+        try
+        {
+            var again = StartInfo(_sessionFor);
+            if (_main?.Host?.Session is { } s) Task.Run(() => s.LogoutAsync()).Wait(3000);
+            Process.Start(again);
+        }
+        catch (Exception e) { LogWhileHeld($"window: couldn't start again ({e.GetType().Name}: {e.Message})"); }
+        Process.GetCurrentProcess().Kill();
     }
 
     async void OnChosen(LoginChoice choice)
@@ -87,6 +123,7 @@ sealed class AccessApp : ApplicationContext
         _sessionFor = choice;
         _main = new MainForm(_opt, _settings, _args);
         _main.FormClosed += (_, _) => ExitThread();
+        _main.LogOutAsked += () => { if (_sessionFor is { } account) Restart(account); };
         _main.NeedsLogin += words =>
         {
             // after arrival the session gave up logging in again by itself: the login window takes over, as at the start
@@ -154,23 +191,30 @@ sealed class AccessApp : ApplicationContext
 
     void Restart(LoginChoice choice)
     {
-        var args = new List<string> { "--grid", choice.Grid, "--user", $"{choice.First} {choice.Last}", "--start", choice.Start };
+        try
+        {
+            var again = StartInfo(choice);
+            _ = QuitAsync(then: () => Process.Start(again));
+        }
+        catch (Exception e) { _login.Failed($"Couldn't start again for that account: {e.Message}"); }
+    }
+
+    /// <summary>This program again, at the login window, the form filled in for that account if there's one.</summary>
+    ProcessStartInfo StartInfo(LoginChoice? choice)
+    {
+        var args = choice is { } c ? new List<string> { "--grid", c.Grid, "--user", $"{c.First} {c.Last}", "--start", c.Start } : new List<string>();
         for (int i = 0; i < _args.Length; i++)
         {
             if (_args[i] is "--grid" or "--user" or "--password" or "--start") { i++; continue; }
             if (_args[i] == "--autologin") continue;
             args.Add(_args[i]);
         }
-        try
-        {
-            var psi = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
-            // run by dotnet (in the repo) the program is the dll; a packaged build is its own exe
-            if (Path.GetFileNameWithoutExtension(Environment.ProcessPath) is "dotnet")
-                psi.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "SojournAccess.dll"));
-            foreach (var a in args) psi.ArgumentList.Add(a);
-            _ = QuitAsync(then: () => Process.Start(psi));
-        }
-        catch (Exception e) { _login.Failed($"Couldn't start again for that account: {e.Message}"); }
+        var psi = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
+        // run by dotnet (in the repo) the program is the dll; a packaged build is its own exe
+        if (Path.GetFileNameWithoutExtension(Environment.ProcessPath) is "dotnet")
+            psi.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "SojournAccess.dll"));
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        return psi;
     }
 
     async Task QuitAsync(Action? then = null)

@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using LibreMetaverse;
 using Sojourn.Core.Agents;
 
 namespace Sojourn.Core.Leap;
@@ -12,6 +13,30 @@ namespace Sojourn.Core.Leap;
 public sealed class SojournPeople : SessionApi
 {
     public override string Name => "SojournPeople";
+    async Task<JsonNode?> WhereFriendAsync(JsonObject a, CancellationToken ct)
+    {
+        var c = C;
+        var who = a.Str("to") ?? a.Str("id");
+        var f = S.People.Friend(who) ?? throw new LeapError("not a friend");
+        if (!f.IsOnline) throw new LeapError("offline");
+        if (!f.CanSeeThemOnMap) throw new LeapError("they don't let you see them on the map");
+        var got = new TaskCompletionSource<FriendFoundReplyEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void On(object? _, FriendFoundReplyEventArgs e) { if (e.AgentID == f.UUID) got.TrySetResult(e); }
+        c.Friends.FriendFoundReply += On;
+        try
+        {
+            c.Friends.MapFriend(f.UUID);
+            var e = await got.Task.WaitAsync(TimeSpan.FromSeconds(8), ct);
+            if (e.RegionHandle == 0) throw new LeapError("the grid doesn't say where they are");
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(8));
+            var region = await c.Grid.GetGridRegionAsync(e.RegionHandle, GridLayerType.Objects, cts.Token);
+            return new JsonObject { ["region"] = region?.Name ?? "a region the map doesn't name", ["x"] = (int)e.Location.X, ["y"] = (int)e.Location.Y, ["z"] = (int)e.Location.Z };
+        }
+        catch (TimeoutException) { throw new LeapError("the grid doesn't say where they are"); }
+        finally { c.Friends.FriendFoundReply -= On; }
+    }
+
     public override string Desc => "Friends' rights and removal, contact sets, away and do not disturb, typing, hover height, experiences, teleport history, "
         + "favourites, pay prices, places offered, offers turned away, group chat snooze/off/moderation, money received and spent, display name, notes";
 
@@ -84,6 +109,9 @@ public sealed class SojournPeople : SessionApi
             (a, ct) => J(nn.NotesAsync(a, ct)));
         Op("setNotes", "{to, text, append?} -> {notes, was}: replace the notes (or add a line with append); was: what they said before",
             (a, ct) => J(nn.SetNotesAsync(a, ct)));
+
+        Op("whereFriend", "{to (an id, or a friend's name)} -> {region, x, y, z}: where on the grid a friend is online, if they let the person see them on the map",
+            WhereFriendAsync);
 
         // a group's chat
         Op("groupChat", "{group? (id or name)} -> one group's {chat_on, snoozed_until?, in_chat, i_moderate, members: [{id, name, moderator, "

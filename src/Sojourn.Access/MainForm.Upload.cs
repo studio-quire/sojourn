@@ -27,6 +27,8 @@ public sealed partial class MainForm
         + "|Animations (BVH, anim)|*.bvh;*.anim|Models (glTF, GLB, Collada, OBJ)|*.gltf;*.glb;*.dae;*.obj|Every file|*.*";
 
     bool _uploading;
+    /// <summary>What the last upload made, for what asked for it (her profile picture).</summary>
+    UUID _uploadedItem;
 
     /// <summary>Control+U and the menu: into the folder selected in the inventory if the focus is on one there, else the
     /// kind's own folder (offered both ways in the window).</summary>
@@ -43,7 +45,8 @@ public sealed partial class MainForm
         return UploadAsync(null, path.Length > 0 ? Environment.ExpandEnvironmentVariables(path) : null);
     }
 
-    async Task UploadAsync(InventoryFolder? into, string? path)
+    /// <param name="filter">The Open window's kinds of file, where only one will do.</param>
+    async Task UploadAsync(InventoryFolder? into, string? path, string? filter = null)
     {
         if (_ops?.Client == null) { Answer("Not in world yet: uploads go into your inventory once you're logged in."); return; }
         if (_uploading) { Answer("An upload is under way; one at a time."); return; }
@@ -52,7 +55,7 @@ public sealed partial class MainForm
         {
             using var pick = new OpenFileDialog
             {
-                Title = "Upload to Second Life: a picture, sound, animation or model", Filter = OpenFilter, CheckFileExists = true,
+                Title = filter != null ? "Upload to Second Life: a picture" : "Upload to Second Life: a picture, sound, animation or model", Filter = filter ?? OpenFilter, CheckFileExists = true,
                 Multiselect = false,
             };
             if (pick.ShowDialog(this) != DialogResult.OK) { Reader?.Answer("Nothing uploaded.", keep: false); return; }
@@ -148,6 +151,7 @@ public sealed partial class MainForm
             };
             var paid = r.Int("charged", 0) is > 0 and var fee ? $" L${fee} paid." : "";
             if (!UUID.TryParse(r.Str("item_id"), out var item)) { Answer($"Uploaded {name}, {what}, into {folderName}.{paid}"); return; }
+            _uploadedItem = item;
             bool selected = await RevealAsync(item, folderId, keepTree);
             var where = selected && !(InInventory && _pane == _pane1) ? " It's selected in your inventory, Alt+4." : "";
             var next = mesh ? " Rez it from there: the Applications key, Rez on the ground." : "";

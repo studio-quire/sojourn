@@ -152,7 +152,7 @@ public sealed partial class Confirmations
         ("TesselBuild", "take") => a.Has("folder_id") && InTrash(a.Uuid("folder_id")) || !a.Bool("copy", false) && Ids(a).Any(id => !OwnedByMe(id)) ? Kind.Delete : null,
         ("TesselInventory", "move") => InTrash(a.Uuid("folder_id")) ? Kind.Delete : null,
         ("TesselInventory", "delete" or "emptyTrash") => Kind.Delete,
-        ("TesselAgent", "parcelReturn" or "deletePick") or ("TesselGroups", "deleteRole") => Kind.Delete,
+        ("TesselAgent", "parcelReturn" or "deletePick") or ("TesselGroups", "deleteRole") or ("SojournChatLogs", "delete") => Kind.Delete,
         // temporary objects are deleted by the region within a minute
         ("TesselBuild", "modify") when a.Bool("temp", false) => Kind.Delete,
         ("TesselBuild", "modifyEach") when Edits(a).Any(e => e.Bool("temp", false)) => Kind.Delete,
@@ -355,7 +355,9 @@ public sealed partial class Confirmations
             case ("TesselAgent", "parcelReturn"):
                 return (Lang.F("Return objects on {0} to their owners", await ParcelAsync()), a.Bool("others", false) ? Lang.T("Everyone's but yours.") : await OwnersAsync(a));
             case ("TesselAgent", "deletePick"):
-                return (Lang.T("Delete one of your profile picks"), "");
+                return (Lang.T("Delete one of your profile picks"), a.Str("name") ?? "");
+            case ("SojournChatLogs", "delete"):
+                return (Lang.F("Delete your chat log of {0}", a.Str("title") ?? ""), Lang.T("It's gone from this PC for good."));
             case ("TesselGroups", "deleteRole"):
                 return (Lang.T("Delete a group role"), "");
             case ("TesselBuild", "modify" or "modifyEach") when kind == Kind.Delete:

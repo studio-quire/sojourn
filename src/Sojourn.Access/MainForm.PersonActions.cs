@@ -22,12 +22,17 @@ public sealed partial class MainForm
             new("Send &IM", () => StartIm(id, name)),
             new("&Walk to", () => _ = NearAsync(id, name, p => _ = _cmd.WalkAsync(p.Pos, p.Name, 1.5, $"//go tp person {p.Name}"))),
             new("&Face", () => _ = NearAsync(id, name, p => _ = _cmd.FacePointAsync(p.Pos, p.Name))),
-            new("W&here", () => _ = NearAsync(id, name, p => Answer($"{p.Name} is {_ops.Where(p.Pos, full: true)}."))),
+            new("W&here", () => _ = WhereAsync(id, name)),
             new("&Describe", () => _ = DescribeAsync(OfPerson(id, name)), "Control+D"),
             new("F&ollow", () => _ = NearAsync(id, name, p => _cmd.Follow(p))),
             new("&Beacon", () => _ = NearAsync(id, name, p => _walk?.BeaconOn(p.Name, p.Id))),
         };
-        if (profile) list.Add(new("&Profile", () => _ = ProfileAsync(id, name)));
+        if (profile)
+        {
+            list.Add(new("&Profile", () => _ = ProfileAsync(id, name)));
+            list.Add(new("Notes on the&m", () => _ = ProfileAsync(id, name, toNotes: true)));
+        }
+        list.Add(new("Chat &log", () => ChatLogOf(((_ops.Client?.Self.AgentID ?? UUID.Zero) ^ id).ToString(), name)));
         list.Add(new("P&ay...", () => _ = PayAsync(id, name)));
         list.Add(new("&Give what you copied", () => _ = GiveCopiedAsync(id, name)));
         list.Add(new("Offer &teleport", () => _ = PersonIdOpAsync("offerTeleport", id, $"Teleport offered to {name}.")));
@@ -35,6 +40,9 @@ public sealed partial class MainForm
         if (!friend) list.Add(new("Offer frie&ndship", () => _ = PersonIdOpAsync("offerFriendship", id, $"Friendship offered to {name}.")));
         if (friend) list.Add(new("Start a co&nference...", () => _ = StartConferenceAsync(new Friend(id, name, true))));
         if (Host?.Session.State.Groups.IsEmpty == false) list.Add(new("In&vite to a group...", () => _ = InviteAsync(id, name)));
+        bool silent = Voice?.PeerIsMuted(id) == true;
+        list.Add(new(silent ? "Unm&ute in voice" : "M&ute in voice", () => _ = VoiceMuteAsync(id, name, !silent)));
+        list.Add(new("How loud in voice...", () => _ = VoiceVolumeAsync(id, name)));
         list.Add(new("Always in&cognito with them", () => IncognitoWith(id, name)));
         list.Add(new(blocked ? "Unbloc&k" : "Bloc&k", () => _ = blocked ? UnblockAsync(new Blocked(id, name, "resident")) : BlockAsync(id, name, "resident")));
         list.Add(new(SoundItemText(name, group: false), () => ChooseImSound(id, name, group: false)));
@@ -98,6 +106,19 @@ public sealed partial class MainForm
         Answer($"{name} isn't nearby{online}.");
     }
 
+    /// <summary>Where someone is: from her, if they're near; a friend anywhere on the grid who lets her see them on the map, by
+    /// region and spot.</summary>
+    async Task WhereAsync(UUID id, string name)
+    {
+        var near = (await _ops.PeopleAsync(512)).FirstOrDefault(x => x.Id == id);
+        if (near != null) { Answer($"{near.Name} is {_ops.Where(near.Pos, full: true)}."); return; }
+        if (_ops.Client is not { } c || !c.Friends.FriendList.TryGetValue(id, out var f)) { Answer($"{name} isn't nearby."); return; }
+        if (!f.IsOnline) { Answer($"{name} isn't nearby, and offline."); return; }
+        var r = await _ops.ReadAsync("SojournPeople", "whereFriend", new JsonObject { ["to"] = id.ToString() });
+        if (PersonOps.Error(r) is { } e) { Answer($"{name} is online, and not nearby: {e}."); return; }
+        Answer($"{name} is in {r.Str("region")}, at {r.Int("x", 0)}, {r.Int("y", 0)}. Request teleport asks them for one.");
+    }
+
     async Task SetRightAsync(UUID id, string name, string arg, bool on, string can)
     {
         if (await ConfirmedAsync("SojournPeople", "friendRights", new JsonObject { ["to"] = id.ToString(), [arg] = on }) is not { } r) return;
@@ -115,8 +136,15 @@ public sealed partial class MainForm
     async Task ProfileWordsAsync(string name)
     {
         name = name.Trim();
-        if (name.Length == 0) { Answer("//profile NAME: anyone's profile, by name."); return; }
+        if (name.Length == 0 || name.Equals("me", StringComparison.OrdinalIgnoreCase)) { await MyProfileAsync(); return; }
         if (await FindByNameAsync(name) is { } who) await ProfileAsync(who.Id, who.Name);
+    }
+
+    async Task NotesWordsAsync(string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0) { Answer("//notes NAME: your own notes on someone, by name. Only you see them."); return; }
+        if (await FindByNameAsync(name) is { } who) await ProfileAsync(who.Id, who.Name, toNotes: true);
     }
 
     async Task FriendWordsAsync(string name)

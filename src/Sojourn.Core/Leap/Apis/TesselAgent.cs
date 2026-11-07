@@ -62,11 +62,11 @@ public sealed class TesselAgent : SessionApi
         Op("parcelReturn", "sojourn: {owner_id | owner_ids | others: true}: return objects on this parcel to their owners", (a, ct) => Wrap(S.Parcels.ReturnAsync(a, ct)));
         Op("parcelEject", "sojourn: {to, ban?} -> {ejected}: eject (and ban) someone from my parcel; an error if the region left them where they were",
             (a, ct) => Wrap(S.Parcels.EjectAsync(a, ct)));
-        Op("profile", "sojourn: {id?=me} -> {name, about, image_id, born, url, first_life, partner?, interests?, picks}", (a, ct) => Wrap(S.Profiles.ProfileAsync(a, ct)));
+        Op("profile", "sojourn: {id?=me} -> {name, about, image_id, born, url, first_life, partner?, interests?, picks, groups}", (a, ct) => Wrap(S.Profiles.ProfileAsync(a, ct)));
         Op("setProfile", "sojourn: {about?, image_id?, url?, first_life?, first_life_image_id?, want_to?, skills?, languages?} -> my profile",
             (a, ct) => Wrap(S.Profiles.SetProfileAsync(a, ct)));
         Op("pick", "sojourn: {pick_id, id?} -> {name, desc, region, parcel, pos, image_id}", (a, ct) => Wrap(S.Profiles.PickAsync(a, ct)));
-        Op("createPick", "sojourn: {name?, desc?, image_id?, pick_id?} -> {pick_id}: a pick of where I stand (pick_id: edit that one)",
+        Op("createPick", "sojourn: {name?, desc?, image_id?, pick_id?} -> {pick_id}: a pick of where I stand (pick_id: edit that one, its place kept unless here: true)",
             (a, ct) => Wrap(S.Profiles.CreatePickAsync(a, ct)));
         Op("deletePick", "sojourn: {pick_id}", a => S.Profiles.DeletePick(a));
         Op("mute", "sojourn: {id | name, type?}: block a resident or object (their chat, IMs, offers, dialogs stop reaching me; their voice "

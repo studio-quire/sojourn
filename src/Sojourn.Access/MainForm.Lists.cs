@@ -18,6 +18,16 @@ public sealed partial class MainForm
     ContextMenuStrip _chatPersonMenu = null!;
     long _listsAt;
 
+    bool _objectsAToZ;
+
+    /// <summary>Whether she's sitting on this object or one of its parts.</summary>
+    bool SeatedOn(UUID thing)
+    {
+        if (_ops.Client is not { } c || c.Self.SittingOn == 0 || Host?.Session.Region is not { } w) return false;
+        if (!w.Prims.TryGetValue(c.Self.SittingOn, out var seat)) return false;
+        return seat.ID == thing || (seat.ParentID != 0 && w.Prims.TryGetValue(seat.ParentID, out var root) && root.ID == thing);
+    }
+
     static ListView List(string name, string accessibleName)
     {
         var l = new ReaderList
@@ -58,6 +68,9 @@ public sealed partial class MainForm
             _objectMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_objects.FocusedItem?.Tag is PersonOps.Thing t) act(t); }));
         Item("&Touch", t => _ = TouchThingAsync(t));
         Item("&Sit", t => _ = ThingOpAsync("requestSit", t, $"Sitting on {t.Name}."));
+        var sitItem = _objectMenu.Items[^1];
+        Item("&Stand up", t => _ = _cmd.RunAsync("//stand"));
+        var standItem = _objectMenu.Items[^1];
         // as the viewer's pie menu offers them (ThingActions.For; the blind tester's tip jars, 2026-11-05)
         Item("P&ay...", t => _ = PayThingAsync(t.PayTo, t.Name));
         var payItem = _objectMenu.Items[^1];
@@ -86,6 +99,13 @@ public sealed partial class MainForm
         var copySettings = _objectMenu.Items[^1];
         Item("Bl&ock", t => _ = BlockAsync(t.Id, t.Name, "object"));
         var blockItem = _objectMenu.Items[^1];
+        var sortItem = new ToolStripMenuItem("Sort A to &Z", null, (_, _) =>
+        {
+            _objectsAToZ = !_objectsAToZ;
+            Reader?.Answer(_objectsAToZ ? "A to Z." : "Nearest first.", keep: false);
+            _ = RefreshObjects(true);
+        });
+        _objectMenu.Items.Add(sortItem);
         // what may leave the world together, each through her confirmation where it isn't hers, and well away from what's
         // pressed every day: Return has no letter of its own, so only the arrows reach it (the blind tester found no way to
         // delete what she'd rezzed, 2026-11-01)
@@ -108,6 +128,12 @@ public sealed partial class MainForm
             foreach (ToolStripItem i in _objectMenu.Items)
                 i.Visible = world || i.Text is "&Touch" or "&Describe" or "Deta&ils" or "W&here" or "&Parts" or "&Refresh";
             offItem.Visible = mine;
+            // on what she's sitting on, Stand up in its place
+            bool seated = world && sel != null && SeatedOn(sel.Id);
+            sitItem.Visible = world && !seated;
+            standItem.Visible = seated;
+            sortItem.Text = _objectsAToZ ? "Sort nearest first, &Z" : "Sort A to &Z";
+            sortItem.Visible = true;
             contentsItem.Visible = moveItem.Visible = editItem.Visible = world;
             blockItem.Visible = world && sel is { Mine: false };
             takeItem.Visible = world && MayTake(sel!);
@@ -269,7 +295,7 @@ public sealed partial class MainForm
         foreach (var l in first) Looking(l, "People nearby", true);
         try
         {
-            var people = await _ops.PeopleAsync(96);
+            var people = await _ops.PeopleAsync(_set.PeopleRange);
             var items = people.Select(p => (Text: $"{p.Name}, {_ops.Where(p.Pos)}", Key: p.Id.ToString(), Tag: (object)p)).ToList();
             foreach (var l in lists)
             {
@@ -304,6 +330,7 @@ public sealed partial class MainForm
             var page = worn ? WornPage(await WornAsync(), filter)
                 : await _ops.NearbyAsync(_set.ObjectsRange, ObjectsLimit, filter, renew: filter != null ? null : asked ? 0 : 5, scan: filter != null, others: others);
             var things = page.Things;
+            if (_objectsAToZ && !worn) things = things.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
             await ListDelay(_objects);
             var items = things.Select(t => (Text: ObjectLine(t), Key: t.Id.ToString(), Tag: (object)t)).ToList();
             if (page.More > 0) items.Add(($"More: {page.More} further on. Enter lists the next {Math.Min(page.More, ObjectsPage)}.", MoreRow, null!));

@@ -104,6 +104,7 @@ public sealed partial class MainForm : Form
         // the renderer's trackers attach to the session's client when there's a renderer out of sight
         var host = Host = new SessionHost(options, renderHooks: _opt.Render) { App = "access" };
         host.Config.Version = AppInfo.Version;   // a packaged build's own number at the login (docs/tpv-policy.md)
+        host.Config.Channel = "Sojourn Access";   // its own channel, apart from the VR client's (TPV policy 1.b; docs/directory-application.md)
         // a grid on this PC is reached over loopback alone: no port open to the network, and Windows Firewall never asks
         LibreMetaverse.Settings.BindAddress = Uri.TryCreate(c.Grid, UriKind.Absolute, out var gu) && gu.IsLoopback
             ? System.Net.IPAddress.Loopback : System.Net.IPAddress.Any;
@@ -114,6 +115,7 @@ public sealed partial class MainForm : Form
         host.Agent.StateDir = StartPlaces.StateDir(_opt.BaseDir, c.Grid, c.First, c.Last);
         // no greeting while logging in (arriving says where the keys are); after that, when a screen reader starts
         await host.StartAllAsync(_args, handle, new FormVoice(this), "");
+        StartChatLogs(key, c.First, c.Last);
         // no frame loop here: the autopilot (the assistant's walks) steers by the avatar dead-reckoned between updates
         host.Session.Motion.DeadReckon = Environment.GetEnvironmentVariable("SOJOURN_DEAD_RECKON") != "0";
         // the collision model (no GPU needed): walk mode's rays, paths, placing by words
@@ -139,9 +141,12 @@ public sealed partial class MainForm : Form
         _cmd.About = () => AppInfo.About(_opt.BaseDir);
         _cmd.Quote = text => Answer(text, LineFrom.People);
         _cmd.SendLog = () => BeginInvoke(() => RealInput.Ours(SendLog));
+        _cmd.ChatLog = words => BeginInvoke(() => RealInput.Ours(() => ShowChatLogs(words)));
+        _cmd.LogOut = () => BeginInvoke(() => RealInput.Ours(AskLogOut));
         _cmd.Touch = words => (Task)Invoke(() => TouchWordsAsync(words));
         _cmd.Block = words => (Task)Invoke(() => BlockWordsAsync(words));
         _cmd.Profile = words => (Task)Invoke(() => ProfileWordsAsync(words));
+        _cmd.Notes = words => (Task)Invoke(() => NotesWordsAsync(words));
         _cmd.Friend = words => (Task)Invoke(() => FriendWordsAsync(words));
         _cmd.Self = (verb, words) => (Task)Invoke(() => SelfWordsAsync(verb, words));
         _cmd.Unblock = words => (Task)Invoke(() => UnblockWordsAsync(words));
@@ -188,7 +193,11 @@ public sealed partial class MainForm : Form
         host.ScreenReader.ReadMine = () => _set.ReadMine;
         host.ScreenReader.Actions.ConfirmKeys = "Enter confirms, Escape cancels.";
         host.ScreenReader.Actions.ConfirmListKey = "Control N, then Tab: the whole list.";
-        host.Feed.Joined += e => BeginInvoke(() => Joined(e));
+        host.Feed.Joined += e =>
+        {
+            bool spell = host.Session.Private.On;   // (as it arrived, whatever has changed once the window gets to it)
+            BeginInvoke(() => Joined(e, spell));
+        };
         host.Feed.OwnScriptErrors = () => _set.ScriptErrors;
         host.Session.OpenWebPage = offer => BeginInvoke(() => OpenLink(offer.Url));   // a script's llLoadURL, "Go to page" pressed
         StartEvents();
@@ -220,6 +229,7 @@ public sealed partial class MainForm : Form
         _arrived = true;
         _ = ReadFavoritesAfterLoadingAsync();
         _ = SayIfNewerBuildAsync();
+        _ = SayChatLogsOnceAsync();
     }
 
     void Tick()
@@ -266,12 +276,38 @@ public sealed partial class MainForm : Form
         var title = incognito ? $"Sojourn Access: {name}, incognito" : $"Sojourn Access: {name}, {me.Region}";
         if (Text != title) Text = title;
         var money = Host!.Session.BalanceKnown ? $", L${c.Self.Balance}" : "";
-        ShowWhere($"{me.Region} {Math.Round(me.Pos.X)}, {Math.Round(me.Pos.Y)}, {Math.Round(me.Pos.Z)}{money}{(incognito ? ", incognito" : "")}", place: true);
+        RefreshParcelWords(me.Pos, me.Region);
+        ShowWhere($"{me.Region} {Math.Round(me.Pos.X)}, {Math.Round(me.Pos.Y)}, {Math.Round(me.Pos.Z)}{_parcelWords}{money}{(incognito ? ", incognito" : "")}", place: true);
         if (_lastRegion != null && me.Region != _lastRegion && !_cmd.TeleportingSelf && Environment.TickCount64 - _teleportedAt > 15_000
             && _walk?.SeatedRecently != true)   // a seated crossing is walk mode's to say, with whether the seat held
             Announce($"Now in {me.Region}.");
         if (_lastRegion != null && me.Region != _lastRegion) OutfitMoving(login: false);
         _lastRegion = me.Region;
+    }
+
+    string _parcelWords = "";
+    (string Region, LibreMetaverse.Vector3 Pos, long At) _parcelAskedAt;
+    bool _parcelAsking;
+
+    /// <summary>The status bar's parcel and its no-fly and no-build marks, as //status parcel says them: asked again on moving a
+    /// few metres, reaching another region, or a minute on, as an owner may change them.</summary>
+    async void RefreshParcelWords(LibreMetaverse.Vector3 pos, string region)
+    {
+        long now = Environment.TickCount64;
+        var (askedRegion, askedPos, askedAt) = _parcelAskedAt;
+        if (_parcelAsking || (askedRegion == region && LibreMetaverse.Vector3.Distance(askedPos, pos) < 8 && now - askedAt < 60_000)) return;
+        _parcelAsking = true;
+        _parcelAskedAt = (region, pos, now);
+        try
+        {
+            var r = await _ops.ReadAsync("TesselAgent", "parcelInfo");
+            if (PersonOps.Error(r) != null) return;
+            var options = r["options"] as JsonObject;
+            bool Off(string option) => options?[option] is JsonValue v && v.TryGetValue<bool>(out var on) && !on;
+            var marks = new[] { ("fly", "no fly"), ("build", "no build") }.Where(m => Off(m.Item1)).Select(m => $", {m.Item2}");
+            _parcelWords = $", {r.Str("name") ?? "unnamed parcel"}{string.Concat(marks)}";
+        }
+        finally { _parcelAsking = false; }
     }
 
     bool _closeByHand, _quitAsked;
@@ -335,6 +371,9 @@ public sealed partial class MainForm : Form
     }
 
     /// <summary>The answer to the person's own key or command: cuts in.</summary>
+    /// <summary>Help's and //logout's Log out, once she has said so (Program starts afresh at the login window).</summary>
+    public event Action? LogOutAsked;
+
     public void Answer(string text) => Answer(text, LineFrom.App);
 
     /// <summary>An answer carrying words whose they are, for the session log: LineFrom.People for one that quotes
@@ -372,7 +411,9 @@ public sealed partial class MainForm : Form
 
     /// <summary>The announcer's line for an entry (on its thread): muted all or by source, or worded for where the person
     /// is: a conversation's lines without its name while it's the one in focus; the first line of a new IM says so.</summary>
-    string? Shape(FeedEntry e, string line)
+    string? Shape(FeedEntry e, string line) => ShapeWords(e, line) is { } said ? FriendlyLinks(said) : null;
+
+    string? ShapeWords(FeedEntry e, string line)
     {
         if (IsPartGoing(e)) return null;   // a long line's parts: "Sent in 3 parts." instead (MainForm.LongLines.cs)
         if (_set.MuteAll) return null;
@@ -529,6 +570,7 @@ public sealed partial class MainForm : Form
         Chat
         Enter: say
         Shift+Enter: whisper
+        :waves at the start of a line: an emote, as /me waves
         Control+Enter: shout
         //help in the Say box: the slash commands
         Control+Backspace: delete the word before the caret
@@ -566,6 +608,7 @@ public sealed partial class MainForm : Form
         Control+Shift+C: copy from the mark to the line you're on
         Control+Shift+L: copy the assistant's last answer, whole
         Control+Shift+K: the links seen in chat, IMs and notices; Enter opens one
+        Read-out menu, Chat logs, or //chatlog: what's been said, kept on this PC; //chatlog NAME: that conversation's
         Control+Shift+Y: what you've blocked; Enter or Delete unblocks one
         Enter on a line with a link in a history: opens it
         Control+Shift+T: times in the histories
@@ -644,6 +687,7 @@ public sealed partial class MainForm : Form
         F4 held: talk
         Shift+F4: switch to an open mic
         Control+Shift+V: who's in voice
+        //voice mute NAME, //voice unmute NAME, //voice volume NAME and 0 to 2: one person, for you alone
         Control+Shift+O: the sound out of the next device (headphones, speakers), then back to the default; World > Sound output lists them
 
         Other
@@ -652,7 +696,10 @@ public sealed partial class MainForm : Form
         //rebake: when you're told you look grey or blurred
         //stopanimations: when you're told you're stuck in a pose
         //hover, //displayname, //maturity: say each; with a value, change it
+        //profile: your own profile, to read and change, and your picture; //profile NAME: anyone's
+        //notes NAME: your own notes on someone
         //about: which version this is
+        //logout: back to the login window, after you say so
         F1: this list
         """;
 
@@ -868,10 +915,13 @@ public sealed partial class MainForm : Form
     /// key answers where it put them. Null when the person cancelled it here ("Cancelled." is all they hear).</summary>
     async Task<JsonObject?> ConfirmedAsync(string pump, string op, JsonObject args)
     {
-        if (await ConfirmedCallAsync(_ops.GatedAsync(pump, op, args), args) is not { } r) return null;
+        if (await ConfirmedCallAsync(_ops.GatedAsync(pump, op, args), args, _confirmFrom) is not { } r) return null;
         if (op is "delete" or "emptyTrash" && pump is "TesselInventory" or "TesselBuild" && PersonOps.Error(r) == null) _earcons?.Deleted();
         return r;
     }
+
+    /// <summary>A window of her own she's working from (her profile): a confirmation asked meanwhile goes back there.</summary>
+    Form? _confirmFrom;
 
     /// <summary>The same for a call already under way whose gate holds these args. from: a window of its own the person is in
     /// (a script's editor), this window coming forward for the answer and that one going back after.</summary>

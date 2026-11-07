@@ -163,6 +163,9 @@ public sealed class LoginForm : Form
         else _uia.Speak(text, interrupt: true);
     }
 
+    /// <summary>From any thread (the window's held: WindowWatch), through NVDA's API; whether it took.</summary>
+    public bool SayByNvda(string text) => _nvda is NvdaVoice n && n.Speak(text, interrupt: true);
+
     void Choose()
     {
         if (_busy) { Say("Logging in, a moment."); return; }

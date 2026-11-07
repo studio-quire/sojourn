@@ -289,7 +289,7 @@ static class Program
             case "rights":
                 {
                     var (who, onoff) = Split(rest);
-                    client.Friends.GrantRights(UUID.Parse(who), onoff == "on" ? FriendRights.CanSeeOnline | FriendRights.CanModifyObjects : FriendRights.CanSeeOnline);
+                    client.Friends.GrantRights(UUID.Parse(who), onoff == "on" ? FriendRights.CanSeeOnline | FriendRights.CanModifyObjects : onoff == "map" ? FriendRights.CanSeeOnline | FriendRights.CanSeeOnMap : FriendRights.CanSeeOnline);
                     return "ok";
                 }
             case "pet": return await Pet(rest);
