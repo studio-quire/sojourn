@@ -1448,7 +1448,7 @@ def session(run, procs):
     for name, step in steps:
         if only and not any(w in name for w in only):
             continue
-        if time.time() - fresh_at > FRESH_SERVER_SECS:
+        if FRESH_SERVER_SECS > 0 and time.time() - fresh_at > FRESH_SERVER_SECS:
             fresh_server(procs)
             fresh_at = time.time()
         u(f"mark step: {name}")
@@ -1459,7 +1459,7 @@ def session(run, procs):
         back_to_chat()
 
 
-FRESH_SERVER_SECS = 300
+FRESH_SERVER_SECS = float(os.environ.get("ACCESS_FRESH_SECS", "300"))   # (0 or less: never)
 
 
 def fresh_server(procs):
@@ -1480,10 +1480,8 @@ def fresh_server(procs):
                             for e in events()[n:]), 15, 0.5):
         print("     (QuireUia started afresh, but not listening for announcements yet)")
     u(f"watch {procs['app']}")
-    try:
-        u(f"activate {procs['app']}")   # (the server's own small window may have taken the hidden desktop's foreground)
-    except ToolError as e:
-        print(f"     (activate after QuireUia started afresh: {e})")
+    # (not activated again: the server's small window doesn't take the foreground, and activating the main window
+    # moved the focus out of a window of the app's own, a script's editor, and onto the tab strip)
     u("mark QuireUia started afresh")
 
 
@@ -1551,17 +1549,15 @@ def tab_order(run):
         if d["id"] == "chatInput":
             break
     order = " -> ".join(label(d) for d in stops)
-    # the blind tester's order (2026-10-31): Say, the history, People nearby, back to Say
-    run.check("People nearby is the stop before Say", len(stops) > 2 and (stops[-2]["id"] == "chatPeople" or stops[-2]["type"] == "ListItem"),
-              label(stops[-2]) if len(stops) > 2 else "focus didn't move")
+    # Radegast's order, and the blind tester's since 2026-11-07: Say, People nearby, the history, back to Say
+    run.check("People nearby is the stop after Say", len(stops) > 2 and (stops[1]["id"] == "chatPeople" or stops[1]["type"] == "ListItem"),
+              label(stops[1]) if len(stops) > 1 else "focus didn't move")
     run.check("Tab goes round and back to Say, no dead ends", stuck is None and stops[-1]["id"] == "chatInput",
               order if stuck is None else f"stuck at {label(stuck)}: {order}")
     # the tab strips aren't stops (Alt+number and Control+Tab switch them): Tab and Shift+Tab go between history and Say
     strips = [label(d) for d in stops if d["id"] in ("areas", "conversations") or d["type"] in ("Tab", "TabItem")]
     run.check("no tab strip among the Tab stops", not strips, "; ".join(strips) or order)
-    run.check("Tab from Say goes to the history", len(stops) > 1 and stops[1]["id"] == "chatHistory",
-              label(stops[1]) if len(stops) > 1 else "focus didn't move")
-    run.check("and Tab again to People nearby", len(stops) > 2 and (stops[2]["id"] == "chatPeople" or stops[2]["type"] == "ListItem"),
+    run.check("and Tab again to the history", len(stops) > 2 and stops[2]["id"] == "chatHistory",
               label(stops[2]) if len(stops) > 2 else "focus didn't move")
     nameless = [label(d) for d in stops if not d["name"].strip()]
     run.check("every Tab stop has a name", not nameless, "; ".join(nameless) or f"{len(stops) - 1} stops")
@@ -2203,13 +2199,13 @@ def listed(who):
 
 def people_beside_chat(run):
     """People nearby beside chat, as Radegast keeps its nearby list (a blind tester looked for it there, 2026-10-30;
-    since 2026-10-31 after the history in her Tab order, so Shift+Tab from Say): the item read on arriving, with the distance; the actions on the Applications key; Control+D; the
+    between Say and the history in her Tab order, so Tab from Say): the item read on arriving, with the distance; the actions on the Applications key; Control+D; the
     list unchanged while she's in it and current when she comes back; then Alt+2, Radegast's Friends key."""
     back_to_chat()
     m = mark()
-    key("shift+tab")
+    key("tab")
     d = wait_focus(lambda d: d["id"] == "chatPeople" or d["type"] == "ListItem", 4)
-    run.check("Shift+Tab from Say lands in People nearby", d, label(d) if d else focus_label())
+    run.check("Tab from Say lands in People nearby", d, label(d) if d else focus_label())
     name = wait(lambda: listed(VNAME), 10)
     arrived_in_list(run, "People beside chat", m, lambda n: VNAME in n)
 
@@ -2240,11 +2236,11 @@ def people_beside_chat(run):
     time.sleep(4)
     still = listed(VNAME)
     run.check("while she's in it, the list doesn't change under her", still == before, f"{before} -> {still}")
-    key("tab")
-    d = wait_focus(lambda d: d["id"] == "chatInput", 3)
-    run.check("Tab from it back to Say", d, label(d) if d else focus_label())
-    time.sleep(4)
     key("shift+tab")
+    d = wait_focus(lambda d: d["id"] == "chatInput", 3)
+    run.check("Shift+Tab from it back to Say", d, label(d) if d else focus_label())
+    time.sleep(4)
+    key("tab")
     wait_focus(lambda d: d["id"] == "chatPeople" or d["type"] == "ListItem", 4)
     now = listed(VNAME)
     if distance_right("coming back to it from Say, the distance is current", now):
@@ -4244,7 +4240,7 @@ def search_more_and_links(run, nonce, tester_id):
         v(f"say join secondlife:///app/group/{gid}/about today")
         run.expect("a group's link said by its name", [f"join {gname} (a group) today"], m, 10)
         wait(lambda: f"join {gname} (a group) today" in value_of("id=chatHistory"), 5)
-        key("tab")
+        key("shift+tab")
         wait_focus(lambda e: e["id"] == "chatHistory", 5)
         key("ctrl+end")
         key("up")
@@ -4263,7 +4259,7 @@ def search_more_and_links(run, nonce, tester_id):
     run.check("the history reads the same", f"{REGION} (a place)" in hist and "secondlife:" not in hist.splitlines()[-1], hist[-160:])
     run.check("a chat log keeps the link itself", any(f"app/teleport/{REGION}/60/60/24" in p.read_text(encoding="utf-8") for p in (OUT / "app" / "chat-logs").rglob("Nearby chat.txt")), "")
     m = mark()
-    key("tab")
+    key("shift+tab")
     wait_focus(lambda e: e["id"] == "chatHistory", 5)
     key("ctrl+end")
     key("enter")
@@ -8594,7 +8590,7 @@ def own_im_sound(run, tester_id):
     back_to_chat()
     near_visitor()
     run.check("(nobody has a sound of their own yet)", setting("access_im_sounds") == {}, json.dumps(setting("access_im_sounds")))
-    key("shift+tab")
+    key("tab")
     wait_focus(lambda d: d["id"] == "chatPeople" or d["type"] == "ListItem", 4)
     # (the nearest as a rule; a step before may have brought a friend near too)
     on = None
@@ -9682,7 +9678,7 @@ def links(run):
     key("enter")
     run.expect("Enter opens the one selected in the browser, said", ["Opening example.com in your browser."], m, 6)
     wait_focus(lambda d: d["id"] == "chatInput", 5)
-    key("tab")
+    key("shift+tab")
     wait_focus(lambda d: d["id"] == "chatHistory", 5)
     key("ctrl+end")
     key("up")

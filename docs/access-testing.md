@@ -7,7 +7,12 @@ testers said is `docs/access.md` > What a blind tester tells us.
 ## The scripted test
 
 `python tools/access.py test`: on the local grid, nothing on the visible desktop; it runs `build` and `tools` first. A
-full run takes about an hour (the walk-mode step alone about 4 minutes). Last full run 2026-11-07: 1771 of 1798. The ones its steps caused have since been fixed in the test and those steps pass when run on their own; the rest followed from the stall below, whose steps also pass on their own.
+full run takes about an hour (the walk-mode step alone about 4 minutes). Last full runs 2026-11-07, evening: the long
+runs' stall (below) gone at the route step with QuireUia's server started afresh, in two runs, the app's window held
+only by the test's own `//holdwindow`. Not clean, though: since the chat's Tab order changed (People nearby between Say
+and the history), the Tab order step's "Tab from Say goes to the history" checks still expect the old order, and "search's
+further pages" opened a person's IM sound window by a key meant for elsewhere, which then took the keys of every later
+step.
 
 **The test client's references.** Every element QuireUia's managed UI Automation client (System.Windows.Automation)
 hands out stays a reference in the app's UIA server for as long as QuireUia is connected: GC and finalizers don't let it
@@ -21,9 +26,15 @@ in a COM call on one of UIA's own threads, which was walking the list at a full 
 looked idle in `dotnet-stack`). Killing QuireUia freed the window at once. Since then (QuireUia, 2026-11-07) a find's
 exact parts (`id`, `name`, `type`, `class`) go to UIA as a condition checked in the app, so only matches come back
 (`name~` still walks the window, so use it sparingly); `focus` leaves out the ancestors unless asked (`focus up`); and
-event senders are let go of at once. A few references per command still stay. Measured on a WinForms tree of 300 rows
+event senders are let go of at once. A few references per command still stay (measured on a WinForms tree of 300 rows
 in a window of its own, reading the server's list size with cdb: 40 whole-window finds left 12,000 before and about 120
-after. A COM client that releases its elements, as screen readers do, left none from 40 whole-window walks, so this is
+after), and with those changes alone the same search still held the window 65 s late in a run. So the run starts
+QuireUia's server afresh between steps every five minutes (`fresh_server`; `ACCESS_FRESH_SECS` changes it, 0 never): a
+new connection starts with none, and the one closing frees its references at once without holding the window (checked
+in the lab with 18,000 held). The app isn't activated again after it, and QuireUia's own small window never takes the
+activation (it once did, by the look of it, when a dialog of the app closed: the app was left with no focus and every
+later step failed); a run of the profile, IM sound and building steps with the server started afresh before every step
+passed but for one check that fails without it too. A COM client that releases its elements, as screen readers do, left none from 40 whole-window walks, so this is
 our test client's, not a reader's. Long runs of a stall's kind elsewhere ("Wearing" slow to come back, a notecard's
 window slow to close) are worth reading the same way first: `cdb -pv -p PID -c "~*k; q"` for every thread's stack
 (WinDbg's cdb; `UIAutomationCore!ObjectReferenceManager` busy on a thread is this).

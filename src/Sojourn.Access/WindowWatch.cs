@@ -6,9 +6,11 @@ namespace Sojourn.Access;
 
 /// <summary>
 /// The window's thread not coming back to its messages, noticed from a thread of its own and said. A frozen window is
-/// silent to someone who can't see it go grey: their keys go nowhere and nothing tells them. A timer on the window's
-/// thread stamps the time four times a second; the stamp stands still when the thread is held. (Not a ping by a sent
-/// message: a wait inside a COM call still answers those, while the person's keys, posted, wait.)
+/// silent to someone who can't see it go grey: their keys go nowhere and nothing tells them. Four times a second the
+/// watch posts a message to the window's thread (once the last was answered), which stamps the time when it's handled;
+/// the stamp stands still while the thread is held, and while a flood of posted messages keeps it from her keys, which
+/// come after them. (Not a sent ping: a wait inside a COM call still answers those. Not a WinForms timer: its ticks
+/// stop under a flood of posted messages while the window still answers, and a COM wait can dispatch them.)
 ///
 /// Held 1 s or more is logged when it ends, for a tester's log. At 5 s it's said once, and at 30 s, then each minute,
 /// with the way out: Control+Shift+Q, registered only while the thread is held, starts Sojourn Access again at the
@@ -20,10 +22,11 @@ sealed class WindowWatch
     const long LogFrom = 1000, SayAt = 5000, OfferAt = 30_000, OfferEvery = 60_000;
     const int HotKeyId = 1, MOD_CONTROL = 2, MOD_SHIFT = 4, MOD_NOREPEAT = 0x4000, VK_Q = 0x51, WM_HOTKEY = 0x0312, PM_REMOVE = 1;
 
-    readonly System.Windows.Forms.Timer _beat = new() { Interval = 250 };
+    readonly Control _ear = new();
     readonly Action<string> _say, _log;
     readonly Action _restart;
     long _stamp = Environment.TickCount64;
+    int _asked;
 
     /// <param name="say">Said through the reader, from the watch's thread.</param>
     /// <param name="log">Into the session's log, from the watch's thread.</param>
@@ -33,8 +36,7 @@ sealed class WindowWatch
         _say = say;
         _log = log;
         _restart = restart;
-        _beat.Tick += (_, _) => Interlocked.Exchange(ref _stamp, Environment.TickCount64);
-        _beat.Start();
+        _ = _ear.Handle;   // (made now, on the window's thread: what the watch's posts go to; WinForms parks it, hidden)
         new Thread(Run) { IsBackground = true, Name = "window watch", Priority = ThreadPriority.AboveNormal }.Start();
     }
 
@@ -49,6 +51,11 @@ sealed class WindowWatch
             // the watch itself didn't run for a while (the PC asleep, or everything starved): that says nothing of the window
             if (now - last > 3000) Interlocked.Exchange(ref _stamp, now);
             last = now;
+            if (Interlocked.CompareExchange(ref _asked, 1, 0) == 0)
+            {
+                try { _ear.BeginInvoke(Answered); }
+                catch (InvalidOperationException) { return; }   // (the app is closing)
+            }
             long stamp = Interlocked.Read(ref _stamp);
             long held = now - stamp;
             if (held < LogFrom)
@@ -90,6 +97,12 @@ sealed class WindowWatch
                 return;
             }
         }
+    }
+
+    void Answered()
+    {
+        Interlocked.Exchange(ref _stamp, Environment.TickCount64);
+        Interlocked.Exchange(ref _asked, 0);
     }
 
     /// <summary>Spoken by Windows' own voice, for a reader whose words go through UI Automation: a notification would

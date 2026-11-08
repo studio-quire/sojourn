@@ -513,21 +513,29 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
         }
         int pid = kv.TryGetValue("pid", out var ps) ? int.Parse(ps) : watchPid;
         int n = kv.TryGetValue("n", out var ns) ? int.Parse(ns) : 0;
-        var result = new List<AutomationElement>();
         var exact = Exact(kv);
+        List<AutomationElement> result;
+        // (the condition checked in the app has failed where the walk didn't, twice on Objects' list in full runs:
+        // InvalidOperation with no message, or no match; the window is walked then, as it always was)
+        try { result = Search(pid, kv, exact); }
+        catch (InvalidOperationException) when (exact != Condition.TrueCondition) { result = new List<AutomationElement>(); }
+        if (result.Count == 0 && exact != Condition.TrueCondition) result = Search(pid, kv, Condition.TrueCondition);
+        if (all) return result;
+        return result.Count > n ? new List<AutomationElement> { result[n] } : new List<AutomationElement>();
+    }
+
+    static List<AutomationElement> Search(int pid, Dictionary<string, string> kv, Condition condition)
+    {
+        var result = new List<AutomationElement>();
         foreach (var h in TopWindows(pid))
         {
             AutomationElement top;
             try { top = AutomationElement.FromHandle(h); } catch { continue; }
             var candidates = new List<AutomationElement> { top };
-            candidates.AddRange(top.FindAll(TreeScope.Descendants, exact).Cast<AutomationElement>());
-            foreach (var e in candidates)
-            {
-                if (Matches(e, kv)) result.Add(e);
-            }
+            candidates.AddRange(top.FindAll(TreeScope.Descendants, condition).Cast<AutomationElement>());
+            result.AddRange(candidates.Where(e => Matches(e, kv)));
         }
-        if (all) return result;
-        return result.Count > n ? new List<AutomationElement> { result[n] } : new List<AutomationElement>();
+        return result;
     }
 
     /// <summary>The selector's exact parts as a condition UI Automation checks in the app's process, so only matches
@@ -665,7 +673,11 @@ static class WinEvents
     {
         // A small visible window of our own, so the desktop isn't empty: UIA's notification registration fails while
         // there's no window on it (ComUia), and the app under test may keep its window hidden until it has logged in
-        Native.CreateWindowEx(0, "STATIC", "QuireUia", 0x80000000 /* WS_POPUP */ | 0x10000000 /* WS_VISIBLE */, 0, 0, 1, 1,
+        // there. Never activated: when a window of the app closes, Windows activates the next window on the desktop, and
+        // a server started after the app (the run starts it afresh) is above the app's main window. (Likely what left the
+        // app with no focus after a dialog closed, every later step failing, in a run with the server started afresh.)
+        Native.CreateWindowEx(0x08000000 /* WS_EX_NOACTIVATE */ | 0x80 /* WS_EX_TOOLWINDOW */, "STATIC", "QuireUia",
+            0x80000000 /* WS_POPUP */ | 0x10000000 /* WS_VISIBLE */, 0, 0, 1, 1,
             IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
         Native.SetWinEventHook(EVENT_SYSTEM_ALERT, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, proc, 0, 0, 0);
         Native.SetWinEventHook(EVENT_OBJECT_FOCUS, EVENT_OBJECT_FOCUS, IntPtr.Zero, proc, 0, 0, 0);

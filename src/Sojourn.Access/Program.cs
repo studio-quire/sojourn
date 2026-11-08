@@ -16,6 +16,7 @@ static class Program
         // VR client and its launcher leave it off (Sojourn.Session's ProviderKeys.RelayOffered)
         Sojourn.Session.Assistant.ProviderKeys.RelayOffered = true;
         ApplicationConfiguration.Initialize();
+        AppIcon.Apply();
         Application.AddMessageFilter(RealInput.Filter);
         RealInput.Start();
         // an exception escaping on the window's thread: into the session log and said, the app going on, rather than

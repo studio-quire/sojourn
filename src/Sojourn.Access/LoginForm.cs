@@ -55,6 +55,7 @@ public sealed class LoginForm : Form
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
         FormBorderStyle = FormBorderStyle.FixedDialog;
+        Icon = AppIcon.Load();   // a fixed dialog shows an icon only when given one (AppIcon.cs)
         MaximizeBox = false;
         Padding = new Padding(12);
         AcceptButton = _login;

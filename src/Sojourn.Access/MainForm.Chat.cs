@@ -47,9 +47,9 @@ public sealed partial class MainForm
     };
 
     /// <summary>A page holding a history over its input line, with a label for each (the labels' mnemonics move to them):
-    /// Tab and Shift+Tab go between the input and the history. `beside`, to their right, comes after the history (nearby
-    /// chat's People nearby: Say, Tab to the history, Tab again to the people, Tab back to Say; the blind tester's order,
-    /// 2026-10-31, where Radegast goes Say, people, history).</summary>
+    /// Tab and Shift+Tab go between the input and the history. `beside`, to their right, comes between them (nearby chat's
+    /// People nearby: Say, Tab to the people, Tab again to the history, Tab back to Say, as Radegast goes; the blind tester
+    /// had it after the history on 2026-10-31 and asked for it back between on 2026-11-07, having typed into the wrong one).</summary>
     static TableLayoutPanel HistoryOverInput(string inputLabel, TextBox input, string historyLabel, TextBox history, Control? beside = null)
     {
         var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = beside == null ? 2 : 3, RowCount = 2 };
@@ -60,7 +60,7 @@ public sealed partial class MainForm
             t.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300));
             t.Controls.Add(beside, 2, 0);
             t.SetRowSpan(beside, 2);
-            beside.TabIndex = 4;
+            beside.TabIndex = 2;
         }
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -72,8 +72,8 @@ public sealed partial class MainForm
         t.Controls.Add(input, 1, 1);
         il.TabIndex = 0;
         input.TabIndex = 1;
-        hl.TabIndex = 2;
-        history.TabIndex = 3;
+        hl.TabIndex = 3;
+        history.TabIndex = 4;
         return t;
     }
 

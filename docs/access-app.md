@@ -26,6 +26,11 @@ desktop, the guided tests with the user or a tester) is `docs/access-testing.md`
   console (with records of whose words its lines carry: Sending a log, below), `vr-settings.json` the session's
   settings (the reader's switches among them; apart from the VR client's, which keeps its own in local/client),
   `access-settings.json` this app's own.
+- Its icon is Shell, a pearl whelk with Sojourn's sky and sea in its opening (the user's choice, 2026-11-07;
+  `art/icon/access.svg`, rendered into `access.ico` and PNGs by `tools/icon.py`, its 16, 24 and 32 px hand-drawn): the
+  exe's ApplicationIcon, and every window's through WinForms' default icon, set from the same .ico embedded as a
+  resource (`AppIcon.cs`), so it shows when run as the dll too. Fixed dialogs have none, as is Windows' way, except
+  the login form, the first window in the taskbar.
 
 ## Packaging (a build for a tester's own PC)
 
@@ -437,8 +442,9 @@ Access's side.
 ### People beside chat
 
 `chatPeople`, a blind tester's Radegast habit (2026-10-30): Radegast's nearby list sits beside chat, Tab from its input
-reaching it. In Alt+1, People nearby is to the right of the history and Say. Tab goes Say, the history, People
-nearby, round to Say (her order, 2026-10-31; Radegast's goes Say, people, history), so Shift+Tab from Say lands on it
+reaching it. In Alt+1, People nearby is to the right of the history and Say. Tab goes Say, People nearby, the
+history, round to Say, as Radegast's does (her order from 2026-10-31 had the history first; on 2026-11-07 she asked for
+the people back between, having typed into the wrong one), so Tab from Say lands on it
 ("People nearby, list, Kestrel Tester, 4 metres, two o'clock, 1 of 3", the person last on, else the nearest). It's Alt+3's list made by the same code (`PeopleList`): the same words, the
 Applications key's actions (Enter too), Control+D, F5; within 96 m, nearest first, "Nobody nearby." when empty. It's
 kept current every 3 s while the chat area shows and the focus is elsewhere (in Say, typing), so arriving in it the
@@ -1959,8 +1965,10 @@ it).
     `SOJOURN_INPUT_LOG=path` logs each key's judgement and each focus or selection change with who made it, for a key
     refused in a real run. `tools/inputcheck` checks the judge (`docs/access-testing.md` > Input checks).
 - **The window's thread held** (`WindowWatch`, started by `Program`): a frozen window is silent to someone who can't see
-  it, and their keys go nowhere. A WinForms timer stamps the time four times a second and a thread of its own watches
-  the stamp (not a sent ping: a wait inside a COM call still answers those, while posted keys wait). Held 1 s or more is
+  it, and their keys go nowhere. A thread of its own posts a message to the window's thread four times a second (once
+  the last was answered), which stamps the time when handled; the stamp stands still while the thread is held, or kept
+  from input by a flood of posted messages (not a sent ping: a wait inside a COM call still answers those; not a
+  WinForms timer: its ticks starve under posted messages, and a COM wait can dispatch them). Held 1 s or more is
   logged when it ends ("window: its thread was held 2.3 s"), for a tester's log; at 5 s it's said ("The window isn't
   answering. Waiting for it.") and "The window is back." when it is; from 30 s, each minute, it offers Control+Shift+Q,
   registered as a hotkey only while the thread is held, which logs out if it can (3 s at most) and starts the app again

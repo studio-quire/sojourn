@@ -16,7 +16,14 @@
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <!-- NVDA's controller client is the x64 build -->
     <PlatformTarget>x64</PlatformTarget>
+    <!-- Access's icon (tools/icon.py renders it from art/icon/access.svg): the exe's, and as a resource every window's
+         (AppIcon.cs) -->
+    <ApplicationIcon>..\..\art\icon\access.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\art\icon\access.ico" LogicalName="access.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Sojourn.Session\Sojourn.Session.csproj" />

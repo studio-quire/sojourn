@@ -7,7 +7,7 @@ grid unless the script says so).
 - `setup.py`: a complete build from a fresh clone on any Windows PC (prerequisites, voice, media, NVDA's client, the apps, the assistant; `--check` reports only); the public BUILDING.md (`publish/sojourn/`) guides a person's own agent through it. `buildenv.py`: where dotnet, VS 2022's C++ tools and CMake are, for it and the build scripts.
 - `client.py`: build and run the VR client (`run`, `vr`, `vr-sim`, `--logs`, `--login`, `--base-dir`).
 - `launcher.py`: the launcher (Sojourn.exe): build, run, its states drawn offscreen, `check` its terms and MFA path on a hidden desktop.
-- `icon.py`: Sojourn's app icon, `art/icon/sojourn.ico` rendered from `art/icon/sojourn.svg` (resvg); docs/launcher.md > The package.
+- `icon.py`: the apps' icons, `art/icon/sojourn.ico` and `access.ico` (with Access's PNGs and the front door's `icon.png`) rendered from their SVGs (resvg); docs/launcher.md > The package, docs/access-app.md > Running it.
 - `package.py`: Sojourn's package (the launcher, the VR client, the assistant with hearing and voice) by Velopack: build a release, `check` it (install, run, update, uninstall on a hidden desktop), `key` (the update-signing key, once); docs/launcher.md > The package.
 - `access.py`: Sojourn Access: build, run, `package` (docs/access-app.md > Packaging; `fetch-lavapipe` first, the view's software driver), the visitor bot's commands, its test on a hidden desktop.
 - `probe.py`: Sojourn.Session without the VR client: two console hosts log in, answer SojournSettings and hear each other; no GPU.
