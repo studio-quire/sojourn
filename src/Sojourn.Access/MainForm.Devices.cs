@@ -104,6 +104,7 @@ public sealed partial class MainForm
         menu.Items.AddRange(items);
         menu.Closed += (_, _) => BeginInvoke(menu.Dispose);
         menu.Show(_settingsList, new Point(row.Bounds.Left, row.Bounds.Bottom));
+        Mnemonics.Fix(menu);
         (items.OfType<ToolStripMenuItem>().FirstOrDefault(i => i.Checked) ?? items[0] as ToolStripMenuItem)?.Select();
     }
 

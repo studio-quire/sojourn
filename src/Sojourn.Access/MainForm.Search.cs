@@ -272,6 +272,7 @@ public sealed partial class MainForm
             }
         var r = _results.FocusedItem?.Bounds ?? Rectangle.Empty;
         _resultMenu.Show(_results, new Point(r.Left + 10, r.Bottom));
+        Mnemonics.Fix(_resultMenu);
     }
 
     /// <summary>A person found, as "Shown (legacy name)" reads in the list, by the name they show.</summary>

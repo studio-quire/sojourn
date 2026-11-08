@@ -65,7 +65,9 @@ window slow to close) are worth reading the same way first: `cdb -pv -p PID -c "
 
 **How it runs.** The app runs on a hidden Win32 desktop (`tools/quireuia`, from the Radegast contributions' tools:
 `launch` starts a program there, `serve` records the focus, alert and notification events a screen reader gets and
-drives the app by UI Automation and posted keys), with:
+drives the app by UI Automation and posted keys; a key's modifiers go into the app's key state, only those asked for:
+attaching to its input resets that state, seemingly from the real keyboard's, and a run of 2026-11-08 got Alt+Shift+4
+for Alt+4, most likely a Shift held on the visible desktop just then), with:
 - `SOJOURN_TEST_INPUT=keys`: posted keys judged as the person's hardware presses, every other rule of the real-input
   guard applying, so Ctrl+N then a number and a confirmation then Enter are checked against it (`ACCESS_TEST_INPUT=1`
   lets every key through instead);
@@ -91,7 +93,8 @@ accept, and kept on the grid), so the grid tells of them at login.
 **The steps**, by the names `ACCESS_STEPS` matches (in run order; each step's function in `tools/access.py` has a
 docstring with its checks in full):
 - **the outfit while it arrives** (first, within two minutes of the login): an object linked in Current Outfit but not
-  attached said as still arriving by Ctrl+Shift+W and in the inventory's words, worn again by Enter, then attached.
+  attached (the link written into the grid's inventory database, as another session's Wear leaves one, and read by F5:
+  the link op refuses Current Outfit) said as still arriving by Ctrl+Shift+W and in the inventory's words, worn again by Enter, then attached.
 - **friends online at login**: the pals (and the visitor, if a friend) said as one "N friends online: ..." line, none
   alone, the history naming all; after the burst a pal logging out and in is said alone. The first run makes the
   friendships and checks this from the next.
@@ -280,6 +283,15 @@ docstring with its checks in full):
   a sound and an animation from the Library where it has them (the animation seen on her, then `//stopanimations`); `//emptytrash`
   cancelled, then confirmed, a card sent to the Trash by Delete gone; `//rebake`, `//hover`, `//maturity` and `//displayname`'s words.
   It empties the test account's Trash. Second Life alone shows a display name changed, a rating changed and real hover.
+- **folders given, deleted from the tree, links, outfits and landmarks**: a folder holding only two folders with a card
+  each given to the visitor (the confirmation counting 2 items and 2 folders, the answer saying what went, the visitor
+  offered it); a folder of 43 folders refused before any confirmation, saying 42; a folder deleted from the tree itself
+  (not a search) gone from the tree at once, its move sent to `AisStandIn` and waited for; one the stand-in refuses
+  (409) said plainly and left where it was, in the inventory and the tree; Paste as link making a link in another
+  folder, the card staying; `//saveoutfit` making a folder in My Outfits with a link per thing worn; a landmark's About
+  the place (its parcel's rating, owner and size, where it lands, her notes). With the stand-in serving, every move,
+  rename and item change in the run goes to it first and then to OpenSim by UDP; the real service's answers to them are
+  only seen on Second Life.
 - **incognito**: on and said, the title without the region, SojournSettings refusing it off, a line read out but not
   logged, off.
 - **voice keys**: without voice F4 and Ctrl+Shift+V say so; with `ACCESS_VOICE=1`, F4 opening and closing the mic with

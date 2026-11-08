@@ -44,6 +44,7 @@ public sealed partial class MainForm
             Item("&Parcels in this region", null, () => _ = _cmd.RunAsync("//parcelinfo")),
             Item("S&tatus", null, () => _ = _cmd.RunAsync("//status")),
             Item("What you're &wearing", "Control+Shift+W", () => _ = OutfitListAsync()),
+            Later("Save your outfit...", "//saveoutfit", () => _ = SaveOutfitAsync("")),   // (no mnemonic: its letters are taken)
             Item("Descri&be where you are", null, () => _ = _cmd.RunAsync("//describe")),
             Item("Describe &me", "Control+Shift+D", () => DescribeKey(me: true)),
             new ToolStripSeparator(),

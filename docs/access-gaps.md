@@ -44,9 +44,9 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 - **Matters: medium for the tester and her partner**, low for most others. **Question for her:** does a script she writes run on Mono by default as she'd want, and would she use disk or replace?
 
 ### 9. Inventory housekeeping: what's left
-- **Radegast:** Empty Lost and Found; Paste as Link; search by creator and description; sort by date; Expand All; Backup to disk.
+- **Radegast:** Empty Lost and Found; search by creator and description; sort by date; Expand All; Backup to disk.
 - **Access:** none of these. Recent is the last 24 hours only. Does F5 drop what the grid no longer has, as well as fetch what it does? Not checked (`AgentInventory.ReloadAsync`).
-- **Where:** `ItemActions` and `FolderActions` in `MainForm.Inventory.cs`; `link` is an op.
+- **Where:** `ItemActions` and `FolderActions` in `MainForm.Inventory.cs`.
 - **Size:** S each; search fields S; Backup M.
 - **Matters: medium.**
 

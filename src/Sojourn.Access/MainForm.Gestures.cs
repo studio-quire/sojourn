@@ -64,6 +64,7 @@ public sealed partial class MainForm
         }
         var at = ActiveControl ?? (Control)this;
         _gestureMenu.Show(at, new Point(10, Math.Min(at.Height, 30)));
+        Mnemonics.Fix(_gestureMenu);
     }
 
     /// <summary>Plays a gesture by its item (the person's own: their key or menu).</summary>

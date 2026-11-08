@@ -16,6 +16,9 @@ using Accessibility;
 
 static class Server
 {
+    // Shift, Control, Alt, each side's, and the Windows keys
+    static readonly int[] Modifiers = { 0x10, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C };
+
     public const string Help = @"commands (a SEL is key=value pairs joined by ';': pid, name (exact), name~ (contains), id (AutomationId),
 type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index among matches); pid defaults to the watched one):
   watch PID                 record events from this process only (0: all)
@@ -225,8 +228,12 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
                             target = Native.GetWindowThreadProcessId(h, out _);
                             me = Native.GetCurrentThreadId();
                             Native.AttachThreadInput(me, target, true);
+                            // attaching resets the key state (AttachThreadInput's documentation), by the look of it
+                            // from the real keyboard's, so a Shift held on the visible desktop just then was held for
+                            // the app too (an Alt+4 arrived as Alt+Shift+4, 2026-11-08): only the modifiers asked for
                             saved = new byte[256];
                             Native.GetKeyboardState(saved);
+                            foreach (var vkMod in Modifiers) saved[vkMod] = 0;
                             var state = (byte[])saved.Clone();
                             foreach (var m in mods)
                             {

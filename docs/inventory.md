@@ -69,6 +69,36 @@ Confirmations). While tidying, the assistant gathers everything bound for Trash 
 folder_id}`, so the person answers one question for the lot (the user preferred batching to a switch that lets Trash
 moves through unasked). The confirmation names six and "N more".
 
+Moves, moves to the Trash, renames and an item's changes wait for the grid (`InventoryOps.Service.cs`). LibreMetaverse's
+MoveFolder, MoveItem, UpdateFolderProperties and RequestUpdateItem change the store, then on Second Life send the
+change to the inventory service without waiting (`_ = AisClient.MoveCategoryAsync(...)`), so a refusal reached only
+its logger. Ours send the same PATCH (`parent_id`, `name`, or the item's fields) to the service and await it: only a
+success changes the store, and a refusal or no answer within 30 s is the op's error. Without the service (OpenSim)
+the UDP messages go as the official viewer's do (it moves things that way on every grid, with no answer). A purge
+counts as done only if the node has left the store (LibreMetaverse's RemoveItemAsync and RemoveFolderAsync log a
+refusal and return). The store's node is the one callers hold, so a move changes their copy's ParentUUID too: read
+where a thing was before moving it (Sojourn Access's Delete refreshed the folder it had moved to rather than the one it
+left, so a deleted folder stayed in her tree until she logged in again, 2026-11-07). The tests' stand-in for the
+service (`SOJOURN_TEST_AIS`) answers these too, refusing what it's told to, and the UDP message follows so OpenSim
+matches; only Second Life checks the real service's answers.
+
+## Giving, links, outfits and landmarks
+
+- `TesselAgent give` with a folder (`InventoryOps.Gives.cs`) works as the viewer's `giveInventoryCategory`, not
+  LibreMetaverse's `GiveFolderAsync` (which fetched every item one at a time and returned silently over 66 things or
+  with no items directly inside): everything under the folder from the store, its folders fetched first if they
+  aren't (30 s, else refused as the viewer refuses an incomplete folder), items that can be given (transferable, not
+  worn; a link by its original), counted with the folders against the viewer's 42 (`MaxGive`, its MAX_ITEMS), and
+  the viewer's bucket sent. Over 42 or nothing to give is refused in words, at the confirmation gate too.
+- `TesselInventory link {item_id, folder_id}`: the viewer's Paste as link, named as the item with its description, a
+  link's link going to its original; waits for the grid, and refuses the Current Outfit folder (wearing is how links
+  get there) and a notecard or material with no asset yet.
+- `TesselAgent saveOutfit {name}`: the viewer's Save Outfit, a folder of the outfit type in My Outfits with a link to
+  everything worn, each keeping its outfit link's description; links the grid didn't make are listed in `not_linked`.
+- `TesselInventory landmarkAbout {item_id}`: where a landmark points and the parcel there, as the viewer's landmark
+  panel asks it (RemoteParcelRequest, then ParcelInfoRequest; the reply's flags read from the packet: 0x1 moderate,
+  0x2 adult, 0x4 group-owned).
+
 ## Protected folders (InventoryOps)
 
 Firestorm's "Protect folder" (`fsfloaterprotectedfolders.cpp`, per-account `FSProtectedFolders`; checked in

@@ -41,6 +41,15 @@ public sealed class InventoryMeta
 
     Uri Cap() => CapOrNull() ?? throw new LeapError("this grid has no inventory service for thumbnails and favourites (InventoryAPIv3: Second Life has it)");
 
+    /// <summary>The inventory service's base URL, or null on a grid without one; standIn: it's a test's stand-in (the
+    /// region has none), whose answers decide as the real one's would but which holds no inventory.</summary>
+    public Uri? Service(out bool standIn)
+    {
+        var real = _s.Client?.Network.CurrentSim?.Caps?.CapabilityURI(InventoryAISClient.INVENTORY_CAP_NAME);
+        standIn = real is null && TestService != null;
+        return real ?? (standIn ? new Uri(TestService!) : null);
+    }
+
     /// <summary>Whether this grid's region offers the inventory service (Second Life does; OpenSim doesn't).</summary>
     public bool Available => _s.Client is not null && CapOrNull() is not null;
 

@@ -22,8 +22,17 @@ namespace Sojourn.Session.Release;
 /// </summary>
 public static class ProblemReport
 {
-    public const string IssuesPage = "https://github.com/studio-quire/sojourn/issues";
-    public const string App = "Sojourn";
+    /// <summary>Which app the reports are from, and its issues page: the VR client's unless Sojourn Access says it's
+    /// the one running (UseAccess, at its start), so its assistant's reports are labelled and filed as its own.</summary>
+    public static string App { get; private set; } = "Sojourn";
+    public static string IssuesPage { get; private set; } = "https://github.com/studio-quire/sojourn/issues";
+    public static bool IsAccess => App != "Sojourn";
+
+    public static void UseAccess()
+    {
+        App = "Sojourn Access";
+        IssuesPage = "https://github.com/studio-quire/sojourn-access/issues";
+    }
 
     /// <summary>How a run ended when it crashed: its exit code, and the runtime's last words (an unhandled exception or
     /// a fatal error, with its stack), if any.</summary>

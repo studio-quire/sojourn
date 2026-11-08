@@ -363,7 +363,7 @@ public sealed class PeopleOps
             if (target.AssetType != AssetType.Landmark) throw new LeapError($"{it.Name} isn't a landmark");
             if ((target.Permissions.OwnerMask & PermissionMask.Copy) == 0)
             {
-                _s.InventoryOps.Move(new JsonObject { ["id"] = target.UUID.ToString(), ["folder_id"] = folder.ToString() });
+                await _s.InventoryOps.MoveAsync(new JsonObject { ["id"] = target.UUID.ToString(), ["folder_id"] = folder.ToString() }, ct);
                 return new JsonObject { ["item_id"] = target.UUID.ToString(), ["name"] = target.Name, ["moved"] = true };
             }
             var copy = await _s.InventoryOps.CopyAsync(new JsonObject { ["id"] = target.UUID.ToString(), ["dest_id"] = folder.ToString(), ["name"] = a.Str("name") ?? target.Name }, ct);

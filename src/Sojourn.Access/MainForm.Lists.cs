@@ -239,6 +239,7 @@ public sealed partial class MainForm
         if (list.FocusedItem?.Tag == null) return;
         var r = list.FocusedItem.Bounds;
         menu.Show(list, new Point(r.Left + 10, r.Bottom));
+        Mnemonics.Fix(menu);
     }
 
     void AreaShown()

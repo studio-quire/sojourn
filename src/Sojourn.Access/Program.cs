@@ -15,6 +15,8 @@ static class Program
         // Studio Quire's relay as the assistant's provider is Access's alone (the people the studio covers are here); the
         // VR client and its launcher leave it off (Sojourn.Session's ProviderKeys.RelayOffered)
         Sojourn.Session.Assistant.ProviderKeys.RelayOffered = true;
+        // its assistant's problem reports labelled and filed as Sojourn Access's own, not the VR client's
+        Sojourn.Session.Release.ProblemReport.UseAccess();
         ApplicationConfiguration.Initialize();
         AppIcon.Apply();
         Application.AddMessageFilter(RealInput.Filter);

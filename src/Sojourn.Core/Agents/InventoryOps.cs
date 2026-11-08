@@ -10,9 +10,10 @@ namespace Sojourn.Core.Agents;
 /// <summary>
 /// Inventory management the viewer does through its inventory window (sojourn's TesselInventory API): folders,
 /// moving, renaming, permissions, trash, copying (the Library too), notecards and landmarks. Written by Claude Opus 5.5,
-/// 2026-10-16. Protocol paths: LibreMetaverse picks AIS on Second Life and the UDP messages on OpenSim.
+/// 2026-10-16. Protocol paths: LibreMetaverse picks AIS on Second Life and the UDP messages on OpenSim, except where
+/// it doesn't wait for AIS's answer: moves, renames and gives are ours (InventoryOps.Service.cs, InventoryOps.Gives.cs).
 /// </summary>
-public sealed class InventoryOps
+public sealed partial class InventoryOps
 {
     readonly AgentSession _s;
     public InventoryOps(AgentSession s) => _s = s;
@@ -103,6 +104,20 @@ public sealed class InventoryOps
         return null;
     }
 
+    /// <summary>The items worn now: attached in this region (by the region's word), or linked from the outfit.</summary>
+    HashSet<UUID> WornIds()
+    {
+        var c = C;
+        var worn = new HashSet<UUID>();
+        if (_s.Region is { } w && w.Avatars.Values.FirstOrDefault(a => a.ID == c.Self.AgentID) is { } me)
+            foreach (var p in w.Prims.Values)
+                if (p.ParentID == me.LocalID && AgentInventory.AttachItemId(p) is var aid && aid != UUID.Zero) worn.Add(aid);
+        var cof = c.Inventory.FindFolderForType(FolderType.CurrentOutfit);
+        if (c.Inventory.Store is { } store && cof != UUID.Zero)
+            foreach (var l in store.GetContents(cof).OfType<InventoryItem>()) worn.Add(l.AssetUUID);
+        return worn;
+    }
+
     /// <summary>What deleting these would take that's worn, by the official viewer's and Firestorm's rule: the worn
     /// items among them and in their folders (the Trash aside); links don't count (deleting one takes nothing off),
     /// except the Current Outfit's own, which are what's worn.</summary>
@@ -112,12 +127,7 @@ public sealed class InventoryOps
         var store = c.Inventory.Store;
         var cof = c.Inventory.FindFolderForType(FolderType.CurrentOutfit);
         var trash = c.Inventory.FindFolderForType(FolderType.Trash);
-        var worn = new HashSet<UUID>();
-        if (_s.Region is { } w && w.Avatars.Values.FirstOrDefault(a => a.ID == c.Self.AgentID) is { } me)
-            foreach (var p in w.Prims.Values)
-                if (p.ParentID == me.LocalID && AgentInventory.AttachItemId(p) is var aid && aid != UUID.Zero) worn.Add(aid);
-        if (store is not null && cof != UUID.Zero)
-            foreach (var l in store.GetContents(cof).OfType<InventoryItem>()) worn.Add(l.AssetUUID);
+        var worn = WornIds();
 
         var (body, others, links) = (new List<InventoryItem>(), new List<InventoryItem>(), new List<InventoryItem>());
         var seen = new HashSet<UUID>();
@@ -227,9 +237,8 @@ public sealed class InventoryOps
         return new JsonObject { ["folder_id"] = id.ToString(), ["name"] = name.Trim(), ["parent_id"] = parent.ToString() };
     }
 
-    public JsonObject Move(JsonObject a)
+    public async Task<JsonObject> MoveAsync(JsonObject a, CancellationToken ct)
     {
-        var c = C;
         var dest = a.Uuid("folder_id") ?? throw new LeapError("need folder_id (where to)");
         if (NodeOf(dest) is not InventoryFolder) throw new LeapError("folder_id isn't a folder");
         RequireMine(dest, "move");
@@ -245,11 +254,11 @@ public sealed class InventoryOps
                 case InventoryFolder f:
                     if (Locked(f) is { } why) throw new LeapError($"{why}; it stays where it is" + Before(moved.Count, "moved"));
                     if (id == dest || IsUnder(dest, id)) throw new LeapError($"can't move {f.Name} into itself");
-                    c.Inventory.MoveFolder(id, dest);
+                    await Moved(f, dest, moved.Count, "moved", ct);
                     break;
                 case InventoryItem it:
                     if (Locked(it) is { } whyItem) throw new LeapError($"{whyItem}; it stays where it is" + Before(moved.Count, "moved"));
-                    c.Inventory.MoveItem(id, dest);
+                    await Moved(it, dest, moved.Count, "moved", ct);
                     break;
                 default:
                     throw new LeapError($"no item or folder {id} in my inventory" + (moved.Count > 0 ? $" (the {moved.Count} before it were moved)" : ""));
@@ -260,6 +269,13 @@ public sealed class InventoryOps
     }
 
     static string Before(int done, string verb) => done > 0 ? $" (the {done} before it were {verb})" : "";
+
+    /// <summary>MoveNodeAsync, a refusal saying what had gone before it.</summary>
+    async Task Moved(InventoryBase n, UUID dest, int before, string verb, CancellationToken ct)
+    {
+        try { await MoveNodeAsync(n, dest, ct); }
+        catch (LeapError e) when (before > 0) { throw new LeapError(e.Message + Before(before, verb)); }
+    }
 
     bool IsUnder(UUID node, UUID ancestor)
     {
@@ -283,11 +299,12 @@ public sealed class InventoryOps
         {
             if (a.Has("name") && Locked(f) is { } why) throw new LeapError($"{why}; it keeps its name");
             var name = a.Str("name") ?? throw new LeapError("a folder only has a name to change");
-            c.Inventory.UpdateFolderProperties(f.UUID, f.ParentUUID, name, f.PreferredType);
+            await RenameFolderAsync(f, name, ct);
             return new JsonObject { ["folder_id"] = id.ToString(), ["name"] = name };
         }
         var item = await _s.Inventory.ItemAsync(id, ct) ?? throw new LeapError($"no inventory item {id}");
         if (a.Has("name") && _s.Ao.Protects(item.UUID) && Locked(item) is { } whyItem) throw new LeapError($"{whyItem}; it keeps its name");
+        var (wasName, wasDesc, wasPerms) = (item.Name, item.Description, item.Permissions);
         if (a.Str("name") is { } n) item.Name = n;
         if (a.Str("desc") is { } d) item.Description = d;
         var p = item.Permissions;
@@ -301,7 +318,7 @@ public sealed class InventoryOps
         if (a.Bool("everyone_copy") is { } ec) p.EveryoneMask = ec ? Clip(PermissionMask.Copy) : p.EveryoneMask & ~PermissionMask.Copy;
         if (a.Str("group_perms") is { } gp) p.GroupMask = Clip(ObjectViews.PermMask(gp));
         item.Permissions = p;
-        c.Inventory.RequestUpdateItem(item);
+        await UpdateItemOnGridAsync(item, () => (item.Name, item.Description, item.Permissions) = (wasName, wasDesc, wasPerms), ct);
         await Task.Delay(300, ct);
         return new JsonObject
         {
@@ -343,11 +360,11 @@ public sealed class InventoryOps
             {
                 case InventoryFolder f:
                     if (Locked(f) is { } why) throw new LeapError($"{why}; it can't be deleted" + Before(done.Count, "deleted"));
-                    if (purge) await c.Inventory.RemoveFolderAsync(id, ct); else c.Inventory.MoveFolder(id, trash);
+                    if (purge) await Purged(f, c.Inventory.RemoveFolderAsync(id, ct), done.Count); else await Moved(f, trash, done.Count, "deleted", ct);
                     break;
                 case InventoryItem it:
                     if (Locked(it) is { } whyItem) throw new LeapError($"{whyItem}; it can't be deleted" + Before(done.Count, "deleted"));
-                    if (purge) await c.Inventory.RemoveItemAsync(id, ct); else c.Inventory.MoveItem(id, trash);
+                    if (purge) await Purged(it, c.Inventory.RemoveItemAsync(id, ct), done.Count); else await Moved(it, trash, done.Count, "deleted", ct);
                     break;
                 default:
                     throw new LeapError($"no item or folder {id} in my inventory" + (done.Count > 0 ? $" (the {done.Count} before it were deleted)" : ""));
@@ -355,6 +372,15 @@ public sealed class InventoryOps
             done.Add(id.ToString());
         }
         return new JsonObject { [purge ? "purged" : "trashed"] = done };
+    }
+
+    /// <summary>A purge awaited: LibreMetaverse's RemoveItemAsync and RemoveFolderAsync only log the service's refusal,
+    /// leaving the node in the store, so a node still there afterwards is one that wasn't deleted.</summary>
+    async Task Purged(InventoryBase n, Task removing, int before)
+    {
+        await removing;
+        if (C.Inventory.Store?.Contains(n.UUID) == true)
+            throw new LeapError($"Second Life's inventory service didn't delete {n.Name}; it's still in the Trash" + Before(before, "deleted"));
     }
 
     public async Task<JsonObject> EmptyTrashAsync(CancellationToken ct)

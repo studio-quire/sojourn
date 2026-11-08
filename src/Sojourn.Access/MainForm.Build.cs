@@ -624,6 +624,7 @@ public sealed partial class MainForm
         menu.Closed += (_, _) => BeginInvoke(menu.Dispose);
         var at = _buildRows.FocusedItem?.Bounds ?? default;
         menu.Show(_buildRows, new Point(at.Left + 10, at.Bottom));
+        Mnemonics.Fix(menu);
         if (r.Chosen >= 0 && r.Chosen < menu.Items.Count) menu.Items[r.Chosen].Select();
     }
 

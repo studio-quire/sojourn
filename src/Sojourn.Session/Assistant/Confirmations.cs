@@ -479,20 +479,21 @@ public sealed partial class Confirmations
         itemId is { } id && _s.Inventory.Node(id) is InventoryItem it && (it.Permissions.OwnerMask & PermissionMask.Copy) == 0
             ? Lang.T("It's no-copy: it leaves your inventory.") : "";
 
+    /// <summary>What giving a folder sends, everything under it counted (InventoryOps.PlanFolderGive, as the give itself
+    /// counts it): the items going and how many are no-copy, its folders, and what stays (no transfer, or worn).</summary>
     string FolderNote(UUID folderId)
     {
-        if (_s.Client?.Inventory.Store is not { } store || !store.Contains(folderId)) return "";
-        var items = store.GetContents(folderId).OfType<InventoryItem>().ToList();
-        int noCopy = items.Count(i => (i.Permissions.OwnerMask & PermissionMask.Copy) == 0);
-        bool one = items.Count == 1, folders = store.GetContents(folderId).OfType<InventoryFolder>().Any();
-        return (noCopy > 0, folders) switch
+        if (_s.Client is null || _s.InventoryOps.PlanFolderGive(folderId) is not { } g) return "";
+        int items = g.Items.Count, noCopy = g.NoCopy;
+        bool one = items == 1;
+        var note = (noCopy > 0, g.Folders.Count > 0) switch
         {
-            (false, false) => Lang.F(one ? "{0} item in it." : "{0} items in it.", items.Count),
-            (false, true) => Lang.F(one ? "{0} item in it, and the folders inside it." : "{0} items in it, and the folders inside it.", items.Count),
-            (true, false) => Lang.F(one ? "{0} item in it, {1} no-copy (they leave your inventory)." : "{0} items in it, {1} no-copy (they leave your inventory).", items.Count, noCopy),
-            (true, true) => Lang.F(one ? "{0} item in it, {1} no-copy (they leave your inventory), and the folders inside it."
-                : "{0} items in it, {1} no-copy (they leave your inventory), and the folders inside it.", items.Count, noCopy),
+            (false, false) => Lang.F(one ? "{0} item in it." : "{0} items in it.", items),
+            (true, false) => Lang.F(one ? "{0} item in it, {1} no-copy (they leave your inventory)." : "{0} items in it, {1} no-copy (they leave your inventory).", items, noCopy),
+            (false, true) => Lang.F("Items in it and its folders: {0}; folders inside it: {1}.", items, g.Folders.Count),
+            (true, true) => Lang.F("Items in it and its folders: {0}, no-copy among them: {1} (they leave your inventory); folders inside it: {2}.", items, noCopy, g.Folders.Count),
         };
+        return g.Kept > 0 ? Join(note, Lang.F("Not given, as no transfer or worn: {0}; they stay with you.", g.Kept)) : note;
     }
 
     /// <summary>A thing's name in quotes, and what it was called before if an op renamed it this session.</summary>

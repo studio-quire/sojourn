@@ -400,7 +400,8 @@ Written by Claude Opus 5.5, 2026-11-01 (batch R; the TPV policy's side in `docs/
   Studio Quire) or saves it (save for GitHub) at the person's press, the outcome under the row. With words, through
   the assistant: `SojournRelease reportProblem {note}` waits for a confirmation on the panel (what goes and where, the
   log's lines behind its list key) and sends only on the person's yes (a `Confirmations.Cases` entry). Refused while
-  incognito is blind.
+  incognito is blind. Sojourn Access's assistant reaches the same op; there (`ProblemReport.UseAccess`, at its start)
+  reports are labelled "Sojourn Access" with its version, and its issues page is studio-quire/sojourn-access's.
 - **After a crash**: the launcher's window (`docs/launcher.md` > After a crash). In runs from the repo (or with
   `SOJOURN_DUMPS=1`) a crash also leaves a minidump in the base dir's `dumps/` (the runtime's createdump, stacks and
   modules, the newest three kept), for us to open in a debugger; it holds memory, so it never goes in a report, and

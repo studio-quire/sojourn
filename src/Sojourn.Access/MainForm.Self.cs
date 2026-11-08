@@ -24,6 +24,7 @@ public sealed partial class MainForm
             case "displayname": await DisplayNameAsync(words); break;
             case "maturity": await MaturityAsync(words); break;
             case "emptytrash": await EmptyTrashAsync(); break;
+            case "saveoutfit": await SaveOutfitAsync(words); break;
         }
     }
 

@@ -759,6 +759,22 @@ On the builders' line and five logs (our words). What's built from it is in `doc
 
 On the builders' line and log `tester-20261107T150406-3fe8fa` (our words). She doesn't mind Alt+0's long list herself but wants it better organised, and chose groups over a box that narrows it. Editing and saving a notecard worked, on 0.1.0.929, an older build than she'd been told to use, without her knowing: a line at login now says when a newer build is out. She found links in notecards couldn't be opened: Control+K now. Play on a sound in the world, as the official viewer does, is fine. Paying an object worked, the first real payment (11:05; the build not checked, 947 or 955).
 
+### A folder given, a folder deleted, and links (0.1.0.947, the blind tester, 2026-11-07 evening)
+
+On two of her logs (our words). What's built from it is in `docs/access-app.md` > Keys.
+- **Giving a folder** of folders of landmarks was said given when nothing went. The library underneath gathered the
+  folder item by item (nearly two minutes), then dropped the give without a word when it held more than it would send
+  (66 things, folders counted, by the look of it); the confirmation had counted only the folder's own items, none. She
+  gave its folders one at a time, which worked. Now everything under a folder is counted on the confirmation, a folder
+  over Second Life's 42 things is refused before she's asked, saying why, and the answer says what went.
+- **Deleting a folder** said it was in the Trash, but it stayed in her list until she logged in again (it had gone):
+  the tree was shown again where the folder had gone to, not where it had been, and she deleted it twice more. Now the
+  folder it left is shown again, and a move on Second Life waits for the inventory service's answer, a refusal said.
+- She keeps copies of a pet in every outfit and wanted links instead: Paste as link, and Save your outfit, as links.
+- A landmark's About, as the official viewer shows it: About the place on its Applications key.
+- She wanted a way to delete for good, with the Trash so full: Delete on something in the Trash already does, and
+  Empty the Trash (on the Trash's Applications key, or `//emptytrash`). Worth telling her.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's

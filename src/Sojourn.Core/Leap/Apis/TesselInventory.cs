@@ -16,18 +16,13 @@ public sealed class TesselInventory : SessionApi
         var g = s.Gestures;
         Op("library", "-> {root_id, owner_id}: the grid's shared Library (browse with LLInventory getDirectDescendants; copy to use)", _ => inv.Library());
         Op("createFolder", "{name, parent_id?=root} -> {folder_id}", a => inv.CreateFolder(a));
-        Op("move", "{id | ids, folder_id}: items or folders into a folder", a => inv.Move(a));
+        Op("move", "{id | ids, folder_id}: items or folders into a folder", (a, ct) => J(inv.MoveAsync(a, ct)));
         Op("update", "{id, name?, desc?, next_perms? (\"MCT\" letters), everyone_copy?, group_perms?}: rename an item or folder, set an item's permissions",
             (a, ct) => J(inv.UpdateAsync(a, ct)));
         Op("delete", "{id | ids, purge=false}: to Trash, or gone for good with purge", (a, ct) => J(inv.DeleteAsync(a, ct)));
         Op("emptyTrash", "purge everything in Trash", (_, ct) => J(inv.EmptyTrashAsync(ct)));
-        Op("link", "{item_id, folder_id} -> {linked}: a link to an item of mine in a folder (the viewer's Paste as link)", async (a, ct) =>
-        {
-            var item = await inv.ItemAsync(a, ct);
-            var folder = a.Uuid("folder_id") ?? throw new LeapError("need folder_id");
-            await C.Inventory.CreateLinkAsync(folder, item.UUID, item.Name, item.Description, item.InventoryType, LibreMetaverse.UUID.Random(), ct);
-            return (JsonNode?)new JsonObject { ["linked"] = true };
-        });
+        Op("link", "{item_id, folder_id} -> {linked, link_id}: a link to an item of mine in a folder, named as the item (the viewer's Paste as link; a link's link goes to its original)",
+            (a, ct) => J(inv.LinkAsync(a, ct)));
         Op("copy", "{id, dest_id?, name?} -> item (or {folder_id, items}): copy an item or folder, mine or the Library's, into my inventory",
             (a, ct) => J(inv.CopyAsync(a, ct)));
         Op("createNotecard", "{name, text?, desc?, folder_id?, next_perms?} -> {item_id, asset_id}", (a, ct) => J(inv.CreateNotecardAsync(a, ct)));
@@ -41,6 +36,7 @@ public sealed class TesselInventory : SessionApi
         Op("readScript", "{item_id} -> {text}: needs modify and copy rights", (a, ct) => J(inv.ReadScriptAsync(a, ct)));
         Op("createLandmark", "{name?, desc?, folder_id?} -> {item_id, region, pos}: a landmark of where I stand", (a, ct) => J(inv.CreateLandmarkAsync(a, ct)));
         Op("landmark", "{item_id} -> {region, region_id, pos}: where a landmark points", (a, ct) => J(inv.LandmarkAsync(a, ct)));
+        Op("landmarkAbout", "{item_id} -> {name, region, pos, notes?, created, parcel: {name, desc?, owner_id?, group_owned?, rating, area, traffic, for_sale?}}: a landmark's About, as the viewer's landmark panel: the place it points to, asked of the grid", (a, ct) => J(inv.LandmarkAboutAsync(a, ct)));
         Op("gestures", "-> {gestures: [{item_id, name, active, trigger}]}: every gesture I have", (_, ct) => J(g.ListAsync(ct)));
         Op("createGesture", "{name, steps: [{animation: X, stop?} | {sound: X} | {chat: text} | {wait: secs | \"anims\"}], trigger?, replace?, desc?, folder_id?, activate=true} -> {item_id, asset_id, active}",
             (a, ct) => J(g.CreateAsync(a, ct)));

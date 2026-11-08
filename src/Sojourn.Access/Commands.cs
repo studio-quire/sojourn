@@ -55,7 +55,7 @@ public sealed class Commands
                 case "links": Links?.Invoke(); return true;
                 case "chatlog" or "chatlogs": ChatLog?.Invoke(string.Join(" ", rest)); return true;
                 case "block": if (Block != null) await Block(string.Join(" ", rest)); return true;
-                case "rebake" or "stopanimations" or "hover" or "displayname" or "maturity" or "emptytrash":
+                case "rebake" or "stopanimations" or "hover" or "displayname" or "maturity" or "emptytrash" or "saveoutfit":
                     if (Self != null) await Self(verb, string.Join(" ", rest));
                     return true;
                 case "profile": if (Profile != null) await Profile(string.Join(" ", rest)); return true;
@@ -168,6 +168,7 @@ public sealed class Commands
             "record a ride (C in walk mode): pictures every few seconds and what's around, kept on this PC; stop it (it stops by itself when you stand up or the ride stops); have the assistant tell it (Shift+C in walk mode), or tell more"),
         ("text", "//text | //text NAME", "floating text: what you're sitting on shows (Shift+V in walk mode), or the nearest thing with that name within 30 metres"),
         ("outfit", "//outfit", "what you're wearing, by name from the worn list: clothing, attachments and where, HUDs, body parts"),
+        ("saveoutfit", "//saveoutfit NAME", "save what you're wearing as an outfit: a folder NAME in My Outfits with a link to each thing, as the official viewer's Save Outfit"),
         ("build", "//build | //build COMMAND (hollow 50, colour red, new box, undo, help)",
             "the build editor (Control+B), or one of its commands on what you're editing"),
         ("land", "//land | //land COMMAND (options, fly off, ban NAME, for sale 500, buy, help)",

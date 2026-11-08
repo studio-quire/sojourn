@@ -398,20 +398,40 @@ public sealed class Wardrobe
         Look.Schedule(c, TimeSpan.FromMilliseconds(800), reupload: false, "outfit");
     }
 
-    /// <summary>The viewer's "Save outfit as": a folder in My Outfits with links to everything worn.</summary>
+    /// <summary>The viewer's "Save outfit as" (LLAppearanceMgr::makeNewOutfitLinks): a folder of the outfit type in My
+    /// Outfits, named as asked, holding a link to everything worn, each named as the outfit's own link and keeping its
+    /// description (where the viewer keeps clothing's layer order), folder links left out. Each link waits for the grid;
+    /// any it didn't make are named.</summary>
     public async Task<JsonObject> SaveOutfitAsync(JsonObject a, CancellationToken ct)
     {
         var c = C;
-        var name = a.Str("name") ?? throw new LeapError("need name");
+        var name = a.Str("name")?.Trim();
+        if (string.IsNullOrEmpty(name)) throw new LeapError("need name");
+        var worn = await Look.ReadWornAsync(c, ct);
+        if (worn.Count == 0) throw new LeapError("nothing is worn to save");
         var parent = a.Uuid("folder_id") ?? c.Inventory.FindFolderForType(FolderType.MyOutfits);
         if (parent == UUID.Zero || parent == c.Inventory.Store?.RootFolder?.UUID)
             parent = c.Inventory.CreateFolder(c.Inventory.Store!.RootFolder!.UUID, "My Outfits", FolderType.MyOutfits);
-        var worn = await Look.ReadWornAsync(c, ct);
-        var folder = c.Inventory.CreateFolder(parent, name, FolderType.Outfit);
+        // (LibreMetaverse's CreateFolder hands back any folder of the type already at the top instead of making one, as it
+        // should for system folders; an outfit folder moved to the top would take these links, so then it's a plain folder)
+        var root = c.Inventory.Store!.RootFolder!.UUID;
+        bool outfitAtTop = c.Inventory.Store.GetContents(root).OfType<InventoryFolder>().Any(f => f.PreferredType == FolderType.Outfit);
+        var folder = c.Inventory.CreateFolder(parent, name, outfitAtTop ? FolderType.None : FolderType.Outfit);
         await Task.Delay(500, ct);
+        var missed = new List<string>();
         foreach (var w in worn)
-            await c.Inventory.CreateLinkAsync(folder, w.ItemId, w.Name, w.Item.Description, w.Item.InventoryType, UUID.Random(), ct);
-        return new JsonObject { ["folder_id"] = folder.ToString(), ["items"] = worn.Count };
+        {
+            var desc = c.Inventory.Store?.TryGetValue<InventoryItem>(w.LinkId, out var link) == true && link!.AssetType == AssetType.Link ? link.Description : w.Item.Description;
+            using var one = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            one.CancelAfter(TimeSpan.FromSeconds(20));
+            InventoryItem? made = null;
+            try { made = await c.Inventory.CreateLinkAsync(folder, w.ItemId, w.Name, desc, w.Item.InventoryType, UUID.Random(), one.Token); }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
+            if (made is null) missed.Add(w.Name);
+        }
+        var o = new JsonObject { ["folder_id"] = folder.ToString(), ["name"] = name, ["items"] = worn.Count - missed.Count };
+        if (missed.Count > 0) o["not_linked"] = new JsonArray(missed.Select(m => (JsonNode)m).ToArray());
+        return o;
     }
 
     public async Task<JsonObject> OutfitsAsync(CancellationToken ct)

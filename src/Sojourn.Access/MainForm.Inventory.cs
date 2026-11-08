@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using LibreMetaverse;
 using Sojourn.Core;
+using Sojourn.Core.Access;
 using Sojourn.Core.Agents;
 using Microsoft.Extensions.Logging;
 
@@ -769,6 +770,7 @@ public sealed partial class MainForm
         if (!FillInventoryMenu(p)) return;
         var r = p.Tree.SelectedNode?.Bounds ?? Rectangle.Empty;
         _invMenu.Show(p.Tree, new Point(r.Left + 10, r.Bottom));
+        Mnemonics.Fix(_invMenu);
     }
 
     bool FillInventoryMenu(InvPane p)
@@ -807,15 +809,16 @@ public sealed partial class MainForm
         if (one && target!.AssetType == AssetType.Notecard) list.Add(new("Play as a ro&ute", () => _ = PlayRouteAsync(target)));
         // (each menu's letters its own: Cu&t below has T)
         if (one && target!.AssetType == AssetType.Landmark) list.Add(new("Teleport the&re", () => _ = _cmd.TeleportLandmarkAsync(target.UUID, target.Name)));
-        if (one && target!.AssetType == AssetType.Sound) list.Add(new("P&lay", () => _ = PlaySoundAsync(target)));
+        if (one && target!.AssetType == AssetType.Landmark) list.Add(new("&About the place", () => _ = LandmarkAboutAsync(target)));
+        if (one && target!.AssetType == AssetType.Sound) list.Add(new("Pla&y", () => _ = PlaySoundAsync(target)));
         if (one && target!.AssetType == AssetType.Animation)
         {
-            list.Add(new("P&lay", () => _ = PlayAnimationAsync(target, play: true)));
+            list.Add(new("Pla&y", () => _ = PlayAnimationAsync(target, play: true)));
             list.Add(new("St&op it", () => _ = PlayAnimationAsync(target, play: false)));
         }
         // gestures: Enter plays one; the chosen ones activated or deactivated together
         var gestures = items.Select(Target).Where(i => i.AssetType == AssetType.Gesture).ToList();
-        if (one && gestures.Count == 1) list.Add(new("P&lay", () => _ = PlayGestureAsync(gestures[0].UUID)));
+        if (one && gestures.Count == 1) list.Add(new("Pla&y", () => _ = PlayGestureAsync(gestures[0].UUID)));
         if (gestures.Any(g => !GestureActive(g))) list.Add(new("&Activate", () => _ = ActivateGesturesAsync(gestures.Where(g => !GestureActive(g)).ToList(), on: true)));
         if (gestures.Any(GestureActive)) list.Add(new("Deacti&vate", () => _ = ActivateGesturesAsync(gestures.Where(GestureActive).ToList(), on: false)));
         // (an object in the outfit but not on the avatar can be worn again: Wear attaches it)
@@ -828,7 +831,7 @@ public sealed partial class MainForm
         {
             list.Add(new("&Rez on the ground", () => _ = RezAsync(target)));
             list.Add(new("Rez where you &say...", () => _ = RezAtAsync(target)));
-            list.Add(new("Attac&h to...", () => _ = AttachToAsync(p, target)));
+            list.Add(new("Attach t&o...", () => _ = AttachToAsync(p, target)));   // (H is Copy to's, with the second pane open)
             list.Add(new("&Unbox", () => _ = UnboxAsync(target)));
         }
         list.Add(new("-", () => { }));
@@ -838,10 +841,11 @@ public sealed partial class MainForm
         list.Add(new("Cu&t", () => Clip(p, cut: true), "Control+X"));
         list.Add(new("&Copy", () => Clip(p, cut: false), "Control+C"));
         if (_invClip.Count > 0) list.Add(new("&Paste", () => _ = PasteAsync(p), "Control+V"));
+        if (_invClip.Count > 0) list.Add(new("Paste as &link", () => _ = PasteLinksAsync(p)));
         if (SecondOpen && FolderAt(Other(p)) is { } there)
         {
-            list.Add(new($"&Move to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: false), "Control+M"));
-            list.Add(new($"Cop&y to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: true)));
+            list.Add(new($"&Move to {there.Name.Replace("&", "&&")}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: false), "Control+M"));
+            list.Add(new($"Copy to {there.Name.Replace("&", "&&")}, in t&he other pane", () => _ = ToOtherPaneAsync(p, copy: true)));
         }
         list.AddRange(FavoriteActions(p, chosen, folder: false));
         if (one) list.Add(new("Re&name", () => Rename(p), "F2"));
@@ -872,10 +876,11 @@ public sealed partial class MainForm
             new("&Copy", () => Clip(p, cut: false), "Control+C"),
         };
         if (_invClip.Count > 0) list.Add(new("&Paste", () => _ = PasteAsync(p), "Control+V"));
+        if (_invClip.Count > 0) list.Add(new("Paste as &link", () => _ = PasteLinksAsync(p)));
         if (SecondOpen && FolderAt(Other(p)) is { } there && there.UUID != f.UUID)
         {
-            list.Add(new($"&Move to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: false), "Control+M"));
-            list.Add(new($"Cop&y to {there.Name}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: true)));
+            list.Add(new($"&Move to {there.Name.Replace("&", "&&")}, in the other pane", () => _ = ToOtherPaneAsync(p, copy: false), "Control+M"));
+            list.Add(new($"Copy to {there.Name.Replace("&", "&&")}, in t&he other pane", () => _ = ToOtherPaneAsync(p, copy: true)));
         }
         list.AddRange(FavoriteActions(p, new() { f }, folder: true));
         list.Add(new("Re&name", () => Rename(p), "F2"));
@@ -1092,13 +1097,7 @@ public sealed partial class MainForm
                     f["online"]?.GetValue<bool>() == true ? "friend, online" : "friend"));
         var who = Dialogs.Pick(this, $"Give {Named(chosen)} to", people, FindSomeoneAsync);
         if (who == null) { Reader?.Answer("Not given.", keep: false); return; }
-        foreach (var n in chosen)
-        {
-            var args = new JsonObject { ["to"] = who.Id.ToString() };
-            args[n is InventoryFolder ? "folder_id" : "item_id"] = n.UUID.ToString();
-            if (await ConfirmedAsync("TesselAgent", "give", args) is not { } r) continue;
-            Answer(PersonOps.Error(r) is { } e ? $"{n.Name} not given: {e}" : $"Gave {n.Name} to {who.Name}.");
-        }
+        foreach (var n in chosen) await GiveOneAsync(n, who.Id, who.Name);
         Unmark(p);
         RefreshInventory(chosen.Select(c => c.ParentUUID).ToArray());
     }
@@ -1114,15 +1113,26 @@ public sealed partial class MainForm
             Answer($"Nothing copied to give. In your inventory, Alt+4, Control+C on what you'd give {name}, then Give here.");
             return;
         }
-        foreach (var n in chosen)
-        {
-            var args = new JsonObject { ["to"] = to.ToString() };
-            args[n is InventoryFolder ? "folder_id" : "item_id"] = n.UUID.ToString();
-            if (await ConfirmedAsync("TesselAgent", "give", args) is not { } r) continue;
-            Answer(PersonOps.Error(r) is { } e ? $"{n.Name} not given: {e}" : $"Gave {n.Name} to {name}.");
-        }
+        foreach (var n in chosen) await GiveOneAsync(n, to, name);
         RefreshInventory(chosen.Select(c => c.ParentUUID).ToArray());
     }
+
+    /// <summary>One thing given, behind her confirmation, and said as it went: a folder with what went in it (everything
+    /// under it counted, as the confirmation counts it), or why it didn't (more than Second Life carries in one offer,
+    /// nothing in it that can be given), refused before she's asked (InventoryOps.Gives.cs).</summary>
+    async Task GiveOneAsync(InventoryBase n, UUID to, string name)
+    {
+        var args = new JsonObject { ["to"] = to.ToString() };
+        args[n is InventoryFolder ? "folder_id" : "item_id"] = n.UUID.ToString();
+        if (await ConfirmedAsync("TesselAgent", "give", args) is not { } r) return;
+        if (PersonOps.Error(r) is { } e) { Answer($"{n.Name} not given: {e}"); return; }
+        if (n is not InventoryFolder) { Answer($"Gave {n.Name} to {name}."); return; }
+        int items = r.Int("items", 0), folders = r.Int("folders", 0), kept = r.Int("kept", 0);
+        var what = folders > 0 ? $"{Count(items, "item")} in it and its {Count(folders, "folder")}" : $"{Count(items, "item")} in it";
+        Answer($"Gave {n.Name} to {name}, {what}." + (kept > 0 ? $" {Count(kept, "thing")} stayed with you, no-transfer or worn." : ""));
+    }
+
+    static string Count(int n, string what) => n == 1 ? $"1 {what}" : $"{n} {what}s";
 
     /// <summary>Anyone on the grid by name (the avatar picker): an exact match, or the only one.</summary>
     async Task<Dialogs.Someone?> FindSomeoneAsync(string name)
@@ -1157,6 +1167,72 @@ public sealed partial class MainForm
         if (FolderAt(p) is not { } folder) return;
         var ids = _invClip.ToList();
         if (await MoveOrCopyAsync(ids, folder, copy: !_invClipCut) && _invClipCut) _invClip.Clear();
+    }
+
+    /// <summary>A landmark's About, as the official viewer's landmark panel: the place it points to (its parcel's name,
+    /// rating, owner, size, traffic, a price if it's for sale, its description), where it lands, and the landmark's own
+    /// notes and date (InventoryOps.Landmarks.cs).</summary>
+    async Task LandmarkAboutAsync(InventoryItem lm)
+    {
+        Reader?.Answer($"Asking about {lm.Name}.", keep: false);
+        var r = await _ops.ReadAsync("TesselInventory", "landmarkAbout", new JsonObject { ["item_id"] = lm.UUID.ToString() });
+        if (PersonOps.Error(r) is { } e) { Answer($"Couldn't read {lm.Name}: {e}"); return; }
+        var region = r.Str("region") is { Length: > 0 } rg ? rg : "a region the grid didn't name";
+        var at = r["pos"] is JsonArray pa && pa.Count >= 3
+            ? $"{region}, {Math.Round(Json.AsDouble(pa[0]) ?? 0)}, {Math.Round(Json.AsDouble(pa[1]) ?? 0)}, {Math.Round(Json.AsDouble(pa[2]) ?? 0)}" : region;
+        var said = new List<string>();
+        bool quotes = false;
+        if (r["parcel"] is JsonObject pc)
+        {
+            var placeName = pc.Str("name") is { Length: > 0 } pn ? pn : "A parcel with no name";
+            var place = new List<string> { $"{placeName}, in {region}", $"rated {pc.Str("rating")}" };
+            if (UUID.TryParse(pc.Str("owner_id"), out var owner))
+                place.Add(pc["group_owned"]?.GetValue<bool>() == true ? $"owned by the group {await GroupNameAsync(owner.ToString())}" : $"owned by {await PersonNameAsync(owner)}");
+            place.Add($"{pc.Int("area", 0)} square metres");
+            place.Add($"traffic {pc.Int("traffic", 0)}");
+            if (pc.Int("for_sale", 0) is var price and > 0) place.Add($"for sale for L${price}");
+            said.Add(string.Join("; ", place) + ".");
+            if (pc.Str("desc") is { Length: > 0 } pd) { said.Add($"About it: {Ended(pd.Trim())}"); quotes = true; }
+        }
+        else said.Add($"In {region}; {r.Str("parcel_unknown") ?? "the place there couldn't be read"}.");
+        said.Add($"{lm.Name} lands at {at}.");
+        if (r.Str("notes") is { Length: > 0 } notes) said.Add($"Your notes on it: {Ended(notes.Trim())}");
+        if (r.Str("created") is { Length: > 0 } made) said.Add($"Made {made}.");
+        Answer(string.Join(" ", said), quotes ? LineFrom.People : LineFrom.App);
+    }
+
+    async Task<string> PersonNameAsync(UUID id)
+    {
+        var names = await _ops.ReadAsync("TesselAgent", "names", new JsonObject { ["ids"] = new JsonArray(id.ToString()), ["timeout"] = 3 });
+        if (names["names"] is JsonObject nm && nm[id.ToString()] is { } n)
+            return n is JsonObject o ? o.Str("display_name") ?? o.Str("username") ?? "someone" : n.ToString();
+        return "someone whose name didn't come";
+    }
+
+    /// <summary>Paste as link (the official viewer's): a link to each item cut or copied, in the folder the pane points
+    /// at, named as the item; the item stays where it is, and what's cut stays on the clipboard (a link moves nothing).
+    /// One pet's links in every outfit, rather than a copy in each (the blind tester's ask, 2026-11-07). Folders aren't
+    /// linked, said so.</summary>
+    async Task PasteLinksAsync(InvPane p)
+    {
+        if (_invClip.Count == 0) { Reader?.Answer("Nothing cut or copied.", keep: false); return; }
+        if (FolderAt(p) is not { } folder) return;
+        var made = new List<string>();
+        var folders = new List<string>();
+        foreach (var id in _invClip.ToList())
+        {
+            if (Store?.TryGetValue<InventoryBase>(id, out var n) != true || n is null) continue;
+            if (n is InventoryFolder) { folders.Add(n.Name); continue; }
+            var r = await _ops.DoAsync("TesselInventory", "link", new JsonObject { ["item_id"] = id.ToString(), ["folder_id"] = folder.UUID.ToString() });
+            if (PersonOps.Error(r) is { } e) Answer($"No link to {n.Name}: {e}");
+            else made.Add(n.Name);
+        }
+        var said = new List<string>();
+        if (made.Count > 0) said.Add($"Linked {Join(made)} in {folder.Name}.");
+        if (folders.Count > 0) said.Add($"{Join(folders)}: {(folders.Count == 1 ? "a folder" : "folders")}, and links are made only for items, so left out.");
+        if (said.Count > 0) Answer(string.Join(" ", said));
+        await Task.Delay(300);
+        RefreshInventory(folder.UUID);
     }
 
     /// <summary>Control+M (or the menu's Move to and Copy to): what's marked in this pane, else what's selected, into the
@@ -1276,6 +1352,9 @@ public sealed partial class MainForm
         if (chosen.Count == 0) return;
         // what's in the Trash already goes for good, the confirmation saying so
         bool forGood = chosen.All(InTrash);
+        // where they were, read now: a move changes the store's own node (the tree's), so after it ParentUUID is the
+        // Trash, and the folder they left kept showing them until she logged in again (2026-11-07)
+        var from = chosen.Select(c => c.ParentUUID).ToList();
         if (await ConfirmedAsync("TesselInventory", "delete", new JsonObject
             {
                 ["ids"] = new JsonArray(chosen.Select(c => (JsonNode)c.UUID.ToString()).ToArray()), ["purge"] = forGood,
@@ -1284,6 +1363,6 @@ public sealed partial class MainForm
         Answer(forGood ? $"Deleted {Named(chosen)} for good." : $"Deleted {Named(chosen)} (in the Trash).");
         Unmark(p);
         await Task.Delay(500);
-        RefreshInventory(chosen.Select(c => c.ParentUUID).Append(_ops.Session.Inventory.FolderFor(FolderType.Trash)).ToArray());
+        RefreshInventory(from.Append(_ops.Session.Inventory.FolderFor(FolderType.Trash)).ToArray());
     }
 }

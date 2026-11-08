@@ -198,7 +198,7 @@ list; a blind tester, offered groups or a box narrowing the list as you type, ch
 `MainForm.Menu.cs`; Alt or F10, then the arrows, or Alt+W, V, R, B, H for a menu. It's there for finding out what exists,
 as Radegast's menus are. World (teleport home, to the SLurl on the clipboard, set home here, landmark here, sit on the
 ground or stand up, fly or stop flying, walk mode, Recording a route (its keys and Discard), Gestures: the active ones to play, Away and Do not disturb as checked
-items, incognito, region info, About Land (Control+L) and the region's covenant, parcels in this region, status, what you're wearing, describe where you are, describe
+items, incognito, region info, About Land (Control+L) and the region's covenant, parcels in this region, status, what you're wearing, save your outfit, describe where you are, describe
 me, rebake, stop all animations, hover height, my profile, display name, highest rating of region (`MainForm.Self.cs`; each also a `//` command: `//rebake`, `//stopanimations`, `//hover`, `//displayname`, `//maturity`), log out, back to the login window (`//logout`: asked first, Enter goes and Escape stays; the app starts afresh there, the form filled in and the password typed again), who's in voice, open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
 Friends among them, the second inventory pane, the inventory's favorites, the newest notice, Conversations, the conversation ring, closing one),
 Read-out (mute all, mute this conversation, times, arrivals, Recent messages: the last nine as items with their
@@ -286,12 +286,27 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   tester took for worn or not), and what's marked is what every action takes, else the selected one; an item's words
   follow a wear or take-off as it lands ("worn" comes and goes within a second). The Applications key (or Shift+F10)
   lists every action: Wear, Add to outfit, Take off, Rez on the ground, Rez where you say..., Unbox, Give to..., Cut,
-  Copy, Paste, Rename, Details (rights, maker, date), Delete; on a folder Replace outfit, Add to outfit, Take off the
+  Copy, Paste, Paste as link, Rename, Details (rights, maker, date), Delete; on a folder Replace outfit, Add to outfit, Take off the
   folder's items, New folder, New notecard, New script, Upload a file here (Control+U; Uploading, below); a notecard also Play as
-  a route (`//route`).
+  a route (`//route`); a landmark Teleport there and About the place.
   - A gesture's words say whether it's active, and its trigger ("Clap, gesture, active, /clap"); Enter plays it (any
     gesture, active or not), and its Applications key has Play, Activate and Deactivate (for all the marked ones).
-  - Ctrl+X / Ctrl+C then Ctrl+V on a folder (or an item in it) move or copy; F2 renames.
+  - Ctrl+X / Ctrl+C then Ctrl+V on a folder (or an item in it) move or copy; F2 renames. On Second Life, moves, deletes to the
+    Trash and renames wait for the inventory service's answer before they're said done, and one it refuses is said
+    ("Not deleted: Second Life's inventory service refused the move ..."), nothing changing (`docs/inventory.md` > Moving and tidying); the
+    folder something left is shown again as it is now, wherever it was done from.
+  - **Paste as link** (the official viewer's; the Applications key, L, wherever Paste is): a link to each item cut or
+    copied, in the folder the pane points at, named as the item ("Linked Pip in Party outfit."); the item stays where it
+    is, so one pet can be in every outfit as links rather than copies. Folders aren't linked, said so; a notecard
+    with nothing ever saved in it can't be linked yet, as in the viewer. Play is on Y so it keeps a letter of its own (with the second pane open, Copy to X there is H, and Attach to O); L is also Unmark all's,
+    so with marks the first L selects and the next moves on.
+  - **Save your outfit** (World, or `//saveoutfit NAME`; the official viewer's Save Outfit): what's worn now as a new
+    outfit folder in My Outfits, a link to each thing (named as worn, keeping the outfit link's description, where the
+    viewer keeps clothing's layer order); Replace outfit on that folder wears it again. Anything the grid didn't link is
+    named.
+  - **About the place** on a landmark (the official viewer's landmark panel): the parcel it points to, asked of the
+    grid (its name and region, rating, owner or owning group, size, traffic, a price if it's for sale, its description),
+    where it lands, and the landmark's own notes and date (`TesselInventory landmarkAbout`).
   - **Favorites** (the official viewer's 2024 inventory favourites; `MainForm.Favorites.cs`): any item or folder can be
     a favourite, staying where it is, the mark kept on Second Life's inventory service, so the official viewer shows
     the same. Ctrl+Shift+F adds what's marked (else the selected one) to the favourites, or takes it off when all of it
@@ -314,6 +329,12 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   - Delete and Give ask first (the confirmation comes up selected in Notices: Enter confirms, Escape cancels, then the
     focus is back in the tree). As in the official viewer and Firestorm, a worn body part isn't deleted, said at once
     without asking, and other worn items, the folder's too, are taken off first, the confirmation saying so.
+  - Giving a folder gives everything under it, as the official viewer does: the confirmation counts the items in it and
+    its folders, the folders inside it, the no-copy ones, and what stays (no transfer, or worn: left out, as the viewer
+    leaves them). Second Life carries at most 42 things in one offer, its folders counted, so a bigger folder (or one
+    with nothing that can be given) is refused before she's asked, saying why and that its folders can go one at a time.
+    The answer says what went ("Gave Landmarks for Kestrel to Kestrel, 30 items in it and its 4 folders."): it's an
+    offer they accept or decline, so it's what was offered, not what they kept (`InventoryOps.Gives.cs`).
   - Ctrl+F goes to Search (from the tree or Show), where typing lists what matches flat with its folder ("2 found"), Enter goes back to the
     tree, Escape clears it; a search leaves the Trash out and says what it has there ("2 found, and 3 in the Trash
     (Show: Trash lists them)"); a long one says "Searching." first. Tab from Search reaches Show (Up/Down: everything,
@@ -611,6 +632,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//ride` / `stop` / `describe` / `more` | record a ride: start (or, recording, how it's going), stop, have it told, tell more (walk mode's C and Shift+C; Walk mode > Recording a ride) |
 | `//text` / `//text NAME` | floating text: what you're sitting on shows (walk mode's Shift+V), or the nearest thing within 30 m with that name in its name ("Ride Train shows: Throttle 30%, Speed 11 km/h.") |
 | `//outfit` | what you're wearing, by name (Ctrl+Shift+W) |
+| `//saveoutfit NAME` | what you're wearing saved as an outfit: a folder NAME in My Outfits with a link to each thing (with no name, it asks; also World > Save your outfit...) |
 | `//upload` / `//upload PATH` | upload a file: the Open window, or the file at PATH (Ctrl+U; Uploading, below) |
 | `//build` / `//build COMMAND` | the build editor (Ctrl+B), or one of its commands on what's being edited, from any input (Building, below) |
 | `//land` / `//land COMMAND` | About Land (Ctrl+L), or one of its commands on the parcel shown (or the one you're on), from any input (About Land, below) |
@@ -877,6 +899,8 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   lines), how far ahead the track reached at speed (the `track from` lines: are rails named in time?), whether rails
   named Guide but phantom are ridden as this log suggests, and on a throw, which part took the touch, whether a touch
   toggles, how long the description took to change and whether the rails' names followed.
+
+**Menu letters** (`Mnemonics.cs`): once a menu is open, no two of its items share a letter: an item keeps its own if it's free, else takes the next free letter in its words, else has none. Windows moves to the first of two items on one letter and runs neither, so a press did nothing, unsaid (Play and Paste as link, then Play and Copy to, 2026-11-08); menus are built for what's selected, so any pairing can clash.
 
 **A mistyped command**: the build box puts a word it doesn't know back in the box to correct, with what it most likely was (`Typos.cs`: a known word with the space left out, or a slip or two away: "Did you mean hollow?"); `//` commands say the same, and Control+Up brings the line back (the blind tester's building, 2026-11-06).
 

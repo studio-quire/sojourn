@@ -695,14 +695,20 @@ def build_more(kit):
         except ApiError as e:
             return error(str(e))
 
-    @tool("sojourn", "Sojourn itself. action: about (its name, version, the disclaimer that it isn't Linden Lab's, who made "
+    # (the app it runs in by its own name: Sojourn Access's reports are its own, and it has Send a log, not the VR menu's page)
+    access = getattr(kit, "app", None) == "access"
+    app_name = "Sojourn Access" if access else "Sojourn"
+
+    @tool("sojourn", f"{app_name} itself. action: about (its name, version, the disclaimer that it isn't Linden Lab's, who made "
           "it, its licence, source and support: say what they asked about, in a sentence or two); report_problem (when "
-          "the person wants to report a problem with Sojourn or says it's misbehaving and wants it looked at: note, what "
+          f"the person wants to report a problem with {app_name} or says it's misbehaving and wants it looked at: note, what "
           "went wrong in their own words, nothing added; this session's log goes with it, other people's words left out "
-          "and their names made stand-ins. They confirm on the panel; it goes to Studio Quire's relay"
+          "and their names made stand-ins. They confirm" + (" in Notices" if access else " on the panel")
+          + "; it goes to Studio Quire's relay"
           + (", with their Studio Quire token if they have one" if relay_offered(getattr(kit, "app", None)) else "")
-          + ". Saving it for a GitHub issue instead is the menu's: about, report a problem); stats "
-          "(the viewer statistics Sojourn sends Linden Lab, as every viewer does: what they hold).",
+          + (". Sending a log from the Help menu (//sendlog) is the other way to send one); stats " if access
+             else ". Saving it for a GitHub issue instead is the menu's: about, report a problem); stats ")
+          + f"(the viewer statistics {app_name} sends Linden Lab, as every viewer does: what they hold).",
           schema(["action"], action=["about", "report_problem", "stats"], note=str))
     async def sojourn(args):
         act = args["action"]

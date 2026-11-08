@@ -24,13 +24,16 @@ public sealed class ReleaseApi : LeapApi
     public const string Licence = "Parts of Sojourn's renderer are ported from the Second Life viewer's source (LGPL 2.1, "
         + "Copyright Linden Research, Inc.); it uses LibreMetaverse (BSD).";
     public const string Source = "github.com/studio-quire/sojourn";
-    public const string Support = "There's no formal support. Report a problem from the menu (about › report a problem), "
-        + "or as an issue at github.com/studio-quire/sojourn/issues.";
+    public static string Support => ProblemReport.IsAccess
+        ? "There's no formal support. Send a log from the Help menu (//sendlog), ask the assistant to report a problem, "
+          + "message the builders (Control+Shift+B), or file an issue at github.com/studio-quire/sojourn-access/issues."
+        : "There's no formal support. Report a problem from the menu (about › report a problem), "
+          + "or as an issue at github.com/studio-quire/sojourn/issues.";
     /// <summary>Who made it (the studio's CLAUDE.md > Credit: the models, and the person by their actual role).</summary>
     public const string Credit = "Made by Claude models (Anthropic's AI) at Studio Quire, from Shoalstone's idea and direction.";
 
     public override string Name => "SojournRelease";
-    public override string Desc => "about Sojourn itself: its name, version, disclaimer, licence, source and support; the viewer "
+    public override string Desc => $"about {ProblemReport.App} itself: its name, version, disclaimer, licence, source and support; the viewer "
         + "statistics it sends Linden Lab; a problem report to Studio Quire (sent only at the person's press)";
     public override bool NeedsSession => false;
 
@@ -67,7 +70,7 @@ public sealed class ReleaseApi : LeapApi
                 ["report"] = JsonNode.Parse(LibreMetaverse.StructuredData.OSDParser.SerializeJsonString(st.Preview(), preserveDefaults: true)),
             };
         });
-        Op("reportProblem", "{note} -> {sent | saved, said}: a report of a problem with Sojourn: this session's log (other "
+        Op("reportProblem", $"{{note}} -> {{sent | saved, said}}: a report of a problem with {ProblemReport.App}: this session's log (other "
             + "people's words left out, their names stand-ins) and note, the person's own words about what went wrong. "
             + "The person confirms on the panel first; it goes to Studio Quire's relay, "
             + (ProviderKeys.RelayOffered ? "with their Studio Quire token if they have one, else without (its daily limits)" : "within its daily limits")
@@ -82,7 +85,7 @@ public sealed class ReleaseApi : LeapApi
 
     public static JsonObject About(AgentSession s) => new()
     {
-        ["name"] = "Sojourn",
+        ["name"] = ProblemReport.App,
         ["channel"] = s.Host.Channel,
         ["version"] = s.Host.Version,
         ["commit"] = Commit,

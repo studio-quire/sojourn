@@ -71,6 +71,7 @@ public sealed partial class MainForm
             Add(person ? "Select all" : "Select &all", "Control+A", box.SelectAll);
             menu.Closed += (_, _) => BeginInvoke(menu.Dispose);
             menu.Show(box, new Point(10, Math.Min(box.Height, 40)));
+            Mnemonics.Fix(menu);
         }
         if (cv.Input is LineBox input) input.AppsMenu = () => Show(cv.Input);
         if (cv.History is LineBox history) history.AppsMenu = () => Show(cv.History);

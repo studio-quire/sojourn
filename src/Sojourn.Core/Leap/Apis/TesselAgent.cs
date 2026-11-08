@@ -15,7 +15,7 @@ public sealed class TesselAgent : SessionApi
         Op("balance", "-> {balance, known}", _ => new JsonObject { ["balance"] = C.Self.Balance, ["known"] = S.BalanceKnown });
         Op("pay", "{to, amount, desc?} -> {ok, balance} once the grid confirms ({sent, confirmed: false} if it hasn't yet; an error if it refused): "
             + "an avatar, or an object in view that takes money", PayAsync);
-        Op("give", "{to, item_id | folder_id}: sent to them as an inventory offer they accept or decline", GiveAsync);
+        Op("give", $"{{to, item_id | folder_id}} -> folder: {{items, folders, kept, no_copy}}: sent to them as an inventory offer they accept or decline; a folder carries at most {InventoryOps.MaxGive} things, its folders counted, no-transfer and worn things staying", GiveAsync);
         Op("attach", "{item_id, point?, replace?}", AttachAsync);
         Op("detach", "{item_id | object_id}", DetachAsync);
         Op("attachPoints", "-> {points: [{id, name, hud, objects: [{object_id, item_id, name}]}]}: every attachment point and what I wear on it", AttachPointsAsync);
@@ -227,12 +227,8 @@ public sealed class TesselAgent : SessionApi
     {
         var c = C;
         var to = To(a);
-        if (a.Uuid("folder_id") is { } fid)
-        {
-            if (S.Inventory.Node(fid) is not InventoryFolder f) throw new LeapError("no such folder");
-            await c.Inventory.GiveFolderAsync(fid, f.Name, to, false, ct);
-            return new JsonObject();
-        }
+        // a folder as the official viewer gives one (InventoryOps.Gives.cs): counted, refused in words, never silently dropped
+        if (a.Uuid("folder_id") is { } fid) return await S.InventoryOps.GiveFolderAsync(fid, to, ct);
         var iid = a.Uuid("item_id") ?? throw new LeapError("no such item");
         var item = await S.Inventory.ItemAsync(iid, ct) ?? throw new LeapError("no such item");
         if ((item.Permissions.OwnerMask & PermissionMask.Transfer) == 0 || S.Inventory.IsWorn(item))

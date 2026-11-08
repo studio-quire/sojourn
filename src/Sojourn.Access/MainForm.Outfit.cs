@@ -1,4 +1,6 @@
+using System.Text.Json.Nodes;
 using LibreMetaverse;
+using Sojourn.Core;
 using Sojourn.Core.Agents;
 
 namespace Sojourn.Access;
@@ -85,5 +87,26 @@ public sealed partial class MainForm
         if (attached.Count + huds.Count > 0) lines.Add("Alt+Shift+7 lists them to touch.");
         Answer(string.Join(" ", lines));
         return Task.CompletedTask;
+    }
+
+    /// <summary>`//saveoutfit NAME` and World's Save your outfit...: what's worn now as a folder of links in My Outfits, as
+    /// the official viewer's Save Outfit (Wardrobe.SaveOutfitAsync); the items stay where they are, and Replace outfit on
+    /// the folder puts it back on. With no name, asks for one.</summary>
+    async Task SaveOutfitAsync(string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0)
+        {
+            name = Dialogs.Ask(this, "Save your outfit", "Outfit name") ?? "";
+            if (name.Trim().Length == 0) { Reader?.Answer("Not saved.", keep: false); return; }
+        }
+        var r = await _ops.DoAsync("TesselAgent", "saveOutfit", new JsonObject { ["name"] = name.Trim() });
+        if (PersonOps.Error(r) is { } e) { Answer($"Outfit not saved: {e}"); return; }
+        int n = r.Int("items", 0);
+        var missed = (r["not_linked"] as JsonArray)?.Select(x => x?.ToString() ?? "").ToList() ?? new();
+        Answer($"Saved your outfit as {name.Trim()} in My Outfits, a link to each of the {Count(n, "thing")} you're wearing."
+               + (missed.Count > 0 ? $" Not linked, as the grid didn't make them: {Join(missed)}." : ""));
+        await Task.Delay(500);
+        RefreshInventory(_ops.Session.Inventory.FolderFor(FolderType.MyOutfits));
     }
 }

@@ -23,6 +23,8 @@ public static class InventoryWiring
         assistant.Confirmations.Cases.Add(new Confirmations.Case(Kind, (pump, op, a) => Task.FromResult(Describe(s, op, a))));
         // a protected folder (or the locked AO folder) is refused before the person is asked to confirm deleting it
         assistant.Confirmations.Refusals.Add((pump, op, a) => pump == "TesselInventory" ? s.InventoryOps.Refusal(op, a) : null);
+        // a folder Second Life won't carry (over 42 things, or nothing that can be given) is refused before she's asked
+        assistant.Confirmations.Refusals.Add((pump, op, a) => pump == "TesselAgent" && op == "give" ? s.InventoryOps.GiveRefusal(a) : null);
 
         var ao = s.Ao;
         settings.Add("ao", new("you", "the animation overrider: the person's own stands, walks, sits and the rest from an AO folder (SojournAo; "

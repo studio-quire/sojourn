@@ -1401,6 +1401,7 @@ def session(run, procs):
         ("About Land, her own parcel", lambda: about_land(run, nonce, tester_id)),
         ("two inventory panes", lambda: two_panes(run, nonce)),
         ("inventory housekeeping and putting herself right", lambda: housekeeping(run, nonce)),
+        ("folders given, deleted from the tree, links, outfits and landmarks", lambda: folders_and_links(run, nonce)),
         ("incognito", lambda: incognito(run, nonce)),
         ("voice keys", lambda: voice_keys(run)),
         ("the window's controls again", lambda: tree_check(run, "nearby chat, after use")),
@@ -2284,11 +2285,34 @@ def account_id(first, last):
 ARRIVED_AT = 0.0   # when the app said it had logged in (time.time())
 
 
+def outfit_link_on_grid(item, cof):
+    """A link to the item put in her Current Outfit by the local grid's inventory database, as the grid holds one after
+    she wore it in another session: the outfit saying it's worn while the region hasn't attached it, as on Second Life
+    in the first minute after logging in. The link's row copies the item's, as OpenSim keeps the viewer's links. Its id."""
+    import sqlite3
+    db = sqlite3.connect(ROOT / "local" / os.environ.get("SOJOURN_GRID", "grid") / "bin" / "inventory.db", timeout=10)
+    try:
+        cols = [r[1] for r in db.execute("pragma table_info(inventoryitems)")]
+        row = db.execute("select * from inventoryitems where inventoryID = ?", (item,)).fetchone()
+        if not row:
+            return None
+        link = dict(zip(cols, row), assetID=item, assetType=24, inventoryID=str(uuid.uuid4()), parentFolderID=cof,
+                    creationDate=int(time.time()))
+        db.execute(f"insert into inventoryitems ({', '.join(cols)}) values ({', '.join('?' * len(cols))})", [link[c] for c in cols])
+        db.execute("update inventoryfolders set version = version + 1 where folderID = ?", (cof,))
+        db.commit()
+        return link["inventoryID"]
+    finally:
+        db.close()
+
+
 def outfit_arriving(run, nonce):
     """The outfit's attachments still coming in (the blind tester's skirt "looked missing, then re-attached itself"
     just after logging in, 2026-10-31): an object linked in Current Outfit but not on the avatar, as on Second Life in
     the first minute or so after logging in or teleporting, is said as still arriving by Control+Shift+W and in the
-    inventory's words; once it's on, as attached. Runs first, within the two minutes after logging in."""
+    inventory's words; once it's on, as attached. Runs first, within the two minutes after logging in. The link goes into
+    the grid's own inventory (outfit_link_on_grid), as another session's Wear leaves it, and F5 reads it: the app's link
+    op rightly refuses Current Outfit, whose links are what's worn."""
     name = f"Access Skirt {nonce}"
     objects = api("LLInventory", "getBasicFolderID", ft_name="object")["id"]
     cof = api("LLInventory", "getBasicFolderID", ft_name="current")["id"]
@@ -2299,7 +2323,13 @@ def outfit_arriving(run, nonce):
     if not run.check("(fixture: an object in the inventory)", item, name):
         return
     try:
-        api("TesselInventory", "link", item_id=item, folder_id=cof)
+        if not run.check("(the grid's inventory links it in Current Outfit)", outfit_link_on_grid(item, cof), ""):
+            return
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        m = mark()
+        key("f5")
+        run.expect("(F5 reads the inventory again)", ["Inventory read again"], m, 60)
         if not run.check("(it's in the outfit, not attached: linked in Current Outfit)", wait(lambda: name in inv_items(cof), 10),
                          ", ".join(inv_items(cof))):
             return
@@ -3089,7 +3119,9 @@ def notice_perm(run, tester_id):
 
 
 class AisStandIn:
-    """A stand-in for Second Life's inventory service (AIS3), which OpenSim lacks, for favourites only: the app's
+    """A stand-in for Second Life's inventory service (AIS3), which OpenSim lacks, for favourites, and for moves, renames
+    and an item's changes, whose answers the app waits for (InventoryOps.Service.cs: then it sends OpenSim the UDP message
+    too, as the stand-in holds no inventory): the app's
     InventoryMeta goes to it by SOJOURN_TEST_AIS when the region offers no InventoryAPIv3 (never where it does). It
     answers as the service's shape has it, read from the official viewer and InventoryMeta: GET category/<id>/children
     (every flag it holds under _embedded, so a sweep from the top finds them all; the real one nests them by folder),
@@ -3103,6 +3135,8 @@ class AisStandIn:
         self.flags = {}        # id -> (is_folder, favourite)
         self.patches = []      # (id, favourite, how it was sent) as they came
         self.sweeps = 0        # GETs of a folder's children (the app's reading of every favourite)
+        self.changes = []      # (item|category, id, body) of every other PATCH: moves, renames, an item's changes
+        self.refuse = set()    # ids whose changes it refuses (409), as the real service might
         standin = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -3129,10 +3163,21 @@ class AisStandIn:
             def do_PATCH(self):
                 parts = self.path.split("?")[0].strip("/").split("/")
                 body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8", "replace")
+                if len(parts) != 2 or parts[0] not in ("item", "category"):
+                    self.answer(400)
+                    return
+                # moves, renames and an item's other changes (InventoryOps.Service.cs): kept, refused for ids in refuse
+                if "<key>favorite</key>" not in body:
+                    standin.changes.append((parts[0], parts[1], body))
+                    if parts[1] in standin.refuse:
+                        self.answer(409)
+                        return
+                    self.answer(200, standin.llsd(standin.one(parts[1], parts[0] == "category")))
+                    return
                 # marked: {"toggled": true}; unmarked, as the viewer sends it: an undefined "favorite"
                 m = re.search(r"<key>toggled</key>\s*<boolean>\s*([^<]*)</boolean>", body)
                 undef = re.search(r"<key>favorite</key>\s*<undef\s*/>", body)
-                if len(parts) != 2 or parts[0] not in ("item", "category") or not (m or undef):
+                if not (m or undef):
                     self.answer(400)
                     return
                 on = bool(m) and m.group(1).strip().lower() in ("1", "true")
@@ -3523,7 +3568,7 @@ def housekeeping(run, nonce):
     if box_item and inv_search(box_name, box_name):
         key("apps")
         if run.check("an object's menu has Attach to", menu_open("Attach to..."), focus_label()):
-            key("h")
+            key("o")
             d = wait_focus(lambda d: d["id"] == "chooseList" or d["type"] == "ListItem", 6)
             run.check("it lists the points", d, focus_label())
             run.check("(Chest chosen)", select_in("id=chooseList", "Chest"), selected_text("id=chooseList"))
@@ -3553,7 +3598,7 @@ def housekeeping(run, nonce):
                 if word == "animation":
                     run.check("and Stop it", menu_open("Stop it", 1), "")
                 m = mark()
-                key("l")
+                key("y")
                 run.expect(f"Play on a {word} says so", ["Playing " + name], m, 8)
                 if word == "animation":
                     run.check("it's playing on her", wait(lambda: any(a.get("name") == name for a in api("LLAgent", "animations").get("animations", [])), 4),
@@ -4656,6 +4701,154 @@ def notecards_embedded(run, nonce, tester_id):
     left = [i for f in (lm_folder, folder) for n, i in inv_items(f).items() if n and n.startswith("Access Embed ")]
     if left:
         gated(run, "the step's things deleted", "TesselInventory", "delete", 30, ids=left, purge=True)
+
+
+def folders_and_links(run, nonce):
+    """What the blind tester met on Second Life (2026-11-07), and what came of it: a folder holding only folders given,
+    everything under it counted on the confirmation, and the visitor offered it; one over Second Life's 42 refused
+    before she's asked, saying why; a folder deleted from the tree (not a search) gone from it at once, since the tree
+    had refreshed where the folder now was, not where it had been; a move the inventory service refuses (the stand-in,
+    standing in for Second Life's) said and nothing moved; Paste as link; Save your outfit (//saveoutfit); a landmark's
+    About."""
+    back_to_chat()
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+    mine = api("LLInventory", "getBasicFolderID", ft_name="my_otfts")["id"]
+    prefixes = ("Access Gift ", "Access Too Big ", "Access Links ", "Access Tree Gone ", "Access Refused ", "Access Outfit ")
+    # (an interrupted run's leftovers; deleting goes through her confirmation, so by keys)
+    for where in (root, mine):
+        for name in [n for n in inv_items(where) if n and n.startswith(prefixes)]:
+            delete_by_search(run, name)
+
+    # ---- a folder of folders, given: counted whole, and it goes
+    gift = f"Access Gift {nonce}"
+    gift_id = api("TesselInventory", "createFolder", name=gift, parent_id=root)["folder_id"]
+    for sub in ("North", "South"):
+        sid = api("TesselInventory", "createFolder", name=f"Gift {sub} {nonce}", parent_id=gift_id)["folder_id"]
+        api("TesselInventory", "createNotecard", name=f"Gift card {sub} {nonce}", text=f"to {sub}", folder_id=sid)
+    big = f"Access Too Big {nonce}"
+    big_id = api("TesselInventory", "createFolder", name=big, parent_id=root)["folder_id"]
+    for i in range(43):
+        api("TesselInventory", "createFolder", name=f"Big {i}", parent_id=big_id)
+    wait(lambda: len(inv_items(big_id)) >= 43, 10)
+    key("alt+4")
+    wait_focus(lambda d: d["id"] == "inventory", 4)
+    if inv_search(gift, gift):
+        n = visitor_n()
+        m = mark()
+        key("apps")
+        time.sleep(0.6)
+        key("g")
+        pick = wait_focus(lambda d: d["id"] in ("pickList", "pickName"), 5)
+        if run.check("a folder's Give to... opens the picker", pick, label(pick) if pick else focus_label()):
+            wait(lambda: VNAME in selection("id=pickList"), 4)
+            key("enter", target="id=pickList")
+            confirm_in_notices(run, "Give the folder", m)
+            run.expect("the confirmation counts what's in its folders too", ["Items in it and its folders: 2", "folders inside it: 2"], m, 2)
+            run.expect("given, saying what went", [f"Gave {gift}", "2 items in it and its 2 folders"], m, 15)
+            got = wait(lambda: next((json.loads(l) for l in v(f"events 20 since {n}").splitlines()
+                                     if l.startswith("{") and '"InventoryOffered"' in l and gift in l), None), 12, 0.5)
+            run.check("and the visitor is offered the folder", got, f'{got["dialog"]}: {got["msg"]}' if got else "no offer arrived")
+            wait_focus(lambda d: d["id"] == "inventory", 4)
+    if inv_search(big, big):
+        m = mark()
+        key("apps")
+        time.sleep(0.6)
+        key("g")
+        if wait_focus(lambda d: d["id"] in ("pickList", "pickName"), 5):
+            wait(lambda: VNAME in selection("id=pickList"), 4)
+            key("enter", target="id=pickList")
+            run.expect("over 42 things: refused before she's asked, saying why", [f"{big} not given", "43 things", "at most 42"], m, 10)
+            asked = [e.get("text") for e in said_since(m) if "Enter confirms" in (e.get("text") or "")]
+            run.check("(no confirmation was asked)", not asked, "; ".join(asked))
+    clear_search()
+
+    # ---- deleted from the tree itself: it goes from the tree at once (it stayed until she logged in again)
+    gone = f"Access Tree Gone {nonce}"
+    gone_id = api("TesselInventory", "createFolder", name=gone, parent_id=root)["folder_id"]
+    refused = f"Access Refused {nonce}"
+    refused_id = api("TesselInventory", "createFolder", name=refused, parent_id=root)["folder_id"]
+    key("alt+4")
+    wait_focus(lambda d: d["id"] == "inventory", 4)
+    key("f5")   # (the tree read again, with the new folders in it)
+    time.sleep(3)
+    for name, fid, refuse in ((gone, gone_id, False), (refused, refused_id, True)):
+        if refuse and not AIS:
+            print("     (no stand-in for the inventory service: a refused move not tried)")
+            continue
+        if refuse:
+            AIS.refuse.add(fid)
+        if not run.check(f"({name} selected in the tree)", select_in("id=inventory", name, tries=150), selected_text("id=inventory")):
+            continue
+        m = mark()
+        key("del")
+        confirm_in_notices(run, "Trash", m)
+        if refuse:
+            run.expect("a move the inventory service refuses is said, plainly", ["Not deleted", "refused the move"], m, 10)
+            run.check("and it stays where it was", refused in inv_items(root), "")
+            run.check("and in the tree", wait(lambda: find(f"type=TreeItem;name={refused}"), 3), "")
+            AIS.refuse.discard(fid)
+            continue
+        run.expect("deleted from the tree, said", [f"Deleted {name}"], m, 10)
+        run.check("gone from the top of the inventory", wait(lambda: name not in inv_items(root), 6), "")
+        run.check("and from the tree, at once", wait(lambda: not find(f"type=TreeItem;name={name}"), 4), "still in the tree")
+        if AIS:
+            run.check("(the move went to the inventory service, and was waited for)",
+                      any(k == "category" and i == fid and "parent_id" in b for k, i, b in AIS.changes), f"{len(AIS.changes)} changes seen")
+    for name in (refused,):
+        if name in inv_items(root):
+            delete_by_search(run, name)
+
+    # ---- Paste as link: a link to the notecard in another folder, the notecard staying where it was
+    links = f"Access Links {nonce}"
+    links_id = api("TesselInventory", "createFolder", name=links, parent_id=root)["folder_id"]
+    card = f"Access Linked Card {nonce}"
+    card_id = api("TesselInventory", "createNotecard", name=card, text="linked, not copied", folder_id=gift_id)["item_id"]
+    key("alt+4")
+    wait_focus(lambda d: d["id"] == "inventory", 4)
+    if inv_search(card, card):
+        key("ctrl+c")
+        time.sleep(0.5)
+        if inv_search(links, links):
+            m = mark()
+            key("apps")
+            if run.check("a folder's menu has Paste as link, with something copied", menu_open("Paste as link"), focus_label()):
+                key("l")
+                run.expect("Paste as link links it, saying so", [f"Linked {card} in {links}"], m, 15)
+                got = wait(lambda: (api("LLInventory", "getDirectDescendants", folder_id=links_id).get("items") or {}), 6) or {}
+                linked = [i for i in got.values() if i.get("is_link") and i.get("linked_id") == card_id]
+                run.check("the folder holds a link to it", linked, json.dumps(got)[:200])
+                run.check("and the card is still where it was", card in inv_items(gift_id), "")
+    clear_search()
+
+    # ---- Save your outfit: a folder of links to what's worn, in My Outfits
+    outfit = f"Access Outfit {nonce}"
+    cof = api("LLInventory", "getBasicFolderID", ft_name="current")["id"]
+    worn = len({i.get("linked_id") for i in (api("LLInventory", "getDirectDescendants", folder_id=cof).get("items") or {}).values() if i.get("is_link")})
+    m = mark()
+    say_in_app(f"//saveoutfit {outfit}")
+    run.expect("//saveoutfit saves what's worn, saying so", [f"Saved your outfit as {outfit}", "My Outfits"], m, 30)
+    oid = wait(lambda: inv_items(mine).get(outfit), 6)
+    if run.check("a folder of that name in My Outfits", oid, ", ".join(inv_items(mine))):
+        items = (api("LLInventory", "getDirectDescendants", folder_id=oid).get("items") or {}).values()
+        run.check("holding a link to each thing worn", items and all(i.get("is_link") for i in items) and len(items) == worn,
+                  f"{len(items)} links, {worn} worn")
+        delete_by_search(run, outfit)
+
+    # ---- a landmark's About
+    lm = f"Access Place {nonce}"
+    api("TesselInventory", "createLandmark", name=lm, desc="where the tests stand", folder_id=links_id)
+    key("alt+4")
+    wait_focus(lambda d: d["id"] == "inventory", 4)
+    if inv_search(lm, lm):
+        m = mark()
+        key("apps")
+        if run.check("a landmark's menu has About the place", menu_open("About the place"), focus_label()):
+            key("a")
+            run.expect("About says the place: its parcel, rating and owner", ["rated", "owned by", "square metres"], m, 20)
+            run.expect("where it lands, and her notes on it", [f"{lm} lands at", "Your notes on it: where the tests stand"], m, 4)
+    clear_search()
+    for name in (gift, big, links):
+        delete_by_search(run, name)
 
 
 def inv_items(folder):

@@ -619,6 +619,7 @@ public sealed partial class MainForm : Form
         Control+Shift+D: you and what you're wearing
         The same key again: more
         Control+Shift+W: what you're wearing
+        //saveoutfit and a name: save what you're wearing as an outfit, a folder of links in My Outfits
 
         Going places
         Control+G: teleport to the SLurl on the clipboard
@@ -631,6 +632,7 @@ public sealed partial class MainForm : Form
         Enter: wear, or open a notecard or script
         Space: mark
         Control+X, C and V: move and copy
+        The Applications key, then L: paste as links, the items staying where they are
         Delete: delete
         F2: rename
         Control+F: search
@@ -642,6 +644,7 @@ public sealed partial class MainForm : Form
         On a sound or animation, the Applications key: Play; on an object: Attach to a point; on the Trash: Empty it
         In a notecard, Tab: what it holds; Enter copies one out, Enter again teleports by it or opens it
         On a folder, the Applications key: New script, New notecard
+        On a landmark, the Applications key: About the place
 
         In a notecard or script
         Control+S: save, Escape: close
