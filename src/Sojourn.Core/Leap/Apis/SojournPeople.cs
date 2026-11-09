@@ -37,8 +37,26 @@ public sealed class SojournPeople : SessionApi
         finally { c.Friends.FriendFoundReply -= On; }
     }
 
+    async Task<JsonNode?> PointedAtAsync(JsonObject a, CancellationToken ct)
+    {
+        var who = a.Str("to") ?? a.Str("id") ?? throw new LeapError("to: the person's id, or the name of a friend or someone nearby");
+        UUID id = UUID.TryParse(who, out var parsed) ? parsed
+            : S.People.Friend(who)?.UUID
+              ?? S.VisibleRegions().SelectMany(w => w.Avatars.Values)
+                  .FirstOrDefault(av => av.Name.Equals(who, StringComparison.OrdinalIgnoreCase) || S.Names.Forms(av.ID).Any(f => f.Equals(who, StringComparison.OrdinalIgnoreCase)))?.ID
+              ?? throw new LeapError("to: the person's id, or the name of a friend or someone nearby");
+        if (S.Pointing.Last(id) is not { } p) throw new LeapError("they haven't pointed at anything since logging in");
+        var hit = S.VisibleRegions().Select(w => (W: w, P: w.PrimById(p.Target))).FirstOrDefault(x => x.P != null);
+        if (hit.P is not { } prim) throw new LeapError("what they pointed at isn't in view any more");
+        var root = S.Objects.RootOf(hit.W, prim);
+        await S.Objects.FetchAsync(hit.W, new[] { root, prim }.Distinct().ToList(), TimeSpan.FromSeconds(2), ct);
+        var o = new JsonObject { ["thing"] = S.Objects.Describe(hit.W, prim), ["how"] = p.How, ["seconds"] = Math.Round((DateTime.UtcNow - p.At).TotalSeconds) };
+        if (!ReferenceEquals(root, prim) && root.Properties?.Name is { } rn) o["root_name"] = rn;
+        return o;
+    }
+
     public override string Desc => "Friends' rights and removal, contact sets, away and do not disturb, typing, hover height, experiences, teleport history, "
-        + "favourites, pay prices, places offered, offers turned away, group chat snooze/off/moderation, money received and spent, display name, notes";
+        + "favourites, pay prices, places offered, offers turned away, group chat snooze/off/moderation, money received and spent, display name, notes, what someone pointed at";
 
     public SojournPeople(AgentSession s) : base(s)
     {
@@ -112,6 +130,10 @@ public sealed class SojournPeople : SessionApi
 
         Op("whereFriend", "{to (an id, or a friend's name)} -> {region, x, y, z}: where on the grid a friend is online, if they let the person see them on the map",
             WhereFriendAsync);
+        Op("pointedAt", "{to (an id, or the name of a friend or someone nearby)} -> {thing (as TesselObjects get has it; a part has root_id), "
+            + "root_name?, how (select: they selected it, as a right click or editing does; beam: they built on it), seconds}: the last "
+            + "thing someone pointed at in their own viewer (what a sighted friend picks out for the person; Radegast's Master "
+            + "Controls)", PointedAtAsync);
 
         // a group's chat
         Op("groupChat", "{group? (id or name), join?} -> one group's {chat_on, snoozed_until?, in_chat, i_moderate, members: [{id, name, moderator, "

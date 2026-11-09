@@ -72,6 +72,11 @@ screen reader: a bare line naming Oriole
 10:00:44 ~heard {"from":"app","how":"answer","via":"NVDA","text":"★★★ is here"}
 10:00:45 ~name {"id":"dddddddd-dddd-dddd-dddd-dddddddddddd","legacy":"wilfleck Resident","display":"𝓜𝓪𝓻𝓲𝓰𝓸𝓵𝓭 ✨","plain":"Marigold"}
 10:00:46 ~heard {"from":"app","how":"answer","via":"NVDA","text":"Marigold is 3 metres away, ten o'clock."}
+10:00:47 10:00:47 ~words {"kind":"nearby","from":"people","id":"{{Kestrel}}","name":"Kestrel Tester","style":"say","text":"capybara"}
+info: sojourn[0] a line whose time stamp went to the record before it
+10:00:48 10:00:48 10:00:48 ~heard {"from":"people","how":"arrival","via":"NVDA","text":"Kestrel Tester: capybara"}
+10:00:49 info: sojourn[0] 10:00:49 ~words {"kind":"nearby","from":"people","id":"{{Kestrel}}","name":"Kestrel Tester","style":"say","text":"pangolin"}
+10:00:50 ~words {"kind":"nearby","from":"people","id":"{{Kestrel}}","name":"Kestrel Tester","style":"say","text":"see 10:00:51 ~dingo {here"}
 """;
 
 int failed = 0, passed = 0;
@@ -89,7 +94,7 @@ var lower = text.ToLowerInvariant();
 // nothing of anyone else's words, names, keys, nor the person's own name, account folder, keys or address
 foreach (var w in new[] { "zebra", "marmalade", "walrus", "trombone", "quokka", "velvet", "platypus", "saffron", "narwhal", "gilded", "ferret", "pelican",
              "mongoose", "hippo", "axolotl", "iguana", "kestrel", "wren", "birdie", "oriole", "quill", "unlisted", "stranger",
-             "faraway", "juniper", "someperson", "moonbeam", "tamarisk", "tamsinmoth", "marigold", "wilfleck", "203.0.113.7", "2001:db8", "sk-ant-abc", "sqr-abc", "22222222-2222", "80751d6f", "db1c5249" })
+             "faraway", "juniper", "someperson", "moonbeam", "tamarisk", "tamsinmoth", "marigold", "wilfleck", "capybara", "pangolin", "dingo", "203.0.113.7", "2001:db8", "sk-ant-abc", "sqr-abc", "22222222-2222", "80751d6f", "db1c5249" })
     Check($"\"{w}\" isn't in it", !lower.Contains(w));
 
 // what stays
@@ -131,6 +136,11 @@ Check("a display name of punctuation is no stand-in: full stops stay", text.Cont
 Check("one of symbols is still a name", text.Contains("person 8 is here"));
 Check("a display name in decorative letters, as it's said in plain ones, is replaced", text.Contains("person 9 is 3 metres away, ten o'clock."));
 Check("nine people counted", res?.People == 9);
+// the console logger writes a line in pieces, and a record from another thread landing between them took its time stamp
+Check("a record behind another line's time stamp is still a record", text.Contains("10:00:47 person 1, nearby: (words left out)")
+    && text.Contains("10:00:48 read out (arrival, NVDA): (someone else's words, left out)"));
+Check("and the line that lost its stamp is kept", text.Contains("a line whose time stamp went to the record before it"));
+Check("a record after another line's level is still a record", text.Contains("10:00:49 person 1, nearby: (words left out)"));
 
 Check("a log from before the records isn't filtered", LogShare.Filter("10:00:00 info: sojourn[0] hello\n17:04 Someone: words\n") is null);
 Check("nor one whose header names an older format", LogShare.Filter("10:00:00 ~log {\"v\":1}\n10:00:01 info: x\n") is null);

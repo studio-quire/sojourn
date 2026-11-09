@@ -7,12 +7,16 @@ testers said is `docs/access.md` > What a blind tester tells us.
 ## The scripted test
 
 `python tools/access.py test`: on the local grid, nothing on the visible desktop; it runs `build` and `tools` first. A
-full run takes about an hour (the walk-mode step alone about 4 minutes). Last full runs 2026-11-07, evening: the long
-runs' stall (below) gone at the route step with QuireUia's server started afresh, in two runs, the app's window held
-only by the test's own `//holdwindow`. Not clean, though: "search's further pages" opened a person's IM sound window
-by a key meant for elsewhere, which then took the keys of every later step. (Possibly the menu letters' stale words,
-fixed 2026-11-08 in `Mnemonics.cs`; not seen since, as no full run has been made.) The Tab order checks were brought
-up to the chat's order the same evening.
+full run takes about an hour (the walk-mode step alone about 4 minutes). Last full run 2026-11-08, evening, on main
+after that day's five merges (0.1.0.1026): 2027 of 2039, no stall, and the IM sound window that took 2026-11-07's keys
+not seen again. Its twelve failures were all the test's own, fixed that night: "Logged in" unheard as `--autologin`
+raced QuireUia's first contact with the process (now a login by keys, below); the long line's accented words
+re-encoded by a scripted edit, so posted typing lost a character in each sentence; earlier runs' leftovers (now swept,
+below) in front of two tree walks and under the builders' box; a confirmation pressed at a fixed 1.5 s that a slow
+first upload hadn't asked yet; `near_visitor` teleporting her onto the visitor, where the lists rightly said "under a
+metre, below you" to checks wanting metres, and Tabbing into People nearby before it had filled after the teleport;
+the group step's chat left open, so the sound map's Control+Tab landed there. Those steps and their neighbours then
+passed, 648 of 648 on the default accounts; no full run since.
 
 **The test client's references.** Every element QuireUia's managed UI Automation client (System.Windows.Automation)
 hands out stays a reference in the app's UIA server for as long as QuireUia is connected: GC and finalizers don't let it
@@ -95,6 +99,21 @@ open on the Applications key's press (`MenuOn`), not by WinForms' ContextMenuStr
 never for posted keys. Before it logs in, whatever it owns in Atelier and Atelier East goes (an interrupted run's
 leftovers: a second fixture box obeys its words too, and every notice step then gets two of each).
 
+The tester is swept the same way before she logs in (`sweep_tester`): her objects in Atelier, Atelier East and Atelier
+Northeast, and in the first two the other account set's tester's and visitor's while they're offline (Access or Walk:
+both use Atelier's spots), and in her inventory (the grid's `inventory.db`, she being offline) everything but a new account's own (the
+system folders, the Default body parts and clothes and Current Outfit's links to them), her calling cards and the
+Routes folder; the Trash and Lost and Found are emptied. Steps still leave some of what they make (about 25 things a
+full run, more when one is interrupted), and by 2026-11-08 some 1,000 had piled up in Access Tester's inventory, so a
+walk down the tree's top level never reached the run's folder. So nothing a step meets comes from an earlier run, and
+a person's guided session as the tester keeps nothing past the next scripted run. Walks down the tree's top level go
+by `select_top`, which closes any folder an earlier step left open on the way.
+
+She logs in from the login form by keys (the form filled in from the command line, then Enter), not by `--autologin`:
+that logs in the moment the form shows, the session's start then holds the window's thread for seconds, and a UI
+Automation client that hadn't met the process yet missed "Logged in" said as the main window opened (2026-11-08). A
+person's reader has read the form first.
+
 Two more bots, Access Palone and Access Paltwo (`PALS`; Walk's with ACCESS_ACCOUNTS), log in in Atelier Northeast
 before the app does, out of every list's way: the tester's friends (made by the first run's friends step, which they
 accept, and kept on the grid), so the grid tells of them at login.
@@ -166,7 +185,11 @@ docstring with its checks in full):
   and back in the window; notes saved as the window closes, there on opening again, emptied through Notices; an interest set alone leaving the others; one too long refused in words.
 - **chat logs**: nearby chat and an IM in their files, with the date's line; a conversation closed and opened again starting with its earlier lines; a spell of incognito in neither the files nor a reopened tab; conversations only, and off, written to no file but still remembered this session; Read-out > Chat logs reading one at its newest line, read-only; Delete through Notices; the assistant's rules naming them.
 - **search's further pages, people further off, links in words**: Category and Day only where they apply and a Tab apart; a page of one (`SOJOURN_TEST_GROUPS_PAGE`) with its last row, Enter on it; a friend next door listed at 512 metres and not at 96; a parcel's link and a place's said and written as their kinds and names, and Enter on the line still teleporting.
-- **small things from the gaps**: `//voice mute` with voice off said so; `:waves` as an emote, `:)` as itself, in nearby chat and an IM; `//find` saying every match; Objects' Sort A to Z and back; Stand up on what she's on; Show: Gestures; the status bar's parcel; Help's Newer build? both ways; World's Log out asked and Escape staying, then (the last step) going, a fresh process at the login window with the form filled in.
+- **small things from the gaps**: `//voice mute` with voice off said so; `:waves` as an emote, `:)` as itself, in nearby chat and an IM; `//find` saying every match; Objects' Sort A to Z and back; Stand up on what she's on; Show: Gestures; the status bar's parcel; Help's Newer build? both ways; World's Log out asked and Escape staying, then (the last step) going, a fresh process at the login window with the form filled in, the cache marked before it cleared as that process starts (`cache/render` kept, where the run has a renderer).
+- **the session itself: its log, the cache, another window**: `//log` reading this session's log in a read-only window, as
+  Send a log would send it (no records as JSON), Escape back; `//clearcache` marking the cache, said with its size, Help's
+  item there, `//clearcache` again taking it back; `//newwindow` starting another process of the app at the login window
+  (killed again).
 - **the window held** (a few seconds): `//holdwindow 2` (the test's own command) logged when it ends and not said;
   `//holdwindow 7` said as the window not answering, then back, and logged (`WindowWatch`).
 - **settings typed and in words**: a switch stepped (Group invitations turned away), a number typed (Hover height, its range in
@@ -210,6 +233,18 @@ docstring with its checks in full):
 - **objects: a friend's thing, taken, deleted, returned**: a pal (`tp`, `rights ID on`, `rez`) leaves a box she may edit. Take,
   Delete and Return offered; Return with no letter, second from the end, reached by Up twice; its confirmation naming the owner
   and cancelled; Take's the same; Delete confirmed, OpenSim's refusal said. The About Land step returns the visitor's box from her parcel for real.
+- **what a friend points at** (`ACCESS_STEPS=points at`; about 2 minutes, no renderer needed): the visitor's box and `treasure`
+  chest; Hear what they point at on its menu, said with what to ask of them; the visitor's `point` (a PointAt and a LookAt of
+  type select, as the official viewer's right click) said once, with where and the key, the focus staying in Say;
+  Control+Shift+P on it in Objects, marked; the chest's lid pointed at said as part 2, a `beam` meanwhile not said,
+  Control+Shift+P on the lid in Parts with the chest's line naming the part, Enter heard by the lid's script; a beam with
+  nothing selected said; a filter hiding it cleared by Control+Shift+P; a pal's pointing claimed as the visitor's (printed:
+  the local grid passes it on); Stop hearing on the menu, then nothing said; `//pointing NAME` saying the last minute's,
+  `//pointing`, `//pointing off`.
+- **one person's worn things and animations** (`ACCESS_STEPS=worn things and animations`; under a minute): the visitor's `pet`
+  and `animate dance1`; What they wear on its menu going to Objects named "What Walk Visitor wears", the pet's line with
+  where and touchable and no distance, Show saying whose, Touch heard by its script; Their animations naming dance1; Alt+7
+  back to things nearby.
 - **groups: a title, its notices** (`ACCESS_STEPS=groups:` runs both groups steps; under a minute, no renderer needed): a
   group of hers ("Access Titles", or the account set's first name: groups' names are the grid's), made once and kept on the
   grid; two titles listed by Choose your title, the worn one said so, another worn by Enter and the session's `titles`
@@ -230,7 +265,7 @@ docstring with its checks in full):
   F8 with nothing; Control+H's Replace window (Find next by Enter, Replace, Match case finding nothing, Replace all saying how many and
   where, Escape, Control+Z undoing it); Control+Shift+S a copy to a file and Control+O a file's text in place of the changes, asked
   first, then saved (the run's `files` folder as `SOJOURN_TEST_FILES`, for Windows' Save and Open windows); put in a box of hers (the
-  script is deleted from nothing: it stays in the test account's Scripts), Objects' Contents
+  script is deleted from nothing: it stays in the test account's Scripts until the next run's sweep), Objects' Contents
   landing in the Content tab's list, Enter opening it from the object, a syntax error saved through the confirmation, back in the
   editor, the errors said and F8 on one; fixed, compiled; Mono ticked with its description, Alt+M turning it off (said, the focus left in
   the text) and a save, the `vm` the grid then reports printed (the local grid says Mono whatever was asked); Alt+R stopping and running it, the grid asked; Alt+E resetting it, its
@@ -338,8 +373,13 @@ docstring with its checks in full):
   only seen on Second Life.
 - **incognito**: on and said, the title without the region, SojournSettings refusing it off, a line read out but not
   logged, off.
-- **voice keys**: without voice F4 and Ctrl+Shift+V say so; with `ACCESS_VOICE=1`, F4 opening and closing the mic with
+- **voice keys**: without voice F4, Ctrl+Shift+V and Ctrl+F4 say so; with `ACCESS_VOICE=1`, F4 opening and closing the mic with
   its clicks, Shift+F4's modes, Ctrl+Shift+V.
+- **people in voice, to act on**: without voice, `//voice people` says so; with `ACCESS_VOICE=1` (the mixer needn't be up:
+  then nobody else is in voice and the connection retries; `SOJOURN_VOICE_MIC_FILE=none` keeps the PC's mic closed),
+  Ctrl+F4's menu (its people or "Nobody else in voice", then Mute everyone else, Unmute everyone, Reconnect voice),
+  Escape, `//voice mute all` and `unmute all` said and in `SojournVoice status`, `//voice reconnect` said with its
+  outcome.
 - **walking**, **a teleport**, **the assistant's walk**: a `//go`, Ctrl+Shift+H and a `//tp` checked against the
   region's positions; the session's autopilot stopping about its stop distance short.
 - **always running** (about a minute, no renderer needed): between TP_TO and PILOT_TO, a `//go` walked, then `//run` (said, the
@@ -359,7 +399,8 @@ docstring with its checks in full):
 - **search, profiles, pay**: people and places searched, a profile opened, Enter opening an IM, Pay asking the amount
   (the local grid has no money, so its refusal is what's said). Ctrl+G isn't tested (the clipboard is the person's
   desktop's).
-- **more commands**: `//siminfo`, `//parcelinfo`, `//scriptinfo`.
+- **more commands**: `//siminfo`, `//parcelinfo`, `//scriptinfo`, `//scriptinfo parcel` (the memory, or why not);
+  `//thread //pause 60` named by `//threads`, stopped by `//kill`, then nothing running.
 - **describing** (the test has no assistant, so the path without one): Ctrl+D and Ctrl+Shift+D saying it needs the
   assistant and what the lists know, `//describe more`; with the renderer, SojournDescribe's pictures of the visitor,
   the fixture box and here framed and named. What the model makes of them is judged by hand (`docs/access.md` >
@@ -416,6 +457,19 @@ docstring with its checks in full):
 - **driving after someone** (about 2 minutes, no renderer needed): on the gentlest patch of Atelier East, the visitor's
   kart, `//follow` with a gap, the visitor ahead to the left: it steers there and stops short without touching them; the
   visitor walks round behind and it turns and goes after them; an arrow takes the wheel back.
+- **driving after someone over a border** (about a minute, no renderer needed): the visitor just inside Atelier East, the
+  tester's kart 35 m west in Atelier on the strip at its east edge as high as Atelier East's flat; `//follow` drives it
+  over: the crossing said with the seat held, then "With" them; nothing said of the keys let go, them getting away or
+  lost, or "Blocked."; the session log has the convoy's lines (its crossing too) and the `controls:` line of the kart's
+  take; `//stand` ends it, said. OpenSim's word on a script's keys at a crossing needn't be Second Life's.
+- **driving after someone lost at a border** (about 2 minutes, no renderer needed): the same kart and strip a row over,
+  the visitor walking east from 8 m inside Atelier East as the kart sets off, and `//blindconvoy 0.5 6` (the test's own
+  command: the convoy doesn't see them from half a second on, for 6 s, since nothing on the local grid hides someone):
+  "Lost sight of ... at the border; going where they went.", the kart crossing into Atelier East while they're unseen
+  (by the convoy's lines) and on to about where they were last seen, "Found ... again", "With" them; nothing of jumping
+  away, the keys, giving up or "Blocked."; the session log has the loss, with what each region had of them, and the
+  finding. Then unseen for good while it stands with them: "...; going to where they were." and "Couldn't find ... again"
+  within about 10 s.
 - **stopping a vehicle** (about 10 minutes, no renderer needed): on a flat stretch of Atelier East, the visitor's `kart`
   as a car, a held Up, then Space with Up still held: "Stopping.", "Stopped.", nothing said of moving backward, and it
   never moves back (`ACCESS_STOP_CARS=N` runs the car N times, a flake check, and `ACCESS_STOP_TRAIN=0` skips the rest;

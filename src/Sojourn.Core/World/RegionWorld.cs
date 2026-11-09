@@ -158,8 +158,27 @@ public sealed class RegionWorld
         return float.IsNaN(h) ? null : h;
     }
 
+    // A copy of an avatar is dropped as a ghost once the region's own list has left it out for AbsentGrace, or another
+    // region's has named it (root there) for as long, but never in its first ArrivalGrace here: one that has just come
+    // in over a border can be missing from this region's list, and still on the one it left, for a few seconds of the
+    // handover. Dropped wrongly it doesn't come back (LibreMetaverse remakes it without its id from the next terse
+    // update, and one seated gets none), and on 0.1.0.996 a driver ahead vanished that way, as far as the log could tell
+    // (docs/access-app.md > Driving after someone).
     readonly ConcurrentDictionary<uint, DateTime> _absentSince = new();
-    static readonly TimeSpan AbsentGrace = TimeSpan.FromSeconds(4);
+    readonly ConcurrentDictionary<uint, (ulong From, DateTime Since)> _elsewhereSince = new();
+    readonly ConcurrentDictionary<uint, DateTime> _firstSeen = new();
+    readonly ConcurrentDictionary<UUID, (long At, string Why)> _dropped = new();
+    static readonly TimeSpan AbsentGrace = TimeSpan.FromSeconds(4), ArrivalGrace = TimeSpan.FromSeconds(12);
+
+    /// <summary>When the last CoarseLocationUpdate came (Environment.TickCount64; 0: none yet).</summary>
+    public long CoarseAt { get; private set; }
+
+    /// <summary>OpenSim lists at most 60 (SceneGraph.GetCoarseLocations); a list that long may have left people out.</summary>
+    public const int ListCap = 60;
+
+    /// <summary>The region's map list can be taken to name everyone in it: it has come, isn't empty (an empty one says
+    /// nothing reliable) and isn't as long as a list can be.</summary>
+    public bool ListComplete => Coarse.Count is > 0 and < ListCap;
 
     /// <summary>A CoarseLocationUpdate: every root agent in the region. In-view avatars missing from it for a few
     /// seconds have left (a teleport out sometimes leaves no KillObject that reaches the shared world, and the
@@ -167,47 +186,75 @@ public sealed class RegionWorld
     internal void SetCoarse(IReadOnlyDictionary<UUID, Vector3> positions)
     {
         Coarse = positions;
-        if (positions.Count == 0) return;  // an empty update says nothing reliable
+        CoarseAt = Environment.TickCount64;
+        Forget(_absentSince);
+        Forget(_firstSeen);
+        foreach (var local in _elsewhereSince.Keys) if (!Avatars.ContainsKey(local)) _elsewhereSince.TryRemove(local, out _);
+        if (!ListComplete) return;  // an empty update says nothing reliable, nor one cut at the cap about who's missing
         var now = DateTime.UtcNow;
         foreach (var (local, av) in Avatars)
         {
-            if (positions.ContainsKey(av.ID)) { _absentSince.TryRemove(local, out _); continue; }
+            var first = _firstSeen.GetOrAdd(local, now);
+            if (positions.ContainsKey(av.ID)) { _absentSince.TryRemove(local, out _); _elsewhereSince.TryRemove(local, out _); continue; }
             var since = _absentSince.GetOrAdd(local, now);
-            if (now - since < AbsentGrace) continue;
-            RemoveAvatar(local);
+            if (now - since < AbsentGrace || now - first < ArrivalGrace) continue;
+            RemoveAvatar(local, "left out of its region's list");
         }
-        foreach (var local in _absentSince.Keys) if (!Avatars.ContainsKey(local)) _absentSince.TryRemove(local, out _);
+    }
+
+    void Forget(ConcurrentDictionary<uint, DateTime> stamps)
+    {
+        foreach (var local in stamps.Keys) if (!Avatars.ContainsKey(local)) stamps.TryRemove(local, out _);
     }
 
     /// <summary>Another region's CoarseLocationUpdate: the avatars it lists are root there, so a copy of one of them
     /// here that this region's own list doesn't name for a few seconds is a ghost an avatar left behind crossing out
     /// (the kill never reached us). Covers the case <see cref="SetCoarse"/> can't: a region whose list is empty,
     /// because nobody else is in it.</summary>
-    internal void RootElsewhere(IReadOnlyDictionary<UUID, Vector3> there)
+    internal void RootElsewhere(IReadOnlyDictionary<UUID, Vector3> there, ulong from)
     {
         var now = DateTime.UtcNow;
         foreach (var (local, av) in Avatars)
         {
-            if (!there.ContainsKey(av.ID) || Coarse.ContainsKey(av.ID)) continue;
-            var since = _absentSince.GetOrAdd(local, now);
-            if (now - since >= AbsentGrace) RemoveAvatar(local);
+            var first = _firstSeen.GetOrAdd(local, now);
+            if (!there.ContainsKey(av.ID) || Coarse.ContainsKey(av.ID))
+            {
+                // (only that region's word takes back what its word started: another region not naming them says nothing)
+                if (_elsewhereSince.TryGetValue(local, out var was) && (was.From == from || Coarse.ContainsKey(av.ID))) _elsewhereSince.TryRemove(local, out _);
+                continue;
+            }
+            var since = _elsewhereSince.GetOrAdd(local, (from, now)).Since;
+            if (now - since >= AbsentGrace && now - first >= ArrivalGrace) RemoveAvatar(local, "named by another region's list");
         }
     }
+
+    /// <summary>The copy came into this region within the last ArrivalGrace (or since the last map list), so its region's
+    /// list leaving it out may only be the handover still going on, not a copy left behind.</summary>
+    public bool JustArrived(Avatar av) => !_firstSeen.TryGetValue(av.LocalID, out var t) || DateTime.UtcNow - t < ArrivalGrace;
+
+    /// <summary>When and why a copy of this avatar here was last dropped as a ghost (within the last two minutes).</summary>
+    public (long At, string Why)? Dropped(UUID id) =>
+        _dropped.TryGetValue(id, out var d) && Environment.TickCount64 - d.At < 120_000 ? d : null;
 
     /// <summary>Drop every copy of an avatar here (by its agent id), with what it wears.</summary>
     internal int RemoveAvatarsById(UUID id)
     {
         int n = 0;
         foreach (var (local, av) in Avatars)
-            if (av.ID == id && RemoveAvatar(local)) n++;
+            if (av.ID == id && RemoveAvatar(local, "the own avatar, now in another region")) n++;
         return n;
     }
 
     /// <summary>An avatar and everything attached to it (each attachment's whole linkset), as a kill would remove them.</summary>
-    bool RemoveAvatar(uint local)
+    bool RemoveAvatar(uint local, string why)
     {
         _absentSince.TryRemove(local, out _);
+        _elsewhereSince.TryRemove(local, out _);
+        _firstSeen.TryRemove(local, out _);
         if (!Avatars.TryRemove(local, out var av)) return false;
+        long t = Environment.TickCount64;
+        _dropped[av.ID] = (t, why);
+        if (_dropped.Count > 64) foreach (var (id, d) in _dropped) if (t - d.At > 120_000) _dropped.TryRemove(id, out _);
         if (GlobalToLocal.TryGetValue(av.ID, out var mapped) && mapped == local) GlobalToLocal.TryRemove(av.ID, out _);
         var parents = new HashSet<uint> { local };
         bool grew = true;

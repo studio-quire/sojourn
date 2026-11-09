@@ -173,7 +173,7 @@ public sealed partial class MainForm
         var parts = await PartsOfAsync(t.Id, worn, placed: !worn || OnHud(t.Id));
         if (version != _partsVersion || IsDisposed) return;
         if (parts == null) { Fill(_parts, new(), $"{t.Name} isn't here any more."); return; }
-        var items = parts.Select(p => (p.Words, p.Id.ToString(), (object)p)).ToList();
+        var items = parts.Select(p => (p.Words + PointedPartMark(p.Id), p.Id.ToString(), (object)p)).ToList();
         // a HUD's buttons read off its picture, and the line that reads them
         if (t.Hud && OnHud(t.Id)) items.AddRange(await HudButtonItemsAsync(t.Id, t.Name));
         if (version != _partsVersion || IsDisposed) return;

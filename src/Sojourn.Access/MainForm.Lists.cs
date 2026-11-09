@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using LibreMetaverse;
 using Microsoft.Extensions.Logging;
+using Sojourn.Core.Access;
 
 namespace Sojourn.Access;
 
@@ -53,6 +54,14 @@ public sealed partial class MainForm
         var menu = PersonMenu(menuName, () => list.FocusedItem?.Tag is PersonOps.Person p ? (p.Id, p.Name) : null);
         MenuOn(list, menu);
         list.KeyDown += (_, e) => ListKey(list, menu, e, asked => RefreshPeople(asked, list));
+        // people come in under her on "Nobody nearby." with no item focused (RefreshPeople): Down or Up reaches the first
+        list.KeyDown += (_, e) =>
+        {
+            if (e.KeyData is not (Keys.Down or Keys.Up) || list.FocusedItem != null || list.Items.Count == 0) return;
+            e.Handled = e.SuppressKeyPress = true;
+            list.Items[0].Selected = true;
+            list.Items[0].Focused = true;
+        };
         return (list, menu);
     }
 
@@ -256,7 +265,7 @@ public sealed partial class MainForm
     {
         if (Environment.TickCount64 - _listsAt < 3000) return;
         _listsAt = Environment.TickCount64;
-        if (_areas.SelectedTab == _peoplePage && !_people.Focused || _areas.SelectedTab == _chatPage && !_chatPeople.Focused) _ = RefreshPeople(false);
+        if (_areas.SelectedTab == _peoplePage && Renewable(_people) || _areas.SelectedTab == _chatPage && Renewable(_chatPeople)) _ = RefreshPeople(false);
         if (_areas.SelectedTab == _peoplePage) RefreshFriendsAndGroups(said: false);
         if (_areas.SelectedTab == _objectsPage && !_objects.Focused && !_objectsBusy) _ = RefreshObjects(false);
     }
@@ -276,8 +285,18 @@ public sealed partial class MainForm
 
     (bool Asked, ListView? Into)? _peopleAgain;   // asked for while a refresh was under way: once it ends, again
 
-    /// <summary>People nearby into the lists showing that the person isn't in (Alt+3's, the chat area's), and into
-    /// `into` even if they are (F5 there, or the area's key pressed again: read again).</summary>
+    /// <summary>Only the line saying a list is empty ("Nobody nearby."): nothing in it to keep still under her.</summary>
+    static bool OnlyEmptyLine(ListView list) => list.Items.Count == 1 && list.Items[0].Tag == null && list.Items[0].Name.Length == 0;
+
+    /// <summary>A People nearby list kept current by itself: while she's elsewhere, or while it says nobody's there or
+    /// holds nothing yet, her focus in it or not (tabbing in a moment after a teleport found "Nobody nearby." and it stayed
+    /// so, 2026-11-08; tabbing in a second after logging in, before its first fill, left it empty and silent).</summary>
+    static bool Renewable(ListView list) => !list.Focused || list.Items.Count == 0 || OnlyEmptyLine(list);
+
+    /// <summary>People nearby into the lists showing that the person isn't in (Alt+3's, the chat area's) or that say
+    /// nobody's there, and into `into` even if they are (F5 there, or the area's key pressed again: read again). People
+    /// arriving in a list she's on "Nobody nearby." in come in under her without an item taking the focus (Down reaches
+    /// the first), said once as an arrival ("2 people nearby now.").</summary>
     async Task RefreshPeople(bool asked, ListView? into = null)
     {
         if (Host?.Session.Online != true) return;
@@ -289,7 +308,7 @@ public sealed partial class MainForm
             return;
         }
         var lists = new[] { (_people, _peoplePage), (_chatPeople, _chatPage) }
-            .Where(l => l.Item1 == into || _areas.SelectedTab == l.Item2 && !l.Item1.Focused).Select(l => l.Item1).ToList();
+            .Where(l => l.Item1 == into || _areas.SelectedTab == l.Item2 && Renewable(l.Item1)).Select(l => l.Item1).ToList();
         if (lists.Count == 0) return;
         _peopleBusy = true;
         var first = lists.Where(l => l.Items.Count == 0).ToList();
@@ -301,8 +320,15 @@ public sealed partial class MainForm
             foreach (var l in lists)
             {
                 await ListDelay(l);
-                // (it may have taken the focus meanwhile: then it stays as it is, unless asked for or still empty)
-                if (l == into || !l.Focused || l.Items.Count == 0) Fill(l, items, "Nobody nearby.");
+                // (it may have taken the focus meanwhile: then it stays as it is, unless asked for, still empty, or
+                // saying nobody's there)
+                if (l != into && l.Focused && OnlyEmptyLine(l))
+                {
+                    if (items.Count == 0) continue;
+                    Fill(l, items, "Nobody nearby.", under: true);
+                    if (!asked) Reader?.Say(AnnounceKind.Notices, $"{items.Count} {(items.Count == 1 ? "person" : "people")} nearby now.", keep: false, from: LineFrom.App);
+                }
+                else if (l == into || !l.Focused || l.Items.Count == 0) Fill(l, items, "Nobody nearby.");
             }
             if (asked) Reader?.Answer(people.Count == 0 ? "Nobody nearby." : $"{people.Count} {(people.Count == 1 ? "person" : "people")}.", keep: false);
         }
@@ -325,18 +351,22 @@ public sealed partial class MainForm
         try
         {
             bool worn = ShowingWorn, others = ShowingOthers;
+            var one = ShowingOne ? _wornBy : null;
             var filter = ObjectsFilter;
             // scripted things' names asked again (F5 all of them, else those over 5 s old): a script renaming its
             // object reaches only those who have it selected, so a list holding names for minutes missed renames
             var page = worn ? WornPage(await WornAsync(), filter)
+                : one is { } by ? await _ops.NearbyAsync(512, ObjectsLimit, filter, scan: filter != null, wornBy: by.Id)   // (one person's: wherever they are)
                 : await _ops.NearbyAsync(_set.ObjectsRange, ObjectsLimit, filter, renew: filter != null ? null : asked ? 0 : 5, scan: filter != null, others: others);
-            var things = page.Things;
+            // one person's things by name (all at their distance); what a friend pointed at among things nearby
+            var things = one != null ? page.Things.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).ToList() : await WithPointedAsync(page.Things);
             if (_objectsAToZ && !worn) things = things.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
             await ListDelay(_objects);
             var items = things.Select(t => (Text: ObjectLine(t), Key: t.Id.ToString(), Tag: (object)t)).ToList();
             if (page.More > 0) items.Add(($"More: {page.More} further on. Enter lists the next {Math.Min(page.More, ObjectsPage)}.", MoreRow, null!));
             Fill(_objects, items, ObjectsEmpty(filter));
             LandAfterMore();
+            if (_objectsAgain == null) _ = LandOnPointedAsync();   // (Control+Shift+P; a refresh still to come has the list as asked)
             _objects.AccessibleName = ObjectsName;
             if (asked) Reader?.Answer(ObjectsCount(things, page, filter), keep: false);
             // the parts below follow the object selected, unless the person is in them
@@ -353,8 +383,10 @@ public sealed partial class MainForm
         if (_objectsAgain is { } again) { _objectsAgain = null; await RefreshObjects(again); }
     }
 
-    /// <summary>The list's items replaced, the one the person was on still focused (by key), or a line saying it's empty.</summary>
-    static void Fill(ListView list, List<(string Text, string Key, object Tag)> items, string empty)
+    /// <summary>The list's items replaced, the one the person was on still focused (by key), or a line saying it's empty.
+    /// <paramref name="under"/>: in under her, on the empty line in the list she's in, with no item made the focused one,
+    /// so nothing's read until she moves (Down reaches the first): focusing one in the list she's in would read it.</summary>
+    static void Fill(ListView list, List<(string Text, string Key, object Tag)> items, string empty, bool under = false)
     {
         // the same words as shown: only what the actions use is renewed (where people are), so a list beside the one
         // the person is in (the chat area's, while they type) isn't emptied and refilled every few seconds for nothing
@@ -362,8 +394,12 @@ public sealed partial class MainForm
             && items.Select((it, i) => list.Items[i].Name == it.Key && list.Items[i].Text == it.Text).All(x => x))
         {
             for (int i = 0; i < items.Count; i++) list.Items[i].Tag = items[i].Tag;
+            // (left with none focused by people coming in under her, and she left without moving: the nearest, for her return)
+            if (list.FocusedItem == null) { list.Items[0].Selected = true; ReaderList.MakeCurrent(list.Items[0]); }
             return;
         }
+        // still empty: the line saying so left as it is (made again in the list she's in, it would be read again)
+        if (items.Count == 0 && OnlyEmptyLine(list) && list.Items[0].Text == empty) return;
         var focusedKey = list.FocusedItem?.Name;
         list.BeginUpdate();
         try
@@ -371,6 +407,7 @@ public sealed partial class MainForm
             list.Items.Clear();
             if (items.Count == 0) list.Items.Add(new ListViewItem(empty) { Name = "" });
             foreach (var (text, key, tag) in items) list.Items.Add(new ListViewItem(text) { Name = key, Tag = tag });
+            if (under && items.Count > 0) return;
             var keep = (focusedKey != null ? list.Items[focusedKey] : null) ?? list.Items[0];
             keep.Selected = true;
             ReaderList.MakeCurrent(keep);   // announced only in the list the person is in

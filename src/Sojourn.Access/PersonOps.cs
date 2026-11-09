@@ -220,15 +220,33 @@ public sealed class PersonOps(AgentSession s)
         (await NearbyAsync(within, limit, query, renew)).Things;
 
     /// <summary>As ObjectsAsync, for the list itself: scan looks through everything in range for a query, not the nearest
-    /// 200; others: only what other people wear.</summary>
-    public async Task<Nearby> NearbyAsync(double within, int limit, string? query = null, double? renew = null, bool scan = false, bool others = false)
+    /// 200; others: only what other people wear; wornBy: only what that person wears.</summary>
+    public async Task<Nearby> NearbyAsync(double within, int limit, string? query = null, double? renew = null, bool scan = false, bool others = false,
+        UUID? wornBy = null)
     {
         var args = new JsonObject { ["dist"] = within, ["limit"] = limit, ["timeout"] = 3 };
         if (!string.IsNullOrWhiteSpace(query)) args["query"] = query.Trim();
         if (renew is { } secs) args["renew"] = secs;
         if (scan) args["scan"] = true;
         if (others) args["worn_only"] = true;
+        if (wornBy is { } by) args["worn_by"] = by.ToString();
         var r = await ReadAsync("TesselObjects", "nearby", args);
+        var list = Things(r["objects"] as JsonArray);
+        return new Nearby(list.OrderBy(t => t.Dist).ToList(), r.Int("more", 0), r.Int("unnamed", 0));
+    }
+
+    /// <summary>One object by its id (its root's, for a part), as the list has it; null when it isn't in view.</summary>
+    public async Task<Thing?> ThingAsync(UUID id)
+    {
+        var r = await ReadAsync("TesselObjects", "get", new JsonObject { ["ids"] = new JsonArray(id.ToString()), ["timeout"] = 3 });
+        if (Things(r["objects"] as JsonArray).FirstOrDefault() is not { } t) return null;
+        // (get gives no distance: the list's words and order need one)
+        return Me() is { } me ? t with { Dist = Vector3.Distance(t.Pos, me.Pos) } : t;
+    }
+
+    /// <summary>Objects as the ops describe them (TesselObjects nearby and get), as the lists' things.</summary>
+    List<Thing> Things(JsonArray? objects)
+    {
         var list = new List<Thing>();
         // a part's money event or touch counts for its object: the region says it on that part alone
         var childMoney = new Dictionary<UUID, UUID>();
@@ -241,7 +259,7 @@ public sealed class PersonOps(AgentSession s)
                 if ((pf & PrimFlags.Money) != 0) childMoney.TryAdd(parent.ID, p.ID);
                 if ((pf & PrimFlags.Touch) != 0) childTouch.Add(parent.ID);
             }
-        foreach (var o in (r["objects"] as JsonArray ?? new()).OfType<JsonObject>())
+        foreach (var o in (objects ?? new()).OfType<JsonObject>())
         {
             if (!UUID.TryParse(o.Str("id"), out var id) || o["pos"] is not JsonArray pos || pos.Count < 3) continue;
             var flags = (o["flags"] as JsonArray ?? new()).Select(f => f?.ToString()).ToHashSet();
@@ -260,7 +278,7 @@ public sealed class PersonOps(AgentSession s)
                 Point = o.Str("attach_point"),
             });
         }
-        return new Nearby(list.OrderBy(t => t.Dist).ToList(), r.Int("more", 0), r.Int("unnamed", 0));
+        return list;
     }
 
     /// <summary>The person's own by the region's flag and its owner: OpenSim sets the flag on a friend's that the friend

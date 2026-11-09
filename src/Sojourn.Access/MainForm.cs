@@ -187,8 +187,10 @@ public sealed partial class MainForm : Form
         StartDeviceWords();
         AddVoiceSettings(host.SettingsApi);
         StartBuilders();
+        StartPointing();
         _cmd.Voice = words => (Task)Invoke(() => VoiceWordsAsync(words));
         _cmd.ImSound = words => (Task)Invoke(() => ImSoundWordsAsync(words));
+        StartSessionTools();
         host.ScreenReader.Shape = Shape;
         host.ScreenReader.Announcer.Spoke = Spoke;
         host.ScreenReader.WholeReplies = true;   // rich descriptions run past the announcer's length
@@ -234,6 +236,7 @@ public sealed partial class MainForm : Form
         _ = ReadFavoritesAfterLoadingAsync();
         _ = SayIfNewerBuildAsync();
         _ = SayChatLogsOnceAsync();
+        _ = SayCacheClearedAsync();
     }
 
     void Tick()
@@ -702,11 +705,14 @@ public sealed partial class MainForm : Form
         Alt+Shift+7: what you wear instead (HUDs, then a pet or anything with a menu); Show also lists what people nearby wear; Alt+7 goes back
         Delete on something you wear: take it off
         Take, Delete and Return where you may, on the menu; what isn't yours waits for your confirmation
+        Control+Shift+P: what a friend pointed at in their viewer, selected here; a person's menu has Hear what they point at, or //pointing NAME
+        A person's menu: What they wear, to touch or pay, and Their animations
 
         Voice
         F4 held: talk
         Shift+F4: switch to an open mic
         Control+Shift+V: who's in voice
+        Control+F4: the people in voice as a menu, to act on: one person, everyone else muted, everyone heard again, reconnect
         //voice mute NAME, //voice unmute NAME, //voice volume NAME and 0 to 2: one person, for you alone
         Control+Shift+O: the sound out of the next device (headphones, speakers), then back to the default; World > Sound output lists them
 
@@ -721,6 +727,7 @@ public sealed partial class MainForm : Form
         //notes NAME: your own notes on someone
         //about: which version this is
         //logout: back to the login window, after you say so
+        //log: read a session's log; //clearcache: clear the cache at the next start; //newwindow: another account
         F1: this list
         """;
 
@@ -818,6 +825,7 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.Shift | Keys.I: ToggleIncognito(); return true;
             case Keys.Control | Keys.Shift | Keys.V: SayVoice(); return true;
             case Keys.Control | Keys.Shift | Keys.B: GoBuilders(); return true;
+            case Keys.Control | Keys.Shift | Keys.P: GoPointed(); return true;   // what a friend pointed at (MainForm.Pointing.cs)
             case Keys.Escape when _walkPad.Focused: ToggleWalk(); return true;
             case Keys.Escape when _areas.SelectedTab == _buildPage && _buildPage.ContainsFocus: BuildBack(); return true;
             case Keys.Escape when _areas.SelectedTab == _landPage && _landPage.ContainsFocus: LandBack(); return true;

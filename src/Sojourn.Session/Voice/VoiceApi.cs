@@ -106,6 +106,30 @@ public sealed class VoiceApi : LeapApi
             _v.SetPeerVolume(Id(a), (float)Math.Clamp(a.Num("volume", 1), 0, 2));
             return new JsonObject();
         });
+        Op("muteOthers", "{mute: bool} -> {others_muted, still_muted: [{id, name}]}: everyone else in voice muted in the person's own "
+            + "hearing, people who join later too, until unmuted or the session ends (nothing kept; peerMute unmutes one as an exception); "
+            + "mute: false hears everyone again and takes voice-only mutes of the people in voice now off the block list (full blocks "
+            + "stay: still_muted)", a =>
+        {
+            bool mute = a.Bool("mute", true);
+            var self = S.Client?.Self.AgentID ?? UUID.Zero;
+            var still = new JsonArray();
+            _v.MuteOthers(mute);
+            if (!mute)
+                foreach (var p in _v.Peers.Where(p => p.Id != self && _v.KeptMuted(p.Id)))
+                {
+                    if (!S.Mutes.IsMuted(p.Id)) _v.SetPeerMute(p.Id, false);
+                    else still.Add(new JsonObject { ["id"] = p.Id.ToString(), ["name"] = NameOf(p.Id) });
+                }
+            return new JsonObject { ["others_muted"] = _v.OthersMuted, ["still_muted"] = still };
+        });
+        Op("reconnect", "{} -> {reconnecting}: voice's connections started afresh now (they retry by themselves every 10 s at most; "
+            + "this saves the wait); false with why when there's nothing to reconnect", _ =>
+        {
+            Running();
+            if (_v.Reconnect()) return new JsonObject { ["reconnecting"] = true };
+            return new JsonObject { ["reconnecting"] = false, ["why"] = _v.Status };
+        });
         Op("call", "{id, name?} -> {calling}: calls a resident (voice, one to one); they answer on their side. Leaves nearby "
             + "voice for the call; the mic stays as it is", a =>
         {
@@ -176,6 +200,7 @@ public sealed class VoiceApi : LeapApi
             ["mic_live"] = _v.MicOpen, ["muted"] = _v.Muted, ["moderator_muted"] = _v.ModeratorMuted, ["people"] = people,
             ["hear_from"] = _v.Ear.ToString().ToLowerInvariant(),
         };
+        if (_v.OthersMuted) r["others_muted"] = true;
         if (_mod.WhyNot() is null) r["i_moderate"] = true;
         if (_v.CallWith is { } with) r["call"] = with;
         if (_v.Incoming is { } inc)

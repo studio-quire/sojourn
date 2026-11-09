@@ -84,6 +84,10 @@ public sealed partial class MainForm
         Fill(_landRows, new(), "Not read yet: F5 reads the parcel you're on.");
     }
 
+    /// <summary>An op's refusal of a change, in her words: "Not changed", or, where the region only hasn't shown it yet (a busy
+    /// region on her own land: ParcelOps waits 10 seconds), "Not seen yet", since it may well have changed.</summary>
+    string NotChanged(string e) => e.Contains("hasn't shown", StringComparison.Ordinal) ? $"Not seen yet: {Theirs(e)}." : $"Not changed: {Theirs(e)}.";
+
     // --- coming and going -------------------------------------------------------------------------------------------
 
     /// <summary>Control+L: About Land, on the parcel she stands on (read afresh), the focus in its command box.</summary>
@@ -376,7 +380,7 @@ public sealed partial class MainForm
         var before = LandRows.Row(l, key)?.Words;
         var r = confirm ? await ConfirmedAsync("SojournLand", op, args) : await _ops.DoAsync("SojournLand", op, args);
         if (r == null) return;   // ("Cancelled." was said)
-        if (PersonOps.Error(r) is { } e) { Answer($"Not changed: {Theirs(e)}."); return; }
+        if (PersonOps.Error(r) is { } e) { Answer(NotChanged(e)); return; }
         if (op == "setRegion") l.RegionInfo = r; else l.Parcel = r;
         if (LandRows.TabOf(key) == "Access" && l.Access != null) await LoadLandTabAsync("Access", again: true);
         LandWhere();
@@ -411,7 +415,7 @@ public sealed partial class MainForm
             r = await ConfirmedAsync("SojournLand", "sell", args);
         }
         if (r == null) return;
-        if (PersonOps.Error(r) is { } e) { Answer($"Not changed: {Theirs(e)}."); return; }
+        if (PersonOps.Error(r) is { } e) { Answer(NotChanged(e)); return; }
         _land!.Parcel = r;
         ShowLandRows();
         Answer($"For sale: {LandRows.SaleWords(_land)}.");
@@ -610,7 +614,7 @@ public sealed partial class MainForm
         if (hours is { } h) args["hours"] = h;
         var r = await ConfirmedAsync("SojournLand", op, args);
         if (r == null) return;
-        if (PersonOps.Error(r) is { } e) { Answer($"Not changed: {Theirs(e)}."); return; }
+        if (PersonOps.Error(r) is { } e) { Answer(NotChanged(e)); return; }
         l.Access = r;
         l.AccessWhy = null;
         if (LandTabName == "Access") ShowLandRows();
@@ -647,7 +651,7 @@ public sealed partial class MainForm
         var args = new JsonObject { ["to"] = p.Id.ToString(), ["freeze"] = freeze };
         var r = freeze ? await ConfirmedAsync("SojournLand", "freeze", args) : await _ops.DoAsync("SojournLand", "freeze", args);
         if (r == null) return;
-        Answer(PersonOps.Error(r) is { } e ? $"Not changed: {Theirs(e)}." : freeze ? $"Asked to freeze {p.Name} where they stand." : $"Asked to free {p.Name}.");
+        Answer(PersonOps.Error(r) is { } e ? NotChanged(e) : freeze ? $"Asked to freeze {p.Name} where they stand." : $"Asked to free {p.Name}.");
     }
 
     /// <summary>return NAME (that owner's objects on the parcel) or return others (everyone's but the owner's).</summary>

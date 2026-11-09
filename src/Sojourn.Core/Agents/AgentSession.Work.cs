@@ -32,6 +32,9 @@ public sealed partial class AgentSession
     public ContentsOps Contents => _contents ??= new ContentsOps(this);
     SelfAnimations? _anims;
     public SelfAnimations Anims => _anims ??= new SelfAnimations(this);
+    Pointing? _pointing;
+    /// <summary>What other people point at (their viewers' selection effects).</summary>
+    public Pointing Pointing => _pointing ??= new Pointing(this);
     SeatLeftovers? _seatLeftovers;
     public SeatLeftovers SeatLeftovers => _seatLeftovers ??= new SeatLeftovers(this);
     public Motion Motion => _motion ??= new Motion(this);

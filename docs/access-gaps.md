@@ -36,28 +36,16 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 - **Size:** S-M: a role's powers are a long list of the viewer's abilities to word.
 - **Matters: low-medium:** nobody running a group from Access has asked yet (question in `docs/access.md`).
 
-### 14. Voice: what's left
-- **Radegast:** participant list, mute and unmute all, reconnect.
-- **Access:** one person muted and their loudness (a person's menu, `//voice mute`, `unmute`, `volume`), Control+Shift+V saying who's muted. No list to act from, no all at once, no reconnect. Muting and loudness aren't run against a voice server yet (`ACCESS_VOICE=1`).
-- **Where:** `MainForm.Voice.cs`.
+### 15. Point at, sending
+- **Radegast:** Point at and Unpoint on objects: her avatar's arm pointing at a thing (with Radegast's beams), so a sighted friend
+  sees which one she means.
+- **Access:** receiving, Radegast's Master Controls, is built (`docs/access-app.md` > What a friend points at); sending isn't. For
+  the VR client it was the user's call and declined (`docs/viewer-gaps.md`: the arm moved for what the assistant did); in Access it
+  would be her own deliberate act, not decided.
+- **Where:** Objects' and Parts' menus: a PointAt and a LookAt of type select at the thing (LibreMetaverse's `PointAtEffect` and
+  `LookAtEffect`), cleared by Unpoint or after a while.
 - **Size:** S.
-- **Matters: low-medium.**
-
-### 15. Master Controls and Point at
-- **Radegast:** a sighted friend points at something in their viewer and it becomes the selected thing, to touch, sit on or pay; the
-  guide teaches it. Point at and Unpoint on people and objects.
-- **Access:** neither. Parts and faces reduce the need, but "what my partner is pointing at" would name a thing among dozens called
-  Object.
-- **Where:** People nearby's and `MainForm.Lists.cs`'s menus; viewer effects in Core (not checked).
-- **Size:** M.
-- **Matters: medium.** Lets a helper help without the account.
-
-### 18. One person's attachments, and animations
-- **Radegast:** Attachments on a person and Animations (what they're playing).
-- **Access:** Objects' Show lists what everyone nearby wears, touchable, so a pet or a tip jar is in reach; there's no way from a person's own menu to just theirs, and nothing on what they're playing.
-- **Where:** People menu, `nearby` `worn_only` by whose it is.
-- **Size:** S.
-- **Matters: low.**
+- **Matters: low-medium.** A helper sees which "Object" she has, without her account.
 
 ### 20. Estate from the keys
 - **Radegast:** Eject from estate, Eject and Ban on a person; Restart for estate managers.
@@ -66,12 +54,6 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 - **Where:** `MainForm.Land.cs`, `LandRows.cs`, the People menu.
 - **Size:** M.
 - **Matters: low** daily, high for the rare blind estate owner.
-
-### 21. The session itself
-- **Radegast:** New window for a second account, Clean Cache, Log Viewer.
-- **Access:** World's Log out, Help's Newer build? Not these three.
-- **Size:** S each.
-- **Matters: low.**
 
 ### 22. Automation
 - **Radegast:** AutoSit (#156 asks for more of it), PseudoHome, LSL Helper.
@@ -88,11 +70,9 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 - **Matters: low.**
 
 ### 24. Small things
-All S, all low:
-- `//scriptinfo` takes no `parcel`. `//thread`, `//threads` and `//kill` are absent, so a route using them pauses there: none of our commands can be stopped midway yet, so `//kill` would need that first. Worth asking whether any route she has uses them.
-- `//siminfo` lacks CPU class and data centre; `//parcelinfo` lacks ban and access list sizes and traffic.
 - Alt+3 is People and Alt+6 Places, against Radegast's Groups and Map; Alt+8 and Alt+9 are Notices and the assistant, against Media and
-  Voice. Chosen, but "familiar where Radegast works" is only partly so, and there's no key to Groups.
+  Voice. Chosen, but "familiar where Radegast works" is only partly so, and there's no key to Groups. A question for her
+  (`docs/access.md` > Questions waiting for her), not a change until she answers.
 
 ## The sighted-helper list, what isn't closed
 

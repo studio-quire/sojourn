@@ -67,6 +67,11 @@ public sealed class Commands
                     // (the scripted test's: the window's thread held, for WindowWatch)
                     Thread.Sleep(TimeSpan.FromSeconds(double.Parse(rest[0], System.Globalization.CultureInfo.InvariantCulture)));
                     return true;
+                case "blindconvoy" when Environment.GetEnvironmentVariable("SOJOURN_TEST_CONVOY_BLIND") == "1":
+                    // (the scripted test's: driving after someone, them unseen for a while, WalkMode.Convoy.cs)
+                    WalkMode?.BlindConvoy(double.Parse(rest[0], System.Globalization.CultureInfo.InvariantCulture),
+                        double.Parse(rest[1], System.Globalization.CultureInfo.InvariantCulture));
+                    return true;
                 case "about" or "version": _say(About?.Invoke() ?? "Sojourn Access."); return true;
                 case "describe": if (Describe != null) await Describe(string.Join(" ", rest)); return true;
                 case "go": return await GoAsync(rest);
@@ -80,9 +85,12 @@ public sealed class Commands
                 case "route": await RouteAsync(rest); return true;
                 case "record": if (Record != null) await Record(AfterVerb(line)); return true;
                 case "pause": return await PauseAsync(rest);
+                case "thread": return ThreadCommand(AfterVerb(line));
+                case "threads": Threads(); return true;
+                case "kill": Kill(); return true;
                 case "siminfo": await SimInfoAsync(); return true;
                 case "parcelinfo": await ParcelInfoAsync(); return true;
-                case "scriptinfo": await ScriptInfoAsync(); return true;
+                case "scriptinfo": await ScriptInfoAsync(rest); return true;
                 case "beacon": await BeaconAsync(rest); return true;
                 case "touch": if (Touch != null) await Touch(string.Join(" ", rest)); return true;
                 case "details": if (Details != null) await Details(string.Join(" ", rest)); return true;
@@ -99,7 +107,11 @@ public sealed class Commands
                 case "land": if (Land != null) await Land(AfterVerb(line)); return true;
                 case "voice": if (Voice != null) await Voice(string.Join(" ", rest)); return true;
                 case "imsound": if (ImSound != null) await ImSound(string.Join(" ", rest)); return true;
+                case "pointing": if (Pointing != null) await Pointing(string.Join(" ", rest)); return true;
                 case "sendlog": SendLog?.Invoke(); return true;
+                case "log" or "sessionlog": SessionLog?.Invoke(); return true;
+                case "clearcache": ClearCache?.Invoke(string.Join(" ", rest)); return true;
+                case "newwindow": NewWindow?.Invoke(); return true;
                 case "logout": LogOut?.Invoke(); return true;
                 default:
                 {
@@ -150,9 +162,12 @@ public sealed class Commands
         ("record", "//record | //record note WORDS | //record undo | //record pause | //record save [NAME] | //record discard",
             "record a route by walking it (R in walk mode): start, or while recording how it's going; a note here; take back the last point; pause or go on; save it as a notecard in Routes; or throw it away"),
         ("pause", "//pause [SECONDS]", "wait (in a route: before its next line; 1 second unless said)"),
-        ("siminfo", "//siminfo", "the region: its type, maturity, people, scripts, time dilation and frame rate"),
-        ("parcelinfo", "//parcelinfo", "every parcel in the region: its name, area and who may enter, the one you're on first"),
-        ("scriptinfo", "//scriptinfo", "the scripts in what you're wearing, per attachment"),
+        ("thread", "//thread COMMAND", "run a command without waiting for it: in a route, the next line goes on at once"),
+        ("threads", "//threads", "what's running: a route, a walk, following, a pause, commands started by //thread"),
+        ("kill", "//kill", "stop everything running: a route, a walk, following, pauses, commands started by //thread"),
+        ("siminfo", "//siminfo", "the region: its type, maturity, people, scripts, time dilation and frame rate, and its server where the grid says"),
+        ("parcelinfo", "//parcelinfo", "every parcel in the region: its name, area, who may enter and traffic, the one you're on first, and its allowed and banned lists' sizes where you may see them"),
+        ("scriptinfo", "//scriptinfo | //scriptinfo parcel", "the scripts in what you're wearing, per attachment; or the script memory of the objects on the parcel you're on"),
         ("beacon", "//beacon NAME | //beacon off | //beacon",
             "a sound on someone or something to walk to (by hand in walk mode, or by //go), until you reach it; off; or where it is"),
         ("details", "//details NAME", "whose something within 30 metres is, who made it, its description, what you may do with it"),
@@ -174,10 +189,12 @@ public sealed class Commands
         ("land", "//land | //land COMMAND (options, fly off, ban NAME, for sale 500, buy, help)",
             "About Land (Control+L) on the parcel you're on, or one of its commands"),
         ("upload", "//upload | //upload PATH", "upload a picture, sound, animation or model: with no path, choose the file (Control+U)"),
-        ("voice", "//voice | //voice answer | //voice decline | //voice mute NAME | //voice unmute NAME | //voice volume NAME N",
-            "who's in voice and speaking, your mic; answer or decline a call ringing; one person muted, or how loud they are from 0 to 2, for you alone"),
+        ("voice", "//voice | //voice people | //voice mute all | //voice unmute all | //voice reconnect | //voice answer | //voice decline | //voice mute NAME | //voice unmute NAME | //voice volume NAME N",
+            "who's in voice and speaking, your mic; the people in voice to act on (Control+F4); everyone else muted for you, or everyone heard again; voice started afresh; answer or decline a call ringing; one person muted, or how loud they are from 0 to 2, for you alone"),
         ("imsound", "//imsound NAME SOUND | //imsound NAME usual | //imsound NAME | //imsound",
             "a sound of its own for someone's IMs, or a group's chat, in place of the usual one; usual takes it back; with only a name, theirs; with nothing, the sounds and who has one"),
+        ("pointing", "//pointing NAME | //pointing off | //pointing",
+            "hear what someone nearby points at in their own viewer (a right click on something does), Control+Shift+P going to it; off stops; with nothing, whose you hear and what they last pointed at"),
         ("block", "//block NAME", "block anyone by name, or something nearby: what they say, send or ask stops reaching you"),
         ("rebake", "//rebake", "send your look to the grid again: when you're told you look grey or blurred"),
         ("stopanimations", "//stopanimations", "stop every animation on you, stand up if seated, and take back what scripts were allowed to animate you: when you're told you're stuck in a pose"),
@@ -197,6 +214,9 @@ public sealed class Commands
         ("logout", "//logout", "log out and go back to the login window, after you say so"),
         ("about", "//about", "which version of Sojourn Access this is, and where your settings and logs are"),
         ("sendlog", "//sendlog", "send a session's log to Studio Quire, with a note on what happened; other people's words are left out"),
+        ("log", "//log", "read a session's log, as Send a log would send it: what happened, other people's words left out"),
+        ("clearcache", "//clearcache | //clearcache cancel", "clear the cache when Sojourn Access next starts: what Second Life sent, which comes again as it's needed; or take that back"),
+        ("newwindow", "//newwindow", "another account in a window of its own, at the login"),
         ("help", "//help [word]", "the commands"),
     };
 
@@ -531,17 +551,21 @@ public sealed class Commands
 
     /// <summary>A teleport to a spot in this region (`//go tp`, the walk's fallback), and the line for how it went: where
     /// it really landed, since a landing point or telehub takes it elsewhere and the grid calls that a success. A miss
-    /// is remembered (TeleportWontLand).</summary>
+    /// is remembered (TeleportWontLand). Someone standing at the spot (`//go tp person`, a walk to them with no way, the
+    /// assistant's walk to them) is landed beside, facing them, and said where they are (BesideAsync): sent to their
+    /// own position, the region stood her on their head (2026-11-08).</summary>
     async Task<(bool Ok, string Line)> TeleportNearAsync(Vector3 target, string what)
     {
         if (_ops.Me() is not { } me) return (false, "Not in a region yet.");
+        var person = await PersonAtAsync(target);
+        var at = person != null ? await BesideAsync(person.Pos, me.Pos) : new Vector3(target.X, target.Y, Math.Max(target.Z, me.Pos.Z));
         OwnTeleport = true;
         JsonObject r;
         try
         {
             r = await _ops.DoAsync("LLAgent", "requestTeleport", new JsonObject
             {
-                ["regionname"] = me.Region, ["x"] = (double)target.X, ["y"] = (double)target.Y, ["z"] = (double)Math.Max(target.Z, me.Pos.Z),
+                ["regionname"] = me.Region, ["x"] = (double)at.X, ["y"] = (double)at.Y, ["z"] = (double)at.Z,
                 ["skip_confirmation"] = true, ["timeout"] = 20,
             });
         }
@@ -552,13 +576,63 @@ public sealed class Commands
             return (false, $"Teleport didn't work: {e}");
         }
         await Task.Delay(1000);   // (the region's word on where it put the avatar)
-        if (_ops.Me() is { } now && Flat(now.Pos, target) is var off && off > 3)
+        if (_ops.Me() is { } now && Flat(now.Pos, at) is var off && off > 3)
         {
-            var landing = SentElsewhere(target) is { } why ? $" ({why})" : "";
+            var landing = SentElsewhere(at) is { } why ? $" ({why})" : "";
             _missed = (target, Environment.TickCount64, "it landed elsewhere");
             return (false, $"The teleport landed you away from {what}{landing}: {what} is {_ops.Where(target) ?? Bearings.Metres(off)}.");
         }
-        return (true, $"Teleported to {what}.");
+        if (person == null || _ops.Me() is not { } landed) return (true, $"Teleported to {what}.");
+        // (where they are now, seen from here)
+        var them = (await _ops.PeopleAsync(64)).FirstOrDefault(p => p.Id == person.Id)?.Pos ?? person.Pos;
+        await _ops.DoAsync("TesselAgent", "move", new JsonObject
+        {
+            ["face"] = Bearings.Compass(landed.Pos.X, landed.Pos.Y, them.X, them.Y), ["secs"] = 0.3, ["wait"] = true,
+        });
+        return (true, $"Teleported to {what}: {person.Name} is {_ops.Where(them) ?? "near"}.");
+    }
+
+    /// <summary>Someone at a spot: within a metre of it across and two up or down, the nearest.</summary>
+    async Task<PersonOps.Person?> PersonAtAsync(Vector3 at) =>
+        (await _ops.PeopleAsync(512)).Where(p => Flat(p.Pos, at) < 1 && Math.Abs(p.Pos.Z - at.Z) < 2).MinBy(p => Flat(p.Pos, at));
+
+    /// <summary>How far from someone a teleport to them lands (the assistant's go tool hops as far short).</summary>
+    const float Beside = 2f;
+
+    /// <summary>Where a teleport to someone lands: on their floor, a couple of metres off on the side she comes from, as
+    /// the official viewer's teleport to a person roughly does. With the collision model, planned out from where they
+    /// stand (PathPlanner): the nearest spot to that which their floor reaches in a near-straight line (back from a
+    /// stage's edge, this side of a wall), at its height; another side when that one is off what they stand on or
+    /// behind something; that first side if none is better. Without it, or where the model hasn't what they stand on,
+    /// that side at their height, a little over it, so a person on a stage lands her on the stage, not the ground.</summary>
+    async Task<Vector3> BesideAsync(Vector3 them, Vector3 from)
+    {
+        var away = new System.Numerics.Vector2(from.X - them.X, from.Y - them.Y);
+        double toward = away.LengthSquared() > 0.01f ? Math.Atan2(away.Y, away.X) : 0;
+        var centre = new System.Numerics.Vector2(them.X, them.Y);
+        System.Numerics.Vector2 Side(int k) => centre + Beside * new System.Numerics.Vector2((float)Math.Cos(toward + k * Math.PI / 4), (float)Math.Sin(toward + k * Math.PI / 4));
+        var straight = new Vector3(Side(0).X, Side(0).Y, them.Z + 0.3f);
+        if (Planner is not { CanAsk: true } planner || Beyond(them)) return straight;
+        // her own middle over her feet: what's added to a floor to stand her on it
+        float half = FeetZ?.Invoke() is { } feet && _ops.Me() is { } me ? Math.Clamp(me.Pos.Z - feet, 0.5f, 1.5f) : 0.95f;
+        Vector3? first = null;
+        foreach (int k in new[] { 0, 1, -1, 2, -2, 3, -3, 4 })
+        {
+            var side = Side(k);
+            Walk.PathPlanner.Plan? plan;
+            try { plan = await planner.PlanAsync(centre, them.Z - 0.95f, side, null, default, them.Z); }
+            catch (Exception x) { Walk.WalkMode.Log($"beside: {x.Message}"); return first ?? straight; }
+            if (plan is { FloorKnown: false }) return straight;
+            if (plan is not { Waypoints.Count: > 0 }) continue;
+            var end = plan.Waypoints[^1];
+            float apart = System.Numerics.Vector2.Distance(end, centre);
+            var spot = new Vector3(end.X, end.Y, plan.GoalFloor + half + 0.3f);
+            bool open = apart >= 1 && plan.Length < apart + 1, level = Math.Abs(plan.GoalFloor - plan.StartFloor) < 0.5f;
+            Walk.WalkMode.Log($"beside {them}: side {k} at {end}, {apart:0.0} m off, {plan.Length:0.0} m round, floor {plan.GoalFloor:0.00} (theirs {plan.StartFloor:0.00})");
+            if (open && level) return spot;
+            if (open) first ??= spot;
+        }
+        return first ?? straight;
     }
 
     /// <summary>Waits for the walk to end (stopped near the target, stalled, or a minute), then says Radegast's line;
@@ -566,7 +640,7 @@ public sealed class Commands
     async Task<bool> WatchWalkAsync(Vector3 target, double near, CancellationToken ct, ulong origin, (Vector3 At, string What)? outOfReach = null)
     {
         long start = Environment.TickCount64, stillSince = start;
-        bool moved = false, again = false, pushed = false;
+        bool moved = false, again = false, pushed = false, letGo = false;
         var last = MeIn(origin) ?? target;
         while (!ct.IsCancellationRequested)
         {
@@ -585,6 +659,13 @@ public sealed class Commands
             // standing there 15 s, across a second after a forward press), so stood there, it's walked across by the
             // forward control, once
             bool crossing = Beyond(target) && me.Region == origin;
+            // a person or a thing (stopping 1.5 m short): the region's autopilot heads for its middle and pushed on into
+            // the visitor's body, never still enough to finish (42 s, 2026-11-08), so it's let go once within reach
+            if (!crossing && !letGo && near >= 1.5 && off <= near)
+            {
+                letGo = true;
+                CancelAutoPilot();
+            }
             if (crossing && still > 1500 && !pushed)
             {
                 pushed = true;
@@ -768,6 +849,8 @@ public sealed class Commands
 
     async Task StandAsync()
     {
+        // first, or the vehicle's keys going as she stands are heard as the vehicle letting go of them
+        if (WalkMode is { DrivingAfter: { } car } w) w.EndConvoy($"No longer driving after {car}.");
         await _ops.DoAsync("LLAgent", "requestStand");
         _say("Standing.");
     }
@@ -795,7 +878,8 @@ public sealed class Commands
             gap = Math.Clamp(metres, 1f, 50f);
             p = await _ops.FindPersonAsync(string.Join(" ", a.SkipLast(1)));
         }
-        if (p == null) { _say($"Nobody called {name} nearby."); return; }
+        // (the name without the gap: on 2026-11-08 she heard "Nobody called NAME 3 nearby.")
+        if (p == null) { _say($"Nobody called {(gap != null ? string.Join(" ", a.SkipLast(1)) : name)} nearby."); return; }
         // following walks; seated, a vehicle steered by its keys is driven after them, else a beacon (DriveAfter says which)
         if (_ops.Client is { Self.SittingOn: not 0 } && WalkMode is { } walk)
         {
@@ -1111,17 +1195,27 @@ public sealed class Commands
     /// <summary>`//imsound`'s words (MainForm.ImSounds.cs).</summary>
     public Func<string, Task>? ImSound { get; set; }
 
+    /// <summary>`//pointing`'s words: whose pointing is heard (MainForm.Pointing.cs).</summary>
+    public Func<string, Task>? Pointing { get; set; }
+
     /// <summary>`//outfit`: what's worn by name (MainForm.Outfit.cs).</summary>
     public Func<Task>? Outfit { get; set; }
 
     /// <summary>`//voice`'s words (MainForm.Voice.cs).</summary>
     public Func<string, Task>? Voice { get; set; }
 
+    /// <summary>`//log`, `//clearcache`, `//newwindow` (MainForm.Session.cs).</summary>
+    public Action? SessionLog { get; set; }
+    public Action<string>? ClearCache { get; set; }
+    public Action? NewWindow { get; set; }
+
     /// <summary>`//status music`: the parcel's stream and what it's playing, or null when this parcel has none.</summary>
     public Func<string?>? Music { get; set; }
 
     CancellationTokenSource? _route;
     (string Name, List<string> Lines, int Next)? _routeAt;
+    /// <summary>The route playing now and the step it's on (//threads).</summary>
+    volatile string? _playing;
 
     async Task RouteAsync(List<string> a)
     {
@@ -1183,6 +1277,7 @@ public sealed class Commands
                 step++;
                 var verb = line.TrimStart()[2..].TrimStart();
                 if (verb.StartsWith("route", StringComparison.OrdinalIgnoreCase) || verb.StartsWith("record", StringComparison.OrdinalIgnoreCase)) continue;
+                _playing = $"the route {name}, at step {step} of {steps}";
                 _say($"Step {step} of {steps}.");
                 bool ok = await RunAsync(line);
                 if (stop.IsCancellationRequested) { _routeAt = (name, lines, i); _say($"Route stopped at step {step} of {steps}. //route resume does it again."); return; }
@@ -1192,7 +1287,7 @@ public sealed class Commands
             _routeAt = null;
             _say($"Route finished: {name}.");
         }
-        finally { if (_route == stop) _route = null; }
+        finally { if (_route == stop) { _route = null; _playing = null; } }
     }
 
     /// <summary>A notecard by name: the exact name, else the first starting with it, else containing it.</summary>
@@ -1215,10 +1310,80 @@ public sealed class Commands
     async Task<bool> PauseAsync(List<string> a)
     {
         double secs = a.Count > 0 && double.TryParse(a[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? Math.Clamp(v, 0, 600) : 1;
-        var stop = _route?.Token ?? CancellationToken.None;
-        try { await Task.Delay(TimeSpan.FromSeconds(secs), stop); }
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(_route?.Token ?? CancellationToken.None, _kill.Token);
+        var until = DateTime.UtcNow.AddSeconds(secs);
+        lock (_pauses) _pauses.Add(until);
+        try { await Task.Delay(TimeSpan.FromSeconds(secs), stop.Token); }
         catch (OperationCanceledException) { return false; }
+        finally { lock (_pauses) _pauses.Remove(until); }
         return true;
+    }
+
+    // --- thread, threads, kill (Radegast's ThreadCommand) --------------------------------------------------------------
+    // Radegast runs typed commands one at a time on a worker, so //thread is how one runs beside the rest, and //kill
+    // stops those threads and empties the queue. Here a typed command never holds the next one; what waits is a route's
+    // next line, so //thread lets a route go on at once. What //kill can stop is what runs on: a route, a walk (with its
+    // autopilot), following, pauses. A teleport under way and the rest, which end by themselves, can't be.
+
+    readonly List<(string Line, Task<bool> Task)> _threaded = new();
+    readonly List<DateTime> _pauses = new();
+    CancellationTokenSource _kill = new();
+
+    /// <summary>`//thread COMMAND`: the command started and not waited for (true at once, so a route goes on).</summary>
+    bool ThreadCommand(string rest)
+    {
+        var cmd = rest.Trim().TrimStart('/').Trim();
+        var verb = cmd.Split(' ', 2)[0].ToLowerInvariant();
+        if (cmd.Length == 0) { _say("//thread COMMAND runs it without waiting: //thread go 20, or //thread //follow Kestrel."); return false; }
+        if (verb is "thread" or "threads" or "kill" or "route" or "record") { _say($"//{verb} isn't one to run alongside: type it as it is."); return false; }
+        var line = "//" + cmd;
+        var task = RunAsync(line);
+        if (task.IsCompleted) return true;   // (done already: nothing running alongside)
+        lock (_threaded) _threaded.Add((line, task));
+        _ = task.ContinueWith(_ => { lock (_threaded) _threaded.RemoveAll(t => t.Task == task); }, TaskScheduler.Default);
+        return true;
+    }
+
+    /// <summary>`//threads`: what's running now.</summary>
+    void Threads()
+    {
+        var running = Running();
+        lock (_threaded)
+            foreach (var (line, _) in _threaded) running.Add($"{line}, started by //thread");
+        if (OwnTeleport) running.Add("a teleport");
+        _say(running.Count == 0 ? "Nothing running." : $"Running: {string.Join("; ", running)}. //kill stops it all.");
+    }
+
+    /// <summary>What //kill stops, in words.</summary>
+    List<string> Running()
+    {
+        var list = new List<string>();
+        if (_route != null) list.Add(_playing ?? "a route");
+        if (_walk != null && _following == null) list.Add(_heading is { } h ? $"the walk to {h.Name}" : "a walk");
+        if (_following != null) list.Add($"following {_following}");
+        int pauses;
+        double longest;
+        lock (_pauses) { pauses = _pauses.Count; longest = pauses == 0 ? 0 : (_pauses.Max() - DateTime.UtcNow).TotalSeconds; }
+        if (pauses > 0) list.Add(pauses == 1 ? $"a pause, {Math.Max(1, Math.Round(longest)):0} seconds left" : $"{pauses} pauses");
+        return list;
+    }
+
+    /// <summary>`//kill`: everything running stopped, said.</summary>
+    void Kill()
+    {
+        var stopped = Running();
+        int threaded;
+        lock (_threaded) threaded = _threaded.Count;
+        var kill = _kill;
+        _kill = new CancellationTokenSource();
+        kill.Cancel();
+        _route?.Cancel();
+        StopWalking();
+        StopFollowing(quiet: true);
+        var said = stopped.Count == 0 && threaded == 0 ? "Nothing was running."
+            : stopped.Count == 0 ? "Stopped what //thread started."
+            : $"Stopped {string.Join(", ", stopped)}.";
+        _say(said + (OwnTeleport ? " A teleport under way can't be stopped." : ""));
     }
 
     async Task SimInfoAsync()
@@ -1237,6 +1402,13 @@ public sealed class Commands
             $"{st.ActiveScripts} active scripts, {st.Objects} objects; time dilation {st.Dilation:0.00}, {st.FPS} frames a second, physics {st.PhysicsFPS:0}."));
         if (r["debug"] is JsonObject d && (d["scripts_disabled"]?.GetValue<bool>() == true || d["physics_disabled"]?.GetValue<bool>() == true))
             parts.Add("Scripts or physics are switched off here.");
+        // its server, as the region's handshake gives it (RegionInfo3): empty or zero where a grid leaves it out
+        var server = new List<string>();
+        if (sim.CPUClass > 0) server.Add($"CPU class {sim.CPUClass}");
+        if (sim.CPURatio > 1) server.Add($"{sim.CPURatio} regions per CPU");
+        else if (sim.CPURatio == 1) server.Add("a CPU of its own");
+        if (!string.IsNullOrWhiteSpace(sim.ColoLocation)) server.Add($"data centre {sim.ColoLocation.Trim()}");
+        if (server.Count > 0) parts.Add($"Its server: {string.Join(", ", server)}.");
         _say(string.Join(" ", parts));
     }
 
@@ -1252,20 +1424,73 @@ public sealed class Commands
         var here = c.Parcels.GetParcelLocalID(sim, me.Pos);
         var parcels = sim.Parcels.Values.OrderByDescending(p => p.LocalID == here).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
         if (parcels.Count == 0) { _say("The region hasn't said what its parcels are."); return; }
+        var (traffic, lists) = await ParcelCountsAsync(c, sim, parcels);
+        static string Count(int n, string what) => n == 0 ? $"nobody {what}" : $"{n} {what}";
         var lines = parcels.Select(p =>
         {
             var name = string.IsNullOrWhiteSpace(p.Name) ? "unnamed" : p.Name;
             var who = (p.Flags & ParcelFlags.UseAccessList) != 0 ? ", allowed list only" : (p.Flags & ParcelFlags.UseAccessGroup) != 0 ? ", its group only" : "";
+            var visits = traffic.TryGetValue(p.LocalID, out var t) ? string.Create(CultureInfo.InvariantCulture, $", traffic {t:0}") : "";
+            var listed = lists.TryGetValue(p.LocalID, out var l) ? $", {Count(l.Allowed, "allowed")} and {Count(l.Banned, "banned")}" : "";
             var desc = string.IsNullOrWhiteSpace(p.Desc) ? "" : $": {p.Desc.Trim()}";
-            return $"{(p.LocalID == here ? "Here, " : "")}{name}, {p.Area} square metres{who}{desc}.";
+            return $"{(p.LocalID == here ? "Here, " : "")}{name}, {p.Area} square metres{who}{visits}{listed}{desc}.";
         });
         // the parcels' descriptions are their owners' words: the session log marks the line as quoting someone
         Action<string> say = parcels.Any(p => !string.IsNullOrWhiteSpace(p.Desc)) ? Quoted : _say;
         say($"{parcels.Count} {(parcels.Count == 1 ? "parcel" : "parcels")}. " + string.Join(" ", lines));
     }
 
-    async Task ScriptInfoAsync()
+    /// <summary>Each parcel's traffic (asked of the region: viewers don't keep it) and the sizes of its allowed and banned
+    /// lists, which the region sends only to whoever may see them (the parcel's owner, or its group's managers), so only
+    /// those parcels say them. Asked of every parcel at once, then what came in up to 3 seconds (Radegast's said 0 for the
+    /// rest, which read as nobody).</summary>
+    async Task<(Dictionary<int, float> Traffic, Dictionary<int, (int Allowed, int Banned)> Lists)> ParcelCountsAsync(GridClient c, Simulator sim, List<Parcel> parcels)
     {
+        var traffic = new System.Collections.Concurrent.ConcurrentDictionary<int, float>();
+        var allowed = new System.Collections.Concurrent.ConcurrentDictionary<int, int>();
+        var banned = new System.Collections.Concurrent.ConcurrentDictionary<int, int>();
+        void Dwell(object? _, PacketReceivedEventArgs e)
+        {
+            if (e.Simulator == sim && e.Packet is LibreMetaverse.Packets.ParcelDwellReplyPacket d) traffic[d.Data.LocalID] = d.Data.Dwell;
+        }
+        void Access(object? _, PacketReceivedEventArgs e)
+        {
+            if (e.Simulator != sim || e.Packet is not LibreMetaverse.Packets.ParcelAccessListReplyPacket r) return;
+            // an empty list comes as one blank entry; a long one in several packets
+            int n = r.List.Count(t => t.ID != UUID.Zero);
+            var into = (r.Data.Flags & (uint)AccessList.Ban) != 0 ? banned : (r.Data.Flags & (uint)AccessList.Access) != 0 ? allowed : null;
+            into?.AddOrUpdate(r.Data.LocalID, n, (_, was) => was + n);
+        }
+        c.Network.RegisterCallback(LibreMetaverse.Packets.PacketType.ParcelDwellReply, Dwell);
+        c.Network.RegisterCallback(LibreMetaverse.Packets.PacketType.ParcelAccessListReply, Access);
+        try
+        {
+            foreach (var p in parcels)
+            {
+                c.Parcels.RequestDwell(sim, p.LocalID);
+                c.Parcels.RequestParcelAccessList(sim, p.LocalID, AccessList.Access, 0);
+                c.Parcels.RequestParcelAccessList(sim, p.LocalID, AccessList.Ban, 0);
+            }
+            // every parcel's traffic in (an owner's lists come with it) and a moment more, or 3 s at most
+            var asked = Environment.TickCount64;
+            while (Environment.TickCount64 - asked < 3000 && !(traffic.Count >= parcels.Count && Environment.TickCount64 - asked > 800))
+                await Task.Delay(100);
+        }
+        finally
+        {
+            c.Network.UnregisterCallback(LibreMetaverse.Packets.PacketType.ParcelDwellReply, Dwell);
+            c.Network.UnregisterCallback(LibreMetaverse.Packets.PacketType.ParcelAccessListReply, Access);
+        }
+        var lists = new Dictionary<int, (int, int)>();
+        foreach (var p in parcels)
+            if (allowed.TryGetValue(p.LocalID, out var a) && banned.TryGetValue(p.LocalID, out var b)) lists[p.LocalID] = (a, b);
+        return (new Dictionary<int, float>(traffic), lists);
+    }
+
+    async Task ScriptInfoAsync(List<string> a)
+    {
+        if (a.Count > 0 && a[0].Equals("parcel", StringComparison.OrdinalIgnoreCase)) { await ParcelScriptsAsync(); return; }
+        if (a.Count > 0 && !a[0].Equals("avatar", StringComparison.OrdinalIgnoreCase)) { Help("scriptinfo"); return; }
         if (_ops.Client is not { } c || _s.Region is not { } w) { _say("Not in a region yet."); return; }
         var me = w.Avatars.Values.FirstOrDefault(a => a.ID == c.Self.AgentID);
         var worn = me == null ? new List<Primitive>() : w.Prims.Values.Where(p => p.ParentID == me.LocalID).ToList();
@@ -1279,6 +1504,35 @@ public sealed class Commands
             ? $" on {ObjectViews.AttachPointName((int)p.PrimData.AttachmentPoint)}" : "";
         _say($"{scripts} scripts in what you're wearing, {running} running. "
              + string.Join(" ", objs.Select(o => $"{o.Str("name") ?? "something"}{Where(o)}: {o["scripts"]}{(Json.AsDouble(o["running"]) is { } rn && rn < (Json.AsDouble(o["scripts"]) ?? 0) ? $", {rn:0} running" : "")}.")));
+    }
+
+    /// <summary>`//scriptinfo parcel`: the script memory and URLs the objects on the parcel she's on use, of what it has,
+    /// and the objects using most (the region's LandResources capability, as Radegast's and the viewers' Script
+    /// Information).</summary>
+    async Task ParcelScriptsAsync()
+    {
+        if (_ops.Client is not { } c || c.Network.CurrentSim is not { } sim) { _say("Not in a region yet."); return; }
+        using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        UUID parcel;
+        try { parcel = await c.Parcels.RequestRemoteParcelIDAsync(c.Self.SimPosition, sim.Handle, sim.ID, wait.Token); }
+        catch (Exception e) when (e is OperationCanceledException or TimeoutException) { parcel = UUID.Zero; }
+        if (parcel == UUID.Zero) { _say("The region didn't say which parcel this is."); return; }
+        var (ok, info) = await c.Parcels.GetParcelResourcesAsync(parcel, true, wait.Token);
+        if (!ok || info == null) { _say("This region doesn't say how much script memory the parcel's objects use."); return; }
+        var parts = new List<string>();
+        long used = Get(info.SummaryUsed, "memory"), have = Get(info.SummaryAvailable, "memory");
+        long urls = Get(info.SummaryUsed, "urls"), urlsHave = Get(info.SummaryAvailable, "urls");
+        if (used >= 0) parts.Add($"Scripts on this parcel use {used / 1024} KB of memory{(have > 0 ? $" of {have / 1024} KB" : "")}.");
+        if (urls >= 0) parts.Add($"{urls} URLs{(urlsHave > 0 ? $" of {urlsHave}" : "")}.");
+        var objects = (info.Parcels ?? []).Where(p => p?.Objects != null).SelectMany(p => p.Objects)
+            .Select(o => (o.Name, Kb: Get(o.Resources, "memory") / 1024))
+            .OrderByDescending(o => o.Kb).ToList();
+        if (objects.Count > 0)
+            parts.Add($"{objects.Count} scripted {(objects.Count == 1 ? "object" : "objects")}, the most first: "
+                      + string.Join(", ", objects.Take(10).Select(o => $"{(string.IsNullOrWhiteSpace(o.Name) ? "unnamed" : o.Name)} {Math.Max(0, o.Kb)} KB"))
+                      + (objects.Count > 10 ? $", and {objects.Count - 10} more" : "") + ".");
+        _say(parts.Count > 0 ? string.Join(" ", parts) : "The region sent nothing on this parcel's scripts.");
+        static long Get(IDictionary<string, int>? d, string k) => d != null && d.TryGetValue(k, out var v) ? v : -1;
     }
 
     // --- status -------------------------------------------------------------------------------------------------------

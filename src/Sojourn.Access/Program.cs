@@ -12,6 +12,8 @@ static class Program
     static int Main(string[] args)
     {
         var opt = AccessOptions.Parse(args);
+        // the cache cleared when asked last time (Help > Clear the cache at the next start), before anything uses it
+        CacheClear.StartIfMarked(opt.BaseDir);
         // Studio Quire's relay as the assistant's provider is Access's alone (the people the studio covers are here); the
         // VR client and its launcher leave it off (Sojourn.Session's ProviderKeys.RelayOffered)
         Sojourn.Session.Assistant.ProviderKeys.RelayOffered = true;
@@ -54,7 +56,7 @@ sealed class AccessApp : ApplicationContext
     LoginChoice? _sessionFor;
     /// <summary>The login chosen last, until it works: then its password is kept or forgotten (LoginForm.LoggedIn).</summary>
     LoginChoice? _toKeep;
-    bool _askedTerms, _shown;
+    bool _askedTerms, _shown, _clearingWait;
     int _mfaAsked;
 
     public AccessApp(AccessOptions opt, string[] args)
@@ -125,6 +127,12 @@ sealed class AccessApp : ApplicationContext
             // another account: its own state dir and session, so a fresh run with the form filled in
             Restart(choice);
             return;
+        }
+        if (CacheClear.Running is { IsCompleted: false } clearing)
+        {
+            if (_clearingWait) return;   // (Log in pressed again meanwhile)
+            _clearingWait = true;
+            await clearing;
         }
         _sessionFor = choice;
         _main = new MainForm(_opt, _settings, _args);

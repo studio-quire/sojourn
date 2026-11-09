@@ -28,8 +28,10 @@ public sealed partial class WalkMode
     const ScriptControlChange MoveKeys = ScriptControlChange.Forward | ScriptControlChange.Back | ScriptControlChange.Left |
         ScriptControlChange.Right | ScriptControlChange.RotateLeft | ScriptControlChange.RotateRight;
 
-    /// <summary>Seated, or a script keeps the movement keys: the arrows drive (CONTROL_FWD, ROT_LEFT ...) instead of walking.</summary>
-    bool Driving(Body b) => b.Sitting || (S.ControlsKept & MoveKeys) != 0;
+    /// <summary>Seated, or a script keeps the movement keys: the arrows drive (CONTROL_FWD, ROT_LEFT ...) instead of walking.
+    /// A seat in doubt over a crossing counts: a walk's "Blocked." was said as her scooter crossed into Berbera, the
+    /// region not having sent her avatar yet (0.1.0.996, 2026-11-08).</summary>
+    bool Driving(Body b) => b.Sitting || (S.ControlsKept & MoveKeys) != 0 || SeatInDoubt(b);
 
     /// <summary>F1 in walk mode: its keys, one a line under short headings (shown in a window to read, MainForm.ShowKeys).</summary>
     public const string Help = """

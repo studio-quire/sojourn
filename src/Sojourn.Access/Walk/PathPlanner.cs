@@ -38,7 +38,14 @@ public sealed class PathPlanner
 
     /// <summary>A plan: the waypoints after the start (the last is the goal, or the nearest free spot to it), whether the
     /// straight line was clear anyway, its length.</summary>
-    public sealed record Plan(List<Vector2> Waypoints, bool Direct, float Length, bool GoalMoved);
+    public sealed record Plan(List<Vector2> Waypoints, bool Direct, float Length, bool GoalMoved)
+    {
+        /// <summary>The floor's height at the start and at the last waypoint; FloorKnown: the model has what the start
+        /// stands on (else the floor was carried on level from the feet given, and both heights are only that).</summary>
+        public float StartFloor { get; init; }
+        public float GoalFloor { get; init; }
+        public bool FloorKnown { get; init; }
+    }
 
     /// <summary>Whether a plan can be asked for now (the view is up): a null plan then means there's no way.</summary>
     public bool CanAsk => _rays.Ready;
@@ -295,13 +302,15 @@ public sealed class PathPlanner
             goalMoved = true;
         }
         var goal = goalMoved ? Centre(gi, gj) : to;
+        Plan Made(List<Vector2> pts, bool direct, float length) =>
+            new(pts, direct, length, goalMoved) { StartFloor = floor[start], GoalFloor = floor[gj * nx + gi], FloorKnown = !level };
         bool Roomy(int k, float need) => !blocked[k] && (clear[k] >= need || NearEnd(k));
         bool NearEnd(int k)
         {
             int i = k % nx, j = k / nx;
             return Math.Abs(i - si) <= near && Math.Abs(j - sj) <= near || Math.Abs(i - gi) <= near && Math.Abs(j - gj) <= near;
         }
-        if (Clear(nx, ny, si, sj, gi, gj, k => Roomy(k, Room))) return new Plan(new List<Vector2> { goal }, true, Vector2.Distance(from, goal), goalMoved);
+        if (Clear(nx, ny, si, sj, gi, gj, k => Roomy(k, Room))) return Made(new List<Vector2> { goal }, true, Vector2.Distance(from, goal));
 
         var path = AStar(blocked, clear, nx, ny, si, sj, gi, gj);
         if (path == null) return null;
@@ -322,7 +331,7 @@ public sealed class PathPlanner
         float length = 0;
         var prev = from;
         foreach (var p in pts) { length += Vector2.Distance(prev, p); prev = p; }
-        return new Plan(pts, false, length, goalMoved);
+        return Made(pts, false, length);
     }
 
     /// <summary>Metres from each cell's middle to the nearest solid cell's edge (a two-pass chamfer distance).</summary>

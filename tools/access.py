@@ -1093,12 +1093,35 @@ def visitor_where():
     return tuple(float(m[i]) for i in (1, 2, 3))
 
 
-def near_visitor(within=8):
-    """The tester beside the visitor, wherever the steps before left her: its fixtures' scripts are heard by the visitor,
-    and placed from where she stands."""
-    if math.dist(tester_where()[:2], visitor_where()[:2]) > within:
-        say_in_app(f"//go tp person {VNAME}")
-        wait(lambda: math.dist(tester_where()[:2], visitor_where()[:2]) < within, 25, 1)
+def visitor_at():
+    """(region, x, y, z) of the visitor."""
+    m = re.match(r"(.+?) <([-\d.]+), ([-\d.]+), ([-\d.]+)>", v("pos"))
+    return m[1], float(m[2]), float(m[3]), float(m[4])
+
+
+def near_visitor(within=8, apart=3):
+    """The tester a few metres from the visitor, wherever the steps before left her, with People nearby showing it: its
+    fixtures' scripts are heard by the visitor, things are placed from where she stands, and the lists say how far and
+    where. Not on its spot: `//go tp person` stood her on its head, where the lists rightly said "under a metre, below
+    you" for the rest of 2026-11-08's full run while the checks wanted metres and a clock face. And in its region: a
+    step may leave either of them over a border, where the two positions aren't comparable."""
+    region = api("SojournLand", "region").get("name")
+    vregion, vx, vy, vz = visitor_at()
+    tx, ty, _, _ = tester_where()
+    d = math.dist((tx, ty), (vx, vy)) if vregion == region else math.inf
+    if 1.5 <= d <= within:
+        return
+    # toward where she logs in (open ground) when the visitor is in her region and away from it, else west of it
+    ux, uy = (TESTER_START[0] - vx, TESTER_START[1] - vy) if vregion == REGION else (-1.0, 0.0)
+    n = math.hypot(ux, uy)
+    ux, uy = (ux / n, uy / n) if n > 0.5 else (-1.0, 0.0)
+    x, y = vx + ux * apart, vy + uy * apart
+    say_in_app(f"//tp {vregion}/{x:.0f}/{y:.0f}/{vz:.0f}")
+    wait(lambda: api("SojournLand", "region").get("name") == vregion and math.dist(tester_where()[:2], (x, y)) < 1.5, 25, 1)
+    # People nearby beside chat fills every 3 s while the focus isn't in it: one fill before a step Tabs in, which reads
+    # the item it lands on (2026-11-08's run Tabbed in a moment after the teleport, onto "Nobody nearby."; the people
+    # now come in under her there, but unread until she moves)
+    time.sleep(4)
 
 
 def visitor_settled(secs=10):
@@ -1305,6 +1328,7 @@ def session(run, procs):
     for region in (REGION, COURSE_REGION):
         if vid and (n := clear_owned(region, vid)):
             print(f"     ({n} of the visitor's things an earlier run left in {region} cleared)")
+    sweep_tester()
 
     vlog = open(OUT / "visitor" / "visitor.log", "w", encoding="utf-8")
     procs["visitor"] = subprocess.Popen(
@@ -1333,15 +1357,17 @@ def session(run, procs):
                SOJOURN_TEST_LIST_DELAY_MS=str(LIST_DELAY_MS),
                SOJOURN_NO_BROWSER="1",   # a link says it's opening, and no browser comes up on the PC
                SOJOURN_TEST_HOLD_WINDOW="1",   # //holdwindow SECONDS holds the window's thread (the window watch's step)
+               SOJOURN_TEST_CONVOY_BLIND="1",   # //blindconvoy AFTER SECONDS: the one driven after goes unseen (driving after someone lost)
                SOJOURN_VOICE_OUT_FILE=str(HEARD), SOJOURN_WALK_LOG=str(OUT / "walk.log"),   # world audio to a file (local grid only), never the speakers
                SOJOURN_TEST_GROUPS_PAGE="1",   # a page of groups so short that any search has a further one
                SOJOURN_LOGINS=str(OUT / "logins"),   # remembered passwords in the run's own folder, not the repo's saved logins
                SOJOURN_TEST_NAMES="1",   # SojournTestNames: a display name set by the names step (the local grid has none)
                SOJOURN_TEST_FILES=str(OUT / "files"),   # the editor's Open and Save windows: files there, by the item's name
                SOJOURN_TEST_UPLOAD_FEE=UPLOAD_FEES)   # uploads of some kinds confirmed as spending on the free local grid
+    # (no --autologin: she logs in from the form by keys, as a person does, below)
     app_args = ["--grid", GRID_URI, "--user", f"{TESTER[0]} {TESTER[1]}", "--password", PASSWORD,
                 "--start", "uri:%s&%d&%d&%d" % (REGION, *TESTER_START), "--port", API_PORT, "--base", OUT / "app",
-                "--reader", "on", "--autologin"]
+                "--reader", "on"]
     if RELAY:
         # its sidecar on the relay with that token, kept as the app keeps keys (in the run's own folder)
         import relay as relaymod
@@ -1379,11 +1405,28 @@ def session(run, procs):
     u(f"watch {app}")
     u(f"mark app started, pid {app}")
 
+    # ---- the login form, filled in from the command line, and Enter. Not --autologin: that logs in the moment the form
+    # shows, and the session's start then holds the window's thread for seconds, so a UI Automation client (QuireUia,
+    # a screen reader) may not have met the process at all when the main window opens and "Logged in" is said in the
+    # same moment; 2026-11-08's full run heard nothing of it, though the app said it. A person's reader has read the
+    # form first, as QuireUia has here.
+    form = wait(lambda: next((l for l in u(f"windows {app}").splitlines() if '"Sojourn Access: log in"' in l), None), 60, 1)
+    if not check("(the login form)", form, form or u(f"windows {app}")):
+        raise Stop
+    try:
+        u(f"activate {app}")
+    except ToolError:
+        pass
+    f = wait_focus(lambda d: d["id"] in ("login", "user", "password", "start", "grid"), 10)
+    check("(the focus on the login form)", f, label(f) if f else focus_label())
+    key("enter")
+
     # ---- logged in, the window, the focus
     st = wait(lambda: (lambda s: s if s.get("connected") else None)(status()), LOGIN_SECS, 1)
     if not check("logged in", st, json.dumps(st)[:120] if st else f"not connected after {LOGIN_SECS} s"):
         raise Stop
-    title = wait(lambda: next((l for l in u(f"windows {app}").splitlines() if '"Sojourn Access' in l), None), 60, 1)
+    # (the main window, not the login form still showing as the session comes online)
+    title = wait(lambda: next((l for l in u(f"windows {app}").splitlines() if '"Sojourn Access' in l and "log in" not in l), None), 60, 1)
     if not check("the main window, titled Sojourn Access", title, title or u(f"windows {app}")):
         raise Stop
     tester_id = api("LLAgent", "getID")["id"]
@@ -1444,6 +1487,7 @@ def session(run, procs):
         ("folders given, deleted from the tree, links, outfits and landmarks", lambda: folders_and_links(run, nonce)),
         ("incognito", lambda: incognito(run, nonce)),
         ("voice keys", lambda: voice_keys(run)),
+        ("people in voice, to act on", lambda: voice_people(run)),
         ("the window's controls again", lambda: tree_check(run, "nearby chat, after use")),
         ("walking", lambda: walk(run)),
         ("a teleport", lambda: teleport(run)),
@@ -1456,12 +1500,15 @@ def session(run, procs):
         ("my profile, notes", lambda: my_profile(run, nonce, tester_id)),
         ("chat logs", lambda: chat_logs(run, nonce, tester_id)),
         ("small things from the gaps", lambda: small_gaps(run, nonce, tester_id)),
+        ("the session itself: its log, the cache, another window", lambda: session_tools(run, procs)),
         ("the window held", lambda: window_held(run)),
         ("search's further pages, people further off, links in words", lambda: search_more_and_links(run, nonce, tester_id)),
         ("more commands", lambda: more_commands(run)),
         ("paying and buying things", lambda: paying_and_buying(run, nonce)),
         ("objects: details, the filter, past the nearest, what people wear", lambda: objects_more(run, nonce)),
         ("objects: a friend's thing, taken, deleted, returned", lambda: objects_rights(run, nonce, tester_id)),
+        ("what a friend points at", lambda: pointing(run, nonce, tester_id)),
+        ("one person's worn things and animations", lambda: their_things(run, nonce)),
         ("groups: a title, its notices", lambda: groups_menu(run, nonce, tester_id)),
         ("groups: running one", lambda: groups_running(run, nonce, tester_id)),
         ("scripts: a new one, moving around in it, inside an object, its errors", lambda: scripts_editing(run, nonce)),
@@ -1476,6 +1523,8 @@ def session(run, procs):
         ("rail switches", lambda: rail_switches(run)),
         ("stopping a vehicle", lambda: vehicle_stop(run)),
         ("driving after someone", lambda: driving_after(run)),
+        ("driving after someone over a border", lambda: driving_after_border(run)),
+        ("driving after someone lost at a border", lambda: driving_after_lost(run)),
         ("links", lambda: links(run)),
         ("recording a route", lambda: route_recording(run)),
         ("recording a route across a border", lambda: route_crossing(run)),
@@ -1537,6 +1586,26 @@ def back_to_chat():
             wait_focus(lambda d: d["id"] == "chatInput", 3)
     except Exception:
         pass
+
+
+def to_conversation(words, tries=6):
+    """The focus in the message box of the conversation whose name has these words, by Control+Tab round the open ones
+    (from Say, the first open is the oldest: another step's may come before). Whether it got there."""
+    for _ in range(tries):
+        key("ctrl+tab")
+        if wait_focus(lambda d: d["id"] == "convInput" and words in d["name"], 2):
+            return True
+    return False
+
+
+def close_conversation_named(words):
+    """A conversation a step left open closed by keys (Control+W in it), so the next step's Control+Tab doesn't land
+    there; back in Say."""
+    back_to_chat()
+    if to_conversation(words):
+        key("ctrl+w")
+        time.sleep(0.5)
+    back_to_chat()
 
 
 def say_in_app(text, how="enter"):
@@ -1890,9 +1959,9 @@ def im(run, nonce, tester_id):
 def long_text(tag, nonce, sentences=20, typed=False):
     """About 2,600 bytes of numbered sentences, two- and three-byte characters in every one, so some fall near each
     part's end. typed: two-byte ones only (QuireUia's posted characters pass through the ANSI code page, which has no
-    æ—¥æœ¬èªž)."""
-    note, dash = ("Ã…ngstrÃ¶m's hand", ",") if typed else ("æ—¥æœ¬èªž", " â€”")
-    return " ".join(f"{tag} {i:02d} {nonce}: the cafÃ©'s crÃ¨me brÃ»lÃ©e sat by the window, beside a note in {note}, and the "
+    日本語)."""
+    note, dash = ("Ångström's hand", ",") if typed else ("日本語", " —")
+    return " ".join(f"{tag} {i:02d} {nonce}: the café's crème brûlée sat by the window, beside a note in {note}, and the "
                     f"light was soft{dash} almost blue." for i in range(1, sentences + 1))
 
 
@@ -1909,7 +1978,7 @@ def long_lines(run, nonce, tester_id):
         run.check(f"{where}: each part ends at a sentence's end", parts and all(x.endswith(".") for x in parts),
                   " | ".join("..." + x[-20:] for x in parts))
         run.expect(f"{where}: \"Sent in {len(parts)} parts.\" said", [f"Sent in {len(parts)} parts."], m, 10)
-        mine = [e["text"] for e in said_since(m) if nonce in (e.get("text") or "") and "cafÃ©" in (e.get("text") or "")]
+        mine = [e["text"] for e in said_since(m) if nonce in (e.get("text") or "") and "café" in (e.get("text") or "")]
         run.check(f"{where}: the parts not read back", not mine, "; ".join(t[:60] for t in mine) or "none read")
 
     def collect(kind, tag, n, last):
@@ -2241,6 +2310,56 @@ def listed(who):
     return got[0]["name"] if got else None
 
 
+def nobody_then_someone(run):
+    """People nearby beside chat while she's on "Nobody nearby." in it (2026-11-08's run Tabbed in a moment after a
+    teleport, before anyone had come into view, and it stayed so while she was there): the visitor teleporting in fills
+    it under her, said once ("1 person nearby now."), no item taking the focus or read; Down reaches the visitor. The
+    visitor back at its start after."""
+    back_to_chat()
+    got = visitor_tp(200, 200, 40, region=REGION)   # (over 96 m off: out of the list)
+    empty = wait(lambda: find("type=ListItem;name=Nobody nearby."), 10, 0.5)
+    try:
+        if not run.check("(the visitor far off, the list beside chat says nobody's there)", got.startswith("arrived") and empty, got):
+            return
+        m = mark()
+        key("tab")
+        # (UI Automation's managed client may name the list rather than the item made current while it hadn't the focus,
+        # as after Escape above; MSAA's focus event is what NVDA reads)
+        d = wait_focus(lambda d: d["id"] == "chatPeople" or d["type"] == "ListItem" and d["name"].startswith("Nobody nearby"), 4)
+        time.sleep(1)
+        msaa = [e for e in focus_events_since(m) if e.get("src") == "msaa" and e.get("obj", -4) == -4]
+        items = [i["name"] for i in find("type=ListItem")]
+        if not run.check("(Tab from Say into it, on Nobody nearby.)", d and "Nobody nearby." in items and not any(VNAME in i for i in items),
+                         f"{label(d) if d else focus_label()}; items {items}; MSAA {msaa[-1].get('role')}: {msaa[-1].get('text')}" if msaa
+                         else f"{label(d) if d else focus_label()}; items {items}; no MSAA focus event"):
+            return
+        m = mark()
+        got = visitor_tp(*VISITOR_START, region=REGION)
+        said = run.expect("someone coming while she's on Nobody nearby: said once", ["1 person nearby now."], m, 15)
+        time.sleep(1)
+        run.check("and they're in the list under her", listed(VNAME), "; ".join(i["name"] for i in find("type=ListItem")) or "nothing listed")
+        read = [e.get("text") for e in focus_events_since(m) if VNAME in (e.get("text") or "")]
+        run.check("with no item read (no focus event names them)", said and not read, "; ".join(read) or "none")
+        run.check("(said only once)", len([e for e in said_since(m) if "nearby now" in (e.get("text") or "")]) == 1,
+                  "; ".join(e.get("text") or "" for e in said_since(m) if "nearby now" in (e.get("text") or "")))
+        f = focused()
+        run.check("the focus still in the list", f and (f["id"] == "chatPeople" or f["type"] == "ListItem"), label(f) if f else "nowhere")
+        m = mark()
+        key("down")
+        # (the focus events, as arrived_in_list: the managed client's polled focus may name the list)
+        time.sleep(1.5)
+        msaa = [e for e in focus_events_since(m) if e.get("src") == "msaa" and e.get("obj", -4) == -4]
+        claims = find("type=ListItem;focused=1")
+        run.check("Down reaches them", msaa and msaa[-1].get("role") == "list item" and VNAME in (msaa[-1].get("text") or "")
+                  and len(claims) == 1 and VNAME in claims[0]["name"],
+                  (f"MSAA {msaa[-1].get('role')}: {msaa[-1].get('text')}" if msaa else "no MSAA focus event")
+                  + f"; focused items: {'; '.join(label(c) for c in claims) or 'none'}")
+    finally:
+        back_to_chat()
+        if not math.dist(visitor_where()[:2], VISITOR_START[:2]) < 3:
+            visitor_tp(*VISITOR_START, region=REGION)
+
+
 def people_beside_chat(run):
     """People nearby beside chat, as Radegast keeps its nearby list (a blind tester looked for it there, 2026-10-30;
     between Say and the history in her Tab order, so Tab from Say): the item read on arriving, with the distance; the actions on the Applications key; Control+D; the
@@ -2290,7 +2409,7 @@ def people_beside_chat(run):
     if distance_right("coming back to it from Say, the distance is current", now):
         run.check("(and it had changed)", now != before, f"{before} -> {now}")
     back_to_chat()
-    v(f"goto {VISITOR_START[0]} {VISITOR_START[1]}")
+    nobody_then_someone(run)
 
     # Alt+2: Friends, as in Radegast (the tester's habit; conversations are Control+Tab's)
     key("alt+2")
@@ -2448,6 +2567,74 @@ def inventory_db_change(delete_items=(), move_folders=()):
         return True
     finally:
         db.close()
+
+
+def sweep_tester():
+    """What earlier runs left of the tester's goes before she logs in, so no step meets it: her objects in the regions
+    the test uses (the grid console), and in her inventory (the grid's own database; she's offline, checked before)
+    everything but a new account's own (its system folders, the Default body parts and clothes and Current Outfit's
+    links to them), her calling cards and the Routes folder, the Trash and Lost and Found emptied with it. Runs leave
+    fixtures (some 25 a full run) and interrupted runs more: by 2026-11-08 some 700, 93 folders and 223 objects at the
+    top of the tree, so a walk down it never reached the run's folder, and 215 old builds in an Objects folder left open
+    came before Scripts; in Atelier, a box from a run that morning stood where the builders' step sets a box down."""
+    import sqlite3
+    nil = "00000000-0000-0000-0000-000000000000"
+    bin_ = LOCAL / os.environ.get("SOJOURN_GRID", "grid") / "bin"
+    sets = dict.fromkeys((TESTER[0], "Access", "Walk"))
+    users = sqlite3.connect(bin_ / "userprofiles.db", timeout=10)
+    try:
+        ids = {(first, last): pid for pid, first, last in users.execute(
+            "select PrincipalID, FirstName, LastName from UserAccounts where LastName in ('Tester', 'Visitor')")
+            if first in sets}
+    finally:
+        users.close()
+    uid = ids.get(TESTER)
+    if not uid:
+        return
+    # her objects where the test goes, and what the other account set's tester and visitor left there (both sets use
+    # Atelier's spots: Walk Tester's box from an interrupted run stood by where Access Tester's builders' step sets a box
+    # down), unless they're on the grid (a person's guided session); this run's visitor's were cleared already
+    for account, oid in ids.items():
+        if account == VISITOR or account != TESTER and online(*account):
+            continue
+        for region in (REGION, COURSE_REGION) + ((PAL_START[0],) if account == TESTER else ()):
+            if n := clear_owned(region, oid):
+                print(f"     ({n} of {' '.join(account)}'s things an earlier run left in {region} cleared)")
+
+    db = sqlite3.connect(bin_ / "inventory.db", timeout=10)
+    try:
+        folders = {f: (name, kind, parent) for name, kind, f, parent in db.execute(
+            "select folderName, type, folderID, parentFolderID from inventoryfolders where agentID = ?", (uid,))}
+        root = next((f for f, (_, _, parent) in folders.items() if parent == nil), None)
+        if root is None:
+            return
+
+        def top(f):
+            """The top-level folder f is in, or f itself."""
+            seen = 0
+            while f in folders and folders[f][2] != root and seen < 64:
+                f, seen = folders[f][2], seen + 1
+            return f
+
+        cards = {f for f, (_, kind, parent) in folders.items() if parent == root and kind == 2}
+        # the system folders (the Trash and Lost and Found among them, emptied) and the Routes folder at the top, and
+        # the calling cards' own folders
+        kept_folders = {root} | {f for f, (name, kind, parent) in folders.items()
+                                 if parent == root and (kind != -1 or name == "Routes") or parent != root and top(f) in cards}
+        own = {f for f, (_, kind, parent) in folders.items() if parent == root and kind in (5, 13, 46)}   # Clothing, Body Parts, Current Outfit
+        items = db.execute("select inventoryID, inventoryName, parentFolderID from inventoryitems where avatarID = ?", (uid,)).fetchall()
+        gone_items = [i for i, name, parent in items
+                      if not (parent in kept_folders and parent != root and top(parent) in cards
+                              or name.startswith("Default ") and parent in own)]
+        gone_folders = [f for f in folders if f not in kept_folders]
+        db.executemany("delete from inventoryitems where inventoryID = ?", [(i,) for i in gone_items])
+        db.executemany("delete from inventoryfolders where folderID = ?", [(f,) for f in gone_folders])
+        db.executemany("update inventoryfolders set version = version + 1 where folderID = ?", [(f,) for f in kept_folders])
+        db.commit()
+    finally:
+        db.close()
+    if gone_items or gone_folders:
+        print(f"     ({len(gone_items)} items and {len(gone_folders)} folders earlier runs left in the tester's inventory cleared)")
 
 
 def menu_pick(name):
@@ -3914,7 +4101,7 @@ def housekeeping(run, nonce):
     house = f"Access House {nonce}"
     clear_search()
     key("home")
-    if run.check("(the run's folder selected in the tree)", select_in("id=inventory", house), selected_text("id=inventory")):
+    if run.check("(the run's folder selected in the tree)", select_top(house), selected_text("id=inventory")):
         key("right")
         time.sleep(0.5)
         key("down")
@@ -3957,7 +4144,7 @@ def housekeeping(run, nonce):
     out = OUT / f"backup-{nonce}"
     out.mkdir(parents=True, exist_ok=True)
     clear_search()
-    if select_in("id=inventory", house):
+    if select_top(house):
         key("apps")
         if run.check("a folder's menu has Back up to disk", menu_open("Back up to disk..."), focus_label()):
             m = mark()
@@ -4098,7 +4285,7 @@ def housekeeping(run, nonce):
 
 
 PERSON_ITEMS = ["Send IM", "Walk to", "Face", "Where", "Describe", "Follow", "Beacon", "Pay...", "Give what you copied", "Offer teleport",
-                "Request teleport", "Always incognito with them"]
+                "Request teleport", "Always incognito with them", "Hear what they point at", "What they wear", "Their animations"]
 
 
 def person_actions(run, nonce, tester_id):
@@ -4841,6 +5028,15 @@ def log_out(run, procs):
     for the password. Last of all: nothing after it has a session."""
     global APP_PID
     old = procs["app"]
+    # the cache marked to be cleared at the next start, which this is (docs/access-app.md > The session itself)
+    cache = OUT / "app" / "cache"
+    def cache_files():
+        return [f for d in (cache.iterdir() if cache.exists() else []) if d.is_dir() and d.name != "render"
+                for f in d.rglob("*") if f.is_file() and f.name != "starter.json"]
+    render = len(list((cache / "render").rglob("*"))) if (cache / "render").exists() else 0
+    had = len(cache_files())
+    say_in_app("//clearcache")
+    wait(lambda: (OUT / "app" / "clear-cache-at-start").exists(), 4)
     say_in_app("//logout")
     if not run.check("//logout asks", wait_focus(lambda e: e["id"] == "quitYes", 5), focus_label()):
         return
@@ -4853,6 +5049,12 @@ def log_out(run, procs):
     run.check("a fresh process, at the login window", form, str(fresh)[:200])
     if new_pid:
         APP_PID = procs["app"] = new_pid
+    wait(lambda: len(cache_files()) < had / 10, 15)
+    left = len(cache_files())
+    run.check("the cache, marked before, cleared as it started (the drawing code's kept)",
+              had > 0 and left < had / 10 and not (OUT / "app" / "clear-cache-at-start").exists()
+              and (len(list((cache / "render").rglob("*"))) if (cache / "render").exists() else 0) >= render,
+              f"{had} files before, {left} after; render {render}")
 
 
 def settings_rows(run, nonce):
@@ -5088,13 +5290,10 @@ def notecards_embedded(run, nonce, tester_id):
 
         def save():
             saved_in.update(rpc("object.content.save", prim_id=box, item_id=inside["item_id"], content="Rewritten inside the box.\n"))
+        m = mark()
         t = threading.Thread(target=save, daemon=True)
         t.start()
-        time.sleep(1.5)
-        key("ctrl+n")
-        wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 4)
-        time.sleep(1.2)   # it arms 0.8 s after it's shown
-        key("enter")
+        confirm_once_said(m, 30, ended=lambda: not t.is_alive())
         t.join(30)
         run.check("object.content.save names both as moved", len(saved_in.get("moved_to_end", [])) == 2, json.dumps(saved_in)[:300])
         got = rpc("object.content.get", prim_id=box, item_id=inside["item_id"])
@@ -5422,7 +5621,7 @@ def reader_follows(run, folder_name):
     key("home")
     time.sleep(0.5)
     walk("and after a reload", "reloaded", *["down"] * 4)
-    if not select_in("id=inventory", folder_name):
+    if not select_top(folder_name):
         run.check("(the run's folder at the top of the tree)", False, selected_text("id=inventory"))
         return
     key("right")
@@ -5677,6 +5876,21 @@ def select_in(sel, words, tries=60):
     return words in selected_text(sel)
 
 
+def select_top(words, tries=200):
+    """The inventory tree (the focus in it): Home, then down its top level until the selection has the words, Left at
+    each row first, which closes a folder an earlier step left open (and does nothing on a closed one or an item), so
+    the walk never goes down into one: 2026-11-08's full run walked 300 rows into an open Objects folder and never
+    reached Scripts below it. Whether it got there."""
+    key("home")
+    for _ in range(tries):
+        if words in selected_text("id=inventory"):
+            return True
+        key("left")
+        key("down")
+        time.sleep(0.12)
+    return words in selected_text("id=inventory")
+
+
 def delete_by_search(run, name):
     """The run's own fixture deleted through the inventory, by keys, behind the confirmation."""
     key("alt+4")
@@ -5871,12 +6085,32 @@ def search_and_people(run):
 
 
 def more_commands(run):
-    """The rest of Radegast's // set: siminfo, parcelinfo, scriptinfo."""
+    """The rest of Radegast's // set: siminfo (with its server where the grid says), parcelinfo (with each parcel's
+    traffic where the region answers), scriptinfo and scriptinfo parcel (the region's LandResources); //thread running a
+    pause without waiting, //threads naming it, //kill stopping it."""
     for command, words in (("//siminfo", [f"Region {REGION}", "time dilation"]), ("//parcelinfo", ["parcel", "Here, "]),
                            ("//scriptinfo", ["wearing"])):
         m = mark()
         say_in_app(command)
         run.expect(f"{command} answers", words, m, 10)
+    m = mark()
+    say_in_app("//scriptinfo parcel")
+    said = wait(lambda: next((e.get("text") for e in said_since(m) if re.search(r"Scripts on this parcel|doesn't say how much script|didn't say which parcel|sent nothing", e.get("text") or "")), None), 25)
+    run.check("//scriptinfo parcel answers, the memory or why not", said, " / ".join(e.get("text") or "" for e in said_since(m)) or "nothing said")
+    print(f"     (//scriptinfo parcel: {str(said)[:200]})")
+    # //thread: a pause run without waiting, named by //threads, stopped by //kill
+    m = mark()
+    say_in_app("//thread //pause 60")
+    time.sleep(1)
+    say_in_app("//threads")
+    run.expect("//threads names the pause //thread started", ["Running:", "pause", "started by //thread"], m, 6)
+    m = mark()
+    say_in_app("//kill")
+    run.expect("//kill stops it", ["Stopped", "pause"], m, 6)
+    m = mark()
+    time.sleep(0.5)
+    say_in_app("//threads")
+    run.expect("and then nothing's running", ["Nothing running."], m, 6)
     # the music's title on asking (titles read out on every change can be turned off in Alt+0)
     m = mark()
     say_in_app("//status music")
@@ -6007,6 +6241,200 @@ def objects_more(run, nonce):
         v(f"unpet {pet}", timeout=20)
         v(f"derez {far}", timeout=20)
         v(f"derez {crowd}", timeout=30)
+
+
+def last_list_item(since):
+    """The list item UI Automation's last focus event on one since then was about ("" if none): going to another area, the
+    tab strip's own event can come after it."""
+    for e in reversed(focus_events_since(since)):
+        m = re.match(r'list item "((?:[^"\\]|\\.)*)"', e.get("text") or "") if e.get("src") == "uia" else None
+        if m:
+            return json.loads(f'"{m[1]}"')
+    return ""
+
+
+def person_menu(item):
+    """People nearby's menu on the visitor, and one of its items pressed (by UI Automation: the new ones have no letter, all of
+    theirs being taken); False if the item isn't there."""
+    key("alt+3")
+    wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
+    if not select_in("id=people", VNAME):
+        return False
+    key("apps")
+    if not menu_open(item):
+        key("esc")
+        return False
+    u(f"invoke type=MenuItem;name={item}")
+    return True
+
+
+def pointing(run, nonce, tester_id):
+    """What a friend points at (docs/access-app.md > What a friend points at; Radegast's Master Controls): the visitor's menu
+    turns on hearing its pointing; the visitor selecting a thing as the official viewer does on a right click (a PointAt and
+    a LookAt of type select) is said once, where and with the key, the focus staying in Say; Control+Shift+P goes to it in
+    Objects, its line marked; a part pointed at is said as a part and Control+Shift+P lands on it in Parts, Enter touching
+    that part; a beam while something's selected isn't said, one with nothing selected is; Control+Shift+P clears a filter
+    that hid it; Stop hearing on the menu stops it; //pointing NAME (saying what they pointed at in the last minute),
+    //pointing and //pointing off. Whether the region passes on a pointing one avatar claims another sent is printed."""
+    near_visitor()
+    x, y, z, _ = tester_where()
+    box, chest = f"Access Pointed Box {nonce}", f"Access Pointed Chest {nonce}"
+
+    def pointings(since, what):
+        return [e.get("text") for e in said_since(since) if f"at {what}" in (e.get("text") or "")]
+    try:
+        made = v(f"rez {box} {x + 2:.1f} {y - 2:.1f} {z:.1f}", timeout=30)
+        chest_made = v(f"treasure {chest} {x - 2:.1f} {y - 2:.1f} {z:.1f}", timeout=60)
+        box_id, ids = re.search(r" id ([0-9a-f-]{36})", made), re.search(r" id ([0-9a-f-]{36}): lid ([0-9a-f-]{36})", chest_made)
+        if not run.check("(the visitor's box and treasure chest are out)", box_id and ids, f"{made} / {chest_made}"):
+            return
+        box_id, lid_id = box_id[1], ids[2]
+        m = mark()
+        if not run.check("the visitor's menu has Hear what they point at", person_menu("Hear what they point at"), focus_label()):
+            return
+        run.expect("turned on, saying what to ask of them and the key", [f"Hearing what {VNAME} points at", "right-click", "Control+Shift+P"], m, 8)
+        back_to_chat()
+        # the visitor selects the box as the official viewer does: said, waiting, the focus left in Say
+        time.sleep(0.5)
+        m = mark()
+        v(f"point {box_id}")
+        run.expect("their pointing is said, with where and the key", [f"{VNAME} points at {box}", "o'clock", "Control+Shift+P goes to it"], m, 12)
+        time.sleep(1.5)
+        run.check("once (the PointAt and LookAt of one selection are one pointing)", len(pointings(m, box)) == 1, " | ".join(pointings(m, box)))
+        run.check("and the focus stays in Say", not focus_events_since(m) and (focused() or {}).get("id") == "chatInput", focus_label())
+        m = mark()
+        key("ctrl+shift+p")
+        read = wait(lambda: (lambda t: t if box in t else None)(last_list_item(m)), 12)
+        run.check("Control+Shift+P goes to it in Objects, marked as pointed at", read and f"pointed at by {VNAME}" in read and focused()["id"] == "objects",
+                  read or focus_label())
+        key("enter")
+        names = menu_names()
+        run.check("its actions on Enter, Touch first", names and "Touch" in names[0], " | ".join(names))
+        key("esc")
+        # a part: the chest's unnamed lid
+        back_to_chat()
+        v("point clear")
+        time.sleep(0.5)
+        m = mark()
+        v(f"point {lid_id}")
+        run.expect("a part pointed at is said as a part of its object", [f"{VNAME} points at part 2 of {chest}"], m, 15)
+        # building on what's selected sends beams: not pointing anew
+        time.sleep(1)
+        m = mark()
+        v(f"beam {box_id}")
+        time.sleep(2)
+        run.check("a beam while they have something selected isn't said", not pointings(m, box), " | ".join(pointings(m, box)))
+        m = mark()
+        key("ctrl+shift+p")
+        read = wait(lambda: (lambda t: t if t.startswith("Part 2 of 4") else None)(last_list_item(m)), 15)
+        run.check("Control+Shift+P lands on the part in Parts, marked", read and f"pointed at by {VNAME}" in read and focused()["id"] == "parts",
+                  read or focus_label())
+        run.check("its object selected above, its line naming the part", f"pointed at by {VNAME} (part 2)" in selected_text("id=objects"), selected_text("id=objects"))
+        if read:
+            n = visitor_n()
+            key("enter")
+            run.heard_by_visitor("Enter touches the very part they pointed at", lambda e: f"chest lid touched by {TNAME}" in e["msg"], n, 10, "chest lid")
+        # a beam with nothing selected: building on it is pointing at it
+        back_to_chat()
+        v("point clear")
+        time.sleep(1)
+        m = mark()
+        v(f"beam {box_id}")
+        run.expect("a building beam with nothing selected is said", [f"{VNAME} points at {box}"], m, 12)
+        # a filter that hides it is cleared on the way
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("ctrl+f")
+        wait_focus(lambda d: d["id"] == "objectsFilter", 4)
+        type_text("qqq", "id=objectsFilter")
+        time.sleep(1.5)
+        m = mark()
+        key("ctrl+shift+p")
+        read = wait(lambda: (lambda t: t if box in t else None)(last_list_item(m)), 12)
+        run.check("Control+Shift+P with a filter hiding it: the filter cleared, on it", read and not value_of("id=objectsFilter"),
+                  f"{read or focus_label()}; filter {value_of('id=objectsFilter')!r}")
+        # someone else's pointing claimed by the visitor: what the region passes on (Access drops a block whose sender and
+        # source differ; the region may set the sender itself)
+        if pal_up(0):
+            tcp(PAL_PORTS[0], f"tp Atelier {x + 5:.0f} {y + 5:.0f} {z:.0f}", 40)
+            time.sleep(2)
+            vid = visitor_id()
+            m = mark()
+            tcp(PAL_PORTS[0], f"point {lid_id} as {vid}", 10)
+            time.sleep(3)
+            said = pointings(m, f"part 2 of {chest}")
+            print(f"     (a friend's pointing claimed as the visitor's: {'said, so this region passes the claimed sender on' if said else 'not said'})")
+            tcp(PAL_PORTS[0], "point clear", 10)
+        # stopping, from the same menu
+        back_to_chat()
+        m = mark()
+        run.check("the menu now has Stop hearing what they point at", person_menu("Stop hearing what they point at"), focus_label())
+        run.expect("stopped, said", [f"No longer hearing what {VNAME} points at"], m, 8)
+        back_to_chat()
+        v("point clear")
+        time.sleep(0.5)
+        m = mark()
+        v(f"point {box_id}")
+        time.sleep(2.5)
+        run.check("then their pointing isn't said", not pointings(m, box), " | ".join(pointings(m, box)))
+        # //pointing: on by name, saying what they pointed at in the last minute; whose; off
+        m = mark()
+        say_in_app(f"//pointing {VISITOR[0]}")
+        run.expect("//pointing NAME turns it on", [f"Hearing what {VNAME} points at"], m, 8)
+        run.expect("and says what they pointed at in the last minute", [f"{VNAME} pointed at {box}"], m, 10)
+        m = mark()
+        say_in_app("//pointing")
+        run.expect("//pointing says whose, and the last thing", [f"Hearing what {VNAME} points at", f"Last: {VNAME} pointed at {box}"], m, 8)
+        m = mark()
+        say_in_app("//pointing off")
+        run.expect("//pointing off stops it", [f"No longer hearing what {VNAME} points at"], m, 8)
+    finally:
+        v("point clear")
+        back_to_chat()
+        say_in_app("//pointing off")
+        key("alt+7")
+        back_to_chat()
+        v(f"derez {box}", timeout=20)
+        v(f"derez {chest}", timeout=30)
+
+
+def their_things(run, nonce):
+    """One person's worn things and animations, from their menu (Radegast's Attachments and Animations): What they wear lists
+    only theirs in Objects, Show's fourth choice named for them, each with where it's worn, touched as what people nearby
+    wear is; Their animations names Second Life's own; Alt+7 goes back to things nearby."""
+    near_visitor()
+    x, y, z, _ = tester_where()
+    pet = f"Access Their Pet {nonce}"
+    try:
+        made = v(f"pet {pet} {x + 1:.1f} {y + 3:.1f} {z:.1f}", timeout=40)
+        if not run.check("(the visitor wears a pet and dances)", " id " in made and v("animate dance1").startswith("playing"), made):
+            return
+        m = mark()
+        if not run.check("the visitor's menu has What they wear", person_menu("What they wear"), focus_label()):
+            return
+        d = wait(lambda: (lambda t: t if pet in t else None)(last_list_item(m)), 12)
+        run.check("it goes to Objects, the list named for them", any(p["name"] == f"What {VNAME} wears" for p in find("id=objects")),
+                  json.dumps([p["name"] for p in find("id=objects")]))
+        run.check("on their pet: where it's worn, touchable, no distance", d and f"{pet}, on Left Shoulder" in d and "touchable" in d
+                  and "metres" not in d, d or focus_label())
+        run.check("Show says whose", value_of("id=objectsShow") == f"What {VNAME} wears", value_of("id=objectsShow"))
+        if d:
+            key("enter")
+            names = menu_names()
+            run.check("its menu as for what people wear: Touch first, nothing that moves it", names and "Touch" in names[0]
+                      and not any(n.startswith(("Walk", "Edit", "Move", "Take", "Delete", "Return", "Sit")) for n in names), " | ".join(names))
+            n = visitor_n()
+            key("t")
+            run.heard_by_visitor("touched from there", lambda e: f"pet touched by {TNAME}" in e["msg"], n, 10, "pet touched")
+        m = mark()
+        if run.check("the visitor's menu has Their animations", person_menu("Their animations"), focus_label()):
+            run.expect("their animations said, Second Life's own by name", [f"{VNAME} is playing", "dance1"], m, 10)
+        key("alt+7")
+        run.check("Alt+7 goes back to things nearby", wait(lambda: value_of("id=objectsShow") == "Things nearby", 4), value_of("id=objectsShow"))
+    finally:
+        v("animate stop dance1")
+        v(f"unpet {pet}", timeout=20)
+        back_to_chat()
 
 
 def objects_rights(run, nonce, tester_id):
@@ -6144,6 +6572,27 @@ def groups_menu(run, nonce, tester_id):
         return api("TesselGroups", "titles", 15, group_id=gid).get("titles") or []
 
     try:
+        # ---- No group tag first in the list (the official viewer's None row), Enter on it wearing none
+        api("TesselAgent", "activateGroup", group_id=gid)
+        time.sleep(1.5)
+        key("alt+3")
+        wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
+        u("setfocus id=groups")
+        wait_focus(lambda d: d["id"] == "groups" or d["type"] == "ListItem", 4)
+        key("f5")
+        time.sleep(1)
+        key("home")
+        first = wait(lambda: (lambda s: s if s.startswith("No group tag") else None)(selection("id=groups")), 4)
+        run.check("My groups starts with No group tag", first == "No group tag", selection("id=groups"))
+        m = mark()
+        key("enter")
+        run.expect("Enter on it wears no tag, said", ["No group tag now"], m, 6)
+        time.sleep(1.5)
+        key("f5")
+        run.check("and the row says it's so now", wait(lambda: selection("id=groups") == "No group tag, as now", 4), selection("id=groups"))
+        api("TesselAgent", "activateGroup", group_id=gid)   # (her tag back, for the title checks)
+        time.sleep(1)
+
         have = titles()
         run.check("(she has two titles there)", len(have) >= 2, json.dumps(have))
         if run.check("(the group's menu, Choose your title)", menu("t"), focus_label()):
@@ -6252,15 +6701,25 @@ def groups_running(run, nonce, tester_id):
         return menu_open("Roles...")
 
     def rows():
-        """The group window's rows naming her or the visitor (UIA's find has no scope: People nearby's rows say where)."""
+        """The group window's rows naming her or the visitor (UIA's find has no scope: People nearby's rows say how far,
+        "under a metre" too, with no clock face when straight above or below)."""
         return list(dict.fromkeys(x["name"] for x in find("type=ListItem")
-                                  if (TNAME in x["name"] or VNAME in x["name"]) and "metres" not in x["name"] and "o'clock" not in x["name"]))
+                                  if (TNAME in x["name"] or VNAME in x["name"]) and "metre" not in x["name"] and "o'clock" not in x["name"]))
 
     # (the visitor accepts the newest invitation it has: the groups step's own may be waiting, and this one replaces it)
     for _ in range(2):
         if vid in members():
             break
-        api("TesselGroups", "invite", 15, group_id=gid, to=vid)
+        # (this grid's powers go by the title worn, and the region's word on them comes a moment after the title's change:
+        # asked again for a few seconds while it says she hasn't the power)
+        for tries in range(8):
+            try:
+                api("TesselGroups", "invite", 15, group_id=gid, to=vid)
+                break
+            except ToolError as e:
+                if "needs the invite power" not in str(e) or tries == 7:
+                    raise
+                time.sleep(1)
         time.sleep(2)
         print(f"     (the visitor's accept: {v(f'group accept {gid}', timeout=30)})")
         wait(lambda: vid in members(), 10)
@@ -6345,10 +6804,17 @@ def groups_running(run, nonce, tester_id):
         def copies():
             got = api("LLInventory", "getDirectDescendants", folder_id=cards).get("items") or {}
             return sum(1 for x in got.values() if x.get("name") == card)
+        wait(lambda: copies() > 0, 15)   # (in the session's inventory before it's searched for: a search just after made nothing)
         key("alt+4")
         wait_focus(lambda d: d["id"] == "inventory", 4)
         clear_search()
-        found = inv_search(card, card)
+        found = False
+        for _ in range(3):
+            found = inv_search(card, card) and card in selection("id=inventory")
+            if found:
+                break
+            clear_search()
+            time.sleep(2)
         if found:
             key("ctrl+c")
             time.sleep(0.4)
@@ -6428,6 +6894,7 @@ def groups_running(run, nonce, tester_id):
         run.check("no group made", not any(g["name"] == f"Access New {nonce}" for g in api("LLAgent", "getGroups").get("groups", [])), "")
     finally:
         back_to_chat()
+        close_conversation_named(f"{GROUP_NAME} (group)")   # (the visitor's lines in its chat opened it)
         try:
             if vid in members():
                 gated(run, "(cleanup: the visitor out of her group)", "TesselGroups", "eject", 30, group_id=gid, member=vid)
@@ -6457,7 +6924,7 @@ def scripts_editing(run, nonce):
         key("alt+4")
         wait_focus(lambda d: d["id"] == "inventory", 4)
         clear_search()
-        if run.check("(the Scripts folder selected)", select_in("id=inventory", "Scripts", tries=300), selected_text("id=inventory")):
+        if run.check("(the Scripts folder selected)", select_top("Scripts"), selected_text("id=inventory")):
             key("apps")
             run.check("a folder's menu has New script", wait(lambda: find("type=MenuItem;name~=New script"), 4), focus_label())
             key("i")
@@ -6801,6 +7268,7 @@ def describing(run, nonce):
     the visitor, the fixture box and round the tester, each with what's visible in it by name. First, something the
     tester wears renamed in world is given with its inventory item's name too (with the assistant as well)."""
     back_to_chat()
+    near_visitor()   # (People's words for it say how far and where; its pictures want it near)
     worn_renamed(run, nonce)
     if RELAY:
         return   # (with the assistant: what's here is its absence)
@@ -8063,6 +8531,55 @@ def building_rows(run, nonce):
         build_leftovers()
 
 
+def tp_beside(run, line, what):
+    """A teleport to the visitor (`//go tp person`): she lands a couple of metres off, at its level, facing it, told
+    where it is. Sent to its own position, the region stood her on its head (2026-11-08)."""
+    m = mark()
+    say_in_app(line)
+    got = run.expect(what, ["Teleported to", f"{VNAME} is", "o'clock"], m, 25)
+    time.sleep(1.5)
+    x, y, z, heading = tester_where()
+    vx, vy, vz = visitor_where()
+    d = math.dist((x, y), (vx, vy))
+    _, rel = clock(vx - x, vy - y, heading)
+    off = min(rel, 360 - rel)
+    run.check(f"({what}) beside it: 1 to 3 m off, at its level, facing it", got and 1 <= d <= 3 and abs(z - vz) < 0.8 and off < 35,
+              f"{d:.1f} m off, her middle {z - vz:+.1f} m from its, it {off:.0f} degrees off her facing ({(got or {}).get('text', 'not said')})")
+
+
+def tp_onto_stage(run, vfirst, nonce):
+    """The visitor on a stage a metre up, 6 m across: `//go tp person` from the ground lands her on the stage beside it,
+    not on the ground under it. Then the visitor and she back where they were, the stage gone."""
+    vregion, vx0, vy0, vz0 = visitor_at()
+    sx, sy = TESTER_START[0] - 8, TESTER_START[1]   # (clear of the posts, the facebox and the visitor's spot)
+    g = api("TesselAgent", "ground", points=[[sx, sy]])["heights"][0]
+    name = f"Access Stage {nonce}"
+    made = v(f"rez {name} {sx:.1f} {sy:.1f} {g + 0.5:.2f} size 6 6 1")
+    try:
+        mm = re.search(r" id (\S+)", made)
+        if not run.check("(the visitor's stage, a metre up)", mm, made):
+            return
+        got = visitor_tp(sx, sy, g + 2.2, region=REGION)
+        visitor_settled()
+        # (the collision model has it: a ray down onto its top meets it)
+        ray = {"from": [sx - 1.5, sy, g + 3], "dir": [0, 0, -1], "max": 4}
+        hit = wait(lambda: (lambda h: h if h.get("hit") and h.get("prim") == mm[1] else None)(api("SojournCollision", "collide", **ray)), 15, 1)
+        vx, vy, vz = visitor_where()
+        if not run.check("(the visitor up on it)", got.startswith("arrived") and vz > g + 1.4, f"{got}; its middle {vz - g:.1f} m over the ground"
+                         + ("" if hit else "; the collision model hasn't the stage")):
+            return
+        tp_beside(run, f"//go tp person {vfirst}", "//go tp person NAME, the visitor up on a stage")
+        x, y, z, _ = tester_where()
+        run.check("on the stage with it, not on the ground under it", z > g + 1.4, f"her middle {z - g:.1f} m over the ground (the stage's top at 1 m)")
+    finally:
+        v(f"derez {name}")
+        visitor_tp(vx0, vy0, vz0 + 0.5, region=vregion)
+        m = mark()
+        say_in_app("//tp %s/%d/%d/%d" % (REGION, *TESTER_START))
+        run.expect("(back at the start)", ["Arrived"], m, 30)
+        time.sleep(2)
+
+
 def going_and_blocking(run, nonce):
     """//go every way it takes a destination (a number, xyz, a person and an object by their words, and a name alone, a
     person before an object), and //block, //blocks and //unblock by name: what the visitor says stops being heard, the
@@ -8098,6 +8615,8 @@ def going_and_blocking(run, nonce):
         vfirst = VISITOR[0]
         walked(f"//go person {vfirst}", "//go person NAME", ["Walking", VNAME])
         walked(f"//go object {post}", "//go object NAME", ["Walking", post])
+        tp_beside(run, f"//go tp person {vfirst}", "//go tp person NAME")
+        tp_onto_stage(run, vfirst, nonce)
         walked(f"//go {VNAME}", "//go NAME alone: a person, by their whole name", ["Walking", VNAME])
         walked(f"//go {vfirst}", "//go NAME alone: a person, by the first of it", ["Walking", VNAME])
         walked(f"//go {post}", "//go NAME alone: an object, when no one's called that", ["Walking", post])
@@ -8438,6 +8957,21 @@ def about_land(run, nonce, tester_id):
 HUD_SCRIPT = 'default { touch_start(integer n) { llSay(0, "Access HUD pressed, link " + (string)llDetectedLinkNumber(0)); } }'
 
 
+def confirm_once_said(m, secs=60, answer="enter", ended=lambda: False):
+    """Control+N and Enter (or Escape) on a confirmation a program's op asked for, once it's said (since mark m) or the
+    op has ended without asking, not at a fixed moment: an op may take a while to get there (2026-11-08's full run: the
+    run's first picture took 8 s to encode before its upload asked, and Enter at 1.5 s met "No notices waiting.").
+    Whether it was said."""
+    said = wait(lambda: any("Enter confirms" in (e.get("text") or "") for e in said_since(m)) or ended() and "ended", secs, 0.3)
+    if said == "ended":
+        return False   # (nothing to answer: Enter in Notices would only meet another notice)
+    key("ctrl+n")
+    wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 4)
+    time.sleep(1.2)   # it arms 0.8 s after it's shown
+    key(answer)
+    return said is True
+
+
 def gated(run, what, pump, op, timeout=60, **args):
     """An op the gate holds for the person's confirmation (a new script, a delete): called as a program would, then
     Ctrl+N and Enter by keys. Its answer, or None."""
@@ -8449,13 +8983,10 @@ def gated(run, what, pump, op, timeout=60, **args):
             out["r"] = api(pump, op, timeout, **args)
         except Exception as e:
             out["e"] = e
+    m = mark()
     t = threading.Thread(target=call, daemon=True)
     t.start()
-    time.sleep(1.5)
-    key("ctrl+n")
-    wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 4)
-    time.sleep(1.2)   # it arms 0.8 s after it's shown
-    key("enter")
+    confirm_once_said(m, timeout, ended=lambda: not t.is_alive())
     t.join(timeout)
     run.check(f"({what}: confirmed by keys)", "r" in out and not out["r"].get("error"), json.dumps(out.get("r")) if "r" in out else str(out.get("e")))
     back_to_chat()
@@ -9510,6 +10041,9 @@ def voice_keys(run):
         m = mark()
         key("ctrl+shift+v")
         run.expect("so does Ctrl+Shift+V", ["Voice chat isn't running"], m, 4)
+        m = mark()
+        key("ctrl+f4")
+        run.expect("and Ctrl+F4, the people in voice", ["Voice chat isn't running"], m, 4)
         return
     def status():
         try:
@@ -9538,6 +10072,101 @@ def voice_keys(run):
     m = mark()
     key("ctrl+shift+v")
     run.expect("Ctrl+Shift+V says who's in voice", ["voice"], m, 4)
+
+
+def voice_people(run):
+    """Who's in voice to act on (Radegast's participant list; docs/access-app.md > Voice chat), with voice running
+    (ACCESS_VOICE=1; without the local mixer it still runs, connecting and retrying, with nobody else in it): Control+F4
+    opens the menu where the focus is, its people (or "Nobody else in voice") then Mute everyone else, Unmute everyone,
+    Reconnect voice; Escape closes it; //voice mute all and unmute all said and seen in SojournVoice status; //voice
+    reconnect said, then whether it came back."""
+    if os.environ.get("ACCESS_VOICE") != "1":
+        m = mark()
+        say_in_app("//voice people")
+        run.expect("//voice people without voice says it isn't running", ["Voice chat isn't running"], m, 4)
+        return
+    back_to_chat()
+    key("ctrl+f4")
+    if run.check("Ctrl+F4 opens the people in voice", menu_open("Reconnect voice"), focus_label()):
+        names = menu_names()
+        run.check("its items: the people (or nobody), then everyone's and reconnect",
+                  names[-3:] == ["Mute everyone else", "Unmute everyone", "Reconnect voice"]
+                  and (names[0] == "Nobody else in voice" or len(names) > 3), str(names)[:300])
+        key("esc")
+        run.check("Escape closes it", wait(lambda: not find("type=MenuItem;name=Reconnect voice"), 3), focus_label())
+    back_to_chat()
+    m = mark()
+    say_in_app("//voice mute all")
+    run.expect("//voice mute all, said", ["for you alone", "anyone who joins"], m, 6)
+    run.check("the session has everyone else muted", api("SojournVoice", "status").get("others_muted") is True,
+              json.dumps(api("SojournVoice", "status"))[:200])
+    m = mark()
+    say_in_app("//voice unmute all")
+    run.expect("//voice unmute all, said", ["Everyone in voice is heard again."], m, 6)
+    run.check("and the session doesn't", not api("SojournVoice", "status").get("others_muted"),
+              json.dumps(api("SojournVoice", "status"))[:200])
+    m = mark()
+    say_in_app("//voice reconnect")
+    run.expect("//voice reconnect, said", ["Reconnecting voice."], m, 6)
+    st = str(api("SojournVoice", "status").get("status", ""))
+    words = ["Voice is back"] if ": connected" in st else ["Voice is back", "hasn't come back yet"]
+    said = wait(lambda: next((e.get("text") for e in said_since(m) if any(w in (e.get("text") or "") for w in words)), None), 30)
+    run.check("then whether it came back", said, " / ".join(e.get("text") or "" for e in said_since(m)) or "nothing said")
+    print(f"     (voice: {st}; said: {said})")
+
+
+def session_tools(run, procs):
+    """The session itself (docs/access-app.md > The session itself): //log reading this session's log as Send a log
+    would send it, in a read-only window at its newest line, Escape back; //clearcache marking the cache to be cleared at
+    the next start, said with its size, Help's item checked, //clearcache again taking it back; //newwindow starting
+    another process of the app at the login window with the username empty (closed again)."""
+    back_to_chat()
+    # ---- a session's log
+    m = mark()
+    say_in_app("//log")
+    d = wait_focus(lambda e: e["id"] in ("sessionLogsList", "editorText"), 8)
+    if d and d["id"] == "sessionLogsList":
+        run.check("//log lists the sessions, this one first", "This session" in (selection("id=sessionLogsList") or value_of("id=sessionLogsList") or ""), focus_label())
+        key("enter")
+        d = wait_focus(lambda e: e["id"] == "editorText", 10)
+    if run.check("a session's log opens to read", d and d["id"] == "editorText", focus_label()):
+        run.expect("said as what Send a log would send", ["Session log", "as Send a log would send it", "newest line"], m, 10)
+        text = value_of("id=editorText") or ""
+        run.check("its text: the log in words, other people's left out", "as sent: other people's words left out" in text and "~words {" not in text, text[:200])
+        key("esc")
+        run.check("Escape closes it", wait_focus(lambda e: e["id"] == "chatInput", 6), focus_label())
+    back_to_chat()
+    # ---- the cache
+    marker = OUT / "app" / "clear-cache-at-start"
+    if marker.exists():
+        marker.unlink()
+    m = mark()
+    say_in_app("//clearcache")
+    run.expect("//clearcache marks it, said with its size", ["The cache will be cleared when Sojourn Access next starts", "of what Second Life sent"], m, 8)
+    run.check("(marked on disk)", wait(lambda: marker.exists(), 3), str(marker))
+    key("alt+h")
+    item = menu_open("Clear the cache at the next start")
+    run.check("Help has Clear the cache at the next start", item, focus_label())
+    key("esc")
+    key("esc")
+    back_to_chat()
+    m = mark()
+    say_in_app("//clearcache")
+    run.expect("//clearcache again takes it back", ["won't be cleared after all"], m, 6)
+    run.check("(no longer marked)", wait(lambda: not marker.exists(), 3), str(marker))
+    # ---- another account, in a new window
+    before = {pid for pid, what in ours() if what == "app"}
+    m = mark()
+    say_in_app("//newwindow")
+    run.expect("//newwindow says a window is opening", ["A new window is opening at the login"], m, 6)
+    fresh = wait(lambda: [pid for pid, what in ours() if what == "app" and pid not in before], 20, 1)
+    new_pid = fresh[0] if fresh else None
+    form = new_pid and wait(lambda: next((l for l in u(f"windows {new_pid}").splitlines() if "log in" in l), None), 40, 1)
+    run.check("another process, at the login window", form, str(fresh)[:200])
+    if new_pid:
+        kill(new_pid)
+        run.check("(closed again)", wait(lambda: not alive(new_pid), 10, 0.5), f"pid {new_pid}")
+    back_to_chat()
 
 
 def walk(run):
@@ -9830,8 +10459,9 @@ def sound_map(run, tester_id):
     c = cue_after(t0, ("EarIm",), 10)
     run.check("an IM starts the IM's sound, centred", c and c["bearing"] is None, json.dumps(c) if c else
               f"not played; played: {[x['cue'] for x in cues_since(t0)]}")
-    key("ctrl+tab")
-    if wait_focus(lambda d: d["id"] == "convInput", 4):
+    # (its conversation, not one an earlier step left open: 2026-11-08's run landed in a group's chat, where the
+    # visitor's IM rightly rang as another conversation's)
+    if run.check("(in the visitor's conversation)", to_conversation(VNAME), focus_label()):
         time.sleep(0.5)
         t0 = time.time()
         m = mark()
@@ -10868,7 +11498,7 @@ def driving_after(run):
     run.expect("//follow in a kart says it's driving after them, as far behind as asked", ["Driving Convoy Kart after", "6 metres behind", "Any arrow key or Space"], m, 8)
     near = wait(lambda: away(target) < 12 or None, 30, 0.3)
     run.check("the kart steers to about 6 m from them", near, f"{start:.0f} m away at the start, {away(target):.1f} now")
-    run.expect("and says it's with them once stopped", ["With Access Visitor"], m, 15)
+    run.expect("and says it's with them once stopped", [f"With {VISITOR[0]} {VISITOR[1]}"], m, 15)
     stopped = away(target)
     run.check("not running into them", stopped > 3.5, f"stopped {stopped:.1f} m away")
 
@@ -10889,6 +11519,161 @@ def driving_after(run):
     wait_focus(lambda d: d["id"] == "chatInput", 5)
     say_in_app("//stand")
     time.sleep(2)
+
+
+def border_kart(run, visitor_x=22, row=0):
+    """The tester seated in the visitor's Border Kart in Atelier, on the strip at its east edge as high as Atelier East's
+    flat, and the visitor standing just inside Atelier East (35 m east of the kart at visitor_x 22); row: that many rows
+    of 6 m from the middle one (clear of a kart an earlier step left). (y, the visitor's teleport's answer), or None."""
+    back_to_chat()
+    m = mark()
+    say_in_app(f"//tp {REGION}/230/100/30")
+    if not run.expect("(to Atelier for the border)", ["Arrived", REGION], m, 40):
+        return None
+    time.sleep(2)
+    ys = list(range(20, 120, 6))   # (Atelier East's north half is a hill, a cliff at this edge)
+    xs = [214, 222, 230, 238, 246, 253]
+    h = api("TesselAgent", "ground", points=[[x, y] for y in ys for x in xs])["heights"]
+    rows = {y: h[i * len(xs):(i + 1) * len(xs)] for i, y in enumerate(ys)}
+    # land about as high as Atelier East's flat 21 m across the border, flat enough for the kart all the way
+    land = [y for y, hs in rows.items() if all(z is not None and 21 < z < 23 for z in hs)]
+    if not run.check("(a strip of land at Atelier's east edge for the kart)", land, f"rows: {rows}"):
+        return None
+    i = len(land) // 2 + row
+    y = land[i if i < len(land) else max(0, len(land) // 2 - row)]
+    gz = max(rows[y])
+    v(f"tp {REGION} 230 {y + 3} {gz + 1.5}", timeout=40)
+    time.sleep(2)
+    made = v(f"kart Border Kart 222 {y} {gz + 0.4} facing 0", timeout=60)
+    if not run.check("(the visitor's kart is out)", made.startswith("kart"), made):
+        return None
+    got = v(f"tp {COURSE_REGION} {visitor_x} {y} {22.5}", timeout=40)
+    go_tp(run, "(the tester beside the kart)", 221, y - 2, gz + 1.5)
+    m = mark()
+    say_in_app("//sit Border Kart")
+    run.expect("(sitting in the kart)", ["Sitting on Border Kart"], m, 10)
+    if not run.expect("(the kart's script takes the keys)", ["kart controls taken"], m, 15):
+        say_in_app("//stand")
+        return None
+    time.sleep(3)
+    return y, got
+
+
+def driving_after_lost(run):
+    """Driving after someone who goes unseen just over a border (Walk/WalkMode.Convoy.cs; the blind tester's scooter trip
+    of 2026-11-08, where her partner vanished from her session 5 s after he crossed and it stopped). The visitor walks
+    east from 8 m inside Atelier East as the tester's kart in Atelier sets off after them, and the app is told to see
+    them no more half a second on (once that command is typed), for 6 s (//blindconvoy: no region on the local grid hides
+    someone): "Lost sight of ... at the border;
+    going where they went.", the kart going on over the border to about where they were last seen, then "Found ...
+    again" and "With" them. Then unseen for good while it stands with them: "Lost sight of ...; going to where they
+    were.", and "Couldn't find ... again" within about 10 s, its stop with it. Nothing said of them jumping away, the
+    keys, the vehicle not moving or "Blocked."; the session log has the loss with what each region had of them, and the
+    finding. Needs no renderer."""
+    # (8 m over: still under 30 m over the border when it goes unseen; two rows off: clear of the last step's kart)
+    at = border_kart(run, visitor_x=8, row=2)
+    if not at:
+        return
+    y = at[0]
+    name = f"{VISITOR[0]} {VISITOR[1]}"
+    try:
+        m = mark()
+        say_in_app(f"//follow {name} 6")
+        # (as it sets off: about 3 s on, the kart still in Atelier and the visitor under 30 m over; east of 50 at this
+        # row a hill held the kart for 10 s)
+        v(f"goto 45 {y}")
+        say_in_app("//blindconvoy 0.5 6")
+        run.expect("//follow in the kart drives after them as they walk off", ["Driving Border Kart after"], m, 8)
+        lost = walk_said(m, ["Lost sight of " + name], 15)
+        run.check("unseen just over the border: said once, with where it's going", lost and lost["text"] == f"Lost sight of {name} at the border; going where they went.",
+                  (lost or {}).get("text", "not said"))
+        found = walk_said(m, [f"Found {name} again"], 20)
+        pos, region = walk_pos(), status().get("status_message", "").removeprefix("in ")
+        log = latest_app_log()
+        seen = re.search(r"convoy: lost sight of .*? in Atelier East (\d+),(\d+)", log)
+        last_x = int(seen.group(1)) if seen else None
+        run.check("seen again once the blind's over, said with how far", found and re.search(r"Found .* again, .* away\.", found["text"]), (found or {}).get("text", "not said"))
+        # (at most the gap and a little short of where they were last seen: it drove on there rather than stopping)
+        run.check("by then the kart has gone on over the border to about where they were last seen",
+                  region == COURSE_REGION and last_x is not None and pos[0] >= last_x - 12, f"at {pos} in {region}; last seen at x {last_x}")
+        with_ = walk_said(m, [f"With {name}"], 40)
+        run.check("and goes on to them", with_, f"at {walk_pos()} in {status().get('status_message')}")
+        texts = [e.get("text") or "" for e in said_since(m)]
+        bad = [t for t in texts if any(w in t for w in ("let go of your keys", "jumped away", "Couldn't find", "Blocked", "isn't moving", "Lost " + VISITOR[0]))]
+        # (by the convoy's own lines: the seated crossing's spoken line waits for the region to send the seat)
+        tail = latest_app_log().split("convoy: lost sight of", 1)[-1]
+        run.check("the kart crossed into Atelier East while they were unseen",
+                  "convoy: crossed into Atelier East" in tail.split("seen again after", 1)[0], " | ".join(re.findall(r"convoy: (?:crossed|.* seen again).*", tail)[:2]))
+        run.check("nothing said of them jumping away, the keys, giving up or Blocked", not bad, " | ".join(bad) or " | ".join(texts))
+        log = latest_app_log()
+        run.check("the session log has the loss, with what each region in view had of them, and the finding",
+                  re.search(r"convoy: lost sight of .*in view: .*Atelier East: ", log) and re.search(r"convoy: going on \d+ m past", log) and "seen again after" in log,
+                  " | ".join(re.findall(r"convoy: (?:lost sight|going|.* seen again).*", log)[:3]) or "none")
+        print("     " + "\n     ".join(re.findall(r"convoy: (?:lost sight|going|the way on|.* seen again|searched).*", log)[-4:]))
+
+        time.sleep(2)
+        m = mark()
+        say_in_app("//blindconvoy 0 60")
+        lost = walk_said(m, ["Lost sight of " + name], 8)
+        run.check("unseen for good while standing with them: where it's going said", lost and lost["text"] == f"Lost sight of {name}; going to where they were.",
+                  (lost or {}).get("text", "not said"))
+        gave = walk_said(m, [f"Couldn't find {name} again"], 15)
+        run.check("and it gives up within about 10 s, said", gave and gave["text"] == f"Couldn't find {name} again, so I've let go of the keys.", (gave or {}).get("text", "not said"))
+        m = mark()
+        say_in_app("//follow")
+        run.expect("then it's no longer driving after them", ["Not following anyone"], m, 5)
+    finally:
+        say_in_app("//blindconvoy 0 0")
+        m = mark()
+        say_in_app("//stand")
+        run.expect("(standing up)", ["Standing"], m, 5)
+        time.sleep(2)
+
+
+def latest_app_log():
+    logs = sorted((OUT / "app" / "logs").glob("*.log"), key=lambda p: p.stat().st_mtime)
+    return logs[-1].read_text(encoding="utf-8", errors="replace") if logs else ""
+
+
+def driving_after_border(run):
+    """Driving after someone over a border (Walk/WalkMode.Convoy.cs; the blind tester's scooter trip of 2026-11-08, where
+    a crossing ended it and "getting away, 289 metres off" was said): the visitor stands just inside Atelier East, the
+    tester's kart starts in Atelier 35 m west of them, on the strip at Atelier's east edge as high as Atelier East's flat,
+    and //follow drives it over the border to them. Checked: the crossing said with the seat held, then "With" them;
+    nothing said of the keys let go, of them getting away or lost, nor a walk's "Blocked."; the session log has the
+    convoy's own lines and the controls the kart's script took; //stand ends it in its own words. Needs no renderer."""
+    at = border_kart(run)
+    if not at:
+        return
+    got = at[1]
+    try:
+        m = mark()
+        say_in_app(f"//follow {VISITOR[0]} {VISITOR[1]} 6")
+        run.expect("//follow in the kart drives after them, across the border", ["Driving Border Kart after"], m, 8)
+        crossed = walk_said(m, ["Now in Atelier East"], 40)
+        run.check("the kart crosses into Atelier East after them, the seat held", crossed and "still on Border Kart" in crossed["text"],
+                  (crossed or {}).get("text", f"not said ({got}); at {walk_pos()} in {api('LLAgent', 'getPosition').get('region')}"))
+        with_ = walk_said(m, [f"With {VISITOR[0]} {VISITOR[1]}"], 40)
+        run.check("and goes on to them over there", with_, f"at {walk_pos()} in {api('LLAgent', 'getPosition').get('region')}")
+        texts = [e.get("text") or "" for e in said_since(m)]
+        bad = [t for t in texts if any(w in t for w in ("let go of your keys", "getting away", "Blocked", "jumped away", "Lost ", "isn't moving"))]
+        run.check("nothing said of the keys let go, them getting away or lost, nor Blocked", not bad, " | ".join(bad) or " | ".join(texts))
+        logs = sorted((OUT / "app" / "logs").glob("*.log"), key=lambda p: p.stat().st_mtime)
+        log = logs[-1].read_text(encoding="utf-8", errors="replace") if logs else ""
+        convoy = re.findall(r"convoy: (?:driving after|the seat driven: Border Kart|crossed into Atelier East).*", log)
+        controls = re.findall(r"controls: .*took .*", log)
+        run.check("the session log has the convoy's lines, its crossing too, and the controls the kart took",
+                  len(convoy) >= 3 and controls, " | ".join(convoy[:3] + controls[:2]) or "none")
+        print(f"     (convoy lines: {len(re.findall('convoy: ', log))}; controls: {' | '.join(re.findall(r'controls: .*', log)[-4:])})")
+        # (a record from another thread once landed between a logged line's time stamp and its text, so it was no
+        # record to Send a log's filter: SessionLog's Tee writes whole lines now)
+        torn = [l[:90] for l in log.splitlines() if re.match(r"^\d\d:\d\d:\d\d \d\d:\d\d:\d\d ", l) or re.match(r"^(info|warn|fail|crit|dbug|trce): ", l)]
+        run.check("and every line in it whole: no record behind another's time stamp, no logged line without one", not torn, " | ".join(torn[:4]))
+    finally:
+        m = mark()
+        say_in_app("//stand")
+        run.expect("//stand ends driving after them in its own words", ["No longer driving after"], m, 5)
+        time.sleep(2)
 
 
 def vehicle_stop(run):

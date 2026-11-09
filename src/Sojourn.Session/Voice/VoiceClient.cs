@@ -64,6 +64,9 @@ public sealed class VoiceClient : IDisposable
     // per-peer choices for my own mix, re-sent whenever someone joins
     readonly ConcurrentDictionary<UUID, bool> _peerMutes = new();
     readonly ConcurrentDictionary<UUID, float> _peerGains = new();
+    // everyone else muted for this session (Radegast's Mute all), but those unmuted since
+    volatile bool _othersMuted;
+    readonly ConcurrentDictionary<UUID, bool> _heardAnyway = new();
 
     DateTime _parcelAskedAt;
     bool _movedLocal;
@@ -151,6 +154,18 @@ public sealed class VoiceClient : IDisposable
     /// mute list with its voice flag, as the viewer's Mute Voice) when there's one, else kept on this machine.</summary>
     public void SetPeerMute(UUID id, bool mute)
     {
+        // while everyone else is muted, one unmuted is an exception to it, and muting them again takes that back
+        // rather than putting them on the block list
+        if (_othersMuted)
+        {
+            if (!mute) _heardAnyway[id] = true;
+            else if (_heardAnyway.TryRemove(id, out _))
+            {
+                Post(() => SendPeerChoices(id));
+                PeerChoicesChanged?.Invoke();
+                return;
+            }
+        }
         if (ListMute != null)
         {
             ListMute(id, mute);
@@ -177,7 +192,39 @@ public sealed class VoiceClient : IDisposable
     public IEnumerable<(UUID Id, float Volume)> PeerVolumes => _peerGains.Where(kv => Math.Abs(kv.Value - 1) > 0.001f).Select(kv => (kv.Key, kv.Value));
     public IEnumerable<UUID> PeerMuted => _peerMutes.Where(kv => kv.Value).Select(kv => kv.Key);
     public float PeerVolume(UUID id) => _peerGains.TryGetValue(id, out var v) ? v : 1;
-    public bool PeerIsMuted(UUID id) => (_peerMutes.TryGetValue(id, out var m) && m) || (ListMuted?.Invoke(id) ?? false);
+    public bool PeerIsMuted(UUID id) => KeptMuted(id) || (_othersMuted && !_heardAnyway.ContainsKey(id));
+    /// <summary>Muted by a choice that's kept (the block list's voice mute or a full block, or one kept on this machine),
+    /// as against only by <see cref="MuteOthers"/>.</summary>
+    public bool KeptMuted(UUID id) => (_peerMutes.TryGetValue(id, out var m) && m) || (ListMuted?.Invoke(id) ?? false);
+
+    /// <summary>Everyone else in voice muted in the person's hearing, people who join later too, for this session only
+    /// (nothing kept, nothing on the block list): Radegast's Mute all, where someone can then be unmuted one by one.
+    /// Off: everyone heard again but those muted by a kept choice.</summary>
+    public void MuteOthers(bool on)
+    {
+        _othersMuted = on;
+        _heardAnyway.Clear();
+        Post(ResendMutes);
+        PeerChoicesChanged?.Invoke();
+    }
+    public bool OthersMuted => _othersMuted;
+
+    /// <summary>Every connection started afresh now, its backoff back to the first wait (the person's Reconnect, as
+    /// Radegast's, for voice gone quiet when it shouldn't have: each connection retries by itself every 10 s at most, so
+    /// this only saves the wait or clears what the retries don't). A call's connection keeps its channel. False when
+    /// there's nothing to reconnect (voice off, off here, not in world).</summary>
+    public bool Reconnect()
+    {
+        if (!Available || !_enabled || (_current == null && _next == null)) return false;
+        Post(() =>
+        {
+            _log("voice: reconnecting, as asked");
+            foreach (var s in new[] { _current, _next })
+                if (s is { ShuttingDown: false })
+                    foreach (var conn in s.Connections) conn.Restart();
+        });
+        return true;
+    }
 
     /// <summary>Voice mutes kept on this machine (from before the block list carried them) moved onto it, once logged in.</summary>
     public void MoveLocalMutes()

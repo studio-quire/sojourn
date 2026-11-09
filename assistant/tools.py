@@ -470,8 +470,11 @@ def build(kit: Toolkit, with_escalate: bool, with_help: bool = True, only=None):
             kit.did(f"walking {dist:.0f} m")
             await kit.call("LLAgent", "startAutoPilot", target_global=[gx + target[0], gy + target[1], target[2]], stop_distance=1.5)
             return text({"walking": True, "distance": round(dist, 1)})
-        # a short hop in the region: land beside the target, not inside it
+        # a short hop in the region: land beside the target, not inside it (a person: not on their head), at its height,
+        # facing it, as Sojourn Access's own teleport to a person (Commands.BesideAsync) and roughly the official viewer's
+        facing = None
         if dist > 2:
+            facing = target
             dx, dy = (region[0] - target[0]) / dist, (region[1] - target[1]) / dist
             target = (target[0] + dx * 2, target[1] + dy * 2, target[2])
         kit.did(f"teleporting {dist:.0f} m")
@@ -481,6 +484,11 @@ def build(kit: Toolkit, with_escalate: bool, with_help: bool = True, only=None):
                                skip_confirmation=True, timeout=25, wait=30)
         except ApiError as e:
             return error(str(e))
+        if facing and r.get("teleported") and not kit.vr:   # (in the headset the person turns themselves)
+            try:
+                await kit.call("LLAgent", "lookAt", position=list(facing))
+            except ApiError:
+                pass
         return text({**r, "distance": round(dist, 1)})
 
     async def by_name(words):

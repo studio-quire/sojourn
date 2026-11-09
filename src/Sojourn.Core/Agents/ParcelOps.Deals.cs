@@ -99,8 +99,10 @@ public sealed partial class ParcelOps
             if (objects) p.Flags |= ParcelFlags.SellParcelObjects; else p.Flags &= ~ParcelFlags.SellParcelObjects;
         }
         p.Update(c, sim, false);
-        var after = await WatchAsync(sim, p.LocalID, x => (x.Flags & ParcelFlags.ForSale) != 0 && x.SalePrice == price && x.AuthBuyerID == buyer, TimeSpan.FromSeconds(5), ct)
-            ?? throw new LeapError($"the region didn't put it up for sale: only its owner (or a group member with the powers) may (owner {NameOf(p.OwnerID)})");
+        var after = await WatchAsync(sim, p.LocalID, x => (x.Flags & ParcelFlags.ForSale) != 0 && x.SalePrice == price && x.AuthBuyerID == buyer, TimeSpan.FromSeconds(10), ct)
+            ?? throw new LeapError(p.OwnerID == c.Self.AgentID
+                ? "the region hasn't shown it for sale after 10 seconds: it may be busy; look again in a moment"
+                : $"the region didn't put it up for sale: only its owner (or a group member with the powers) may (owner {NameOf(p.OwnerID)})");
         return Describe(after);
     }
 
@@ -114,8 +116,10 @@ public sealed partial class ParcelOps
         p.SalePrice = 0;
         p.AuthBuyerID = UUID.Zero;
         p.Update(c, sim, false);
-        var after = await WatchAsync(sim, p.LocalID, x => (x.Flags & ParcelFlags.ForSale) == 0, TimeSpan.FromSeconds(5), ct)
-            ?? throw new LeapError("the region didn't take it off sale: only its owner (or a group member with the powers) may");
+        var after = await WatchAsync(sim, p.LocalID, x => (x.Flags & ParcelFlags.ForSale) == 0, TimeSpan.FromSeconds(10), ct)
+            ?? throw new LeapError(p.OwnerID == c.Self.AgentID
+                ? "the region hasn't shown it off sale after 10 seconds: it may be busy; look again in a moment"
+                : "the region didn't take it off sale: only its owner (or a group member with the powers) may");
         return Describe(after);
     }
 
@@ -248,7 +252,7 @@ public sealed partial class ParcelOps
         {
             p.GroupID = group;
             p.Update(c, sim, false);
-            if (await WatchAsync(sim, p.LocalID, x => x.GroupID == group, TimeSpan.FromSeconds(5), ct) is null)
+            if (await WatchAsync(sim, p.LocalID, x => x.GroupID == group, TimeSpan.FromSeconds(10), ct) is null)
                 throw new LeapError("the region didn't set the parcel's group; nothing was deeded");
         }
         var since = DateTime.UtcNow;

@@ -26,6 +26,11 @@ public sealed partial class MainForm
             new("&Describe", () => _ = DescribeAsync(OfPerson(id, name)), "Control+D"),
             new("F&ollow", () => _ = NearAsync(id, name, p => _cmd.Follow(p))),
             new("&Beacon", () => _ = NearAsync(id, name, p => _walk?.BeaconOn(p.Name, p.Id))),
+            // (no letters: theirs are all taken on this menu; MainForm.Pointing.cs, MainForm.TheirThings.cs)
+            HearingPointing(id) ? new("Stop hearing what they point at", () => TogglePointing(id, name))
+                : new("Hear what they point at", () => _ = NearAsync(id, name, p => TogglePointing(p.Id, p.Name))),
+            new("What they wear", () => _ = NearAsync(id, name, p => ShowWornBy(p.Id, p.Name))),
+            new("Their animations", () => _ = NearAsync(id, name, p => _ = AnimationsOfAsync(p.Id, p.Name))),
         };
         if (profile)
         {

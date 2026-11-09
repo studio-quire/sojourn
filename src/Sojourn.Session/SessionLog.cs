@@ -70,15 +70,33 @@ public static class SessionLog
         }
     }
 
+    /// <summary>The console as it was, and the file in whole lines: the console logger writes a line in pieces (its time
+    /// stamp, the coloured level, the rest), and a record written whole from another thread between them took the stamp,
+    /// which hid it from Send a log's filter as a record (about 1 in 100 in a test run, 2026-11-08). So what goes to the
+    /// file waits, per thread, for its line's end.</summary>
     sealed class Tee(TextWriter a, TextWriter b) : TextWriter
     {
+        readonly ThreadLocal<StringBuilder> _line = new(() => new StringBuilder());
         public override Encoding Encoding => a.Encoding;
         static bool Off => Paused?.Invoke() == true;
-        public override void Write(char value) { if (Off) return; a.Write(value); Safe(() => b.Write(value)); }
-        public override void Write(string? value) { if (Off) return; a.Write(value); Safe(() => b.Write(value)); }
-        public override void Write(char[] buffer, int index, int count) { if (Off) return; a.Write(buffer, index, count); Safe(() => b.Write(buffer, index, count)); }
-        public override void WriteLine(string? value) { if (Off) return; a.WriteLine(value); Safe(() => b.WriteLine(value)); }
+        public override void Write(char value) { if (Off) return; a.Write(value); ToFile(value.ToString()); }
+        public override void Write(string? value) { if (Off) return; a.Write(value); ToFile(value); }
+        public override void Write(char[] buffer, int index, int count) { if (Off) return; a.Write(buffer, index, count); ToFile(new string(buffer, index, count)); }
+        public override void WriteLine(string? value) { if (Off) return; a.WriteLine(value); ToFile(value + NewLine); }
         public override void Flush() { a.Flush(); Safe(b.Flush); }
+
+        void ToFile(string? s)
+        {
+            if (string.IsNullOrEmpty(s)) return;
+            var line = _line.Value!;
+            line.Append(s);
+            int end = -1;
+            for (int i = line.Length - 1; i >= 0; i--) if (line[i] == '\n') { end = i; break; }
+            if (end < 0) return;
+            var whole = line.ToString(0, end + 1);
+            line.Remove(0, end + 1);
+            Safe(() => b.Write(whole));
+        }
 
         // a full disk or a closed file never takes the console down with it
         static void Safe(Action act) { try { act(); } catch (Exception) { } }

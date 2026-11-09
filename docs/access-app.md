@@ -210,13 +210,13 @@ list; a blind tester, offered groups or a box narrowing the list as you type, ch
 as Radegast's menus are. World (teleport home, to the SLurl on the clipboard, set home here, landmark here, sit on the
 ground or stand up, fly or stop flying, always run (a check, `//run`), walk mode, Recording a route (its keys and Discard), Gestures: the active ones to play, Away and Do not disturb as checked
 items, incognito, region info, About Land (Control+L) and the region's covenant, parcels in this region, status, what you're wearing, save your outfit, describe where you are, describe
-me, rebake, stop all animations, hover height, my profile, display name, highest rating of region (`MainForm.Self.cs`; each also a `//` command: `//rebake`, `//stopanimations`, `//hover`, `//displayname`, `//maturity`), log out, back to the login window (`//logout`: asked first, Enter goes and Escape stays; the app starts afresh there, the form filled in and the password typed again), who's in voice, open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
+me, rebake, stop all animations, hover height, my profile, display name, highest rating of region (`MainForm.Self.cs`; each also a `//` command: `//rebake`, `//stopanimations`, `//hover`, `//displayname`, `//maturity`), log out, back to the login window (`//logout`: asked first, Enter goes and Escape stays; the app starts afresh there, the form filled in and the password typed again), another account, in a new window (`//newwindow`; The session itself, below), who's in voice, the people in voice to act on (Control+F4), open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
 Friends among them, the second inventory pane, the inventory's favorites, the newest notice, Conversations, the conversation ring, closing one),
 Read-out (mute all, mute this conversation, times, arrivals, Recent messages: the last nine as items with their
 Control+numbers, then back, forward, oldest, newest, mark, copy, copy the assistant's last answer, links seen, chat logs, blocked), Build (the
 official viewer's Build menu: the build editor, Control+B; a new box; undo the last build change; the build
 commands; upload a file, Control+U) and Help (keys, the slash
-commands, send a log, message the builders, Newer build?, about; a newer build is also said once after logging in).
+commands, send a log, read a session's log, message the builders, Newer build?, clear the cache at the next start (checked while it's marked), about; a newer build is also said once after logging in).
 
 - Each item shows its key beside it (`ShortcutKeyDisplayString`, which UI Automation gives screen readers as the item's
   accelerator key); the keys themselves stay in `ProcessCmdKey`, never the items' `ShortcutKeys`.
@@ -224,6 +224,8 @@ commands, send a log, message the builders, Newer build?, about; a newer build i
   `away` and `do_not_disturb`, set home by `TesselAgent setHome`, a landmark by `TesselInventory createLandmark`), as
   the person's own press: items run as they're pressed, and those that move the focus do so once the menu has closed
   and given it back (`Later`, as our own move for the person).
+- No two items on an open menu share a letter: the menu bar's menus go through `Mnemonics.Fix` as they open, as the
+  context menus do (World had two on N, Recording a route and Stop all animations, so N there did nothing).
 - The menus' letters avoid the areas' own label mnemonics (so inventory's and objects' Show is Alt+O and Places'
   History Alt+S, Alt+H being Help's).
 - Alt alone and F10 open it only while the window is the foreground one (WinForms' `ToolStripManager.ProcessMenuKey`),
@@ -264,7 +266,7 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   confirmation's Confirm and Cancel. Escape anywhere in the notices but on a confirmation (or in the reply box): back
   to the area and control Control+N came from, else to Say. Tab from the list reaches the notice's text, its reply box
   and its buttons ("1: Red", "Delete: Ignore").
-- **A person's actions are one list** (`MainForm.PersonActions.cs`), the same items with the same letters wherever their name is: People nearby (Enter opens them), Friends and Search (Enter: an IM), an IM's message box or history, and their profile (Applications key or its Actions button; there the window closes first). Send IM, Walk to, Face, Where, Describe, Follow, Beacon, Profile, Notes on them, Chat log, Pay..., Give what you copied, Offer teleport, Request teleport, Offer friendship (a friend: Start a conference..., End friendship, confirmed), Invite to a group... (Groups, below), Mute in voice or Unmute in voice, How loud in voice... (0 to 2, 1 as they come; both for you alone and kept), Always incognito with them, Block or Unblock, IM sound for NAME.... What needs them near says so when they aren't ("Kestrel isn't nearby, though online."), rather than the menu changing shape; Where on a friend elsewhere on the grid who lets you see them on the map says the region and spot ("Kestrel is in Bay City, at 128, 64."; `SojournPeople whereFriend`, as the viewers' Show on map). A friend's What they may do has See when you're online, Find you on the map and Edit your objects, checked as they stand, each through her confirmation; edit rights are how a sighted helper helps without logging in as her. `//block NAME`, `//profile NAME` and `//friend NAME` find anyone by name: open conversations, friends, people nearby, then the grid. A new action goes in `PersonActions`, never a list's own menu. On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
+- **A person's actions are one list** (`MainForm.PersonActions.cs`), the same items with the same letters wherever their name is: People nearby (Enter opens them), Friends and Search (Enter: an IM), an IM's message box or history, and their profile (Applications key or its Actions button; there the window closes first). Send IM, Walk to, Face, Where, Describe, Follow, Beacon, Hear what they point at (or Stop hearing; What a friend points at, below), What they wear, Their animations (One person's things, below), Profile, Notes on them, Chat log, Pay..., Give what you copied, Offer teleport, Request teleport, Offer friendship (a friend: Start a conference..., End friendship, confirmed), Invite to a group... (Groups, below), Mute in voice or Unmute in voice, How loud in voice... (0 to 2, 1 as they come; both for you alone and kept), Always incognito with them, Block or Unblock, IM sound for NAME.... What needs them near says so when they aren't ("Kestrel isn't nearby, though online."), rather than the menu changing shape; Where on a friend elsewhere on the grid who lets you see them on the map says the region and spot ("Kestrel is in Bay City, at 128, 64."; `SojournPeople whereFriend`, as the viewers' Show on map). A friend's What they may do has See when you're online, Find you on the map and Edit your objects, checked as they stand, each through her confirmation; edit rights are how a sighted helper helps without logging in as her. `//block NAME`, `//profile NAME` and `//friend NAME` find anyone by name: open conversations, friends, people nearby, then the grid. A new action goes in `PersonActions`, never a list's own menu. On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
   tag, Choose your title..., Members..., Who's in its chat..., Notices..., New notice..., Invite someone..., Banned residents..., Chat log, Receive its notices, List it in your profile (Groups, below), Group sound for NAME..., Leave (the grid asks in Notices), and New group... (on "In no groups." too, alone). On a friend, Start a conference...: friends online in a list of check boxes, the one you were on marked, Space marking more, Enter starting it with two or more and going to its tab. In a group's message box or history: its sound and Who's in the chat...; in anyone's, Cut, Copy, Paste, Select all after what's above, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
   its own window: a read-only text read line by line (name, born, partner, about, interests, picks, groups with their titles, first life, web), their picks and your notes on them a Tab on,
   Send IM, Pay, Give what you copied, Describe pictures, Actions..., Close (Escape) (Your profile and notes, below). Pay asks the amount, then waits for the
@@ -464,6 +466,7 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
 - Ctrl+B: the build editor, on what's selected in Objects, its parts or faces, else what was edited last (Building,
   below); Escape there goes back.
 - Ctrl+L: About Land, on the parcel you're on (About Land, below); Escape there goes back.
+- Ctrl+Shift+P: what a friend pointed at in their own viewer, selected in Objects (What a friend points at, below).
 - Ctrl+Shift+T: times in the chat histories ("[14:05] Kestrel: hi", from the next line) or not.
 - F3: walk mode (below); F3 or Escape again leaves it. R there, or `//record` anywhere, records a route by walking it
   (Walk mode > Recording a route); C there, or `//ride`, records a ride to hear it told after (Walk mode > Recording a
@@ -486,7 +489,8 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
 - Ctrl+Shift+B: the builders' tab, to write to the Claude sessions building Sojourn Access (Messages to the builders,
   below).
 - F4 (`access_talk_key`: f4, f12, scroll_lock, pause) held: talk in voice, with a click as the mic opens and closes;
-  Shift+F4 push-to-talk or open mic; Ctrl+Shift+V who's in voice (Voice chat, below).
+  Shift+F4 push-to-talk or open mic; Ctrl+Shift+V who's in voice; Control+F4 the people in voice as a menu, to act on
+  (Voice chat, below).
 
 ### Links
 
@@ -527,7 +531,13 @@ the people back between, having typed into the wrong one), so Tab from Say lands
 Applications key's actions (Enter too), Control+D, F5; within 96 m, nearest first, "Nobody nearby." when empty. It's
 kept current every 3 s while the chat area shows and the focus is elsewhere (in Say, typing), so arriving in it the
 distances are at most a few seconds old; a refresh whose words haven't changed leaves the list as it is (only where
-people are, for Walk to and Face, is renewed), so nothing beside the Say box churns while she types.
+people are, for Walk to and Face, is renewed), so nothing beside the Say box churns while she types. A list saying
+"Nobody nearby." is kept current with the focus in it too (Alt+3's as well): Tabbing in a moment after a teleport,
+before anyone had come into view, found that line, and it stayed while she was there (2026-11-08). People arriving
+come in under her with no item made the focused one, so nothing is read and the focus doesn't move; "2 people nearby
+now." is said once, as a notice, and Down (or Up) reaches the first. Still nobody, the line is left as it is, not
+read again every 3 s. So is one holding nothing yet (Tabbed into a second after logging in, before its first fill,
+it stayed empty and silent): its first fill reads its first line, as arriving in it while it's looking does.
 
 ### People's names
 
@@ -717,7 +727,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 |---|---|
 | `//go [tp] N [dir]` | walk (tp: teleport) N metres ahead, or toward N, NNE ... NNW (16 points, or words), or left, right, back |
 | `//go [tp] xyz X,Y[,Z]` | to region coordinates (Z defaults to your height) |
-| `//go [tp] person NAME` / `object NAME` / `NAME` | to the nearest person whose name starts with NAME / object whose name has it; a name alone is a person, else an object |
+| `//go [tp] person NAME` / `object NAME` / `NAME` | to the nearest person whose name starts with NAME / object whose name has it; a name alone is a person, else an object; a teleport to a person lands beside them, facing them (below) |
 | `//find person NAME` / `object NAME` (or just `//find NAME`) | "Kestrel is 4 m away, two o'clock, to the northeast, at your level.": everyone and everything that matches, the nearest first, the first eight and how many more |
 | `//face DEG` / `DIR` / `left`/`right`/`around` / `person NAME` / `object NAME` | turn; degrees are SL's (0 east, counter-clockwise), as Radegast's |
 | `//sit NAME` / `//sit ground`, `//stand` (`//unsit`) | sit on the nearest thing with that name, on the ground; stand |
@@ -729,9 +739,11 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//route NOTECARD` / `//route` / `//route stop` / `//route resume` | play a route: a notecard's `//` lines one at a time (with no name, the lines on the clipboard, as copied from a blog), each walk or teleport finished before the next ("Step 2 of 7."), other lines read as notes; a step that doesn't get there pauses it, `//route resume` tries that step again. In the inventory, a notecard's Applications key has Play as a route |
 | `//record` / `note [WORDS]` / `undo` / `pause` (`resume`) / `save [NAME]` / `discard` | record a route by walking it: start, or while recording how it's going; a note here (no words: just a point); take back the last point or note; pause or go on; save it as a notecard in Routes (with no name, asked); throw it away (Walk mode > Recording a route) |
 | `//pause [SECONDS]` | wait (in a route, before its next line; a second unless said) |
-| `//siminfo` | the region: type, maturity, people (of the limit), active scripts, objects, time dilation, frame rates |
-| `//parcelinfo` | every parcel in the region, the one you're on first: name, area, who may enter, description |
-| `//scriptinfo` | the scripts in what you're wearing, per attachment and its point, and how many run |
+| `//thread COMMAND` | run a command without waiting for it: in a route, the next line goes on at once (typed, a command never holds the next anyway) |
+| `//threads` / `//kill` | what's running (a route and its step, a walk, following, a pause, what `//thread` started); stop all of it. A teleport under way can't be stopped, and is said so |
+| `//siminfo` | the region: type, maturity, people (of the limit), active scripts, objects, time dilation, frame rates; its server where the grid says (CPU class, regions per CPU, data centre) |
+| `//parcelinfo` | every parcel in the region, the one you're on first: name, area, who may enter, traffic, the allowed and banned lists' sizes where the region sends them (to the parcel's owner or its group's managers), description |
+| `//scriptinfo` / `//scriptinfo parcel` | the scripts in what you're wearing, per attachment and its point, and how many run; or the script memory and URLs the parcel's objects use, of what it has, the ten using most by name (the region's LandResources, as Radegast's and the viewers' Script Information) |
 | `//beacon NAME` / `//beacon off` / `//beacon` | a sound on the nearest person or thing by name to walk to (walk mode's beacon, below), off, or where it is |
 | `//touch NAME` / `OBJECT PART` / `NAME face DIR` | touch a thing or part by name within 10 m, on a face if given (Parts and faces, below) |
 | `//details NAME` | whose a thing within 30 m is, who made it, its description, what she may do with it (else a named part within 10 m; Objects nearby, below) |
@@ -747,14 +759,22 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//build` / `//build COMMAND` | the build editor (Ctrl+B), or one of its commands on what's being edited, from any input (Building, below) |
 | `//land` / `//land COMMAND` | About Land (Ctrl+L), or one of its commands on the parcel shown (or the one you're on), from any input (About Land, below) |
 | `//describe [here|me|NAME|person NAME|object NAME|more]` | describe (Describing, below) |
-| `//voice` / `answer` / `decline` / `mute NAME` / `unmute NAME` / `volume NAME N` | who's in voice, said with who's muted; answer or decline a call; one person muted, or how loud they are from 0 to 2 (1 as they come), for you alone and kept |
+| `//voice` / `people` / `mute all` / `unmute all` / `reconnect` / `answer` / `decline` / `mute NAME` / `unmute NAME` / `volume NAME N` | who's in voice, said with who's muted; the people in voice as a menu (Control+F4); everyone else muted for you, this session; everyone heard again; voice started afresh; answer or decline a call; one person muted, or how loud they are from 0 to 2 (1 as they come), for you alone and kept (Voice chat, below) |
 | `//imsound NAME SOUND` / `NAME usual` / `NAME` / (nothing) | a sound of its own for someone's IMs or a group's chat; back to the usual; theirs; the sounds and who has one (Earcons, above) |
 | `//chatlog` / `//chatlog NAME` | the chat logs on this PC; the one with that in its name (Chat logs, below) |
 | `//emptytrash`, `//emptylostandfound` | everything in the Trash, or in Lost and Found, deleted for good, after you confirm (also on those folders' menus) |
 | `//logout` | log out and go back to the login window, after you say so |
 | `//about` | the version, the commit, the disclaimer and the data folder |
 | `//sendlog` | send a session's log to the studio (Sending a log, below) |
+| `//log` | read a session's log, as Send a log would send it (The session itself, below) |
+| `//clearcache` / `//clearcache cancel` | clear the cache when the app next starts; take that back |
+| `//newwindow` | another account, in a window of its own at the login |
 | `//help [word]` | the commands |
+
+On the local grid (2026-11-08) `//siminfo` says CPU class 9 and a CPU of its own (OpenSim gives no data centre),
+`//parcelinfo` the traffic and, on the tester's own parcel, both lists' sizes, and `//scriptinfo parcel` gets an answer
+without figures from OpenSim's LandResources ("The region sent nothing on this parcel's scripts."): Second Life's
+figures are unseen. `//thread`, `//threads` and `//kill` are checked with a pause.
 
 `//go xyz` takes coordinates past the region's edge (over 256, below 0: a recorded route's crossing, Recording a route,
 below) and walks there straight by the autopilot, judged arrived by where the avatar is in the region it set out from,
@@ -766,7 +786,9 @@ as Up (a train opened a step by the first tap after a `//go`).
 `//go` walks by the region's own autopilot, as Radegast's, around what's in the way (Paths, below): "Walking 9 m to
 232, 43, around something in the way: 3 stretches.", then each new stretch ("2 of 3: 2 m to the west-northwest."). It
 ends, once the avatar has stopped, with "Finished walking, under a metre from the destination." (or how far, and
-"something was in the way" when it stalled), the cue such routes wait for. Seated (a chair, a pose ball), it stands
+"something was in the way" when it stalled), the cue such routes wait for. To a person or a thing it stops 1.5 m
+short: the region's autopilot, heading for their middle, is let go once within that (it pushed on into the visitor's
+body for 42 s, never still enough to finish, 2026-11-08). Seated (a chair, a pose ball), it stands
 first ("Standing up to walk."). A goal out of reach where the floor meets it (up on a stage with no steps, inside a
 bar) is walked as near as the way goes: "Walking 6 metres toward Kestrel; Kestrel is out of reach, so as near as the
 way goes, 2 metres short.", ending "Finished walking, as near to Kestrel as the way goes: Kestrel is 2 metres, twelve
@@ -779,6 +801,18 @@ teleport landed you away from Kestrel: Kestrel is 14 metres, two o'clock."), so 
 (the blind tester's walks to her partner in a jazz club did, 2026-10-31). With the fallback
 off, the line names the command that would try (`//go tp person Kestrel`). `//go tp` says where it really landed the
 same way. Unlike Radegast (a bug there), `//face object` and `//find object` look for the name alone.
+
+A teleport to someone lands beside them, not on them: `//go tp person`, a walk to them (`//go`, a person's Walk to)
+that ends in the fallback's teleport, the assistant's walk to them that does, any `//go tp` to a spot someone stands at
+(within a metre). Sent to their own position, the region stood her on their head, and the lists rightly said "under a
+metre, below you" (2026-11-08). So it lands 2 m off on the side she comes from, on their floor, turns her to face them
+and says where they are: "Teleported to Kestrel: Kestrel is 2 metres, twelve o'clock." With the collision model the
+spot is planned out from where they stand (`Commands.BesideAsync`, the walk's `PathPlanner`): the nearest spot to that
+side their floor reaches in a near-straight line, at that floor's height; if it's off what they stand on (beyond a
+stage's edge) or behind something, the next side round, up to all eight; none better, that first side. Without the
+model, or where it hasn't what they stand on, that side at their height, a little over it, so someone up on a stage
+still has her land on the stage, not on the ground under them. The assistant's own go tool teleports 2 m short of a
+person or thing on the side she comes from, at its height, and faces it on the desktop, but doesn't plan the spot.
 
 ### Walk mode
 
@@ -858,8 +892,13 @@ on what the person put it on, to walk to themselves in walk mode or by `//go`: `
 else thing, by name; `person`/`object` as `//find`), or Beacon on a person's or an object's Applications key. That one
 stays until it's reached (within 1.6 m: "Reached ...", the flourish), taken off (Shift+B, `//beacon off`) or gone for
 5 s; walking by hand doesn't stop it (it stops a `//go`), and a walk's own beacon takes its place while the walk lasts.
-It finds its target in every region in view, then by the map's positions (CoarseLocationUpdate) for a person, so a car
-it's on crossing into the next region keeps it (0.1.0.877 lost her partner's car 5 s after it crossed). `//follow`
+It finds its target in every region in view, so a car it's on crossing into the next region keeps it (0.1.0.877 lost her
+partner's car 5 s after it crossed). For a person, the region whose map list (CoarseLocationUpdate) names them is where
+they are: its copy of them, else their place on that list (to a metre); then a copy in a region with no list; then a copy
+in a region whose list leaves them out, one that came in within 12 s first (a handover over a border can keep someone off
+both lists for a few seconds), last an older one, most likely left behind where they crossed out, never killed by that
+region (the own region used to be asked first and answered with it). A copy sitting on something not sent yet isn't
+taken: its position is only its offset from the seat (`WalkMode.See`, 2026-11-08). `//follow`
 while seated drives after them where the keys steer (Driving after someone, below), else puts one on them, saying why. While a beacon sounds the world's sounds go
 softer (`walk_beacon_duck`: as usual, softer, much softer (the default, a quarter), very soft; over half a second each
 way; not music or Access's own sounds): two cars' engines drowned it at its loudest (the blind tester, 2026-11-03).
@@ -1034,11 +1073,71 @@ METRES` (3 to 50). It follows the way they went (points every 2.5 m, in the grid
 not the straight line to them, and comes down to their pace in time (their pace from their position over half a second,
 4 m/s of braking assumed; Down while closing, never backing). It steers by the way the seat faces plus an offset learned
 on straights, not by the way it's travelling: travel lags the wheel, and steering by it spun the test's kart. The keys
-are held for a share of each 300 ms by how far off it is. Any arrow, Space or `//stop`, `//follow stop`, or standing up
-ends it; so does the vehicle not moving for 6 s, them lost for 6 s or jumping over 100 m (a stop follows those last two).
+are held for a share of each 300 ms by how far off it is. It aims at the first point of their way at least a second
+ahead (5 m at least), skipping points it has come within that of or gone past to one side; close behind them, where their
+way runs out within that, at a point that far on past them the way they're heading (2026-11-08: it used to aim at their
+last point, which at her 3 m gap at 11 m/s was 0.5 to 3 m ahead, so every half-metre to one side read as a sharp turn and
+swung the keys; she felt her steering weave, and a point passed to one side was aimed back at). Where they are is as the
+beacon finds them, but an older copy in a region whose list leaves them out doesn't count, and a copy is carried on by the
+velocity it last reported for up to 1.5 s since its place last changed, as a viewer draws it (a region sends a moving
+avatar's place only now and then). Any arrow, Space or `//stop`, `//follow stop`, `//stand` or standing up ends it; so does
+the vehicle not moving for 6 s, them jumping over 100 m (a teleport, most likely), not finding them again (below; a stop
+follows those last two), or the vehicle's script letting go of her keys (below).
 Not for what runs on rails or shows a throttle, where Up held opens it all the way and the keys don't steer: she gets a
-beacon, saying why; the same if the seat hasn't taken her keys. Checked on the local grid in a kart only: real vehicles'
-turning and braking, roads, crossings, and how close a gap holds are for her and her partner.
+beacon, saying why; the same if the seat hasn't taken her keys. Checked on the local grid in a kart, on the flat and
+over a border; real vehicles' turning and braking, roads, and how close a gap holds are for her and her partner.
+- **Over a border** (2026-11-08, after her scooter trip on 0.1.0.996, `docs/access.md` > A scooter trip and a train that
+  lost its guide): until the region she's entering has sent her avatar and its seat, where she is can come in the frame of
+  the region she left, so the keys stay as they were (as a driver holds the throttle over a border) and nothing is decided
+  or said; 0.1.0.996 said "getting away, 289 metres off" there, and 918 276 and 226. The keys reading as untaken don't end
+  it for 10 s after a crossing (the region left and the one entered each send their word on the script's keys, in either
+  order), elsewhere after 2 s; then "The vehicle let go of your keys at the crossing into Berbera, so no longer driving
+  after Kestrel. Sitting on it again usually gives them back." (on her trip they stayed untaken until she stood and sat
+  again). A seat in doubt over a crossing counts as driving for the rest of walk mode too, so a walk's "Blocked." isn't
+  said there. Why they read as untaken, likely (found 2026-11-08 when a test's kart read as not driven): the keys a
+  script takes are counted as the viewer counts them, each take one up and each release one down, so the order matters,
+  and LibreMetaverse ran every handler of that packet on the thread pool in any order (its own handler is registered
+  async, which makes all of them so); a release then a take, as a script takes the keys again or two regions hand a
+  vehicle over, could be counted the other way round and stay untaken until she sat again. Core now has them counted in
+  the order they came (`AgentSession.WireScriptControls`).
+- **Losing sight of them** (2026-11-08, the orchestrating session's call after her trip lost her partner 5 s after he
+  crossed, and stopped): it drives on as a person following by eye would. From where they were last seen, the way they
+  were heading (their last 6 m or so, else their copy's velocity) at their pace (the speed their copy last reported if
+  higher, since a copy left frozen where they crossed out keeps it; 10 m/s at most), to 25 m past the border if their way
+  meets one within 40 m, else 15 m past where they were seen; she follows that as she follows them, the gap behind it. A
+  ray down every 4 m along it stops it short of open water (below the region's water, when they were above it) or a drop
+  of over 3 m. Said once it's lasted 1.5 s: "Lost sight of Kestrel at the border; going where they went." ("at the
+  border" when their way meets one within 40 m or they'd come under 30 m over one; standing when lost: "going to where
+  they were."). Seen again: "Found Kestrel again, 25 metres away.", the guessed way dropped, on to them (further from
+  where they were seen than 100 m and their pace for the time since: jumped away, as above). Not found: "Couldn't find
+  Kestrel again, so I've let go of the keys." and a stop, 20 s after they were last seen, or after 4 s at rest at the end
+  of the way on, but not within 4 s of her own crossing, since the region she's entered names who's in it within a second
+  or two. The bounds are ours, chosen so that over a border she ends up inside the region they went into, where she sees
+  what that region sees, and so it never goes on for long on a guess.
+- **Why it couldn't see him** (her trip, 18:55): not the draw distance (Access sends 128 m, as the official viewer at its
+  middle and high settings; 64 to 256 by level) nor a missing neighbour: Diloba was connected, sending sounds of his
+  motorbike as it crossed. Her log can't say which of three it was, and the convoy's log lines (above) now say what each
+  region in view had of him when it loses sight: (1) Second Life sending neither his seated avatar nor him on Diloba's
+  map list for a while after the crossing, as it hands a seated avatar over; nothing of ours fixes that, and losing sight
+  covers it; (2) the copy Berbera never killed answering first, frozen at the border, then dropped as a ghost 4 s after
+  Berbera's list left him out, which is about when it lost him (now that copy doesn't count, so the loss starts at once
+  from where he really was, and a copy just sent by Diloba counts even before Diloba's list names him); (3) our dropping of ghosts taking the copy Diloba had just sent, left out of Diloba's list or
+  still on Berbera's during the handover: dropped, a copy doesn't come back (LibreMetaverse remakes it without its id from
+  the next terse update, and a seated one gets none). Core's `RegionWorld` now drops no copy in its first 12 s in a region;
+  the time a copy was first named by another region's list is forgotten once that region's list stops naming them (it
+  used to stay, so a later list could drop a copy at once); and a list as long as OpenSim's cap (60) doesn't count as
+  naming everyone.
+- **The log**: its start (who, how far behind, and the seat on a line of its own, since a sent log leaves out any line
+  repeating words someone wrote to her, which on her trip took every line naming her scooter), every 2 s where it is,
+  how far from them (by which region's copy or list) and their pace, where it aims and how far on, the keys it holds;
+  each crossing, the keys going and coming back; losing sight of them, with where they were last seen and how, the way on,
+  and for each region in view its copy of them (and whether the seat it's on is there), its map list (naming them or not,
+  how old) and any copy of them lately dropped as a ghost and why; them seen again (by what, how far from where they were
+  last seen) or the search given up; and its end with why. Until 0.1.0.996 these went only to `SOJOURN_WALK_LOG`, so her
+  trip's log couldn't show why it went astray. The controls scripts take and let go of are logged by Core for everyone
+  (`controls: REGION took ...; held now: ...`, at most 30 lines a minute).
+- **Tested** (`tools/access.py`, "driving after someone lost at a border"): no region on the local grid hides someone, so
+  `//blindconvoy AFTER SECONDS` (only with `SOJOURN_TEST_CONVOY_BLIND=1`) has the convoy not see them for a while.
 
 **Stopping a vehicle** (`Walk/WalkMode.Stop.cs`; Claude Opus 5.5, 2026-11-01, after the blind tester's freight train, an
 SLRR-style train driven by the arrows, ran off the end of its track and derailed or stranded her: once she had to
@@ -1053,7 +1152,9 @@ teleport away and walk to where she could rez it again). Her train says so in ne
   while she's seated and moving: an urgent sound (three quick high-low pairs, unlike any other cue, played whatever the
   other cues are set to) and "Track ends: stopping.". Once only per stop (the train's later lines don't start another),
   and nothing while standing still. Alt+0's "Track's end: stop the vehicle when it says the track ends" (`walk_track_end`,
-  on) turns this off.
+  on) turns this off. Each such line heard is in the session log with whether it was acted on, and why not (not moving,
+  not from the seat, already stopping): her train's "No Guide found" on 0.1.0.996 brought no "Track ends", most likely as
+  the train had already stopped itself, and only the debug walk log could say.
 - **How it stops**, as she would: the back control (CONTROL_BACK, Down's), through the same control flags the arrows
   send, held apart from them, so leaving walk mode, the window losing the focus or a notice arriving doesn't let go of
   it; an arrow pressed meanwhile hands the controls back ("Stop cancelled: the keys are yours."). The first press is
@@ -1356,6 +1457,53 @@ from guided testing of Radegast, and no list changes while you're in it):
   `//touch NAME face top` (bottom, front, far, left, right, inside, or a number). When nothing nearby has the name, a
   part or read button of a HUD she wears ("//touch brake"). For routes and notecards.
 
+### What a friend points at
+
+`MainForm.Pointing.cs`, Core's `Agents/Pointing.cs` (Claude Opus 5.5, 2026-11-08; Radegast's Master Controls, which its guide
+teaches as letting "a sighted avatar click items for you"). Among dozens of things called "Object", what a sighted friend
+nearby picks out in their own viewer is how they help without logging in as her.
+- **What their viewer sends.** The official viewer points its avatar's arm at whatever its person selects in the world, which a
+  right click does (for its menu) as well as editing: a PointAt and a LookAt viewer effect, both of type select, at the very prim
+  clicked, a part or the root, cleared when the selection ends (`LLSelectMgr::updatePointAt`; never at avatars, attachments or
+  what they sit on; none at all with its EnableSelectionHints off, on by default). Radegast's Point at sends the PointAt;
+  building sends beams at what's built on. Core keeps each person's last pointing after it clears, since their menu has closed
+  long before she catches up: the PointAt and LookAt of one selection are one pointing, a beam while they have something
+  selected isn't a new one, and an avatar or anything worn is never taken as pointed at (a friend texturing their own hair
+  isn't pointing anything out). A block whose sender and source differ is dropped (one avatar claiming another's pointing);
+  the local grid passes on a block that names someone else in both places, so that stops only a careless claim, and
+  whether Second Life sets the sender itself isn't known.
+- **Whose.** On a person's menu, Hear what they point at ("Hearing what Kestrel points at: when they right-click something in
+  their viewer, you'll hear it, and Control+Shift+P goes to it."), and Stop hearing what they point at once it's on; or
+  `//pointing NAME` (someone nearby), `//pointing off`, `//pointing` (whose, and the last thing pointed at). Several people at
+  once; for the session, not kept. Turned on within a minute of their pointing ("I'm pointing at it now"), what they pointed
+  at is said then too ("Kestrel pointed at ...").
+- **Said, waiting.** "Kestrel points at Treasure Chest, 3 metres, two o'clock. Control+Shift+P goes to it.", in turn as what
+  arrives does (F6 mutes it; the line goes into nearby chat's history either way); a part as "part 2 of Treasure Chest" or
+  "Latch, part 3 of Treasure Chest", in Parts' numbering. A quick run of them (a few right clicks in a row) says only the last.
+  Nothing moves the focus.
+- **Control+Shift+P** (also View > What someone pointed at): Objects on things nearby, on it, the focus there; when it was a
+  part, then on that part in Parts (the object's line, read first, names it), so Enter touches the very part. A filter that hides it is
+  cleared on the way, and it's listed even past the nearest 60 or the range. Its line says which it is ("Treasure Chest, 3
+  metres, two o'clock, pointed at by Kestrel (part 2)"), and the part's line in Parts ends ", pointed at by Kestrel", until one
+  of hers points at something else.
+- `SojournPeople pointedAt {to}` gives the assistant the last thing someone pointed at (the VR client's too).
+- Checked on the local grid with the visitor selecting as the official viewer does (its `point` and `beam`); only Second Life
+  shows the official viewer's and Firestorm's own selections arriving, and how far away they still reach her.
+
+### One person's things
+
+`MainForm.TheirThings.cs` (Claude Opus 5.5, 2026-11-08; Radegast's Attachments and Animations on a person).
+- **What they wear** (a person's menu): Objects with Show's fourth choice, "What Kestrel wears" (added the first time, renamed
+  for the next person), the list named so: only theirs (`nearby`'s `worn_by`), by name, "Tip Jar, on Right Hand, takes payment,
+  touchable" (no distance, as they're all where the person is; Where says it), touched, paid, described and read as What people
+  nearby wear's are, their parts a Tab on. Never their HUDs, which only their wearer has. Alt+7 goes back to things nearby.
+- **Their animations** (a person's menu): said whole, "Kestrel is playing 3 animations: stand; one, from Dance Ball, which
+  they're sitting on; one, from something not in view, most likely a HUD of theirs." Second Life's own are named as the
+  viewers name them; another is named when one of hers has its asset (only items she may copy, modify and transfer show it),
+  else counted under what started it: themselves (their viewer: a gesture, a viewer's own AO), a thing here, something worn
+  (theirs or someone else's), or something not in view (others never see a HUD's prims). Radegast's tab also plays and saves
+  someone else's animations; not here.
+
 ### Your profile and notes
 
 `MainForm.MyProfile.cs`. `//profile` with no name (or `//profile me`, or a link to yourself), World > My profile: a window, not modal, the focus in About.
@@ -1384,6 +1532,9 @@ group in Alt+3's My groups, on its Applications key (Claude Opus 5.5, 2026-11-07
 don't let her do is said before anything is asked ("Your roles in Builders don't let you eject members."), from the powers the
 session holds for the group; on the local grid (OpenSim) those are the powers of the role whose title she wears, not of all her
 roles, so the test wears the Owners title first.
+
+My groups starts with a No group tag row ("No group tag, as now" when none is worn), the official viewer's None: Enter on it
+wears no tag. The blind tester looked for it (2026-11-08); until then No group tag was only on each group's menu.
 
 - **Choose your title...**: the titles her roles give her there, the one worn said so ("Queen Bee, worn"); Enter wears one
   ("Your title in Builders is Queen Bee now."), saying when it won't show until she wears that group's tag, which is Wear its tag:
@@ -1732,6 +1883,10 @@ them. Laid out as the build editor is, with the official viewer's About Land tab
   square metres, for sale: L$0 to you; you're on it; its nearest edge 12 metres, three o'clock." (the first time also
   how to start). Escape goes back where Control+L came from. Tab order: the command box, the settings list, Tab (the
   tabs, a list). World > The region's covenant opens it on the Covenant tab and reads that.
+- **A change is said once the region shows it**, asked again each second for up to 10 (`ParcelOps`: a busy region is slow
+  to answer). If it still hasn't on her own land, she hears "Not seen yet: the region hasn't shown ... changed", since it
+  may well have; on someone else's, that only the owner may (2026-11-08: one look after a second told the local grid's own
+  owner, twice in a night's runs, that only the owner could).
 - **The parcel shown is pinned** by its id and region, so a change acts on what she was told about even after walking
   off it; F5 in the list, or `here`, reads the parcel she's on now (and the tab's lists again). Where she is comes
   from the parcel's 4 m cells as the region sent them (`LandRows.Nearest`): on it, and its nearest edge by the clock;
@@ -1817,6 +1972,32 @@ mic. `access_voice_speakers` (off): someone starting to speak said, each at most
 said; `//voice answer` or `//voice decline`. Alt+0 has voice on or off, the mode and how loud residents are (not where
 voice is heard from: Access hears from the avatar's head, having no camera). World audio (objects' sounds, the
 parcel's music and its titles read out) is on unless `--no-sounds`.
+
+**The people in voice** (Radegast's participant list; gap 14, 2026-11-08): Control with the talk key (Control+F4; with
+Scroll Lock or Pause as the talk key, Control+Break, which is what Windows makes of them), World > People in voice, or
+`//voice people` opens a menu where the focus is, the people in voice by name ("Kestrel, speaking, muted", "Pip, at
+0.5", "muted by a moderator"), Right opening a person's actions, the same list as everywhere (Mute in voice or Unmute in
+voice and How loud in voice among them, their letters as always); then Mute everyone else, Unmute everyone and Reconnect
+voice, with no letters, so a letter only ever finds a name. A menu rather than a list that stays open: who's speaking
+changes by the second, and Control+Shift+V says it as it is.
+- **Mute everyone else** (`//voice mute all`; the op `SojournVoice muteOthers`): everyone else in voice muted for her,
+  people who join later too, for this session only. Not put on her block list as one person's Mute in voice is (the
+  official viewer's way, kept): a club's worth of strangers would fill it, and stay silent in every viewer for good.
+  Radegast's Mute all is one by one for the session too. Unmute in voice on someone lets them through (and Mute in voice
+  takes that back, still only for the session). Control+Shift+V says it's on.
+- **Unmute everyone** (`//voice unmute all`): everyone in voice heard again, and voice-only mutes of the people in voice
+  now taken off her block list (all of them heard, as the words say); someone she's blocked stays silent, said by name,
+  since unblocking is its own action.
+- **Reconnect voice** (`//voice reconnect`; `SojournVoice reconnect`): every connection started afresh at once, its
+  backoff back to the first wait, a call keeping its channel; "Reconnecting voice.", then "Voice is back: nearby voice, 3
+  others in it." or, after about 20 s, "Voice hasn't come back yet. It keeps trying by itself." Voice retries on its own
+  every 10 s at most (Radegast's button is for its retries giving up, which ours don't), so this saves the wait or clears
+  what the retries don't. With voice off here, or nowhere yet, it says there's nothing to reconnect.
+- Checked by the scripted step "people in voice, to act on" with `ACCESS_VOICE=1` and without the mixer (nobody else in
+  voice, the connection retrying): the menu, both everyone-actions in `SojournVoice status`, reconnect said and its
+  outcome. Never yet with someone else in voice: muting someone in the menu, a newcomer muted by the spell, and the
+  block list's entries taken off by Unmute everyone want the mixer (`tools/grid.py voice up`, which starts Docker
+  Desktop) or Second Life.
 
 **Sound devices** (`MainForm.Devices.cs`): Alt+0's "Sound output: speakers or headphones" and "Microphone for voice"
 rows are the session's own `speakers` and `microphone` (the VR client's menu sets the same). Enter on one opens the
@@ -2045,8 +2226,39 @@ an object named as a person (a chat relay, a small avatar's speaker) is that per
 left out and caught where repeated: they'd gone out until 2026-11-06, those logs scrubbed and deleted the same way; a
 name of nothing but punctuation (".") is no name to replace, as it landed in every full stop ("ENE.person 23 or left");
 keys, capability URLs, the Windows account's folder and public IP addresses are masked. The assistant's replies and
-what it said about people stay, names replaced. A log from before the records isn't offered. `tools/logcheck` checks
+what it said about people stay, names replaced. A record behind another line's time stamp ("10:00:47 10:00:47 ~words
+...") is read as the record: the console logger writes a line in pieces (stamp, coloured level, text) and a record
+written from another thread between them took the stamp, about 1 in 100 records in a test run (2026-11-08), so it read
+as a plain line and was kept, a one-word line of someone's whole (longer ones the repeat check caught); none were in her
+sent logs. `SessionLog`'s Tee now hands the file whole lines. A log from before the records isn't offered. `tools/logcheck` checks
 the filter on a synthetic log (`dotnet run --project tools/logcheck`; with a path, prints that log as it would go).
+
+### The session itself
+
+Radegast's New window, Log Viewer and Clean Cache (gap 21, 2026-11-08; `MainForm.Session.cs`).
+- **Reading a session's log** (Help > Read a session's log..., `//log`): the sessions' logs, this one first, then earlier
+  ones by day and time (the one before a crash among them; with only one, it opens at once); Enter reads one in a
+  read-only window as a chat log's, at its newest line (Control+F, Control+G, Control+L, F1, Escape). It's the log as
+  Send a log would send it (`LogShare`): the records in words, other people's words left out and their names as person 1,
+  person 2, since the file itself is lines of JSON, and this way she reads exactly what she'd be sending. No token
+  needed. Radegast's Log Viewer is its debug log, live; ours is a snapshot as it opens.
+- **Clear the cache at the next start** (Help, checked while marked; `//clearcache`, `cancel` or the item again to take
+  it back): marked by a file in the data folder, said with its size ("1.1 GB of what Second Life sent ... which comes
+  again as it's needed"), and cleared as the app next starts, in the background before anything uses it (a login waits
+  for it), then "The cache was cleared as Sojourn Access started: 1.1 GB." after arriving. World's Log out, back to the
+  login window, is a next start. At a start rather than at once, as the official viewer and Firestorm do: while logged in
+  the files are in use, and what's loaded stays in memory anyway (Radegast deletes at once). What goes: every grid's
+  folder under `cache/` (pictures, sounds, models, animations and other assets, partial downloads, client-side bakes on
+  grids without server baking). What stays: `cache/render` (the drawing code compiled for this PC, which takes minutes to
+  build again on a PC drawing on the processor), the local grid's `starter.json`, settings, logins, chat logs, logs,
+  the assistant's files; the inventory and names aren't kept on disk anyway. A file in use (another window running) is
+  left and counted. `CacheClear`, started by `Program`.
+- **Another account, in a new window** (World, `//newwindow`): the program again as its own process, at the login window
+  with the grid filled in and the username empty, its agent API on a free port (this one's is taken; the assistant
+  comes in through it). Each window is its own session, sounds and screen reader lines (both read out what arrives, so
+  two accounts in one place are heard twice; F6 in one mutes it). They share the data folder: settings (the last saved
+  wins, and the login form then offers the last account logged in), logs (each its own file), the cache and the
+  assistant's home. Same account twice is the grid's to refuse.
 
 ### Messages to the builders
 
@@ -2093,9 +2305,9 @@ it).
   `MainForm.Favorites.cs` (favourites in the inventory), `MainForm.Backup.cs` (Back up to disk), `StartPlaces.cs` (the Favorites bar's landmarks as start places),
   `MainForm.Places.cs`, `MainForm.Search.cs`, `MainForm.People.cs` (friends, groups, profiles, pay), `MainForm.Groups.cs`,
   `MainForm.GroupPeople.cs` and `MainForm.GroupNotice.cs` (a group's menu, its members and chat, a new notice),
-  `MainForm.Describe.cs` (describing), `MainForm.Parts.cs` and `Linkset.cs` (parts and faces), `MainForm.Huds.cs` (HUD faces and buttons), `MainForm.Place.cs` and
+  `MainForm.Describe.cs` (describing), `MainForm.Parts.cs` and `Linkset.cs` (parts and faces), `MainForm.Pointing.cs` (what a friend points at), `MainForm.TheirThings.cs` (one person's worn things and animations), `MainForm.Huds.cs` (HUD faces and buttons), `MainForm.Place.cs` and
   `PlaceWords.cs` (placing by words), `MainForm.Outfit.cs`, `MainForm.Incognito.cs`, `MainForm.Voice.cs`,
-  `MainForm.Menu.cs` (the menu bar), `MainForm.Builders.cs` and `BuildersLine.cs` (the builders' tab and its relay
+  `MainForm.Menu.cs` (the menu bar), `MainForm.Session.cs` (a session's log, the cache, another window), `MainForm.Builders.cs` and `BuildersLine.cs` (the builders' tab and its relay
   calls), `MainForm.Upload.cs` (uploading and its window), `MainForm.Build.cs`, `BuildRows.cs` and
   `BuildShapes.cs` (the build editor; its settings' words; faces and contacts without a picture), `MainForm.Gestures.cs`, `MainForm.FriendsOnline.cs` (friends online at login as
   one line), `MainForm.Devices.cs` (sound devices), `MainForm.CutLines.cs` (lines cut by typing), `MainForm.Names.cs` (People's
@@ -2447,6 +2659,9 @@ it).
     `SessionHost.App` / `AssistantHost.App`
     ("access", in the sidecar's hello, so its prompt and context line say Sojourn Access and the describe tool is
     offered; null in the VR client, whose prompt and tools are as before).
+  - For what a friend points at and one person's things (2026-11-08), which the VR client gets too and doesn't use: Core's
+    `Agents/Pointing.cs` (others' selection effects, each person's last; `AgentSession.Pointing`), `SojournPeople
+    pointedAt`, `TesselObjects nearby`'s `worn_by`.
   - For HUDs out of sight (2026-11-01): Render's `FrameRenderer.RenderHud` (the HUD pass with no world view;
     `PlanHud` can build without drawing); SojournHud moved from the VR client into Session (`Hud/HudApi.cs` over an
     `IHudScreen`, the client's `HudView` one of them) with `faces`, `buttons`, `save_buttons`, `forget_buttons` and

@@ -54,6 +54,18 @@ public sealed class VoiceConnection
 
     public void ShutDown() => ShuttingDown = true;
 
+    /// <summary>Closed and started again at once, the backoff back to its first wait (VoiceClient.Reconnect). On the
+    /// voice thread.</summary>
+    public void Restart()
+    {
+        if (ShuttingDown || State is St.Disconnect or St.WaitLogout or St.Exit or St.Closed) return;
+        _client.Log($"voice {this}: started again, as asked");
+        _retryWait = 0;   // (Retry adds its first wait to it)
+        _retryAt = DateTime.UtcNow;
+        Problem = null;
+        State = St.Retry;
+    }
+
     /// <summary>SOJOURN_VOICE_LOG=1: log every change of which connection the mic goes out on (tests).</summary>
     static readonly bool SendLog = Environment.GetEnvironmentVariable("SOJOURN_VOICE_LOG") == "1";
 

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using LibreMetaverse;
+using Microsoft.Extensions.Logging;
 using Sojourn.Core.Agents;
 using Vector2 = System.Numerics.Vector2;
 
@@ -666,9 +667,16 @@ public sealed partial class WalkMode
         bool mine = S.Client is { } c && h.Owner == c.Self.AgentID;
         bool seat = S.Region?.PrimById(h.Source) is { } p && b.Linkset?.Contains(p.LocalID) == true;
         bool named = b.SeatName is { } n && h.Name.Trim().Equals(n.Trim(), StringComparison.OrdinalIgnoreCase);
-        Log($"track end heard from {h.Name} ({(seat ? "the seat" : named ? "the seat's name" : mine ? "mine" : "elsewhere")}, "
-            + $"{(h.OwnerOnly ? "to me" : "aloud")}): {h.Text}");
-        if (!b.Sitting || !(seat || named || mine) || !Moving(b) || _vstop != null || now - _trackEndAt < 3000) return;
+        string? skip = !b.Sitting ? "not seated" : !(seat || named || mine) ? "not from the seat or her own things"
+            : !Moving(b) ? $"not moving ({Speed(b):0.0} m/s, {SeatSpeed(2000) ?? 0:0.0} over 2 s)" : _vstop != null ? "already stopping"
+            : now - _trackEndAt < 3000 ? "one just acted on" : null;
+        var heard = $"track end heard from {h.Name} ({(seat ? "the seat" : named ? "the seat's name" : mine ? "mine" : "elsewhere")}, "
+            + $"{(h.OwnerOnly ? "to me" : "aloud")}): {h.Text}; {skip ?? "stopping it"}";
+        Log(heard);
+        // in the session log too: her train's "No Guide found" on 0.1.0.996 (2026-11-08) brought no "Track ends", and
+        // only the walk log could have said why (most likely it had already stopped itself)
+        S.Log.LogInformation("{Line}", heard);
+        if (skip != null) return;
         _trackEndAt = now;
         bool heldUp = DrivenByHolding();
         ReleaseAll();

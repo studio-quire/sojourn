@@ -30,21 +30,46 @@ public sealed partial class WalkMode
     /// <summary>The same for someone or something by id, in the region the person is in; null when it isn't there.</summary>
     public (Vector3d At, float Distance)? Toward(UUID id) => PosOf(id) is { } p ? Toward(p) : null;
 
-    /// <summary>Where someone or something is, in the person's region's frame: in any region in view (a car the beacon
-    /// is on crossing into the next region stays on it: on 0.1.0.877 the beacon was lost 5 s after her partner's car
-    /// crossed out, 2026-11-03), else for a person their place on the map (CoarseLocationUpdate, any region in view).</summary>
-    Vector3? PosOf(UUID id)
+    /// <summary>Where someone or something is, in the person's region's frame (<see cref="See"/>).</summary>
+    Vector3? PosOf(UUID id) => See(id)?.Pos;
+
+    /// <summary>Someone or something seen: where (the person's region's frame), in which region, and how ("copy": the
+    /// region's own object for it; "map": a person's place on the region's map list, to a metre); a copy's velocity as
+    /// last reported (seated, its seat's), metres a second.</summary>
+    readonly record struct Sighting(Vector3 Pos, Sojourn.Core.World.RegionWorld Region, string How, Vector2? Vel = null, int Rank = 0);
+
+    Vector2 ReportedVelocity(Sojourn.Core.World.RegionWorld w, Avatar av)
+    {
+        var v = av.ParentID != 0 && w.Prims.TryGetValue(av.ParentID, out var seat) ? S.Objects.RootOf(w, seat).Velocity : av.Velocity;
+        return new Vector2(v.X, v.Y);
+    }
+
+    /// <summary>Where someone or something is, in any region in view (a car the beacon is on crossing into the next region
+    /// stays on it: on 0.1.0.877 the beacon was lost 5 s after her partner's car crossed out, 2026-11-03). A person: the
+    /// region whose map list (CoarseLocationUpdate) names them is where they are, so its copy of them, else their place
+    /// on that list (ranks 0 and 1); then a copy in a region with no list (2); then one in a region whose list leaves them
+    /// out: one that came in lately (3: a handover over a border can keep someone off both regions' lists for a few
+    /// seconds), else an older one (4), most likely left behind as they crossed out, which the region never killed, and
+    /// which the own region, asked first, used to answer with. A copy seated on something not here yet is no answer: its
+    /// position is only its offset from the seat.</summary>
+    Sighting? See(UUID id)
     {
         if (id == UUID.Zero || S.Region == null) return null;
         var regions = S.VisibleRegions().ToList();
+        Sighting? best = null;
+        int rank = int.MaxValue;
+        void Consider(Sighting s) { if (s.Rank < rank) { rank = s.Rank; best = s; } }
         foreach (var w in regions)
         {
             var off = V(S.FrameOffset(w));
-            if (w.AvatarById(id) is { } av) return V(w.RegionPosition(av)) + off;
-            if (w.PrimById(id) is { } prim) return V(w.RegionPosition(prim)) + off;
+            bool listed = w.Coarse.TryGetValue(id, out var c);
+            if (w.AvatarById(id) is { } av && w.TryRegionPosition(av, out var p))
+                Consider(new Sighting(V(p) + off, w, "copy", ReportedVelocity(w, av), listed ? 0 : !w.ListComplete ? 2 : w.JustArrived(av) ? 3 : 4));
+            if (listed) Consider(new Sighting(V(c) + off, w, "map", Rank: 1));
         }
+        if (best != null) return best;
         foreach (var w in regions)
-            if (w.Coarse.TryGetValue(id, out var c)) return V(c) + V(S.FrameOffset(w));
+            if (w.PrimById(id) is { } prim) return new Sighting(V(w.RegionPosition(prim)) + V(S.FrameOffset(w)), w, "copy");
         return null;
     }
 

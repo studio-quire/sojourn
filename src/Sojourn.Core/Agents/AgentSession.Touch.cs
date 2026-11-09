@@ -1,5 +1,6 @@
 using LibreMetaverse;
 using LibreMetaverse.Packets;
+using Microsoft.Extensions.Logging;
 
 namespace Sojourn.Core.Agents;
 
@@ -144,6 +145,29 @@ public sealed partial class AgentSession
                 for (int i = 0; i < counts.Length; i++)
                     if ((d.Controls & (1u << i)) != 0) counts[i] = Math.Max(0, counts[i] + (d.TakeControls ? 1 : -1));
             }
+        LogControls(e.Simulator, p);
+    }
+
+    // which region took or let go of what, in the log: a vehicle's keys read as let go at a crossing on Second Life
+    // (the blind tester's scooter into Berbera, 2026-11-08) and the log couldn't say which region's word did it.
+    // At most 30 lines a minute: a script taking its controls on a timer would otherwise fill it
+    long _controlsLogMinute;
+    int _controlsLogged;
+
+    void LogControls(Simulator? sim, ScriptControlChangePacket p)
+    {
+        long minute = Environment.TickCount64 / 60_000;
+        if (minute != _controlsLogMinute) { _controlsLogMinute = minute; _controlsLogged = 0; }
+        if (++_controlsLogged > 30) return;
+        string Counts(int[] c)
+        {
+            lock (_kept) return string.Join(" ", Enumerable.Range(0, c.Length).Where(i => c[i] > 0).Select(i => $"{(ScriptControlChange)(1u << i)}{(c[i] > 1 ? $"x{c[i]}" : "")}"));
+        }
+        var what = string.Join("; ", p.Data.Select(d => $"{(d.TakeControls ? "took" : "let go of")} {(ScriptControlChange)d.Controls}{(d.PassToAgent ? " (passed on)" : "")}"));
+        string region = sim?.Name is { Length: > 0 } n ? n : sim?.IPEndPoint.ToString() ?? "?";
+        bool current = Client?.Network.CurrentSim is { } cur && ReferenceEquals(cur, sim);
+        Log.LogInformation("controls: {Region}{Current} {What}; held now: {Kept}{Passed}", region, current ? "" : " (not the current region)", what,
+            Counts(_kept) is { Length: > 0 } k ? k : "none kept", Counts(_passed) is { Length: > 0 } ps ? $", passed on {ps}" : "");
     }
 
     void ResetControlsTaken()

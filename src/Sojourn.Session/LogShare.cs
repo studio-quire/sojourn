@@ -87,6 +87,12 @@ public static class LogShare
     // ---- the filter ---------------------------------------------------------------------------------------------------
 
     static readonly Regex Stamp = new(@"^\d\d:\d\d:\d\d ", RegexOptions.Compiled);
+    // a record inside another line: the console logger writes a line in pieces (its stamp, the coloured level, the rest),
+    // and a record written from another thread between them landed after the stamp ("10:00:47 10:00:47 ~words {...}") or
+    // after the level, so it read as a plain line and was kept, words and all (about 1 record in 100 in a test run of
+    // 2026-11-08; logs written since come in whole lines, SessionLog's Tee, but older ones are on people's PCs). Every
+    // line is cut where a record starts; words that happen to look like one only make a record-like line, left out.
+    static readonly Regex RecordInside = new(@"(?<=.)(?=\d\d:\d\d:\d\d ~\w)", RegexOptions.Compiled);
     static readonly Regex RecordLine = new(@"^(\d\d:\d\d:\d\d) ~(\w+) (\{.*\})\s*$", RegexOptions.Compiled);
     // anything shaped like a record is one, or left out
     static readonly Regex RecordLike = new(@"^\d\d:\d\d:\d\d ~", RegexOptions.Compiled);
@@ -107,7 +113,7 @@ public static class LogShare
     /// started: when the session began, for the first line; app: whose log it is, for the same.</summary>
     public static Result? Filter(string log, DateTime? started = null, string app = "Sojourn Access")
     {
-        var lines = log.Replace("\r", "").Split('\n');
+        var lines = log.Replace("\r", "").Split('\n').SelectMany(l => RecordInside.Split(l)).ToArray();
         if (Format(lines.FirstOrDefault()) < 2) return null;
 
         // entries: a line with a time, and the lines after it without one (a message or a stack trace over lines)

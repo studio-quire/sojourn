@@ -144,7 +144,7 @@ public sealed class WorldHub
             w.SetCoarse(e.Positions);
             if (e.Positions.Count == 0) return;
             foreach (var other in _regions.Values)
-                if (other != w && other.GridKey == gridKey) other.RootElsewhere(e.Positions);
+                if (other != w && other.GridKey == gridKey) other.RootElsewhere(e.Positions, w.Handle);
         });
         client.Network.RegisterCallback(LibreMetaverse.Packets.PacketType.ObjectProperties, (_, e) => Guard(() =>
         {

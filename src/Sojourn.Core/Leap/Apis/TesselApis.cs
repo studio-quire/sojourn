@@ -224,7 +224,7 @@ public sealed class TesselObjects : SessionApi
     public TesselObjects(AgentSession s) : base(s)
     {
         Op("nearby", "{dist=20, limit=40, fetch=true, timeout=4, attachments=false (true adds what other people wear, never HUDs; "
-            + "my own worn things are TesselAgent attachPoints), worn_only=false (only what other people wear), query?, "
+            + "my own worn things are TesselAgent attachPoints), worn_only=false (only what other people wear), worn_by? (an avatar's id: only what they wear), query?, "
             + "scan=false (with query: look through everything in range, not the nearest 200; names not in yet are asked for up to "
             + "the timeout and counted as unnamed), renew? (seconds: scripted objects' names older than this asked again, as a "
             + "script may have renamed them; 0 all of them)} -> {objects, more (in range or matching, past the limit), unnamed}", NearbyAsync);
@@ -253,14 +253,16 @@ public sealed class TesselObjects : SessionApi
         var limit = a.Int("limit", 40);
         var fetch = a.Bool("fetch", true);
         var timeout = TimeSpan.FromSeconds(a.Num("timeout", 4));
-        var wornOnly = a.Bool("worn_only", false);
+        UUID? wornBy = UUID.TryParse(a.Str("worn_by") ?? "", out var by) && by != UUID.Zero ? by : null;
+        var wornOnly = wornBy != null || a.Bool("worn_only", false);
         var attachments = wornOnly || a.Bool("attachments", false);
         var query = a.Str("query")?.ToLowerInvariant();
         var scan = query is not null && a.Bool("scan", false);
         var me = C.Self.SimPosition;
         // every region this agent sees (its own and connected neighbours), as the viewer lists them
         var inRange = S.VisibleRegions()
-            .SelectMany(rw => rw.Prims.Values.Where(p => S.Objects.Listable(rw, p, attachments) && (!wornOnly || p.ParentID != 0))
+            .SelectMany(rw => rw.Prims.Values.Where(p => S.Objects.Listable(rw, p, attachments) && (!wornOnly || p.ParentID != 0)
+                    && (wornBy == null || rw.Avatars.TryGetValue(p.ParentID, out var av) && av.ID == wornBy))
                 .Select(p => (w: rw, p, d: Vector3.Distance(rw.RegionPosition(p) + S.FrameOffset(rw), me))))
             .Where(x => x.d <= dist)
             .OrderBy(x => x.d)

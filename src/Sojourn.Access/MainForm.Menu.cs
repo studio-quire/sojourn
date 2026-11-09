@@ -16,7 +16,7 @@ public sealed partial class MainForm
 {
     readonly MenuStrip _menu = new() { Name = "menu", AccessibleName = "Menu bar", TabStop = false };
     ToolStripMenuItem _sitItem = null!, _flyItem = null!, _runItem = null!, _awayItem = null!, _dndItem = null!, _incognitoItem = null!,
-        _micItem = null!, _muteItem = null!, _timesItem = null!, _recentItem = null!;
+        _micItem = null!, _muteItem = null!, _timesItem = null!, _recentItem = null!, _voicePeopleItem = null!;
 
     void BuildMenu()
     {
@@ -57,8 +57,10 @@ public sealed partial class MainForm
             Later("Highest rating of region...", "//maturity", AskMaturity),
             new ToolStripSeparator(),
             Later("Log out, back to the login window...", "//logout", AskLogOut),   // (no mnemonic, as About Land)
+            Item("Another account, in a new window", "//newwindow", NewWindow),   // (no mnemonic, as About Land)
             new ToolStripSeparator(),
             Item("Who's in &voice", "Control+Shift+V", SayVoice),
+            _voicePeopleItem = Later("People in voice, to act on...", $"Control+{KeyName}", ShowVoicePeople),   // (no mnemonic: its letters are taken)
             _micItem = Item("&Open mic", "Shift+F4", ToggleVoiceMode),
             OutputMenu());
         world.DropDownOpening += (_, _) => WorldShown();
@@ -76,6 +78,7 @@ public sealed partial class MainForm
             Later("P&laces", "Alt+6", () => GoArea(_placesPage)),
             Later("O&bjects", "Alt+7", GoNearby),
             Later("What you wea&r, to touch", "Alt+Shift+7", GoWorn),
+            Later("What someone pointe&d at", "Control+Shift+P", GoPointed),
             Later("&Notices", "Alt+8", () => GoArea(_noticesPage)),
             Later("The &assistant", "Alt+9", () => GoArea(_assistantPage)),
             Later("Se&ttings", "Alt+0", GoSettings),
@@ -121,13 +124,17 @@ public sealed partial class MainForm
             new ToolStripSeparator(),
             Later("&Upload a file...", "Control+U", UploadKey));
 
-        Top("&Help",
+        ToolStripMenuItem clearCache;
+        var help = Top("&Help",
             Later("&Keys", "F1", () => ShowKeys(walk: false)),
             Item("&Slash commands", "//help", () => _ = _cmd.RunAsync("//help")),
             Later("Send a &log to Studio Quire", "//sendlog", SendLog),
+            Later("&Read a session's log...", "//log", ShowSessionLogs),
             Later("&Message the builders (Claude, at Studio Quire)", "Control+Shift+B", GoBuilders),
             Item("&Newer build?", null, () => _ = SayIfNewerBuildAsync(asked: true)),
+            clearCache = Item("&Clear the cache at the next start", "//clearcache", () => _ = ClearCacheWordsAsync("")),
             Item("&About Sojourn Access", "//about", () => _ = _cmd.RunAsync("//about")));
+        help.DropDownOpening += (_, _) => clearCache.Checked = CacheClear.Marked(_opt.BaseDir);
 
         MainMenuStrip = _menu;
     }
@@ -136,6 +143,8 @@ public sealed partial class MainForm
     {
         var top = new ToolStripMenuItem(text) { Name = "menu" + text.Replace("&", "").Replace("-", "") };
         top.DropDownItems.AddRange(items);
+        // no two items on a letter (World had two on N), as the context menus
+        top.DropDownOpened += (_, _) => Mnemonics.Fix(top.DropDown);
         _menu.Items.Add(top);
         return top;
     }
@@ -169,6 +178,7 @@ public sealed partial class MainForm
         _awayItem.Checked = Host?.Session.Presence.Away == true;
         _dndItem.Checked = Host?.Session.Presence.DoNotDisturb == true;
         _incognitoItem.Checked = Host?.Session.Private.On == true;
+        _voicePeopleItem.ShortcutKeyDisplayString = $"Control+{KeyName}";
         _micItem.Text = Voice?.Mode == Sojourn.Session.Voice.VoiceMode.OpenMic ? $"Push to talk (hold {KeyName}) instead of an &open mic" : $"&Open mic instead of push to talk (hold {KeyName})";
     }
 

@@ -84,6 +84,11 @@
 //                                                         Land's step: a parcel divided off and sold to one buyer, passes
 //                                                         sold on one, and tidy: every parcel not its own reclaimed and
 //                                                         the region joined into one again
+//   point UUID | point clear | point UUID as SOURCE       select a thing as the official viewer does on a right click:
+//                                                         a PointAt and a LookAt of type select at it (clear: let go);
+//                                                         as SOURCE: both claiming another avatar sent them
+//   beam UUID                                             a building beam at it (as texturing a selection sends)
+//   animate NAME | animate stop NAME                      play or stop one of Second Life's own animations (dance1...)
 //   pos | whereis | quit                                  "REGION <x, y, z> heading DEG" (as the region has it)
 using System.Collections.Concurrent;
 using System.Net;
@@ -277,6 +282,19 @@ static class Program
                     packet.MessageBlock.RegionID = client.Network.CurrentSim.ID;
                     client.Network.SendPacket(packet);
                     return "ok";
+                }
+            case "point": return Point(rest);
+            case "beam":
+                client.Self.BeamEffect(client.Self.AgentID, UUID.Parse(rest), Vector3d.Zero, new Color4(1f, 1f, 1f, 1f), 1f, UUID.Random());
+                return "ok";
+            case "animate":
+                {
+                    bool stop = rest.StartsWith("stop ");
+                    var name = (stop ? rest[5..] : rest).Trim().ToUpperInvariant();
+                    var f = typeof(Animations).GetField(name);
+                    if (f?.GetValue(null) is not UUID anim) return $"ERR no animation {name}";
+                    if (stop) client.Self.AnimationStop(anim, true); else client.Self.AnimationStart(anim, true);
+                    return $"{(stop ? "stopped" : "playing")} {name.ToLowerInvariant()} {anim}";
                 }
             case "pos": case "whereis":
                 {
@@ -614,6 +632,40 @@ static class Program
         client.Objects.AttachObject(client.Network.CurrentSim, box.LocalID, AttachmentPoint.LeftShoulder, Quaternion.Identity);
         await Task.Delay(1500);
         return $"pet {name} id {box.ID} local {box.LocalID}";
+    }
+
+    static readonly UUID pointId = UUID.Random(), lookId = UUID.Random();
+
+    /// <summary>point UUID [as SOURCE] | point clear: what the official viewer sends while its person has a thing selected
+    /// (LLSelectMgr::updatePointAt): a PointAt and a LookAt, both of type select, at it; clear when the selection ends.</summary>
+    static string Point(string rest)
+    {
+        if (rest.Trim() == "clear")
+        {
+            client.Self.PointAtEffect(client.Self.AgentID, UUID.Zero, Vector3d.Zero, PointAtType.Clear, pointId);
+            client.Self.LookAtEffect(client.Self.AgentID, UUID.Zero, Vector3d.Zero, LookAtType.Clear, lookId);
+            return "cleared";
+        }
+        var w = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var target = UUID.Parse(w[0]);
+        if (w.Length == 3 && w[1] == "as")
+        {
+            // someone else's pointing, forged: the block and the data both name them
+            var source = UUID.Parse(w[2]);
+            var data = new byte[57];
+            Buffer.BlockCopy(source.GetBytes(), 0, data, 0, 16);
+            Buffer.BlockCopy(target.GetBytes(), 0, data, 16, 16);
+            data[56] = (byte)PointAtType.Select;
+            client.Network.SendPacket(new ViewerEffectPacket
+            {
+                AgentData = { AgentID = client.Self.AgentID, SessionID = client.Self.SessionID },
+                Effect = new[] { new ViewerEffectPacket.EffectBlock { AgentID = source, Color = new byte[4], Duration = float.MaxValue / 4, ID = UUID.Random(), Type = (byte)EffectType.PointAt, TypeData = data } },
+            });
+            return $"pointed as {source}";
+        }
+        client.Self.PointAtEffect(client.Self.AgentID, target, Vector3d.Zero, PointAtType.Select, pointId);
+        client.Self.LookAtEffect(client.Self.AgentID, target, Vector3d.Zero, LookAtType.Select, lookId);
+        return $"pointed at {target}";
     }
 
     static string Unpet(string name)

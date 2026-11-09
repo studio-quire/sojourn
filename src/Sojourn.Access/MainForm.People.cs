@@ -18,6 +18,7 @@ public sealed partial class MainForm
     sealed record Friend(UUID Id, string Name, bool Online);
     sealed record MyGroup(UUID Id, string Name);
     static readonly object NoGroups = new();
+    static readonly object NoTagRow = new();
 
     /// <summary>The people page: nearby, friends and groups, each labelled (Tab moves between them).</summary>
     void BuildPeoplePage()
@@ -31,7 +32,9 @@ public sealed partial class MainForm
         GroupItem("Group &chat", g => StartGroupChat(g));
         GroupItem("&About the group", g => _ = GroupInfoAsync(g.Id, g.Name));
         GroupItem("&Wear its tag", g => _ = ActivateGroupAsync(g.Id, g.Name));
-        GroupItem("&No group tag", g => _ = ActivateGroupAsync(UUID.Zero, "no group"));
+        // (its own item, not the group's: also the No group tag row's)
+        var noTagItem = new ToolStripMenuItem("&No group tag", null, (_, _) => _ = ActivateGroupAsync(UUID.Zero, "no group"));
+        _groupMenu.Items.Add(noTagItem);
         GroupItem("Choose your &title...", g => _ = ChooseTitleAsync(g));
         GroupItem("&Members...", g => _ = GroupPeopleAsync(g, chat: false));
         GroupItem("Who's in its c&hat...", g => _ = GroupPeopleAsync(g, chat: true));
@@ -52,8 +55,8 @@ public sealed partial class MainForm
         _groupMenu.Items.Add(newGroup);
         _groupMenu.Opening += (_, _) =>
         {
-            bool group = _groups.FocusedItem?.Tag is MyGroup;
-            foreach (ToolStripItem item in _groupMenu.Items) item.Visible = group || item == newGroup;
+            bool group = _groups.FocusedItem?.Tag is MyGroup, noTag = _groups.FocusedItem?.Tag == NoTagRow;
+            foreach (ToolStripItem item in _groupMenu.Items) item.Visible = group || item == newGroup || (noTag && item == noTagItem);
             if (_groups.FocusedItem?.Tag is not MyGroup g || Host?.Session.State.Groups.TryGetValue(g.Id, out var now) != true) return;
             noticesItem.Checked = now.AcceptNotices;
             listedItem.Checked = now.ListInProfile;
@@ -70,6 +73,7 @@ public sealed partial class MainForm
         {
             if (e.KeyCode == Keys.F5) { e.Handled = true; RefreshFriendsAndGroups(said: true, into: _groups); }
             else if (e.KeyCode == Keys.Enter && _groups.FocusedItem?.Tag is MyGroup g) { e.Handled = e.SuppressKeyPress = true; StartGroupChat(g); }
+            else if (e.KeyCode == Keys.Enter && _groups.FocusedItem?.Tag == NoTagRow) { e.Handled = e.SuppressKeyPress = true; _ = ActivateGroupAsync(UUID.Zero, "no group"); }
         };
 
         var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3 };
@@ -113,7 +117,11 @@ public sealed partial class MainForm
             .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList();
         if (!_groups.Focused || into == _groups)
         {
-            Fill(_groups, groups.Select(g => ($"{g.Name}{(g.Id == c.Self.ActiveGroup ? ", tag worn" : "")}", g.Id.ToString(), (object)g)).ToList(), "In no groups. The Applications key: New group.");
+            // the official viewer's None row first (the blind tester looked for it, 2026-11-08: the menu's No group tag
+            // was on every group's menu, where nobody would look), Enter on it wearing no tag
+            var rows = groups.Select(g => ($"{g.Name}{(g.Id == c.Self.ActiveGroup ? ", tag worn" : "")}", g.Id.ToString(), (object)g)).ToList();
+            if (rows.Count > 0) rows.Insert(0, (c.Self.ActiveGroup == UUID.Zero ? "No group tag, as now" : "No group tag", "none", NoTagRow));
+            Fill(_groups, rows, "In no groups. The Applications key: New group.");
             // (a tag, so its Applications key opens the menu, with New group alone)
             if (groups.Count == 0 && _groups.Items.Count == 1) _groups.Items[0].Tag = NoGroups;
         }

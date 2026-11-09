@@ -36,7 +36,8 @@ public sealed partial class MainForm
     }
 
     /// <summary>What the list is named: what it shows, and that a filter is on, so arriving in it says why it's short.</summary>
-    string ObjectsName => (ShowingWorn ? "What you wear" : ShowingOthers ? "What people nearby wear" : "Objects nearby") + (ObjectsFilter is { } f ? $", with {f}" : "");
+    string ObjectsName => (ShowingWorn ? "What you wear" : ShowingOthers ? "What people nearby wear" : ShowingOne && _wornBy is { } one ? WornByChoice(one.Name)
+        : "Objects nearby") + (ObjectsFilter is { } f ? $", with {f}" : "");
 
     void BuildObjectsFilter()
     {
@@ -105,18 +106,21 @@ public sealed partial class MainForm
     {
         if (t.Hud) return $"{t.Name}, {t.Text}";
         var touch = t.Sit ? ", can sit" : t.Touch || t.PartTouch ? ", touchable" : "";
+        // (one person's things are all where they are: Where says it)
+        if (t.WornBy != UUID.Zero && ShowingOne) return $"{t.Name}, on {t.Point}{(t.Money ? ", takes payment" : "")}{touch}";
         return t.WornBy != UUID.Zero
             ? $"{t.Name}, worn by {t.WornByName} on {t.Point}, {_ops.Where(t.Pos)}{(t.Money ? ", takes payment" : "")}{touch}"
-            : $"{t.Name}, {_ops.Where(t.Pos)}{DealWords(t)}{touch}";
+            : $"{t.Name}, {_ops.Where(t.Pos)}{DealWords(t)}{touch}{PointedMark(t.Id)}";
     }
 
     string ObjectsEmpty(string? filter) => filter != null ? $"Nothing here has {filter} in its name, description or floating text. Control+F, then Escape, clears the filter."
-        : ShowingWorn ? "Nothing worn here yet." : ShowingOthers ? "Nobody nearby is wearing anything that's in view." : "Nothing nearby.";
+        : ShowingWorn ? "Nothing worn here yet." : ShowingOthers ? "Nobody nearby is wearing anything that's in view." : ShowingOne ? WornByEmpty : "Nothing nearby.";
 
     string ObjectsCount(List<PersonOps.Thing> things, PersonOps.Nearby page, string? filter)
     {
         if (things.Count == 0) return ObjectsEmpty(filter);
         if (ShowingWorn && filter == null) return WornCount(things);
+        if (ShowingOne && filter == null) return WornByCount(things.Count);
         var more = page.More > 0 ? $", {page.More} more further on" : "";
         var unnamed = filter != null && page.Unnamed > 0 ? $"; {page.Unnamed} in range have no name from Second Life yet, F5 looks again" : "";
         return (filter != null ? $"{things.Count} found" : $"{things.Count} objects") + more + unnamed + ".";

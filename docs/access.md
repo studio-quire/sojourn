@@ -775,6 +775,50 @@ On two of her logs (our words). What's built from it is in `docs/access-app.md` 
 - She wanted a way to delete for good, with the Trash so full: Delete on something in the Trash already does, and
   Empty the Trash (on the Trash's Applications key, or `//emptytrash`). Worth telling her.
 
+### A scooter trip and a train that lost its guide (0.1.0.996, the blind tester, 2026-11-08)
+
+Two logs with notes (our words). Her typed commands aren't in a log, so what she asked for is read from the answers.
+- **A trip after her partner** (log `tester-20261109T000242-e7edba`, 18:38-19:02): each on a vehicle, she on a scooter, he
+  on a motorbike, through nine regions from Concinna to Dicycla, she driving after him by `//follow` seated (with a gap of 3 metres, by
+  her word afterwards). She found it
+  hard to follow him and felt her steering weaved. What the log shows: by the look of it, twice it ran into something
+  beside the road and, not moving, let go (once a thing 2 m ahead; later she told him the scooter wasn't moving), and
+  once she was stuck against a wall at the water's edge for two minutes. At the crossing into Berbera (18:52:35) it said he was getting away 289 metres off
+  (her position, mid-crossing, in the frame of the region she'd left: 918 said 276 and 226 the same way), said a walk's
+  "Blocked.", and ended two seconds later because the scooter's keys read as let go; they stayed so, `//follow` giving
+  only a beacon, until she stood and sat again two minutes later. At 18:55, just after he crossed into Diloba 20-30 m
+  ahead, her session had him in no region in view nor on the map within 5 s, so it let go and stopped, and `//follow`
+  with his name found nobody 20 s later (by then he may have gone on past the regions in view). Why it couldn't see him
+  isn't in the log; why the keys read as let go (the scooter's script, Second Life's word at the crossing, or our count)
+  isn't either. And the log couldn't show the steering at all: driving after someone wrote its lines only to a debug file, and Send a log left out every line
+  naming her scooter (166 lines with words left out, the answers among them), its name most likely being in an IM she was
+  sent. Done since (`docs/access-app.md` > Driving after someone): its lines in the session log, the seat's name on a line
+  of its own; the controls scripts take and let go of logged, by region; over a crossing the keys held as they were until
+  the seat is sent, nothing decided or said meanwhile, and no "Blocked."; keys reading as let go tolerated for 10 s after
+  a crossing, then said with the crossing and that sitting again usually gives them back; `//stand` ending it in its own
+  words (it said the vehicle had let go of her keys). Then (`docs/access-app.md` > Driving after someone > Losing sight
+  of them, Why it couldn't see him): losing sight of him, it drives on where he went, a bounded way (over a border, 25 m into the next region), says
+  so, and picks him up again or says it couldn't; a copy of him in a region whose list leaves him out (the one left where
+  he crossed out) no longer counts, nor one on a seat not sent; Core no longer drops a copy as a ghost in its first 12 s in
+  a region (it may have dropped the one Diloba had just sent); the draw distance and the neighbours ruled out (Diloba was
+  connected); the aim close behind him no longer a point a metre or two ahead (a likely cause of the weave at her 3 m
+  gap); the keys a script takes counted in the order they come (they were counted in any order, so a release and a take
+  close together, as at a crossing, could leave them untaken: a likely cause of her keys reading as let go). Open: which of the
+  three it was (her next log's "lost sight" line says what each region had of him), whether the aim fix settles the
+  weave and the run-ins beside the road (the convoy lines say where it aimed), and whether the keys now stay over a
+  crossing (the `controls:` lines show each region's word).
+- **"No sensor"** (log `tester-20261108T152458-7ace75`, 10:01-10:24): a GTFO freight run on her train Zephyr from
+  Neumoegen toward Crenulate. In Idia, at 13-16 m/s, the train itself said in chat that it found no guide and idled;
+  Access said "Stopped." (its speed line: the train had stopped itself before the track-end stop could act). Her note
+  means that message, not anything of Access's: nothing of ours went quiet. She re-railed, flipped it and set off again
+  at the lowest throttle, and the train said the same within seconds at the same spot, so it wasn't speed. Its sensor
+  looks for rails named Guide; the log's rails show the line she was on, west along Idia toward Jubata, with Guides up
+  to about 12 m short of the border and nothing the app knew going on from there, the nearest rails past the border
+  Alternate Guides (the name a switch gives the way it isn't set for). So the track's, most likely a switch at or past
+  the border set for another line, or a gap. Whether that line was the way to Crenulate or a yard's isn't clear: a
+  Ribeata switch said 65 m ahead was set to the branch toward a private railyard, and Idia's own stands (described only
+  by numbers) were met as she went. A question for her partner.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -830,6 +874,11 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   switches that change at once and changes that ask first right; are the rows' words clear ("Damage allowed" rather
   than the viewer's "Safe (no damage)"); is Control+L a good key; divide and join by compass words or from her facing?
   And whether the world going much softer under a beacon is right.
+- What a friend points at (built 2026-11-08 from Radegast's Master Controls; nothing reported): does her partner or a friend
+  right-click things in their own viewer to show her, and do "... points at ..." and Control+Shift+P to go there do what Master
+  Controls did for her? Should whose pointing she hears be remembered for next time (it lasts the session now), and should a
+  pointing make a sound too? Would she use a Point at of her own, her avatar's arm pointing at what she has selected so a sighted
+  friend sees which thing she means (Radegast's; not built)? On a person's menu, are What they wear and Their animations any use?
 - Display names in fancy letters or symbols (built 2026-11-08 from reasoning; nothing reported): has anyone's come
   through as nothing or nonsense, here or in Radegast? Access now says them in plain letters, the username when there
   are none; Alt+0's People's names also has the display name and username (Radegast's usual), as written, or the
@@ -963,7 +1012,20 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   (Control+O to open one in place of the text, Control+Shift+S to save a copy)? In a notecard, is Control+Shift+V a good key
   for putting in what she copied in the inventory, and Delete in the list for removing a thing at the next save?
 - Voice: does she use voice chat? Is F4 held a good talk key (Scroll Lock, Pause and F12 are choices), and would she
-  want who starts speaking said by itself (off now; Ctrl+Shift+V says it on asking)?
+  want who starts speaking said by itself (off now; Ctrl+Shift+V says it on asking)? The people in voice (2026-11-08):
+  Control+F4 opens them as a menu to act on; is a menu right, or would she rather a list that stays, as Radegast's tab?
+  Mute everyone else lasts the session and stays off her block list (Radegast's mutes are for the session too; one
+  person's Mute in voice is kept, as the official viewer does): is that what she'd expect? And Unmute everyone takes
+  kept voice mutes of the people there off too: right, or should it leave the ones she made one by one?
+- Radegast's Alt+number keys where ours differ (from the gaps list, 2026-11-07): Alt+3 is People and Alt+6 Places here,
+  against Radegast's Groups and Map; Alt+8 and Alt+9 are Notices and the assistant, against Media and Voice; there's no
+  key to her groups (People's third list, Alt+3 then Alt+G). Has any of that tripped her, and would she want Radegast's
+  numbers back, or a key to Groups?
+- Her routes: do any use Radegast's `//thread`, `//threads` or `//kill`? They work now (a route goes on past a
+  `//thread` line at once; `//kill` stops a route, a walk, following and pauses), but only from Radegast's source.
+- Read a session's log (Help, `//log`) shows it as Send a log would send it, other people's words left out: enough for
+  her, or would she rather read her own session whole? Does she use a second account (World's Another account, in a
+  new window, as Radegast's New window)?
 - Groups (after the build with running one, 2026-11-08): does she, or anyone she knows, run a group or a club from Access, and
   what would they reach for next: making a role and its powers, or the group's settings (charter, who may join, fee)? A notice
   with something attached now waits in Notices with Keep as its first key, rather than passing as a line: right, or would she

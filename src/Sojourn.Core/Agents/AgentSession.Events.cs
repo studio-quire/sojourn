@@ -37,6 +37,30 @@ public sealed partial class AgentSession
     }
 
 
+    /// <summary>A script taking and letting go of the keys, counted in the order the regions sent it, as the viewer counts
+    /// (LLAgent's controls-taken counts): a release then a take, as a script takes them again, counted the other way
+    /// round leaves them untaken. LibreMetaverse registers its own handler for the packet as async, and its packet events
+    /// run every handler of a type async if any one is, each packet a work item of its own, in any order: on 2026-11-08 a
+    /// kart's take, sent after two releases, was counted first, so it read as not driven, and a vehicle's keys reading as
+    /// let go at a crossing on Second Life may have been the same. So its handler goes and comes back in order, ours too.</summary>
+    void WireScriptControls(GridClient c)
+    {
+        var type = global::LibreMetaverse.Packets.PacketType.ScriptControlChange;
+        EventHandler<PacketReceivedEventArgs>? theirs = null;
+        try
+        {
+            if (typeof(AgentManager).GetMethod("ScriptControlChangeHandler", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic) is { } m)
+            {
+                theirs = (EventHandler<PacketReceivedEventArgs>)Delegate.CreateDelegate(typeof(EventHandler<PacketReceivedEventArgs>), c.Self, m);
+                c.Network.UnregisterCallback(type, theirs);
+            }
+        }
+        catch (Exception e) { theirs = null; Log.LogWarning("controls: LibreMetaverse's own handler not found ({Error}): a script's keys may be counted out of order", e.Message); }
+        if (theirs == null) Log.LogWarning("controls: LibreMetaverse's own handler not found: a script's keys may be counted out of order");
+        c.Network.RegisterCallback(type, (_, e) => Guard("controls", () => OnScriptControl(e)), false);
+        if (theirs != null) c.Network.RegisterCallback(type, theirs, false);
+    }
+
     void WireEvents(GridClient c)
     {
         c.Self.ChatFromSimulator += (_, e) => Guard("chat", () => OnChat(c, e));
@@ -44,7 +68,7 @@ public sealed partial class AgentSession
         c.Self.ScriptDialog += (_, e) => Guard("dialog", () => OnScriptDialog(c, e));
         // from the packet, not LibreMetaverse's ScriptQuestion event: that drops the experience a question comes from
         c.Network.RegisterCallback(global::LibreMetaverse.Packets.PacketType.ScriptQuestion, (_, e) => Guard("question", () => OnScriptQuestion(c, e)));
-        c.Network.RegisterCallback(global::LibreMetaverse.Packets.PacketType.ScriptControlChange, (_, e) => Guard("controls", () => OnScriptControl(e)), false);   // in order: a release then a take
+        WireScriptControls(c);
         c.Self.LoadURL += (_, e) => Guard("loadurl", () => OnLoadUrl(e));
         c.Self.AlertMessage += (_, e) => Guard("alert", () => OnAlert(c, e));
         c.Self.TeleportProgress += (_, e) => Guard("teleport", () => OnTeleport(e));
@@ -81,6 +105,7 @@ public sealed partial class AgentSession
         Ears.Wire(c);
         Look.Wire(c);
         Anims.Wire(c);
+        Pointing.Wire(c);
         Safety.Wire(c);
         CrossingGuard.Attach(c, Log, msg => Notify.Add("CrossingFailed", "notify", msg, Notifications.None));
         SelfUpdateGuard.Attach(c, Log);

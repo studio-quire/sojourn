@@ -191,19 +191,30 @@ public sealed partial class ParcelOps
             }
         var want = Describe(p);
         p.Update(c, sim, false);
-        await Task.Delay(1000, ct);
-        var (_, after) = await ParcelAsync(new JsonObject { ["local_id"] = p.LocalID }, ct);
-        var got = Describe(after);
-        // the region ignores changes I'm not allowed to make, without a word: say so
         var keys = new (string Arg, string Field)[]
         {
             ("name", "name"), ("desc", "desc"), ("music_url", "music_url"), ("media_url", "media_url"), ("landing", "landing"),
             ("options", "options"), ("group_id", "group_id"), ("pass_price", "pass"), ("pass_hours", "pass"),
             ("auto_return_minutes", "auto_return_minutes"), ("see_avatars", "see_avatars"), ("category", "category"),
         };
-        var refused = keys.Where(k => a.Has(k.Arg) && !JsonNode.DeepEquals(want[k.Field], got[k.Field])).Select(k => k.Arg).Distinct().ToList();
+        // asked again each second until the region shows the change, for up to 10: a busy region can take a few (one look
+        // after a second told the local grid's own owner, under load, that only the owner may, twice in a night's runs)
+        Parcel after;
+        JsonObject got;
+        List<string> refused;
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        do
+        {
+            await Task.Delay(1000, ct);
+            (_, after) = await ParcelAsync(new JsonObject { ["local_id"] = p.LocalID }, ct);
+            got = Describe(after);
+            refused = keys.Where(k => a.Has(k.Arg) && !JsonNode.DeepEquals(want[k.Field], got[k.Field])).Select(k => k.Arg).Distinct().ToList();
+        } while (refused.Count > 0 && DateTime.UtcNow < until);
+        // the region ignores changes I'm not allowed to make, without a word: say so (on my own land, it's being slow)
         if (refused.Count > 0)
-            throw new LeapError($"the region didn't change {string.Join(", ", refused)}: only the parcel's owner (or a group member with the powers) may (owner {NameOf(after.OwnerID)})");
+            throw new LeapError(after.OwnerID == c.Self.AgentID
+                ? $"the region hasn't shown {string.Join(", ", refused)} changed after 10 seconds: it may be busy; look again in a moment"
+                : $"the region didn't change {string.Join(", ", refused)}: only the parcel's owner (or a group member with the powers) may (owner {NameOf(after.OwnerID)})");
         return got;
     }
 
@@ -393,11 +404,19 @@ public sealed partial class ParcelOps
         }
         if (map.Count > MaxListed) throw new LeapError($"a parcel's list holds at most {MaxListed}");
         SendList(sim, p.LocalID, which, map.Values.ToList());
-        await Task.Delay(800, ct);
-        var after = (await ListAsync(sim, p, which, ct)).Select(e => e.AgentID).ToHashSet();
-        var missed = who.Where(id => after.Contains(id) != add).ToList();
+        // asked again until the list shows it, for up to 10 seconds (a busy region: UpdateAsync)
+        List<UUID> missed;
+        var until10 = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        do
+        {
+            await Task.Delay(800, ct);
+            var after = (await ListAsync(sim, p, which, ct)).Select(e => e.AgentID).ToHashSet();
+            missed = who.Where(id => after.Contains(id) != add).ToList();
+        } while (missed.Count > 0 && DateTime.UtcNow < until10);
         if (missed.Count > 0)
-            throw new LeapError($"the region didn't change the {(ban ? "banned" : "allowed")} list: only the parcel's owner (or a group member with the powers) may (owner {NameOf(p.OwnerID)})");
+            throw new LeapError(p.OwnerID == c.Self.AgentID
+                ? $"the region hasn't shown the {(ban ? "banned" : "allowed")} list changed after 10 seconds: it may be busy; look again in a moment"
+                : $"the region didn't change the {(ban ? "banned" : "allowed")} list: only the parcel's owner (or a group member with the powers) may (owner {NameOf(p.OwnerID)})");
         var res = await AccessAsync(new JsonObject { ["local_id"] = p.LocalID }, ct);
         if (!ban && add && (p.Flags & ParcelFlags.UseAccessList) == 0)
             res["note"] = "the allowed list only keeps others out once the parcel is closed to it (set options access_list: true)";
