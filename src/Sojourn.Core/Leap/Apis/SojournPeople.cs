@@ -114,9 +114,10 @@ public sealed class SojournPeople : SessionApi
             WhereFriendAsync);
 
         // a group's chat
-        Op("groupChat", "{group? (id or name)} -> one group's {chat_on, snoozed_until?, in_chat, i_moderate, members: [{id, name, moderator, "
-            + "text_stopped}]}, or every group's {chat_on, snoozed_minutes_left?}", a =>
-            a.Has("group") || a.Has("group_id") || a.Has("name") ? gc.Info(gc.Group(a)) : gc.List());
+        Op("groupChat", "{group? (id or name), join?} -> one group's {chat_on, snoozed_until?, in_chat, i_moderate, members: [{id, name, moderator, "
+            + "text_stopped}]} (join: into its chat first, as opening its window does, so who's in it shows), or every group's {chat_on, "
+            + "snoozed_minutes_left?}", async (a, ct) =>
+            a.Has("group") || a.Has("group_id") || a.Has("name") ? await gc.InfoAsync(gc.Group(a), a.Bool("join", false), ct) : gc.List());
         Op("snoozeGroupChat", "{group, minutes? (15 by default; 0 ends it)} -> group: its lines aren't shown until then, and the first "
             + "after it brings the chat back (Firestorm's snooze)", a => gc.Snooze(gc.Group(a), a.Num("minutes")));
         Op("setGroupChat", "{group, on} -> group: receive this group's chat or not (off: its chat is left and stays left; kept on the "

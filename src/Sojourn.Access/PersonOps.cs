@@ -1,8 +1,11 @@
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using LibreMetaverse;
+using Microsoft.Extensions.Logging;
 using Sojourn.Core;
 using Sojourn.Core.Agents;
 using Sojourn.Core.Leap;
+using Sojourn.Core.World;
 
 namespace Sojourn.Access;
 
@@ -32,13 +35,20 @@ public sealed class PersonOps(AgentSession s)
         args ??= new JsonObject();
         args["op"] = op;
         if (!s.Api.ApiMap.TryGetValue(pump, out var api) || !api.Ops.TryGetValue(op, out var handler))
-            return Json.Error($"{pump}.{op} isn't here");
+        {
+            s.Log.LogWarning("person op {Pump}.{Op} isn't here", pump, op);
+            return Json.Error(Fault);
+        }
         if (api.NeedsSession && !s.Online) return Json.Error(NotIn);
-        try { return await handler.Run(args, ct) as JsonObject ?? new JsonObject(); }
-        catch (LeapError e) { return Json.Error(e.Message); }
+        try { return Logged(pump, op, await handler.Run(args, ct) as JsonObject ?? new JsonObject()); }
+        catch (LeapError e) { return Logged(pump, op, Json.Error(e.Message)); }
         catch (NotConnected) { return Json.Error(NotIn); }
         catch (OperationCanceledException) { throw; }
-        catch (Exception e) { return Json.Error($"{e.GetType().Name}: {e.Message}"); }
+        catch (Exception e)
+        {
+            s.Log.LogWarning(e, "person op {Pump}.{Op} threw", pump, op);
+            return Json.Error(Fault);
+        }
     }
 
     /// <summary>Through the dispatcher and its gate (the person's confirmation for spending, giving, deleting).</summary>
@@ -46,14 +56,73 @@ public sealed class PersonOps(AgentSession s)
     {
         args ??= new JsonObject();
         args["op"] = op;
-        try { return await s.Api.CallAsync(pump, args, reply: true, TimeSpan.FromSeconds(150), ct) as JsonObject ?? new JsonObject(); }
+        try { return Logged(pump, op, await s.Api.CallAsync(pump, args, reply: true, TimeSpan.FromSeconds(150), ct) as JsonObject ?? new JsonObject()); }
         catch (NotConnected) { return Json.Error(NotIn); }
+    }
+
+    /// <summary>An op's error as it came, in the log: what the person hears is <see cref="Words"/>' version of it.</summary>
+    JsonObject Logged(string pump, string op, JsonObject r)
+    {
+        if (r["error"] is JsonValue v && v.TryGetValue<string>(out var e)) s.Log.LogInformation("person op {Pump}.{Op}: {Error}", pump, op, e);
+        return r;
     }
 
     /// <summary>Why an op can't run out of world: logging in again after a drop is said as that.</summary>
     string NotIn => s.WantsOnline ? "not in world right now; logging in again" : "not logged in";
 
-    public static string? Error(JsonObject r) => r["error"] is JsonValue v && v.TryGetValue<string>(out var e) ? e : null;
+    /// <summary>Said for a fault of ours (an op missing, an exception, arguments the op refused): the detail is in the log.</summary>
+    const string Fault = "something went wrong inside Sojourn Access (the log has the details)";
+
+    /// <summary>An op's error in the person's words (<see cref="Words"/>), or null if it went through.</summary>
+    public static string? Error(JsonObject r) => r["error"] is JsonValue v && v.TryGetValue<string>(out var e) ? Words(e) : null;
+
+    /// <summary>
+    /// The one place an op's error becomes what the person hears. The ops' errors are written for the assistant and the
+    /// agent API: from the avatar's side ("I'm not in that group", "isn't mine"), naming arguments and other ops ("give
+    /// group_id", "(TesselInventory copy)") and ids. Here they turn to the person's side, ids and API hints left out (the
+    /// log keeps the error as it came: <see cref="Logged"/>), and an error that's only about arguments says it's ours.
+    /// Idempotent, so text already in their words passes through.
+    /// </summary>
+    public static string Words(string e)
+    {
+        var w = e;
+        // ids: "no item <id> in my inventory" says no such item; elsewhere the id just goes
+        w = Regex.Replace(w, $@"\bno (inventory )?(item or folder|item|folder|object) {Id}", "no such $2");
+        w = Regex.Replace(w, $@"\bhas id {Id}", "has that id");
+        w = Regex.Replace(w, $@"\bcalled {Id}", "called that");
+        w = Regex.Replace(w, $@"(:| for| of)? ?\(?""?{Id}""?\)?", "");
+        // an op's name leading ("requestSit could not find the sit target"), an argument's naming the value refused
+        // ("agent_limit: at most 40 here")
+        w = Regex.Replace(w, $@"^{Api}\s+(?=could not)", "");
+        w = Regex.Replace(w, $@"^{Arg}: (?!.*{Arg})", "");
+        w = Regex.Replace(w, @"\s*\(HTTP \d+\)", "");
+        // a clause or bracket naming an API or another op ("(TesselInventory copy)", ": find their id with TesselAgent
+        // findAvatar") goes; one only about arguments ("; give group_id") too
+        w = Regex.Replace(w, $@"\s*\([^()]*{Api}[^()]*\)", "");
+        w = Regex.Replace(w, $@"[:;,] [^:;,()]*{Api}[^:;,()]*", "");
+        w = Regex.Replace(w, $@"; give {Arg}( or {Arg})*", "");
+        // the avatar's side to the person's: only the phrases the ops use, never a bare I, me or my, which would turn
+        // the names in the error too ("Read me" isn't a landmark, "I Love SL" isn't worn)
+        w = Regex.Replace(w, @"\bI'm (not|in)\b", "you're $1");
+        w = Regex.Replace(w, @"\bI (can't|don't)\b", "you $1");
+        w = Regex.Replace(w, @"\bgroup's I have\b", "group's you have");
+        w = Regex.Replace(w, @"\bmy (inventory|groups|friends|roles|block list|land's)\b", "your $1");
+        w = Regex.Replace(w, @"\bof mine\b", "of yours");
+        w = Regex.Replace(w, @"\b(isn't|all be|to be) mine\b", "$1 yours");
+        w = Regex.Replace(w, @"\b(rights for|seat|below) me\b", "$1 you");
+        w = Regex.Replace(w, @"^that's me$", "that's you");
+        w = Regex.Replace(w, @"\s{2,}", " ").Trim();
+        // what's left still names an op, or is about an argument ("need item_id", "folder_id isn't a folder"): nothing
+        // the person can act on, so it's said as ours (an object's name with an underscore elsewhere stays)
+        if (w.Length == 0 || Regex.IsMatch(w, Api) || Regex.IsMatch(w, $@"^{Arg}\b|\b(need|give) (the )?(worn )?{Arg}")) return Fault;
+        return w;
+    }
+
+    const string Id = @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+    // an API's name (TesselInventory, SojournBuild) or an op's (getActiveGestures, findAvatar)
+    const string Api = @"(?:\b(?:Tessel|Sojourn|Multitude)[A-Z]\w*|\b(?:get|set|find|request|list|write|read)[A-Z]\w*\b)";
+    // an argument's name (group_id, item_ids, next_owner)
+    const string Arg = @"\b[a-z]+_[a-z_]+\b";
 
     // --- where things are -------------------------------------------------------------------------------------------
 
@@ -67,7 +136,22 @@ public sealed class PersonOps(AgentSession s)
         return (s.Motion.Position(c), Motion.Heading(q), sim.Name);
     }
 
-    public sealed record Person(UUID Id, string Name, string Username, Vector3 Pos, double Dist);
+    /// <summary>Someone around. Name: as names are said (Alt+0's People's names); Written: their display name as written.</summary>
+    public sealed record Person(UUID Id, string Name, string Username, Vector3 Pos, double Dist, string Written = "")
+    {
+        /// <summary>Every name she might type for them: the one said, the username, the display name as written and in
+        /// plain letters, so a name she hears is a name she can type back whatever the style.</summary>
+        public IEnumerable<string> Names => new[] { Name, Username, Written, PlainName.Of(Written) }.Where(n => n.Length > 0).Distinct();
+    }
+
+    /// <summary>A person's name from an op's result (TesselAgent's people, friends, names, findAvatar; search's people) as
+    /// names are said: its said, else its display name and username worded so.</summary>
+    public static string SaidName(JsonObject o, string fallback = "someone")
+    {
+        if (o.Str("said") is { Length: > 0 } said) return said;
+        var user = o.Str("username") is { Length: > 0 } u ? u : o.Str("legacy_name") is { Length: > 0 } l ? NameCache.UserName(l) : "";
+        return PlainName.Said(o.Str("display_name"), user, NameCache.Style) is { Length: > 0 } shown ? shown : fallback;
+    }
 
     /// <summary>People around, nearest first (in view, then the map's coarse positions), as TesselAgent people.</summary>
     public async Task<List<Person>> PeopleAsync(double within = 96)
@@ -78,34 +162,26 @@ public sealed class PersonOps(AgentSession s)
         {
             if (!UUID.TryParse(p.Str("id"), out var id) || p["pos"] is not JsonArray pos || pos.Count < 3) continue;
             var user = p.Str("username") ?? "";
-            var name = p.Str("display_name") is { Length: > 0 } dn ? dn : user.Length > 0 ? user : "someone";
-            list.Add(new Person(id, name, user, new Vector3((float)pos[0]!.GetValue<double>(), (float)pos[1]!.GetValue<double>(), (float)pos[2]!.GetValue<double>()),
-                p["dist"]?.GetValue<double>() ?? 0));
+            list.Add(new Person(id, SaidName(p), user, new Vector3((float)pos[0]!.GetValue<double>(), (float)pos[1]!.GetValue<double>(), (float)pos[2]!.GetValue<double>()),
+                p["dist"]?.GetValue<double>() ?? 0, p.Str("display_name") ?? ""));
         }
         return list;
     }
 
-    /// <summary>The nearest person whose name (display or user) starts with the words, else contains them.</summary>
-    public async Task<Person?> FindPersonAsync(string words)
-    {
-        var w = words.Trim().ToLowerInvariant();
-        if (w.Length == 0) return null;
-        var all = await PeopleAsync(512);
-        bool Starts(string n) => n.ToLowerInvariant().StartsWith(w) || n.ToLowerInvariant().Split(' ', '.').Any(part => part.StartsWith(w));
-        return all.FirstOrDefault(p => Starts(p.Name) || Starts(p.Username))
-               ?? all.FirstOrDefault(p => p.Name.Contains(w, StringComparison.OrdinalIgnoreCase) || p.Username.Contains(w, StringComparison.OrdinalIgnoreCase));
-    }
+    /// <summary>The nearest person with a name (<see cref="Person.Names"/>) starting with the words, else containing them.</summary>
+    public async Task<Person?> FindPersonAsync(string words) => (await FindPeopleAsync(words)).FirstOrDefault();
 
-    /// <summary>Everyone whose name (display or user) starts with the words, else everyone whose has them, nearest first.</summary>
+    /// <summary>Everyone with a name (said, user, or the display name as written or in plain letters) starting with the
+    /// words, else everyone whose has them, nearest first. Words pasted in decorative letters are matched in plain ones.</summary>
     public async Task<List<Person>> FindPeopleAsync(string words)
     {
-        var w = words.Trim().ToLowerInvariant();
-        if (w.Length == 0) return new();
+        var ws = new[] { words.Trim(), PlainName.Of(words) }.Where(x => x.Length > 0).Select(x => x.ToLowerInvariant()).Distinct().ToList();
+        if (ws.Count == 0) return new();
         var all = await PeopleAsync(512);
-        bool Starts(string n) => n.ToLowerInvariant().StartsWith(w) || n.ToLowerInvariant().Split(' ', '.').Any(part => part.StartsWith(w));
-        var starting = all.Where(p => Starts(p.Name) || Starts(p.Username)).ToList();
-        return starting.Count > 0 ? starting
-            : all.Where(p => p.Name.Contains(w, StringComparison.OrdinalIgnoreCase) || p.Username.Contains(w, StringComparison.OrdinalIgnoreCase)).ToList();
+        bool Starts(string n) => ws.Any(w => n.ToLowerInvariant().StartsWith(w) || n.ToLowerInvariant().Split(' ', '.').Any(part => part.StartsWith(w)));
+        bool Has(string n) => ws.Any(w => n.Contains(w, StringComparison.OrdinalIgnoreCase));
+        var starting = all.Where(p => p.Names.Any(Starts)).ToList();
+        return starting.Count > 0 ? starting : all.Where(p => p.Names.Any(Has)).ToList();
     }
 
     public sealed record Thing(UUID Id, string Name, Vector3 Pos, double Dist, bool Sit, bool Touch, string? Text)

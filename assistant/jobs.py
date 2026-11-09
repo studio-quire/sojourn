@@ -363,7 +363,7 @@ class JobRunner:
                                      "this one ended early): read them, check what's in the world now, and do what's left.")
                         continue
                     job.state = "failed"
-                    job.reply = f"it stopped with an error ({failed})"
+                    job.reply = "Something went wrong partway through."   # (failed is in the log, above)
                     break
                 job.state, job.reply = "done", reply
                 break

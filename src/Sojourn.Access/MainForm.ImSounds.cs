@@ -63,6 +63,8 @@ public sealed partial class MainForm
             bool person = !cv.Group && id != UUID.Zero;
             if (person) AddPersonItems(menu, id, name);
             else if (id != UUID.Zero) menu.Items.Add(new ToolStripMenuItem(SoundItemText(name, cv.Group), null, (_, _) => ChooseImSound(id, name, cv.Group)) { Name = "imSoundItem" });
+            // (Radegast's group chat has its participant list beside it)
+            if (cv.Group && id != UUID.Zero) menu.Items.Add(new ToolStripMenuItem("Who's in the c&hat...", null, (_, _) => _ = GroupPeopleAsync(new MyGroup(id, name), chat: true)));
             if (!person) menu.Items.Add(new ToolStripMenuItem("Chat lo&g", null, (_, _) => ChatLogOf(cv.SessionId, name)));
             if (id != UUID.Zero || !person) menu.Items.Add(new ToolStripSeparator());
             if (!box.ReadOnly) Add(person ? "Cut" : "Cu&t", "Control+X", box.Cut);
@@ -112,26 +114,36 @@ public sealed partial class MainForm
     }
 
     /// <summary>Someone (or a group) by name: open conversations first, then friends, people nearby, groups; a whole
-    /// name before one starting so, before one containing the words.</summary>
+    /// name before one starting so, before one containing the words. A person matches by any form of their name (the
+    /// one said, the username, the display name as written or in plain letters) and is named as names are said.</summary>
     async Task<(UUID Id, string Name, bool Group)?> FindForSoundAsync(string name)
     {
-        var all = new List<(UUID Id, string Name, bool Group)>();
+        var all = new List<(UUID Id, string Name, bool Group, string Match)>();
+        void Add(UUID id, string said, bool group, IEnumerable<string>? forms = null)
+        {
+            foreach (var f in (forms ?? Array.Empty<string>()).Prepend(said).Distinct()) all.Add((id, said, group, f));
+        }
+        var names = Host?.Session.Names;
         foreach (var cv in _convs.Values.Where(c => !c.Builders))
         {
-            if (cv.Group && UUID.TryParse(cv.SessionId, out var g)) all.Add((g, cv.Title.EndsWith(" (group)") ? cv.Title[..^8] : cv.Title, true));
-            else if (!cv.Group && cv.Other != UUID.Zero) all.Add((cv.Other, cv.Title, false));
+            if (cv.Group && UUID.TryParse(cv.SessionId, out var g)) Add(g, cv.Title.EndsWith(" (group)") ? cv.Title[..^8] : cv.Title, true);
+            else if (!cv.Group && cv.Other != UUID.Zero) Add(cv.Other, cv.Title, false, names?.Forms(cv.Other));
         }
         if (_ops.Client is { } c)
-            all.AddRange(c.Friends.FriendList.Values.Select(f => (f.UUID, Host!.Session.Names.Complete(f.UUID, f.Name ?? ""), false)));
-        foreach (var p in await _ops.PeopleAsync(512)) { all.Add((p.Id, p.Name, false)); if (p.Username.Length > 0) all.Add((p.Id, p.Username, false)); }
-        if (Host != null) all.AddRange(Host.Session.State.Groups.Values.Select(g => (g.ID, g.Name, true)));
+            foreach (var f in c.Friends.FriendList.Values) Add(f.UUID, names?.Complete(f.UUID, f.Name ?? "") ?? f.Name ?? "", false, names?.Forms(f.UUID));
+        foreach (var p in await _ops.PeopleAsync(512)) Add(p.Id, p.Name, false, p.Names);
+        if (Host != null) foreach (var g in Host.Session.State.Groups.Values) Add(g.ID, g.Name, true);
         var n = name.Trim();
-        bool Starts(string s) => s.StartsWith(n, StringComparison.OrdinalIgnoreCase)
-            || s.Split(' ', '.').Any(part => part.StartsWith(n, StringComparison.OrdinalIgnoreCase));
-        var hit = all.FirstOrDefault(a => a.Name.Equals(n, StringComparison.OrdinalIgnoreCase));
-        if (hit.Id == UUID.Zero) hit = all.FirstOrDefault(a => a.Name.Length > 0 && Starts(a.Name));
-        if (hit.Id == UUID.Zero) hit = all.FirstOrDefault(a => a.Name.Contains(n, StringComparison.OrdinalIgnoreCase));
-        return hit.Id == UUID.Zero ? null : hit;
+        var plainWords = Sojourn.Core.World.PlainName.Of(n);
+        bool Is(string s, string w) => s.Equals(w, StringComparison.OrdinalIgnoreCase);
+        bool Starts(string s, string w) => s.StartsWith(w, StringComparison.OrdinalIgnoreCase)
+            || s.Split(' ', '.').Any(part => part.StartsWith(w, StringComparison.OrdinalIgnoreCase));
+        bool Has(string s, string w) => s.Contains(w, StringComparison.OrdinalIgnoreCase);
+        (UUID Id, string Name, bool Group, string Match) hit = default;
+        foreach (var test in new Func<string, string, bool>[] { Is, Starts, Has })
+            foreach (var w in new[] { n, plainWords }.Where(w => w.Length > 0).Distinct())
+                if (hit.Id == UUID.Zero) hit = all.FirstOrDefault(a => a.Match.Length > 0 && test(a.Match, w));
+        return hit.Id == UUID.Zero ? null : (hit.Id, hit.Name, hit.Group);
     }
 
     /// <summary>A person's or group's name for //imsound's list (a group's said so).</summary>

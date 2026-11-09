@@ -212,9 +212,11 @@
                                 </Popup>
                             </Grid>
                             <WrapPanel x:Name="Switches" Margin="4,14,0,0">
-                                <CheckBox x:Name="AutoSwitch" Style="{StaticResource Switch}" Content="auto mode" Margin="0,0,22,0"/>
+                                <CheckBox x:Name="AutoSwitch" Style="{StaticResource Switch}" Content="web and programs" Margin="0,0,22,0"/>
                                 <CheckBox x:Name="DenyDataSwitch" Style="{StaticResource Switch}" Content="no data collection" Visibility="Collapsed"/>
                             </WrapPanel>
+                            <TextBlock x:Name="AutoOffNote" Text="Off: the assistant can't search the web or run programs on this PC." FontSize="12"
+                                       Foreground="{StaticResource Faint}" Margin="4,6,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
                         </StackPanel>
                     </Grid>
 

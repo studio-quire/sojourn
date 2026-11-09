@@ -17,7 +17,7 @@ Our own Second Life client, built for VR first, with a personal AI that operates
   social, land, building, inventory and the AO, the map, voice and media extras, the menus, the login screen, the
   launcher), and RLV/RLVa (2026-11-01, off by default: `docs/rlv.md`). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
 - **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01), a first build editor (2026-11-02) and About Land (2026-11-03); test builds (the assistant bundled) published as releases
-  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.989 (2026-11-07); a blind
+  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.996 (2026-11-08); a blind
   tester's first session on Second Life was 2026-10-30. `docs/access.md` (plan, milestones, what testers said), `docs/access-app.md` (as built, packaging).
 - **Public source** since 2026-10-29 (`docs/publishing.md`). **First release, 0.1.0.867, published 2026-11-02**: a
   pre-release on studio-quire/sojourn (Velopack: install, updates at the person's press, uninstall; `tools/package.py`,
@@ -102,7 +102,7 @@ The assistant (detail in `docs/assistant.md`):
   permission changes and new scripts wait for the person's own press (real input only), enforced in the op dispatcher
   so they hold for any caller. The panel is an OpenXR quad layer.
 - **The provider is the launcher's** (user, 2026-10-29): provider, keys, OpenRouter's data collection and auto mode
-  are chosen in the launcher (Access: Alt+0); the viewer's menu shows only that provider's models. `docs/launcher.md`.
+  (shown as "web and programs", the user's call 2026-11-08) are chosen in the launcher (Access: Alt+0); the viewer's menu shows only that provider's models. `docs/launcher.md`.
 - **No Claude-account sign-in in released builds** (user, 2026-10-30): Anthropic's Agent SDK terms don't let
   third-party products offer claude.ai login or plan usage without approval, so packaged and public builds offer an
   Anthropic key and OpenRouter only (and Access the studio relay). People who want their subscription have their own agent (Claude
@@ -143,6 +143,9 @@ The assistant (detail in `docs/assistant.md`):
 - **The GPU is shared** with other sessions: one GPU-heavy agent at a time, real-time render tests short. Its driver
   resets under long heavy load (the studio's `docs/gpu-resets.md`); Sojourn restarts itself where the person was
   (`docs/client.md` > When the GPU is lost).
+- **Words people see or hear are theirs and the app's** (the studio's `docs/picking-a-look.md` > Words on screen): only
+  words the person understands where they meet them (who picked them doesn't matter), SL's own words for SL things, a control named by what it does, diagnostics in the log.
+  Op errors are written for the assistant; Access's person hears them only through `PersonOps.Error`, which turns them.
 - **Every setting is on the agent API** (`SojournSettings`) and so reachable by the assistant's `settings` tool; a
   batch registers its own (`docs/viewer-gaps.md` > How the batches share the code).
 - **Never junction `local/` into a git worktree**: `git worktree remove` follows the junction and deletes the main

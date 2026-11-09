@@ -2176,7 +2176,7 @@
     "zh-Hans": "多远的东西还保持完整形状。越高越好看，也越耗性能。"
   },
   "When things run slow, loading slows and far things get simpler for a while, to keep the view smooth.": {
-    "_": "settings menu: the tip on the 'load governor' row in the 'graphics' group of the view section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences",
+    "_": "settings menu: the tip on the 'ease off under lag' row in the 'graphics' group of the view section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences",
     "zh": "執行變慢時，會暫時放慢載入並簡化遠處的東西，讓畫面保持流暢。",
     "it": "Quando tutto rallenta, il caricamento va più piano e le cose lontane si semplificano per un po', così la vista resta fluida.",
     "es": "Cuando todo va lento, la carga se frena y lo lejano se simplifica un rato, para que la vista siga fluida.",
@@ -2287,21 +2287,21 @@
     "de": "Lässt Schatten winziger Dinge weg. Schneller, mit kaum sichtbarem Unterschied.",
     "zh-Hans": "跳过微小东西的阴影。更快，几乎看不出变化。"
   },
-  "Narrow is lighter on the computer, with a faint change on shiny curves. Applies next time Sojourn starts.": {
-    "_": "settings menu: the tip on the 'g-buffer (on restart)' row in the 'graphics' group of the view section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences; 'Narrow' is one of the row's options (full, narrow); Sojourn is a name",
-    "zh": "「精簡」對電腦負擔較輕，光亮的曲面會有些微變化。下次啟動 Sojourn 時生效。",
-    "it": "Ridotto pesa meno sul computer, con un lieve cambiamento sulle curve lucide. Vale dal prossimo avvio di Sojourn.",
-    "es": "Estrecho pesa menos al ordenador, con un leve cambio en curvas brillantes. Se aplica la próxima vez que se inicie Sojourn.",
-    "pt": "Estreito pesa menos no computador, com uma leve mudança em curvas brilhantes. Vale na próxima vez que o Sojourn iniciar.",
-    "ja": "「縮小」はコンピューターの負担が軽く、光沢のある曲面がわずかに変わります。次にSojournを起動したときに適用されます。",
-    "tr": "Dar, bilgisayarı daha az yorar; parlak eğrilerde hafif bir değişiklik olur. Sojourn bir sonraki açılışında uygulanır.",
-    "fr": "Étroit est plus léger pour l'ordinateur, avec un léger changement sur les courbes brillantes. S'applique au prochain lancement de Sojourn.",
-    "da": "Smal er lettere for computeren, med en svag forskel på blanke kurver. Gælder, næste gang Sojourn starter.",
-    "ru": "«Узкий» легче для компьютера, с едва заметной разницей на блестящих изгибах. Действует со следующего запуска Sojourn.",
-    "pl": "Wąski mniej obciąża komputer, z lekką zmianą na błyszczących krzywiznach. Działa od następnego uruchomienia Sojourn.",
-    "az": "Dar kompüterə daha yüngüldür, parlaq əyrilərdə cüzi fərq olur. Sojourn növbəti dəfə başlayanda tətbiq olunur.",
-    "de": "Schmal schont den Computer, mit leichtem Unterschied an glänzenden Rundungen. Gilt beim nächsten Start von Sojourn.",
-    "zh-Hans": "“精简”对电脑负担更轻，光亮的曲面会有细微变化。下次启动 Sojourn 时生效。"
+  "Lighter is easier on the computer, with a faint change on shiny curves. Applies next time Sojourn starts.": {
+    "_": "settings menu: the tip on the 'surface detail (on restart)' row in the 'graphics' group of the view section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences; 'Lighter' is one of the row's options (full, lighter); Sojourn is a name",
+    "zh": "「較輕」對電腦負擔較小，光亮的曲面會有些微變化。下次啟動 Sojourn 時生效。",
+    "it": "Leggero pesa meno sul computer, con un lieve cambiamento sulle curve lucide. Vale dal prossimo avvio di Sojourn.",
+    "es": "Ligero exige menos al ordenador, con un leve cambio en las curvas brillantes. Se aplica la próxima vez que se inicie Sojourn.",
+    "pt": "Leve pesa menos no computador, com uma leve mudança nas curvas brilhantes. Vale na próxima vez que o Sojourn iniciar.",
+    "ja": "「軽量」はPCへの負担が小さく、光沢のある曲面がわずかに変わります。次にSojournを起動したときに反映されます。",
+    "tr": "Hafif, bilgisayarı daha az yorar; parlak eğrilerde hafif bir fark olur. Sojourn bir sonraki açılışta uygular.",
+    "fr": "Allégé ménage l'ordinateur, avec un léger changement sur les courbes brillantes. S'applique au prochain démarrage de Sojourn.",
+    "da": "Lettere belaster computeren mindre, med en svag ændring på blanke kurver. Gælder, næste gang Sojourn starter.",
+    "ru": "«Облегчённый» меньше нагружает компьютер, блестящие изгибы чуть меняются. Вступит в силу при следующем запуске Sojourn.",
+    "pl": "Lżejszy mniej obciąża komputer, z lekką zmianą na błyszczących krzywiznach. Zadziała przy następnym uruchomieniu Sojourn.",
+    "az": "Yüngül kompüterə daha az yük salır, parlaq əyrilərdə cüzi fərq olur. Sojourn növbəti dəfə açılanda qüvvəyə minir.",
+    "de": "Leichter schont den Computer, mit einer leichten Änderung an glänzenden Rundungen. Gilt ab dem nächsten Start von Sojourn.",
+    "zh-Hans": "“较轻”对电脑负担更小，光亮的曲面会有些微变化。下次启动 Sojourn 时生效。"
   },
   "How sharp the view is drawn. Auto follows what the computer can keep up with.": {
     "_": "settings menu: the tip on the 'resolution' row in the 'graphics' group of the view section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences; 'Auto' is the row's value at its lowest step",
@@ -2878,38 +2878,6 @@
     "az": "Sizinlə menyular arasında divar olsa da, menyular həmişə görünür.",
     "de": "Menüs sind immer zu sehen, auch mit einer Wand zwischen Ihnen und ihnen.",
     "zh-Hans": "即使你和菜单之间隔着墙，菜单也总是显示。"
-  },
-  "How walls hide menus. Exact is Sojourn's own and the most precise.": {
-    "_": "settings menu: the tip on the 'wall test' row in the 'menus' group of the view section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences; 'Exact' is one of the row's options; Sojourn is a name",
-    "zh": "牆如何遮住選單。「精確」是 Sojourn 自己的方法，也最準確。",
-    "it": "Come i muri nascondono i menu. Esatto è il metodo di Sojourn, il più preciso.",
-    "es": "Cómo ocultan las paredes los menús. Exacta es el método propio de Sojourn y el más preciso.",
-    "pt": "Como as paredes escondem os menus. Exato é o do próprio Sojourn e o mais preciso.",
-    "ja": "壁がメニューを隠す方法。「正確」はSojourn独自で、最も精密です。",
-    "tr": "Duvarların menüleri nasıl gizlediği. Tam, Sojourn'a özgüdür ve en kesin olanıdır.",
-    "fr": "Comment les murs masquent les menus. Exact est propre à Sojourn et le plus précis.",
-    "da": "Hvordan vægge skjuler menuer. Præcis er Sojourns egen og den mest nøjagtige.",
-    "ru": "Как стены скрывают меню. «Точная» — собственная проверка Sojourn и самая аккуратная.",
-    "pl": "Jak ściany zasłaniają menu. Dokładny to własny test Sojourn, najprecyzyjniejszy.",
-    "az": "Divarlar menyuları necə gizlədir. Dəqiq: Sojourn-un öz üsulu, ən dəqiqi.",
-    "de": "Wie Wände Menüs verdecken. „genau“ ist Sojourns eigene Methode und die präziseste.",
-    "zh-Hans": "墙怎样遮住菜单。“精确”是 Sojourn 自己的方法，也最准确。"
-  },
-  "Fine-tunes where walls hide the blur behind menus.": {
-    "_": "settings menu: the tip on the 'frost bias' row in the 'menus' group of the view section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences",
-    "zh": "微調牆遮住選單後方模糊效果的位置。",
-    "it": "Regola dove i muri nascondono la sfocatura dietro i menu.",
-    "es": "Ajusta dónde las paredes ocultan el desenfoque detrás de los menús.",
-    "pt": "Ajusta onde as paredes escondem o desfoque atrás dos menus.",
-    "ja": "メニューの後ろのぼかしを、壁がどこで隠すかを微調整します。",
-    "tr": "Duvarların menülerin arkasındaki bulanıklığı nerede gizlediğine ince ayar yapar.",
-    "fr": "Ajuste là où les murs masquent le flou derrière les menus.",
-    "da": "Finjusterer, hvor vægge skjuler sløringen bag menuer.",
-    "ru": "Тонкая настройка того, где стены скрывают размытие за меню.",
-    "pl": "Dostraja, gdzie ściany ukrywają rozmycie za menu.",
-    "az": "Divarların menyu arxasındakı bulanıqlığı harada gizlətdiyini dəqiqləşdirir.",
-    "de": "Feinabstimmung, wo Wände die Unschärfe hinter Menüs verdecken.",
-    "zh-Hans": "微调墙遮住菜单后方模糊效果的位置。"
   },
   "The menus show on the PC's window too.": {
     "_": "settings menu: the tip on the 'menus on desktop' row in the 'menus' group of the view section; keep about as long as the English (the tip wraps to at most three lines of ~50 characters); plain, friendly sentences",

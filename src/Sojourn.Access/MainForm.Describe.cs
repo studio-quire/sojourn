@@ -93,7 +93,7 @@ public sealed partial class MainForm
         // drawn on the processor and not through its warm-up yet: this picture compiles the driver's shaders first, a
         // minute or more on a small PC, so it's said rather than left as a silence (OffscreenRenderer.Preparing)
         var slow = s.Of == "view" && h.Offscreen?.Preparing == true
-            ? " Still preparing the view: the first one after logging in takes longer on this PC." : "";
+            ? " Still preparing the 3D view: the first one after logging in takes longer on this PC." : "";
         long before = h.Assistant.Panel.RepliesVersion;
         Ask($"{asked} [describe key: subject={s.Key}, of={s.Of}, detail={detail}]",
             shown: rich ? $"More on {s.Words}." : $"Describe {s.Words}.",
@@ -104,7 +104,7 @@ public sealed partial class MainForm
         await Task.Delay(TimeSpan.FromSeconds(10));
         if (IsDisposed || h.Assistant.Panel.RepliesVersion != before || !h.Assistant.Panel.Read(p => p.Working)) return;
         if (_described is { } now && now.Subject != s) return;
-        Reader?.Answer("Still waiting for the look to load before describing.", keep: false);
+        Reader?.Answer("Still waiting for things to rez before describing.", keep: false);
     }
 
     /// <summary>`//describe [here | me | more | person NAME | object NAME | NAME]`.</summary>

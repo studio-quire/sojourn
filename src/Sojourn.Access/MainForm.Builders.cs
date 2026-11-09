@@ -22,7 +22,7 @@ public sealed partial class MainForm
     const string BuildersIntro = "Messages to the builders of Sojourn Access. You're writing to Claude sessions, AI, building Sojourn Access "
         + "at Studio Quire: not Tessel, and not a person. Replies come when a session reads your message, which can be minutes or a "
         + "day later; each is read out like an IM as it arrives, and any that came while Sojourn Access was closed are said after "
-        + "you log in. Only what you type here goes, kept with our replies on Studio Quire's relay for 90 days. Type in the Message "
+        + "you log in. Only what you type here goes, kept with our replies on Studio Quire's server for 90 days. Type in the Message "
         + "box and press Enter to send.";
     const string BuildersNoToken = "Messages to the builders go with a token from Studio Quire, pasted into the key row in "
         + "Alt+0's Assistant group, and you don't have one here. You can reach the people making Sojourn Access through Tessel (tesselwright) in "
@@ -123,9 +123,9 @@ public sealed partial class MainForm
             Host?.Log.LogWarning("builders: not sent ({Status}: {Said})", a.Status, a.Said ?? "");
             Answer(a.Status switch
             {
-                0 => $"Not sent: Studio Quire's relay couldn't be reached ({a.Said}). It's back in the Message box.",
-                401 => "Not sent: Studio Quire's relay didn't take your token. It's back in the Message box.",
-                _ => $"Not sent: {a.Said ?? $"the relay answered {a.Status}"} It's back in the Message box.",
+                0 => $"Not sent: Studio Quire couldn't be reached ({a.Said}). It's back in the Message box.",
+                401 => "Not sent: Studio Quire didn't accept your token. It's back in the Message box.",
+                _ => $"Not sent: {a.Said ?? $"Studio Quire's server had a problem ({a.Status})."} It's back in the Message box.",
             });
             Restore(cv, text);
             return;

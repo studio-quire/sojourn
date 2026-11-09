@@ -1,10 +1,11 @@
 using Sojourn.Core.Access;
 using Sojourn.Session.Assistant;
+using Sojourn.Session.Login;
 
 namespace Sojourn.Access;
 
-/// <summary>What the person chose on the login form.</summary>
-public sealed record LoginChoice(string Grid, string First, string Last, string Password, string Start)
+/// <summary>What the person chose on the login form. Password: as typed, or the remembered "$1$" hash.</summary>
+public sealed record LoginChoice(string Grid, string First, string Last, string Password, string Start, bool Remember = false)
 {
     public bool SameAccount(LoginChoice o) =>
         string.Equals(Grid, o.Grid, StringComparison.OrdinalIgnoreCase) && string.Equals(First, o.First, StringComparison.OrdinalIgnoreCase)
@@ -25,6 +26,7 @@ public sealed class LoginForm : Form
     readonly LineBox _user = new() { Name = "user", AccessibleName = "Username", Width = 320 };
     readonly LineBox _password = new() { Name = "password", AccessibleName = "Password", UseSystemPasswordChar = true, Width = 320 };
     readonly CheckBox _showPassword = new() { Name = "showPassword", Text = "Sho&w password", AutoSize = true };
+    readonly CheckBox _remember = new() { Name = "remember", Text = "Re&member password", AutoSize = true };
     readonly ComboBox _start = new() { Name = "start", AccessibleName = "Start at", DropDownStyle = ComboBoxStyle.DropDownList, Width = 320 };
     readonly LineBox _place = new() { Name = "place", AccessibleName = "Place", Width = 320, Visible = false };
     readonly Button _login = new() { Name = "login", Text = "&Log in", AutoSize = true };
@@ -34,6 +36,10 @@ public sealed class LoginForm : Form
     readonly IReaderVoice? _nvda;
     readonly FormVoice _uia;
     readonly Func<bool> _hello;
+    readonly LoginStore _store;
+    /// <summary>The account on the form as it stands, if its password is remembered.</summary>
+    SavedAccount? _remembered;
+    bool _filling;
     bool _busy;
     const string LocalLabel = "Local grid (127.0.0.1:9700)", OtherGrid = "Another grid", OtherPlace = "Another place";
 
@@ -75,6 +81,7 @@ public sealed class LoginForm : Form
         // where to start: last, home, the account's Favorites bar landmarks, a place given on the command line, or another
         // typed in (the list follows the grid and username: FillStarts)
         _baseDir = opt.BaseDir;
+        _store = new LoginStore(opt.BaseDir);
         _given = AccessOptions.StartFor(opt.Start ?? settings.LastStart ?? "last");
         FillStarts(_given);
 
@@ -95,6 +102,7 @@ public sealed class LoginForm : Form
         Row(Named("&Username"), _user);
         Row(Named("&Password"), _password);
         Row(new Label { AutoSize = true }, _showPassword);
+        Row(new Label { AutoSize = true }, _remember);
         Row(Named("&Start at"), _start);
         Row(_placeLabel, _place);
         Row(new Label { AutoSize = true }, _login);
@@ -108,6 +116,7 @@ public sealed class LoginForm : Form
         _user.TextChanged += (_, _) => FillStarts(Picked(_start));
         _start.SelectedIndexChanged += (_, _) => _place.Visible = _placeLabel.Visible = Picked(_start) == "";
         _showPassword.CheckedChanged += (_, _) => _password.UseSystemPasswordChar = !_showPassword.Checked;
+        _remember.CheckedChanged += (_, _) => RememberChanged();
 
         _uia = new FormVoice(this);
         _hello = () => settings.ConfirmByHello;
@@ -135,6 +144,7 @@ public sealed class LoginForm : Form
     {
         var grid = Picked(_grid) is { Length: > 0 } g ? g : AccessOptions.GridFor(_gridUri.Text);
         var (first, last) = AccessOptions.SplitName(_user.Text);
+        FindRemembered(grid, first, last);
         _favorites = grid.Length > 0 && first.Length > 0 ? StartPlaces.Load(StartPlaces.StateDir(_baseDir, grid, first, last)) : new();
         var choices = new List<Choice> { new("My last location", "last"), new("Home", "home") };
         choices.AddRange(_favorites.Select(f => new Choice($"{f.Name}, favorites bar", f.Start)));
@@ -147,6 +157,60 @@ public sealed class LoginForm : Form
         int at = choices.FindIndex(c => c.Value == keep);
         _start.SelectedIndex = at >= 0 ? at : 0;
         _start.EndUpdate();
+    }
+
+    /// <summary>An account's id in the saved logins, the grid as the VR client keeps it (agni for Second Life).</summary>
+    static string IdOf(string grid, string first, string last) => Ids.Of(Grids.Normalise(grid) ?? grid, first, last);
+
+    /// <summary>Whether the account on the form has its password remembered: Remember ticked to match when the account
+    /// changes, and the password box says so (its description, read with it).</summary>
+    void FindRemembered(string grid, string first, string last)
+    {
+        var id = grid.Length > 0 && first.Length > 0 ? IdOf(grid, first, last) : null;
+        if (id == _remembered?.Id) return;
+        bool had = _remembered != null;
+        _remembered = id == null ? null : _store.Accounts().FirstOrDefault(a => a.Id == id && a.Remembered);
+        // the same words as the description and the placeholder, which UI Automation gives as help text: a reader says
+        // one or the other, so neither path is left silent or says something different
+        _password.AccessibleDescription = _remembered != null ? Kept : null;
+        _password.PlaceholderText = _remembered != null ? Kept : "";
+        if (_remembered != null || had)
+        {
+            _filling = true;
+            _remember.Checked = _remembered != null;
+            _filling = false;
+        }
+    }
+
+    const string Kept = "Remembered: Enter logs in with it, or type another.";
+
+    /// <summary>Remember unticked on an account whose password is kept: forgotten at once, as the VR client's login does.</summary>
+    void RememberChanged()
+    {
+        if (_filling || _remember.Checked || _remembered is not { } r) return;
+        _store.ForgetPassword(r.Id);
+        _remembered = null;
+        _password.AccessibleDescription = null;
+        _password.PlaceholderText = "";
+        Say("Password forgotten.");
+    }
+
+    /// <summary>After a login that worked: its password kept (as the viewers keep it, under Windows' protection for this
+    /// user) if Remember was ticked, or any kept one forgotten if not.</summary>
+    public void LoggedIn(LoginChoice c)
+    {
+        try
+        {
+            var grid = Grids.Normalise(c.Grid) ?? c.Grid;
+            var id = Ids.Of(grid, c.First, c.Last);
+            if (c.Remember)
+                _store.Logged(new SavedAccount { First = c.First, Last = c.Last, Grid = grid, Start = c.Start.StartsWith("uri:") ? "last" : c.Start },
+                    LoginStore.Hash(c.Password), remember: true);
+            else if (_store.Accounts().Any(a => a.Id == id && a.Remembered))
+                _store.ForgetPassword(id);
+            _remembered = c.Remember ? _store.Accounts().FirstOrDefault(a => a.Id == id) : null;
+        }
+        catch (Exception e) { Console.Error.WriteLine($"access: the password couldn't be kept ({e.GetType().Name}: {e.Message})"); }
     }
 
     static bool SameUri(string a, string b) => string.Equals(a.Trim().TrimEnd('/'), b.Trim().TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
@@ -179,14 +243,16 @@ public sealed class LoginForm : Form
         if (AccessOptions.Refused(grid) is { } why) { Say(why); _grid.Focus(); return; }
         var (first, last) = AccessOptions.SplitName(_user.Text);
         if (first.Length == 0) { Say("Type your username first."); _user.Focus(); return; }
-        if (_password.Text.Length == 0) { Say("Type your password first."); _password.Focus(); return; }
+        var password = _password.Text;
+        if (password.Length == 0 && _remembered is { } r && r.Id == IdOf(grid, first, last)) password = LoginStore.HashOf(r) ?? "";
+        if (password.Length == 0) { Say("Type your password first."); _password.Focus(); return; }
         var start = Picked(_start);
         if (start.Length == 0)
         {
             if (_place.Text.Trim().Length == 0) { Say("Type the place to start at first: a region's name, or Region/x/y/z."); _place.Focus(); return; }
             start = AccessOptions.StartFor(_place.Text);
         }
-        Last = new LoginChoice(grid, first, last, _password.Text, start);
+        Last = new LoginChoice(grid, first, last, password, start, _remember.Checked);
         Busy(true);
         Say($"Logging in as {first}{(last == "Resident" ? "" : " " + last)}.");
         Chosen?.Invoke(Last);

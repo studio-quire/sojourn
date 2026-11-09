@@ -143,6 +143,22 @@
     "de": "gibt Ihnen {0}",
     "zh-Hans": "给你 {0}"
   },
+  "{0}: {1} (attached: {2}, {3})": {
+    "_": "chat feed notice after the sender's name: an SL group notice with something attached; {0} its subject, {1} its message, {2} the attached item's name, {3} its kind (notecard, landmark...)",
+    "zh": "{0}：{1}（附件：{2}，{3}）",
+    "it": "{0}: {1} (allegato: {2}, {3})",
+    "es": "{0}: {1} (adjunto: {2}, {3})",
+    "pt": "{0}: {1} (anexo: {2}, {3})",
+    "ja": "{0}：{1}（添付：{2}、{3}）",
+    "tr": "{0}: {1} (ek: {2}, {3})",
+    "fr": "{0} : {1} (pièce jointe : {2}, {3})",
+    "da": "{0}: {1} (vedhæftet: {2}, {3})",
+    "ru": "{0}: {1} (вложение: {2}, {3})",
+    "pl": "{0}: {1} (załącznik: {2}, {3})",
+    "az": "{0}: {1} (əlavə: {2}, {3})",
+    "de": "{0}: {1} (Anhang: {2}, {3})",
+    "zh-Hans": "{0}：{1}（附件：{2}，{3}）"
+  },
   "took what you gave": {
     "_": "chat feed notice, the line drawn right after the sender's name in bold (\"Kestrel offers a teleport\"): translate as words that follow a person's name, lowercase as the UI; they accepted the inventory item you offered",
     "zh": "收下了你給的東西",

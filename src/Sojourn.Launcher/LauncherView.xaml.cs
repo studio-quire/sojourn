@@ -326,7 +326,8 @@ public partial class LauncherView : UserControl
         DevNote.Visibility = agent ? Visibility.Visible : Visibility.Collapsed;
         AgentBlock.Visibility = agent ? Visibility.Visible : Visibility.Collapsed;
         if (agent) { AgentSentence.Text = Sentence; CopySentence.Content = Lang.T("copy", "button"); }
-        Switches.Visibility = agent ? Visibility.Collapsed : Visibility.Visible;   // auto mode is the built-in assistant's
+        Switches.Visibility = agent ? Visibility.Collapsed : Visibility.Visible;   // web and programs is the built-in assistant's
+        ShowAutoNote();
         bool chosen = kind != "claude" || ProviderKeys.ClaudeOffered;
         bool keyed = !agent && (kind != "claude" || !chosen);   // none chosen: the box takes a key, which chooses its provider
         bool kept = !agent && kind != "claude" && ProviderKeys.Has(kind);
@@ -474,9 +475,13 @@ public partial class LauncherView : UserControl
     {
         if (sw == AgreeSwitch) { UpdateContinue(); return; }
         if (_loading) return;
-        if (sw == AutoSwitch) _settings.AutoMode = sw.IsChecked == true;
+        if (sw == AutoSwitch) { _settings.AutoMode = sw.IsChecked == true; ShowAutoNote(); }
         else _settings.OpenRouterDenyData = sw.IsChecked == true;
     }
+
+    /// <summary>Under the switches, what turning web and programs off leaves the assistant (auto_mode off).</summary>
+    void ShowAutoNote() =>
+        AutoOffNote.Visibility = Switches.Visibility == Visibility.Visible && AutoSwitch.IsChecked != true ? Visibility.Visible : Visibility.Collapsed;
 
     // ---- the grid's question at the desk (the client takes the answer through ClientRun's pipe) ----
 

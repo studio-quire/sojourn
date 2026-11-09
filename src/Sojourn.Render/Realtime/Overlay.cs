@@ -122,16 +122,11 @@ public sealed record OverlayScene
     public HandCut? Cut { get; init; }
     /// <summary>The headset's menus always over the world (Overlay.Walls.cs): their frost untested, and their footprints
     /// (Cut's menus) carved out of the depth the compositor gets (<see cref="Overlay.RecordWalls"/>). Off, walls hide
-    /// them: with <see cref="MenuDepthFix"/> we do (carved too, and what's in front drawn over them on the hands'
-    /// layer), their frost tested exactly; without, the compositor's own test does, their frost tested at
-    /// <see cref="MenuDepth"/> (its apparent error). Either way its distance times 1 + <see cref="MenuDepthBias"/>.</summary>
+    /// them: we do (carved too, and what's in front drawn over them on the hands' layer), their frost tested exactly.</summary>
     public bool MenusOverWalls { get; init; }
-    public bool MenuDepthFix { get; init; }
     /// <summary>The panel always over the world, in either mode (a confirmation: nothing may cover it): its frost
     /// untested and its footprint (<see cref="PanelCorners"/>) carved out of the compositor's depth.</summary>
     public bool PanelOverWalls { get; init; }
-    public MenuDepth MenuDepth { get; init; } = MenuDepth.Planar;
-    public float MenuDepthBias { get; init; }
     /// <summary>Take a small sample of the world behind every few frames (<see cref="Overlay.Sampled"/>, Overlay.Backdrop.cs).</summary>
     public bool SampleBackdrop { get; init; }
     /// <summary>The handheld camera's live preview, drawn at its panel's corners in the world (under everything else,
@@ -387,7 +382,7 @@ public sealed unsafe partial class Overlay : IDisposable
         }
         _backdropThisEye = false;
         BeginCut(fr, cmd, slot, eye, scene, view, target, depth, normal);
-        BeginWalls(scene, view, head ?? view.Position);
+        BeginWalls();
         WantSample(fr, target, eye, scene);
         var verts = _verts;   // the overlay's own, refilled per eye (it grew afresh twice a frame)
         verts.Clear();

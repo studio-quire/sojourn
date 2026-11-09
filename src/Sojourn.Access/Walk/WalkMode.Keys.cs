@@ -35,7 +35,7 @@ public sealed partial class WalkMode
     public const string Help = """
         Moving
         Up and Down arrows: walk forward and back
-        Shift with Up or Down: run
+        Shift with Up or Down: run (//run outside walk mode: always run)
         Left and Right: turn, a tap a step, held smoothly
         Shift with Left or Right: step sideways
         Page Up and Page Down: up and down (flying, or jump and crouch)
@@ -341,7 +341,7 @@ public sealed partial class WalkMode
             rotated = body != mv.BodyRotation;
             mv.BodyRotation = mv.HeadRotation = body;
         }
-        bool run = fwd != 0 && !driving && (Control.ModifierKeys & Keys.Shift) != 0;
+        bool run = !driving && (_set.WalkAlwaysRun || fwd != 0 && (Control.ModifierKeys & Keys.Shift) != 0);
         if (run != _ranSet) { mv.AlwaysRun = run; _ranSet = run; }
 
         // blocked: walking into something the region stops the avatar at

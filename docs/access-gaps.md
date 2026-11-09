@@ -29,51 +29,12 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 
 ## Ranked
 
-### 5. Groups: running one
-- **Radegast:** Members & Roles (assign, eject, ban), new notice with an attachment, New Group, a participant list in group chat, a notice's attachment taken.
-- **Access:** chat, its tag, her title, About, members to read, the notices archive to read, notices on or off, listing in her profile, inviting someone in the Everyone role (`docs/access-app.md` > Groups). Nothing yet for sending a notice, a role, ejecting, or who's in the chat now.
-- **Where:** `MainForm.Groups.cs`. `TesselGroups` has `roles`, `notice`, `eject`, `assignRole`, `create`, `update`; `SojournPeople groupChat` has who's in chat.
-- **Size:** M: a member list with actions instead of a window of lines.
-- **Matters: high** for anyone who runs a club or a group, and nobody who does has asked yet. **Question for her:** does she, or anyone she knows, run a group from Access, and which of sending a notice, roles, eject or ban would they want first?
-
-### 6. Scripts and contents: what's left
-- **Radegast:** Mono and Running in the editor; find and replace; open from and save to disk.
-- **Access:** New script, find, go to a line or error, the line key, opening and saving inside an object, her own objects' errors said (`docs/access-app.md` > Scripts). Nothing for those three, and replace would be typed by hand.
-- **Notecards:** what a card holds can be listed and copied out, but nothing can be added to one or taken off it (an item's marker deleted comes back at the end), and a card in an object's contents can't be copied out of directly.
-- **Size:** each S.
-- **Matters: medium for the tester and her partner**, low for most others. **Question for her:** does a script she writes run on Mono by default as she'd want, and would she use disk or replace?
-
-### 9. Inventory housekeeping: what's left
-- **Radegast:** Empty Lost and Found; search by creator and description; sort by date; Expand All; Backup to disk.
-- **Access:** none of these. Recent is the last 24 hours only. Does F5 drop what the grid no longer has, as well as fetch what it does? Not checked (`AgentInventory.ReloadAsync`).
-- **Where:** `ItemActions` and `FolderActions` in `MainForm.Inventory.cs`.
-- **Size:** S each; search fields S; Backup M.
-- **Matters: medium.**
-
-### 10. Putting herself right: what's left
-- **Radegast:** Set Appearance, Always Run; Health in the status bar.
-- **Access:** Shift runs in walk mode only, so `//go` always walks.
-- **Where:** `MainForm.Self.cs`, `Movement.AlwaysRun`, `Self.Health` in `//status`.
-- **Size:** S.
-- **Matters: medium-low.**
-
-### 11. The password is typed at every login
-- **Radegast:** Remember; its guide's first step.
-- **Access:** never kept (`AccessSettings` says so on purpose), so typed each start and whenever the session gives up logging in again.
-  `--autologin` exists only as an option. Sojourn's own login has `LoginStore`.
-- **Where:** `LoginForm`, `Session/Login/LoginStore.cs`. The reasoning behind never keeping it isn't written down; a session should
-  decide this with confirmations' threat model in mind (a program on the PC reading what's stored).
-- **Size:** S.
-- **Matters: medium.** Every day, though nobody has complained on record.
-
-### 12. Names a screen reader can't say
-- **Radegast:** `display_name_mode`: display name only, both, smart, or off.
-- **Access:** display name everywhere, the username only when it's empty (`PersonOps.PeopleAsync`, the feed). A display name in decorative
-  Unicode (common on SL) likely reads as nothing or nonsense, with no way to get the username. That's reasoning, not something a tester
-  has reported: worth asking her.
-- **Where:** a mode in `AccessSettings`, applied in `PersonOps` and `Shape`; a fallback when a name has no plain letters.
-- **Size:** S-M.
-- **Matters: medium**, more if confirmed: not knowing who's speaking.
+### 5. Groups: a role's and the group's own settings
+- **Radegast:** the Roles tab (a role made, its title and abilities), the General tab's settings (charter, open enrollment, fee, show in search), saving the member list.
+- **Access:** running one is built (2026-11-08: members and who's in the chat with roles given and taken, eject, ban; a new notice with an attachment; attachments taken; inviting into a role; banned residents; New group; `docs/access-app.md` > Groups). None of these three. Ban, unban and the banned list follow the viewer's protocol and haven't run on Second Life (OpenSim has no group bans).
+- **Where:** `MainForm.Groups.cs`, `MainForm.GroupPeople.cs`. `TesselGroups` has `createRole`, `updateRole`, `deleteRole`, `update`, `powers`.
+- **Size:** S-M: a role's powers are a long list of the viewer's abilities to word.
+- **Matters: low-medium:** nobody running a group from Access has asked yet (question in `docs/access.md`).
 
 ### 14. Voice: what's left
 - **Radegast:** participant list, mute and unmute all, reconnect.

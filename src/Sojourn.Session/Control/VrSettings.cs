@@ -312,14 +312,6 @@ public sealed class VrSettings
     /// the depth the compositor gets, their frost untested; Render/Realtime/Overlay.Walls.cs). Off (the user's default,
     /// 2026-10-28: menus belong to the world), a wall nearer than a menu hides it, as Meta's compositor does.</summary>
     public bool MenusOverWalls { get; set; }
-    /// <summary>With walls hiding menus, how: exact (the default: we hide them, drawing what's in front of a menu over it
-    /// on the hands' layer, the compositor kept from hiding them, their frost tested exactly), or the compositor's own test
-    /// left, the frost copying it: radial (distance from the eye), head (from between the eyes). Times 1 + MenuFrostBias
-    /// for the frost (positive: walls hide it more readily). Saved as menuWallTest (menuFrostTest held the old modes).</summary>
-    public string MenuWallTest { get; set; } = "exact";
-    public static readonly string[] MenuWallTests = { "exact", "radial", "head" };
-    public float MenuFrostBias { get; set; }
-    public static readonly float[] MenuFrostBiases = { -0.2f, -0.1f, -0.05f, -0.02f, 0, 0.02f, 0.05f, 0.1f, 0.2f };
     /// <summary>In the headset, the PC's window shows its menus over the mirrored eyes as the headset does
     /// (Window/MirrorTarget.cs); off, the view alone. Incognito blanks the window either way.</summary>
     public bool MirrorMenus { get; set; } = true;

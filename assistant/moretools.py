@@ -704,7 +704,7 @@ def build_more(kit):
           f"the person wants to report a problem with {app_name} or says it's misbehaving and wants it looked at: note, what "
           "went wrong in their own words, nothing added; this session's log goes with it, other people's words left out "
           "and their names made stand-ins. They confirm" + (" in Notices" if access else " on the panel")
-          + "; it goes to Studio Quire's relay"
+          + "; it goes to Studio Quire's server"
           + (", with their Studio Quire token if they have one" if relay_offered(getattr(kit, "app", None)) else "")
           + (". Sending a log from the Help menu (//sendlog) is the other way to send one); stats " if access
              else ". Saving it for a GitHub issue instead is the menu's: about, report a problem); stats ")

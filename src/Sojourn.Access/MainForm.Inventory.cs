@@ -48,6 +48,8 @@ public sealed partial class MainForm
         public required TreeView Tree;
         public required TextBox Search;
         public required ComboBox Show;
+        /// <summary>What Search's words are looked for in (the official viewer's Search by): the name, the creator, the description.</summary>
+        public required ComboBox By;
         public required TableLayoutPanel Panel;
         public readonly System.Windows.Forms.Timer SearchTimer = new() { Interval = 450 };
         // what Space marked (by id): said in the item's own words ("..., marked"), not as a check box, which a screen
@@ -60,7 +62,7 @@ public sealed partial class MainForm
         public string? Keep;   // during a fill: the node that stays selected
         public (HashSet<UUID> Ids, Dictionary<UUID, string> Points)? WornShown;
         public bool ShownOnce;
-        public bool Contains(Control? c) => c != null && (c == Tree || c == Search || c == Show);
+        public bool Contains(Control? c) => c != null && (c == Tree || c == Search || c == Show || c == By);
     }
 
     IEnumerable<InvPane> Panes => _secondOpen ? new[] { _pane1, _pane2 } : new[] { _pane1 };
@@ -81,6 +83,8 @@ public sealed partial class MainForm
         _pane2 = MakePane("second pane", "inventory2", "Inventory, second pane");
         _pane2.Panel.Visible = false;
         _pane = _pane1;
+        // (the assistant can change the order too, from another thread)
+        _set.InventorySortChanged += () => { if (IsHandleCreated) BeginInvoke(() => Resort(said: false)); };
 
         _invLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
         _invLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -103,9 +107,15 @@ public sealed partial class MainForm
         var show = new ComboBox { Name = name == "inventory" ? "inventoryShow" : name + "Show", AccessibleName = title == "" ? "Show" : "Show, second pane", DropDownStyle = ComboBoxStyle.DropDownList, Width = 140 };
         show.Items.AddRange(new object[] { "Everything", "Worn", "Recent", "Trash", "Favorites", "Gestures" });
         show.SelectedIndex = 0;
-        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 2, Margin = Padding.Empty };
+        // (after Show in the Tab order, so Tab from Search still reaches Show as it always has)
+        var by = new ComboBox { Name = name == "inventory" ? "inventoryBy" : name + "By", AccessibleName = title == "" ? "Search by" : "Search by, second pane", DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
+        by.Items.AddRange(SearchBy);
+        by.SelectedIndex = 0;
+        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 6, RowCount = 2, Margin = Padding.Empty };
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -115,10 +125,13 @@ public sealed partial class MainForm
         t.Controls.Add(search, 1, 0);
         t.Controls.Add(new Label { Text = title == "" ? "Sh&ow" : "Show", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 0);
         t.Controls.Add(show, 3, 0);
+        // (no mnemonic: Alt+B is the Build menu's, Alt+Y nobody's but too far from its words to find)
+        t.Controls.Add(new Label { Text = "Search by", AutoSize = true, Anchor = AnchorStyles.Left }, 4, 0);
+        t.Controls.Add(by, 5, 0);
         t.Controls.Add(tree, 0, 1);
-        t.SetColumnSpan(tree, 4);
-        tree.TabIndex = 0; search.TabIndex = 1; show.TabIndex = 2;
-        var p = new InvPane { Title = title, Tree = tree, Search = search, Show = show, Panel = t };
+        t.SetColumnSpan(tree, 6);
+        tree.TabIndex = 0; search.TabIndex = 1; show.TabIndex = 2; by.TabIndex = 3;
+        var p = new InvPane { Title = title, Tree = tree, Search = search, Show = show, By = by, Panel = t };
 
         // the menu by the Applications key, Shift+F10 or a right click, built for what's chosen then (not the control's
         // ContextMenuStrip: a menu shown for its own key would open again on the key's release)
@@ -132,7 +145,7 @@ public sealed partial class MainForm
         tree.AfterExpand += (_, e) => { if (p.Mode == "" && e.Node?.Tag is InventoryFolder) p.Open.Add(e.Node.Name); };
         tree.AfterCollapse += (_, e) => { if (p.Mode == "" && e.Node?.Tag is InventoryFolder) p.Open.Remove(e.Node.Name); };
         tree.KeyDown += (_, e) => InventoryKey(p, e);
-        foreach (Control c in new Control[] { tree, search, show }) c.Enter += (_, _) => _pane = p;
+        foreach (Control c in new Control[] { tree, search, show, by }) c.Enter += (_, _) => _pane = p;
         search.TextChanged += (_, _) => { p.SearchTimer.Stop(); p.SearchTimer.Start(); };
         p.SearchTimer.Tick += (_, _) => { p.SearchTimer.Stop(); ShowInventory(p, said: true); };
         search.KeyDown += (_, e) =>
@@ -141,15 +154,18 @@ public sealed partial class MainForm
             else if (e.KeyCode == Keys.Escape) { e.Handled = e.SuppressKeyPress = true; search.Clear(); p.SearchTimer.Stop(); ShowInventory(p, said: false, focus: true); }
         };
         show.SelectedIndexChanged += (_, _) => ShowInventory(p, said: show.Focused);
+        // a search shown again by what it's looked for in; with no words, nothing to do
+        by.SelectedIndexChanged += (_, _) => { if (search.Text.Trim().Length > 0) ShowInventory(p, said: by.Focused); };
         // Control+F from Show goes to Search, as from the tree; and its character never reaches the list, whose
         // first-letter search took it as F and picked Favorites (the inventory test's search after Show: Worn)
-        show.KeyDown += (_, e) =>
-        {
-            if (e.KeyData != (Keys.Control | Keys.F)) return;
-            e.Handled = e.SuppressKeyPress = true;
-            search.Focus();
-            search.SelectAll();
-        };
+        foreach (var box in new[] { show, by })
+            box.KeyDown += (_, e) =>
+            {
+                if (e.KeyData != (Keys.Control | Keys.F)) return;
+                e.Handled = e.SuppressKeyPress = true;
+                search.Focus();
+                search.SelectAll();
+            };
         return p;
     }
 
@@ -225,9 +241,11 @@ public sealed partial class MainForm
             if (focus) tree.Focus();
             return;
         }
-        var ask = new FlatAsk(store, root.UUID, client.Inventory.FindFolderForType(FolderType.Trash), mode, words, show, Worn(), Meta.IsFavorite);
+        var names = Host!.Session.Names;
+        var ask = new FlatAsk(store, root.UUID, client.Inventory.FindFolderForType(FolderType.Trash), mode, words, show, Worn(), Meta.IsFavorite,
+            p.By.SelectedIndex, _set.InventoryByDate, names, (ids, ct) => ResolveCreatorsAsync(client, names, ids, ct));
         var cts = p.Finding = new CancellationTokenSource();
-        var find = Task.Run(() => FindFlat(ask, cts.Token), cts.Token);
+        var find = Task.Run(() => FindFlatAsync(ask, cts.Token), cts.Token);
         try { find.Wait(100); }
         catch (AggregateException) { }   // (cancelled or failed: ShowFlat and ShowFlatLater see which)
         if (find.IsCompleted) ShowFlat(p, cts, find, said, focus);
@@ -269,16 +287,17 @@ public sealed partial class MainForm
             tree.Nodes.Clear();
             foreach (var (n, path) in ordered)
                 tree.Nodes.Add(MakeNode(p, n, worn, path.Length > 0 ? path : "My Inventory"));
+            var nothing = "Nothing " + ask.By switch { ByCreator => $"made by {words}", ByDescription => $"with {words} in its description", _ => $"called {words}" };
             if (ordered.Count == 0)
                 tree.Nodes.Add(new TreeNode(p.Mode switch
                 {
-                    "search" when trashOnly => $"Nothing called {words} in the Trash.",
-                    "search" => trashed.Length > 0 ? $"Nothing called {words}, but {trashed}." : $"Nothing called {words}.",
+                    "search" when trashOnly => $"{nothing} in the Trash.",
+                    "search" => trashed.Length > 0 ? $"{nothing}, but {trashed}." : $"{nothing}.",
                     "worn" => "Nothing worn.",
                     "trash" => "The Trash is empty.",
                     "favorites" => "No favorites yet. Control+Shift+F on an item or folder adds it.",
                     "gestures" => "No gestures in your inventory.",
-                    _ => "Nothing new in the last day.",
+                    _ => "No items in your inventory yet.",
                 }));
             tree.SelectedNode = (keep != null ? tree.Nodes[keep] : null) ?? tree.Nodes[0];
         }
@@ -291,6 +310,7 @@ public sealed partial class MainForm
                 : p.Mode == "favorites" ? $"{many} {(ordered.Count == 1 ? "favorite" : "favorites")}."
                 : p.Mode == "gestures" ? $"{many} {(ordered.Count == 1 ? "gesture" : "gestures")}."
                 : trashOnly ? $"{many} in the Trash."
+                : p.Mode == "recent" ? (ordered.Count >= FlatLimit ? $"The newest {FlatLimit}, the newest first." : $"{ordered.Count} items, the newest first.")
                 : trashed.Length > 0 ? $"{many} found, and {trashed}." : $"{many} found.", keep: false);
         }
         if (focus) tree.Focus();
@@ -301,9 +321,43 @@ public sealed partial class MainForm
 
     const int FlatLimit = 500;
 
-    /// <summary>What a flat list asks for, with what's read on the window's thread for it (the Trash's id, what's worn).</summary>
+    /// <summary>What a flat list asks for, with what's read on the window's thread for it (the Trash's id, what's worn,
+    /// what the words are looked for in, the order), and how creators' names are known and asked for.</summary>
     sealed record FlatAsk(LibreMetaverse.Inventory Store, UUID Root, UUID Trash, string Mode, string Words, int Show,
-        (HashSet<UUID> Ids, Dictionary<UUID, string> Points) Worn, Func<UUID, bool> Favorite);
+        (HashSet<UUID> Ids, Dictionary<UUID, string> Points) Worn, Func<UUID, bool> Favorite, int By, bool ByDate,
+        Sojourn.Core.World.NameCache Names, Func<List<UUID>, CancellationToken, Task> Resolve);
+
+    /// <summary>Search by's choices, the official viewer's words.</summary>
+    static readonly object[] SearchBy = { "Name", "Creator", "Description" };
+    const int ByCreator = 1, ByDescription = 2;
+
+    /// <summary>A search by creator: the names of the creators not known yet asked for first (a full inventory has
+    /// hundreds of makers), then the list found. Any thread.</summary>
+    static async Task<Flat> FindFlatAsync(FlatAsk a, CancellationToken ct)
+    {
+        if (a.Mode != "search" || a.By != ByCreator) return FindFlat(a, ct);
+        var took = System.Diagnostics.Stopwatch.StartNew();
+        var unknown = new HashSet<UUID>();
+        Walk(a.Store, a.Root, "", UUID.Zero, ct, (n, _) =>
+        {
+            if (n is InventoryItem it && Target(a.Store, it).CreatorID is var cr && cr != UUID.Zero && !a.Names.Has(cr)) unknown.Add(cr);
+            return true;
+        });
+        if (unknown.Count > 0) await a.Resolve(unknown.ToList(), ct);
+        return FindFlat(a, ct) with { Ms = took.ElapsedMilliseconds };
+    }
+
+    /// <summary>Creators' names asked of the grid, 80 at a time, four requests at once, each waiting at most 5 s: a name
+    /// that doesn't come in that time just doesn't match.</summary>
+    static async Task ResolveCreatorsAsync(GridClient c, Sojourn.Core.World.NameCache names, List<UUID> ids, CancellationToken ct)
+    {
+        var parts = ids.Chunk(80).ToList();
+        for (int i = 0; i < parts.Count; i += 4)
+        {
+            ct.ThrowIfCancellationRequested();
+            await Task.WhenAll(parts.Skip(i).Take(4).Select(part => names.ResolveAsync(c, part, TimeSpan.FromSeconds(5), ct)));
+        }
+    }
 
     /// <summary>A flat list found: its nodes in order, with the folder each is in, how many matches the Trash has, how
     /// many nodes were looked at and how long it took.</summary>
@@ -317,19 +371,27 @@ public sealed partial class MainForm
     {
         var took = System.Diagnostics.Stopwatch.StartNew();
         var store = a.Store;
-        var since = DateTime.UtcNow.AddHours(-24);
         int seen = 0;
+        // (any form of their name: as written, in plain letters, the username)
+        bool MadeBy(UUID id) => id != UUID.Zero && a.Names.Forms(id).Any(f => f.Contains(a.Words, StringComparison.OrdinalIgnoreCase));
+        bool Words(InventoryBase n) => a.By switch
+        {
+            ByCreator => n is InventoryItem ci && MadeBy(Target(store, ci).CreatorID),
+            ByDescription => n is InventoryItem di && (Target(store, di).Description ?? "").Contains(a.Words, StringComparison.OrdinalIgnoreCase),
+            _ => n.Name.Contains(a.Words, StringComparison.OrdinalIgnoreCase),
+        };
         bool Hit(InventoryBase n) => a.Mode switch
         {
-            "search" => n.Name.Contains(a.Words, StringComparison.OrdinalIgnoreCase)
+            "search" => Words(n)
                         && (a.Show != 1 || n is InventoryItem wi && a.Worn.Ids.Contains(Target(store, wi).UUID))
-                        && (a.Show != 2 || n is InventoryItem ri && Utc(ri.CreationDate) >= since)
+                        && (a.Show != 2 || n is InventoryItem)
                         && (a.Show != ShowFavorites || n is not InventoryItem { AssetType: AssetType.Link or AssetType.LinkFolder } && a.Favorite(n.UUID))
                         && (a.Show != ShowOnlyGestures || n is InventoryItem { AssetType: AssetType.Gesture }),
             "gestures" => n is InventoryItem { AssetType: AssetType.Gesture },
             "worn" => n is InventoryItem it && it.AssetType is not (AssetType.Link or AssetType.LinkFolder) && a.Worn.Ids.Contains(it.UUID),
             "trash" => true,
-            _ => n is InventoryItem rt && Utc(rt.CreationDate) >= since,
+            // Show: Recent, everything newest first (it was only the last day's: too short to find last week's purchase)
+            _ => n is InventoryItem,
         };
         bool trashOnly = a.Show == 3;
         var found = new List<(InventoryBase Node, string Path)>();
@@ -340,18 +402,22 @@ public sealed partial class MainForm
             return new(a, found.OrderBy(f => f.Node is InventoryFolder ? 0 : 1).ThenBy(f => f.Node.Name, StringComparer.OrdinalIgnoreCase).ToList(), 0, seen, took.ElapsedMilliseconds);
         }
         var trashName = store.TryGetValue<InventoryFolder>(a.Trash, out var tf) ? tf.Name : "Trash";
+        // Recent, or a search in it: the newest can be anywhere, so all of them, then the newest kept
+        bool all = a.Mode == "recent" || a.Mode == "search" && a.Show == 2;
         Walk(store, trashOnly ? a.Trash : a.Root, trashOnly ? trashName : "", trashOnly ? UUID.Zero : a.Trash, ct, (n, path) =>
         {
             seen++;
             if (Hit(n)) found.Add((n, path));
-            return found.Count < FlatLimit;
+            return all || found.Count < FlatLimit;
         });
         int inTrash = 0;
         if (a.Mode == "search" && !trashOnly && a.Trash != UUID.Zero)
             Walk(store, a.Trash, trashName, UUID.Zero, ct, (n, _) => { seen++; if (Hit(n)) inTrash++; return true; });
-        var ordered = a.Mode == "recent"
-            ? found.OrderByDescending(f => ((InventoryItem)f.Node).CreationDate).ToList()
-            : found.OrderBy(f => f.Node is InventoryFolder ? 0 : 1).ThenBy(f => f.Node.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var ordered = all
+            ? found.OrderByDescending(f => ((InventoryItem)f.Node).CreationDate).Take(FlatLimit).ToList()
+            : found.OrderBy(f => f.Node is InventoryFolder ? 0 : 1)
+                .ThenByDescending(f => a.ByDate && f.Node is InventoryItem di ? di.CreationDate : DateTime.MinValue)
+                .ThenBy(f => f.Node.Name, StringComparer.OrdinalIgnoreCase).ToList();
         return new(a, ordered, inTrash, seen, took.ElapsedMilliseconds);
     }
 
@@ -390,7 +456,7 @@ public sealed partial class MainForm
         var tree = p.Tree;
         var nodes = node?.Nodes ?? tree.Nodes;
         List<InventoryBase> kids;
-        try { kids = Sorted(store.GetContents(folder)); }
+        try { kids = InTreeOrder(store.GetContents(folder)); }
         catch (InventoryException) { kids = new(); }   // (gone meanwhile)
         if (kids.Count == 0 && node != null)
             _ = _ops.Session.Inventory.EnsureLoadedAsync(folder, CancellationToken.None).ContinueWith(_ =>
@@ -545,6 +611,13 @@ public sealed partial class MainForm
     static List<InventoryBase> Sorted(IEnumerable<InventoryBase> nodes) => nodes
         .OrderBy(n => n is InventoryFolder ? 0 : 1).ThenBy(n => n.Name, StringComparer.OrdinalIgnoreCase).ToList();
 
+    /// <summary>A folder's contents in the tree's order: folders first by name, then items by name, or newest first
+    /// (access_inventory_sort; Radegast's Sort by date, which keeps folders by name).</summary>
+    List<InventoryBase> InTreeOrder(IEnumerable<InventoryBase> nodes) => nodes
+        .OrderBy(n => n is InventoryFolder ? 0 : 1)
+        .ThenByDescending(n => _set.InventoryByDate && n is InventoryItem it ? it.CreationDate : DateTime.MinValue)
+        .ThenBy(n => n.Name, StringComparer.OrdinalIgnoreCase).ToList();
+
     static IEnumerable<TreeNode> Descendants(TreeNodeCollection nodes)
     {
         foreach (TreeNode n in nodes)
@@ -572,7 +645,19 @@ public sealed partial class MainForm
 
     /// <summary>"Red Dress, skirt, worn, favorite, in Clothing, marked".</summary>
     string Label(InvPane p, InvNode tn, (HashSet<UUID> Ids, Dictionary<UUID, string> Points) worn) =>
-        Words(p, tn.Item, worn) + (SaysFavorite(p, tn) ? ", favorite" : "") + (tn.Path != null ? $", in {tn.Path}" : "") + (p.Marked.Contains(tn.Name) ? ", marked" : "");
+        Words(p, tn.Item, worn) + (SaysFavorite(p, tn) ? ", favorite" : "")
+        + ((p.Mode == "recent" || p.Mode == "search" && p.Show.SelectedIndex == 2) && tn.Path != null && tn.Item is InventoryItem ri ? $", {Came(ri.CreationDate)}" : "")
+        + (tn.Path != null ? $", in {tn.Path}" : "") + (p.Marked.Contains(tn.Name) ? ", marked" : "");
+
+    /// <summary>When something came into the inventory, for Show: Recent: "today 14:05", "yesterday 09:12", "3 November",
+    /// "3 November 2024".</summary>
+    static string Came(DateTime when)
+    {
+        var d = Utc(when).ToLocalTime();
+        var days = (DateTime.Today - d.Date).Days;
+        return days == 0 ? $"today {d:HH:mm}" : days == 1 ? $"yesterday {d:HH:mm}"
+            : d.ToString(d.Year == DateTime.Today.Year ? "d MMMM" : "d MMMM yyyy", CultureInfo.InvariantCulture);
+    }
 
     /// <summary>Every node's words again where they changed (worn, marked), without rebuilding the tree: the place
     /// and what's open stay, and the screen reader hears the item it's on change.</summary>
@@ -753,6 +838,8 @@ public sealed partial class MainForm
                 ReadFavorites(refresh: true).ContinueWith(_ => BeginInvoke(() => ShowInventory(p, said: true)), TaskScheduler.Default);
                 break;
             case Keys.F5: _ = ReloadInventoryAsync(p); break;
+            // (Windows' tree views open everything under a folder on the number pad's star)
+            case Keys.Multiply: if (tree.SelectedNode is { Tag: InventoryFolder } open) ExpandAll(p, open); break;
             case Keys.Apps or (Keys.Shift | Keys.F10): ShowInventoryMenu(p); break;
             default: handled = false; break;
         }
@@ -849,10 +936,12 @@ public sealed partial class MainForm
         }
         list.AddRange(FavoriteActions(p, chosen, folder: false));
         if (one) list.Add(new("Re&name", () => Rename(p), "F2"));
+        if (p.Mode == "") list.Add(SortAction());
         if (one) list.Add(new("D&etails", () => _ = DetailsAsync(items[0])));
         if (one) list.Add(new("Descri&be", () => DescribeKey(me: false), "Control+D"));
         list.Add(new("&Delete", () => _ = DeleteAsync(p), "Delete"));
         if (chosen.All(InTrash)) list.Add(new("E&mpty the Trash", () => _ = EmptyTrashAsync(), "//emptytrash"));
+        if (chosen.All(InLostAndFound)) list.Add(new("E&mpty Lost and Found", () => _ = EmptyLostAndFoundAsync(), "//emptylostandfound"));
         if (Marked(p).Count > 0) list.Add(new("Unmark a&ll", () => { Unmark(p); Reader?.Answer("Nothing marked.", keep: false); }));
         // what Enter does, the first action, says so (one item chosen: Enter acts on the selected one)
         if (one && list.Count > 0 && list[0].Text != "-") list[0] = list[0] with { Key = "Enter" };
@@ -884,11 +973,81 @@ public sealed partial class MainForm
         }
         list.AddRange(FavoriteActions(p, new() { f }, folder: true));
         list.Add(new("Re&name", () => Rename(p), "F2"));
+        // Radegast's Expand All and Collapse; in a flat list a folder has no tree under it to open
+        if (p.Mode == "" && p.Tree.SelectedNode is { Tag: InventoryFolder } node)
+        {
+            list.Add(new("E&xpand all in it", () => ExpandAll(p, node), "Number pad *"));
+            if (node.IsExpanded) list.Add(new("C&ollapse all in it", () => CollapseAll(p, node)));
+        }
+        if (p.Mode == "") list.Add(SortAction());
+        list.Add(new("&Back up to disk...", () => _ = BackupAsync(f)));
+        // the whole inventory, from any folder at its top (the tree has no node for My Inventory itself)
+        if (f.ParentUUID == Store?.RootFolder?.UUID) list.Add(new("Back up all your inventory to disk...", () => _ = BackupAsync(null)));
         list.Add(new("&Delete", () => _ = DeleteAsync(p), "Delete"));
         // the Trash's own: first, as what it's opened for; and anything in it has it too
         if (f.PreferredType == FolderType.Trash) list.Insert(0, new("E&mpty the Trash", () => _ = EmptyTrashAsync(), "//emptytrash"));
         else if (InTrash(f)) list.Add(new("E&mpty the Trash", () => _ = EmptyTrashAsync(), "//emptytrash"));
+        // Lost and Found's the same (what's returned from the world lands there, and fills up)
+        if (f.PreferredType == FolderType.LostAndFound) list.Insert(0, new("E&mpty Lost and Found", () => _ = EmptyLostAndFoundAsync(), "//emptylostandfound"));
+        else if (InLostAndFound(f)) list.Add(new("E&mpty Lost and Found", () => _ = EmptyLostAndFoundAsync(), "//emptylostandfound"));
         return list;
+    }
+
+    /// <summary>The menu's item turning the order the other way (access_inventory_sort).</summary>
+    InvAction SortAction() => _set.InventoryByDate ? new("Sort by na&me", () => SetSort(byDate: false)) : new("Sort by da&te, newest first", () => SetSort(byDate: true));
+
+    void SetSort(bool byDate)
+    {
+        _set.SetInventorySort(byDate);
+        Resort(said: true);
+    }
+
+    /// <summary>Every pane shown again in the order chosen, the person's place kept.</summary>
+    void Resort(bool said)
+    {
+        foreach (var pane in Panes)
+            if (pane.ShownOnce) ShowInventory(pane, said: false);
+        if (said)
+            Reader?.Answer(_set.InventoryByDate ? "Sorted newest first: in each folder the newest things come first, folders still first, by name."
+                : "Sorted by name.", keep: false);
+    }
+
+    /// <summary>Radegast's Expand All: a folder and every folder under it opened, as opening each by hand does (each filled
+    /// from the store, a big one's rest going in between keys as usual), the focus staying on it; how many said.</summary>
+    void ExpandAll(InvPane p, TreeNode node)
+    {
+        int folders = 0, items = 0;
+        var tree = p.Tree;
+        tree.BeginUpdate();
+        try
+        {
+            var open = new Stack<TreeNode>();
+            open.Push(node);
+            while (open.Count > 0)
+            {
+                var n = open.Pop();
+                if (n.Tag is not InventoryFolder f) continue;
+                if (!n.IsExpanded) n.Expand();   // (BeforeExpand fills it)
+                folders++;
+                try { items += Store?.GetContents(f.UUID).Count(k => k is InventoryItem) ?? 0; }
+                catch (InventoryException) { }
+                foreach (TreeNode k in n.Nodes)
+                    if (k.Tag is InventoryFolder) open.Push(k);
+            }
+        }
+        finally { tree.EndUpdate(); }
+        tree.SelectedNode = node;
+        Reader?.Answer(folders == 1 ? $"Opened {node.Text}: {Count(items, "item")} in it." : $"Opened {node.Text} and the {Count(folders - 1, "folder")} in it: {Count(items, "item")} in all.", keep: false);
+    }
+
+    /// <summary>Radegast's Collapse: a folder and every folder under it closed, so they don't open again by themselves.</summary>
+    void CollapseAll(InvPane p, TreeNode node)
+    {
+        foreach (var n in Descendants(node.Nodes).Prepend(node))
+            if (n.Tag is InventoryFolder) p.Open.Remove(n.Name);
+        node.Collapse(ignoreChildren: false);
+        p.Tree.SelectedNode = node;
+        Reader?.Answer($"Closed {node.Text} and everything in it.", keep: false);
     }
 
     // --- actions --------------------------------------------------------------------------------------------------------
@@ -1039,18 +1198,19 @@ public sealed partial class MainForm
         bool script = item.AssetType == AssetType.LSLText;
         var r = await _ops.ReadAsync("TesselInventory", script ? "readScript" : "readNotecard", new JsonObject { ["item_id"] = item.UUID.ToString() });
         if (PersonOps.Error(r) is { } e) { Answer($"Couldn't open {item.Name}: {e}"); return; }
-        EditorForm? editor = null;
-        var (held, heldSaid) = script ? (null, null) : EmbeddedList(p, item, r, () => editor);
-        editor = new EditorForm(script ? "Script" : "Notecard", item.Name, r.Str("text") ?? "", async text =>
+        var card = script ? null : new CardHeld(this, p, item.Name, item.UUID, UUID.Zero, r);
+        var editor = new EditorForm(script ? "Script" : "Notecard", item.Name, r.Str("text") ?? "", async text =>
         {
-            var w = await _ops.DoAsync("TesselInventory", script ? "writeScript" : "writeNotecard", new JsonObject { ["item_id"] = item.UUID.ToString(), ["text"] = text });
+            if (card != null) return await card.SaveAsync(text);
+            var w = await _ops.DoAsync("TesselInventory", "writeScript", new JsonObject { ["item_id"] = item.UUID.ToString(), ["text"] = text });
             if (PersonOps.Error(w) is { } we) return ($"Not saved: {we}", null, null);
-            if (!script) return await NotecardSavedAsync(item, w);
             var errors = ScriptErrorLines((w["errors"] as JsonArray)?.Select(x => x?.ToString() ?? "").Where(x => x.Length > 0));
             return w["compiled"]?.GetValue<bool>() == false && errors.Count == 0
                 ? ("Saved. This grid compiles a script only once it's inside an object.", null, null)
                 : ScriptSaved(errors);
-        }, text => Reader?.Answer(text, keep: false), held);
+        }, text => Reader?.Answer(text, keep: false));
+        card?.Opened(editor);
+        var heldSaid = card?.Said;
         editor.OpenFirstLink = OpenFirstLink;
         editor.FormClosed += (_, _) =>
         {
@@ -1061,20 +1221,6 @@ public sealed partial class MainForm
         };
         if (heldSaid != null) editor.Shown += (_, _) => Reader?.Answer(heldSaid, keep: false);
         editor.Show(this);
-    }
-
-    /// <summary>What a notecard's save says: what it held is still there, and any whose marker had gone from the text, now
-    /// at its end (the text coming back with the marker in it).</summary>
-    async Task<(string Said, string? Errors, string? Now)> NotecardSavedAsync(InventoryItem item, JsonObject w)
-    {
-        var moved = (w["moved_to_end"] as JsonArray)?.Select(x => x?.ToString() ?? "").ToList() ?? new();
-        if (moved.Count > 0)
-        {
-            var now = await _ops.ReadAsync("TesselInventory", "readNotecard", new JsonObject { ["item_id"] = item.UUID.ToString() });
-            var (names, its) = moved.Count == 1 ? (moved[0], "its place was gone from the text, so it's at the end now") : (string.Join(" and ", moved), "their places were gone from the text, so they're at the end now");
-            return ($"Saved, with what it holds. {names}: {its}.", null, PersonOps.Error(now) == null ? now.Str("text") : null);
-        }
-        return (w["embedded_kept"]?.GetValue<int>() is { } kept and > 0 ? $"Saved, with the {(kept == 1 ? "thing" : $"{kept} things")} it holds." : "Saved.", null, null);
     }
 
     /// <summary>A notecard of `//go` lines (a blind tester's routes) played step by step (Commands.PlayRouteAsync).</summary>
@@ -1093,7 +1239,7 @@ public sealed partial class MainForm
         foreach (var f in (friends["friends"] as JsonArray ?? new()).OfType<JsonObject>()
                      .OrderByDescending(f => f["online"]?.GetValue<bool>() == true))
             if (UUID.TryParse(f.Str("id"), out var fid) && people.All(x => x.Id != fid))
-                people.Add(new(fid, f.Str("display_name") is { Length: > 0 } dn ? dn : f.Str("username") ?? "a friend",
+                people.Add(new(fid, PersonOps.SaidName(f, "a friend"),
                     f["online"]?.GetValue<bool>() == true ? "friend, online" : "friend"));
         var who = Dialogs.Pick(this, $"Give {Named(chosen)} to", people, FindSomeoneAsync);
         if (who == null) { Reader?.Answer("Not given.", keep: false); return; }
@@ -1140,14 +1286,15 @@ public sealed partial class MainForm
         var r = await _ops.ReadAsync("TesselAgent", "findAvatar", new JsonObject { ["name"] = name, ["limit"] = 5 });
         var hits = (r["people"] as JsonArray ?? new()).OfType<JsonObject>().ToList();
         var hit = hits.FirstOrDefault(h => string.Equals(h.Str("username"), name, StringComparison.OrdinalIgnoreCase)
-                                           || string.Equals(h.Str("display_name"), name, StringComparison.OrdinalIgnoreCase))
+                                           || string.Equals(h.Str("display_name"), name, StringComparison.OrdinalIgnoreCase)
+                                           || string.Equals(Sojourn.Core.World.PlainName.Of(h.Str("display_name")), name.Trim(), StringComparison.OrdinalIgnoreCase))
                   ?? (hits.Count == 1 ? hits[0] : null);
         if (hit == null || !UUID.TryParse(hit.Str("id"), out var id))
         {
             Reader?.Answer(hits.Count == 0 ? $"Nobody called {name}." : $"{hits.Count} people match {name}; type more of the name.", keep: false);
             return null;
         }
-        return new(id, hit.Str("display_name") is { Length: > 0 } dn ? dn : hit.Str("username") ?? name, "");
+        return new(id, PersonOps.SaidName(hit, name), "");
     }
 
     void Clip(InvPane p, bool cut)
@@ -1205,7 +1352,7 @@ public sealed partial class MainForm
     {
         var names = await _ops.ReadAsync("TesselAgent", "names", new JsonObject { ["ids"] = new JsonArray(id.ToString()), ["timeout"] = 3 });
         if (names["names"] is JsonObject nm && nm[id.ToString()] is { } n)
-            return n is JsonObject o ? o.Str("display_name") ?? o.Str("username") ?? "someone" : n.ToString();
+            return n is JsonObject o ? PersonOps.SaidName(o) : n.ToString();
         return "someone whose name didn't come";
     }
 
@@ -1340,7 +1487,7 @@ public sealed partial class MainForm
         string creator = "someone";
         var names = await _ops.ReadAsync("TesselAgent", "names", new JsonObject { ["ids"] = new JsonArray(t.CreatorID.ToString()), ["timeout"] = 3 });
         if (names["names"] is JsonObject nm && nm[t.CreatorID.ToString()] is { } cn)
-            creator = cn is JsonObject co ? co.Str("display_name") ?? co.Str("username") ?? creator : cn.ToString();
+            creator = cn is JsonObject co ? PersonOps.SaidName(co, creator) : cn.ToString();
         var desc = string.IsNullOrWhiteSpace(t.Description) || t.Description == "(No Description)" ? "" : $" Description: {t.Description}.";
         Answer($"{t.Name}, {TypeWord(t)}. Yours to {Rights(p)}; the next owner may {Rights(t.Permissions.NextOwnerMask)}. "
                + $"Made by {creator}; in your inventory since {Utc(item.CreationDate).ToLocalTime().ToString("d MMMM yyyy", CultureInfo.InvariantCulture)}.{desc}");

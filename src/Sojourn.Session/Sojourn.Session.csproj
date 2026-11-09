@@ -25,7 +25,7 @@
 
   <ItemGroup>
     <!-- voice chat's native shim over LL's libwebrtc, built by tools/voice.py into local/ (voice is off without it) -->
-    <None Include="../../local/voice/build/Release/sojourn_voice.dll" Condition="Exists('../../local/voice/build/Release/sojourn_voice.dll')" CopyToOutputDirectory="PreserveNewest" Link="sojourn_voice.dll" />
+    <None Include="$(SojournLocal)/voice/build/Release/sojourn_voice.dll" Condition="Exists('$(SojournLocal)/voice/build/Release/sojourn_voice.dll')" CopyToOutputDirectory="PreserveNewest" Link="sojourn_voice.dll" />
     <!-- the assistant's panel: Archivo (OFL-1.1), static instances of the Lookbook's variable font -->
     <None Include="Assets\Fonts\*" CopyToOutputDirectory="PreserveNewest" Link="Fonts\%(Filename)%(Extension)" />
     <!-- Sojourn's own words in each language (Lang/Lang.cs, docs/languages.md) -->

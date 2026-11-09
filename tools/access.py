@@ -80,6 +80,8 @@ import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# SOJOURN_LOCAL=dir: the main tree's local/ (grid, test tools, secrets) for a run from a git worktree, which has none
+LOCAL = Path(os.environ["SOJOURN_LOCAL"]) if os.environ.get("SOJOURN_LOCAL") else ROOT / "local"
 sys.path.insert(0, str(ROOT / "tools"))
 
 # ---- what to adjust -------------------------------------------------------------------------------------------------
@@ -92,12 +94,14 @@ APP_BIN = ((Path(os.environ["SOJOURN_BUILD_ROOT"]) / "bin" / "Sojourn.Access") i
 APP_EXE = APP_BIN / "SojournAccess.exe"
 APP_DLL = APP_BIN / "SojournAccess.dll"
 APP_AS_EXE = False                 # the apphost can't find .NET here; dotnet + the dll it is
-QUIREUIA = ROOT / "local" / "bin" / "QuireUia" / "QuireUia.exe"
+QUIREUIA = LOCAL / "bin" / "QuireUia" / "QuireUia.exe"
 VISITOR_DLL = ((Path(os.environ["SOJOURN_BUILD_ROOT"]) / "bin" / "Visitor") if os.environ.get("SOJOURN_BUILD_ROOT")
-               else ROOT / "local" / "bin" / "Visitor") / "Visitor.dll"
-OUT = ROOT / "local" / ("access-test-" + os.environ["ACCESS_ACCOUNTS"].strip().lower() if os.environ.get("ACCESS_ACCOUNTS")
-                         else "access-test")   # ACCESS_ACCOUNTS (below): its own folder too
-VISITOR_HOME = ROOT / "local" / "access-visitor"   # the `visitor` command's (a person's session), apart from the test's
+               else LOCAL / "bin" / "Visitor") / "Visitor.dll"
+OUT = LOCAL / (("access-test-" + os.environ["ACCESS_ACCOUNTS"].strip().lower() if os.environ.get("ACCESS_ACCOUNTS")
+                          else "access-test")   # ACCESS_ACCOUNTS (below): its own folder too
+                         # and a build root's own (agents' worktrees): a run waiting its turn would otherwise empty the last one's
+                         + ("-" + Path(os.environ["SOJOURN_BUILD_ROOT"]).name.lower() if os.environ.get("SOJOURN_BUILD_ROOT") else ""))
+VISITOR_HOME = LOCAL / "access-visitor"   # the `visitor` command's (a person's session), apart from the test's
 EVENTS = OUT / "events.jsonl"
 HEARD = OUT / "heard.wav"           # what the app played (walk mode's cues among it)
 
@@ -126,7 +130,7 @@ NO_GPU = os.environ.get("ACCESS_NO_GPU") == "1"         # Vulkan's drivers hidde
 # the software Vulkan driver the view falls back to without a GPU (Mesa's lavapipe: fetch-lavapipe), given to repo runs by
 # SOJOURN_SOFTWARE_VULKAN (a package has it beside the program); ACCESS_NO_SOFTWARE=1 leaves it out, so without a GPU the
 # view gives up; ACCESS_SOFTWARE=1 draws on it with the GPU there (SOJOURN_OFFSCREEN_SOFTWARE)
-LAVAPIPE = ROOT / "local" / "lavapipe"
+LAVAPIPE = LOCAL / "lavapipe"
 SOFTWARE_OK = (LAVAPIPE / "lvp_icd.x86_64.json").exists() and os.environ.get("ACCESS_NO_SOFTWARE") != "1"
 SOFTWARE = SOFTWARE_OK and (NO_GPU or os.environ.get("ACCESS_SOFTWARE") == "1")   # the view expected on the processor
 VIEWLESS = NO_RENDER or (NO_GPU and not SOFTWARE)       # no pictures or faces; the collision model needs no GPU
@@ -166,13 +170,13 @@ ROLES = {"settings": {"List", "DataGrid", "Table"}, "settingsGroup": {"ComboBox"
          "objects": {"List", "DataGrid", "Table"}, "notices": {"List", "DataGrid", "Table"},
          "noticeText": {"Edit", "Document"}, "noticeReply": {"Edit"}, "noticeIgnore": {"Button"},
          "assistantInput": {"Edit"}, "assistantHistory": {"Edit", "Document"}, "inventory": {"Tree"},
-         "inventorySearch": {"Edit"}, "inventoryShow": {"ComboBox"}, "editorText": {"Edit", "Document"},
+         "inventorySearch": {"Edit"}, "inventoryShow": {"ComboBox"}, "inventoryBy": {"ComboBox"}, "editorText": {"Edit", "Document"},
          "landmarks": {"Tree"}, "history": {"List", "DataGrid", "Table"}, "goRegion": {"Edit"},
          "regions": {"List", "DataGrid", "Table"}, "searchWords": {"Edit"}, "searchKind": {"ComboBox"},
          "results": {"List", "DataGrid", "Table"}, "friends": {"List", "DataGrid", "Table"}, "groups": {"List", "DataGrid", "Table"},
          "profileText": {"Edit", "Document"}, "keysText": {"Edit", "Document"}}
 
-VK = {"back": 8, "minus": 189, "equals": 187, "tab": 9, "enter": 13, "ctrl": 17, "esc": 27, "space": 32, "del": 46, "oem_open": 219, "oem_close": 221, "f1": 112, "f3": 114, "f4": 115, "f5": 116, "f6": 117, "f8": 119, "f10": 121, "apps": 93, "alt": 18, "pgup": 33, "pgdn": 34,
+VK = {"back": 8, "minus": 189, "equals": 187, "tab": 9, "enter": 13, "ctrl": 17, "esc": 27, "space": 32, "del": 46, "oem_open": 219, "oem_close": 221, "f1": 112, "f3": 114, "f4": 115, "f5": 116, "f6": 117, "f8": 119, "f10": 121, "apps": 93, "alt": 18, "pgup": 33, "pgdn": 34, "multiply": 106,
       "home": 36, "end": 35, "up": 38, "down": 40, "left": 37, "right": 39,
       **{str(d): 48 + d for d in range(10)}, **{c: ord(c.upper()) for c in "abcdefghijklmnopqrstuvwxyz"}}
 
@@ -220,11 +224,11 @@ def visitor_stale():
 
 # ---- the package for a tester -------------------------------------------------------------------------------------------
 
-DIST = ROOT / "local" / "dist"
+DIST = LOCAL / "dist"
 PACKAGE_FILES = ROOT / "src" / "Sojourn.Access" / "Package"   # README.txt, licences/ (texts not found elsewhere)
-NVDA_DIR = ROOT / "local" / "nvda"                              # tools/screenreader.py fetch
-VOICE_DLL = ROOT / "local" / "voice" / "build" / "Release" / "sojourn_voice.dll"   # tools/voice.py build
-WEBRTC_LICENCES = ROOT / "local" / "webrtc" / "LICENSES" / "webrtc-license.txt"
+NVDA_DIR = LOCAL / "nvda"                              # tools/screenreader.py fetch
+VOICE_DLL = LOCAL / "voice" / "build" / "Release" / "sojourn_voice.dll"   # tools/voice.py build
+WEBRTC_LICENCES = LOCAL / "webrtc" / "LICENSES" / "webrtc-license.txt"
 NUGET = Path(os.environ.get("NUGET_PACKAGES", Path.home() / ".nuget" / "packages"))
 RID = "win-x64"
 # the assistant's Python side in a package: python.org's embeddable CPython (3.12, as the venv; 3.12.10 is the last
@@ -234,7 +238,7 @@ PY_EMBED = "3.12.10"
 PY_EMBED_URL = f"https://www.python.org/ftp/python/{PY_EMBED}/python-{PY_EMBED}-embed-amd64.zip"
 PY_EMBED_SHA256 = "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3"   # python.org's MD5 matched too; gitleaks:allow
 PY_EMBED_ZIP = DIST / "python-embed" / f"python-{PY_EMBED}-embed-amd64.zip"
-VENV_PY = ROOT / "local" / "assistant-venv" / "Scripts" / "python.exe"
+VENV_PY = LOCAL / "assistant-venv" / "Scripts" / "python.exe"
 BUNDLED_DISTS = ["claude-agent-sdk", "anthropic"]   # with their dependencies (anthropic: describing's lean calls); no hearing or local voice
 # the software Vulkan driver the view falls back to on a PC whose graphics can't run it (Render's Gpu/SoftwareVulkan.cs):
 # Mesa's lavapipe as mesa-dist-win builds it, its release archive checked by the SHA-256 GitHub lists for it, the two
@@ -253,7 +257,7 @@ def fetch_lavapipe():
     import hashlib
     sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     if all((LAVAPIPE / n).exists() and sha(LAVAPIPE / n) == h for n, h in LAVAPIPE_FILES.items()):
-        print(f"{LAVAPIPE.relative_to(ROOT)}: Mesa {MESA}'s lavapipe already there")
+        print(f"{shown(LAVAPIPE)}: Mesa {MESA}'s lavapipe already there")
         return 0
     seven = shutil.which("7z") or next((str(p) for p in (Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "7-Zip" / "7z.exe",)
                                         if p.exists()), None)
@@ -281,7 +285,7 @@ def fetch_lavapipe():
     LAVAPIPE.mkdir(parents=True, exist_ok=True)
     for n in LAVAPIPE_FILES:
         shutil.copy2(out / n, LAVAPIPE / n)
-    print(f"{LAVAPIPE.relative_to(ROOT)}: Mesa {MESA}'s lavapipe ({(LAVAPIPE / 'vulkan_lvp.dll').stat().st_size / 1e6:.0f} MB)")
+    print(f"{shown(LAVAPIPE)}: Mesa {MESA}'s lavapipe ({(LAVAPIPE / 'vulkan_lvp.dll').stat().st_size / 1e6:.0f} MB)")
     return 0
 
 
@@ -389,8 +393,8 @@ def package_build():
             if f.is_file():
                 z.write(f, f"{name}/{f.relative_to(stage).as_posix()}")
     unpacked = sum(f.stat().st_size for f in stage.rglob("*") if f.is_file())
-    print(f"{zip_path.relative_to(ROOT)}: {zip_path.stat().st_size / 1e6:.0f} MB ({unpacked / 1e6:.0f} MB unpacked, "
-          f"{sum(1 for f in stage.rglob('*') if f.is_file())} files); the folder: {stage.relative_to(ROOT)}")
+    print(f"{shown(zip_path)}: {zip_path.stat().st_size / 1e6:.0f} MB ({unpacked / 1e6:.0f} MB unpacked, "
+          f"{sum(1 for f in stage.rglob('*') if f.is_file())} files); the folder: {shown(stage)}")
     # the release notes name the public commit (tools/publish/access/RELEASES.md), the one made from this HEAD
     public = None if changed else public_commit(head)
     print(f"its source for the release notes: studio-quire/sojourn {public[:7]}" if public else
@@ -544,7 +548,7 @@ def write_text(path, text):
 # ---- building from a commit (Sojourn's package too) ----------------------------------------------------------------------
 
 ACCESS_TREE = DIST / "access-tree"   # package's export of HEAD (a try's: access-tree-TAG); never a junction to local/ in it
-PUBLISH_MAP = ROOT / "local" / "publish" / "map.txt"   # tools/publish.py: "<time> <repo> <public> from <private>"
+PUBLISH_MAP = LOCAL / "publish" / "map.txt"   # tools/publish.py: "<time> <repo> <public> from <private>"
 
 
 def export(commit, dest):
@@ -1193,6 +1197,32 @@ class Stop(Exception):
     """A check the rest can't go on without failed."""
 
 
+_grid_lock = None
+
+
+def grid_lock():
+    """One scripted run on the grid at a time, whatever its accounts (they share Atelier's spots and fixtures): a byte
+    locked in LOCAL/access-test.lock, freed by Windows when the process ends however it ends. With ACCESS_WAIT=1 a run
+    waits its turn (agents testing from worktrees); otherwise None at once."""
+    import msvcrt
+    LOCAL.mkdir(exist_ok=True)
+    f = open(LOCAL / "access-test.lock", "a+b")
+    said = False
+    while True:
+        try:
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            return f
+        except OSError:
+            if os.environ.get("ACCESS_WAIT") != "1":
+                f.close()
+                return None
+            if not said:
+                print("another scripted run is on the grid: waiting for it", flush=True)
+                said = True
+            time.sleep(10)
+
+
 def test():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     import grid
@@ -1210,7 +1240,12 @@ def test():
     app_file = APP_EXE if APP_AS_EXE else APP_DLL
     missing = [p for p in (QUIREUIA, VISITOR_DLL, app_file) if not p.exists()]
     if missing:
-        print("missing: " + ", ".join(str(p.relative_to(ROOT)) for p in missing) + " (python tools/access.py tools / build)")
+        print("missing: " + ", ".join(map(str, missing)) + " (python tools/access.py tools / build)")
+        return 1
+    global _grid_lock
+    _grid_lock = grid_lock()
+    if not _grid_lock:
+        print("another scripted run is on the grid (local/access-test.lock): ACCESS_WAIT=1 waits for it")
         return 1
     if not grid.ready():
         print("the local grid is down (python tools/grid.py start)")
@@ -1300,6 +1335,9 @@ def session(run, procs):
                SOJOURN_TEST_HOLD_WINDOW="1",   # //holdwindow SECONDS holds the window's thread (the window watch's step)
                SOJOURN_VOICE_OUT_FILE=str(HEARD), SOJOURN_WALK_LOG=str(OUT / "walk.log"),   # world audio to a file (local grid only), never the speakers
                SOJOURN_TEST_GROUPS_PAGE="1",   # a page of groups so short that any search has a further one
+               SOJOURN_LOGINS=str(OUT / "logins"),   # remembered passwords in the run's own folder, not the repo's saved logins
+               SOJOURN_TEST_NAMES="1",   # SojournTestNames: a display name set by the names step (the local grid has none)
+               SOJOURN_TEST_FILES=str(OUT / "files"),   # the editor's Open and Save windows: files there, by the item's name
                SOJOURN_TEST_UPLOAD_FEE=UPLOAD_FEES)   # uploads of some kinds confirmed as spending on the free local grid
     app_args = ["--grid", GRID_URI, "--user", f"{TESTER[0]} {TESTER[1]}", "--password", PASSWORD,
                 "--start", "uri:%s&%d&%d&%d" % (REGION, *TESTER_START), "--port", API_PORT, "--base", OUT / "app",
@@ -1319,6 +1357,7 @@ def session(run, procs):
             builders_before_launch(nonce)
     else:
         app_args.append("--no-assistant")
+    (OUT / "files").mkdir(parents=True, exist_ok=True)
     if os.environ.get("ACCESS_VOICE") != "1":
         app_args.append("--no-voice")   # voice chat is on by default; its keys' step runs with it only when asked
     if NO_RENDER:
@@ -1372,6 +1411,7 @@ def session(run, procs):
         ("the builders' tab", lambda: builders(run, nonce)),
         ("people and objects", lambda: lists(run)),
         ("people beside chat, friends on Alt+2", lambda: people_beside_chat(run)),
+        ("names a screen reader can't say", lambda: names_said(run, nonce)),
         ("the renderer out of sight", lambda: offscreen(run)),
         ("keys", lambda: keys(run, nonce)),
         ("the assistant's last answer", lambda: assistant_answer(run, nonce)),
@@ -1408,6 +1448,7 @@ def session(run, procs):
         ("walking", lambda: walk(run)),
         ("a teleport", lambda: teleport(run)),
         ("the assistant's walk", lambda: pilot_walk(run)),
+        ("always running", lambda: always_run(run)),
         ("places and a route", lambda: places(run, nonce)),
         ("search, profiles, pay", lambda: search_and_people(run)),
         ("a conference", lambda: conferences(run, nonce, tester_id)),
@@ -1421,7 +1462,8 @@ def session(run, procs):
         ("paying and buying things", lambda: paying_and_buying(run, nonce)),
         ("objects: details, the filter, past the nearest, what people wear", lambda: objects_more(run, nonce)),
         ("objects: a friend's thing, taken, deleted, returned", lambda: objects_rights(run, nonce, tester_id)),
-        ("groups: a title, its members, its notices", lambda: groups_menu(run, nonce, tester_id)),
+        ("groups: a title, its notices", lambda: groups_menu(run, nonce, tester_id)),
+        ("groups: running one", lambda: groups_running(run, nonce, tester_id)),
         ("scripts: a new one, moving around in it, inside an object, its errors", lambda: scripts_editing(run, nonce)),
         ("describing", lambda: describing(run, nonce)),
         ("describing a look as it loads", lambda: describing_looks(run, nonce)),
@@ -1440,7 +1482,8 @@ def session(run, procs):
         ("recording a ride", lambda: ride_recording(run)),
         ("a roof under the water", lambda: roof_under_water(run)),
         ("favorites in the inventory", lambda: favorites(run, nonce)),
-        # (last: it logs out and in again, from the login form)
+        # (last: they log out and in again, from the login form)
+        ("remembering the password at login", lambda: remember_password(run, procs)),
         ("favorite landmarks at login", lambda: favorite_starts(run, nonce, procs)),
         ("logging out, back to the login window", lambda: log_out(run, procs)),
     ]
@@ -1847,9 +1890,9 @@ def im(run, nonce, tester_id):
 def long_text(tag, nonce, sentences=20, typed=False):
     """About 2,600 bytes of numbered sentences, two- and three-byte characters in every one, so some fall near each
     part's end. typed: two-byte ones only (QuireUia's posted characters pass through the ANSI code page, which has no
-    日本語)."""
-    note, dash = ("Ångström's hand", ",") if typed else ("日本語", " —")
-    return " ".join(f"{tag} {i:02d} {nonce}: the café's crème brûlée sat by the window, beside a note in {note}, and the "
+    æ—¥æœ¬èªž)."""
+    note, dash = ("Ã…ngstrÃ¶m's hand", ",") if typed else ("æ—¥æœ¬èªž", " â€”")
+    return " ".join(f"{tag} {i:02d} {nonce}: the cafÃ©'s crÃ¨me brÃ»lÃ©e sat by the window, beside a note in {note}, and the "
                     f"light was soft{dash} almost blue." for i in range(1, sentences + 1))
 
 
@@ -1866,7 +1909,7 @@ def long_lines(run, nonce, tester_id):
         run.check(f"{where}: each part ends at a sentence's end", parts and all(x.endswith(".") for x in parts),
                   " | ".join("..." + x[-20:] for x in parts))
         run.expect(f"{where}: \"Sent in {len(parts)} parts.\" said", [f"Sent in {len(parts)} parts."], m, 10)
-        mine = [e["text"] for e in said_since(m) if nonce in (e.get("text") or "") and "café" in (e.get("text") or "")]
+        mine = [e["text"] for e in said_since(m) if nonce in (e.get("text") or "") and "cafÃ©" in (e.get("text") or "")]
         run.check(f"{where}: the parts not read back", not mine, "; ".join(t[:60] for t in mine) or "none read")
 
     def collect(kind, tag, n, last):
@@ -2273,6 +2316,79 @@ def people_beside_chat(run):
     wait(lambda: math.dist(visitor_where()[:2], VISITOR_START[:2]) < 1.5, 15, 0.5)   # back where the steps after expect it
 
 
+# a display name in mathematical bold script with a sparkle, as Second Life's often are: "Marigold" in plain letters
+FANCY_NAME = "\U0001D4DC\U0001D4EA\U0001D4FB\U0001D4F2\U0001D4F0\U0001D4F8\U0001D4F5\U0001D4ED ✨"
+
+
+def names_said(run, nonce):
+    """Names a screen reader can't say (Alt+0's People's names; docs/access-app.md > People's names). The local grid has no
+    display names, so the app's SojournTestNames (SOJOURN_TEST_NAMES=1) gives the visitor one in decorative letters: its
+    line read as "Marigold: ..."; //find and People nearby by the plain name; the row stepped by Enter, said, and the next
+    line with the username after; the username alone; as written; one of symbols alone said as the username; the profile
+    naming them so, with the display name as written. Back as it was after (no display name, plain letters)."""
+    vid = visitor_id()
+    n = [0]
+
+    def line(desc, words, absent=None):
+        n[0] += 1
+        text = f"names {nonce} {n[0]}"
+        m = mark()
+        v(f"say {text}")
+        got = run.expect(desc, [*words, text], m, 10)
+        if got and absent:
+            run.check(f"({desc}: without {absent})", absent not in got["text"], got["text"])
+        return got
+
+    def style(value):
+        api("SojournSettings", "set", access_names=value)
+
+    try:
+        back_to_chat()
+        said = api("SojournTestNames", "display", id=vid, name=FANCY_NAME).get("said")
+        if not run.check("(the visitor given a display name in decorative letters)", said == "Marigold", str(said)):
+            return
+        line("their line read with the name in plain letters", ["Marigold: "])
+        m = mark()
+        say_in_app("//find marigold")
+        run.expect("//find by the plain name finds them and says it so", ["Marigold is"], m, 8)
+        item = wait(lambda: find("type=ListItem;name~=Marigold, "), 8)   # (beside chat, renewed every 3 s)
+        run.check("People nearby lists them by it", item and item[0]["name"].startswith("Marigold, "), label(item[0]) if item else "not listed")
+
+        # the row, by its key as she'd go
+        settings_group("Reading out")
+        u("setfocus id=settings")
+        if run.check("(the row: People's names)", select_in("id=settings", "People's names"), selected_text("id=settings")):
+            run.check("its words: the display name in plain letters", "People's names: display name in plain letters" in selected_text("id=settings"),
+                      selected_text("id=settings"))
+            m = mark()
+            key("enter")
+            run.expect("Enter steps it, said", ["People's names: display name and username."], m, 5)
+        back_to_chat()
+        line("with the username: after the plain name", [f"Marigold ({VNAME}): "])
+        style("username")
+        line("the username alone", [f"{VNAME}: "], absent="Marigold")
+        style("written")
+        line("as written, as other viewers show it", [f"{FANCY_NAME}: "])
+        style("plain")
+        api("SojournTestNames", "display", id=vid, name="★彡★")   # ★彡★
+        line("a display name of symbols alone: the username", [f"{VNAME}: "])
+
+        api("SojournTestNames", "display", id=vid, name=FANCY_NAME)
+        say_in_app("//profile marigold")
+        if run.check("//profile by the plain name opens theirs", wait_focus(lambda d: d["id"] == "profileText", 8), focus_label()):
+            text = value_of("id=profileText")
+            run.check("it names them in plain letters, with the username", text.startswith(f"Marigold ({VNAME})"), text[:80])
+            run.check("and says the display name as written", f"Display name as written: {FANCY_NAME}." in text, text[:160])
+            key("esc")
+    finally:
+        try:
+            api("SojournTestNames", "display", id=vid)
+            style("plain")
+        except Exception as e:
+            print(f"     (names not put back: {e})")
+        back_to_chat()
+
+
 def account_id(first, last):
     import grid
     for line in grid.console(f"show account {first} {last}", wait=1):
@@ -2290,7 +2406,7 @@ def outfit_link_on_grid(item, cof):
     she wore it in another session: the outfit saying it's worn while the region hasn't attached it, as on Second Life
     in the first minute after logging in. The link's row copies the item's, as OpenSim keeps the viewer's links. Its id."""
     import sqlite3
-    db = sqlite3.connect(ROOT / "local" / os.environ.get("SOJOURN_GRID", "grid") / "bin" / "inventory.db", timeout=10)
+    db = sqlite3.connect(LOCAL / os.environ.get("SOJOURN_GRID", "grid") / "bin" / "inventory.db", timeout=10)
     try:
         cols = [r[1] for r in db.execute("pragma table_info(inventoryitems)")]
         row = db.execute("select * from inventoryitems where inventoryID = ?", (item,)).fetchone()
@@ -2304,6 +2420,44 @@ def outfit_link_on_grid(item, cof):
         return link["inventoryID"]
     finally:
         db.close()
+
+
+def inventory_db_change(delete_items=(), move_folders=()):
+    """The local grid's own inventory changed behind the app's back, as another viewer's delete or move leaves it: items
+    deleted, folders moved ((id, new parent)), each folder involved given a new version as the grid's own changes do.
+    True when every one was there to change."""
+    import sqlite3
+    db = sqlite3.connect(LOCAL / os.environ.get("SOJOURN_GRID", "grid") / "bin" / "inventory.db", timeout=10)
+    try:
+        touched = set()
+        for item in delete_items:
+            row = db.execute("select parentFolderID from inventoryitems where inventoryID = ?", (item,)).fetchone()
+            if not row:
+                return False
+            db.execute("delete from inventoryitems where inventoryID = ?", (item,))
+            touched.add(row[0])
+        for folder, parent in move_folders:
+            row = db.execute("select parentFolderID from inventoryfolders where folderID = ?", (folder,)).fetchone()
+            if not row:
+                return False
+            db.execute("update inventoryfolders set parentFolderID = ? where folderID = ?", (parent, folder))
+            touched.update((row[0], parent))
+        for f in touched:
+            db.execute("update inventoryfolders set version = version + 1 where folderID = ?", (f,))
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def menu_pick(name):
+    """An open menu's item pressed by its letter, read from UI Automation (Mnemonics may have moved it); False if it has none."""
+    k = menu_keys(f"type=MenuItem;name={name}").split(" | ")[0].strip()
+    letter = k.split("+")[-1].lower() if k else ""
+    if letter in VK:
+        key(letter)
+        return True
+    return False
 
 
 def outfit_arriving(run, nonce):
@@ -3435,6 +3589,92 @@ def favorite_starts(run, nonce, procs):
     clear_search()
 
 
+def relaunch(run, procs, drop=("--autologin",)):
+    """The app closed (logging out) and started again at its login form, without the arguments named (and their values,
+    for --password and --start): the new pid, activated, or None."""
+    global APP_PID
+    app = procs["app"]
+    u(f"close {app}")
+    if not run.check("(logged out and closed)", wait(lambda: not alive(app), 20, 0.5), f"pid {app}"):
+        return None
+    wait(lambda: not online(*TESTER), 30, 1)
+    host, args, env = APP_LAUNCH
+    args = list(args)
+    for a in drop:
+        if a in args:
+            i = args.index(a)
+            del args[i:i + (2 if a in ("--password", "--start") else 1)]
+    app = APP_PID = procs["app"] = launch_hidden(host + args, env=env, cwd=APP_BIN)
+    u(f"watch {app}")
+    form = wait(lambda: next((l for l in u(f"windows {app}").splitlines() if "log in" in l), None), 60, 1)
+    if not run.check("(the login form, not logging in by itself)", form, u(f"windows {app}")):
+        return None
+    try:
+        u(f"activate {app}")
+    except ToolError:
+        pass
+    return app
+
+
+def remember_password(run, procs):
+    """Re&member password on the login form (LoginForm; the saved logins in the run's own folder, SOJOURN_LOGINS): ticked
+    by Alt+M with the password given, kept once the login works; the app started again with no password, the box saying
+    it's remembered and Enter logging in with it; then unticked, the password forgotten at once."""
+    store = OUT / "logins" / "accounts.json"
+
+    def kept():
+        try:
+            accounts = json.loads(store.read_text(encoding="utf-8")).get("accounts", [])
+        except (OSError, ValueError):
+            return None
+        return next((bool(a.get("secret")) for a in accounts if a.get("first", "").lower() == TESTER[0].lower()
+                     and a.get("last", "").lower() == TESTER[1].lower()), None)
+
+    def ticked():
+        return "toggle=On" in u("get id=remember")
+
+    def logged_in(what):
+        st = wait(lambda: (lambda s: s if s.get("connected") else None)(status()), LOGIN_SECS, 1)
+        return run.check(what, st, "connected" if st else "not connected")
+
+    if relaunch(run, procs) is None:
+        return
+    run.check("(nothing remembered yet: Remember unticked)", not ticked() and not kept(), u("get id=remember"))
+    key("alt+m")
+    if not run.check("Alt+M ticks Remember password", wait(ticked, 3, 0.2), u("get id=remember")):
+        return
+    key("enter")
+    if not logged_in("(logged in with Remember ticked)"):
+        return
+    run.check("the password is kept once the login works, protected (not the password itself)",
+              wait(kept, 10, 0.5) and PASSWORD not in store.read_text(encoding="utf-8"), store.read_text(encoding="utf-8")[:300] if store.exists() else "no file")
+
+    if relaunch(run, procs, drop=("--autologin", "--password")) is None:
+        return
+    pw = u("get id=password")
+    run.check("started again with no password: the box says it's remembered, Remember ticked", 'help="Remembered' in pw and ticked(), pw)
+    run.check("(the focus in the password box)", wait_focus(lambda d: d["id"] == "password", 5), focus_label())
+    key("enter")
+    if not logged_in("Enter logs in with the remembered password"):
+        return
+
+    if relaunch(run, procs) is None:
+        return
+    m = mark()
+    key("alt+m")
+    run.check("unticking Remember forgets the password at once", wait(lambda: kept() is False, 5, 0.3) and not ticked(),
+              f"kept {kept()}, {u('get id=remember')}")
+    run.expect("and says so", ["Password forgotten"], m, 5)
+    key("enter")
+    if not logged_in("(logged in again, with the password given)"):
+        return
+    try:
+        u(f"activate {APP_PID}")
+    except ToolError:
+        pass
+    wait_focus(lambda d: d["id"] == "chatInput", 15)
+
+
 def inv_search(words, expect_first):
     """Control+F, the words typed, Enter: the focus back in the tree with the first match selected."""
     key("ctrl+f")
@@ -3545,9 +3785,12 @@ def library_item(kind):
 
 
 def housekeeping(run, nonce):
-    """Item by item, by keys: F5 asking the grid; Attach to a point; Play on a sound and an animation; Delete in the Trash
-    going for good and Empty the Trash, both behind the confirmation; //rebake, //stopanimations, //hover, //displayname
-    (the grid may have none), //maturity."""
+    """Item by item, by keys: F5 asking the grid, and dropping a card deleted and a folder moved in the grid's own inventory
+    behind the app's back (the folder then in the Trash, with what's in it); Search by Description and Creator; the order
+    newest first and back by name; Expand all (the number pad's star) and Collapse all; Back up to disk through Windows'
+    folder window (the list, and a card she made as text); Attach to a point; Play on a sound
+    and an animation; Delete in the Trash going for good, Empty the Trash and Empty Lost and Found, behind the
+    confirmation; //rebake, //stopanimations, //hover, //displayname (the grid may have none), //maturity."""
     back_to_chat()
     root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
     folder = api("TesselInventory", "createFolder", name=f"Access House {nonce}", parent_id=root)["folder_id"]
@@ -3564,6 +3807,61 @@ def housekeeping(run, nonce):
     key("f5")
     run.expect("F5 asks the grid again, saying so", ["Asking the grid for your inventory again"], m, 4)
     run.expect("and when it has", ["Inventory read again"], m, 60)
+
+    # F5 drops what the grid no longer has (it only ever added, 2026-11-08): a card deleted and a folder moved to the
+    # Trash in the grid's own inventory, as another viewer leaves them, unseen by the app until F5
+    trash = api("LLInventory", "getBasicFolderID", ft_name="trash")["id"]
+    stale, moved, inside = f"Access Stale {nonce}", f"Access Moved {nonce}", f"Access Inside {nonce}"
+    stale_id = api("TesselInventory", "createNotecard", name=stale, text="deleted in another viewer", folder_id=folder)["item_id"]
+    moved_id = api("TesselInventory", "createFolder", name=moved, parent_id=folder)["folder_id"]
+    api("TesselInventory", "createNotecard", name=inside, text="in a folder moved in another viewer", folder_id=moved_id)
+    if run.check("(the app has a card and a folder)", wait(lambda: {stale, moved} <= set(inv_items(folder)), 8), ", ".join(inv_items(folder))):
+        time.sleep(1)
+        run.check("(the grid's own inventory deletes the card and moves the folder to the Trash, the app not told)",
+                  inventory_db_change(delete_items=[stale_id], move_folders=[(moved_id, trash)]), "")
+        run.check("(the app still has both before F5)", {stale, moved} <= set(inv_items(folder)), ", ".join(inv_items(folder)))
+        m = mark()
+        key("f5")
+        said = run.expect("F5 says something wasn't there any more", ["Inventory read again", "there any more"], m, 60)
+        print("     said:", (said or {}).get("text"))
+        now = inv_items(folder)
+        run.check("the card deleted elsewhere is gone", stale not in now, ", ".join(now))
+        run.check("the folder moved elsewhere has left where it was", moved not in now, ", ".join(now))
+        in_trash = inv_items(trash)
+        run.check("and is in the Trash, with what's in it", moved in in_trash and inside in inv_items(in_trash[moved]), ", ".join(in_trash))
+        clear_search()
+        run.check("the tree's search finds the card no more", inv_search(stale, "Nothing called"), selection("id=inventory"))
+        clear_search()
+
+    # Search by: Description, then Creator (the official viewer's Search by), each said as it changes
+    word = f"quokka{nonce}"
+    described = f"Access Described {nonce}"
+    api("TesselInventory", "createNotecard", name=described, text="found by its description", desc=f"a {word} on it", folder_id=folder)
+    time.sleep(1)
+    clear_search()
+    run.check("(by name, its description's word finds nothing)", inv_search(word, "Nothing called"), selection("id=inventory"))
+    u("setfocus id=inventoryBy")
+    if run.check("Search by is a Tab stop after Show", wait_focus(lambda d: d["id"] == "inventoryBy", 3), focus_label()):
+        m = mark()
+        key("down")
+        run.expect("Search by: Creator, said", ["Nothing made by"], m, 20)
+        m = mark()
+        key("down")
+        run.expect("Search by: Description finds it, said", ["1 found"], m, 10)
+        run.check("and it's the card", described in selection("id=inventory"), selection("id=inventory"))
+        key("up")
+        u("set id=inventorySearch |")
+        type_text(" ".join(TESTER), "id=inventorySearch")
+        m = mark()
+        key("enter", target="id=inventorySearch")
+        got = run.expect("Search by: Creator finds what she made", ["found"], m, 30)
+        run.check("(some of it)", got and re.match(r"\d+", got["text"]) and not got["text"].startswith("0"), (got or {}).get("text", ""))
+        u("setfocus id=inventoryBy")
+        wait_focus(lambda d: d["id"] == "inventoryBy", 3)
+        key("home")
+        run.check("(Search by back on Name)", wait(lambda: "Name" in selection("id=inventoryBy") or value_of("id=inventoryBy") == "Name", 3),
+                  value_of("id=inventoryBy"))
+    clear_search()
 
     if box_item and inv_search(box_name, box_name):
         key("apps")
@@ -3609,8 +3907,75 @@ def housekeeping(run, nonce):
                     key("alt+4")
                     wait_focus(lambda d: d["id"] == "inventory", 4)
 
+    # the order: newest first (the Applications key's Sort by date) and back by name; Expand all and Collapse all
+    newest = f"Access Newest {nonce}"
+    api("TesselInventory", "createNotecard", name=newest, text="the newest", folder_id=folder)
+    time.sleep(1.5)
+    house = f"Access House {nonce}"
+    clear_search()
+    key("home")
+    if run.check("(the run's folder selected in the tree)", select_in("id=inventory", house), selected_text("id=inventory")):
+        key("right")
+        time.sleep(0.5)
+        key("down")
+        first = selected_text("id=inventory")
+        run.check("(by name, the newest isn't first in it)", newest not in first, first)
+        key("apps")
+        if run.check("an item's menu has Sort by date", menu_open("Sort by date, newest first"), focus_label()):
+            m = mark()
+            menu_pick("Sort by date, newest first")
+            run.expect("Sort by date, said", ["Sorted newest first"], m, 5)
+            run.check("(the setting has it)", api("SojournSettings", "get", name="access_inventory_sort")["settings"]["access_inventory_sort"]["value"] == "newest first", "")
+            key("left")
+            key("down")
+            first = wait(lambda: (lambda s: s if newest in s else None)(selected_text("id=inventory")), 3)
+            run.check("the newest is first in its folder now", first, selected_text("id=inventory"))
+            key("apps")
+            if run.check("and the menu turns it back", menu_open("Sort by name"), focus_label()):
+                m = mark()
+                menu_pick("Sort by name")
+                run.expect("Sort by name, said", ["Sorted by name"], m, 5)
+        # Expand all on the folder (the number pad's star), Collapse all on its menu
+        key("left")
+        key("left")
+        run.check("(back on the folder)", house in selected_text("id=inventory"), selected_text("id=inventory"))
+        key("apps")
+        run.check("a folder's menu has Expand all in it", menu_open("Expand all in it"), focus_label())
+        key("esc")
+        m = mark()
+        key("multiply")
+        run.expect("the number pad's star opens it and its folders, saying how much", ["Opened", house, "item"], m, 5)
+        key("apps")
+        if run.check("and its menu then has Collapse all in it", menu_open("Collapse all in it"), focus_label()):
+            m = mark()
+            menu_pick("Collapse all in it")
+            run.expect("Collapse all, said", ["Closed", house], m, 5)
+        key("home")
+
+    # Back up to disk (Radegast's Backup): the run's folder into a folder picked in Windows' own window, a list of all of it
+    # and the text of the cards she made
+    out = OUT / f"backup-{nonce}"
+    out.mkdir(parents=True, exist_ok=True)
+    clear_search()
+    if select_in("id=inventory", house):
+        key("apps")
+        if run.check("a folder's menu has Back up to disk", menu_open("Back up to disk..."), focus_label()):
+            m = mark()
+            menu_pick("Back up to disk...")
+            if folder_dialog_pick(run, "Back up to disk", str(out)):
+                run.expect("it says what it's saving, and where", ["Backing up", house, "notecards and scripts you made"], m, 15)
+                run.expect("and when it's done", ["Backed up", house, "saved"], m, 60)
+                saved = next(out.glob(f"{house}*"), None)
+                csv_file = saved / "inventory.csv" if saved else None
+                listed = csv_file.read_text(encoding="utf-8-sig") if csv_file and csv_file.exists() else ""
+                run.check("inventory.csv lists what's in it", newest in listed and described in listed and box_name in listed, listed[:300] or "no file")
+                card = saved / f"{newest}.txt" if saved else None
+                run.check("and a card she made is there as text", card and card.exists() and "the newest" in card.read_text(encoding="utf-8"),
+                          ", ".join(p.name for p in saved.iterdir()) if saved else "no folder")
+    shutil.rmtree(out, ignore_errors=True)
+    clear_search()
+
     # the Trash: Delete moves there, Delete there goes for good, Empty the Trash
-    trash = api("LLInventory", "getBasicFolderID", ft_name="trash")["id"]
     second = f"Access Gone Too {nonce}"
     api("TesselInventory", "createNotecard", name=second, text="to be deleted for good", folder_id=folder)
     for name in (card_name, second):
@@ -3669,6 +4034,41 @@ def housekeeping(run, nonce):
     run.check("the Trash is still the Trash", api("LLInventory", "getBasicFolderID", ft_name="trash")["id"] == trash, "")
     back_to_chat()
 
+    # Lost and Found emptied, behind her confirmation (Radegast's and the viewer's Empty Lost and Found)
+    lf = api("LLInventory", "getBasicFolderID", ft_name="lstndfnd")["id"]
+    lost = f"Access Lost {nonce}"
+    if lf == root:
+        print("     (no Lost and Found folder on this account: not tried)")
+    else:
+        api("TesselInventory", "createNotecard", name=lost, text="returned from the world", folder_id=lf)
+        if run.check("(a card in Lost and Found)", wait(lambda: lost in inv_items(lf), 6), ", ".join(inv_items(lf))):
+            key("alt+4")
+            wait_focus(lambda d: d["id"] == "inventory", 4)
+            if inv_search(lost, lost):
+                key("apps")
+                run.check("something in Lost and Found has Empty Lost and Found on its menu", menu_open("Empty Lost and Found"), focus_label())
+                key("esc")
+            clear_search()
+            back_to_chat()
+            m = mark()
+            say_in_app("//emptylostandfound")
+            conf = wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 6)
+            run.check("//emptylostandfound waits for her confirmation", conf and "Empty your Lost and Found" in selection("id=notices"), selection("id=notices"))
+            time.sleep(1.2)
+            key("esc")
+            run.expect("cancelled, nothing goes", ["Cancelled"], m, 5)
+            run.check("still in Lost and Found", lost in inv_items(lf), "")
+            back_to_chat()
+            m = mark()
+            say_in_app("//emptylostandfound")
+            wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem", 6)
+            time.sleep(1.2)
+            key("enter")
+            run.expect("confirmed, it's emptied", ["Lost and Found is empty"], m, 10)
+            run.check("and nothing's in it", wait(lambda: not inv_items(lf), 8), ", ".join(inv_items(lf)))
+            run.check("Lost and Found is still Lost and Found", api("LLInventory", "getBasicFolderID", ft_name="lstndfnd")["id"] == lf, "")
+            back_to_chat()
+
     # putting herself right
     m = mark()
     say_in_app("//rebake")
@@ -3684,6 +4084,10 @@ def housekeeping(run, nonce):
     m = mark()
     say_in_app("//maturity")
     run.expect("//maturity says it and how high the account may go", ["rated up to", "may go up to"], m, 6)
+    m = mark()
+    say_in_app("//status health")
+    # (the local grid sends health only once something hurts her where damage is on, so this is the words for not yet)
+    run.expect("//status health says it, or that the region hasn't sent it", ["Health"], m, 6)
     m = mark()
     say_in_app("//displayname")
     got = wait(lambda: said_since(m), 10)
@@ -4530,7 +4934,7 @@ def settings_rows(run, nonce):
 def asset_bytes(asset_id):
     """An asset as the local grid stores it."""
     import sqlite3
-    db = sqlite3.connect(f"file:{ROOT / 'local' / os.environ.get('SOJOURN_GRID', 'grid') / 'bin' / 'Asset.db'}?mode=ro", uri=True)
+    db = sqlite3.connect(f"file:{LOCAL / os.environ.get('SOJOURN_GRID', 'grid') / 'bin' / 'Asset.db'}?mode=ro", uri=True)
     try:
         row = db.execute("select Data from assets where UUID = ?", (asset_id or "",)).fetchone()
     finally:
@@ -4543,7 +4947,8 @@ def notecards_embedded(run, nonce, tester_id):
     read as markers, the things said and listed a Tab from the text, Enter copying one out and Enter again using it
     (the landmark teleports, the notecard opens). Saved by Control+S, by the op with no places in the text at all, and
     inside an object (object.content.save): every item still there, the asset's embedded block byte for byte, the places
-    where they were, or at the end when they'd gone (said)."""
+    where they were, or at the end when they'd gone (said). The card in the box copied out of by keys (card_in_box_by_keys);
+    a thing put in and one removed on the card in her inventory (notecard_put_in_and_off)."""
     name = f"Access Embed {nonce}"
     m = mark()
     v(f"embedcard {name} {tester_id}")
@@ -4694,6 +5099,10 @@ def notecards_embedded(run, nonce, tester_id):
         run.check("object.content.save names both as moved", len(saved_in.get("moved_to_end", [])) == 2, json.dumps(saved_in)[:300])
         got = rpc("object.content.get", prim_id=box, item_id=inside["item_id"])
         run.check("and they're still in it", land in got.get("content", "") and inner in got.get("content", "") and "Rewritten" in got.get("content", ""), ascii(got)[:300])
+        run.check("object.content.get lists what it holds", [e.get("name") for e in got.get("embedded", [])] == [f"{name} Landmark", f"{name} Inner"], json.dumps(got.get("embedded"))[:200])
+        card_in_box_by_keys(run, name, f"Access Embed Box {nonce}", lm_folder)
+    back_to_chat()
+    notecard_put_in_and_off(run, name, card, folder)
     back_to_chat()
     # tidied (this run's and any an interrupted one left), through the confirmation as anyone's
     api("TesselBuild", "take", 30, ids=[box], folder_id=folder)
@@ -4701,6 +5110,103 @@ def notecards_embedded(run, nonce, tester_id):
     left = [i for f in (lm_folder, folder) for n, i in inv_items(f).items() if n and n.startswith("Access Embed ")]
     if left:
         gated(run, "the step's things deleted", "TesselInventory", "delete", 30, ids=left, purge=True)
+
+
+def card_in_box_by_keys(run, name, boxname, lm_folder):
+    """The card inside her box, opened from the build editor's Content: what it holds said and listed as for one in the
+    inventory, and Enter copying the landmark out of it there (the copy capability told the object)."""
+    key("alt+7")
+    wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+    key("f5")
+    object_row(boxname)
+    if not run.check("(the box selected)", select_in("id=objects", boxname), selected_text("id=objects")):
+        return
+    key("apps")
+    wait(lambda: find("type=MenuItem;name~=Contents"), 4)
+    key("n")
+    if not run.check("(Contents: the card in the list)", wait(lambda: find(f"type=ListItem;name~={name}, notecard"), 15), focus_label()):
+        return
+    select_in("id=buildRows", f"{name}, notecard")
+    m = mark()
+    key("enter")
+    if not run.check("Enter opens the card from the box", wait_focus(lambda d: d["id"] == "editorText", 20), focus_label()):
+        return
+    run.expect("what a card in an object holds is said too", ["It holds 2 things", "Tab reaches them"], m, 8)
+    key("tab")
+    run.check("Tab reaches its list, on the landmark", wait_focus(lambda d: d["id"] == "editorEmbedded" or d["type"] == "ListItem", 4)
+              and "Landmark, landmark" in selection("id=editorEmbedded"), selection("id=editorEmbedded") or focus_label())
+    def copies():
+        return sum(1 for i in api("LLInventory", "getDirectDescendants", folder_id=lm_folder).get("items", {}).values() if i.get("name") == f"{name} Landmark")
+    had = copies()
+    m = mark()
+    key("enter")
+    run.expect("Enter copies it out of the card in the box", [f"Copied {name} Landmark into"], m, 25)
+    run.check("a copy more in Landmarks", wait(lambda: copies() > had, 8), f"{had} before")
+    key("esc")
+    run.check("Escape closes it, back in the contents", wait_focus(lambda d: d["id"] == "buildRows" or d["type"] == "ListItem", 6), focus_label())
+    key("esc")
+
+
+def notecard_put_in_and_off(run, name, card, folder):
+    """The card in her inventory changed by keys: the landmark copied out earlier copied (Control+C) and put in at the caret
+    by Control+Shift+V, its marker numbered apart from the landmark already there; the inner card marked to be removed by
+    Delete in the list; one save doing both, said; the grid's card holding the two landmarks, the kept one's block byte for
+    byte as it came and the new one copying out again."""
+    key("alt+4")
+    wait_focus(lambda d: d["id"] == "inventory", 4)
+    if not run.check("(the landmark copied out earlier found)", inv_search(f"{name} Landmark", f"{name} Landmark"), selection("id=inventory")):
+        return
+    m = mark()
+    key("ctrl+c")
+    run.expect("(Control+C copies it)", [f"Copied {name} Landmark"], m, 4)
+    asset_id = next((i.get("asset_id") for i in api("LLInventory", "getDirectDescendants", folder_id=folder).get("items", {}).values() if i.get("name") == name), None)
+    before = asset_bytes(asset_id) or b""
+    head = before[:before.find(b"Text length ")]
+    block0 = head[head.find(b"{\next char index 0"):head.find(b"{\next char index 1")] if b"ext char index 1" in head else b""
+    # (the search keeps the landmark selected, its words holding the card's name: the card picked by its own words, or
+    # Enter teleports)
+    inv_search(name, name)
+    if not run.check("(the card selected)", select_in("id=inventory", f"{name}, notecard"), selection("id=inventory")):
+        return
+    m = mark()
+    key("enter")
+    if not run.check("(the card opens)", wait_focus(lambda d: d["id"] == "editorText", 6), focus_label()):
+        return
+    run.expect("(it holds two)", ["It holds 2 things"], m, 5)
+    key("ctrl+end")
+    type_text(" Also:")   # (QuireUia's chars drops a trailing space)
+    m = mark()
+    key("ctrl+shift+v")
+    run.expect("Control+Shift+V: what was copied goes in at the caret, at the save", [f"{name} Landmark goes in at the caret when you save."], m, 5)
+    marker = f"[landmark: {name} Landmark, 2]"
+    run.check("its marker in the text, numbered apart from the one there", marker in value_of("id=editorText"), value_of("id=editorText")[-120:])
+    key("tab")
+    d = wait_focus(lambda d: d["id"] == "editorEmbedded" or d["type"] == "ListItem", 4)
+    run.check("Tab: the list, on the one coming, saying so", d and "goes in when you save" in selection("id=editorEmbedded"), selection("id=editorEmbedded") or focus_label())
+    key("up")
+    time.sleep(0.4)
+    m = mark()
+    key("del")
+    run.expect("Delete marks one to be removed", [f"{name} Inner is removed from the card when you save."], m, 4)
+    run.check("its line says so", "removed when you save" in selection("id=editorEmbedded"), selection("id=editorEmbedded"))
+    m = mark()
+    key("ctrl+s")
+    run.expect("one save puts in and removes, said", [f"Put in: {name} Landmark.", f"Removed: {name} Inner."], m, 15)
+    after = api("TesselInventory", "readNotecard", item_id=card)
+    embedded = after.get("embedded", [])
+    run.check("the card holds the two landmarks", [e["name"] for e in embedded] == [f"{name} Landmark", f"{name} Landmark"], json.dumps(after)[:300])
+    run.check("the new one at its place, the inner card gone from the text", f"Also:{marker}" in after.get("text", "") and f"[notecard: {name} Inner]" not in after.get("text", ""), ascii(after.get("text"))[-200:])
+    run.check("the window shows the card as the grid has it", wait(lambda: f"Also:{marker}" in value_of("id=editorText") and "Inner]" not in value_of("id=editorText"), 4), ascii(value_of("id=editorText"))[-160:])
+    run.check("and the list too", wait(lambda: not find(f"type=ListItem;name~={name} Inner") and not find("type=ListItem;name~=when you save"), 4), json.dumps([x["name"] for x in find("type=ListItem")])[:300])
+    asset_id = next((i.get("asset_id") for i in api("LLInventory", "getDirectDescendants", folder_id=folder).get("items", {}).values() if i.get("name") == name), None)
+    saved = asset_bytes(asset_id) or b""
+    run.check("the kept item's block byte for byte as it came, the count 2", block0 and block0 in saved and b"count 2" in saved and b"ext char index 1" in saved, repr(saved[:200]))
+    if len(embedded) == 2:
+        c = api("TesselInventory", "copyFromNotecard", 25, item_id=card, embedded_id=embedded[1]["item_id"])
+        run.check("the one put in copies out again", c.get("item_id"), json.dumps(c)[:200])
+    m = mark()
+    key("esc")
+    run.check("nothing to ask on closing", wait_focus(lambda d: d["id"] == "inventory", 4), focus_label())
 
 
 def folders_and_links(run, nonce):
@@ -4947,7 +5453,7 @@ def inventory(run, nonce):
     key("alt+4")
     d = wait_focus(lambda d: d["id"] == "inventory", 4)
     run.check("Alt+4 goes to the inventory tree", d, label(d) if d else focus_label())
-    tree_check(run, "inventory", must=("inventory", "inventorySearch", "inventoryShow"))
+    tree_check(run, "inventory", must=("inventory", "inventorySearch", "inventoryShow", "inventoryBy"))
     reader_follows(run, test_name)
 
     # a search, and a notecard opened, edited and saved in a real edit control
@@ -5570,7 +6076,8 @@ def objects_rights(run, nonce, tester_id):
             pass
 
 
-GROUP_NAME, NOTICE_GROUP = "Access Titles", "Access Notices"
+# (group names are the grid's, one each: an account set of its own has groups of its own, "Walk Titles")
+GROUP_NAME, NOTICE_GROUP = f"{TESTER[0]} Titles", f"{TESTER[0]} Notices"
 
 
 def notice_group(run, tester_id):
@@ -5581,7 +6088,7 @@ def notice_group(run, tester_id):
         return mine[0]["id"]
     # (made by a run that stopped before she joined: the visitor's already)
     import sqlite3
-    db = sqlite3.connect(ROOT / "local" / "grid" / "bin" / "groups.db")
+    db = sqlite3.connect(LOCAL / "grid" / "bin" / "groups.db")
     known = db.execute("select GroupID from os_groups_groups where Name = ?", (NOTICE_GROUP,)).fetchone()
     db.close()
     gid = known[0] if known else v(f"group create {NOTICE_GROUP}", timeout=25)
@@ -5597,33 +6104,41 @@ def notice_group(run, tester_id):
     return gid
 
 
+def own_group(run):
+    """Her own group, made once and kept on the grid: its id, or None."""
+    mine = [g for g in api("LLAgent", "getGroups").get("groups", []) if g["name"] == GROUP_NAME]
+    if mine:
+        return mine[0]["id"]
+    made = gated(run, "a group of her own", "TesselGroups", "create", 40, name=GROUP_NAME, charter="For the test's titles")
+    if not (made and made.get("group_id")):
+        return None
+    wait(lambda: any(g["name"] == GROUP_NAME for g in api("LLAgent", "getGroups").get("groups", [])), 15)
+    return made["group_id"]
+
+
+def group_menu(letter, group=GROUP_NAME):
+    """A group's menu in Alt+3's My groups, then a letter."""
+    key("alt+3")
+    wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
+    u("setfocus id=groups")
+    wait_focus(lambda d: d["id"] == "groups" or d["type"] == "ListItem", 4)
+    if not select_in("id=groups", group):
+        return False
+    key("apps")
+    if not wait(lambda: find("type=MenuItem;name~=Choose your title"), 4):
+        return False
+    key(letter)
+    return True
+
+
 def groups_menu(run, nonce, tester_id):
     """A group's menu past its chat and tag (docs/access-app.md > Groups), on a group of her own, kept on the grid once made:
     her two titles listed, the worn one said so, another worn by Enter and the region's list following, and About saying it;
-    the members in a window; notices off, one sent, read from the archive by Enter, on again; someone nearby invited."""
-    mine = [g for g in api("LLAgent", "getGroups").get("groups", []) if g["name"] == GROUP_NAME]
-    if mine:
-        gid = mine[0]["id"]
-    else:
-        made = gated(run, "a group of her own", "TesselGroups", "create", 40, name=GROUP_NAME, charter="For the test's titles")
-        if not (made and made.get("group_id")):
-            return
-        gid = made["group_id"]
-        wait(lambda: any(g["name"] == GROUP_NAME for g in api("LLAgent", "getGroups").get("groups", [])), 15)
-
-    def menu(letter, group=GROUP_NAME):
-        """The group's menu, then a letter."""
-        key("alt+3")
-        wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
-        u("setfocus id=groups")
-        wait_focus(lambda d: d["id"] == "groups" or d["type"] == "ListItem", 4)
-        if not select_in("id=groups", group):
-            return False
-        key("apps")
-        if not wait(lambda: find("type=MenuItem;name~=Choose your title"), 4):
-            return False
-        key(letter)
-        return True
+    notices off, one sent, read from the archive by Enter, on again; someone nearby invited. (Running one: groups_running.)"""
+    gid = own_group(run)
+    if not gid:
+        return
+    menu = group_menu
 
     def titles():
         return api("TesselGroups", "titles", 15, group_id=gid).get("titles") or []
@@ -5653,11 +6168,6 @@ def groups_menu(run, nonce, tester_id):
         m = mark()
         if run.check("(the group's menu, Receive its notices again)", menu("r"), focus_label()):
             run.expect("Receive back on", ["You'll get"], m, 10)
-        if run.check("(the group's menu, Members)", menu("m"), focus_label()):
-            d = wait_focus(lambda d: d["id"] == "keysText", 20)
-            text = value_of("id=keysText") if d else ""
-            run.check("the members in a window, with her, and what her title says", TNAME in text and GROUP_NAME in text, text[:200] or focus_label())
-            key("esc")
         # the archive, on the visitor's group
         noticed = notice_group(run, tester_id)
         if noticed:
@@ -5694,16 +6204,247 @@ def groups_menu(run, nonce, tester_id):
                 if d is not True:
                     m = mark()
                     key("enter")
+                    # (with roles hers let her give, which role next: Everyone first)
+                    if wait(lambda: find("type=ListItem;name~=the role every member has"), 3):
+                        time.sleep(0.3)
+                        key("enter")
                     run.expect("and says so", [f"Invited {VNAME} to"], m, 10)
     finally:
         back_to_chat()
 
 
+def groups_running(run, nonce, tester_id):
+    """Running a group (docs/access-app.md > Groups), on her own group with her Owners title worn (this grid's powers go by
+    the title worn): the members in a window of their own, narrowed by a name typed; on the visitor (invited and joined for
+    it) a role given and taken away, each behind her confirmation and back in the window, Ban saying this grid has no group
+    bans, who's in the chat, then Eject; a new notice with a notecard pasted, kept from the notice as it arrives and taken
+    from the archive; Invite someone into a role (cancelled), New group up to its confirmation (cancelled)."""
+    gid = own_group(run)
+    if not gid:
+        return
+    near_visitor()
+    vid = visitor_id()
+    t0 = time.time()
+
+    def stage(what):
+        print(f"     ({what}, {time.time() - t0:.1f} s in)", flush=True)
+    owners = api("TesselGroups", "profile", 15, group_id=gid).get("owner_role")
+    api("TesselGroups", "title", 15, group_id=gid, role_id=owners)
+    api("TesselGroups", "membership", 10, group_id=gid, notices=True)
+    stage("her Owners title worn")
+    roles = api("TesselGroups", "roles", 15, group_id=gid).get("roles") or []
+    if not any(r["name"] == "Greeters" for r in roles):
+        gated(run, "a Greeters role, kept there", "TesselGroups", "createRole", 60, group_id=gid, name="Greeters", title="Greeter")
+    stage("the Greeters role there")
+
+    def members():
+        return [m["id"] for m in api("TesselGroups", "members", 20, group_id=gid).get("members") or []]
+
+    def in_greeters():
+        return any(r["name"] == "Greeters" and any(m["id"] == vid for m in r["members"]) for r in api("TesselGroups", "roles", 15, group_id=gid)["roles"])
+
+    def window_list(which):
+        """The focus in a group window's list (its item, which is the list's selection), the window open."""
+        return find(f"id={which}") and wait_focus(lambda d: d["id"] == "groupPeople" or d["type"] == "ListItem" and d["name"] == selection("id=groupPeople"), 8)
+
+    def member_menu():
+        key("enter")
+        return menu_open("Roles...")
+
+    def rows():
+        """The group window's rows naming her or the visitor (UIA's find has no scope: People nearby's rows say where)."""
+        return list(dict.fromkeys(x["name"] for x in find("type=ListItem")
+                                  if (TNAME in x["name"] or VNAME in x["name"]) and "metres" not in x["name"] and "o'clock" not in x["name"]))
+
+    # (the visitor accepts the newest invitation it has: the groups step's own may be waiting, and this one replaces it)
+    for _ in range(2):
+        if vid in members():
+            break
+        api("TesselGroups", "invite", 15, group_id=gid, to=vid)
+        time.sleep(2)
+        print(f"     (the visitor's accept: {v(f'group accept {gid}', timeout=30)})")
+        wait(lambda: vid in members(), 10)
+    if not run.check("(the visitor is in her group)", wait(lambda: vid in members(), 5), ""):
+        return
+    v(f"group chat {gid} Hello from the visitor {nonce}", timeout=30)
+    stage("the visitor in it, speaking in its chat")
+    try:
+        # ---- the members, in a window
+        if run.check("(the group's menu, Members...)", group_menu("m"), focus_label()):
+            d = window_list("groupMembers")
+            listed = rows()
+            run.check("Members is a list in a window of its own: her (said so) and the visitor", d and any(r.endswith(", you") and TNAME in r for r in listed) and any(VNAME in r for r in listed),
+                      " | ".join(listed) or focus_label())
+            u("setfocus id=groupFind")
+            type_text(VISITOR[1], "id=groupFind")
+            listed = wait(lambda: (lambda f: f[0]["name"] if f and "1 of" in f[0]["name"] else None)(find("id=groupPeople")), 4)
+            run.check("a name typed in Find narrows it, the list's name saying how many", listed, listed or str(find("id=groupPeople")))
+            key("enter", target="id=groupFind")
+            on = wait_focus(lambda d: d["type"] == "ListItem" and VNAME in d["name"] or d["id"] == "groupPeople", 4)
+            run.check("Enter in Find goes to the list", on, focus_label())
+            select_in("id=groupPeople", VISITOR[1])
+            if run.check("Enter on someone: what the group lets her do above their own actions", member_menu(), focus_label()):
+                names = menu_names()
+                run.check("Roles, Eject and Ban first, then the person's actions", names[:3] == ["Roles...", f"Eject from {GROUP_NAME}", f"Ban from {GROUP_NAME}"] and "Send IM" in names,
+                          " | ".join(names))
+                key("r")
+                if run.check("Roles lists the group's roles", wait_focus(lambda d: d["id"] == "chooseList" or d["type"] == "ListItem" and "Greeters" in d["name"], 8), focus_label()):
+                    select_in("id=chooseList", "Greeters")
+                    m = mark()
+                    key("enter")
+                    confirm_in_notices(run, "Give", m)
+                    run.expect("Enter on one gives it, behind her confirmation, said as the grid shows it", [f"{VNAME} has the role Greeters now"], m, 15)
+                    run.check("the grid has them in it", wait(in_greeters, 5), "")
+                    run.check("and the focus is back in the members' window", window_list("groupMembers"), focus_label())
+            select_in("id=groupPeople", VISITOR[1])
+            if member_menu():
+                key("r")
+                if wait_focus(lambda d: d["id"] == "chooseList" or d["type"] == "ListItem" and "Greeters" in d["name"], 8):
+                    select_in("id=chooseList", "Greeters, has it")
+                    m = mark()
+                    key("enter")
+                    confirm_in_notices(run, "Take", m)
+                    run.expect("a role of theirs taken away the same way", [f"{VNAME} doesn't have the role Greeters now"], m, 15)
+                    run.check("gone from it on the grid", wait(lambda: not in_greeters(), 5), "")
+            window_list("groupMembers")
+            select_in("id=groupPeople", VISITOR[1])
+            if member_menu():
+                m = mark()
+                key("b")
+                run.expect("Ban says this grid has no group bans", ["Group bans aren't on this grid"], m, 6)
+            key("esc")
+            run.check("Escape closes the members' window", wait(lambda: not find("id=groupMembers"), 4), focus_label())
+            # ---- who's in the chat
+            if run.check("(the group's menu, Who's in its chat)", group_menu("h"), focus_label()):
+                d = window_list("groupChatPeople")
+                run.check("who's in its chat, in a window of its own, her among them", d and any(TNAME in r and r.endswith(", you") for r in rows()), " | ".join(rows()) or focus_label())
+                # (OpenSim's own list names only her and later joiners; who's spoken is listed too, as the viewer's speakers are)
+                v(f"group chat {gid} Again from the visitor {nonce}", timeout=30)
+                time.sleep(1.5)
+                key("f5")
+                run.check("someone who has spoken there is listed (F5 reads it again)", wait(lambda: any(VNAME in r for r in rows()), 6), " | ".join(rows()))
+                key("esc")
+            # ---- ejected
+            if run.check("(back to the members' window)", group_menu("m") and window_list("groupMembers"), focus_label()):
+                select_in("id=groupPeople", VISITOR[1])
+                if member_menu():
+                    m = mark()
+                    key("e")
+                    confirm_in_notices(run, "Eject", m)
+                    run.expect("Eject, behind her confirmation, said once the grid has", [f"Ejected {VNAME} from {GROUP_NAME}"], m, 20)
+                    run.check("the grid has them out", wait(lambda: vid not in members(), 10), "")
+                    window_list("groupMembers")
+                    run.check("and the list no longer has them", wait(lambda: not any(VNAME in r for r in rows()), 5), " | ".join(rows()))
+                key("esc")
+
+        # ---- a new notice with a notecard, kept as it arrives and taken from the archive
+        card = f"Access Notice Card {nonce}"
+        cards = api("LLInventory", "getBasicFolderID", ft_name="notecard")["id"]
+        api("TesselInventory", "createNotecard", 30, name=card, text="Given with a notice.", folder_id=cards)
+
+        def copies():
+            got = api("LLInventory", "getDirectDescendants", folder_id=cards).get("items") or {}
+            return sum(1 for x in got.values() if x.get("name") == card)
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        clear_search()
+        found = inv_search(card, card)
+        if found:
+            key("ctrl+c")
+            time.sleep(0.4)
+        clear_search()
+        if run.check("(the notecard copied in the inventory)", found, selection("id=inventory")):
+            subject = f"Access Party {nonce}"
+            if run.check("(the group's menu, New notice...)", group_menu("e"), focus_label()):
+                if run.check("New notice: a window, the focus in its subject", wait_focus(lambda d: d["id"] == "noticeSubject", 6), focus_label()):
+                    u(f"set id=noticeSubject | {subject}")
+                    u("set id=noticeMessage | Come at nine.")
+                    focus_on("noticeAttach", tabs=8)
+                    m = mark()
+                    key("enter")
+                    run.expect("Attach what you copied takes the notecard", [f"Attached {card}"], m, 5)
+                    run.check("the Attachment line names it", card in value_of("id=noticeAttachment"), value_of("id=noticeAttachment"))
+                    focus_on("noticeSend", tabs=8)
+                    m = mark()
+                    key("enter")
+                    confirm_in_notices(run, "Send a group notice", m)
+                    run.expect("sent behind her confirmation (something goes with it), said", [f"Sent the notice to {GROUP_NAME}"], m, 15)
+                    run.expect("it arrives, its attachment said", [subject, "attached", card], m, 20)
+                    if open_newest_notice(run, [subject]):
+                        first = (find("id=noticeButton1") or [{}])[0].get("name", "")
+                        run.check("it waits in Notices, Keep its first key", "Keep" in first, f"{selection('id=notices')} | {first}")
+                        have = copies()
+                        key("1")
+                        run.check("Keep (1) puts the notecard in her inventory", wait(lambda: copies() > have, 15), f"{copies()} copies, {have} before")
+                    back_to_chat()
+                    if run.check("(the group's menu, Notices)", group_menu("o"), focus_label()):
+                        wait_focus(lambda d: d["id"] == "chooseList" or d["type"] == "ListItem", 10)
+                        if run.check("the notice is in its archive", wait(lambda: find(f"type=ListItem;name~={subject}"), 5), focus_label()):
+                            row = find(f"type=ListItem;name~={subject}")[0]["name"]
+                            run.check("the archive's row says what's attached", "notecard attached" in row, row)
+                            select_in("id=chooseList", subject)
+                            key("enter")
+                            d = wait_focus(lambda d: d["id"] == "keysText", 15)
+                            text = value_of("id=keysText") if d else ""
+                            run.check("reading it says what's attached", f"Attached: {card}" in text, text[-200:] or focus_label())
+                            have = copies()
+                            m = mark()
+                            key("alt+t")
+                            run.expect("Take the attachment, said", [f"Taking {card}"], m, 15)
+                            run.check("and it's in her inventory", wait(lambda: copies() > have, 15), f"{copies()} copies, {have} before")
+                            key("esc")
+                            wait_focus(lambda d: d["id"] == "chooseList" or d["type"] == "ListItem", 5)
+                        key("esc")
+
+        # ---- invited in a role (cancelled), and a new group up to its confirmation (cancelled)
+        back_to_chat()
+        if run.check("(the group's menu, Invite someone...)", group_menu("i"), focus_label()):
+            if run.check("Invite someone: a person picked, the visitor nearby", wait(lambda: VNAME in selection("id=pickList"), 8), focus_label()):
+                key("enter", target="id=pickList")
+                if run.check("then which role, Everyone first", wait(lambda: find("type=ListItem;name~=the role every member has"), 6), focus_label()):
+                    select_in("id=chooseList", "Greeters")
+                    m = mark()
+                    key("enter")
+                    confirm_in_notices(run, "Invite", m, answer="esc")
+                    run.expect("a role past Everyone waits for her confirmation, naming it", ["Greeters"], m, 4)
+                    run.expect("Escape cancels it", ["Cancelled"], m, 8)
+        back_to_chat()
+        key("alt+3")
+        wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
+        u("setfocus id=groups")
+        wait_focus(lambda d: d["id"] == "groups" or d["type"] == "ListItem", 4)
+        key("apps")
+        if run.check("New group is on the groups' menu", menu_open("New group..."), focus_label()):
+            key("u")
+            if run.check("New group: a window, the focus in its name", wait_focus(lambda d: d["id"] == "groupName", 6), focus_label()):
+                u(f"set id=groupName | Access New {nonce}")
+                m = mark()
+                key("alt+r")
+                confirm_in_notices(run, "Create the group", m, answer="esc")
+                run.expect("Create waits for her confirmation, saying what it costs on Second Life", ["L$100"], m, 4)
+                run.expect("Escape cancels it", ["Cancelled"], m, 8)
+                run.check("back in the window", wait_focus(lambda d: d["id"] in ("groupName", "groupCreate", "groupCharter"), 6), focus_label())
+                key("esc")
+        run.check("no group made", not any(g["name"] == f"Access New {nonce}" for g in api("LLAgent", "getGroups").get("groups", [])), "")
+    finally:
+        back_to_chat()
+        try:
+            if vid in members():
+                gated(run, "(cleanup: the visitor out of her group)", "TesselGroups", "eject", 30, group_id=gid, member=vid)
+            cards = api("LLInventory", "getBasicFolderID", ft_name="notecard")["id"]
+            made = [k for k, x in (api("LLInventory", "getDirectDescendants", folder_id=cards).get("items") or {}).items() if x.get("name") == f"Access Notice Card {nonce}"]
+            if made:
+                gated(run, "(cleanup: the notecard and its copies deleted)", "TesselInventory", "delete", 30, ids=made)
+        except (OSError, ToolError):
+            pass
+
+
 def scripts_editing(run, nonce):
     """Scripts (docs/access-app.md > Scripts). By keys: New script on a folder, opening with the viewer's starting text;
-    Control+L saying the line and column, Control+F, F3 and Shift+F3 finding round the ends, Control+G a line. Inside her own box:
-    Contents reaching it, Enter opening it from the object, a syntax error saved through her confirmation, the errors said and F8
-    placing the caret on one, a fix saved and compiled; Space stopping and starting it. Its script's error on the debug channel read
+    Control+L saying the line and column, Control+F, F3 and Shift+F3 finding round the ends, Control+G a line, Replace and files
+    (replace_and_files). Inside her own box: Contents reaching it, Enter opening it from the object, a syntax error saved through
+    her confirmation, the errors said and F8 placing the caret on one, a fix saved and compiled; Mono, Running and Reset
+    (script_switches); Space stopping and starting it. Its script's error on the debug channel read
     out, once for the same words in half a minute, not with the switch off, and another's never."""
     near_visitor()
     x, y, z, _ = tester_where()
@@ -5759,6 +6500,7 @@ def scripts_editing(run, nonce):
                     m = mark()
                     key("f8")
                     run.expect("F8 with no errors says so", ["No errors from the last save."], m, 4)
+                    replace_and_files(run, name)
                     key("esc")
                     wait(lambda: not find("id=editor"), 6)
         back_to_chat()
@@ -5808,7 +6550,13 @@ def scripts_editing(run, nonce):
             key("ctrl+s")
             confirm_in_notices(run, "Replace", m)
             run.expect("fixed: saved and compiled", ["Saved and compiled."], m, 25)
+            wait_focus(lambda d: d["id"] == "editorText", 10)
+            script_switches(run, name, box_id)
             key("esc")
+            # Mono changed and not saved: the window asks first
+            asked = wait_focus(lambda d: d["type"] == "Button" and d["name"] == "Yes", 5)
+            if run.check("Mono changed and not saved: closing asks first", asked, focus_label()):
+                key("n")
             wait(lambda: not find("id=editor"), 6)
             d = wait_focus(lambda d: d["id"] == "buildRows" or d["type"] == "ListItem", 6)
             run.check("closed, back in the contents", d, focus_label())
@@ -5859,6 +6607,106 @@ def scripts_editing(run, nonce):
                 api("TesselBuild", "take", 30, ids=[box_id])
             except Exception:
                 pass
+
+
+def replace_and_files(run, name):
+    """In the new script's editor (the viewer's starting text, the caret on line 3): Control+H's Replace window, Find next by
+    Enter, Replace saying there are no more, Match case finding nothing, Replace all saying how many and where, Control+Z
+    undoing it; Control+Shift+S a copy to a file (the run's SOJOURN_TEST_FILES standing in for Windows' Save window),
+    Control+O a file's text in place of the changes (asked first), saved."""
+    key("ctrl+h")
+    if not run.check("Control+H opens Replace, the focus in Find what", wait_focus(lambda d: d["id"] == "replaceFind", 5), focus_label()):
+        return
+    u("set id=replaceFind | Touched")
+    u("set id=replaceWith | Poked")
+    m = mark()
+    key("enter", target="id=replaceFind")
+    run.expect("Enter is Find next, saying the line", ['Line 10: llSay(0, "Touched.");'], m, 5)
+    m = mark()
+    key("alt+r")
+    run.expect("Replace changes it, and there are no more", ["Replaced on line 10. No more."], m, 5)
+    u("set id=replaceFind | llsay")
+    u("set id=replaceWith | llWhisper")
+    u("toggle id=replaceCase")
+    m = mark()
+    key("alt+a")
+    run.expect("with Match case, llsay isn't in it", ["llsay isn't in it."], m, 5)
+    u("toggle id=replaceCase")
+    m = mark()
+    key("alt+a")
+    run.expect("Replace all says how many, on which lines", ["Replaced 2, on lines 5 and 10."], m, 5)
+    key("esc")
+    run.check("Escape closes it, back in the text", wait_focus(lambda d: d["id"] == "editorText", 4), focus_label())
+    text = value_of("id=editorText")
+    run.check("both replaced, and the one before", text.count("llWhisper") == 2 and "Poked." in text, text[:240])
+    key("ctrl+z")
+    run.check("Control+Z undoes Replace all", wait(lambda: value_of("id=editorText").count("llSay") == 2, 3, 0.2), value_of("id=editorText")[:240])
+
+    # files on disk
+    path = OUT / "files" / f"{name}.lsl"
+    m = mark()
+    key("ctrl+shift+s")
+    run.expect("Control+Shift+S saves a copy to a file, saying where", [f"Saved a copy to {name}.lsl in files."], m, 5)
+    run.check("the file holds the text as it stands", path.exists() and "Poked." in path.read_text(encoding="utf-8"), path.read_text(encoding="utf-8")[:120] if path.exists() else "no file")
+    path.write_text('// from disk\ndefault\n{\n    state_entry()\n    {\n        llSay(0, "from disk");\n    }\n}\n', encoding="utf-8")
+    m = mark()
+    key("ctrl+o")
+    asked = wait_focus(lambda d: d["type"] == "Button" and d["name"] == "Yes", 5)
+    if run.check("Control+O over changes not saved asks first", asked, focus_label()):
+        key("enter")
+    run.expect("the file's text in place, said with how to save it", [f"Opened {name}.lsl", "Control+S saves it into Second Life."], m, 6)
+    run.check("the text is the file's", wait(lambda: value_of("id=editorText").startswith("// from disk"), 3, 0.2), value_of("id=editorText")[:80])
+    m = mark()
+    key("ctrl+s")
+    run.expect("and saved", ["Saved"], m, 20)
+    time.sleep(0.5)
+
+
+def script_switches(run, name, box_id):
+    """In a script opened from her box: Mono, Running and Reset as the viewer's script window has them. Mono ticked and
+    saying what it does; Alt+M turning it off, said, the focus left in the text, a save for LSL2; Alt+R stopping and running
+    it (the grid asked); Alt+E resetting it, its state_entry heard again; Mono back on (left unsaved, for the closing
+    question)."""
+    mono = u("get id=editorMono")
+    run.check("Mono, ticked, saying what it does", "toggle=On" in mono and 'help="Compiles the script for Mono' in mono, mono)
+    running = u("get id=editorRunning")
+    run.check("Running, ticked, and Reset", "toggle=On" in running and find("id=editorReset"), running)
+    m = mark()
+    key("alt+m")
+    run.expect("Alt+M: Mono off, said with what that means", ["Mono off", "LSL2"], m, 4)
+    run.check("the focus stays in the text", (focused() or {}).get("id") == "editorText", focus_label())
+    run.check("(the box unticked)", "toggle=Off" in u("get id=editorMono"), u("get id=editorMono"))
+    m = mark()
+    key("ctrl+s")
+    confirm_in_notices(run, "Replace", m)
+    run.expect("saved off Mono, compiled", ["Saved and compiled."], m, 25)
+    wait_focus(lambda d: d["id"] == "editorText", 10)
+    item = next((i for i in api("TesselBuild", "contents", 20, id=box_id, running=False).get("items", []) if i.get("name") == name), {})
+    got = editor_rpc("object.content.get", prim_id=box_id, item_id=item.get("item_id"))
+    print(f"     (object.content.get after: vm {got.get('vm')!r}, running {got.get('running')!r}; the local grid's own say on Mono)")
+    m = mark()
+    key("alt+r")
+    run.expect("Alt+R stops it", ["Stopped."], m, 10)
+    run.check("(stopped, by the grid)", editor_rpc("object.content.get", prim_id=box_id, item_id=item.get("item_id")).get("running") is False, "")
+    m = mark()
+    key("alt+r")
+    run.expect("Alt+R runs it again", ["Running."], m, 10)
+    before = v("heard 200").count("scripted ready")
+    m = mark()
+    key("alt+e")
+    run.expect("Alt+E resets it", [f"Reset {name}: it starts over."], m, 10)
+    run.check("its state_entry runs again (the visitor hears its line)", wait(lambda: v("heard 200").count("scripted ready") > before, 10), f"{before} before")
+    m = mark()
+    key("alt+m")
+    run.expect("Alt+M: Mono on again", ["Mono on"], m, 4)
+
+
+def editor_rpc(method, **params):
+    """The bridge's external-editor RPC (ScriptEditor), its result."""
+    req = urllib.request.Request(f"http://127.0.0.1:{API_PORT}/rpc", json.dumps({"method": method, "params": params, "timeout": 30}).encode(),
+                                 {"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=40) as r:
+        return json.load(r).get("result") or {}
 
 
 def paying_and_buying(run, nonce):
@@ -6284,7 +7132,7 @@ def offscreen(run):
         im = Image.open(path).convert("RGB")
         spread = sum(ImageStat.Stat(im).stddev) / 3
         ok = im.size == (1024, 576) and spread > 6   # a flat frame (nothing drawn) is ~0; the local grid's night ~10
-        detail += f"; {im.size[0]}x{im.size[1]}, spread {spread:.0f} ({path.relative_to(ROOT)})"
+        detail += f"; {im.size[0]}x{im.size[1]}, spread {spread:.0f} ({shown(path)})"
     run.check("the assistant's look (saveSnapshot) gets a picture of the view", r.get("ok") and ok, detail)
 
     st = api("SojournView", "status")
@@ -6329,7 +7177,7 @@ def offscreen_software(run):
         im = Image.open(path).convert("RGB")
         spread = sum(ImageStat.Stat(im).stddev) / 3
         ok = im.size == (1024, 576) and spread > 6
-        detail += f"; {im.size[0]}x{im.size[1]}, spread {spread:.0f} ({path.relative_to(ROOT)})"
+        detail += f"; {im.size[0]}x{im.size[1]}, spread {spread:.0f} ({shown(path)})"
     run.check("the assistant's look (saveSnapshot) gets a picture drawn on the processor", r.get("ok") and ok, f"{took:.1f} s; {detail}")
     mem = p.memory_info()
     print(f"     (after the picture: {mem.private / 2**20:.0f} MB private, {mem.rss / 2**20:.0f} MB working set; "
@@ -8115,6 +8963,22 @@ def open_dialog_pick(run, what, path):
     return True
 
 
+def folder_dialog_pick(run, what, path):
+    """Windows' own folder window (Select Folder), as the person meets it: the path typed into its Folder box, then Select
+    Folder; Escape if it didn't come up as expected, so it can't hold the keys of the steps after."""
+    box = wait(lambda: find("id=1152;type=Edit") or find("id=1152"), 20, 0.5)
+    if not run.check(f"{what}: Windows' folder window comes up", box, focus_label()):
+        key("esc")
+        return False
+    u(f"set id=1152 | {path}")
+    time.sleep(0.3)
+    try:
+        u("click id=1;type=Button")
+    except ToolError:
+        key("enter")
+    return True
+
+
 def uploads(run, nonce):
     """Uploading on her own (M6; docs/access-app.md > Uploading): a picture by Control+U and Windows' Open window, its
     size and resizing and see-through parts said before anything is sent, renamed, the fee confirmed in Notices by
@@ -8370,7 +9234,7 @@ def asset_tone(asset_id):
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return None
-    db = sqlite3.connect(f"file:{ROOT / 'local' / os.environ.get('SOJOURN_GRID', 'grid') / 'bin' / 'Asset.db'}?mode=ro", uri=True)
+    db = sqlite3.connect(f"file:{LOCAL / os.environ.get('SOJOURN_GRID', 'grid') / 'bin' / 'Asset.db'}?mode=ro", uri=True)
     try:
         row = db.execute("select Data from assets where UUID = ?", (asset_id or "",)).fetchone()
     finally:
@@ -8688,6 +9552,79 @@ def walk(run):
     x, y, z, _ = tester_where()
     off = math.dist((x, y), WALK_TO)
     run.check("3 s later the tester is within 1 m of it", off < 1, f"at {x:.1f}, {y:.1f}: {off:.1f} m from {WALK_TO}")
+
+
+def always_run(run):
+    """Always run (Radegast's World > Always Run): //run turns it on, said, and keeps it as the setting; a //go then runs
+    (the region plays its run animation on her and she goes faster than a walk there just before; OpenSim's autopilot
+    turns running off as it starts, so the app sends it again after); walk mode's held Up runs without Shift; //run again
+    walks, said. Between TP_TO and PILOT_TO, open ground the assistant's walk crosses."""
+    api("SojournSettings", "set", walk_always_run=False)
+    back_to_chat()
+    m = mark()
+    say_in_app(TP_COMMAND)
+    run.expect("(at the walk's spot)", ["Arrived"], m, 40)
+    time.sleep(2)
+
+    def running():
+        return any(a.get("name") == "run" for a in api("LLAgent", "animations").get("animations", []))
+
+    def go(to):
+        """A //go there: the fastest the region moved her over a second or so on the way (its position comes in steps, so
+        a shorter span overstates), and whether its run played."""
+        m = mark()
+        say_in_app(f"//go xyz {to[0]},{to[1]}")
+        seen, best, ran = [], 0.0, False
+        t0 = time.time()
+        while time.time() - t0 < 20:
+            x, y, _, _ = tester_where()
+            now = time.time()
+            seen.append((now, x, y))
+            back = next(((t, bx, by) for t, bx, by in seen if now - t <= 1.6), None)
+            if back and now - back[0] > 0.9:
+                best = max(best, math.dist((x, y), back[1:]) / (now - back[0]))
+            ran = ran or running()
+            if any("Finished walking" in (e.get("text") or "") for e in said_since(m)):
+                break
+            time.sleep(0.2)
+        return best, ran
+
+    walked, walk_ran = go(PILOT_TO)
+    m = mark()
+    say_in_app("//run")
+    run.expect("//run turns Always run on, said", ["Always running"], m, 5)
+    run.check("(the setting has it)", api("SojournSettings", "get", name="walk_always_run")["settings"]["walk_always_run"]["value"] is True,
+              json.dumps(api("SojournSettings", "get", name="walk_always_run"))[:160])
+    ran_speed, ran = go(TP_TO)
+    print(f"     (//go: {walked:.1f} m a second walking{', its run playing' if walk_ran else ''}; {ran_speed:.1f} with Always run{', its run playing' if ran else ''})")
+    run.check("a //go with Always run runs: the region plays its run on her", ran, "its run played" if ran else "only its walk")
+    run.check("and faster than the walk before it", ran_speed > walked * 1.25, f"{ran_speed:.1f} against {walked:.1f} m a second")
+    # walk mode: held Up runs, no Shift (toward PILOT_TO, west, over the ground the //go just crossed)
+    say_in_app("//face west")
+    time.sleep(1)
+    key("f3")
+    if run.check("(walk mode)", wait_focus(lambda d: d["id"] == "walkPad", 5), focus_label()):
+        u("keydown focus | 38")
+        held = wait(running, 2, 0.1)
+        u("keyup focus | 38")
+        run.check("walk mode's held Up runs with Always run on, without Shift", held, json.dumps(api("LLAgent", "animations"))[:200])
+        time.sleep(1)
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+    m = mark()
+    say_in_app("//run")
+    run.expect("//run again walks, said", ["Walking again"], m, 5)
+    run.check("(the setting has it off)", api("SojournSettings", "get", name="walk_always_run")["settings"]["walk_always_run"]["value"] is False, "")
+    key("f3")
+    if wait_focus(lambda d: d["id"] == "walkPad", 5):
+        u("keydown focus | 38")
+        time.sleep(1)
+        walking_again = not running()
+        u("keyup focus | 38")
+        run.check("and walk mode's held Up walks again", walking_again, json.dumps(api("LLAgent", "animations"))[:200])
+        time.sleep(1)
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
 
 
 def teleport(run):
@@ -10631,7 +11568,7 @@ def ride_recording(run):
             at = [text.find(n) for n in names]
             run.check("the telling names the markers, in the order passed", first and all(a >= 0 for a in at) and at == sorted(at), text[:400])
             timing = None
-            tf = ROOT / "local" / "assistant" / "timings.jsonl"
+            tf = LOCAL / "assistant" / "timings.jsonl"
             if tf.exists():
                 for line in tf.read_text(encoding="utf-8").splitlines()[-20:]:
                     try:
@@ -10992,10 +11929,18 @@ def shutdown(run, server_pid, app_pid, visitor):
     run.check("nothing left running", not strays, "; ".join(f"{w} {p}" for p, w in strays) or "app, visitor and QuireUia all gone")
 
 
+def shown(path):
+    """A path for a printed line: from the repo when it's in it, whole when not (LOCAL elsewhere, a worktree's run)."""
+    try:
+        return str(Path(path).relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def finish(run):
     total = run.ok + len(run.failed)
     print(f"\n{run.ok} of {total} passed" + (f"; failed: {', '.join(run.failed)}" if run.failed else ""))
-    print(f"logs: {EVENTS.relative_to(ROOT)}, {(OUT / 'visitor' / 'visitor.log').relative_to(ROOT)}, {(OUT / 'app').relative_to(ROOT)}")
+    print(f"logs: {shown(EVENTS)}, {shown(OUT / 'visitor' / 'visitor.log')}, {shown(OUT / 'app')}")
     return 0 if not run.failed else 1
 
 

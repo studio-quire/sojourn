@@ -21,15 +21,16 @@ public sealed class TesselInventory : SessionApi
             (a, ct) => J(inv.UpdateAsync(a, ct)));
         Op("delete", "{id | ids, purge=false}: to Trash, or gone for good with purge", (a, ct) => J(inv.DeleteAsync(a, ct)));
         Op("emptyTrash", "purge everything in Trash", (_, ct) => J(inv.EmptyTrashAsync(ct)));
+        Op("emptyLostAndFound", "purge everything in Lost and Found (where things returned from the world land)", (_, ct) => J(inv.EmptyLostAndFoundAsync(ct)));
         Op("link", "{item_id, folder_id} -> {linked, link_id}: a link to an item of mine in a folder, named as the item (the viewer's Paste as link; a link's link goes to its original)",
             (a, ct) => J(inv.LinkAsync(a, ct)));
         Op("copy", "{id, dest_id?, name?} -> item (or {folder_id, items}): copy an item or folder, mine or the Library's, into my inventory",
             (a, ct) => J(inv.CopyAsync(a, ct)));
         Op("createNotecard", "{name, text?, desc?, folder_id?, next_perms?} -> {item_id, asset_id}", (a, ct) => J(inv.CreateNotecardAsync(a, ct)));
         Op("readNotecard", "{item_id} -> {text, embedded?}: each embedded item's place in the text reads as its marker, [landmark: Harbour]", (a, ct) => J(inv.ReadNotecardAsync(a, ct)));
-        Op("copyFromNotecard", "{item_id, embedded_id | name, folder_id?} -> item: copy an item embedded in a notecard into my inventory",
+        Op("copyFromNotecard", "{item_id, embedded_id | name, folder_id?, object_id?} -> item: copy an item embedded in a notecard into my inventory (object_id: a card in that object's contents, item_id its item there)",
             (a, ct) => J(inv.CopyFromNotecardAsync(a, ct)));
-        Op("writeNotecard", "{item_id, text, append?} -> {embedded_kept?, moved_to_end?}: replace (or add to) a notecard's text; what's embedded always stays, at its marker in the text or else moved to the end", (a, ct) => J(inv.WriteNotecardAsync(a, ct)));
+        Op("writeNotecard", "{item_id, text, append?, remove?: [embedded item_id], add?: [{item_id, marker}]} -> {embedded_kept?, moved_to_end?, removed?, added?}: replace (or add to) a notecard's text; what's embedded stays, at its marker in the text or else moved to the end, unless taken off by remove; add puts items of my inventory in (the next owner must be able to copy, modify and transfer each), each where its marker (any words unique in the text) is, else at the end", (a, ct) => J(inv.WriteNotecardAsync(a, ct)));
         Op("createScript", "{name, text?, target=mono, desc?, folder_id?, next_perms?} -> {item_id, compiled, errors}: a script in my inventory",
             (a, ct) => J(inv.CreateScriptAsync(a, ct)));
         Op("writeScript", "{item_id, text, target=mono} -> {compiled, errors}", (a, ct) => J(inv.WriteScriptAsync(a, ct)));

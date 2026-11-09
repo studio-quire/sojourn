@@ -814,11 +814,26 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
+- For the inventory's housekeeping (2026-11-08): Radegast starts sorted newest first, Access by name (Alt+0's "Inventory
+  order", or Sort by date on the Applications key): which does she want to start with? Show: Recent now lists everything
+  newest first, each saying when it came, rather than the last day's: is that how she'd find a purchase, or would she rather
+  Radegast's "since I logged in"? Are Search by Creator and Description (a Tab after Show) worth the extra stop? F5 now drops
+  what was deleted or moved in another viewer: worth telling her, after her deleted folder that stayed. Back up to disk saves
+  the list of everything and the notecards and scripts she made herself (Second Life's rules for viewers don't let it take
+  others'): would she want pictures too?
+- Always run (`//run`, World's menu): on Second Life, does a `//go` run with it on? The local grid's autopilot turns running
+  off as it starts and only runs because Access asks again. Health is on the status bar where damage is on, and on `//status
+  health`: in a combat area, would she want a line said when she's hurt, or would that be too much?
+
 - With 0.1.0.887 (2026-11-03, on the builders' line): a log after a ride (switches found sooner?) and after a throw
   with her partner; whatever is awkward in About Land. Still to ask about land when she's used it: is the split between
   switches that change at once and changes that ask first right; are the rows' words clear ("Damage allowed" rather
   than the viewer's "Safe (no damage)"); is Control+L a good key; divide and join by compass words or from her facing?
   And whether the world going much softer under a beacon is right.
+- Display names in fancy letters or symbols (built 2026-11-08 from reasoning; nothing reported): has anyone's come
+  through as nothing or nonsense, here or in Radegast? Access now says them in plain letters, the username when there
+  are none; Alt+0's People's names also has the display name and username (Radegast's usual), as written, or the
+  username alone. Which would she keep, and has a name come out wrong?
 - Reading back (Control+[ and ]) stays where she left it however many lines arrive since; should new lines, or a
   while without the review keys, bring it back to the newest (Control+Shift+] does now)?
 - Sent with 0.1.0.877 on the builders' line (2026-11-02, 22:45): was going into Pavonia at the end of her solo run on
@@ -942,5 +957,15 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
     rather stay on the part she was on and ask for all of it? "This part only." at the end of each change on a part: useful, or
     too much once she knows? Should all of it turn round its root, as now, or its middle, as the official editor's mouse tool?
   - Should the assistant say what a change did to the look by itself, or only on "look" (as now: each costs a call)?
+- For scripts and notecards (after the build following 0.1.0.996), to her and her partner: in a script opened from an object,
+  is Mono ticked as she'd expect for her scripts, and do Alt+M, Alt+R and Alt+E (Mono, Running, Reset: the boxes' underlined
+  letters, the focus staying in the text) sit well? Would they use Control+H's Replace window (Notepad's), and files on disk
+  (Control+O to open one in place of the text, Control+Shift+S to save a copy)? In a notecard, is Control+Shift+V a good key
+  for putting in what she copied in the inventory, and Delete in the list for removing a thing at the next save?
 - Voice: does she use voice chat? Is F4 held a good talk key (Scroll Lock, Pause and F12 are choices), and would she
   want who starts speaking said by itself (off now; Ctrl+Shift+V says it on asking)?
+- Groups (after the build with running one, 2026-11-08): does she, or anyone she knows, run a group or a club from Access, and
+  what would they reach for next: making a role and its powers, or the group's settings (charter, who may join, fee)? A notice
+  with something attached now waits in Notices with Keep as its first key, rather than passing as a line: right, or would she
+  rather it were said and kept by itself? Are the members' and chat's windows easy to move around (Find, then the list, Enter
+  on someone for what she can do), and is it right that a person's own actions there close the window first?

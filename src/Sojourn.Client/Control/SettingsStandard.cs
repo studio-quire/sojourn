@@ -129,7 +129,7 @@ public static class SettingsStandard
             + "(deny, the default: OpenRouter's data_collection preference on every request) or all (allow); the person's own choice", () => N(st.OpenRouterDenyDataCollection ? "deny" : "allow"));
         api.Own("auto_mode", "assistant", "the assistant's sessions under Claude Code's auto mode (on, the default: its classifier reviews each "
             + "action); off: no classifier and only tools safe without one (no shell, web, helpers, or files beyond its own folders); "
-            + "the person's own choice in the launcher", () => N(st.AssistantAutoMode));
+            + "the person's own choice, called web and programs in the launcher and Sojourn Access's Alt+0", () => N(st.AssistantAutoMode));
         api.Own("assistant_memory", "assistant","the assistant keeps notes about the person between sittings (its memory); the person's own switch, in the menu, where they can also clear it",
             () => N(st.AssistantMemory));
 

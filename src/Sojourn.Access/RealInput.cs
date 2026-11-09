@@ -173,7 +173,7 @@ public sealed class RealInput : IMessageFilter
     {
         Refusal.Held => "That key was already down. Let go and press it again.",
         Refusal.FocusMoved => "That changed just as you pressed. Press again if you meant it.",
-        _ => "That takes your own key.",
+        _ => "That needs a key on the physical keyboard. To allow a braille display or dictation: Alt+0, General.",
     };
 
     /// <summary>The action being run began with the person's input (the message that started it, carried through its

@@ -203,7 +203,8 @@ public sealed class SettingsApi : LeapApi
     public static Func<JsonNode, string?> Choice(string name, string[] options, Action<int> apply) => v =>
     {
         var s = v.GetValueKind() == System.Text.Json.JsonValueKind.String ? v.GetValue<string>().Trim().ToLowerInvariant().Replace(' ', '_') : v.ToJsonString();
-        int i = Array.FindIndex(options, o => o == s);
+        // (options may have spaces, walk_beacon_duck's "much softer": compared the way the value is)
+        int i = Array.FindIndex(options, o => o.ToLowerInvariant().Replace(' ', '_') == s);
         if (i < 0) return $"{name} is one of {string.Join(", ", options)}";
         apply(i);
         return null;

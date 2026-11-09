@@ -565,16 +565,15 @@ The user's decisions:
   depth, hides a quad layer where the eyes' depth is nearer, but over Link only inside a roughly circular region around
   the view (rewriting the depth as radial distance changed nothing), and the PC runtime has no layer flag for it. So we
   hide menus ourselves:
-  - Walls hide menus (the default, the user's choice: menus belong to the world; `menu_frost_test` exact, menu > view >
-    wall test): each menu's footprint is carved to far in the depth the compositor gets, so it never hides a menu, and
+  - Walls hide menus (the default, the user's choice: menus belong to the world): each menu's footprint is carved to far in the depth the compositor gets, so it never hides a menu, and
     the hands' cut (Your own body > Over the menus) takes anything in the eye that's inside a menu's outline and nearer
     than it: walls, rocks and people in front of a menu go on the layer over the quads. The frost is tested at the
     menu's own depth. Not with `SOJOURN_HANDS_OVER_MENUS=0`.
   - `menus_over_walls` (menu > view, off by default): menus always over the world: the frost untested, the footprints
     carved, nothing over the menus but the hands. Carving writes each menu's footprint (4 px wider) as far, except where
     the cut's mask is; behind a menu a late frame's world moves as if far away.
-  - For comparing, `menu_frost_test` radial (or head) leaves it to the compositor and tests the frost at the radial
-    depth it seemed to use. `menu_frost_bias` scales the frost's distance by 1 + bias.
+  - The compositor's own test (radial, from the eye or the head) and a bias on the frost's depth were settings for
+    comparing, removed by the user's call (2026-11-08): exact is the only way walls hide menus.
   - A confirmation is never covered: while one is up, nothing hides the menus that frame, the panel's frost is untested
     and its footprint carved (`OverlayScene.PanelOverWalls`).
   - Through cloth and hair (`handcut.frag`, walls mode): alpha-tested cloth and hair are full of pixel-sized holes, and

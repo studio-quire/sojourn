@@ -36,12 +36,27 @@ public sealed class AccessSettings
     /// <summary>Lines cut off by typing said again once the keys rest (MainForm.CutLines.cs).</summary>
     public bool ReadCut { get; set; } = true;
 
+    /// <summary>How people's names are said everywhere (Sojourn.Core.World.PlainName, NameCache.Style): "plain", the display
+    /// name in plain letters (decorative Unicode a screen reader can't say read as the letters it stands for, symbols and
+    /// emoji left out, the username when nothing's left); "both", that and the username; "written", as other viewers show
+    /// it; "username". Plain by default: knowing who's speaking matters more than the decoration.</summary>
+    public string Names { get; set; } = "plain";
+    public static readonly string[] NamesChoices = { "plain", "both", "written", "username" };
+    public Sojourn.Core.World.NameStyle NameStyle => Names switch
+    {
+        "both" => Sojourn.Core.World.NameStyle.Both,
+        "written" => Sojourn.Core.World.NameStyle.Written,
+        "username" => Sojourn.Core.World.NameStyle.Username,
+        _ => Sojourn.Core.World.NameStyle.Plain,
+    };
+
     /// <summary>Script errors from the person's own objects read out, as notices (Radegast and the viewers show them in chat).</summary>
     public bool ScriptErrors { get; set; } = true;
     /// <summary>The builders' tab (MainForm.Builders.cs): on, the person can write to us and our replies are fetched and
     /// read out; off, no tab and the relay isn't asked.</summary>
     public bool Builders { get; set; } = true;
     public event Action? BuildersChanged;
+    public event Action? InventorySortChanged;
     /// <summary>How confirmations, notices' keys, the ToS and typed answers take an answer that doesn't come from a key on
     /// a physical keyboard (a braille keyboard, Dragon, Voice Access, an on-screen keyboard, switch access): "refuse", or
     /// "hello", asking Windows Hello (face, fingerprint or PIN) and then taking it (Hello.cs). Physical keys answer either way.</summary>
@@ -58,6 +73,18 @@ public sealed class AccessSettings
     /// <summary>Which model describes (the assistant's describer.py reads it per description): "economy", Haiku 5.5, or
     /// "best", Opus 5.5 (docs/assistant-cost.md has what each costs and how they compared).</summary>
     public string Describing { get; set; } = "economy";
+
+    /// <summary>The inventory's order within a folder (MainForm.Inventory.cs InTreeOrder): "by name", or "newest first"
+    /// (Radegast's Sort by date, which it starts on); folders stay first, by name, either way.</summary>
+    public string InventorySort { get; set; } = "by name";
+    public static readonly string[] InventorySorts = { "by name", "newest first" };
+    public bool InventoryByDate => InventorySort == "newest first";
+
+    public void SetInventorySort(bool byDate)
+    {
+        InventorySort = InventorySorts[byDate ? 1 : 0];
+        Save();
+    }
     public static readonly string[] DescribingChoices = { "economy", "best" };
 
     /// <summary>Voice chat's talk key (MainForm.Voice.cs): f4 (null), f12, scroll_lock or pause.</summary>
@@ -169,6 +196,13 @@ public sealed class AccessSettings
     /// <summary>A walk with no way around what's in the way ends in a teleport there (where the region allows it).</summary>
     public bool WalkSpeed => !Walk.TryGetValue("speed", out var v) || v == "on";
     public bool WalkTeleportFallback => !Walk.TryGetValue("teleport_fallback", out var v) || v == "on";
+    /// <summary>Always run (Radegast's and the viewer's Always Run): walk mode's arrows, //go and following run, not walk.</summary>
+    public bool WalkAlwaysRun => Walk.TryGetValue("always_run", out var v) && v == "on";
+    public void SetAlwaysRun(bool on)
+    {
+        Walk["always_run"] = on ? "on" : "off";
+        Save();
+    }
     /// <summary>Seated and moving, a line from the vehicle saying its track ends stops it (Walk/WalkMode.Stop.cs): on unless
     /// turned off (the blind tester's ask, 2026-11-01).</summary>
     public bool WalkTrackEnd => !Walk.TryGetValue("track_end", out var v) || v == "on";
@@ -308,6 +342,9 @@ public sealed class AccessSettings
             + "the assistant's describing): economy, Claude Haiku 5.5, about a tenth of a cent each; best, Claude Opus 5.5, closer "
             + "and surer on detail, about two cents each", string.Join(", ", DescribingChoices), () => Describing,
             SettingsApi.Choice("access_describing", DescribingChoices, i => { Describing = DescribingChoices[i]; Save(); changed(); })));
+        api.Add("access_inventory_sort", new SettingsApi.Setting("access", "Sojourn Access: the order of things in each inventory "
+            + "folder, and in searches: by name, or newest first (folders stay first, by name)", string.Join(", ", InventorySorts), () => InventorySort,
+            SettingsApi.Choice("access_inventory_sort", InventorySorts, i => { InventorySort = InventorySorts[i]; Save(); changed(); InventorySortChanged?.Invoke(); })));
         api.Add("walk_speed", new SettingsApi.Setting("access", "Sojourn Access: while seated on a moving vehicle, its speed said "
             + "when it settles at a new one (V says it any time)", "on, off", () => WalkSpeed,
             SettingsApi.Switch("walk_speed", on => { Walk["speed"] = on ? "on" : "off"; Save(); changed(); })));
@@ -329,6 +366,9 @@ public sealed class AccessSettings
         api.Add("walk_teleport_fallback", new SettingsApi.Setting("access", "Sojourn Access: a walk (//go, walk to, the assistant's) "
             + "with no way around what's in the way teleports there instead, where the region allows it", "on, off", () => WalkTeleportFallback,
             SettingsApi.Switch("walk_teleport_fallback", on => { Walk["teleport_fallback"] = on ? "on" : "off"; Save(); changed(); })));
+        api.Add("walk_always_run", new SettingsApi.Setting("access", "Sojourn Access: always run, as the viewer's Always Run: walk "
+            + "mode's arrows, //go and following run rather than walk (otherwise Shift with the arrows runs)", "on, off", () => WalkAlwaysRun,
+            SettingsApi.Switch("walk_always_run", on => { SetAlwaysRun(on); changed(); })));
         // a safeguard against programs on this PC, the assistant's among them: any caller may set it back to refuse, and
         // only the person lowers it to hello, in Alt+0 by their own key or Windows Hello (MainForm.AnswersRow)
         api.Add("access_answers_without_key", new SettingsApi.Setting("access", "Sojourn Access: for people who answer without a "
@@ -366,6 +406,20 @@ public sealed class AccessSettings
         api.Add("access_objects_range", new SettingsApi.Setting("access", "Sojourn Access: how far Objects nearby lists, metres (the nearest "
             + "200 at most; what's beyond the draw distance isn't known)", string.Join(", ", ranges), () => ObjectsRange.ToString(),
             SettingsApi.Choice("access_objects_range", ranges, i => { ObjectsRange = int.Parse(ranges[i]); Save(); changed(); })));
+        Sojourn.Core.World.NameCache.Style = NameStyle;
+        api.Add("access_names", new SettingsApi.Setting("access", "Sojourn Access: how people's names are said in chat, IMs, lists, "
+            + "notices and profiles. plain: the display name in plain letters (fancy Unicode letters, small caps, upside-down text "
+            + "and lookalikes from other alphabets read as the letters they stand for, symbols and emoji left out; the username "
+            + "when no letters are left); both: that, and the username after it when they differ; written: the display name "
+            + "exactly as written, as other viewers show it; username: the username alone. Typed names (//go, //follow, a "
+            + "person's name in any command) match any of them", string.Join(", ", NamesChoices), () => Names,
+            SettingsApi.Choice("access_names", NamesChoices, i =>
+            {
+                Names = NamesChoices[i];
+                Sojourn.Core.World.NameCache.Style = NameStyle;
+                Save();
+                changed();
+            })));
         api.Add("access_read_cut", new SettingsApi.Setting("access", "Sojourn Access: a line cut off by your typing said again once "
             + "the keys rest (off: only the review keys have it)", "on, off", () => ReadCut,
             SettingsApi.Switch("access_read_cut", on => { ReadCut = on; Save(); changed(); })));

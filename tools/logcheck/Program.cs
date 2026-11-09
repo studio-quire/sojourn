@@ -70,6 +70,8 @@ screen reader: a bare line naming Oriole
 10:00:42 ~heard {"from":"app","how":"answer","via":"NVDA","text":"Heading ENE.. or left, would like to:.."}
 10:00:43 ~name {"id":"cccccccc-cccc-cccc-cccc-cccccccccccc","legacy":"starry Resident","display":"★★★"}
 10:00:44 ~heard {"from":"app","how":"answer","via":"NVDA","text":"★★★ is here"}
+10:00:45 ~name {"id":"dddddddd-dddd-dddd-dddd-dddddddddddd","legacy":"wilfleck Resident","display":"𝓜𝓪𝓻𝓲𝓰𝓸𝓵𝓭 ✨","plain":"Marigold"}
+10:00:46 ~heard {"from":"app","how":"answer","via":"NVDA","text":"Marigold is 3 metres away, ten o'clock."}
 """;
 
 int failed = 0, passed = 0;
@@ -87,7 +89,7 @@ var lower = text.ToLowerInvariant();
 // nothing of anyone else's words, names, keys, nor the person's own name, account folder, keys or address
 foreach (var w in new[] { "zebra", "marmalade", "walrus", "trombone", "quokka", "velvet", "platypus", "saffron", "narwhal", "gilded", "ferret", "pelican",
              "mongoose", "hippo", "axolotl", "iguana", "kestrel", "wren", "birdie", "oriole", "quill", "unlisted", "stranger",
-             "faraway", "juniper", "someperson", "moonbeam", "tamarisk", "tamsinmoth", "203.0.113.7", "2001:db8", "sk-ant-abc", "sqr-abc", "22222222-2222", "80751d6f", "db1c5249" })
+             "faraway", "juniper", "someperson", "moonbeam", "tamarisk", "tamsinmoth", "marigold", "wilfleck", "203.0.113.7", "2001:db8", "sk-ant-abc", "sqr-abc", "22222222-2222", "80751d6f", "db1c5249" })
     Check($"\"{w}\" isn't in it", !lower.Contains(w));
 
 // what stays
@@ -127,7 +129,8 @@ Check("no ~name records sent", !text.Contains("~name") && !text.Contains("~words
 Check("a display name never looked up, written before a known name in brackets, is replaced too", text.Contains("Chat-Range: person 7 (person 7) is now in chat range.") && text.Contains("person 7 is by the bar."));
 Check("a display name of punctuation is no stand-in: full stops stay", text.Contains("Heading ENE.. or left, would like to:.."));
 Check("one of symbols is still a name", text.Contains("person 8 is here"));
-Check("eight people counted", res?.People == 8);
+Check("a display name in decorative letters, as it's said in plain ones, is replaced", text.Contains("person 9 is 3 metres away, ten o'clock."));
+Check("nine people counted", res?.People == 9);
 
 Check("a log from before the records isn't filtered", LogShare.Filter("10:00:00 info: sojourn[0] hello\n17:04 Someone: words\n") is null);
 Check("nor one whose header names an older format", LogShare.Filter("10:00:00 ~log {\"v\":1}\n10:00:01 info: x\n") is null);

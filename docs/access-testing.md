@@ -9,10 +9,10 @@ testers said is `docs/access.md` > What a blind tester tells us.
 `python tools/access.py test`: on the local grid, nothing on the visible desktop; it runs `build` and `tools` first. A
 full run takes about an hour (the walk-mode step alone about 4 minutes). Last full runs 2026-11-07, evening: the long
 runs' stall (below) gone at the route step with QuireUia's server started afresh, in two runs, the app's window held
-only by the test's own `//holdwindow`. Not clean, though: since the chat's Tab order changed (People nearby between Say
-and the history), the Tab order step's "Tab from Say goes to the history" checks still expect the old order, and "search's
-further pages" opened a person's IM sound window by a key meant for elsewhere, which then took the keys of every later
-step.
+only by the test's own `//holdwindow`. Not clean, though: "search's further pages" opened a person's IM sound window
+by a key meant for elsewhere, which then took the keys of every later step. (Possibly the menu letters' stale words,
+fixed 2026-11-08 in `Mnemonics.cs`; not seen since, as no full run has been made.) The Tab order checks were brought
+up to the chat's order the same evening.
 
 **The test client's references.** Every element QuireUia's managed UI Automation client (System.Windows.Automation)
 hands out stays a reference in the app's UIA server for as long as QuireUia is connected: GC and finalizers don't let it
@@ -57,6 +57,15 @@ window slow to close) are worth reading the same way first: `cdb -pv -p PID -c "
   skipped; the builders' step runs on the relay (below). `ACCESS_STEPS=HUD` runs both HUD steps.
 - `SOJOURN_BUILD_ROOT=DIR` (absolute) builds and runs the app from a tree of its own, and `tools` builds the visitor
   there too (`DIR/bin/Visitor`), so a second session can test while another run holds the usual binaries open.
+- From a git worktree (an agent's branch, say `local/wt/NAME`, which has no `local/` and must never get a junction to
+  it): run the worktree's own `tools/access.py` with `SOJOURN_LOCAL` set to the main tree's `local` (absolute), plus
+  `SOJOURN_BUILD_ROOT` and `ACCESS_ACCOUNTS=Walk` so it doesn't collide with a run from the main tree. `grid.py` and
+  `relay.py` read `SOJOURN_LOCAL` too, and so does the build (`src/Directory.Build.props`' `SojournLocal`, for voice's
+  `sojourn_voice.dll`, without which world audio is silent and its checks fail).
+- A run with `SOJOURN_BUILD_ROOT` keeps its logs in a folder named for it too (`local/access-test-walk-NAME`), so the
+  next agent's run doesn't empty them.
+- One scripted run is on the grid at a time, whatever its accounts (they share Atelier's spots and fixtures): a run
+  holds `local/access-test.lock` and another refuses to start, or waits its turn with `ACCESS_WAIT=1`.
 - `ACCESS_ACCOUNTS=Walk` runs it as Walk Tester and Walk Visitor on ports 10 up, so it never throws out a person's
   guided session as Access Tester; it still uses Atelier's spots, so run it while nobody's testing there. The test
   refuses to start while its tester or visitor is on the grid (two runs kick each other out).
@@ -123,6 +132,12 @@ docstring with its checks in full):
 - **people beside chat, friends on Alt+2**: Tab from Say into People nearby, its menu and Control+D, the list left
   alone while the visitor walks off and current again from Say; Alt+2 to Friends; View's Friends and Conversations;
   Control+Tab with none open.
+- **names a screen reader can't say** (the app runs with `SOJOURN_TEST_NAMES=1`: the local grid has no display names,
+  so `SojournTestNames display` gives the visitor one in mathematical bold script with a sparkle): its line read as
+  "Marigold: ..."; `//find marigold` and People nearby by the plain name; Alt+0's People's names row read and stepped
+  by Enter, said, and the next line "Marigold (Walk Visitor): ..."; the username alone; as written; a display name of
+  symbols alone said as the username; `//profile marigold` naming them so, with the display name as written. Put back
+  after. The folding itself: `tools/namecheck` (`docs/access-app.md` > People's names).
 - **the renderer out of sight** (the app runs with `SOJOURN_OFFSCREEN_LOSE_AFTER=15`, so its GPU is "lost" once first):
   back with one loss counted, unseen; `facebox` met by `SojournCollision collide` and `SojournView collide` at the
   same distance; two touches through the person's confirmation (one on face 4, the far side; a plain one on the face
@@ -175,8 +190,14 @@ docstring with its checks in full):
   landmark out and Enter again teleporting by it, the notecard copied and opened from its copy, Escape back; Control+S
   keeping both; a marker taken out coming back at the end, said. By the ops: a rewrite with no places in it keeping both
   (the new asset's embedded block byte for byte the old one's, read from the grid's `Asset.db`), `append`, a copy out
-  after all that, and the same card in a box through `object.content.save`, confirmed by keys. Only the local grid: Second
-  Life still has to show a save and a copy out on a real card, no-copy items with a shadow_id among them.
+  after all that, and the same card in a box through `object.content.save`, confirmed by keys. The card in the box by keys
+  (Objects, Contents, Enter): what it holds said and listed, Enter copying the landmark out of it there. Then by keys on the
+  card in her inventory: a landmark copied (Control+C) and put in at the caret by Control+Shift+V, its marker numbered apart
+  from the one of the same name, its line saying it goes in; the inner card marked by Delete, its line saying so; one save
+  doing both, said; the grid's card holding the two landmarks, the kept one's block byte for byte as it came, the window and
+  list read again, the new one copying out. Only the local grid: Second Life still has to show a save and a copy out on a
+  real card, no-copy items with a shadow_id among them, and a card saved with something put in (OpenSim's copy out goes by
+  the item's id in its owner's inventory, not by the card's block).
 - **every part**: the `treasure` chest's four parts listed and named, Enter on the lid heard by its script (not the
   root's), its faces (with the renderer "The top, face 0", Enter there heard as face 0; without, the list says it needs
   the view), the object's line saying touchable and the menu's Touch landing on the lid, `//touch` by name, by part and by face.
@@ -189,16 +210,31 @@ docstring with its checks in full):
 - **objects: a friend's thing, taken, deleted, returned**: a pal (`tp`, `rights ID on`, `rez`) leaves a box she may edit. Take,
   Delete and Return offered; Return with no letter, second from the end, reached by Up twice; its confirmation naming the owner
   and cancelled; Take's the same; Delete confirmed, OpenSim's refusal said. The About Land step returns the visitor's box from her parcel for real.
-- **groups: a title, its members, its notices** (`ACCESS_STEPS=groups:`; under a minute, no renderer needed): a group of hers,
-  made once and kept on the grid; two titles listed by Choose your title, the worn one said so, another worn by Enter and the
-  session's `titles` following; About saying it; Receive off and on; Members' window; the visitor's group (also kept, as the local grid's power to send notices goes by the title worn), a notice sent to it read from the archive and Escape back
-  to the list; the visitor invited from People nearby. OpenSim's own behaviour on titles and notices; only Second
-  Life shows a tag changing over someone's head.
+- **groups: a title, its notices** (`ACCESS_STEPS=groups:` runs both groups steps; under a minute, no renderer needed): a
+  group of hers ("Access Titles", or the account set's first name: groups' names are the grid's), made once and kept on the
+  grid; two titles listed by Choose your title, the worn one said so, another worn by Enter and the session's `titles`
+  following; About saying it; Receive off and on; the visitor's group (also kept, as the local grid's power to send notices
+  goes by the title worn), a notice sent to it read from the archive and Escape back to the list; the visitor invited from
+  People nearby (Everyone, when a role is asked). OpenSim's own behaviour on titles and notices; only Second Life shows a tag
+  changing over someone's head.
+- **groups: running one**: on her group, her Owners title worn and a Greeters role kept there, the visitor invited and joined
+  (the visitor's `group accept`) and speaking in its chat: Members... a window, her row "you", Find narrowing it; Enter on the
+  visitor, Roles, Eject and Ban first; Greeters given and taken by Roles, each behind her confirmation, the grid following, the
+  focus back in the window; Ban saying this grid has none; Escape closing it; Who's in its chat listing them both (the visitor as one who's spoken there: OpenSim's own list names only her); Eject behind
+  her confirmation, the grid and the list following; a notecard copied and pasted into New notice, sent behind her
+  confirmation, arriving with Keep as its first key and kept, then taken again from the archive (copies counted in
+  Notecards); Invite someone into Greeters, its confirmation cancelled; New group up to its confirmation (L$100 said),
+  cancelled, nothing made. Bans aren't on OpenSim, so only Second Life runs them.
 - **scripts: a new one, moving around in it, inside an object, its errors** (`ACCESS_STEPS=scripts:`; about 2 minutes, no renderer
   needed): New script on the Scripts folder and its starting text; Control+L, Control+F, F3 and Shift+F3 round the ends, Control+G,
-  F8 with nothing; put in a box of hers (the script is deleted from nothing: it stays in the test account's Scripts), Objects' Contents
+  F8 with nothing; Control+H's Replace window (Find next by Enter, Replace, Match case finding nothing, Replace all saying how many and
+  where, Escape, Control+Z undoing it); Control+Shift+S a copy to a file and Control+O a file's text in place of the changes, asked
+  first, then saved (the run's `files` folder as `SOJOURN_TEST_FILES`, for Windows' Save and Open windows); put in a box of hers (the
+  script is deleted from nothing: it stays in the test account's Scripts), Objects' Contents
   landing in the Content tab's list, Enter opening it from the object, a syntax error saved through the confirmation, back in the
-  editor, the errors said and F8 on one; fixed, compiled; Space stopping and starting it; `//touch` making it say a line on the debug channel,
+  editor, the errors said and F8 on one; fixed, compiled; Mono ticked with its description, Alt+M turning it off (said, the focus left in
+  the text) and a save, the `vm` the grid then reports printed (the local grid says Mono whatever was asked); Alt+R stopping and running it, the grid asked; Alt+E resetting it, its
+  `state_entry` heard again by the visitor; Mono back on and Escape asking first; Space stopping and starting it; `//touch` making it say a line on the debug channel,
   read out and in the history, not twice in half a minute, nothing with the switch off, again with it on; the visitor's `whoops`
   never read out. Second Life's compiler has its own wording and numbers its lines from nought, which the code allows for without
   the local grid showing it; a real run-time error there is still to be seen.
@@ -279,10 +315,18 @@ docstring with its checks in full):
   within 5 m of the landmark.
 - **two inventory panes**: Alt+4 again reading the first, Alt+Shift+4 opening the second, a search there, Ctrl+M moving
   marked notecards across, Ctrl+W closing it.
-- **inventory housekeeping and putting herself right**: F5 asking the grid; an object attached to Chest by the point list; Play on
+- **inventory housekeeping and putting herself right**: F5 asking the grid; a card deleted and a folder (with a card in it) moved
+  to the Trash in the grid's own inventory database behind the app (`inventory_db_change`, as another viewer leaves them): both
+  still there before F5, then F5 saying something wasn't there any more, the card gone from the store and the tree's search, the
+  folder in the Trash with its card; Search by: a card's description word found by nothing by name, "Nothing made by" by Creator,
+  "1 found" by Description, and what she made by Creator with her own name, then back on Name; Sort by date on an item's menu
+  (the setting following, the newest card first in its folder) and Sort by name back; Expand all by the number pad's star on the
+  run's folder, said, and Collapse all from its menu; an object attached to Chest by the point list; Play on
   a sound and an animation from the Library where it has them (the animation seen on her, then `//stopanimations`); `//emptytrash`
-  cancelled, then confirmed, a card sent to the Trash by Delete gone; `//rebake`, `//hover`, `//maturity` and `//displayname`'s words.
-  It empties the test account's Trash. Second Life alone shows a display name changed, a rating changed and real hover.
+  cancelled, then confirmed, a card sent to the Trash by Delete gone; a card in Lost and Found, Empty Lost and Found on its menu,
+  `//emptylostandfound` cancelled then confirmed, the folder empty and still Lost and Found; `//rebake`, `//hover`, `//maturity`,
+  `//status health` and `//displayname`'s words. It empties the test account's Trash and Lost and Found. Second Life alone shows a
+  display name changed, a rating changed, real hover, health sent, and F5 against the real inventory service's replies.
 - **folders given, deleted from the tree, links, outfits and landmarks**: a folder holding only two folders with a card
   each given to the visitor (the confirmation counting 2 items and 2 folders, the answer saying what went, the visitor
   offered it); a folder of 43 folders refused before any confirmation, saying 42; a folder deleted from the tree itself
@@ -298,6 +342,11 @@ docstring with its checks in full):
   its clicks, Shift+F4's modes, Ctrl+Shift+V.
 - **walking**, **a teleport**, **the assistant's walk**: a `//go`, Ctrl+Shift+H and a `//tp` checked against the
   region's positions; the session's autopilot stopping about its stop distance short.
+- **always running** (about a minute, no renderer needed): between TP_TO and PILOT_TO, a `//go` walked, then `//run` (said, the
+  setting on) and a `//go` back seen running (the region's run animation on her) and faster than the walk; walk mode's held Up
+  running without Shift; `//run` again walking, said, and held Up walking. OpenSim's autopilot turns running off as it starts,
+  so the app sends it again after and half a second on (sent only at once, the walk kept its walk animation); 2026-11-08:
+  3.2 m a second walking, 5.2 running. Second Life's autopilot is only seen there.
 - **places and a route**: Go to region, a landmark made and teleported to from the tree, the history, regions around,
   and a route notecard played by `//route` to its last point.
 - **a conference**: the visitor's `conferenceline` (a hand-made packet: dialog 0, a session that isn't the pair's, as Second

@@ -134,6 +134,7 @@ public static class LogShare
                     var p = Of(id);
                     if (o["me"]?.GetValueKind() == JsonValueKind.True) p.Me = true;
                     AddNames(p, Str(o, "legacy"), Str(o, "display"), Str(o, "pseudonym"));
+                    AddNames(p, null, Str(o, "plain"), null);   // a decorative display name as it's said, in plain letters
                     break;
                 case "words":
                     var from = Str(o, "from");

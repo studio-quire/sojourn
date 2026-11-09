@@ -464,7 +464,9 @@ public sealed class SocialFeed
             "FriendOnlineOffline" => (Sub("NAME"), Lang.T(Sub("STATUS") == "Online" ? "is online" : "is offline"), 10),
             "ScriptDialog" or "ScriptDialogGroup" => (Plain(S(pay, "object_name")) is { Length: > 0 } o ? o : Plain(S(pay, "title")),
                 Dialog(n), 120),
-            "GroupNotice" => (Sub("SENDER"), $"{Sub("SUBJECT")}: {Sub("MESSAGE")}", 90),
+            "GroupNotice" => (Sub("SENDER"), Sub("ATTACHMENT") is { Length: > 0 } att
+                ? Lang.F("{0}: {1} (attached: {2}, {3})", Sub("SUBJECT"), Sub("MESSAGE").TrimEnd(), att, Lang.T(S(pay, "attachment_type"), "type"))
+                : $"{Sub("SUBJECT")}: {Sub("MESSAGE")}", 90),
             "JoinGroup" => ("", Plain(Sub("MESSAGE")), 120),
             "LoadWebPage" => (Plain(S(pay, "object_name")), Lang.F("offers a web page {0}", S(pay, "url")), 90),
             // money (Agents/Money.cs, the viewer's sentences): who paid, and how much

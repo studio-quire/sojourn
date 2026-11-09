@@ -269,7 +269,7 @@ class Guard:
             # incognito or auto mode off: the session was started without it; should one turn up anyway, refused
             if "Write" in self.only:
                 self.log(f"guard: {name} refused with auto mode off")
-                return self.deny("auto mode is off (the person's choice): no shell, web or helpers; say so if the request needs them")
+                return self.deny("web and programs is off (the person's choice): no shell, web or helpers; say so if the request needs them, and that turning on web and programs gives it")
             self.log(f"guard: {name} refused while incognito")
             return self.deny("not while incognito: nothing from this time is kept, so no shell, file writes or helpers")
         if name in ("Bash", "PowerShell"):

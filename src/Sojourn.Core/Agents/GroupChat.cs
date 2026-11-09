@@ -18,6 +18,8 @@ namespace Sojourn.Core.Agents;
 /// - Moderation (the official viewer's LLIMSpeakerMgr::toggleAllowTextChat): a moderator (the group role power, as the
 ///   chat's member list says) stops or allows one member's text in the group's chat, for everyone, through the
 ///   ChatSessionRequest capability's "mute update". Voice moderation is batch B10's.
+/// - Who's in it (groupChat): the session's member list, and anyone whose text arrives, as the viewer's speaker list
+///   takes them in (LLSpeakerMgr::speakerChatted), until the grid says they left (2026-11-08).
 /// Claude Opus 5.5, 2026-10-28.
 /// </summary>
 public sealed class GroupChat
@@ -31,6 +33,11 @@ public sealed class GroupChat
 
     readonly ConcurrentDictionary<UUID, DateTime> _snoozed = new();
     readonly ConcurrentDictionary<UUID, DateTime> _left = new();   // when its session was last left here
+    // who's spoken in a group's chat (until the grid says they left): the viewer's speaker list takes in anyone whose text
+    // arrives (LLSpeakerMgr::speakerChatted), not only those the session's own list names, which on OpenSim is only the
+    // person and whoever joined after them
+    readonly ConcurrentDictionary<UUID, ConcurrentDictionary<UUID, byte>> _spoke = new();
+    GridClient? _hooked;
 
     public event Action? Changed;
 
@@ -75,6 +82,8 @@ public sealed class GroupChat
     internal bool Takes(GridClient c, InstantMessage im)
     {
         if (GroupOf(im) is not { } g) return false;
+        if (im.FromAgentID != UUID.Zero && im.FromAgentID != c.Self.AgentID && !string.IsNullOrEmpty(im.Message))
+            _spoke.GetOrAdd(g, _ => new())[im.FromAgentID] = 0;
         if (ChatOff(g))
         {
             // each new invitation to it is left (someone speaking brings one), but not every line of it
@@ -114,14 +123,32 @@ public sealed class GroupChat
             lock (members) list = members.ToList();
             o["in_chat"] = list.Any(m => m.AvatarKey == c.Self.AgentID);
             o["i_moderate"] = IModerate(c, g);
-            o["members"] = new JsonArray(list.Select(m => (JsonNode)new JsonObject
+            var arr = new JsonArray(list.Select(m => (JsonNode)new JsonObject
             {
                 ["id"] = m.AvatarKey.ToString(), ["name"] = _s.Names.DisplayName(m.AvatarKey) ?? m.AvatarKey.ToString()[..8],
                 ["moderator"] = m.IsModerator, ["text_stopped"] = m.MuteText,
             }).ToArray());
+            foreach (var id in Speakers(g).Where(id => list.All(m => m.AvatarKey != id)))
+                arr.Add(new JsonObject { ["id"] = id.ToString(), ["name"] = _s.Names.DisplayName(id) ?? id.ToString()[..8], ["moderator"] = false, ["text_stopped"] = false });
+            o["members"] = arr;
         }
         else o["in_chat"] = false;
         return o;
+    }
+
+    IEnumerable<UUID> Speakers(UUID g) => _spoke.TryGetValue(g, out var s) ? s.Keys : Enumerable.Empty<UUID>();
+
+    /// <summary>Info, with join: in the chat first if not (who's in it shows only to someone in it, as the viewer's list does
+    /// once its window opens), the names looked up.</summary>
+    public async Task<JsonObject> InfoAsync(UUID g, bool join, CancellationToken ct)
+    {
+        var c = C;
+        if (join && !ChatOff(g)) await JoinAsync(c, g, ct);
+        var ids = Speakers(g).ToList();
+        if (c.Self.GroupChatSessions.TryGetValue(g, out var members))
+            lock (members) ids.AddRange(members.Select(m => m.AvatarKey));
+        await _s.Names.ResolveAsync(c, ids, TimeSpan.FromSeconds(3), ct);
+        return Info(g);
     }
 
     public JsonObject List() => new()
@@ -167,6 +194,7 @@ public sealed class GroupChat
             _snoozed.TryRemove(g, out _);
             _left[g] = DateTime.UtcNow;
             c.Self.RequestLeaveGroupChat(g);
+            _spoke.TryRemove(g, out _);
             if (_s.State.Ims.TryGetValue(g, out var s)) { s.Ready = false; s.Unread = 0; }
         }
         Changed?.Invoke();
@@ -193,8 +221,7 @@ public sealed class GroupChat
         List<ChatSessionMember> list = new();
         if (c.Self.GroupChatSessions.TryGetValue(g, out var members)) lock (members) list = members.ToList();
         bool Is(string? s) => s is { Length: > 0 } && string.Equals(s.Trim(), want, StringComparison.OrdinalIgnoreCase);
-        var hits = list.Where(m => Is(_s.Names.DisplayName(m.AvatarKey)) || Is(_s.Names.Legacy(m.AvatarKey))
-                                   || Is(_s.Names.Legacy(m.AvatarKey) is { } l ? World.NameCache.UserName(l) : null)).ToList();
+        var hits = list.Where(m => _s.Names.Forms(m.AvatarKey).Any(Is)).ToList();
         return hits.Count == 1 ? hits[0].AvatarKey : throw new LeapError(hits.Count == 0
             ? $"nobody called \"{want}\" is in {NameOf(g)}'s chat now" : $"more than one \"{want}\" in the chat; use their id");
     }
@@ -261,5 +288,11 @@ public sealed class GroupChat
     {
         _left.Clear();
         _snoozed.Clear();
+        _spoke.Clear();
+        if (_s.Client is { } c && !ReferenceEquals(c, _hooked))
+        {
+            _hooked = c;
+            c.Self.ChatSessionMemberLeft += (_, e) => { if (_spoke.TryGetValue(e.SessionID, out var s)) s.TryRemove(e.AgentID, out byte _); };
+        }
     }
 }

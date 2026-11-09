@@ -278,7 +278,7 @@ public sealed class MediaFaceSettings
         {
             return (Lang.T(op == "remove_media" ? "Take media off a face" : "Change who may use a face's media"), Lang.F("{0}: this will likely fail.", e.Message));
         }
-        string where = t.Mine ? Lang.F("{0}, face {1}", t.Name, t.Face) : Lang.F("{0}, face {1} (not the person's own object)", t.Name, t.Face);
+        string where = t.Mine ? Lang.F("{0}, face {1}", t.Name, t.Face) : Lang.F("{0}, face {1} (not yours)", t.Name, t.Face);
         if (op == "remove_media")
             return (Lang.F("Take the media off {0}", where),
                 was is null ? Lang.T("It has none.") : Lang.F("It shows {0}; everyone sees it go.", Clip(was.CurrentURL.Length > 0 ? was.CurrentURL : was.HomeURL)));

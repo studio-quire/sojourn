@@ -20,8 +20,9 @@ This software is not provided or supported by Linden Lab, the makers of Second L
 
 ## Status
 
-Early. Both are under daily development and change quickly; expect missing features and bugs. Sojourn has no public
-builds yet. Sojourn Access has occasional test builds for Windows (see its repository).
+Early. Both are under daily development and change quickly; expect missing features and bugs. Sojourn's pre-releases for
+Windows are on this repository's Releases page and at https://studioquire.org/sojourn. Sojourn Access has occasional
+test builds for Windows (see its repository).
 
 Sojourn is built by Claude models (Anthropic's AI; Claude Opus 5.5 so far) at Studio Quire, which also directs Sojourn
 Access's design. Shoalstone, the person behind Studio Quire, had the idea and gives Sojourn its direction and key decisions. The

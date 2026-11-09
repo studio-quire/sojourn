@@ -41,7 +41,7 @@ public sealed partial class MainForm
         if (Host is not { } h) return "not in world";
         // (only when there's no view or it gave up: one starting or restarting draws once it's up, and a ride said to be
         // "without pictures" then took twelve in the local test)
-        if (h.Offscreen is not { } view || view.State == "stopped") return "the view isn't drawing on this PC";
+        if (h.Offscreen is not { } view || view.State == "stopped") return "the 3D view isn't working on this PC";
         if (!_opt.Assistant || (!h.Assistant.SidecarAlive && h.Sidecar == null)) return "the assistant isn't on to tell them";
         if (h.Assistant.ProviderStatus is { } ps && ps["state"]?.GetValue<string>() is { } state && state is not ("ready" or "offline" or "checking"))
             return "the assistant isn't on to tell them";

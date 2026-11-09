@@ -220,6 +220,16 @@ public sealed class LoginStore
     /// <summary>The kept "$1$..." for an account, or null.</summary>
     public static string? HashOf(SavedAccount a) => a.Secret is { } s ? Unprotect(s) : null;
 
+    /// <summary>A password as the viewers send it, "$1$" + the MD5 of its UTF-8 (as LibreMetaverse makes it of a plain
+    /// one); one that's already that comes back as it is.</summary>
+    public static string Hash(string password)
+    {
+        if (password.Length == 35 && password.StartsWith("$1$", StringComparison.Ordinal)) return password;
+        var bytes = Encoding.UTF8.GetBytes(password);
+        try { return "$1$" + Convert.ToHexString(System.Security.Cryptography.MD5.HashData(bytes)).ToLowerInvariant(); }
+        finally { Array.Clear(bytes); }
+    }
+
     // ---- across a restart after a lost GPU, or from the launcher: the account and its hash for the next run, for seconds ----
 
     /// <summary>The next run (started at once) logs this account in without asking: its hash goes to a file protected

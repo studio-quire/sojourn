@@ -39,6 +39,7 @@ public sealed partial class MainForm
             ("announce_music", "Music titles read out"),
             ("access_read_mine", "My own lines read back"),
             ("access_read_cut", "Lines cut off by my typing said again"),
+            ("access_names", "People's names"),
             ("access_script_errors", "Script errors from my objects read out"),
             ("money_notices", "L$ received and spent, said"),
             ("radar_chat_range", null),
@@ -70,7 +71,7 @@ public sealed partial class MainForm
             ("earcon_mic", "Mic opening and closing, sound"),
             ("earcon_deleted", "Deleting something, sound"),
         }),
-        new("Walking", "walk mode's cues and their volumes, and how far a turn goes", new (string, string?)[]
+        new("Walking", "walk mode's cues and their volumes, how far a turn goes, and always running", new (string, string?)[]
         {
             ("walk_steps", "Footsteps (walk mode)"),
             ("walk_steps_volume", "Footsteps' volume"),
@@ -98,6 +99,8 @@ public sealed partial class MainForm
             ("walk_turn_step", "Degrees a tap of Left or Right turns (walk mode)"),
             ("walk_turn_rate", "Degrees a second Left or Right held turns (walk mode)"),
             ("walk_teleport_fallback", "Teleport when a walk finds no way around"),
+            // (Radegast's World > Always Run)
+            ("walk_always_run", "Always run: walking, //go and following"),
         }),
         new("Driving and trains", "your speed, what's ahead, rail switches and the track's end", new (string, string?)[]
         {
@@ -109,8 +112,9 @@ public sealed partial class MainForm
             // (the blind tester's train ran off the end of its track, 2026-11-01)
             ("walk_track_end", "Track's end: stop the vehicle when it says the track ends"),
         }),
-        new("People and offers", "who can reach you, what's turned away or kept, auto responses, arrivals and departures", new (string, string?)[]
+        new("People and offers", "how names are said, who can reach you, what's turned away or kept, auto responses, arrivals and departures", new (string, string?)[]
         {
+            ("access_names", null),
             ("radar_chat_range", "Chat range arrivals and departures"),
             ("radar_draw_distance", "Draw distance arrivals and departures"),
             ("radar_region", "Region arrivals and departures"),
@@ -162,7 +166,7 @@ public sealed partial class MainForm
             ("reject_group_calls", null),
             ("reject_conference_calls", null),
         }),
-        new("Assistant", "its provider and key, auto mode, and the describing model", new (string, string?)[]
+        new("Assistant", "its provider and key, web and programs, and the describing model", new (string, string?)[]
         {
             // (their words are ProviderItems')
             ("@provider", null),
@@ -189,15 +193,17 @@ public sealed partial class MainForm
             ("auto_grant_animation", null),
             ("rlv", "RLV, scripts controlling what you wear and do"),
         }),
-        new("General", "region ratings, how far the people and objects nearby lists reach, messages with the builders, and answers without a keyboard", new (string, string?)[]
+        new("General", "region ratings, how far the people and objects nearby lists reach, the inventory's order, messages with the builders, and answers without a keyboard", new (string, string?)[]
         {
             ("maturity", "Highest rating of region you go into"),
             ("access_objects_range", "How far Objects nearby lists, metres"),
             ("access_people_range", "How far People nearby lists, metres"),
+            // (Radegast's Sort by date)
+            ("access_inventory_sort", "Inventory order in each folder: by name or newest first"),
             ("access_builders", "Messages with the builders (Control+Shift+B)"),
             // (the blind tester asked what "answers without a physical key: refused" meant, 2026-10-31: the row says it plainly)
             ("access_answers_without_key", "Answers from a braille display, dictation or on-screen keyboard"),
-            ("access_view_rate", "View out of sight, frames a second (0 for a slow PC)"),
+            ("access_view_rate", "3D view, frames a second (0: only when needed, for a slow PC)"),
         }),
         new("Everything", "every setting, A to Z", Array.Empty<(string, string?)>()),
     };
@@ -388,7 +394,7 @@ public sealed partial class MainForm
         "claude" => Sojourn.Session.Assistant.ProviderKeys.ClaudeOffered ? "your Claude account" : "none chosen yet",
         "anthropic" => "your Anthropic key",
         "openrouter" => "your OpenRouter key",
-        _ => "Studio Quire's relay, with a token from the studio",
+        _ => "Studio Quire, with a token from the studio",
     };
     bool _forgetKeyArmed;
 
@@ -416,7 +422,7 @@ public sealed partial class MainForm
             items.Add(($"No data collection on OpenRouter: {(st.OpenRouterDenyDataCollection ? "on, only providers that don't store or train on what's sent" : "off, any provider")}",
                 "@data", "@data"));
         }
-        items.Add(($"Auto mode for the assistant: {(st.AssistantAutoMode ? "on" : "off, no shell, web or helpers")}", "@auto", "@auto"));
+        items.Add(($"Web and programs for the assistant: {(st.AssistantAutoMode ? "on" : "off, it can't search the web or run programs on this PC")}", "@auto", "@auto"));
         return items;
     }
 
@@ -476,7 +482,7 @@ public sealed partial class MainForm
         else if (row == "@auto")
         {
             st.AssistantAutoMode = !st.AssistantAutoMode;
-            said = st.AssistantAutoMode ? "Auto mode on." : "Auto mode off: the assistant has no shell, web or helpers.";
+            said = st.AssistantAutoMode ? "Web and programs on: the assistant can search the web and run programs on this PC." : "Web and programs off: the assistant can't search the web or run programs on this PC.";
         }
         else
         {
@@ -525,6 +531,11 @@ public sealed partial class MainForm
         ("auto_grant_animation", "on") => "on: a script asking only to animate you is allowed, and said",
         ("auto_grant_animation", "off") => "off, each request waits in Notices",
         ("speakers" or "microphone", _) => DeviceWords(name, value),
+        // (a display name in fancy Unicode letters or symbols reads as nothing or nonsense: gap 12)
+        ("access_names", "plain") => "display name in plain letters",
+        ("access_names", "both") => "display name and username",
+        ("access_names", "written") => "display name as written",
+        ("access_names", "username") => "username",
         _ => value.Replace('_', ' '),
     };
 

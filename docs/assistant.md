@@ -148,7 +148,10 @@ anonymous `/relay/report`.
 ## Auto mode off (harness.py MANUAL_TOOLS)
 
 The user's ask (2026-10-29), a first design they mean to revisit. A setting, on by default: in the launcher's settings
-and Access's Alt+0 (not the headset's menu); `auto_mode` is read-only on the API. Off:
+and Access's Alt+0 (not the headset's menu); `auto_mode` is read-only on the API and stays the key in files. People
+see it as **web and programs**, named by what it gives (the user's call, 2026-11-08; "auto mode" is Claude Code's
+term): the launcher's switch, with "Off: the assistant can't search the web or run programs on this PC." under it
+while off, and Access's row "Web and programs for the assistant". Off:
 - **No classifier calls at all** (auto mode's reviewer is a Claude model, a Claude cost on the person's account even
   with another maker's model on OpenRouter): the sessions run in Claude Code's `dontAsk` permission mode (anything not
   allowed by a rule is refused, never asked), and provider.py leaves out `CLAUDE_CODE_AUTO_MODE_MODEL`.
@@ -158,8 +161,8 @@ and Access's Alt+0 (not the headset's menu); `auto_mode` is read-only on the API
   or fetching (a query or a URL could carry what was said in SL away, which only the classifier's hard rules hold
   back), no helpers. Jobs and building from a spec still work (they're sojourn tools); generated textures and meshes
   don't (they need scripts).
-- **Said plainly**: the model's prompt says what's limited and that turning auto mode on gives it; the guard's refusal
-  says the same; Access's row says "off, no shell, web or helpers".
+- **Said plainly**: the model's prompt says what's limited and that turning on web and programs gives it; the guard's
+  refusal says the same; Access's row says "off, it can't search the web or run programs on this PC".
 - Switching it restarts the sessions as a provider change does (it rides in provider.py's settings).
 
 ## The person's choices about it
@@ -819,12 +822,12 @@ teleport home, and the assistant could neither see nor stop it.
 asks it too). `Confirmations.Classify` gates:
 - spending: pay, buy, group create; uploads where they cost L$ (not on loopback); joining a group with a fee. A pay
   above the known balance is refused by the gate, not passed.
-- deleting: TesselBuild delete/returnObjects/removeFromContents, `take` into Trash or of something not the person's, inventory delete/emptyTrash and
+- deleting: TesselBuild delete/returnObjects/removeFromContents, `take` into Trash or of something not the person's, inventory delete/emptyTrash/emptyLostAndFound and
   `move` into Trash, parcelReturn, deletePick, deleteRole, and `temp` (temporary on rez: the region deletes it for
   good) on modify or modifyEach, or on rez of a no-copy item.
 - giving: give, addToContents into someone else's object, a group notice with an attachment.
 - permissions: perm/sale keys on create/modify/modifyEach/duplicate/rez, inventory perms, parcelSet, parcelEject, group roles and
-  settings, a group invite into a role beyond Everyone, granting a script's permission request, joining an experience
+  settings, a member ejected, banned or unbanned, a group invite into a role beyond Everyone, granting a script's permission request, joining an experience
   (an experience's permission prompt, ScriptQuestionExperience: yes lets its scripts act wherever it runs without
   asking again; its no and "block experience" aren't gated).
 - scripts: a script put into an object of yours (addToContents; the editor's object.item.create/content.save). A script

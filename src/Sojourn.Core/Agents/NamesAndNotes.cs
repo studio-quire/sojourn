@@ -164,9 +164,11 @@ public sealed class NamesAndNotes
                 _s.Names.SetDisplay(d);
                 if (string.IsNullOrEmpty(e.OldDisplayName) || e.OldDisplayName == d.DisplayName) return;
                 var user = UserNameOf(d);
-                _s.Notify.Add("DisplayNameUpdate", "notifytip", $"{e.OldDisplayName} ({user}) is now known as {d.DisplayName}.", Notifications.None,
+                // (in plain letters where the app says names so: World.NameCache.Style)
+                var (was, now) = (World.NameCache.Readable(e.OldDisplayName), World.NameCache.Readable(d.DisplayName ?? ""));
+                _s.Notify.Add("DisplayNameUpdate", "notifytip", $"{was} ({user}) is now known as {now}.", Notifications.None,
                     payload: new JsonObject { ["from_id"] = d.ID.ToString() },
-                    substitutions: new JsonObject { ["OLD_NAME"] = e.OldDisplayName, ["SLID"] = user, ["NEW_NAME"] = d.DisplayName });
+                    substitutions: new JsonObject { ["OLD_NAME"] = was, ["SLID"] = user, ["NEW_NAME"] = now });
             }
             catch (Exception x) { _s.Log.LogDebug(x, "display name update"); }
         };

@@ -210,7 +210,8 @@ public sealed partial class AgentSession
                 var names = new List<string>();
                 if (Names.Legacy(av.ID) is { Length: > 0 } l) { names.Add(l); if (l.EndsWith(" Resident")) names.Add(l[..^9]); }
                 else if (!string.IsNullOrEmpty(av.Name)) names.Add(av.Name);
-                if (Names.DisplayName(av.ID) is { Length: > 0 } d && !names.Contains(d)) names.Add(d);
+                // (the display name as written, as others type it, and as this app says it)
+                foreach (var d in Names.Forms(av.ID)) if (!names.Contains(d)) names.Add(d);
                 if (names.Count > 0) list.Add((av.ID, names));
             }
         return list;

@@ -151,7 +151,7 @@ public sealed partial class Confirmations
         // (a thing that isn't the person's, taken: it leaves its owner's hands, as a return does)
         ("TesselBuild", "take") => a.Has("folder_id") && InTrash(a.Uuid("folder_id")) || !a.Bool("copy", false) && Ids(a).Any(id => !OwnedByMe(id)) ? Kind.Delete : null,
         ("TesselInventory", "move") => InTrash(a.Uuid("folder_id")) ? Kind.Delete : null,
-        ("TesselInventory", "delete" or "emptyTrash") => Kind.Delete,
+        ("TesselInventory", "delete" or "emptyTrash" or "emptyLostAndFound") => Kind.Delete,
         ("TesselAgent", "parcelReturn" or "deletePick") or ("TesselGroups", "deleteRole") or ("SojournChatLogs", "delete") => Kind.Delete,
         // temporary objects are deleted by the region within a minute
         ("TesselBuild", "modify") when a.Bool("temp", false) => Kind.Delete,
@@ -164,7 +164,7 @@ public sealed partial class Confirmations
         ("TesselBuild", "modify" or "create" or "duplicate" or "rez") => a.Select(kv => kv.Key).Any(PermKeys.Contains) ? Kind.Permissions : null,
         ("TesselInventory", "update") => a.Has("next_perms") || a.Has("everyone_copy") || a.Has("group_perms") ? Kind.Permissions : null,
         ("TesselAgent", "parcelSet" or "parcelEject") => Kind.Permissions,
-        ("TesselGroups", "update" or "createRole" or "updateRole" or "assignRole" or "unassignRole" or "eject") => Kind.Permissions,
+        ("TesselGroups", "update" or "createRole" or "updateRole" or "assignRole" or "unassignRole" or "eject" or "ban" or "unban") => Kind.Permissions,
         ("TesselGroups", "invite") => InviteRoles(a).Any(r => r != UUID.Zero) ? Kind.Permissions : null,
         ("LLNotifications", "respond") => NotificationKind(a) ?? (ConfirmTouches() && OthersMenu(a) ? Kind.Touch : null),
         ("SojournReport", "send") => Kind.Report,
@@ -352,6 +352,8 @@ public sealed partial class Confirmations
             }
             case ("TesselInventory", "emptyTrash"):
                 return (Lang.T("Empty your Trash"), Lang.T("Everything in it is deleted for good."));
+            case ("TesselInventory", "emptyLostAndFound"):
+                return (Lang.T("Empty your Lost and Found"), Lang.T("Everything in it is deleted for good, not moved to the Trash."));
             case ("TesselAgent", "parcelReturn"):
                 return (Lang.F("Return objects on {0} to their owners", await ParcelAsync()), a.Bool("others", false) ? Lang.T("Everyone's but yours.") : await OwnersAsync(a));
             case ("TesselAgent", "deletePick"):
@@ -390,6 +392,30 @@ public sealed partial class Confirmations
             {
                 var who = await NameAsync(a.Uuid("to"));
                 return (a.Bool("ban", false) ? Lang.F("Eject and ban {0} from your parcel", who) : Lang.F("Eject {0} from your parcel", who), "");
+            }
+            case ("TesselGroups", "eject"):
+                return (Lang.F("Eject {0} from {1}", await NameAsync(a.Uuid("member") ?? a.Uuid("to")), GroupName(a.Uuid("group_id"))),
+                    Lang.T("They can join again if they're invited, or if anyone may join."));
+            case ("TesselGroups", "ban" or "unban"):
+            {
+                var ids = a.UuidList("members");
+                if ((a.Uuid("member") ?? a.Uuid("to")) is { } one && !ids.Contains(one)) ids.Add(one);
+                var names = new List<string>();
+                foreach (var id in ids) names.Add(await NameAsync(id));
+                var who = Listed(names, 6, "people");
+                return op == "ban"
+                    ? (Lang.F("Ban {0} from joining {1}", who, GroupName(a.Uuid("group_id"))),
+                        Lang.T(a.Bool("eject", true) ? "Members are ejected too, and nobody banned can join again, even invited, until the ban is lifted." : "Nobody banned can join, even invited, until the ban is lifted."))
+                    : (Lang.F("Lift the ban on {0} joining {1}", who, GroupName(a.Uuid("group_id"))), "");
+            }
+            case ("TesselGroups", "assignRole" or "unassignRole"):
+            {
+                var who = await NameAsync(a.Uuid("member"));
+                var (role, owners) = await RoleAsync(a);
+                return op == "assignRole"
+                    ? (Lang.F("Give {0} the role \"{1}\" in {2}", who, role, GroupName(a.Uuid("group_id"))),
+                        Lang.T(owners ? "Nobody can take an owner off Owners but the owner themselves." : "A role can carry powers in the group, up to an owner's."))
+                    : (Lang.F("Take the role \"{0}\" from {1} in {2}", role, who, GroupName(a.Uuid("group_id"))), "");
             }
             case ("TesselGroups", _):
                 return (Lang.F("Change group roles or settings ({0}) in {1}", op, GroupName(a.Uuid("group_id"))), string.Join(", ", a.Where(kv => kv.Key != "op").Select(kv => $"{kv.Key}: {Short(kv.Value)}")));
@@ -532,6 +558,21 @@ public sealed partial class Confirmations
         }
         catch { }
         return want.Count == 1 ? Lang.T("a role") : Lang.F("{0} roles", want.Count);
+    }
+
+    /// <summary>A role's name as the grid has it, and whether it's the group's Owners role.</summary>
+    async Task<(string Name, bool Owners)> RoleAsync(JsonObject a)
+    {
+        var rid = a.Str("role_id") ?? "";
+        try
+        {
+            var got = await _s.Api.CallAsync("TesselGroups", new JsonObject { ["op"] = "roles", ["group_id"] = a.Str("group_id") }, true, TimeSpan.FromSeconds(8), default);
+            var role = ((got as JsonObject)?["roles"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().FirstOrDefault(r => r.Str("role_id") == rid);
+            var profile = await _s.Api.CallAsync("TesselGroups", new JsonObject { ["op"] = "profile", ["group_id"] = a.Str("group_id") }, true, TimeSpan.FromSeconds(8), default);
+            if (role?.Str("name") is { } name) return (name, (profile as JsonObject)?.Str("owner_role") == rid);
+        }
+        catch { }
+        return (Lang.T("a role"), false);
     }
 
     async Task<(string Object, string Item)> TaskItemAsync(JsonObject a)

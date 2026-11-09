@@ -72,7 +72,7 @@ public sealed class ReleaseApi : LeapApi
         });
         Op("reportProblem", $"{{note}} -> {{sent | saved, said}}: a report of a problem with {ProblemReport.App}: this session's log (other "
             + "people's words left out, their names stand-ins) and note, the person's own words about what went wrong. "
-            + "The person confirms on the panel first; it goes to Studio Quire's relay, "
+            + "The person confirms on the panel first; it goes to Studio Quire's server, "
             + (ProviderKeys.RelayOffered ? "with their Studio Quire token if they have one, else without (its daily limits)" : "within its daily limits")
             + ". Saving it for a GitHub issue instead is the menu's (about > report "
             + "a problem)", async (a, ct) =>
@@ -139,8 +139,8 @@ public sealed class ReleaseApi : LeapApi
             Confirmations.Listed(lines, 0, "lines of the log");   // (behind the confirmation's list key)
             var detail = (note.Length > 0 ? Lang.F("Your note: “{0}”.", note) : Lang.T("No note.")) + " "
                 + Lang.F(token
-                    ? "This session's log goes with it to Studio Quire's relay, relay.studioquire.org, with your token, kept 30 days: {0} lines, other people's words left out and their names made stand-ins."
-                    : "This session's log goes with it to Studio Quire's relay, relay.studioquire.org, kept 30 days: {0} lines, other people's words left out and their names made stand-ins; your IP address isn't kept.",
+                    ? "This session's log goes with it to Studio Quire's server, relay.studioquire.org, with your token, kept 30 days: {0} lines, other people's words left out and their names made stand-ins."
+                    : "This session's log goes with it to Studio Quire's server, relay.studioquire.org, kept 30 days: {0} lines, other people's words left out and their names made stand-ins; your IP address isn't kept.",
                     r.Log.Lines);
             return Task.FromResult((Lang.T("Send a problem report to Studio Quire?"), detail));
         });

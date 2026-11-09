@@ -4,12 +4,6 @@ using Silk.NET.Vulkan;
 
 namespace Sojourn.Render.Realtime;
 
-/// <summary>Which depth a headset menu's frost is tested at against the eye's, to hide it where the compositor hides
-/// the menu's quad layer behind a wall: Planar, the menu's own (exact); Radial, its distance from the eye taken as a
-/// depth along the view (what Meta's compositor appears to do, Overlay.Walls.cs); RadialHead, the same from the point
-/// between the eyes.</summary>
-public enum MenuDepth { Planar, Radial, RadialHead }
-
 /// <summary>Where a display wants the menus' footprints carved out of the depth it hands its compositor: this eye's
 /// layer of its depth swapchain (D32, in DEPTH_STENCIL_ATTACHMENT_OPTIMAL, the eye's depth already copied in).</summary>
 public readonly record struct DepthTarget(ImageView View, uint Width, uint Height);
@@ -20,16 +14,12 @@ public readonly record struct DepthTarget(ImageView View, uint Width, uint Heigh
 // the depth under the menus to distance from the eye (its test compares a quad's radial distance) changed nothing; in
 // the headset the user then saw that walls hid menus only inside a roughly circular region around the view, not at all
 // outside it. So we don't use it:
-//   - Walls hide menus (the default, the user's choice; OverlayScene.MenuDepthFix, "exact"): the compositor never hides
+//   - Walls hide menus (the default, the user's choice): the compositor never hides
 //     a menu (each footprint carved to far in its depth, as below), and we hide them ourselves on the layer over the
 //     menus the hands use (Overlay.Hands.cs): its mask takes any point of the eye, not only the own body, that's inside
 //     a menu's outline and nearer than it, so walls, rocks and people in front of a menu are drawn over it, exactly.
 //     The frost is tested at the menu's own depth, so it hides with it. With a confirmation up the panel stays over
 //     everything, so for that frame nothing hides the menus.
-//   - The compositor's own test, for comparing (radial, head): the frost is tested at the depth the compositor seems
-//     to use (MenuDepth.Radial): the plane's points each pushed out along their ray until their planar depth is their
-//     radial distance, times 1 + bias. Per vertex that's exact; across a quad it isn't affine on screen, so the quad is
-//     drawn as an 8x8 grid (under 0.1% off within a cell).
 //   - Menus over walls (an option): the frost untested, the footprints carved, nothing drawn over the menus but the hands.
 // Carving: each menu's footprint (a few pixels wider) written as far (0, reverse-Z) into the depth the compositor gets,
 // after the eye's depth is copied there, except where the cut's mask is (what's in front of a menu keeps its depth, so
@@ -38,20 +28,16 @@ public readonly record struct DepthTarget(ImageView View, uint Width, uint Heigh
 // for the whole view.
 public sealed unsafe partial class Overlay
 {
-    const int MenuGrid = 8;            // a placed sheet's grid, a side, when its depth isn't its plane's
     const float CarveMargin = 4;       // pixels around each menu's footprint carved too
     Pipeline _carve;
-    MenuDepth _menuDepth;
-    float _menuScale = 1;
-    Vector3 _menuFrom;
     int _carveFrom, _carveTo, _carveEye = -1;
     GpuBuffer? _carveVertices;
-    readonly Vector4[] _grid = new Vector4[(MenuGrid + 1) * (MenuGrid + 1)];
-    int _gridN;
+    readonly Vector4[] _grid = new Vector4[4];
+    int _gridN = 1;
 
     /// <summary>Whether we hide the menus behind what's in front of them this frame, the compositor never doing it
-    /// (walls hide menus, the exact test, no confirmation up).</summary>
-    static bool WorldOverMenus(OverlayScene scene) => !scene.MenusOverWalls && scene.MenuDepthFix && !scene.PanelOverWalls;
+    /// (walls hide menus, no confirmation up).</summary>
+    static bool WorldOverMenus(OverlayScene scene) => !scene.MenusOverWalls && !scene.PanelOverWalls;
 
     void CreateWalls(ShaderCompiler shaders)
     {
@@ -63,35 +49,24 @@ public sealed unsafe partial class Overlay
         });
     }
 
-    /// <summary>This eye's menu depth, from the scene (Record, after BeginCut and before the sheets are built).</summary>
-    void BeginWalls(OverlayScene scene, ViewSetup view, Vector3 head)
+    /// <summary>This eye's carving starts empty (Record, after BeginCut and before the sheets are built).</summary>
+    void BeginWalls()
     {
-        // hidden by us, the frost's test is exact (its bias still applies, for comparing)
-        _menuDepth = scene.MenusOverWalls || scene.MenuDepthFix ? MenuDepth.Planar : scene.MenuDepth;
-        _menuScale = scene.MenusOverWalls ? 1 : Math.Max(0.1f, 1 + scene.MenuDepthBias);
-        _menuFrom = _menuDepth == MenuDepth.RadialHead ? head : view.Position;
         _carveFrom = _carveTo = 0;
         _carveEye = -1;
     }
 
     /// <summary>A sheet or card placed in the world by its corners (top left, top right, bottom right, bottom left):
-    /// its grid projected, each point at the depth it's tested at; false if any is behind the eye.</summary>
+    /// its corners projected, each at its own depth (the frost is tested exactly); false if any is behind the eye.</summary>
     bool ProjectPlaced(Vector3[] k, Matrix4x4 viewProj)
     {
-        int n = _gridN = _menuDepth == MenuDepth.Planar ? 1 : MenuGrid;
+        int n = _gridN;
         for (int j = 0; j <= n; j++)
             for (int i = 0; i <= n; i++)
             {
                 float s = i / (float)n, t = j / (float)n;
                 var p = Vector3.Lerp(Vector3.Lerp(k[0], k[1], s), Vector3.Lerp(k[3], k[2], s), t);
                 if (!ProjectZW(p, viewProj, out var q)) return false;
-                if (_menuDepth == MenuDepth.Planar) q.Z /= _menuScale;
-                else
-                {
-                    // reverse-Z with an infinite far plane: depth = near / planar distance, and clip z (ndc z * w) = near
-                    float r = Vector3.Distance(p, _menuFrom);
-                    if (r > 1e-4f) q.Z = q.Z * q.W / (r * _menuScale);
-                }
                 _grid[j * (n + 1) + i] = q;
             }
         return true;

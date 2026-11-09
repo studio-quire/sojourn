@@ -8,7 +8,7 @@
 // Commands, one per TCP connection (QuireUia send --port 9886 ... works as a client):
 //   say TEXT | shout TEXT | whisper TEXT | emote TEXT     local chat
 //   im UUID TEXT                                          instant message
-//   group create NAME | invite GROUP UUID | chat GROUP TEXT | notice GROUP SUBJECT | TEXT
+//   group create NAME | invite GROUP UUID | accept GROUP (its invitation) | chat GROUP TEXT | notice GROUP SUBJECT | TEXT
 //   tplure UUID TEXT | friend UUID                        teleport offer / friendship offer
 //   offer UUID                                            offer it the notecard "Access Card" from the visitor's inventory
 //   rez NAME X Y Z                                        a 0.5 m box with that name at region coordinates
@@ -101,6 +101,7 @@ static class Program
 
     static GridClient client;
     static readonly ConcurrentDictionary<UUID, bool> joinedGroupChats = new();
+    static readonly ConcurrentDictionary<UUID, UUID> groupInvites = new();   // a group's invitation waiting: its IM session
     static readonly List<string> heard = new(), events = new();
     static int counter;
     static ScriptDialogEventArgs lastDialog;
@@ -187,6 +188,7 @@ static class Program
         {
             var im = e.IM;
             if (im.Dialog == InstantMessageDialog.StartTyping || im.Dialog == InstantMessageDialog.StopTyping) return;
+            if (im.Dialog == InstantMessageDialog.GroupInvitation) groupInvites[im.FromAgentID] = im.IMSessionID;
             Keep(events, "im", $"\"dialog\":{J(im.Dialog.ToString())},\"from\":{J(im.FromAgentName)},\"id\":{J(im.FromAgentID.ToString())}," +
                 $"\"msg\":{J(im.Message)}");
         };
@@ -522,7 +524,16 @@ static class Program
                     client.Groups.SendGroupNotice(UUID.Parse(group), new GroupNotice { Subject = subject, Message = text, OwnerID = client.Self.AgentID });
                     return "ok";
                 }
-            default: return "ERR group create|invite|chat|notice";
+            case "accept":
+                {
+                    // the group's invitation, waited for up to 15 s, accepted (the invite's IM names the group as its sender)
+                    var id = UUID.Parse(args.Trim());
+                    for (int i = 0; i < 60 && !groupInvites.ContainsKey(id); i++) await Task.Delay(250);
+                    if (!groupInvites.TryRemove(id, out var session)) return "ERR no invitation";
+                    client.Self.GroupInviteRespond(id, session, true);
+                    return "ok";
+                }
+            default: return "ERR group create|invite|accept|chat|notice";
         }
     }
 

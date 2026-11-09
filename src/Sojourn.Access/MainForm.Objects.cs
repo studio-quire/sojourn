@@ -244,7 +244,7 @@ public sealed partial class MainForm
         var r = await _ops.ReadAsync("TesselAgent", "names", new JsonObject { ["ids"] = new JsonArray(want), ["timeout"] = 3 });
         if (r["names"] is JsonObject nm)
             foreach (var (id, n) in nm)
-                if ((n is JsonObject no ? no.Str("display_name") ?? no.Str("username") : n?.ToString()) is { Length: > 0 } name) known[id] = name;
+                if ((n is JsonObject no ? PersonOps.SaidName(no, "") : n?.ToString()) is { Length: > 0 } name) known[id] = name;
         return known;
     }
 

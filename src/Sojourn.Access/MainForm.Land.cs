@@ -563,14 +563,15 @@ public sealed partial class MainForm
     {
         var w = words.Trim();
         if (UUID.TryParse(w, out var id) && id != UUID.Zero) return (id, w);
-        if (await _ops.FindPersonAsync(w) is { } here && (here.Name.Equals(w, StringComparison.OrdinalIgnoreCase) || here.Username.Equals(w, StringComparison.OrdinalIgnoreCase)
-                                                         || Norm(here.Username) == Norm(w) || Norm(here.Name).StartsWith(Norm(w))))
+        if (await _ops.FindPersonAsync(w) is { } here && here.Names.Any(n => n.Equals(w, StringComparison.OrdinalIgnoreCase) || Norm(n) == Norm(w)
+                                                                             || n != here.Username && Norm(n).StartsWith(Norm(w))))
             return (here.Id, here.Name);
         var r = await _ops.ReadAsync("TesselAgent", "findAvatar", new JsonObject { ["name"] = w, ["limit"] = 10 });
         var found = (r["people"] as JsonArray ?? new()).OfType<JsonObject>()
-            .Select(p => (Id: UUID.TryParse(p.Str("id"), out var pid) ? pid : UUID.Zero, User: p.Str("username") ?? "", Shown: p.Str("display_name") is { Length: > 0 } dn ? dn : p.Str("username") ?? "someone"))
+            .Select(p => (Id: UUID.TryParse(p.Str("id"), out var pid) ? pid : UUID.Zero, User: p.Str("username") ?? "", Shown: PersonOps.SaidName(p),
+                Display: p.Str("display_name") ?? ""))
             .Where(p => p.Id != UUID.Zero).ToList();
-        var exact = found.Where(p => Norm(p.User) == Norm(w) || Norm(p.Shown) == Norm(w)).ToList();
+        var exact = found.Where(p => Norm(p.User) == Norm(w) || Norm(p.Display) == Norm(w) || Norm(Sojourn.Core.World.PlainName.Of(p.Display)) == Norm(w)).ToList();
         var pick = exact.Count == 1 ? exact[0] : found.Count == 1 ? found[0] : default;
         if (pick.Id != UUID.Zero) return (pick.Id, pick.Shown);
         Answer(found.Count == 0 ? $"No one called {w} on the grid." : $"Several are called something like {w}: {string.Join(", ", found.Take(6).Select(p => p.User))}. Give the whole name.");

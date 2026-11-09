@@ -940,7 +940,7 @@ class Brain:
             raise
         except Exception as e:
             self.log(f"request failed: {type(e).__name__ if was_private else repr(e)}")
-            reply = f"Something went wrong: {e}"
+            reply = "Something went wrong on my side, so that may not have finished. Try again?"
             # the session may be dead (its message reader gone): start it again for the next request, which then
             # carries what came before in its text
             for s in {first, last}:

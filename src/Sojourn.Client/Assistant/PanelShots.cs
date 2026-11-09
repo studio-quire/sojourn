@@ -624,9 +624,9 @@ public static class PanelShots
     static readonly MenuRow[] GraphicsRows =
     {
         MenuRow.Switch("shadows", true), MenuRow.Switch("reflections", true), MenuRow.Switch("mirrors", true), MenuRow.Switch("flexible prims", true),
-        new("detail", "1.75", true), MenuRow.Switch("load governor", true), new("see-through layers", "all", true),
+        new("detail", "1.75", true), MenuRow.Switch("ease off under lag", true), new("see-through layers", "all", true),
         MenuRow.Choice("see-through light", new[] { "full", "simple" }, 1), MenuRow.Choice("shadow & ssao size", new[] { "full", "half" }, 0),
-        new("far shadow margin", "none", true), new("small shadow casters", "all", true), MenuRow.Choice("g-buffer (on restart)", new[] { "full", "narrow" }, 0),
+        new("far shadow margin", "none", true), new("small shadow casters", "all", true), MenuRow.Choice("surface detail (on restart)", new[] { "full", "lighter" }, 0),
         new("resolution", "100%", true), MenuRow.Switch("depth reprojection", true), MenuRow.Switch("load all around", false),
     };
 

@@ -66,12 +66,14 @@ from ctypes import wintypes
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# SOJOURN_LOCAL=dir: the main tree's local/ (grid, test tools, secrets) for a run from a git worktree, which has none
+LOCAL = Path(os.environ["SOJOURN_LOCAL"]) if os.environ.get("SOJOURN_LOCAL") else ROOT / "local"
 WORKER = ROOT / "tools" / "relay"
-SECRETS = ROOT / "local" / "secrets" / "studio"
+SECRETS = LOCAL / "secrets" / "studio"
 KEY_FILE = SECRETS / "relay-anthropic.key"
 ADMIN_FILE = SECRETS / "relay-admin.key"
 REGISTRY = SECRETS / "relay-tokens.json"
-LOGS_DIR = ROOT / "local" / "relay-logs"
+LOGS_DIR = LOCAL / "relay-logs"
 URL = "https://relay.studioquire.org"
 DEFAULT_CAP = 50.0
 CHECK_TOKEN = "relay-check"

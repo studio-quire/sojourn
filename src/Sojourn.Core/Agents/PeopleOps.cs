@@ -30,8 +30,7 @@ public sealed class PeopleOps
         var want = who.Trim();
         bool Is(string? s) => s is { Length: > 0 } && string.Equals(s.Trim(), want, StringComparison.OrdinalIgnoreCase);
         var all = c.Friends.FriendList.Values.ToList();
-        return all.FirstOrDefault(f => Is(f.Name) || Is(_s.Names.DisplayName(f.UUID)) || Is(_s.Names.Legacy(f.UUID))
-                                       || Is(_s.Names.Legacy(f.UUID) is { } l ? World.NameCache.UserName(l) : null) || Is(Pseudonym(f.UUID)));
+        return all.FirstOrDefault(f => Is(f.Name) || _s.Names.Forms(f.UUID).Any(Is) || Is(Pseudonym(f.UUID)));
     }
 
     FriendInfo FriendOrThrow(JsonObject a) =>

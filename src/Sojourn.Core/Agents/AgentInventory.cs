@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using LibreMetaverse;
 using LibreMetaverse.Packets;
+using LibreMetaverse.StructuredData;
 using Microsoft.Extensions.Logging;
 
 namespace Sojourn.Core.Agents;
@@ -136,13 +137,31 @@ public sealed class AgentInventory
     CancellationToken _life;
 
     /// <summary>Everything of mine asked of the grid again (the viewer has no such button; Radegast's Reload Inventory): how
-    /// stale folders get mended. True when every folder answered. The Library is left as it is.</summary>
+    /// stale folders get mended, both ways. LibreMetaverse's fetch only adds and updates (a folder now empty isn't even
+    /// looked at, and a folder it knows keeps its old parent), so what was deleted or moved in another viewer, or by the
+    /// grid, stayed where it had been until the next login. Here each folder's reply is taken as all it holds
+    /// (FetchExactAsync), and at the end of the walk what no reply listed where the store had it goes. True when every
+    /// folder answered. The Library is left as it is. One at a time; asking again meanwhile waits for the one going.</summary>
     public Task<bool> ReloadAsync(CancellationToken ct)
     {
         if (C.Inventory.Store?.RootFolder is not { } root) return Task.FromResult(false);
-        foreach (var id in _loaded.Keys.Where(id => !_s.InventoryOps.InLibrary(id)).ToList()) _loaded.TryRemove(id, out _);
-        return LoadSubtreeAsync(root.UUID, ct);
+        Task<bool> walk;
+        lock (_walks)
+        {
+            if (_reloading is { IsCompleted: false } going) walk = going;
+            else
+            {
+                foreach (var id in _loaded.Keys.Where(id => !_s.InventoryOps.InLibrary(id)).ToList()) _loaded.TryRemove(id, out _);
+                _walks[root.UUID] = _reloading = walk = Task.Run(() => WalkAsync(root.UUID, _life, exact: true));
+            }
+        }
+        return walk.WaitAsync(ct);
     }
+
+    Task<bool>? _reloading;
+
+    /// <summary>What the last reload dropped (things the grid no longer had where the store had them), for its caller's words.</summary>
+    public int LastReloadDropped { get; private set; }
 
     /// <summary>Every folder under <paramref name="root"/> (itself included) fetched into the store; true when all of
     /// them answered. One walk per root at a time, shared by whoever asks, and it runs on for the session when a caller
@@ -158,13 +177,16 @@ public sealed class AgentInventory
         return walk.WaitAsync(ct);
     }
 
-    async Task<bool> WalkAsync(UUID root, CancellationToken ct)
+    async Task<bool> WalkAsync(UUID root, CancellationToken ct, bool exact = false)
     {
         var c = C;
         var store = c.Inventory.Store;
         if (store is null) return false;
         var lib = _s.InventoryOps.InLibrary(root);
         var owner = lib ? _s.InventoryOps.LibraryOwner : c.Self.AgentID;
+        exact &= !lib;
+        var unlisted = new List<(UUID Id, UUID From)>();
+        int partial = 0;
 
         var seen = new HashSet<UUID> { root };
         var open = new Queue<UUID>();
@@ -183,7 +205,9 @@ public sealed class AgentInventory
             while (want.Count > 0 && running.Count < RequestsAtOnce)
             {
                 var n = Math.Min(FoldersPerRequest, want.Count);
-                running.Add(FetchFoldersAsync(c, lib, owner, want.GetRange(0, n), ct));
+                var batch = want.GetRange(0, n);
+                running.Add(exact ? FetchExactAsync(c, owner, batch, unlisted, () => Interlocked.Increment(ref partial), ct)
+                    : FetchFoldersAsync(c, lib, owner, batch, ct));
                 want.RemoveRange(0, n);
             }
             if (running.Count == 0) break;
@@ -202,7 +226,101 @@ public sealed class AgentInventory
                 else whole = false;
             }
         }
+        if (exact && !ct.IsCancellationRequested && ReferenceEquals(_s.Client, c))
+        {
+            // what a reply left out goes, unless a later reply put it somewhere else meanwhile (a thing moved, its new
+            // folder read after its old one), or it went elsewhere by our own hand since
+            var dropped = new List<string>();
+            lock (unlisted)
+                foreach (var (id, from) in unlisted)
+                    if (store.TryGetValue(id, out var n) && n != null && n.ParentUUID == from)
+                    {
+                        store.RemoveNodeFor(n);
+                        dropped.Add(n.Name);
+                    }
+            LastReloadDropped = dropped.Count;
+            _s.Log.LogInformation("inventory read again: {Folders} folders, {Dropped} things the grid no longer had dropped{Names}{Partial}{Short}",
+                _loaded.Count, dropped.Count, dropped.Count > 0 ? $" ({string.Join(", ", dropped.Take(8))}{(dropped.Count > 8 ? ", ..." : "")})" : "",
+                whole ? "" : " (some folders didn't answer)", partial > 0 ? $"; {partial} folders' replies held fewer than they counted, left as they were" : "");
+        }
         return whole && !ct.IsCancellationRequested;
+    }
+
+    /// <summary>One request for a few folders' contents, as FetchFoldersAsync asks, but read here rather than by
+    /// LibreMetaverse, so each folder's reply is known as all it holds: its folders and items put in the store where the
+    /// reply says they are (a folder the store knew moved if its parent changed), and whatever the store had in it before
+    /// asking that the reply left out noted in <paramref name="unlisted"/> (things that came in while asking aren't the
+    /// reply's to judge). A reply listing fewer than its own count of what's in the folder is left at that: nothing of it
+    /// noted. Which folders answered.</summary>
+    async Task<(List<UUID> Asked, HashSet<UUID> Got)> FetchExactAsync(GridClient c, UUID owner, List<UUID> batch,
+        List<(UUID Id, UUID From)> unlisted, Action shortReply, CancellationToken ct)
+    {
+        var got = new HashSet<UUID>();
+        var cap = c.Network.CurrentSim?.Caps?.CapabilityURI("FetchInventoryDescendents2");
+        var store = c.Inventory.Store;
+        if (cap is null || store is null) return (batch, got);
+        var before = batch.ToDictionary(f => f, f => Contents(store, f).Select(n => n.UUID).ToList());
+        var asked = new OSDArray();
+        foreach (var f in batch)
+            asked.Add(new OSDMap
+            {
+                ["folder_id"] = OSD.FromUUID(f), ["owner_id"] = OSD.FromUUID(owner), ["fetch_folders"] = OSD.FromBoolean(true),
+                ["fetch_items"] = OSD.FromBoolean(true), ["sort_order"] = OSD.FromInteger((int)InventorySortOrder.ByDate),
+            });
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(RequestTimeout);
+            var (_, data) = await c.HttpCapsClient.PostAsync(cap, OSDFormat.Xml, new OSDMap { ["folders"] = asked }, cts.Token);
+            if (data is not { Length: > 0 } || OSDParser.Deserialize(data) is not OSDMap reply || reply["folders"] is not OSDArray folders)
+                return (batch, got);
+            foreach (var fo in folders.OfType<OSDMap>())
+            {
+                var id = fo["folder_id"].AsUUID();
+                if (!before.TryGetValue(id, out var had)) continue;
+                var listed = new HashSet<UUID>();
+                var cats = fo["categories"] as OSDArray ?? new OSDArray();
+                var items = fo["items"] as OSDArray ?? new OSDArray();
+                foreach (var cat in cats.OfType<OSDMap>())
+                {
+                    var cid = cat.ContainsKey("category_id") ? cat["category_id"].AsUUID() : cat["folder_id"].AsUUID();
+                    listed.Add(cid);
+                    bool known = store.TryGetValue<InventoryFolder>(cid, out var folder) && folder != null;
+                    if (!known) folder = new InventoryFolder(cid);
+                    folder!.OwnerID = cat["agent_id"].AsUUID();
+                    folder.Name = cat["name"].AsString();
+                    folder.Version = cat["version"].AsInteger();
+                    folder.PreferredType = (FolderType)cat["type_default"].AsInteger();
+                    if (!known || folder.ParentUUID != id)
+                    {
+                        folder.ParentUUID = id;
+                        store.UpdateNodeFor(folder);
+                    }
+                }
+                foreach (var it in items)
+                {
+                    var item = InventoryItem.FromOSD(it);
+                    listed.Add(item.UUID);
+                    store.UpdateNodeFor(item);
+                    if (item.AssetType == AssetType.Sound) _s.Ears.Learn(item.AssetUUID, item.Name);
+                }
+                if (store.TryGetValue<InventoryFolder>(id, out var self) && self != null)
+                {
+                    self.DescendentCount = fo["descendents"].AsInteger();
+                    self.Version = fo["version"].AsInteger();
+                }
+                if (store.TryGetNodeFor(id, out var node)) node.NeedsUpdate = false;
+                if (fo["descendents"].AsInteger() > listed.Count) shortReply();
+                else
+                    lock (unlisted)
+                        foreach (var n in had)
+                            if (!listed.Contains(n)) unlisted.Add((n, id));
+                got.Add(id);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception e) { _s.Log.LogDebug(e, "inventory folders read again {Folder} (+{More})", batch[0], batch.Count - 1); }
+        return (batch, got);
     }
 
     /// <summary>One request for a few folders' contents; which of them answered (LibreMetaverse reports each folder in
@@ -461,7 +579,9 @@ public sealed class AgentInventory
         var dialog = im.Dialog switch
         {
             InstantMessageDialog.TaskInventoryOffered => keep ? InstantMessageDialog.TaskInventoryAccepted : InstantMessageDialog.TaskInventoryDeclined,
-            InstantMessageDialog.GroupNotice => keep ? InstantMessageDialog.GroupNoticeInventoryAccepted : InstantMessageDialog.GroupNoticeInventoryDeclined,
+            // (a notice's own IM, as it came or asked from the archive: its session is the notice, its sender the group)
+            InstantMessageDialog.GroupNotice or InstantMessageDialog.GroupNoticeRequested
+                => keep ? InstantMessageDialog.GroupNoticeInventoryAccepted : InstantMessageDialog.GroupNoticeInventoryDeclined,
             _ => keep ? InstantMessageDialog.InventoryAccepted : InstantMessageDialog.InventoryDeclined,
         };
         var folder = keep ? c.Inventory.FindFolderForType(type) : UUID.Zero;

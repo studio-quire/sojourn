@@ -88,7 +88,7 @@ public sealed class Ownership
             if (p.OwnerID != C.Self.AgentID) return $"{n} isn't mine to deed";
             if ((p.Permissions.OwnerMask & PermissionMask.Transfer) == 0) return $"{n} is no-transfer, so it can't be deeded";
             if (p.GroupID != gid) return $"{n} isn't set to {g.Name}: set its group first";
-            if ((p.Permissions.GroupMask & PermissionMask.Move) == 0) return $"{n} isn't shared with the group: share it first (the edit floater's Deed needs that)";
+            if ((p.Permissions.GroupMask & PermissionMask.Move) == 0) return $"{n} isn't shared with the group: share it with the group first";
         }
         return null;
     }

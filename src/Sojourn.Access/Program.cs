@@ -52,6 +52,8 @@ sealed class AccessApp : ApplicationContext
     readonly WindowWatch _held;
     MainForm? _main;
     LoginChoice? _sessionFor;
+    /// <summary>The login chosen last, until it works: then its password is kept or forgotten (LoginForm.LoggedIn).</summary>
+    LoginChoice? _toKeep;
     bool _askedTerms, _shown;
     int _mfaAsked;
 
@@ -104,6 +106,7 @@ sealed class AccessApp : ApplicationContext
     {
         // the session outlives the press of Log in: nothing it starts runs as the person's own action
         RealInput.Detach();
+        _toKeep = choice;
         _settings.LastGrid = choice.Grid;
         _settings.LastUser = choice.Last == "Resident" ? choice.First : $"{choice.First} {choice.Last}";
         _settings.LastStart = choice.Start.StartsWith("uri:") && !_login.IsFavoriteStart(choice.Start) ? null : choice.Start;
@@ -150,6 +153,11 @@ sealed class AccessApp : ApplicationContext
         {
             case AgentStatus.Online:
                 _toldFailure = null;
+                if (_toKeep is { } kept)
+                {
+                    _toKeep = null;
+                    _login.LoggedIn(kept);
+                }
                 if (!_shown)
                 {
                     _shown = true;

@@ -3,6 +3,11 @@
     <!-- LibreMetaverse 3.2.0 asks for CoreJ2K 2.4.1; NuGet resolves 2.4.1.108, which is the same release. -->
     <NoWarn>$(NoWarn);NU1603</NoWarn>
   </PropertyGroup>
+  <!-- the repo's local/ (voice's native shim is copied from there), or SOJOURN_LOCAL's: a git worktree has none of its own -->
+  <PropertyGroup>
+    <SojournLocal Condition="'$(SOJOURN_LOCAL)' != ''">$(SOJOURN_LOCAL)</SojournLocal>
+    <SojournLocal Condition="'$(SojournLocal)' == ''">$(MSBuildThisFileDirectory)..\local</SojournLocal>
+  </PropertyGroup>
   <!-- SOJOURN_BUILD_ROOT=dir builds into a tree of its own (bin and obj per project under it), so a second session can
        build and run while another's client holds the usual bin folder's files open. -->
   <PropertyGroup Condition="'$(SOJOURN_BUILD_ROOT)' != ''">

@@ -77,7 +77,7 @@ public static class ProblemReport
     /// <summary>The words the summary shows before sending (for the launcher's window and the menu's page): what goes
     /// and where, without a token (the VR app has none: ProviderKeys.RelayOffered). In English, a catalog key
     /// (Lang/menu.json): translated where it's shown.</summary>
-    public const string WhatsSent = "Sent to Studio Quire through its relay, relay.studioquire.org: your note and the session's log, which keeps what "
+    public const string WhatsSent = "Sent to Studio Quire's server, relay.studioquire.org: your note and the session's log, which keeps what "
           + "Sojourn did, your own chat, objects' lines, the assistant's replies, errors and timings. Everything other people "
           + "said or wrote is left out, and their names become person 1, person 2 and so on; yours becomes me. Studio Quire "
           + "keeps it for 30 days, and doesn't keep your IP address.";
@@ -104,13 +104,13 @@ public static class ProblemReport
     {
         var (body, cut) = Pack(r);
         var res = await LogSend.PostAsync(body, token, $"{App}/{r.Version}", ct);
-        if (res.Unreached is { } u) return (false, $"Not sent: Studio Quire's relay couldn't be reached ({u}).");
+        if (res.Unreached is { } u) return (false, $"Not sent: Studio Quire couldn't be reached ({u}).");
         if (res.Ok) return (true, "Report sent to Studio Quire. Thank you." + (cut ? " The log was long, so part of its middle was left out." : ""));
         return (false, res.Status switch
         {
-            401 => "Studio Quire's relay didn't take your token. Nothing was sent.",
+            401 => "Studio Quire didn't accept your token. Nothing was sent.",
             429 => res.Message is { } m && m.Contains("GitHub") ? m : (res.Message ?? "Too many reports sent today. Try again tomorrow.") + " You can save it for GitHub instead.",
-            _ => $"Not sent: {res.Message ?? $"the relay answered {res.Status}"}.",
+            _ => $"Not sent: {res.Message ?? $"Studio Quire's server answered {res.Status}"}.",
         });
     }
 

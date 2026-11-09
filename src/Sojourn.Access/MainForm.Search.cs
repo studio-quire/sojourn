@@ -198,9 +198,10 @@ public sealed partial class MainForm
                     foreach (var p in (r["people"] as JsonArray ?? new()).OfType<JsonObject>())
                         if (UUID.TryParse(p.Str("id"), out var id))
                         {
-                            var shown = p.Str("display_name") is { Length: > 0 } dn ? dn : p.Str("legacy_name") ?? "someone";
-                            var legacy = p.Str("legacy_name") ?? "";
-                            found.Add(new("person", legacy.Length > 0 && !legacy.Equals(shown, StringComparison.OrdinalIgnoreCase) ? $"{shown} ({legacy})" : shown, id, null, ""));
+                            // "Display (legacy name)", the display name worded as names are said (Alt+0's People's names)
+                            var user = Sojourn.Core.World.NameCache.UserName(p.Str("legacy_name") ?? "");
+                            var shown = Sojourn.Core.World.PlainName.Complete(p.Str("display_name"), user, false, Sojourn.Core.World.NameCache.Style);
+                            found.Add(new("person", shown.Length > 0 ? shown : "someone", id, null, ""));
                         }
                 break;
             }

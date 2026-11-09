@@ -26,6 +26,19 @@ answer; `SojournEnvironment mine` waits at most 5 s and says `partial` while the
 batching matters: the Library is ~490 folders and ~2,100 items on SL, and fetched a folder at a time it took far longer
 than the API's 15 s.
 
+`ReloadAsync` (Sojourn Access's F5, Radegast's Reload Inventory) walks the person's own folders again the same way, but
+reads each reply itself (`FetchExactAsync`, Claude Opus 5.5, 2026-11-08): LibreMetaverse 3.2.0's fetch
+(`RequestFolderContentsAsync`) only adds and updates, never touches a folder whose reply says it's empty, and leaves a
+folder it already knows under its old parent, so something deleted or moved in another viewer, or by the grid, stayed
+where it had been until the next login. Here each reply is taken as all its folder holds: its folders and items go into
+the store where the reply puts them (a known folder moved if its parent changed), and what the store had in the folder
+before asking that the reply left out is noted; at the end of the walk each noted thing still under that folder is
+removed (one a later reply put elsewhere has moved, not gone). Things that arrived while asking aren't judged, and a reply
+listing fewer than its own `descendents` count leaves its folder as it was (logged). The log line "inventory read again:
+N folders, M things the grid no longer had dropped" says what it did. Checked on the local grid by deleting a card and
+moving a folder in its inventory database behind the app (`docs/access-testing.md`, the housekeeping step); Second Life's
+replies are the same cap and shape, not run there yet.
+
 On Second Life the outfit's objects are attached once it has loaded (`Look.RezOutfitAttachmentsAsync`): only those the
 avatar doesn't wear, as the current region has it, and only once that region has been current 10 s. Right after a
 teleport the avatar arrives before its attachments, and a worn object attached again drops off and comes back; before

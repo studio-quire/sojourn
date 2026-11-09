@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Display names made sayable (src/Sojourn.Core/World/PlainName.cs) checked against made-up decorative names: each
+       fancy-text style folded to its plain letters, names in a script of their own and ordinary ones left alone, all
+       symbols left as nothing, and each of Alt+0's People's names wording a name its way.
+         dotnet run, the project tools/namecheck (exit code: the number of failed checks); given names after the
+         separator, it prints each one's plain form instead. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Sojourn.Core\World\PlainName.cs" Link="PlainName.cs" />
+  </ItemGroup>
+</Project>

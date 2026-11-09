@@ -418,7 +418,7 @@ public sealed class SettingsMenu : ISettingsMenu
             rows.Add((MenuRow.Switch("mirrors", q.Mirrors), _ => q.Mirrors = _s.Mirrors = !q.Mirrors));
             rows.Add((MenuRow.Switch("flexible prims", q.Flexi), _ => q.Flexi = _s.Flexi = !q.Flexi));
             rows.Add((new MenuRow("detail", $"{q.LodFactor:0.##}", true), d => q.LodFactor = _s.Detail = Step(VrSettings.Details, q.LodFactor, d)));
-            rows.Add((MenuRow.Switch("load governor", q.LoadGovernor), _ => q.LoadGovernor = _s.LoadGovernor = !q.LoadGovernor));
+            rows.Add((MenuRow.Switch("ease off under lag", q.LoadGovernor), _ => q.LoadGovernor = _s.LoadGovernor = !q.LoadGovernor));
             rows.Add((new MenuRow("see-through layers", q.AlphaLayers == 0 ? "all" : $"{q.AlphaLayers}", true),
                 d => q.AlphaLayers = _s.AlphaLayers = (int)Step(VrSettings.AlphaLayerSteps.Select(x => (float)x).ToArray(), q.AlphaLayers, d)));
             rows.Add((MenuRow.Choice("see-through light", new[] { "full", "simple" }, q.SimpleAlpha ? 1 : 0), i => q.SimpleAlpha = _s.SimpleAlpha = i == 1));
@@ -428,9 +428,9 @@ public sealed class SettingsMenu : ISettingsMenu
                 d => q.FarCascadeMargin = _s.FarShadowMargin = Step(VrSettings.FarShadowMargins, q.FarCascadeMargin, d)));
             rows.Add((MenuRow.Choice("far shadows", new[] { "off", "on", "sharper" }, Array.IndexOf(VrSettings.FarShadowSizes, q.FarShadowSize) is var fi and >= 0 ? fi : 1),
                 i => q.FarShadowSize = _s.FarShadows = VrSettings.FarShadowSizes[i]));
-            rows.Add((new MenuRow("small shadow casters", q.MinCasterTexels <= 0 ? "all" : $"skip < {q.MinCasterTexels:0.#} tx", true),
+            rows.Add((new MenuRow("small shadow casters", q.MinCasterTexels switch { <= 0 => "all", <= 0.5f => "skip tiniest", <= 1 => "skip tiny", _ => "skip small" }, true),
                 d => q.MinCasterTexels = _s.MinCasterTexels = Step(VrSettings.CasterTexelSteps, q.MinCasterTexels, d)));
-            rows.Add((MenuRow.Choice("g-buffer (on restart)", new[] { "full", "narrow" }, _s.NarrowGBuffer ? 1 : 0), i => _s.NarrowGBuffer = i == 1));
+            rows.Add((MenuRow.Choice("surface detail (on restart)", new[] { "full", "lighter" }, _s.NarrowGBuffer ? 1 : 0), i => _s.NarrowGBuffer = i == 1));
         }
         if (_assistant.InHeadset)
         {
@@ -508,13 +508,6 @@ public sealed class SettingsMenu : ISettingsMenu
         {
             (MenuRow.Switch("menus over walls", _s.MenusOverWalls), _ => _s.MenusOverWalls = !_s.MenusOverWalls),
         };
-        if (!_s.MenusOverWalls)
-        {
-            rows.Add((MenuRow.Choice("wall test", VrSettings.MenuWallTests, Math.Max(0, Array.IndexOf(VrSettings.MenuWallTests, _s.MenuWallTest))),
-                i => _s.MenuWallTest = VrSettings.MenuWallTests[i]));
-            rows.Add((new MenuRow("frost bias", _s.MenuFrostBias == 0 ? "none" : $"{_s.MenuFrostBias * 100:+0;-0}%", true),
-                d => _s.MenuFrostBias = Step(VrSettings.MenuFrostBiases, _s.MenuFrostBias, d)));
-        }
         rows.Add((MenuRow.Switch("menus on desktop", _s.MirrorMenus), _ => _s.MirrorMenus = !_s.MirrorMenus));
         return rows;
     }

@@ -711,7 +711,7 @@ public sealed partial class MainForm
     }
 
     /// <summary>The op's words are the assistant's ("I don't have modify rights"): said as the person's.</summary>
-    static string Theirs(string e) => e.Replace("I can't", "You can't").Replace("I don't", "you don't").Replace("I'm", "you're").Replace(" my ", " your ").Replace(" isn't mine", " isn't yours");
+    static string Theirs(string e) => PersonOps.Words(e);
 
     /// <summary>The setting's words once the region shows them changed (up to 3 s), or null. On all of a linked object,
     /// once they've settled too, the parts' updates arriving one by one.</summary>
@@ -1244,7 +1244,7 @@ public sealed partial class MainForm
         if (await ConfirmedAsync("SojournBuild", redo ? "redo" : "undo", new JsonObject { ["steps"] = steps }) is not { } r) return;
         if (PersonOps.Error(r) is { } e) { Answer($"{(redo ? "Nothing redone" : "Nothing undone")}: {Theirs(e)}."); return; }
         var done = (r[redo ? "redone" : "undone"] as JsonArray)?.Select(x => x?.ToString()).OfType<string>().Select(UndoWords).ToList() ?? new();
-        var failed = (r["failed"] as JsonArray)?.OfType<JsonObject>().Select(f => $"{f.Str("what")}: {f.Str("error")}").ToList() ?? new();
+        var failed = (r["failed"] as JsonArray)?.OfType<JsonObject>().Select(f => $"{f.Str("what")}: {PersonOps.Words(f.Str("error") ?? "")}").ToList() ?? new();
         await Task.Delay(500);
         await RefreshBuildAsync(said: false);
         Answer($"{(redo ? "Redone" : "Undone")}: {(done.Count == 0 ? "nothing" : string.Join("; ", done))}.{(failed.Count > 0 ? " Couldn't: " + string.Join("; ", failed) + "." : "")}"

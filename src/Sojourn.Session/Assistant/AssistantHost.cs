@@ -365,7 +365,8 @@ public sealed class AssistantHost
             p.Hearing = (alive && _mic != null) || hearingStarts;   // held for hearing to load, then heard
             if (hearingStarts) p.Status = HearingStarts;
             else if (starting) p.Status = Starting;
-            else if (!alive) p.Notice = "The assistant isn't running (python tools/assistant.py check).";
+            // (Sojourn's words are panel.json's key; Access stays English)
+            else if (!alive) p.Notice = $"The assistant stopped. Restarting {Release.ProblemReport.App} usually brings it back; if it keeps happening, please let Studio Quire know.";
         });
         Send(new JsonObject { ["what"] = "talk_up", ["target"] = target, ["first_target"] = _talkTarget?.DeepClone() });
     }

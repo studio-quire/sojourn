@@ -17,6 +17,7 @@ public sealed partial class MainForm
 
     sealed record Friend(UUID Id, string Name, bool Online);
     sealed record MyGroup(UUID Id, string Name);
+    static readonly object NoGroups = new();
 
     /// <summary>The people page: nearby, friends and groups, each labelled (Tab moves between them).</summary>
     void BuildPeoplePage()
@@ -32,21 +33,31 @@ public sealed partial class MainForm
         GroupItem("&Wear its tag", g => _ = ActivateGroupAsync(g.Id, g.Name));
         GroupItem("&No group tag", g => _ = ActivateGroupAsync(UUID.Zero, "no group"));
         GroupItem("Choose your &title...", g => _ = ChooseTitleAsync(g));
-        GroupItem("&Members", g => _ = GroupMembersAsync(g));
+        GroupItem("&Members...", g => _ = GroupPeopleAsync(g, chat: false));
+        GroupItem("Who's in its c&hat...", g => _ = GroupPeopleAsync(g, chat: true));
         GroupItem("N&otices...", g => _ = GroupNoticesAsync(g));
+        GroupItem("N&ew notice...", g => NewNotice(g));
+        GroupItem("&Invite someone...", g => _ = InviteSomeoneAsync(g));
+        GroupItem("&Banned residents...", g => _ = GroupBansAsync(g));
         GroupItem("Chat lo&g", g => ChatLogOf(g.Id.ToString(), g.Name));
         GroupItem("&Receive its notices", g => _ = GroupSwitchAsync(g, "notices"));
         var noticesItem = (ToolStripMenuItem)_groupMenu.Items[^1];
         GroupItem("List it in your &profile", g => _ = GroupSwitchAsync(g, "list_in_profile"));
         var listedItem = (ToolStripMenuItem)_groupMenu.Items[^1];
+        SoundItem(_groupMenu, () => _groups.FocusedItem?.Tag is MyGroup g ? (g.Id, g.Name) : null, group: true);
+        GroupItem("&Leave", g => _ = LeaveGroupAsync(g));
+        _groupMenu.Items.Add(new ToolStripSeparator());
+        // (the list's own, so it's there on "In no groups." too, alone)
+        var newGroup = new ToolStripMenuItem("New gro&up...", null, (_, _) => NewGroup());
+        _groupMenu.Items.Add(newGroup);
         _groupMenu.Opening += (_, _) =>
         {
+            bool group = _groups.FocusedItem?.Tag is MyGroup;
+            foreach (ToolStripItem item in _groupMenu.Items) item.Visible = group || item == newGroup;
             if (_groups.FocusedItem?.Tag is not MyGroup g || Host?.Session.State.Groups.TryGetValue(g.Id, out var now) != true) return;
             noticesItem.Checked = now.AcceptNotices;
             listedItem.Checked = now.ListInProfile;
         };
-        SoundItem(_groupMenu, () => _groups.FocusedItem?.Tag is MyGroup g ? (g.Id, g.Name) : null, group: true);
-        GroupItem("&Leave", g => _ = LeaveGroupAsync(g));
         KeysOn(_groupMenu, ("Group &chat", "Enter"));
         MenuOn(_friends, _friendMenu);
         MenuOn(_groups, _groupMenu);
@@ -101,7 +112,11 @@ public sealed partial class MainForm
         var groups = Host!.Session.State.Groups.Values.Select(g => new MyGroup(g.ID, g.Name))
             .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList();
         if (!_groups.Focused || into == _groups)
-            Fill(_groups, groups.Select(g => ($"{g.Name}{(g.Id == c.Self.ActiveGroup ? ", tag worn" : "")}", g.Id.ToString(), (object)g)).ToList(), "In no groups.");
+        {
+            Fill(_groups, groups.Select(g => ($"{g.Name}{(g.Id == c.Self.ActiveGroup ? ", tag worn" : "")}", g.Id.ToString(), (object)g)).ToList(), "In no groups. The Applications key: New group.");
+            // (a tag, so its Applications key opens the menu, with New group alone)
+            if (groups.Count == 0 && _groups.Items.Count == 1) _groups.Items[0].Tag = NoGroups;
+        }
         if (said) Reader?.Answer($"{friends.Count(f => f.Online)} of {friends.Count} friends online; {groups.Count} groups.", keep: false);
     }
 
@@ -154,6 +169,7 @@ public sealed partial class MainForm
         var r = await _ops.ReadAsync("TesselAgent", "profile", new JsonObject { ["id"] = id.ToString() });
         if (PersonOps.Error(r) is { } e) { Answer($"Couldn't read {name}'s profile: {e}"); return; }
         var lines = new List<string> { r.Str("name") ?? name };
+        if (DisplayNameLine(id) is { } written) lines.Add(written);
         // (a link in someone's words: in Control+Shift+K's list once this window closes)
         NoteLinks($"{r.Str("about")} {r.Str("first_life")}", r.Str("name") ?? name);
         if (r.Str("born") is { Length: > 0 } born) lines.Add($"Born {born}.");

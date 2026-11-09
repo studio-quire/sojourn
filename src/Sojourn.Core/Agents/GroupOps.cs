@@ -1,5 +1,7 @@
 using System.Text.Json.Nodes;
 using LibreMetaverse;
+using LibreMetaverse.Packets;
+using LibreMetaverse.StructuredData;
 using Sojourn.Core.Leap;
 
 namespace Sojourn.Core.Agents;
@@ -242,14 +244,89 @@ public sealed class GroupOps
         return new JsonObject { ["invited"] = to.ToString(), ["group_id"] = gid.ToString() };
     }
 
-    public JsonObject Eject(JsonObject a)
+    /// <summary>Ejected, as the grid's reply says (EjectGroupMemberReply): an owner, or someone not in it, isn't.</summary>
+    public async Task<JsonObject> EjectAsync(JsonObject a, CancellationToken ct)
     {
         var c = C;
         var gid = Gid(a);
         var who = a.Uuid("member") ?? a.Uuid("to") ?? throw new LeapError("need member");
+        if (who == c.Self.AgentID) throw new LeapError("that's me: leaving a group is TesselAgent leaveGroup");
         Need(gid, GroupPowers.Eject, "ejecting members");
-        c.Groups.EjectUser(gid, who);
-        return new JsonObject { ["requested"] = true, ["member"] = who.ToString() };
+        if (!await EjectOneAsync(c, gid, who, ct)) throw new LeapError("the grid didn't eject them (an owner can't be ejected, and only a member can)");
+        return new JsonObject { ["ejected"] = true, ["member"] = who.ToString() };
+    }
+
+    static Task<bool> EjectOneAsync(GridClient c, UUID gid, UUID who, CancellationToken ct) =>
+        AskAsync<GroupOperationEventArgs, bool>(h => c.Groups.GroupMemberEjected += h, h => c.Groups.GroupMemberEjected -= h,
+            e => (e.GroupID == gid, e.Success), () => c.Groups.EjectUser(gid, who), "ejecting", ct);
+
+    // ---------- bans (Second Life's GroupAPIv1 capability, as the viewer's LLGroupMgr::sendGroupBanRequest; OpenSim has none) ----------
+
+    public static bool BansHere(GridClient? c) => c?.Network.CurrentSim?.Caps?.CapabilityURI("GroupAPIv1") != null;
+
+    static Uri BanCap(GridClient c, UUID gid) =>
+        c.Network.CurrentSim?.Caps?.CapabilityURI("GroupAPIv1") is { } cap ? new Uri($"{cap}?group_id={gid}")
+            : throw new LeapError("group bans aren't on this grid: Second Life keeps them in a service this grid doesn't have");
+
+    /// <summary>Who's banned from joining, and since when (the viewer's Banned Residents tab).</summary>
+    public async Task<JsonObject> BansAsync(JsonObject a, CancellationToken ct)
+    {
+        var c = C;
+        var gid = Gid(a);
+        var uri = BanCap(c, gid);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(20));
+        var (resp, data) = await c.HttpCapsClient.GetAsync(uri, cts.Token).ConfigureAwait(false);
+        if (!resp.IsSuccessStatusCode)
+            throw new LeapError((int)resp.StatusCode is 401 or 403 ? "the grid won't show this group's bans to me (it takes the ban power)" : $"the grid didn't give the ban list (HTTP {(int)resp.StatusCode})");
+        var list = (data is { Length: > 0 } ? OSDParser.Deserialize(data) as OSDMap : null)?["ban_list"] as OSDMap;
+        var bans = new List<(UUID Id, DateTime Since)>();
+        if (list != null)
+            foreach (var key in list.Keys)
+                if (UUID.TryParse(key, out var id))
+                    bans.Add((id, list[key] is OSDMap entry && entry.ContainsKey("ban_date") ? entry["ban_date"].AsDate() : DateTime.MinValue));
+        await _s.Names.ResolveAsync(c, bans.Select(b => b.Id), TimeSpan.FromSeconds(3), ct);
+        var arr = new JsonArray();
+        foreach (var (id, since) in bans.OrderBy(b => _s.Names.Complete(b.Id, ""), StringComparer.OrdinalIgnoreCase))
+        {
+            var o = new JsonObject { ["id"] = id.ToString(), ["name"] = _s.Names.Complete(id, id.ToString()) };
+            if (since > new DateTime(2000, 1, 1)) o["since"] = since.ToUniversalTime().ToString("yyyy-MM-dd");
+            arr.Add(o);
+        }
+        return new JsonObject { ["group_id"] = gid.ToString(), ["bans"] = arr };
+    }
+
+    /// <summary>Banned (and, as the viewer's Ban does, ejected if they're a member), or the ban lifted.</summary>
+    public async Task<JsonObject> BanAsync(JsonObject a, bool ban, CancellationToken ct)
+    {
+        var c = C;
+        var gid = Gid(a);
+        var who = a.UuidList("members");
+        if ((a.Uuid("member") ?? a.Uuid("to")) is { } one && !who.Contains(one)) who.Add(one);
+        if (who.Count == 0) throw new LeapError("need member");
+        if (ban && who.Contains(c.Self.AgentID)) throw new LeapError("that's me");
+        var uri = BanCap(c, gid);
+        Need(gid, GroupPowers.GroupBanAccess, ban ? "banning" : "lifting a ban");
+        var ids = new OSDArray();
+        foreach (var id in who) ids.Add(OSD.FromUUID(id));
+        // (the viewer's EBanRequestAction: BAN_CREATE 1, BAN_DELETE 2)
+        var body = new OSDMap { ["ban_action"] = OSD.FromInteger(ban ? 1 : 2), ["ban_ids"] = ids };
+        using (var cts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+        {
+            cts.CancelAfter(TimeSpan.FromSeconds(20));
+            var (resp, _) = await c.HttpCapsClient.PostAsync(uri, OSDFormat.Xml, body, cts.Token).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                throw new LeapError((int)resp.StatusCode is 401 or 403 ? "the grid refused it (banning takes the ban power)" : $"the grid refused it (HTTP {(int)resp.StatusCode})");
+        }
+        var o = new JsonObject { ["group_id"] = gid.ToString(), [ban ? "banned" : "unbanned"] = Json.Strings(who.Select(w => w.ToString())) };
+        if (!ban || !a.Bool("eject", true)) return o;
+        if (!_s.State.Groups.TryGetValue(gid, out var g) || (g.Powers & GroupPowers.Eject) == 0) { o["ejected"] = new JsonArray(); o["not_ejected"] = "ejecting takes the eject power"; return o; }
+        var ejected = new JsonArray();
+        foreach (var id in who)
+            try { if (await EjectOneAsync(c, gid, id, ct)) ejected.Add(id.ToString()); }
+            catch (LeapError) { }   // (not a member: nothing to eject)
+        o["ejected"] = ejected;
+        return o;
     }
 
     public async Task<JsonObject> CreateRoleAsync(JsonObject a, CancellationToken ct)
@@ -380,8 +457,49 @@ public sealed class GroupOps
         }
         if (notice.Subject.Length == 0) throw new LeapError("need subject");
         Need(gid, GroupPowers.SendNotices, "sending notices");
-        c.Groups.SendGroupNotice(gid, notice);
-        return new JsonObject { ["sent"] = true };
+        var before = await NoticeIdsAsync(c, gid, ct);
+        SendNotice(c, gid, notice);
+        // the grid drops a notice it can't take without a word (OpenSim's log: "failed to decode group notice bucket"), so
+        // what's sent is said by its archive
+        for (int i = 0; i < 4; i++)
+        {
+            await Task.Delay(1000, ct);
+            var now = await NoticeIdsAsync(c, gid, ct);
+            if (now != null && now.Except(before ?? new()).Any()) return new JsonObject { ["sent"] = true, ["archived"] = true };
+        }
+        return new JsonObject { ["sent"] = true, ["archived"] = false };
+    }
+
+    async Task<HashSet<UUID>?> NoticeIdsAsync(GridClient c, UUID gid, CancellationToken ct)
+    {
+        try
+        {
+            var list = await AskAsync<GroupNoticesListReplyEventArgs, List<GroupNoticesListEntry>>(
+                h => c.Groups.GroupNoticesListReply += h, h => c.Groups.GroupNoticesListReply -= h,
+                e => (e.GroupID == gid, e.Notices), () => c.Groups.RequestGroupNoticesList(gid), "group notices", ct, TimeSpan.FromSeconds(5));
+            return list.Select(n => n.NoticeID).Where(n => n != UUID.Zero).ToHashSet();
+        }
+        catch (LeapError) { return null; }
+    }
+
+    /// <summary>A notice as the viewer packs it (send_group_notice): an IM to the group, subject and body joined by a bar,
+    /// the attachment as LLSD under the "&lt;? LLSD/XML ?&gt;" line, which OpenSim reads by skipping exactly that line;
+    /// LibreMetaverse's SendGroupNotice packs it otherwise, and OpenSim drops it.</summary>
+    static void SendNotice(GridClient c, UUID gid, GroupNotice notice)
+    {
+        var bucket = notice.AttachmentID == UUID.Zero ? new byte[] { 0 }
+            : System.Text.Encoding.UTF8.GetBytes($"<? LLSD/XML ?>\n<llsd><map><key>item_id</key><uuid>{notice.AttachmentID}</uuid><key>owner_id</key><uuid>{notice.OwnerID}</uuid></map></llsd>\n\0");
+        var pkt = new ImprovedInstantMessagePacket
+        {
+            AgentData = { AgentID = c.Self.AgentID, SessionID = c.Self.SessionID },
+            MessageBlock =
+            {
+                FromGroup = false, ToAgentID = gid, Offline = 0, ID = UUID.Zero, Timestamp = 0, ParentEstateID = 0, RegionID = UUID.Zero,
+                Position = c.Self.SimPosition, Dialog = (byte)InstantMessageDialog.GroupNotice, FromAgentName = Utils.StringToBytes(c.Self.Name),
+                Message = Utils.StringToBytes($"{notice.Subject}|{notice.Message}"), BinaryBucket = bucket,
+            },
+        };
+        c.Network.SendPacket(pkt, c.Network.CurrentSim);
     }
 
     public async Task<JsonObject> NoticesAsync(JsonObject a, CancellationToken ct)
@@ -402,14 +520,43 @@ public sealed class GroupOps
     }
 
     /// <summary>A notice from the archive, whole: asked for by id, it comes as an IM of its own kind, subject and body joined by
-    /// a bar, as a new notice's are. (Its attachment, if any, isn't offered this way.)</summary>
+    /// a bar, as a new notice's are, with what's attached named in its bucket.</summary>
     public async Task<JsonObject> NoticeReadAsync(JsonObject a, CancellationToken ct)
     {
-        var c = C;
-        var id = a.Uuid("notice_id") ?? throw new LeapError("need notice_id");
-        var im = await AskAsync<InstantMessageEventArgs, InstantMessage>(h => c.Self.IM += h, h => c.Self.IM -= h,
-            e => (e.IM.Dialog == InstantMessageDialog.GroupNoticeRequested, e.IM), () => c.Groups.RequestGroupNotice(id), "the notice", ct);
+        var im = await RequestNoticeAsync(C, a.Uuid("notice_id") ?? throw new LeapError("need notice_id"), ct);
         var parts = (im.Message ?? "").Split('|', 2);
-        return new JsonObject { ["subject"] = parts[0], ["message"] = parts.Length > 1 ? parts[1] : "", ["from"] = im.FromAgentName };
+        var o = new JsonObject { ["subject"] = parts[0], ["message"] = parts.Length > 1 ? parts[1] : "", ["from"] = im.FromAgentName };
+        if (NoticeAttachment(im.BinaryBucket) is { } att)
+            o["attachment"] = new JsonObject { ["name"] = att.Name, ["type"] = AgentInventory.AssetTypeLabel(att.Type) };
+        return o;
+    }
+
+    /// <summary>A notice's attachment taken from the archive into the folder for its kind, as the viewer's Open attachment
+    /// accepts the offer that comes with the notice.</summary>
+    public async Task<JsonObject> NoticeTakeAsync(JsonObject a, CancellationToken ct)
+    {
+        var c = C;
+        var im = await RequestNoticeAsync(c, a.Uuid("notice_id") ?? throw new LeapError("need notice_id"), ct);
+        if (NoticeAttachment(im.BinaryBucket) is not { } att) throw new LeapError("that notice has nothing attached");
+        AgentInventory.AnswerOffer(c, im, att.Type, UUID.Zero, keep: true);
+        var folder = c.Inventory.FindFolderForType(att.Type);
+        return new JsonObject
+        {
+            ["taken"] = att.Name, ["type"] = AgentInventory.AssetTypeLabel(att.Type),
+            ["folder"] = _s.Inventory.Node(folder)?.Name ?? "", ["folder_id"] = folder.ToString(),
+        };
+    }
+
+    static Task<InstantMessage> RequestNoticeAsync(GridClient c, UUID id, CancellationToken ct) =>
+        AskAsync<InstantMessageEventArgs, InstantMessage>(h => c.Self.IM += h, h => c.Self.IM -= h,
+            e => (e.IM.Dialog == InstantMessageDialog.GroupNoticeRequested && (e.IM.IMSessionID == id || e.IM.IMSessionID == UUID.Zero), e.IM),
+            () => c.Groups.RequestGroupNotice(id), "the notice", ct);
+
+    /// <summary>What a notice's IM says is attached (its bucket: whether, the asset type, the group, the item's name), or null.</summary>
+    public static (AssetType Type, string Name)? NoticeAttachment(byte[]? b)
+    {
+        if (b is not { Length: >= 18 } || b[0] == 0) return null;
+        var name = b.Length > 18 ? System.Text.Encoding.UTF8.GetString(b, 18, b.Length - 18).TrimEnd('\0') : "";
+        return ((AssetType)(sbyte)b[1], name);
     }
 }

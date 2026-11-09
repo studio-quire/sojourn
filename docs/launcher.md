@@ -24,7 +24,7 @@ by Claude Opus 5.5, 2026-10-29 and 30. Agent-facing.
     assistant; the client starts in dev mode, `docs/dev-mode.md`; the user's idea, 2026-11-01); more than three on two
     rows. No Studio Quire relay (Sojourn Access's alone, the user, 2026-11-02: `docs/assistant.md` > The studio relay):
     a saved "relay" gives way at load as a packaged "claude" does;
-  - with **your agent**, no key box, models or auto mode: in their place a line ("An AI agent on this PC, such as
+  - with **your agent**, no key box, models or web and programs: in their place a line ("An AI agent on this PC, such as
     Claude Code, will be Sojourn's assistant. Tell it:") over the sentence to give it, "Read <DEV-MODE.md> and be my
     Sojourn assistant.", with the real path for this copy (`Places.Guide`: beside the exe packaged, the clone's root,
     or `tools/publish/sojourn/` in the studio's repo) and a copy key; "your own agent is the assistant" under the
@@ -40,7 +40,8 @@ by Claude Opus 5.5, 2026-10-29 and 30. Agent-facing.
     matching models instead), the other half under the box (a tag's name; Claude's three tags), all from
     `OpenRouterCatalog` (linked; read off the UI thread, cached, refreshed at most every 3 days: docs/assistant.md >
     Switching it on); and **no data collection** (on by default);
-  - **auto mode** (on by default; docs/assistant.md > Auto mode off).
+  - **web and programs** (`auto_mode`, on by default; while off, a faint line under it says what the assistant can't
+    do; docs/assistant.md > Auto mode off).
   Written into the client's own `vr-settings.json` in its base dir, only those keys, everything else kept.
 - **Launch** starts the VR client (`--login --login-resume --base-dir B --vr`) with the login handed over as a lost GPU's
   restart hands it (`LoginStore.HandOver`: DPAPI, read and deleted by the client, ignored after two minutes; the

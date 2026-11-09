@@ -56,7 +56,7 @@ first, and only then explained, behind a small toggle.
   no new key kind). Groups keep a section to about one page at size 1 (the user wants completeness before release's
   simplification, but no section unusable, 2026-10-29). Notes only where the person set the words (a character). Rows
   that don't apply aren't shown (eye height when seated; name and character until asked for; beacons' kinds while
-  beacons are off; the wall test with menus over walls).
+  beacons are off).
 - **Simple and advanced** (the user's call, 2026-10-29: Sojourn is assistant first, so the menu holds only what a
   person would change by hand rather than ask for; graphics are for asking, draw distance excepted): by default the
   menu shows assistant (model, memory, forget memory, ask before touching, advanced menu), incognito (all of it: by
@@ -112,7 +112,7 @@ first, and only then explained, behind a small toggle.
     *avatars* › full avatars, complexity limit, avatar physics, lip sync, selection beams; sky; location line
     off/on/+ lag; *beacons* › beacons and, while on, its kinds, lines, line width, highlights, sun, moon, then
     highlight transparent, tracking beacon, tracking beep; *parcel lines* › property lines, ban lines; maturity;
-    *menus* › menus over walls, wall test, frost bias, menus on desktop;
+    *menus* › menus over walls, menus on desktop;
   - **about** (last, simple too): its own words above the rows (version, disclaimer, credit, licence and source,
     support), *report a problem* › its words, review what's sent, send to Studio Quire or save for GitHub; third-party
     notices (the reader), crash reports ask/always/never; advanced: MAC and disk serial in statistics

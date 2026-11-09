@@ -178,7 +178,7 @@ async def mock():
         check(bool(msgs) and not any(r.get("provider_prefs") for r in msgs), "data collection allowed: no provider preference sent")
 
         p.configure({"provider": "openrouter", "openrouter_model": "claude", "key_stamp": 3, "auto_mode": False})
-        check("Auto mode is off" in p.prompt_note() and "CLAUDE_CODE_AUTO_MODE_MODEL" not in p.env(),
+        check("Web and programs is off" in p.prompt_note() and "CLAUDE_CODE_AUTO_MODE_MODEL" not in p.env(),
               "auto mode off: the model is told what's limited, no classifier model set")
         t = time.time()
         init, texts, results = await session(p, 'MOCK_BASH: python -c "print(12345)"')
@@ -217,7 +217,7 @@ async def mock():
         p.configure({"provider": "openrouter", "openrouter_model": "test/no-tools", "key_stamp": 3})
         check(not p.ready and p.state == "no_tools" and "another model" in p.how(), f"a model without tools: off, said why ({p.state})")
         p.configure({"provider": "openrouter", "openrouter_model": "no/such-model", "key_stamp": 3})
-        check(not p.ready and p.state == "no_tools", "a model OpenRouter doesn't have: off")
+        check(not p.ready and p.state == "no_model" and "another model" in p.how(), "a model OpenRouter doesn't have: off")
 
         provider.save_key("openrouter", "sk-or-v1-credits" + os.urandom(8).hex())
         p.configure({"provider": "openrouter", "openrouter_model": "claude", "key_stamp": 4})

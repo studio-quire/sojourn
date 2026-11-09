@@ -24,6 +24,8 @@ public sealed partial class MainForm
             case "displayname": await DisplayNameAsync(words); break;
             case "maturity": await MaturityAsync(words); break;
             case "emptytrash": await EmptyTrashAsync(); break;
+            case "emptylostandfound": await EmptyLostAndFoundAsync(); break;
+            case "run": AlwaysRunWords(words); break;
             case "saveoutfit": await SaveOutfitAsync(words); break;
         }
     }
@@ -115,6 +117,41 @@ public sealed partial class MainForm
         _ = MaturityAsync(AgentSession.Maturities[at.Value]);
     }
 
+    /// <summary>//run: Always run turned the other way; //run on, //run off: set. Said either way.</summary>
+    void AlwaysRunWords(string words)
+    {
+        switch (words.ToLowerInvariant())
+        {
+            case "": SetAlwaysRun(!_set.WalkAlwaysRun); break;
+            case "on": SetAlwaysRun(true); break;
+            case "off": SetAlwaysRun(false); break;
+            default: Answer("//run alone turns Always run on or off; //run on and //run off set it."); break;
+        }
+    }
+
+    void ToggleAlwaysRun() => SetAlwaysRun(!_set.WalkAlwaysRun);
+
+    void SetAlwaysRun(bool on)
+    {
+        _set.SetAlwaysRun(on);
+        KeepAlwaysRun();
+        Answer(on ? "Always running: walking, //go and following run now. //run again walks." : "Walking again: Shift with the arrows still runs in walk mode.");
+    }
+
+    (bool On, GridClient? Client, Simulator? Sim) _runSent;
+
+    /// <summary>The slow tick: Always run told to the region when the setting changes, and again while it's on whenever
+    /// the region does (a teleport or a crossing, a new login), since the region keeps it, not the viewer. Off, a new
+    /// region isn't told, so walk mode's Shift held across a crossing isn't undone.</summary>
+    void KeepAlwaysRun()
+    {
+        if (_ops?.Client is not { } c || c.Network.CurrentSim is not { } sim) return;
+        bool on = _set.WalkAlwaysRun;
+        bool moved = !ReferenceEquals(_runSent.Client, c) || !ReferenceEquals(_runSent.Sim, sim);
+        if (_runSent.On != on || on && moved) c.Self.Movement.AlwaysRun = on;
+        _runSent = (on, c, sim);
+    }
+
     /// <summary>Everything in the Trash gone for good, behind her confirmation.</summary>
     async Task EmptyTrashAsync()
     {
@@ -123,6 +160,32 @@ public sealed partial class MainForm
         Answer("The Trash is empty.");
         await Task.Delay(500);
         RefreshInventory(_ops.Session.Inventory.FolderFor(FolderType.Trash));
+    }
+
+    /// <summary>Everything in Lost and Found (what's returned from the world lands there) gone for good, behind her
+    /// confirmation, as the viewer's and Radegast's Empty Lost and Found.</summary>
+    async Task EmptyLostAndFoundAsync()
+    {
+        if (await ConfirmedAsync("TesselInventory", "emptyLostAndFound", new JsonObject()) is not { } r) return;
+        if (PersonOps.Error(r) is { } e) { Answer($"Not emptied: {e}"); return; }
+        Answer("Lost and Found is empty.");
+        await Task.Delay(500);
+        RefreshInventory(_ops.Session.Inventory.FolderFor(FolderType.LostAndFound));
+    }
+
+    /// <summary>Whether something is in Lost and Found, or a folder in it (the folder itself not counted).</summary>
+    bool InLostAndFound(InventoryBase n)
+    {
+        var lf = _ops.Session.Inventory.FolderFor(FolderType.LostAndFound);
+        if (Store is not { } store || lf == UUID.Zero || lf == store.RootFolder?.UUID) return false;
+        var id = n.ParentUUID;
+        for (int i = 0; i < 64 && id != UUID.Zero; i++)
+        {
+            if (id == lf) return true;
+            if (!store.TryGetValue<InventoryBase>(id, out var up)) return false;
+            id = up.ParentUUID;
+        }
+        return false;
     }
 
     /// <summary>Attach to a point the person picks, beside what's on it already: how to wear something whose own point is wrong.</summary>
@@ -157,12 +220,18 @@ public sealed partial class MainForm
             : play ? $"Playing {item.Name} on your avatar. Stop it is on this menu." : $"Stopped {item.Name}.");
     }
 
-    /// <summary>F5: the grid asked for every folder again, as Radegast's reload, how stale folders get mended; then shown.</summary>
+    /// <summary>F5: the grid asked for every folder again, as Radegast's reload, how stale folders get mended: what it has
+    /// comes in, and what it no longer has (deleted or moved in another viewer) goes from where it was; then both panes
+    /// shown again.</summary>
     async Task ReloadInventoryAsync(InvPane p)
     {
         Reader?.Answer("Asking the grid for your inventory again.", keep: false);
-        var whole = await _ops.Session.Inventory.ReloadAsync(CancellationToken.None);
-        ShowInventory(p, said: false);
-        Reader?.Answer(whole ? "Inventory read again from the grid." : "Inventory read again; some folders didn't answer, so F5 again may help.", keep: false);
+        var inv = _ops.Session.Inventory;
+        var whole = await inv.ReloadAsync(CancellationToken.None);
+        foreach (var pane in Panes)
+            if (pane == p || pane.ShownOnce) ShowInventory(pane, said: false);
+        int gone = inv.LastReloadDropped;
+        var dropped = gone == 0 ? "" : gone == 1 ? " 1 thing wasn't there any more, and is gone from the list." : $" {gone} things weren't there any more, and are gone from the list.";
+        Reader?.Answer((whole ? "Inventory read again from the grid." : "Inventory read again; some folders didn't answer, so F5 again may help.") + dropped, keep: false);
     }
 }

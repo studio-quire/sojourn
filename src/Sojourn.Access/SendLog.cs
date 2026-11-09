@@ -73,7 +73,7 @@ sealed class SendLogForm : Form
         {
             Name = "sendLogWhat", AccessibleName = "What's sent", Multiline = true, ReadOnly = true, Width = 440, Height = 120,
             BackColor = SystemColors.Window, ScrollBars = ScrollBars.Vertical,
-            Text = "Sent to Studio Quire through its relay, with your token: the session's log and your note. "
+            Text = "Sent to Studio Quire's server, with your token: the session's log and your note. "
                 + "The log keeps what Sojourn Access did and read out to you, your own chat, what objects said, the assistant's replies, "
                 + "errors and timings. It leaves out everything other people said or wrote, and their names become person 1, "
                 + "person 2 and so on; yours becomes me. Studio Quire keeps it for 30 days."
@@ -171,7 +171,7 @@ sealed class SendLogForm : Form
             if (res.Unreached is { } unreached)
             {
                 _log?.LogWarning("sendlog: {Msg}", unreached);
-                Speak($"Not sent: Studio Quire's relay couldn't be reached ({unreached}).");
+                Speak($"Not sent: Studio Quire couldn't be reached ({unreached}).");
                 return;
             }
             if (res.Ok)
@@ -186,9 +186,9 @@ sealed class SendLogForm : Form
             _log?.LogWarning("sendlog: the relay answered {Status}: {Msg}", res.Status, told ?? "");
             Speak(res.Status switch
             {
-                401 => "Studio Quire's relay didn't take your token. Nothing was sent.",
+                401 => "Studio Quire didn't accept your token. Nothing was sent.",
                 429 => told ?? "Too many logs sent today. Try again tomorrow.",
-                _ => $"Not sent: {told ?? $"the relay answered {res.Status}"}.",
+                _ => $"Not sent: {told ?? $"Studio Quire's server had a problem ({res.Status})"}.",
             });
         }
         finally

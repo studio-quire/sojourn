@@ -610,13 +610,9 @@ if (headset != null)
 // the eyes' depth handed to the headset's compositor for reprojecting (on by default; menu > view > depth reprojection)
 settingsApi.Add("reprojection_depth", new("view", "in the headset, the eyes' depth goes to the compositor so late frames are reprojected by head position too (off by default: no visible difference, and with it the compositor misorders overlapping menus in a patch around the view, so it's held back while any two overlap); off, by rotation only", "on, off",
     () => vrSettings.ReprojectionDepth, v => headset is not { HasDepthLayers: true } ? "reprojection_depth: the headset's runtime has no depth layers" : SettingsApi.Switch("reprojection_depth", on => vrSettings.ReprojectionDepth = on)(v)));
-// walls and the headset's menus (Render/Realtime/Overlay.Walls.cs; menu > view > menus over walls, frost test, frost bias)
+// walls and the headset's menus (Render/Realtime/Overlay.Walls.cs; menu > view > menus over walls)
 settingsApi.Add("menus_over_walls", new("view", "in the headset, the menus (panel, settings, chat, cards, boards, keyboard, reader) always show over the world; off (the default), a wall or anything nearer than a menu hides it, as in the world", "on, off",
     () => vrSettings.MenusOverWalls, SettingsApi.Switch("menus_over_walls", on => vrSettings.MenusOverWalls = on)));
-settingsApi.Add("menu_frost_test", new("view", "with walls hiding menus, how: exact (the default: Sojourn hides them itself, drawing whatever is in front of a menu over it, so a wall hides a menu and its glass blur only where it's really in front), or the headset compositor's own test (patchy over Link), the blur copying its apparent error: radial (by distance from the eye), head (from between the eyes)", string.Join(", ", VrSettings.MenuWallTests),
-    () => vrSettings.MenuWallTest, SettingsApi.Choice("menu_frost_test", VrSettings.MenuWallTests, i => vrSettings.MenuWallTest = VrSettings.MenuWallTests[i])));
-settingsApi.Add("menu_frost_bias", new("view", "with walls hiding menus, the blur under a menu is tested as if this share farther away (0.05: 5%); positive, walls hide the blur more readily, negative, less", "-0.3 to 0.3",
-    () => vrSettings.MenuFrostBias, SettingsApi.Number("menu_frost_bias", -0.3f, 0.3f, "", f => vrSettings.MenuFrostBias = f)));
 // the headset's menus over its mirror in the PC's window (on by default; menu > view > menus on desktop)
 settingsApi.Add("mirror_menus", new("view", "in the headset, the PC's window shows the menus (panel, settings, chat, cards, boards, keyboard, reader) over the view as the headset does; off, the view alone (incognito blanks the window either way)", "on, off",
     () => vrSettings.MirrorMenus, SettingsApi.Switch("mirror_menus", on => vrSettings.MirrorMenus = on)));
@@ -1149,8 +1145,8 @@ void HeadsetFrame(XrSession hs, MirrorTarget target)
             if (xf.Input.RightHandPos is { } rh) handsAt.Add(vrPilot.RoomToRegion(rh));
             req = req with { Overlay = (req.Overlay ?? new OverlayScene()) with { Cut = new HandCut(menus, handsAt) } };
         }
-        // walls and the menus: hidden where the world is in front (the compositor's depth corrected under them), or as
-        // its own error hides them (the frost copying it), or always over (carved); Render/Realtime/Overlay.Walls.cs
+        // walls and the menus: hidden where the world is in front (the compositor's depth corrected under them), or
+        // always over (carved); Render/Realtime/Overlay.Walls.cs
         if (view != null && req.Overlay is { } wo)
             req = req with
             {
@@ -1158,9 +1154,6 @@ void HeadsetFrame(XrSession hs, MirrorTarget target)
                 {
                     MenusOverWalls = vrSettings.MenusOverWalls,
                     PanelOverWalls = hs.PanelOnTop,   // a confirmation is never covered (set this frame by HeadsetAssistant)
-                    MenuDepthFix = vrSettings.MenuWallTest == "exact",
-                    MenuDepth = vrSettings.MenuWallTest == "head" ? MenuDepth.RadialHead : MenuDepth.Radial,
-                    MenuDepthBias = vrSettings.MenuFrostBias,
                 },
             };
         // adaptive ink's look at the world behind the sheets (Assistant/AdaptiveInk.cs)

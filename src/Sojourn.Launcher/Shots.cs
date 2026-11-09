@@ -64,6 +64,10 @@ static class Shots
             Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings-openrouter-claude.png"));
             file.OpenRouterModel = "google/gemini-4-argon";
             Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings-openrouter.png"));
+            // web and programs off, at the card's tallest: the line under the switches says what that leaves
+            file.AutoMode = false;
+            Draw(Make(places, v => v.ShowPage("settings")), Path.Combine(dir, "settings-web-off.png"));
+            file.AutoMode = true;
             // the list under ▾, drawn on its own over the window's light (a popup isn't part of the view)
             var list = Make(places, v => v.ShowPage("settings")).ModelListShot();
             var back = new System.Windows.Controls.Border { Background = new SolidColorBrush(Color.FromRgb(0xE3, 0xEE, 0xF1)), Padding = new Thickness(12), Child = list };

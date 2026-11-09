@@ -15,7 +15,7 @@ namespace Sojourn.Access;
 public sealed partial class MainForm
 {
     readonly MenuStrip _menu = new() { Name = "menu", AccessibleName = "Menu bar", TabStop = false };
-    ToolStripMenuItem _sitItem = null!, _flyItem = null!, _awayItem = null!, _dndItem = null!, _incognitoItem = null!,
+    ToolStripMenuItem _sitItem = null!, _flyItem = null!, _runItem = null!, _awayItem = null!, _dndItem = null!, _incognitoItem = null!,
         _micItem = null!, _muteItem = null!, _timesItem = null!, _recentItem = null!;
 
     void BuildMenu()
@@ -28,6 +28,7 @@ public sealed partial class MainForm
             new ToolStripSeparator(),
             _sitItem = Item("&Sit on the ground", null, () => _ = SitOrStandAsync()),
             _flyItem = Item("&Fly", null, ToggleFly),
+            _runItem = Item("Always run", "//run", ToggleAlwaysRun),   // (no mnemonic: its letters are taken in World)
             Later("Wal&k mode", "F3", ToggleWalk),
             RouteMenu(),
             RideMenu(),
@@ -164,6 +165,7 @@ public sealed partial class MainForm
         _sitItem.Text = sitting ? "&Stand up" : "&Sit on the ground";
         _flyItem.Text = c?.Self.Movement.Fly == true ? "Stop &flying" : "&Fly";
         _flyItem.Enabled = !sitting;
+        _runItem.Checked = _set.WalkAlwaysRun;
         _awayItem.Checked = Host?.Session.Presence.Away == true;
         _dndItem.Checked = Host?.Session.Presence.DoNotDisturb == true;
         _incognitoItem.Checked = Host?.Session.Private.On == true;

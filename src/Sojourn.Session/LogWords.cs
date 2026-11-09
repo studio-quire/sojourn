@@ -10,7 +10,7 @@ namespace Sojourn.Session;
 /// The session log's records of words and names (SessionLog.Record), each saying whose words it carries, so a log sent
 /// to the studio can leave other people's out exactly and put stand-ins for their names (LogShare.cs):
 /// <c>~words</c> everything that joins the feed (nearby chat, IMs, group chat, notices), <c>~heard</c> each line the
-/// screen reader was given (Announcer.Heard), <c>~name</c> each name learned (legacy, display, pseudonym; the
+/// screen reader was given (Announcer.Heard), <c>~name</c> each name learned (legacy, display, its plain letters, pseudonym; the
 /// person's own marked <c>me</c>). Locally they're the person's own log, as chat in the console always was.
 /// Written by Claude Opus 5.5, 2026-10-31.
 /// </summary>
@@ -38,6 +38,8 @@ public static class LogWords
             bool me = id == s.AgentId && id != UUID.Zero;
             var o = new JsonObject { ["id"] = id.ToString(), ["legacy"] = legacy };
             if (!string.IsNullOrEmpty(display)) o["display"] = display;
+            // what Sojourn Access says for a display name in decorative letters ("Marigold"), so it's stood in for too
+            if (Sojourn.Core.World.PlainName.Of(display) is { Length: > 0 } plain && plain != display) o["plain"] = plain;
             if (me) o["me"] = true;
             SessionLog.Record("name", o);
             // the account's pseudonyms once it's known whose they are (its store is the account's)

@@ -22,8 +22,8 @@ TPV policy uses what the official viewer already sends and plays: LookAt for hea
 - **Parked**, judged within the TPV rules but not wanted now: an arm-pose palette played like an AO (D), and scripted
   segmented arm and hand attachments moved by a script fed over a private chat channel (E's idea, with chat instead of
   HTTP-in).
-- **The joint alphabet (F)**, which would supersede D: saved for a possible future attempt (2026-10-27; the studio's
-  `ideas/sojourn-joint-alphabet.md`). Its cheap checks come first.
+- **The joint alphabet (F)**, which would supersede D: saved for a possible future attempt (2026-10-27), not on
+  the studio's ideas shelf: the full design is section F below, and its cheap checks come first.
 - Watch for LL reviving Puppetry or animation streaming; the seed-cap check under Puppetry would tell us.
 
 ## What others see of Sojourn now (verified, repo)

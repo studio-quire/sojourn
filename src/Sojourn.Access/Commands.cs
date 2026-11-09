@@ -55,7 +55,7 @@ public sealed class Commands
                 case "links": Links?.Invoke(); return true;
                 case "chatlog" or "chatlogs": ChatLog?.Invoke(string.Join(" ", rest)); return true;
                 case "block": if (Block != null) await Block(string.Join(" ", rest)); return true;
-                case "rebake" or "stopanimations" or "hover" or "displayname" or "maturity" or "emptytrash" or "saveoutfit":
+                case "rebake" or "stopanimations" or "hover" or "displayname" or "maturity" or "emptytrash" or "emptylostandfound" or "saveoutfit" or "run":
                     if (Self != null) await Self(verb, string.Join(" ", rest));
                     return true;
                 case "profile": if (Profile != null) await Profile(string.Join(" ", rest)); return true;
@@ -144,7 +144,7 @@ public sealed class Commands
         ("stand", "//stand (or //unsit)", "stand up"),
         ("follow", "//follow NAME | //follow NAME METRES | //follow stop | //follow", "follow someone (ask first), stop, or say who; at the wheel of something steered by the arrows, drive after them, METRES behind if given (10 if not)"),
         ("tp", "//tp list | //tp N | //tp NAME | //tp Region/X/Y/Z | //tp SLURL", "teleport by landmark (Radegast Landmarks folder, else Landmarks), or to a place"),
-        ("status", "//status [doing|region|parcel|location|money|time|music]", "what you're doing, where you are, your L$, the time in Second Life, the music playing"),
+        ("status", "//status [doing|region|parcel|location|health|money|time|music]", "what you're doing, where you are, your health where damage is on, your L$, the time in Second Life, the music playing"),
         ("route", "//route NOTECARD | //route (the lines on the clipboard) | //route stop | //route resume",
             "play a route: a notecard's (or the clipboard's) // lines one at a time, each walk finished before the next, other lines read as notes"),
         ("record", "//record | //record note WORDS | //record undo | //record pause | //record save [NAME] | //record discard",
@@ -185,6 +185,8 @@ public sealed class Commands
         ("displayname", "//displayname | //displayname NAME", "your display name and when it can change; or change it, after you confirm"),
         ("maturity", "//maturity | //maturity general, moderate or adult", "the highest rating of region you go into, and how high your account may go; or change it"),
         ("emptytrash", "//emptytrash", "delete everything in the Trash for good, after you confirm"),
+        ("emptylostandfound", "//emptylostandfound", "delete everything in Lost and Found for good (what's returned from the world lands there), after you confirm"),
+        ("run", "//run | //run on | //run off", "always run, or walk again: walking, //go and following all run while it's on"),
         ("profile", "//profile | //profile NAME", "your own profile, to read and change; or anyone's, by name"),
         ("notes", "//notes NAME", "your own notes on someone, by name, in their profile: only you see them"),
         ("friend", "//friend NAME", "offer anyone friendship, by name"),
@@ -291,6 +293,19 @@ public sealed class Commands
     public Func<float?>? FeetZ { get; set; }
     /// <summary>A walk with no way around teleports there (the walk_teleport_fallback setting).</summary>
     public Func<bool> TeleportFallback { get; set; } = () => true;
+    /// <summary>Always run (the walk_always_run setting): a //go runs.</summary>
+    public Func<bool> AlwaysRun { get; set; } = () => false;
+
+    /// <summary>The region's autopilot toward a point, running with Always run on. OpenSim's autopilot turns running off
+    /// as it starts (ScenePresence.MoveToTargetHandle), so it's sent again after, and again half a second on, as the
+    /// region may start the walk after the first has landed; what Second Life's does isn't known.</summary>
+    void AutoPilotTo(GridClient c, double x, double y, double z)
+    {
+        c.Self.AutoPilot(x, y, z);
+        if (!AlwaysRun()) return;
+        c.Self.Movement.AlwaysRun = true;
+        _ = Task.Delay(500).ContinueWith(_ => { if (ReferenceEquals(_ops.Client, c) && c.Self.Movement.AlwaysRun) c.Self.Movement.AlwaysRun = true; }, TaskScheduler.Default);
+    }
     /// <summary>Whether a cue's text is wanted (walk mode's settings: "follow").</summary>
     public Func<string, bool> CueText { get; set; } = _ => true;
 
@@ -354,7 +369,7 @@ public sealed class Commands
         if (route is not { } r)
         {
             if (_ops.Global(target) is not { } g) return false;
-            c.Self.AutoPilot(g.X, g.Y, g.Z);
+            AutoPilotTo(c, g.X, g.Y, g.Z);
             _say(string.Create(CultureInfo.InvariantCulture, $"Walking {Bearings.Metres(flat)} to {what}."));
             return await WatchWalkAsync(target, near, ct, origin);
         }
@@ -377,7 +392,7 @@ public sealed class Commands
                 _say($"{i + 1} of {legs.Count}: {Bearings.Metres(d.Length())} to the {Bearings.Point(Bearings.Compass(0, 0, d.X, d.Y))}.");
             }
             if (_ops.Global(leg) is not { } g) return false;
-            c.Self.AutoPilot(g.X, g.Y, g.Z);
+            AutoPilotTo(c, g.X, g.Y, g.Z);
             var got = await LegAsync(leg, last ? (r.Moved ? 0.6 : near) : 0.5, ct, origin);
             if (got == Leg.Cancelled) return false;
             if (got == Leg.Reached)
@@ -584,7 +599,7 @@ public sealed class Commands
                 // a crossing on the way: the new region doesn't carry the old one's autopilot on, so asked again once
                 again = true;
                 Utils.LongToUInts(origin, out var ox, out var oy);
-                c.Self.AutoPilot(ox + (double)target.X, oy + (double)target.Y, target.Z);
+                AutoPilotTo(c, ox + (double)target.X, oy + (double)target.Y, target.Z);
                 stillSince = now;
                 moved = false;
                 continue;
@@ -1307,6 +1322,11 @@ public sealed class Commands
         if (All("location"))
             parts.Add(string.Create(CultureInfo.InvariantCulture,
                 $"At {Math.Round(me.Pos.X):0}, {Math.Round(me.Pos.Y):0}, {Math.Round(me.Pos.Z):0}, facing {Bearings.Point(me.Heading)}, {Bearings.ToSl(me.Heading)} degrees."));
+        // health, as Radegast's status bar: asked for, or in the whole status while it's below full (the region sends it
+        // only once something changes it, on land where damage is on)
+        int health = (int)MathF.Round(c.Self.Health);
+        if (want.Contains("health")) parts.Add(health > 0 ? $"Health {health}%." : "Health: the region hasn't sent it, as it doesn't until something hurts you where damage is on.");
+        else if (want.Count == 0 && health is > 0 and < 100) parts.Add($"Health {health}%.");
         if (All("money")) parts.Add(_s.BalanceKnown ? $"L${c.Self.Balance}." : "Balance not known yet.");
         if (All("time"))
         {
@@ -1317,7 +1337,7 @@ public sealed class Commands
         // the song playing, asked for (a title read out on every change can be too much: Alt+0 turns those off)
         if (All("music") && Music?.Invoke() is var music && (music != null || want.Contains("music")))
             parts.Add(music ?? "No music on this parcel.");
-        _say(parts.Count > 0 ? string.Join(" ", parts) : "//status doing, region, parcel, location, money, time or music.");
+        _say(parts.Count > 0 ? string.Join(" ", parts) : "//status doing, region, parcel, location, health, money, time or music.");
     }
 
     string SeatName(GridClient c)

@@ -267,9 +267,26 @@ public sealed partial class AgentSession
                 var parts = (im.Message ?? "").Split('|', 2);
                 var subject = parts[0];
                 var body = parts.Length > 1 ? parts[1] : "";
-                Notify.Add("GroupNotice", "groupnotify", $"Topic: {subject}, Message: {body}", Notifications.Ok,
-                    payload: new JsonObject { ["group_id"] = im.FromAgentID.ToString(), ["sender_name"] = im.FromAgentName },
-                    substitutions: new JsonObject { ["SUBJECT"] = subject, ["MESSAGE"] = body, ["SENDER"] = im.FromAgentName });
+                var payload = new JsonObject { ["group_id"] = im.FromAgentID.ToString(), ["sender_name"] = im.FromAgentName };
+                var subs = new JsonObject { ["SUBJECT"] = subject, ["MESSAGE"] = body, ["SENDER"] = im.FromAgentName };
+                if (GroupOps.NoticeAttachment(im.BinaryBucket) is not { } att)
+                {
+                    Notify.Add("GroupNotice", "groupnotify", $"Topic: {subject}, Message: {body}", Notifications.Ok, payload: payload, substitutions: subs);
+                    return;
+                }
+                // what's attached waits for Keep, as the viewer's notice offers it (unkept, it stays in the group's archive)
+                var typeName = AgentInventory.AssetTypeLabel(att.Type);
+                payload["notice_id"] = im.IMSessionID.ToString();
+                payload["attachment"] = att.Name;
+                payload["attachment_type"] = typeName;
+                subs["ATTACHMENT"] = att.Name;
+                Notify.Add("GroupNotice", "groupnotify", $"Topic: {subject}, Message: {body}\nAttached: {att.Name} ({typeName})",
+                    new[] { new NotifyButton("Keep", "Keep", 0), new NotifyButton("OK", "OK", 1) }, payload: payload, substitutions: subs,
+                    respond: (button, _) =>
+                    {
+                        if (button == "Keep") AgentInventory.AnswerOffer(c, im, att.Type, UUID.Zero, keep: true);
+                        return Task.CompletedTask;
+                    });
                 return;
             }
             case InstantMessageDialog.GotoUrl:

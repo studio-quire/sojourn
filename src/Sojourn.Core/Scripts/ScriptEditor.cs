@@ -196,13 +196,17 @@ public sealed class ScriptEditor
         finally { c.Inventory.TaskInventoryReply -= OnReply; }
     }
 
-    internal async Task<bool> RunningAsync(UUID objectId, UUID itemId, CancellationToken ct)
+    internal async Task<bool> RunningAsync(UUID objectId, UUID itemId, CancellationToken ct) => (await ScriptStateAsync(objectId, itemId, ct)).Running;
+
+    /// <summary>Whether a script in a prim is running, and whether it's compiled for Mono (null: no answer), as the
+    /// viewer's script window reads them for its two boxes (GetScriptRunning; the reply's Mono comes by the event queue).</summary>
+    internal async Task<(bool Running, bool? Mono)> ScriptStateAsync(UUID objectId, UUID itemId, CancellationToken ct)
     {
         var c = C;
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<(bool, bool?)>(TaskCreationOptions.RunContinuationsAsynchronously);
         void Handler(object? _, ScriptRunningReplyEventArgs e)
         {
-            if (e.ObjectID == objectId && e.ScriptID == itemId) tcs.TrySetResult(e.IsRunning);
+            if (e.ObjectID == objectId && e.ScriptID == itemId) tcs.TrySetResult((e.IsRunning, e.IsMono));
         }
         c.Inventory.ScriptRunningReply += Handler;
         try
@@ -210,7 +214,7 @@ public sealed class ScriptEditor
             c.Inventory.RequestGetScriptRunning(objectId, itemId);
             return await tcs.Task.WaitAsync(TimeSpan.FromSeconds(3), ct);
         }
-        catch (TimeoutException) { return false; }
+        catch (TimeoutException) { return (false, null); }
         finally { c.Inventory.ScriptRunningReply -= Handler; }
     }
 
@@ -317,9 +321,19 @@ public sealed class ScriptEditor
             // read first, so what's embedded stays; if the card can't be read nothing is saved, rather than risk losing it
             var was = await c.Assets.RequestInventoryAssetAsync(_savedAsset.TryGetValue(itemId, out var had) ? had : item.AssetUUID, item.UUID, prim.ID, item.OwnerID, item.AssetType, true, UUID.Random(), ct)
                       ?? throw new RpcFail(-32001, "Timeout: the notecard couldn't be read, and saving over it unread could lose what's embedded in it");
-            await SaveNotecardAsync(prim, itemId, NotecardFile.Parse(was.AssetData).Saved(content, out var moved), ct);
+            // sojourn: remove (embedded item ids) and add ([{item_id, marker}], from my inventory), as writeNotecard has them
+            List<(InventoryItem Item, string Marker)> add;
+            try { add = await _s.InventoryOps.EmbeddingAsync(p, itemId, ct); }
+            catch (Leap.LeapError e) { throw new RpcFail(-32602, $"Invalid params: {e.Message}"); }
+            byte[] bytes;
+            List<string> moved, removed;
+            try { bytes = NotecardFile.Parse(was.AssetData).Saved(content, p.UuidList("remove"), add, out moved, out removed); }
+            catch (InvalidOperationException e) { throw new RpcFail(-32603, e.Message); }
+            await SaveNotecardAsync(prim, itemId, bytes, ct);
             var saved = new JsonObject { ["success"] = true, ["prim_id"] = primId.ToString(), ["item_id"] = itemId.ToString() };
             if (moved.Count > 0) saved["moved_to_end"] = new JsonArray(moved.Select(m => (JsonNode)m).ToArray());
+            if (removed.Count > 0) saved["removed"] = new JsonArray(removed.Select(m => (JsonNode)m).ToArray());
+            if (add.Count > 0) saved["added"] = new JsonArray(add.Select(m => (JsonNode)m.Item.Name).ToArray());
             return saved;
         }
         var vm = p.Str("vm") ?? (_vm.TryGetValue(itemId, out var v) ? v : "mono");
@@ -486,9 +500,40 @@ public sealed class ScriptEditor
         var assetId = _savedAsset.TryGetValue(itemId, out var saved) ? saved : item.AssetUUID;
         var asset = await c.Assets.RequestInventoryAssetAsync(assetId, item.UUID, prim.ID, item.OwnerID, item.AssetType, true, UUID.Random(), ct)
                     ?? throw new RpcFail(-32001, "Timeout: asset fetch failed");
-        var text = item.AssetType == AssetType.Notecard ? NotecardFile.Parse(asset.AssetData).Readable
-            : Encoding.UTF8.GetString(asset.AssetData ?? Array.Empty<byte>()).TrimEnd('\0');
-        return new JsonObject { ["success"] = true, ["prim_id"] = primId.ToString(), ["item_id"] = itemId.ToString(), ["content"] = text };
+        var result = new JsonObject { ["success"] = true, ["prim_id"] = primId.ToString(), ["item_id"] = itemId.ToString() };
+        if (item.AssetType == AssetType.Notecard)
+        {
+            // sojourn: what the card holds, as readNotecard lists it
+            var file = NotecardFile.Parse(asset.AssetData);
+            result["content"] = file.Readable;
+            if (file.Items.Count > 0) result["embedded"] = InventoryOps.EmbeddedJson(file);
+            return result;
+        }
+        result["content"] = Encoding.UTF8.GetString(asset.AssetData ?? Array.Empty<byte>()).TrimEnd('\0');
+        if (item.AssetType == AssetType.LSLText)
+        {
+            // sojourn: the two boxes of the viewer's script window, Running and Mono (a Lua script is Lua whatever)
+            var (running, mono) = await ScriptStateAsync(prim.ID, itemId, ct);
+            result["running"] = running;
+            var vm = IsLua(item) ? "luau" : mono is { } m ? (m ? "mono" : "lsl2") : _vm.TryGetValue(itemId, out var v) ? v : null;
+            if (vm is not null) result["vm"] = vm;
+        }
+        return result;
+    }
+
+    /// <summary>A notecard in a prim's contents, read (the asset our last save made, if any).</summary>
+    internal async Task<(InventoryItem Item, NotecardFile File)> TaskNotecardAsync(UUID primId, UUID itemId, CancellationToken ct)
+    {
+        var c = C;
+        var w = _s.Region ?? throw new RpcFail(-32603, "no region");
+        var prim = w.PrimById(primId) ?? throw new RpcFail(-32602, "that object isn't in this region");
+        var item = (await TaskInventoryAsync(prim, ct)).OfType<InventoryItem>().FirstOrDefault(i => i.UUID == itemId)
+                   ?? throw new RpcFail(-32602, "no such item in that object");
+        if (item.AssetType != AssetType.Notecard) throw new RpcFail(-32602, $"{item.Name} isn't a notecard");
+        var assetId = _savedAsset.TryGetValue(itemId, out var saved) ? saved : item.AssetUUID;
+        var asset = await c.Assets.RequestInventoryAssetAsync(assetId, item.UUID, prim.ID, item.OwnerID, item.AssetType, true, UUID.Random(), ct)
+                    ?? throw new RpcFail(-32001, "the notecard's text didn't arrive");
+        return (item, NotecardFile.Parse(asset.AssetData));
     }
 
     /// <summary>Diagnostics: a prim's contents as the region lists them (ids, asset ids, masks).</summary>

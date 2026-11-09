@@ -120,6 +120,17 @@ MFA code come in their own small windows, answered only by the person's own key 
 opens with the focus in the Say box and "Logged in, in Atelier. F1 for keys." is said. Another account after a failed
 one restarts the app with the form filled in (each account's state is its own).
 
+Remember password (a check box, Alt+M, off by default; Radegast's guide ticks its own in step one): ticked, the
+password is kept once a login with it works, as the VR client's saved logins keep it (`LoginStore`: "$1$" and the MD5,
+the form every viewer sends, under Windows' data protection for this user, in `local/secrets/logins` from the repo or
+`%LOCALAPPDATA%\Sojourn\secrets\logins` installed). For an account with a kept password the box is ticked and the
+Password box, still empty, says "Remembered: Enter logs in with it, or type another."; a password typed there wins.
+Unticking forgets it at once ("Password forgotten."), and a login with it unticked forgets it too. Before, the password
+was never kept, typed at every start and every time the session gave up logging in again (gap 11, closed 2026-11-08).
+What's kept is the account itself to anything that runs as the person on that PC, as with every viewer's saved login;
+the assistant's file tools and shell can't reach either folder (`assistant/harness.py` > `secret_paths`). The scripted
+test keeps its own (`SOJOURN_LOGINS`).
+
 The Favorites bar's landmarks as start places (`StartPlaces.cs`; the blind tester's ask, 2026-11-02): the login screen
 can't read the inventory, so, as the official viewer saves each account's favourites' SLurls while logged in
 (`LLFavoritesOrderStorage`), Access keeps each landmark directly in the account's Favorites folder (or a link to one)
@@ -148,7 +159,7 @@ Alt+number; Radegast's numbers where Radegast has the same area.
 | Alt+2 | Friends | the People area with the focus on Friends, its first friend read: Radegast's Alt+2 (a blind tester's habit, 2026-10-30) |
 | Alt+3 | People | Nearby ("Kestrel Tester, 4 metres, two o'clock", nearest first), Friends ("Kestrel, online", online first), My groups ("Builders, tag worn") |
 | Control+Tab | Conversations | a tab per IM or group chat: its history over its input ("Message to Kestrel"); also View > Conversations; and the builders' tab (Control+Shift+B, Messages to the builders, below) |
-| Alt+4 | Inventory | the tree ("Red Dress, skirt, worn"; "Hair, object, worn on Skull"; "..., favorite"; "..., marked"), Search, and Show (everything, worn, recent, trash, favorites) |
+| Alt+4 | Inventory | the tree ("Red Dress, skirt, worn"; "Hair, object, worn on Skull"; "..., favorite"; "..., marked"), Search, Show (everything, worn, recent, trash, favorites, gestures) and Search by (name, creator, description) |
 | Alt+5 | Search | Search for (words), Look for (people, places, events, groups, classifieds), Category and Day where they apply, Results |
 | Alt+6 | Places | Landmarks (a tree: the Landmarks folder and the Favorites bar), Teleport history ("Bay City, Harbour, today 14:05"), Go to region (a box), Regions around ("Bay City, 3 people, next door to the north") |
 | Alt+7 | Objects nearby | "Notices Harp, 3 metres, eleven o'clock, touchable" (or ", can sit"), nearest first, within 30 m, the nearest 60 and then a row for more; Control+F filters by words (Show: what you wear instead, Alt+Shift+7, or what people nearby wear); Tab: the selected one's parts, then a part's faces, then the filter and Show (Objects nearby, Parts and faces, below) |
@@ -197,7 +208,7 @@ list; a blind tester, offered groups or a box narrowing the list as you type, ch
 
 `MainForm.Menu.cs`; Alt or F10, then the arrows, or Alt+W, V, R, B, H for a menu. It's there for finding out what exists,
 as Radegast's menus are. World (teleport home, to the SLurl on the clipboard, set home here, landmark here, sit on the
-ground or stand up, fly or stop flying, walk mode, Recording a route (its keys and Discard), Gestures: the active ones to play, Away and Do not disturb as checked
+ground or stand up, fly or stop flying, always run (a check, `//run`), walk mode, Recording a route (its keys and Discard), Gestures: the active ones to play, Away and Do not disturb as checked
 items, incognito, region info, About Land (Control+L) and the region's covenant, parcels in this region, status, what you're wearing, save your outfit, describe where you are, describe
 me, rebake, stop all animations, hover height, my profile, display name, highest rating of region (`MainForm.Self.cs`; each also a `//` command: `//rebake`, `//stopanimations`, `//hover`, `//displayname`, `//maturity`), log out, back to the login window (`//logout`: asked first, Enter goes and Escape stays; the app starts afresh there, the form filled in and the password typed again), who's in voice, open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
 Friends among them, the second inventory pane, the inventory's favorites, the newest notice, Conversations, the conversation ring, closing one),
@@ -254,7 +265,7 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   to the area and control Control+N came from, else to Say. Tab from the list reaches the notice's text, its reply box
   and its buttons ("1: Red", "Delete: Ignore").
 - **A person's actions are one list** (`MainForm.PersonActions.cs`), the same items with the same letters wherever their name is: People nearby (Enter opens them), Friends and Search (Enter: an IM), an IM's message box or history, and their profile (Applications key or its Actions button; there the window closes first). Send IM, Walk to, Face, Where, Describe, Follow, Beacon, Profile, Notes on them, Chat log, Pay..., Give what you copied, Offer teleport, Request teleport, Offer friendship (a friend: Start a conference..., End friendship, confirmed), Invite to a group... (Groups, below), Mute in voice or Unmute in voice, How loud in voice... (0 to 2, 1 as they come; both for you alone and kept), Always incognito with them, Block or Unblock, IM sound for NAME.... What needs them near says so when they aren't ("Kestrel isn't nearby, though online."), rather than the menu changing shape; Where on a friend elsewhere on the grid who lets you see them on the map says the region and spot ("Kestrel is in Bay City, at 128, 64."; `SojournPeople whereFriend`, as the viewers' Show on map). A friend's What they may do has See when you're online, Find you on the map and Edit your objects, checked as they stand, each through her confirmation; edit rights are how a sighted helper helps without logging in as her. `//block NAME`, `//profile NAME` and `//friend NAME` find anyone by name: open conversations, friends, people nearby, then the grid. A new action goes in `PersonActions`, never a list's own menu. On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
-  tag, Choose your title..., Members, Notices..., Chat log, Receive its notices, List it in your profile (Groups, below), Group sound for NAME..., Leave (the grid asks in Notices). On a friend, Start a conference...: friends online in a list of check boxes, the one you were on marked, Space marking more, Enter starting it with two or more and going to its tab. In a group's message box or history: its sound; in anyone's, Cut, Copy, Paste, Select all after what's above, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
+  tag, Choose your title..., Members..., Who's in its chat..., Notices..., New notice..., Invite someone..., Banned residents..., Chat log, Receive its notices, List it in your profile (Groups, below), Group sound for NAME..., Leave (the grid asks in Notices), and New group... (on "In no groups." too, alone). On a friend, Start a conference...: friends online in a list of check boxes, the one you were on marked, Space marking more, Enter starting it with two or more and going to its tab. In a group's message box or history: its sound and Who's in the chat...; in anyone's, Cut, Copy, Paste, Select all after what's above, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
   its own window: a read-only text read line by line (name, born, partner, about, interests, picks, groups with their titles, first life, web), their picks and your notes on them a Tab on,
   Send IM, Pay, Give what you copied, Describe pictures, Actions..., Close (Escape) (Your profile and notes, below). Pay asks the amount, then waits for the
   person's confirmation in Notices (refused at once when it can't be afforded). Give what you copied (also on a person
@@ -286,9 +297,16 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   tester took for worn or not), and what's marked is what every action takes, else the selected one; an item's words
   follow a wear or take-off as it lands ("worn" comes and goes within a second). The Applications key (or Shift+F10)
   lists every action: Wear, Add to outfit, Take off, Rez on the ground, Rez where you say..., Unbox, Give to..., Cut,
-  Copy, Paste, Paste as link, Rename, Details (rights, maker, date), Delete; on a folder Replace outfit, Add to outfit, Take off the
-  folder's items, New folder, New notecard, New script, Upload a file here (Control+U; Uploading, below); a notecard also Play as
-  a route (`//route`); a landmark Teleport there and About the place.
+  Copy, Paste, Paste as link, Rename, Sort by date (or by name), Details (rights, maker, date), Delete; on a folder Replace outfit, Add to outfit, Take off the
+  folder's items, New folder, New notecard, New script, Upload a file here (Control+U; Uploading, below), Expand all in it (and
+  Collapse all in it, once open); a notecard also Play as a route (`//route`); a landmark Teleport there and About the place.
+  - **The order** (Radegast's Sort by date, which it starts on; Alt+0's "Inventory order in each folder", `access_inventory_sort`):
+    by name, or newest first, folders first and by name either way. The Applications key's Sort by date, newest first (or Sort
+    by name) turns it, said ("Sorted newest first: ..."), both panes following with the place kept; searches and Show's lists
+    take the same order. By name unless changed.
+  - **Expand all in it** (a folder's Applications key, or the number pad's star, as in any Windows tree; Radegast's Expand All):
+    the folder and every folder under it opened, as opening each by hand does, the focus staying on it ("Opened Outfits and the
+    12 folders in it: 340 items in all."); Collapse all in it closes them again, so they don't come back open by themselves.
   - A gesture's words say whether it's active, and its trigger ("Clap, gesture, active, /clap"); Enter plays it (any
     gesture, active or not), and its Applications key has Play, Activate and Deactivate (for all the marked ones).
   - Ctrl+X / Ctrl+C then Ctrl+V on a folder (or an item in it) move or copy; F2 renames. On Second Life, moves, deletes to the
@@ -335,13 +353,35 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
     with nothing that can be given) is refused before she's asked, saying why and that its folders can go one at a time.
     The answer says what went ("Gave Landmarks for Kestrel to Kestrel, 30 items in it and its 4 folders."): it's an
     offer they accept or decline, so it's what was offered, not what they kept (`InventoryOps.Gives.cs`).
-  - Ctrl+F goes to Search (from the tree or Show), where typing lists what matches flat with its folder ("2 found"), Enter goes back to the
+  - Ctrl+F goes to Search (from the tree, Show or Search by), where typing lists what matches flat with its folder ("2 found"), Enter goes back to the
     tree, Escape clears it; a search leaves the Trash out and says what it has there ("2 found, and 3 in the Trash
     (Show: Trash lists them)"); a long one says "Searching." first. Tab from Search reaches Show (Up/Down: everything,
-    worn, recent: the last day's, trash: what's in the Trash, or with words what matches there, favorites, gestures: every one, active or not, each with its folder).
-  - F5 asks the grid for every folder of yours again, said as it starts and ends, then shows it (Radegast's Reload Inventory, how stale folders get mended; the tree doesn't change under you otherwise; your actions refresh what they touched).
+    worn, recent: every item newest first, each saying when it came ("Red Dress, skirt, yesterday 21:40, in Clothing"; the
+    newest 500; it was the last day's only, too short for last week's purchase), trash: what's in the Trash, or with words what matches there, favorites, gestures: every one, active or not, each with its folder).
+  - **Search by** (the official viewer's; Radegast's search fields), a Tab after Show: Name (as it always was), Creator, or
+    Description; a change with words in Search searches again and says it ("Nothing made by Kestrel.", "1 found."). Creator
+    matches any form of the name (as written, in plain letters, the username: `NameCache.Forms`); the names of makers not known yet are asked of the grid first (80 at a time,
+    each batch waiting at most 5 s, so a name that doesn't come doesn't match), which "Searching." covers. A link is matched
+    by what it links to. Folders match only by name.
+  - F5 asks the grid for every folder of yours again, said as it starts and ends, then shows it in both panes (Radegast's Reload
+    Inventory, how stale folders get mended; the tree doesn't change under you otherwise; your actions refresh what they
+    touched). What the grid no longer has goes too: something deleted or moved in another viewer (or by the grid) leaves where it
+    was, said ("1 thing wasn't there any more, and is gone from the list."). LibreMetaverse's fetch only ever added, so until
+    2026-11-08 it stayed until the next login (`docs/inventory.md` > Loading).
   - On an object, Attach to... lists every point with what it holds; Enter wears it there beside what's on it ("Wearing Hat on Chest."), for something whose own point is wrong. On a sound, Play plays it in the world where she stands, as the viewer's does, so people near hear it too; on an animation, Play and Stop it.
   - **The Trash**: Delete on what's already in it goes for good, the confirmation saying so. Empty the Trash, first on the Trash folder's menu and on anything in it, or `//emptytrash`, behind her confirmation.
+  - **Lost and Found** (where what's returned from the world lands): Empty Lost and Found the same way, first on its folder's
+    menu and on anything in it, or `//emptylostandfound`, behind her confirmation ("Empty your Lost and Found: everything in it
+    is deleted for good, not moved to the Trash."); Radegast's and the viewer's.
+  - **Back up to disk...** (a folder's Applications key; "Back up all your inventory to disk..." on a folder at the top, the
+    tree having no node for My Inventory; Radegast's Backup, `MainForm.Backup.cs`): Windows' own folder window asks where, and a
+    folder named for it and the time ("Outfits backup 2026-11-08 15-20") gets inventory.csv, Radegast's list of everything in
+    it (type, folder, name, description, created, creator, last owner; the Trash and the outfit's links left out), and the text
+    of every notecard (.txt) and script (.lsl) she made herself with full rights, in folders as in the inventory, dated as the
+    items are. Only what she made, as Second Life's rules for viewers ask of an export the official viewer lacks
+    (`docs/tpv-policy.md`, 2.b; Radegast asks only for full rights); what others made is listed, and the end says how many.
+    Said as it starts ("Backing up Outfits: a list of the 340 items in it, and the text of 12 notecards and scripts you made,
+    into ...") and when done; one at a time, the item saying how far it's got if pressed again. Pictures aren't saved.
   - A notecard or script opens in its own window, an edit control: Ctrl+S saves ("Saved.", or a script's compile
     errors read out and listed under the text), Escape closes (asking first if changed). Find, go to a line, go to an error and
     the rest: Scripts, below.
@@ -355,8 +395,25 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
     `NotecardFile.Saved`, which keeps the asset's embedded block byte for byte and puts back the place of any item whose
     marker has gone from the text, at the end, saying so, since the official viewer drops an item with no place in the
     text at its next save. A card that can't be read just then isn't saved at all. `copyFromNotecard` posts the viewer's
-    capability itself, LibreMetaverse's own call sending an empty body. Adding to a card and taking off it aren't here
-    (`docs/access-gaps.md`, item 6).
+    capability itself, LibreMetaverse's own call sending an empty body.
+    - **Changing what it holds** (2026-11-08), at the next save, as the viewer's text editor does it: Delete on a thing in
+      the list marks it to be removed ("Harbour is removed from the card when you save.", its line saying so; Delete again keeps it);
+      Control+Shift+V in the text (or the list's Put in what you copied) puts in what Control+C or X last took in the
+      inventory, its marker at the caret, numbered apart from any of the same words ("[landmark: Harbour, 2]"), its line "goes
+      in when you save" (Delete takes it out again, marker and all). Only what the next owner may copy, modify and transfer
+      goes in, as the viewer refuses the rest by the same rule; a folder, the card itself, or something never saved are
+      refused, said; a thing already in the card gets another place. One save does it all, said ("Saved. Put in: Harbour.
+      Removed: Rules."), and the card is read again into the window and the list. A change not saved is asked about on
+      closing. `NotecardFile.Saved(text, remove, add, ...)`: what stays is numbered again from nought, in the text and the
+      head, since the viewer finds an item by its place in the list and not by the "ext char index" it writes
+      (`LLEmbeddedItems::getEmbeddedCharFromIndex`); each kept block is otherwise byte for byte; a new one is written as
+      `LLInventoryItem::exportLegacyStream` writes it. `writeNotecard` and `object.content.save` take `remove` (embedded
+      item ids) and `add` ([{item_id, marker}]).
+    - **A card in an object's contents** (opened from the build editor's Content) has the same list, from
+      `object.content.get`'s `embedded`, copied out with the object named (`copyFromNotecard`'s `object_id`, as the viewer
+      copies from a card opened from an object), and changed the same way, its save confirmed as any change inside an object.
+    - Only the local grid has shown changing what a card holds and copying out of one in an object; whether Second Life
+      takes a card saved with a thing we put in is still to be seen (it takes the viewer's, written the same way).
   - Unbox rezzes the box 2 m ahead, copies what's inside into a new folder named after it at the top of the inventory,
     then puts the box away (deleted when the inventory still has it, taken back when it was no-copy). Rez on the ground
     sets an object down 2 m ahead with its bottom on the terrain (or the floor you stand on, when that's well above
@@ -472,15 +529,67 @@ kept current every 3 s while the chat area shows and the focus is elsewhere (in 
 distances are at most a few seconds old; a refresh whose words haven't changed leaves the list as it is (only where
 people are, for Walk to and Face, is renewed), so nothing beside the Say box churns while she types.
 
+### People's names
+
+Display names on Second Life are often decorative Unicode (mathematical script or bold letters, circled, squared or
+fullwidth ones, small caps, upside-down text, lookalikes from Greek and Cyrillic, symbols and emoji), which a screen
+reader reads as nothing, as a string of symbol names or as nonsense, so she might not know who's speaking. Alt+0's
+"People's names" (`access_names`; in Reading out, and in People and offers) decides how a person's name is said
+everywhere: chat and IM lines, conversations' names, People nearby, friends, notices (friends online, payments,
+arrivals, a change of name), profiles, a group's members, voice, search results, links, whose a thing is.
+- **display name in plain letters** (`plain`, the default): the letters under the decoration, "Marigold" for
+  "𝓜𝓪𝓻𝓲𝓰𝓸𝓵𝓭 ✨"; the username when none are left ("★彡★"). An ordinary display name is said as before, so this keeps
+  what Access has said from the start (display names alone), with decoration made sayable.
+- **display name and username** (`both`): that, then the username in brackets when they differ ("Marigold (Juniper
+  Tester)"): Radegast's default, "smart", with the display name made plain. Every line from someone with a display name
+  of their own is longer this way.
+- **display name as written** (`written`): exactly as other viewers show it.
+- **username** (`username`): the username alone (Radegast's display names off).
+
+Lists and profiles still add the username in brackets (the viewer's complete name), the display name worded the same
+way. A profile whose display name is said otherwise than written has a line "Display name as written: ...", the one
+place it's read whole (to copy for someone, or to know a name's decorated); with usernames alone, "Display name: ...".
+
+Made plain (`Sojourn.Core/World/PlainName.cs`): Unicode's compatibility forms (NFKC) give the mathematical, fullwidth,
+circled, super- and subscript letters back; tables take negative circled and squared letters, regional indicators
+spelling letters (two together are a flag, left out), small caps, upside-down text (turned back and reversed when at
+least two letters and a third of them are turned ones), Latin letters with decorative hooks and bars, Cherokee and
+Chinese-character lookalikes, and a currency sign inside a word ("Ro$ie"). Greek and Cyrillic letters are read as the
+Latin ones they look like only in a word that mixes alphabets, so "Rοѕємαrу" is "Rosemary" and "Анна Петрова" stays
+itself. Marks over Latin letters that NFKC couldn't join (strikethrough, underline, zalgo), symbols, emoji, brackets and
+other punctuation go (a word's own apostrophe, hyphen and full stop stay); three or more single letters in a row are
+joined ("M a r i g o l d"); a word whose letters were stood in for and came out in mixed case is written as a name is
+("Juniper" from "JυηιρҽR", not "Juni pe R" in a screen reader's voice). Names in a script of their own (Japanese,
+Russian, Hindi, Arabic) and accented ones (Zoë, Łukasz, Nguyễn) are left as they are. `tools/namecheck` checks it on
+made-up names of each style (`dotnet run --project tools/namecheck`; with names after `--`, prints each one's plain form).
+
+The session words them: `NameCache.Style` (set from the setting before logging in and on each change; one app per
+process, and the VR client keeps `Written`) governs its `DisplayName` and `Complete`, which the feed, the lists,
+notices and ops use. An op's person carries `said` where the style words the name otherwise; Access reads it
+(`PersonOps.SaidName`, which words a name itself where there's none, as the grid's people search) and the assistant is
+told to name people by it (`assistant/prompt-access.md`). A log sent to the studio stands in for the plain form too
+(the `~name` record's `plain`).
+
+A name heard is a name she can type back, whatever the setting: `//go`, `//find`, `//follow`, `//face`, `//beacon`,
+`//profile`, `//block`, `//imsound`, voice's and a group chat's members, the give window, each match any form of a name
+(the one said, the username, the display name as written or in plain letters: `NameCache.Forms`,
+`PersonOps.Person.Names`), and words pasted in decorative letters are matched in plain ones.
+
+Only Second Life shows whether decorated names arrive as expected and how her screen reader says what's left. The
+grid's own people search (Alt+5's people, and `//profile` or `//block` for someone not nearby, a friend or in a
+conversation) matches the display name as written, so a name heard in plain letters may not find them there; the
+username does. The local grid has no display names: the scripted test gives the visitor one through `SojournTestNames`
+(`SOJOURN_TEST_NAMES=1`, `docs/access-testing.md`).
+
 ### The status bar
 
 A StatusStrip at the very foot of the window, below the walk pad, holding one label named "Location: Atelier 64, 36,
-15, Harbour, no fly, no build, L$0" (the parcel and its marks as `//status parcel` has them, asked again on moving a few metres, reaching a region or a minute on) for the screen reader once in world (a label's name is all it reads of it): NVDA+End finds the status bar by
+15, Harbour, no fly, no build, L$0" (the parcel and its marks as `//status parcel` has them, asked again on moving a few metres, reaching a region or a minute on; where damage is on, "damage on, health 80%", as Radegast's and the viewer's show health, and health while it's below full anywhere) for the screen reader once in world (a label's name is all it reads of it): NVDA+End finds the status bar by
 the window's bottom-left corner and reads its name and its children's, so "Status Location: ...".
 
 ### Read-out
 
-- Nearby lines as "Kestrel: hello" (whispers, shouts, emotes worded so); a conversation's lines with its source
+- Nearby lines as "Kestrel: hello" (whispers, shouts, emotes worded so; names as People's names, above, says); a conversation's lines with its source
   ("Kestrel, IM: ...", "Kestrel, Builders: ...") unless it's the one you're in, where it's just "Kestrel: ..." (in walk
   mode, or with the window in the background, you're in none, so an IM never sounds like nearby chat); the first line
   of a new IM says "new IM".
@@ -616,7 +725,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//block NAME` / `//unblock NAME` / `//blocks` | block someone or something nearby, take one off, the list (Control+Shift+Y, Enter or Delete unblocks; Block is also on a person's and an object's Applications key, and on B in a notice) |
 | `//follow NAME` / `//follow NAME METRES` / `//follow stop` / `//follow` | follow as they move (2.5 m behind where they'll be in a moment, around what's in the way; at the wheel, Driving after someone, below), stop, or say who; said: when you're with them and they've stopped, when they sit, when they're getting away, when they're gone |
 | `//tp list` / `N` / `NAME` / `Region/X/Y/Z` / an SLurl | landmarks in "Radegast Landmarks" (else Landmarks), by number or name; or a place |
-| `//status [doing|region|parcel|location|money|time|music]` | any or all of them; music: what the parcel's stream is playing ("Playing: ...", in the whole status only when the parcel has music) |
+| `//status [doing|region|parcel|location|health|money|time|music]` | any or all of them; music: what the parcel's stream is playing ("Playing: ...", in the whole status only when the parcel has music); health: "Health 80%." (in the whole status only while it's below full; the region sends it only once something hurts you where damage is on, so before that it says so); doing says "always running" while that's on |
 | `//route NOTECARD` / `//route` / `//route stop` / `//route resume` | play a route: a notecard's `//` lines one at a time (with no name, the lines on the clipboard, as copied from a blog), each walk or teleport finished before the next ("Step 2 of 7."), other lines read as notes; a step that doesn't get there pauses it, `//route resume` tries that step again. In the inventory, a notecard's Applications key has Play as a route |
 | `//record` / `note [WORDS]` / `undo` / `pause` (`resume`) / `save [NAME]` / `discard` | record a route by walking it: start, or while recording how it's going; a note here (no words: just a point); take back the last point or note; pause or go on; save it as a notecard in Routes (with no name, asked); throw it away (Walk mode > Recording a route) |
 | `//pause [SECONDS]` | wait (in a route, before its next line; a second unless said) |
@@ -631,6 +740,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//stop` | as Space in walk mode, from anywhere: seated on something moving, stop it by its controls (Stopping a vehicle, below); otherwise stop a walk, a follow or a route |
 | `//ride` / `stop` / `describe` / `more` | record a ride: start (or, recording, how it's going), stop, have it told, tell more (walk mode's C and Shift+C; Walk mode > Recording a ride) |
 | `//text` / `//text NAME` | floating text: what you're sitting on shows (walk mode's Shift+V), or the nearest thing within 30 m with that name in its name ("Ride Train shows: Throttle 30%, Speed 11 km/h.") |
+| `//run` / `//run on` / `//run off` | Always run (Radegast's World > Always Run; also World's menu and Alt+0's Walking): on, walk mode's arrows, `//go` and following run rather than walk; `//run` alone turns it the other way, said ("Always running: ...", "Walking again: ..."). Kept (`walk_always_run`) |
 | `//outfit` | what you're wearing, by name (Ctrl+Shift+W) |
 | `//saveoutfit NAME` | what you're wearing saved as an outfit: a folder NAME in My Outfits with a link to each thing (with no name, it asks; also World > Save your outfit...) |
 | `//upload` / `//upload PATH` | upload a file: the Open window, or the file at PATH (Ctrl+U; Uploading, below) |
@@ -640,6 +750,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//voice` / `answer` / `decline` / `mute NAME` / `unmute NAME` / `volume NAME N` | who's in voice, said with who's muted; answer or decline a call; one person muted, or how loud they are from 0 to 2 (1 as they come), for you alone and kept |
 | `//imsound NAME SOUND` / `NAME usual` / `NAME` / (nothing) | a sound of its own for someone's IMs or a group's chat; back to the usual; theirs; the sounds and who has one (Earcons, above) |
 | `//chatlog` / `//chatlog NAME` | the chat logs on this PC; the one with that in its name (Chat logs, below) |
+| `//emptytrash`, `//emptylostandfound` | everything in the Trash, or in Lost and Found, deleted for good, after you confirm (also on those folders' menus) |
 | `//logout` | log out and go back to the login window, after you say so |
 | `//about` | the version, the commit, the disclaimer and the data folder |
 | `//sendlog` | send a session's log to the studio (Sending a log, below) |
@@ -680,7 +791,7 @@ window and every viewer send them); the local collision model only tells you wha
 
 | Key (in walk mode) | Does |
 |---|---|
-| Up / Down | walk forward / back while held (Shift: run); let go and it stops where you are (the viewer's STOP flag, no coasting on) |
+| Up / Down | walk forward / back while held (Shift: run; with Always run on, `//run`, they run anyway); let go and it stops where you are (the viewer's STOP flag, no coasting on) |
 | Left / Right | turn: a tap one step (22.5 degrees by default, landing on the compass's sixteen points, said: "north-northwest."), held smoothly (90 a second; where you face is said when you let go) |
 | Shift+Left / Right | a step sideways while held |
 | Page Up / Page Down | up / down: flying, rise and sink; on foot, jump and crouch |
@@ -1268,25 +1379,76 @@ from guided testing of Radegast, and no list changes while you're in it):
 
 ### Groups
 
-`MainForm.Groups.cs`; on a group in Alt+3's My groups, on its Applications key (Claude Opus 5.5, 2026-11-07).
+`MainForm.Groups.cs`, `MainForm.GroupPeople.cs` (members, who's in the chat, bans), `MainForm.GroupNotice.cs` (a new notice); on a
+group in Alt+3's My groups, on its Applications key (Claude Opus 5.5, 2026-11-07; running one, 2026-11-08). What her roles there
+don't let her do is said before anything is asked ("Your roles in Builders don't let you eject members."), from the powers the
+session holds for the group; on the local grid (OpenSim) those are the powers of the role whose title she wears, not of all her
+roles, so the test wears the Owners title first.
 
 - **Choose your title...**: the titles her roles give her there, the one worn said so ("Queen Bee, worn"); Enter wears one
   ("Your title in Builders is Queen Bee now."), saying when it won't show until she wears that group's tag, which is Wear its tag:
   the two halves of a group tag are separate here as in the viewer, and neither does the other unasked. With one title it says so
   and asks nothing. Core's `TesselGroups titles` is the viewer's own list (GroupTitlesRequest), and `title` checks against it.
 - **About the group** also says who founded it and her title there.
-- **Members**: everyone in a window of lines (`ShowText`), owners first, each with their title and whether they're online. Reading
-  only: nothing to do with one from there yet (`docs/access-gaps.md`).
+- **Members...**: a window of its own, not modal ("Members of Builders"): Find, where a name typed narrows the list (its name
+  saying how many: "Members, 3 of 40"; Enter there goes to the list), and the list, owners first, each with their title and whether
+  they're online, hers ending "you". Enter or the Applications key on someone: what the group lets her do to them, Roles...,
+  Eject from Builders, Ban from Builders, then their own actions (`PersonActions`, the window closing first as a profile's does;
+  `Mnemonics` keeps the letters apart, so the group's keep theirs and the person's move). On herself only Roles... and Your
+  profile. F5 reads the list again, Escape closes, F1 says the keys. Every change below waits for her confirmation in Notices and
+  the focus comes back to the window after (`ConfirmedFromAsync`).
+  - **Roles...**: every role of the group, theirs ending "has it", Everyone "everyone has it"; Enter on one gives it or takes it
+    away ("Give Kestrel the role "Greeters" in the group "Builders""; for Owners the confirmation adds that nobody but that owner
+    can take them off it), then says what the grid shows ("Kestrel has the role Greeters now.", or that it doesn't show the change
+    yet, since the grid ignores a change her roles don't allow without a word). Said without asking: giving a role takes the
+    power to assign roles (or, limited, only roles she has); taking one away, the power to remove members from roles; nobody but
+    an owner takes themselves off Owners.
+  - **Eject from Builders**: said once the grid's reply says it went (`TesselGroups eject` waits for EjectGroupMemberReply); an
+    owner can't be ejected, said without asking.
+  - **Ban from Builders**: the viewer's Ban, banned from joining and ejected if a member (`TesselGroups ban`, over Second Life's
+    GroupAPIv1 capability as the viewer's `LLGroupMgr::sendGroupBanRequest`; `bans` and `unban` too). OpenSim has no group bans,
+    said at once ("Group bans aren't on this grid: ..."). Written from the viewer's protocol and not yet run on Second Life.
+- **Who's in its chat...**, also on a group chat tab's Applications key as Who's in the chat... (Radegast's participant list):
+  the same window over who's in the group's chat now, "a moderator" or "text stopped" said. Opening it joins the chat first, as
+  the viewer's chat window does when it opens (`SojournPeople groupChat` with `join`); with the group's chat turned off it says
+  so. Who's in it is the session's own list and anyone whose text has arrived, until the grid says they left, as the viewer's
+  speaker list takes them in (`LLSpeakerMgr::speakerChatted`): OpenSim's session list names only her and whoever joins after
+  her, Second Life's everyone there. A moderator also has Stop their text in the chat, or Let them text in the chat again (`moderateGroupChat`).
 - **Notices...**: the archive, newest first, by subject, sender and date, and what's attached; Enter reads one whole in a
-  window, Escape back to the list, Escape again out. Attachments are said and not offered. Core's `noticeRead` asks for one and
-  takes the reply IM (GroupNoticeRequested), which isn't otherwise a notice.
+  window, Escape back to the list, Escape again out. One with something attached ends "Attached: Party, landmark." and has
+  Take the attachment (Alt+T), which takes it into the folder for its kind, said ("Taking Party into your Landmarks folder.");
+  `TesselGroups noticeTake` asks for the notice again and accepts the offer that comes with it, as the viewer's Open attachment
+  does. Core's `noticeRead` asks for one and takes the reply IM (GroupNoticeRequested), which isn't otherwise a notice.
+- **A notice arriving with something attached** (Core, so the VR client too): it waits in Notices instead of passing as a
+  line, its words ending "(attached: Party, landmark)", its keys 1 Keep and 2 OK; Keep takes it into the folder for its kind.
+  Left alone it stays in the group's archive. One with nothing attached is as before.
+- **New notice...**: a window ("New notice to Builders"): Subject, Message (Enter a new line), Attachment (a read-only line),
+  Attach what you copied (Alt+A, or Control+V on the Attachment line), Remove the attachment, Send (Alt+S, or Control+Enter
+  anywhere in it), Cancel (Escape, asking first if anything's in it). The attachment is what Control+C last took in the
+  inventory, as Radegast's notice pastes it: one thing, not a folder, a link's original, with copy and transfer rights (every
+  member gets a copy), each said when it isn't so. A subject over Second Life's 63 bytes or a message over 511 is said, not cut.
+  Without an attachment it goes at once; with one it waits for her confirmation, as a give does. "Sent the notice to Builders."
+  once the group's archive shows it (`TesselGroups notice` looks, up to 4 s); otherwise it says the archive doesn't show it yet,
+  since a grid drops a notice it can't take without a word. Core packs the notice's IM as the viewer does (`send_group_notice`:
+  the attachment as LLSD under a `<? LLSD/XML ?>` line): LibreMetaverse's `SendGroupNotice` packs it otherwise, and OpenSim
+  dropped every notice with an attachment ("failed to decode group notice bucket").
+- **Invite someone...**: a person picked (nearby, friends, or anyone by typing their name, as Give to... picks), then, if her
+  roles let her give roles, which one: Everyone first ("Everyone, the role every member has"), then those hers let her give.
+  Everyone goes at once; another role can carry powers, so it waits for her confirmation. **Invite to a group...** on a person's
+  actions asks the same role after the group, from the groups she may invite to, as the viewer's picker lists them.
+- **Banned residents...**: Second Life only (OpenSim's said at once): who's banned and since when; Enter on one lifts the ban,
+  through her confirmation; the first row, Ban someone..., picks anyone and bans them.
+- **New group...**: a window with the name (4 to 35 letters), the charter, Anyone can join, Show in search (on), Create (Alt+R)
+  and Cancel. On Second Life a group costs L$100, so Create waits for her confirmation, which says so with her balance
+  (`TesselGroups create`, a spend for the gate already); the new group is said and in My groups.
 - **Receive its notices** and **List it in your profile**: checked items, each said back (`TesselGroups membership`).
-- **Invite to a group...** on a person's actions: the groups she may invite to, as the viewer's picker lists them; into the Everyone role,
-  so no confirmation (a role carrying powers has one).
+- Not here: a role's own settings (making one, its powers, its title), the group's settings (charter, who may join, fee, search),
+  saving the member list (`docs/access-gaps.md`, item 5).
 
 ### Scripts
 
-`EditorForm.cs` (the keys, in notecards too), `MainForm.Scripts.cs` (Claude Opus 5.5, 2026-11-07).
+`EditorForm.cs` (the keys, in notecards too), `EditorForm.Replace.cs`, `MainForm.Scripts.cs` (Claude Opus 5.5, 2026-11-07; replace,
+files, Mono, Running and Reset 2026-11-08).
 
 - **New script** on a folder's Applications key: asks a name, opens with the official viewer's starting text.
 - **In the editor**, keys of its own window, so they don't meet the main window's (F1 there says them):
@@ -1297,16 +1459,38 @@ from guided testing of Radegast, and no list changes while you're in it):
   - F8 and Shift+F8: the last save's errors in turn, "Error 1 of 2, line 3, column 5: Syntax error. The line: ...", the caret placed
     there. Unlike Radegast's, the caret doesn't move by itself when a save finds errors: she's told how many, and F8 goes.
     The errors box is still a Tab from the text.
+  - Control+H: Replace, Windows' own window as Notepad has it: Find what (the selection, else the last words found), Replace with,
+    Match case, Whole words only; Find next (Enter), Replace, Replace all, Close (Escape). Each press is said as find's keys say
+    theirs: "Line 10: ...", "Replaced on line 10. Next: Line 12: ..." or "... No more."; Replace as Notepad's, a first press
+    finding and the next replacing; Replace all "Replaced 2, on lines 5 and 10. Control+Z in the text undoes it." (one change, so
+    one Control+Z). Nothing reaches Second Life until Control+S. F3 and Shift+F3 go on with the same words and choices after;
+    Control+F's own find stays any case, anywhere. Not in a chat log's window.
+  - Control+O: a file's text in place of the window's (Windows' Open window: `.lsl`, `.txt` or any), asked first over changes not
+    saved; "Opened door.lsl, 40 lines. Control+S saves it into Second Life."; Control+Z gives back what was there. Over a megabyte
+    is refused. Control+Shift+S: a copy of the text as it stands to a file (Windows' Save window, named after the item, `.lsl` for
+    a script and `.txt` for a notecard or a chat log, UTF-8): "Saved a copy to door.lsl in Documents." A card's things are their
+    markers in the file, and keep their places when it's opened into the same card again. Radegast's open from and save to disk.
+    Tests set `SOJOURN_TEST_FILES`, a folder standing in for both windows (the file named as the Save window would name it).
 - **Inside an object**: in the build editor's Content tab (or Objects' Contents), Enter on a script or notecard opens it from the object in
   the same window. Control+S there goes through her confirmation, as anything changing a script in an object does at the gate
   (`object.content.save`): this window comes forward with it selected in Notices, Enter or Escape, and the editor comes back. A
-  notecard keeps what it holds as any other save. A script needs copy and modify on it, as in the viewer, and says so. A save that doesn't
-  compile stops a script, and one that was running when opened runs again once it compiles. Space on a script runs or stops it.
+  notecard keeps and lists what it holds as one in the inventory does (Keys > What a notecard holds). A script needs copy and modify
+  on it, as in the viewer, and says so. Space on a script in the Content list runs or stops it.
+- **Mono, Running and Reset**, a script inside an object's (the official viewer's two boxes and button, and Radegast's): check boxes and
+  a button in the row after Save, a Tab from the text, each saying what it does when reached (Mono's description: "Compiles the
+  script for Mono, Second Life's usual engine: faster, with 64 KB of memory where the older LSL2 has 16. Most scripts want it.
+  Changes when you save."). Their underlined letters work from the text with the focus left there: Alt+M ("Mono off: saving
+  compiles it for the older LSL2 engine, with 16 KB of memory rather than Mono's 64.", "Mono on: ..."), Alt+R (Running, changed
+  at once as the viewer's box does: "Stopped.", "Running.", or what the grid did instead, a script that doesn't compile not
+  starting), Alt+E (Reset: "Reset Door: it starts over."). Mono starts as the grid says the script is (GetScriptRunning's reply,
+  `object.content.get`'s `vm`), Mono when it doesn't say; a Lua script has no Mono box and stays Lua. A Mono change not saved is
+  asked about on closing. A save sends Running as ticked: a save that doesn't compile stops a script, and the next that compiles
+  runs it again. A script in the inventory has none of these, as in the official viewer: it runs only inside an object. Only the
+  local grid has shown them, and it calls every script Mono; Second Life's own reply is still to be seen.
 - **Her own objects' errors** (`access_script_errors`, on; Alt+0 "Script errors from my objects read out"): `SocialFeed` turns debug-channel
   lines from what she owns into notices, read out and in nearby chat's history: "Script error in Door: Math error". Other people's
   never (the grid sends them to everyone in range, and no viewer shows them). The same words from the same object at most once in half
   a minute, for a script failing in a loop. Muted by F6 as notices are; its sound is the notices' (off by default).
-- Not here: Mono or LSL's choice and Running in the editor itself, find and replace, opening from and saving to disk (`docs/access-gaps.md`).
 
 ### Placing by words
 
@@ -1906,15 +2090,17 @@ it).
   SojournSettings), `MainForm.Inventory.cs` (the tree, search and Show, the actions; Big inventories, below),
   `ReaderTree.cs` (its tree view and Places', read through Windows' own MSAA object: WinForms' numbered the items wrong
   for NVDA), `ReaderList.cs` (every list: its item's focus announced only while the list has the focus),
-  `MainForm.Favorites.cs` (favourites in the inventory), `StartPlaces.cs` (the Favorites bar's landmarks as start places),
-  `MainForm.Places.cs`, `MainForm.Search.cs`, `MainForm.People.cs` (friends, groups, profiles, pay),
+  `MainForm.Favorites.cs` (favourites in the inventory), `MainForm.Backup.cs` (Back up to disk), `StartPlaces.cs` (the Favorites bar's landmarks as start places),
+  `MainForm.Places.cs`, `MainForm.Search.cs`, `MainForm.People.cs` (friends, groups, profiles, pay), `MainForm.Groups.cs`,
+  `MainForm.GroupPeople.cs` and `MainForm.GroupNotice.cs` (a group's menu, its members and chat, a new notice),
   `MainForm.Describe.cs` (describing), `MainForm.Parts.cs` and `Linkset.cs` (parts and faces), `MainForm.Huds.cs` (HUD faces and buttons), `MainForm.Place.cs` and
   `PlaceWords.cs` (placing by words), `MainForm.Outfit.cs`, `MainForm.Incognito.cs`, `MainForm.Voice.cs`,
   `MainForm.Menu.cs` (the menu bar), `MainForm.Builders.cs` and `BuildersLine.cs` (the builders' tab and its relay
   calls), `MainForm.Upload.cs` (uploading and its window), `MainForm.Build.cs`, `BuildRows.cs` and
   `BuildShapes.cs` (the build editor; its settings' words; faces and contacts without a picture), `MainForm.Gestures.cs`, `MainForm.FriendsOnline.cs` (friends online at login as
-  one line), `MainForm.Devices.cs` (sound devices), `MainForm.CutLines.cs` (lines cut by typing), `EditorForm.cs` (notecards and
-  scripts), `Dialogs.cs` (a line asked for; a person picked), `Commands.cs` (the `//` set), `PersonOps.cs` (the
+  one line), `MainForm.Devices.cs` (sound devices), `MainForm.CutLines.cs` (lines cut by typing), `MainForm.Names.cs` (People's
+  names: Core's `World/PlainName.cs` does the wording), `EditorForm.cs` (notecards and
+  scripts), `EditorForm.Replace.cs` (its Replace window), `Dialogs.cs` (a line asked for; a person picked), `Commands.cs` (the `//` set), `PersonOps.cs` (the
   person's own actions through the ops; where people and things are), `Bearings.cs` (clock faces, compass, SLurls),
   `FormVoice.cs` (UIA notifications from WinForms' own accessibility objects), `RealInput.cs`, `AccessSettings.cs`,
   `AccessOptions.cs`; `Walk/` and `Sound/` (below).
@@ -2269,5 +2455,5 @@ it).
 
 ## Testing
 
-`python tools/access.py test` (the scripted test on a hidden desktop), `tools/inputcheck`, `package --check`, a real
+`python tools/access.py test` (the scripted test on a hidden desktop), `tools/inputcheck`, `tools/namecheck`, `package --check`, a real
 NVDA run, and the guided tests with the user or a tester: `docs/access-testing.md`.

@@ -23,9 +23,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# SOJOURN_LOCAL=dir: the main tree's local/ (grid, test tools, secrets) for a run from a git worktree, which has none
+LOCAL = Path(os.environ["SOJOURN_LOCAL"]) if os.environ.get("SOJOURN_LOCAL") else ROOT / "local"
 # SOJOURN_GRID=perf-grid works on another copy (local/perf-grid, a heavy test scene on :9740-9743), so a performance
 # session can swap scenes and restart without disturbing whoever uses the usual one
-GRID = ROOT / "local" / os.environ.get("SOJOURN_GRID", "grid")
+GRID = LOCAL / os.environ.get("SOJOURN_GRID", "grid")
 BIN = GRID / "bin"
 
 
@@ -107,7 +109,7 @@ def stop_and_wait():
 
 # --- voice: legion-voice-mixer (a Janus plugin speaking SL's WebRTC voice protocol, GPL-3) in Docker Desktop ---
 
-VOICE = ROOT / "local" / "voice-server"
+VOICE = LOCAL / "voice-server"
 VOICE_INI = BIN / "config" / "os-webrtc-janus.ini"
 DOCKER_DESKTOP = Path(r"C:\Program Files\Docker\Docker\Docker Desktop.exe")
 JANUS = "http://127.0.0.1:14223/voice"

@@ -113,6 +113,8 @@ public sealed partial class MainForm : Form
         host.Config.Grids[key] = new Sojourn.Core.Config.GridConfig { LoginUri = c.Grid };
         host.Agent.Grid = key;
         host.Agent.StateDir = StartPlaces.StateDir(_opt.BaseDir, c.Grid, c.First, c.Last);
+        // names worded as she chose from the first line (friends online at login): Alt+0's People's names (MainForm.Names.cs)
+        Sojourn.Core.World.NameCache.Style = _set.NameStyle;
         // no greeting while logging in (arriving says where the keys are); after that, when a screen reader starts
         await host.StartAllAsync(_args, handle, new FormVoice(this), "");
         StartChatLogs(key, c.First, c.Last);
@@ -160,6 +162,7 @@ public sealed partial class MainForm : Form
         _cmd.Land = words => (Task)Invoke(() => LandWordsAsync(words));
         _cmd.Music = MusicWords;
         _cmd.TeleportFallback = () => _set.WalkTeleportFallback;
+        _cmd.AlwaysRun = () => _set.WalkAlwaysRun;
         _cmd.CueText = cue => _set.WalkText(cue);
         var planner = _cmd.Planner = new Sojourn.Access.Walk.PathPlanner(host.Session, rays);
         host.Session.Motion.Router = (c, from, to) => RouteAsync(planner, from, to);
@@ -176,6 +179,7 @@ public sealed partial class MainForm : Form
         host.Social.AppAlertSound = true;
         host.Session.Api.Register(new Sojourn.Access.Walk.WalkApi(host.Session, _walk, f => (Task)Invoke(f)));
         _set.Register(host.SettingsApi, () => BeginInvoke(() => { RefreshHistories(); _walk?.ApplyFootsteps(); }), view, host.Audio?.Sounds);
+        StartNames();
         StartIncognito();
         AddIncognitoSettings(host.SettingsApi);
         AddMaturitySetting(host.SettingsApi);
@@ -253,6 +257,7 @@ public sealed partial class MainForm : Form
         FriendsBurstSaid();
         WatchConnection();
         KeepStartPlaces();
+        KeepAlwaysRun();
     }
 
     string? _lastRegion;
@@ -277,7 +282,7 @@ public sealed partial class MainForm : Form
         if (Text != title) Text = title;
         var money = Host!.Session.BalanceKnown ? $", L${c.Self.Balance}" : "";
         RefreshParcelWords(me.Pos, me.Region);
-        ShowWhere($"{me.Region} {Math.Round(me.Pos.X)}, {Math.Round(me.Pos.Y)}, {Math.Round(me.Pos.Z)}{_parcelWords}{money}{(incognito ? ", incognito" : "")}", place: true);
+        ShowWhere($"{me.Region} {Math.Round(me.Pos.X)}, {Math.Round(me.Pos.Y)}, {Math.Round(me.Pos.Z)}{_parcelWords}{HealthWords(c)}{money}{(incognito ? ", incognito" : "")}", place: true);
         if (_lastRegion != null && me.Region != _lastRegion && !_cmd.TeleportingSelf && Environment.TickCount64 - _teleportedAt > 15_000
             && _walk?.SeatedRecently != true)   // a seated crossing is walk mode's to say, with whether the seat held
             Announce($"Now in {me.Region}.");
@@ -286,6 +291,15 @@ public sealed partial class MainForm : Form
     }
 
     string _parcelWords = "";
+    bool _parcelDamage;
+
+    /// <summary>Health on the status bar, as Radegast's and the viewer's show it: where damage is on, or while it's below
+    /// full (the region sends it only once something changes it, so nothing until then).</summary>
+    string HealthWords(LibreMetaverse.GridClient c)
+    {
+        int health = (int)MathF.Round(c.Self.Health);
+        return health > 0 && (_parcelDamage || health < 100) ? $", health {health}%" : "";
+    }
     (string Region, LibreMetaverse.Vector3 Pos, long At) _parcelAskedAt;
     bool _parcelAsking;
 
@@ -305,7 +319,8 @@ public sealed partial class MainForm : Form
             var options = r["options"] as JsonObject;
             bool Off(string option) => options?[option] is JsonValue v && v.TryGetValue<bool>(out var on) && !on;
             var marks = new[] { ("fly", "no fly"), ("build", "no build") }.Where(m => Off(m.Item1)).Select(m => $", {m.Item2}");
-            _parcelWords = $", {r.Str("name") ?? "unnamed parcel"}{string.Concat(marks)}";
+            _parcelDamage = options?["damage"] is JsonValue dv && dv.TryGetValue<bool>(out var damage) && damage;
+            _parcelWords = $", {r.Str("name") ?? "unnamed parcel"}{string.Concat(marks)}{(_parcelDamage ? ", damage on" : "")}";
         }
         finally { _parcelAsking = false; }
     }
@@ -635,13 +650,15 @@ public sealed partial class MainForm : Form
         The Applications key, then L: paste as links, the items staying where they are
         Delete: delete
         F2: rename
-        Control+F: search
+        Control+F: search; Tab: Show, then Search by (name, creator or description)
         Control+Shift+F: add to favorites, or remove; Show: Favorites lists them
+        The number pad's star: open a folder and every folder in it
         Alt+Shift+4: a second pane, Alt+4 back to the first
         Control+M: move what's marked into the folder selected in the other pane
         Control+U: upload a picture, sound, animation or model (on a folder: into it)
         F5: ask the grid for your inventory again
-        On a sound or animation, the Applications key: Play; on an object: Attach to a point; on the Trash: Empty it
+        On a sound or animation, the Applications key: Play; on an object: Attach to a point; on the Trash or Lost and Found: Empty it
+        On anything, the Applications key: Sort by date or by name; on a folder: Back up to disk
         In a notecard, Tab: what it holds; Enter copies one out, Enter again teleports by it or opens it
         On a folder, the Applications key: New script, New notecard
         On a landmark, the Applications key: About the place
@@ -699,6 +716,7 @@ public sealed partial class MainForm : Form
         //rebake: when you're told you look grey or blurred
         //stopanimations: when you're told you're stuck in a pose
         //hover, //displayname, //maturity: say each; with a value, change it
+        //run: always run (walking, //go and following), or walk again
         //profile: your own profile, to read and change, and your picture; //profile NAME: anyone's
         //notes NAME: your own notes on someone
         //about: which version this is
@@ -711,8 +729,9 @@ public sealed partial class MainForm : Form
     /// history); Escape closes it, the focus back where it was (as the profile's window).</summary>
     void ShowKeys(bool walk) => ShowText(walk ? "Walk mode keys" : "Sojourn Access keys", walk ? Sojourn.Access.Walk.WalkMode.Help : KeysHelp);
 
-    /// <summary>Lines to arrow through in a window of their own (F1's keys, the build editor's commands), Escape closing it.</summary>
-    void ShowText(string title, string lines)
+    /// <summary>Lines to arrow through in a window of their own (F1's keys, the build editor's commands), Escape closing it.
+    /// extra: a button before Close (a group notice's Take the attachment), the window staying open.</summary>
+    void ShowText(string title, string lines, (string Text, Action Do)? extra = null)
     {
         using var form = new Form
         {
@@ -731,6 +750,12 @@ public sealed partial class MainForm : Form
         var close = new Button { Name = "keysClose", Text = "Close", AutoSize = true, DialogResult = DialogResult.Cancel };
         form.CancelButton = close;
         var row = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Bottom };
+        if (extra is { } x)
+        {
+            var b = new Button { Name = "keysExtra", Text = x.Text, AutoSize = true };
+            b.Click += (_, _) => x.Do();
+            row.Controls.Add(b);
+        }
         row.Controls.Add(close);
         form.Controls.Add(text);
         form.Controls.Add(row);
@@ -919,7 +944,7 @@ public sealed partial class MainForm : Form
     async Task<JsonObject?> ConfirmedAsync(string pump, string op, JsonObject args)
     {
         if (await ConfirmedCallAsync(_ops.GatedAsync(pump, op, args), args, _confirmFrom) is not { } r) return null;
-        if (op is "delete" or "emptyTrash" && pump is "TesselInventory" or "TesselBuild" && PersonOps.Error(r) == null) _earcons?.Deleted();
+        if (op is "delete" or "emptyTrash" or "emptyLostAndFound" && pump is "TesselInventory" or "TesselBuild" && PersonOps.Error(r) == null) _earcons?.Deleted();
         return r;
     }
 

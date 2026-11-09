@@ -72,7 +72,7 @@ public sealed class VoiceModeration
         var want = who.Trim();
         bool Is(string? s) => s is { Length: > 0 } && string.Equals(s.Trim(), want, StringComparison.OrdinalIgnoreCase);
         var self = _s.Client?.Self.AgentID ?? UUID.Zero;
-        var hits = _v.Peers.Where(p => p.Id != self && (Is(_s.Names.DisplayName(p.Id)) || Is(_s.Names.Legacy(p.Id)))).Select(p => p.Id).Distinct().ToList();
+        var hits = _v.Peers.Where(p => p.Id != self && _s.Names.Forms(p.Id).Any(Is)).Select(p => p.Id).Distinct().ToList();
         return hits.Count == 1 ? hits[0] : throw new LeapError(hits.Count == 0 ? $"nobody called \"{want}\" is in voice here" : $"more than one \"{want}\" here; use their id");
     }
 

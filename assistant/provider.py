@@ -420,7 +420,7 @@ class Provider:
         self.deny_data = True       # OpenRouter: only providers that don't collect data (the person's setting)
         self.auto = True            # the sessions under auto mode (the person's setting; harness.py MANUAL_TOOLS when off)
         self.ready = False
-        self.state = "checking"     # ready, checking, none, no_login, no_key, refused, credits, allowance, no_tools, offline
+        self.state = "checking"     # ready, checking, none, no_login, no_key, refused, credits, allowance, no_model, no_tools, offline
         self.words = ""             # for the person: what's set up and, if it isn't working, how to switch it on
         self.ok_words = ""          # the words while it works (back after a refusal clears)
         self.models = {}            # OpenRouter's list, once fetched
@@ -489,7 +489,7 @@ class Provider:
             if self.model != "claude":
                 info = self.models.get(self.model)
                 if self.models and not info:
-                    return self._not("no_tools", f"OpenRouter has no model called {self.model}.")
+                    return self._not("no_model", f"OpenRouter has no model called {self.model}.")
                 if info and not info["tools"]:
                     return self._not("no_tools", f"{info['name']} can't use tools on OpenRouter, so it can't act for you.")
                 self.single = self.model
@@ -514,7 +514,7 @@ class Provider:
         self.ready = True
         # a month's allowance used up: ready all the same, so the first request after it comes back goes through
         self.state = {"ok": "ready", "allowance": "allowance"}.get(verdict, "offline")
-        self.words = (("Studio Quire's relay" if self.kind == "relay" else f"your {name} key")
+        self.words = (("a token from Studio Quire" if self.kind == "relay" else f"your {name} key")
                       + (f", {self.single_name}" if self.single else "")
                       + ("" if verdict in ("ok", "allowance") else f" (couldn't reach {name} to check it)"))
         self.ok_words = self.words
@@ -552,7 +552,7 @@ class Provider:
         if status == 402:
             return ("This month's allowance for the assistant from Studio Quire is used up." if self.kind == "relay"
                     else "The OpenRouter account is out of credits.")
-        return "Studio Quire's relay refused the token." if self.kind == "relay" else f"{NAMES.get(self.kind, self.kind)} refused the key."
+        return "Studio Quire didn't accept the token." if self.kind == "relay" else f"{NAMES.get(self.kind, self.kind)} refused the key."
 
     def refused(self, status):
         """The provider turned a request down mid-sitting (the key revoked, credits or the month's allowance run out):
@@ -601,7 +601,7 @@ class Provider:
                     + "Anthropic or OpenRouter key. Copy it, then "
                     f"{'choose the key row in the Assistant group of Alt+0 and paste it' if access else 'paste it into the key box in the launcher (its settings)'}. "
                     "Everything else works without it.")
-        if self.state == "no_tools":
+        if self.state in ("no_model", "no_tools"):
             return f"The assistant is off: {self.words} Choose another model ({"Alt+0's Assistant group" if access else 'settings, assistant, openrouter model'})."
         if self.state == "no_private":
             return (f"The assistant can't answer: {self.words} Choose another model, or allow data collection "
@@ -616,7 +616,7 @@ class Provider:
         noun = "token" if self.kind == "relay" else "key"
         short = {"ready": "signed in" if self.kind == "claude" else f"{noun} works", "offline": f"{noun} kept, not checked",
                  "none": "none chosen yet", "no_login": "not signed in", "no_key": f"no {noun} yet", "refused": f"{noun} refused", "credits": "no credits",
-                 "allowance": "this month's allowance used up", "no_tools": "can't use tools", "checking": "checking",
+                 "allowance": "this month's allowance used up", "no_model": "no such model", "no_tools": "can't use tools", "checking": "checking",
                  "no_private": "no provider without data collection"}.get(self.state, self.state)
         if self.ready and self.single and not (self.models.get(self.single) or {}).get("pictures", True):
             short += ", can't see pictures"
@@ -654,10 +654,10 @@ class Provider:
         """For another maker's model: what it is, plainly (Claude Code's own text calls every model Claude); and with
         auto mode off, what that leaves the session."""
         manual = "" if self.auto else (
-            "\nAuto mode is off (the person's choice, in Sojourn's launcher or Sojourn Access's Alt+0): nothing reviews "
+            "\nWeb and programs is off (the person's choice, in Sojourn's launcher or Sojourn Access's Alt+0; Claude Code's auto mode underneath): nothing reviews "
             "your actions, so you have only the tools that are safe without a reviewer: your sojourn tools, reading files, "
             "and writing files in your own folder and scratch folder. No shell or scripts, no web search or fetching, no "
-            "helpers. When a request needs one of those, say so plainly and that turning auto mode on gives it.\n")
+            "helpers. When a request needs one of those, say so plainly and that turning on web and programs gives it.\n")
         if not self.single:
             return manual
         return manual + (f"\nYou are {self.single_name} ({self.single}), reached through OpenRouter with the person's own key: their "
