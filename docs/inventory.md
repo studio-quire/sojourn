@@ -91,12 +91,17 @@ answer within 30 s is the op's error. Moves don't go that way: Second Life's ser
 (HTTP 400; every delete the blind tester tried on 0.1.0.996, a landmark and an object, 2026-11-08 and 09), so
 LibreMetaverse's moves never happened there (on 0.1.0.955 she was told a folder of landmarks was deleted, and still saw
 it), and the official viewer moves by its UDP messages on every grid (`LLViewerInventoryItem::updateParentOnServer`).
-Ours do the same, stamped into the Trash as the viewer's delete is, and where there's a service read the thing back
-from it (after 0.25 s, then each 0.5-1 s, up to 15 s) until it shows the new folder: only then is the store moved and
-the move said done; still elsewhere, the store follows the service and the error says it ("Second Life still had X where
-it was 15 seconds later"). An answer naming no folder (the tests' stand-in, which holds no inventory) counts as done.
+Ours do the same, stamped into the Trash as the viewer's delete is, every message of a move or delete of many sent at
+once, and where there's a service each thing read back from it (after 0.25 s, then each 0.5-1 s, up to 15 s) until it
+shows the new folder: only then is the store moved and that one done; still elsewhere, the store follows the service and
+the error says it ("Second Life still had X where it was 15 seconds later", with how many others went). A read that fails,
+errors or names no folder is asked again, and if none ever answered, the error says Second Life couldn't be asked and
+that F5 shows where things are; only the tests' stand-in, which holds no inventory, is taken at an answer naming no folder.
+The session log has how long the service took to show a move and how many reads it took ("inventory: 3 moved into ...,
+shown by the service after 640 ms (4 reads)"), so a tester's log says whether Second Life shows them promptly.
 Without the service (OpenSim) the store moves at once, as the viewer's does, with no answer. The AO's removal of a
-folder goes the same way. A purge counts as done only if the node has left the store (LibreMetaverse's RemoveItemAsync
+folder goes the same way (reloading the AO whatever came of it). Refusals for what's locked or isn't hers come before
+anything is sent, so a move or delete of many goes whole or names what didn't. A purge counts as done only if the node has left the store (LibreMetaverse's RemoveItemAsync
 and RemoveFolderAsync log a refusal and return). The store's node is the one callers hold, so a move changes their
 copy's ParentUUID too: read where a thing was before moving it (Sojourn Access's Delete refreshed the folder it had
 moved to rather than the one it left, so a deleted folder stayed in her tree until she logged in again, 2026-11-07).

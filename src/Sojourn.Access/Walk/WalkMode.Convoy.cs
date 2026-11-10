@@ -17,7 +17,7 @@ namespace Sojourn.Access.Walk;
 /// </summary>
 public sealed partial class WalkMode
 {
-    const float ConvoyGap = 10f, ConvoyCrumb = 2.5f, ConvoyFar = 60f, ConvoyJump = 100f, ConvoyDeadband = 0.12f, ConvoyBraking = 4f;
+    const float ConvoyGap = 10f, ConvoyCrumb = 2.5f, ConvoyFar = 60f, ConvoyJump = 100f, ConvoyDeadband = 0.12f, ConvoyBraking = 2.5f;
     const long ConvoyEvery = 100, ConvoySteerCycle = 300, ConvoyLostAfter = 6000, ConvoyStuckAfter = 6000;
     // the keys reading as untaken: around a crossing the region left and the one entered each send their word on the
     // vehicle script's keys, in either order, so only 10 s after a crossing counts, and elsewhere 2 s of it
@@ -28,14 +28,17 @@ public sealed partial class WalkMode
     // only once 4 s have passed since her own last crossing (the region entered names who's in it within a second or two)
     const long ConvoySayLost = 1500, ConvoySearchFor = 20_000, ConvoyRestAtEnd = 4000, ConvoyAfterCrossing = 4000;
     const float ConvoySearchPace = 10f, ConvoyPastBorder = 25f, ConvoyPastPoint = 15f, ConvoyBorderAhead = 40f, ConvoyBorderBehind = 30f;
-    // Down and Up for speed only ever in presses of one decision (100 ms) with time between for the region's news of
-    // them: a vehicle's Down is often reverse thrust (the visitor's kart loses 9.7 m/s in half a second of it), and held
-    // until the news said slow it drove her scooter backwards at 10 m/s round her partner for half a minute (her ride of
-    // 2026-11-09). None under ConvoyBrakeFloor going forward; going backward faster than ConvoyBacking, Up presses alone
-    // (no steering: what steers forward circles in reverse), and if that hasn't stopped it in ConvoyBackingFor, it's
-    // let go of, said. A turn of over ConvoySharp (radians) slows to ConvoyTurnPace first, as a driver brakes for a U-turn.
+    // Down and Up for speed only ever in presses of a tenth of a second, let go by a thread of their own (a busy window
+    // thread can't stretch one), with time between for the region's news of them (it shows a press ~150 ms on): a
+    // vehicle's Down is often reverse thrust (the visitor's kart loses 9.7 m/s in half a second of it), and held until the
+    // news said slow it drove her scooter backwards at 10 m/s round her partner for half a minute (her ride of
+    // 2026-11-09). None under ConvoyBrakeFloor going forward, nor for ConvoyAfterBacking after a backing was stopped (its
+    // Up presses could tip it forward into Down again, rocking). Going backward faster than ConvoyBacking, Up presses
+    // alone (no steering: what steers forward circles in reverse), and if that hasn't stopped it in ConvoyBackingFor, it's
+    // let go of, said. A turn of over ConvoySharp (radians) slows to ConvoyTurnPace first, as a driver brakes for a
+    // U-turn. ConvoyBraking, the slowing the room to stop is reckoned with, allows for presses only part of the time.
     const float ConvoyBrakeFloor = 2f, ConvoyBacking = 0.8f, ConvoySharp = 1.6f, ConvoyTurnPace = 3f, ConvoyMaxOffset = 1.75f;
-    const long ConvoyBackingFor = 4000;
+    const long ConvoyBackingFor = 4000, ConvoyPressFor = 100, ConvoyAfterBacking = 1500;
 
     sealed class Convoy(string name, UUID id, float gap)
     {
@@ -51,8 +54,11 @@ public sealed partial class WalkMode
         public string? Region, CrossedInto, Logged;
         public float YawOffset;                       // the way it travels against the way the seat faces, learned on straights
         public bool Fwd, Back, Left, Right, ToldWith, ToldFar, Doubt;
-        public long PressAt, BackAt, BackingSince;    // the last speed press sent (Down or Up), the last Down, backing since
+        public long PressAt, BackAt, BackingSince, BackedAt;   // the last press begun, the last Down, backing since, a backing stopped
         public bool Backing;                          // backing up without being asked, Up pressed to stop it (logged once)
+        public volatile bool PressDown, PressUp;      // a press under way, until PressUntil (let go by ConvoyPresses' thread)
+        public long PressUntil;
+        public int DownPresses, UpPresses;            // since the last log line
         // the last time they were seen: where (the grid's metres), how high, when, in which region, how, and the velocity
         // their copy reported (a copy left frozen where they crossed out keeps the last it had)
         public Vector2? Seen, SeenVel, Raw;
@@ -102,8 +108,8 @@ public sealed partial class WalkMode
 
     bool ConvoyDown(K k) => _convoy is { } c && k switch
     {
-        K.Fwd => c.Fwd,
-        K.Back => c.Back,
+        K.Fwd => c.Fwd || c.PressUp && Environment.TickCount64 < Volatile.Read(ref c.PressUntil),
+        K.Back => c.PressDown && Environment.TickCount64 < Volatile.Read(ref c.PressUntil),
         K.TurnL => c.Left,
         K.TurnR => c.Right,
         _ => false,
@@ -130,6 +136,39 @@ public sealed partial class WalkMode
         ConvoyLog($"driving after {name}, {_convoy.Gap:0.#} m behind, in {b.RegionName}");
         ConvoyLog($"the seat driven: {seat}");
         Line($"Driving {seat} after {name}, about {Bearings.Metres(_convoy.Gap)} behind. Any arrow key or Space takes it back.");
+        var mine = _convoy;
+        new Thread(() => ConvoyPresses(mine)) { IsBackground = true, Priority = ThreadPriority.Highest, Name = "convoy presses" }.Start();
+    }
+
+    /// <summary>Starts a press of Down (or Up), sent by this tick's Drive and let go by ConvoyPresses.</summary>
+    static void ConvoyPress(Convoy c, bool up, long now)
+    {
+        Volatile.Write(ref c.PressUntil, now + ConvoyPressFor);
+        if (up) { c.PressUp = true; c.UpPresses++; } else { c.PressDown = true; c.DownPresses++; c.BackAt = now; }
+        c.PressAt = now;
+    }
+
+    /// <summary>A convoy's own thread: lets go of a press when its time is up, as the stop's does, whatever the window's
+    /// thread is doing (a stall there would otherwise hold Down on).</summary>
+    void ConvoyPresses(Convoy c)
+    {
+        while (_convoy == c)
+        {
+            if ((c.PressDown || c.PressUp) && Environment.TickCount64 >= Volatile.Read(ref c.PressUntil))
+                lock (_controlsLock)
+                {
+                    bool up = c.PressUp;
+                    c.PressDown = c.PressUp = false;
+                    if (_convoy == c && S.Client is { Network.Connected: true } cl)
+                    {
+                        var mv = cl.Self.Movement;
+                        if (!up) { mv.AtNeg = false; mv.FastAt = mv.AtPos; }
+                        else if (!c.Fwd) { mv.AtPos = false; mv.FastAt = mv.AtNeg; }
+                        mv.SendUpdate(true);
+                    }
+                }
+            Thread.Sleep(5);
+        }
     }
 
     /// <summary>Lets go of the keys (the next Drive clears them), saying why if there's a why.</summary>
@@ -183,10 +222,17 @@ public sealed partial class WalkMode
             c.KeysLostSince = 0;
         }
         // until the region has sent her avatar and its seat, where she is may be in the frame of the region she left
-        // (0.1.0.996 said "getting away, 289 metres off" at that crossing, and 276 and 226 on 2026-11-05): the keys stay
-        // as they are, as a driver holds the throttle over a border
-        if (doubt != c.Doubt) { c.Doubt = doubt; if (doubt) ConvoyLog("the seat not sent yet: keys held as they are"); }
-        if (doubt) return;
+        // (0.1.0.996 said "getting away, 289 metres off" at that crossing, and 276 and 226 on 2026-11-05): nothing is
+        // decided, and Up stays as it was, as a driver holds the throttle over a border, the wheel straight and no brake
+        // (a Down or a turn held for the crossing's second or two would be her scooter backing or swerving: the review of
+        // 2026-11-09)
+        if (doubt != c.Doubt) { c.Doubt = doubt; if (doubt) ConvoyLog("the seat not sent yet: Up held as it was, nothing else"); }
+        if (doubt)
+        {
+            c.Left = c.Right = false;
+            if (c.Backing) { c.Backing = false; c.BackingSince = 0; }
+            return;
+        }
 
         Utils.LongToUInts(b.Region, out var gx, out var gy);
         var me = Global(b);
@@ -319,20 +365,21 @@ public sealed partial class WalkMode
             c.Backing = backing;
             ConvoyLog(backing ? $"going backward at {-fwd:0.0} m/s: Up to stop it" : $"no longer going backward, after {now - c.BackingSince} ms");
             c.BackingSince = backing ? now : 0;
+            if (!backing) c.BackedAt = now;
         }
         if (backing && now - c.BackingSince > ConvoyBackingFor)
         {
             EndConvoy($"{b.SeatName ?? "The vehicle"} is going backward and Up didn't stop it, so I've let go of the keys.");
             return;
         }
-        bool slower = !backing && fwd > ConvoyBrakeFloor && (closing > 1f && dist < c.Gap + room * 0.6f || fwd > most + 2f);
-        // a press of one decision, then a wait for its news: longer the slower it goes
-        long wait = MathF.Abs(fwd) > 6f ? 100 : MathF.Abs(fwd) > 3f ? 200 : 300;
-        bool press = now - c.PressAt > wait;
+        bool slower = !backing && fwd > ConvoyBrakeFloor && now - c.BackedAt > ConvoyAfterBacking
+            && (closing > 1f && dist < c.Gap + room * 0.6f || fwd > most + 2f);
+        // a press, then a wait for its news: longer the slower it goes
+        long wait = MathF.Abs(fwd) > 6f ? 250 : MathF.Abs(fwd) > 3f ? 350 : 450;
+        bool press = now - c.PressAt >= wait;
         c.Back = slower && press;
-        c.Fwd = backing ? press : dist > c.Gap + room && fwd < most;
-        if (c.Back || backing && c.Fwd) c.PressAt = now;
-        if (c.Back) c.BackAt = now;
+        c.Fwd = !backing && dist > c.Gap + room && fwd < most;
+        if (c.Back || backing && press) ConvoyPress(c, up: backing, now);
         bool steering = !backing && (c.Fwd || speed > 0.5f);
         // the keys held for a share of each cycle, by how far off it is: a held key turns as far as the vehicle's script likes
         bool turning = steering && MathF.Abs(err) > ConvoyDeadband
@@ -358,12 +405,13 @@ public sealed partial class WalkMode
         }
         if (now - c.LogAt > 2000)
         {
-            string keys = $"{(c.Fwd ? "up " : "")}{(c.Back ? "down " : "")}{(c.Left ? "left " : "")}{(c.Right ? "right" : "")}".TrimEnd();
+            string keys = $"{(c.Fwd ? "up " : "")}{(c.Left ? "left " : "")}{(c.Right ? "right" : "")}".TrimEnd();
+            string presses = (c.DownPresses > 0 ? $", {c.DownPresses} of Down" : "") + (c.UpPresses > 0 ? $", {c.UpPresses} of Up" : "");
             string seen = guessing ? "where they'd be by now (not seen)" : $"{c.Name}, by {c.SeenHow} in {c.SeenIn?.Name}";
             var state = $"{dist:0.0} m from {seen} (their pace {c.Pace:0.0} m/s) at {speed:0.0} m/s{(fwd < -0.3f ? " backward" : "")}, in {b.RegionName} {b.Pos.X:0},{b.Pos.Y:0},"
-                + $" aim {err * 180 / MathF.PI:0} degrees off ({Vector2.Distance(aim, me):0} m on), {c.Way.Count} points ahead, keys {(keys.Length > 0 ? keys : "none")}";
+                + $" aim {err * 180 / MathF.PI:0} degrees off ({Vector2.Distance(aim, me):0} m on), {c.Way.Count} points ahead, keys {(keys.Length > 0 ? keys : "none")}{presses}";
             // (every 2 s while anything changes; waiting still behind them, every 15 s)
-            if (state != c.Logged || now - c.LogAt > 15_000) { ConvoyLog(state); c.Logged = state; c.LogAt = now; }
+            if (state != c.Logged || now - c.LogAt > 15_000) { ConvoyLog(state); c.Logged = state; c.LogAt = now; c.DownPresses = c.UpPresses = 0; }
         }
     }
 

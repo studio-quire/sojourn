@@ -112,14 +112,22 @@ public sealed class InventoryMeta
         return _meta.TryGetValue(id, out var m) ? m : (UUID.Zero, false);
     }
 
-    /// <summary>The folder the service has an item or folder in (a move confirmed by it, InventoryOps.MoveNodeAsync);
-    /// null when its answer names none, or it didn't answer.</summary>
-    public async Task<UUID?> ParentOnServiceAsync(UUID id, bool folder, CancellationToken ct)
+    /// <summary>The folder the service has an item or folder in (a move confirmed by it, InventoryOps.MoveAllAsync):
+    /// whether it answered, and the folder its answer names (null: none). A failed read is an answer of no.</summary>
+    public async Task<(bool Answered, UUID? Parent)> ParentOnServiceAsync(UUID id, bool folder, CancellationToken ct)
     {
-        var (status, body) = await GetAsync(folder ? $"category/{id}" : $"item/{id}", ct);
-        if (body is null) { _s.Log.LogInformation("inventory service: {Id} read for its folder answered {Status}", id, status); return null; }
-        Absorb(body);
-        return body.ContainsKey("parent_id") ? body["parent_id"].AsUUID() : null;
+        try
+        {
+            var (status, body) = await GetAsync(folder ? $"category/{id}" : $"item/{id}", ct);
+            if (body is null) { _s.Log.LogInformation("inventory service: {Id} read for its folder answered {Status}", id, status); return (false, null); }
+            Absorb(body);
+            return (true, body.ContainsKey("parent_id") ? body["parent_id"].AsUUID() : null);
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _s.Log.LogInformation("inventory service: {Id} read for its folder failed: {Error}", id, e.Message);
+            return (false, null);
+        }
     }
 
     /// <summary>Every favourite in the inventory: the whole tree read from the service once a session (a subtree at a

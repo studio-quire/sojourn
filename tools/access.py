@@ -12475,7 +12475,8 @@ def driving_after(run):
     # 10 m/s for half a minute, 2026-11-09; the old code backed this kart at 4 m/s. A moment of it is the visitor brushing
     # past the kart as they walk round it: it was shoved back at 1.4 m/s for under a second)
     log = latest_app_log()
-    backs = [l for l in re.findall(r"convoy: .* m/s backward,.*", log)]
+    # (a state line's "backward" from 0.3 m/s; a push is under the 0.8 m/s that counts as backing)
+    backs = [l for l in re.findall(r"convoy: .* at ([\d.]+) m/s backward,.*", log) if float(l) >= 0.8]
     backs += [f"backing {ms} ms" for ms in re.findall(r"convoy: no longer going backward, after (\d+) ms", log) if int(ms) > 1000]
     run.check("never driving the kart backward to keep the gap", not backs, " | ".join(backs[:3]))
 

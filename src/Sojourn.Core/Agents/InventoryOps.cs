@@ -245,37 +245,31 @@ public sealed partial class InventoryOps
         var ids = a.UuidList("ids");
         if (a.Uuid("id") is { } one && !ids.Contains(one)) ids.Add(one);
         if (ids.Count == 0) throw new LeapError("need id or ids");
-        var moved = new JsonArray();
+        // every refusal before anything moves, then all sent at once and waited for together (MoveAllAsync)
+        var nodes = new List<InventoryBase>();
         foreach (var id in ids)
         {
             RequireMine(id, "move");
             switch (NodeOf(id))
             {
                 case InventoryFolder f:
-                    if (Locked(f) is { } why) throw new LeapError($"{why}; it stays where it is" + Before(moved.Count, "moved"));
-                    if (id == dest || IsUnder(dest, id)) throw new LeapError($"can't move {f.Name} into itself");
-                    await Moved(f, dest, moved.Count, "moved", ct);
+                    if (Locked(f) is { } why) throw new LeapError($"{why}; it stays where it is, and nothing was moved");
+                    if (id == dest || IsUnder(dest, id)) throw new LeapError($"can't move {f.Name} into itself; nothing was moved");
+                    nodes.Add(f);
                     break;
                 case InventoryItem it:
-                    if (Locked(it) is { } whyItem) throw new LeapError($"{whyItem}; it stays where it is" + Before(moved.Count, "moved"));
-                    await Moved(it, dest, moved.Count, "moved", ct);
+                    if (Locked(it) is { } whyItem) throw new LeapError($"{whyItem}; it stays where it is, and nothing was moved");
+                    nodes.Add(it);
                     break;
                 default:
-                    throw new LeapError($"no item or folder {id} in my inventory" + (moved.Count > 0 ? $" (the {moved.Count} before it were moved)" : ""));
+                    throw new LeapError($"no item or folder {id} in my inventory; nothing was moved");
             }
-            moved.Add(id.ToString());
         }
-        return new JsonObject { ["moved"] = moved, ["folder_id"] = dest.ToString() };
+        await MoveAllAsync(nodes, dest, "moved", ct);
+        return new JsonObject { ["moved"] = new JsonArray(ids.Select(i => (JsonNode)i.ToString()).ToArray()), ["folder_id"] = dest.ToString() };
     }
 
     static string Before(int done, string verb) => done > 0 ? $" (the {done} before it were {verb})" : "";
-
-    /// <summary>MoveNodeAsync, a refusal saying what had gone before it.</summary>
-    async Task Moved(InventoryBase n, UUID dest, int before, string verb, CancellationToken ct)
-    {
-        try { await MoveNodeAsync(n, dest, ct); }
-        catch (LeapError e) when (before > 0) { throw new LeapError(e.Message + Before(before, verb)); }
-    }
 
     bool IsUnder(UUID node, UUID ancestor)
     {
@@ -354,24 +348,31 @@ public sealed partial class InventoryOps
         if (WornRefusal(worn) is { } wornWhy) throw new LeapError($"{wornWhy}; nothing was deleted");
         if (worn.Others.Count > 0) await _s.Wardrobe.TakeOffAsync(c, worn.Others.Select(i => i.UUID), ct);
         var done = new JsonArray();
+        if (!purge)
+        {
+            // into the Trash all at once (what's locked was refused above), waited for together (MoveAllAsync)
+            await MoveAllAsync(ids.Select(NodeOf).ToList(), trash, "deleted", ct);
+            foreach (var id in ids) done.Add(id.ToString());
+            return new JsonObject { ["trashed"] = done };
+        }
         foreach (var id in ids)
         {
             switch (NodeOf(id))
             {
                 case InventoryFolder f:
                     if (Locked(f) is { } why) throw new LeapError($"{why}; it can't be deleted" + Before(done.Count, "deleted"));
-                    if (purge) await Purged(f, c.Inventory.RemoveFolderAsync(id, ct), done.Count); else await Moved(f, trash, done.Count, "deleted", ct);
+                    await Purged(f, c.Inventory.RemoveFolderAsync(id, ct), done.Count);
                     break;
                 case InventoryItem it:
                     if (Locked(it) is { } whyItem) throw new LeapError($"{whyItem}; it can't be deleted" + Before(done.Count, "deleted"));
-                    if (purge) await Purged(it, c.Inventory.RemoveItemAsync(id, ct), done.Count); else await Moved(it, trash, done.Count, "deleted", ct);
+                    await Purged(it, c.Inventory.RemoveItemAsync(id, ct), done.Count);
                     break;
                 default:
                     throw new LeapError($"no item or folder {id} in my inventory" + (done.Count > 0 ? $" (the {done.Count} before it were deleted)" : ""));
             }
             done.Add(id.ToString());
         }
-        return new JsonObject { [purge ? "purged" : "trashed"] = done };
+        return new JsonObject { ["purged"] = done };
     }
 
     /// <summary>A purge awaited: LibreMetaverse's RemoveItemAsync and RemoveFolderAsync only log the service's refusal,

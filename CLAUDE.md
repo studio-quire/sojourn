@@ -17,7 +17,7 @@ Our own Second Life client, built for VR first, with a personal AI that operates
   social, land, building, inventory and the AO, the map, voice and media extras, the menus, the login screen, the
   launcher), and RLV/RLVa (2026-11-01, off by default: `docs/rlv.md`). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
 - **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01), a first build editor (2026-11-02) and About Land (2026-11-03); test builds (the assistant bundled) published as releases
-  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1045 (2026-11-09); main is ahead of it with the estate, a group's settings, auto-sit, export and import, Point at, teleports within a region handled in turn and a `//go` that ends when it gets no nearer (the scripted test passed on all of it at `7144fc3`, 2026-11-09, in two sessions: `docs/access-testing.md` > Last full run; changes after that commit go by chosen steps) and, since that run, `//go` walks that go round people (on by default, `//walkround` turns it off; its own step and the steps that walk pass, tried on the local grid only: `docs/access-testing.md` > Walking round people on Second Life), the next build waiting for the tester's log of that evening's rides; a blind
+  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1070 (2026-11-09: the estate, a group's settings, auto-sit, export and import, Point at, teleports within a region handled in turn, `//go` ending when it gets no nearer and going round people, deletes and moves that work on Second Life, and driving after someone that never backs; the scripted test passed on all but the last few at `7144fc3`, the rest by their chosen steps: `docs/access-testing.md`), waiting for her logs with it; a blind
   tester's first session on Second Life was 2026-10-30. `docs/access.md` (plan, milestones, what testers said), `docs/access-app.md` (as built, packaging).
 - **Public source** since 2026-10-29 (`docs/publishing.md`). **First release, 0.1.0.867, published 2026-11-02**: a
   pre-release on studio-quire/sojourn (Velopack: install, updates at the person's press, uninstall; `tools/package.py`,
@@ -146,6 +146,9 @@ The assistant (detail in `docs/assistant.md`):
 - **Words people see or hear are theirs and the app's** (the studio's `docs/picking-a-look.md` > Words on screen): only
   words the person understands where they meet them (who picked them doesn't matter), SL's own words for SL things, a control named by what it does, diagnostics in the log.
   Op errors are written for the assistant; Access's person hears them only through `PersonOps.Error`, which turns them.
+- **Access's checks don't usually go to the user** (user, 2026-11-10): they don't much like testing Sojourn Access by
+  hand, since even its basic keyboard navigation is foreign to them. What needs a person there goes to the scripted
+  test, a session driving the app, or the tester and her logs, before it goes on the board for them.
 - **Every setting is on the agent API** (`SojournSettings`) and so reachable by the assistant's `settings` tool; a
   batch registers its own (`docs/viewer-gaps.md` > How the batches share the code).
 - **Never junction `local/` into a git worktree**: `git worktree remove` follows the junction and deletes the main

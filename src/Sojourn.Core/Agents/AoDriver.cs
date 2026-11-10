@@ -644,14 +644,19 @@ default
     {
         var c = _s.Client ?? throw new NotConnected("viewer not connected");
         var trash = _s.Inventory.FolderFor(FolderType.Trash);
-        foreach (var (id, _, folder) in nodes)
+        try
         {
-            // (not LibreMetaverse's MoveFolder: on Second Life it sends a PATCH the inventory service refuses)
-            if (folder) await _s.InventoryOps.MoveToAsync(id, trash, ct);
-            else await c.Inventory.RemoveItemAsync(id, ct);
+            // (folders not by LibreMetaverse's MoveFolder: on Second Life it sends a PATCH the inventory service refuses)
+            foreach (var (id, _, folder) in nodes)
+                if (!folder) await c.Inventory.RemoveItemAsync(id, ct);
+            if (nodes.Where(n => n.Folder).Select(n => n.Id).ToList() is { Count: > 0 } folders)
+                await _s.InventoryOps.MoveToAsync(folders, trash, ct);
         }
-        await Task.Delay(300, ct);
-        await ReloadAsync(ct);
+        finally
+        {
+            await Task.Delay(300, CancellationToken.None);
+            await ReloadAsync(ct);
+        }
     }
 
     /// <summary>A new, empty set: a folder in the AO's folder. With no AO folder yet, Firestorm's #Firestorm/#AO is made

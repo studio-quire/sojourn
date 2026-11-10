@@ -62,41 +62,58 @@ public sealed partial class InventoryOps
 
     static readonly TimeSpan MoveShownWithin = TimeSpan.FromSeconds(15);
 
-    /// <summary>A node into a folder by the official viewer's UDP message (MoveInventoryItem or MoveInventoryFolder, as
-    /// LLViewerInventoryItem::updateParentOnServer sends it, stamped into the Trash as its delete does). On a grid with the
-    /// inventory service, done once the service shows it in that folder (the store follows then); still elsewhere after
-    /// 15 s, an error saying so, the store left as the service has it. Without one, the store moved at once.</summary>
-    async Task MoveNodeAsync(InventoryBase n, UUID dest, CancellationToken ct)
+    /// <summary>Things into a folder by the official viewer's UDP messages (MoveInventoryItem or MoveInventoryFolder, as
+    /// LLViewerInventoryItem::updateParentOnServer sends them, stamped into the Trash as its delete does), all sent before
+    /// any is waited for. On a grid with the inventory service each is done once the service shows it in that folder (the
+    /// store follows then). A read that fails or names no folder shows nothing, so it's asked again (the tests' stand-in
+    /// names none, and there that counts as done). After 15 s, what's still shown elsewhere is an error saying so, the
+    /// store following the service; what couldn't be read at all is one saying it couldn't be asked. Without a service,
+    /// the store moved at once. verb: what the ones that went were ("moved", "deleted"), for an error naming the rest.</summary>
+    async Task MoveAllAsync(IReadOnlyList<InventoryBase> nodes, UUID dest, string verb, CancellationToken ct)
     {
         var c = C;
-        bool folder = n is InventoryFolder;
         bool trash = dest == _s.Inventory.FolderFor(FolderType.Trash);
-        SendMove(c, n.UUID, dest, folder, stamp: trash);
-        if (_s.InventoryMeta.Service(out _) is not null)
+        foreach (var n in nodes) SendMove(c, n.UUID, dest, n is InventoryFolder, stamp: trash);
+        var pending = nodes.ToList();
+        var shownAt = new Dictionary<UUID, UUID>();   // where the service last showed each still pending
+        if (_s.InventoryMeta.Service(out bool standIn) is not null)
         {
-            var until = DateTime.UtcNow + MoveShownWithin;
-            UUID? shown = null;
-            for (int i = 0; ; i++)
+            long start = Environment.TickCount64;
+            int reads = 0;
+            for (int round = 0; pending.Count > 0 && Environment.TickCount64 - start < MoveShownWithin.TotalMilliseconds; round++)
             {
-                await Task.Delay(i == 0 ? 250 : i < 4 ? 500 : 1000, ct);
-                shown = await _s.InventoryMeta.ParentOnServiceAsync(n.UUID, folder, ct);
-                // (no parent_id in the answer tells nothing: the tests' stand-in holds no inventory)
-                if (shown is not { } p || p == dest || DateTime.UtcNow > until) break;
-            }
-            if (shown is { } at && at != dest)
-            {
-                _s.Log.LogInformation("inventory: move of {Id} into {Dest} sent; the service still shows it in {At}", n.UUID, dest, at);
-                if (c.Inventory.Store is { } st && st.TryGetValue(n.UUID, out var was) && was != null && was.ParentUUID != at)
+                await Task.Delay(round == 0 ? 250 : round < 4 ? 500 : 1000, ct);
+                foreach (var n in pending.ToList())
                 {
-                    was.ParentUUID = at;
-                    st.UpdateNodeFor(was);
+                    reads++;
+                    var (answered, parent) = await _s.InventoryMeta.ParentOnServiceAsync(n.UUID, n is InventoryFolder, ct);
+                    if (parent == dest || answered && parent is null && standIn) { pending.Remove(n); Follow(c, n, dest); }
+                    else if (parent is { } p) shownAt[n.UUID] = p;
                 }
-                throw new LeapError($"Second Life still had {n.Name} where it was {MoveShownWithin.TotalSeconds:0} seconds later");
             }
+            _s.Log.LogInformation("inventory: {Count} moved into {Dest}, shown by the service after {Ms} ms ({Reads} reads); {Left} not shown",
+                nodes.Count - pending.Count, dest, Environment.TickCount64 - start, reads, pending.Count);
         }
-        if (c.Inventory.Store is { } store && store.TryGetValue(n.UUID, out var live) && live != null)
+        else foreach (var n in nodes) Follow(c, n, dest);
+        if (pending.Count == 0) return;
+        int went = nodes.Count - pending.Count;
+        string others = went > 0 ? $" (the {went} other{(went == 1 ? " was" : "s were")} {verb})" : "";
+        var still = pending.Where(n => shownAt.ContainsKey(n.UUID)).ToList();
+        foreach (var n in still) Follow(c, n, shownAt[n.UUID]);
+        if (still.Count > 0)
+            throw new LeapError($"Second Life still had {Names(still)} where {(still.Count == 1 ? "it was" : "they were")} {MoveShownWithin.TotalSeconds:0} seconds later{others}");
+        throw new LeapError($"Second Life couldn't be asked whether {Names(pending)} moved; F5 shows where things are now{others}");
+    }
+
+    static string Names(List<InventoryBase> ns) =>
+        ns.Count <= 3 ? string.Join(", ", ns.Select(n => n.Name)) : $"{string.Join(", ", ns.Take(3).Select(n => n.Name))} and {ns.Count - 3} more";
+
+    /// <summary>The store's node moved to where the grid has it (the node callers hold: read where it was before).</summary>
+    static void Follow(GridClient c, InventoryBase n, UUID parent)
+    {
+        if (c.Inventory.Store is { } store && store.TryGetValue(n.UUID, out var live) && live != null && live.ParentUUID != parent)
         {
-            live.ParentUUID = dest;
+            live.ParentUUID = parent;
             store.UpdateNodeFor(live);
         }
     }
@@ -117,8 +134,8 @@ public sealed partial class InventoryOps
             });
     }
 
-    /// <summary>For things outside InventoryOps that move inventory (the AO's folders into the Trash): MoveNodeAsync.</summary>
-    public Task MoveToAsync(UUID id, UUID dest, CancellationToken ct) => MoveNodeAsync(NodeOf(id), dest, ct);
+    /// <summary>For things outside InventoryOps that move inventory (the AO's folders into the Trash): MoveAllAsync.</summary>
+    public Task MoveToAsync(IEnumerable<UUID> ids, UUID dest, CancellationToken ct) => MoveAllAsync(ids.Select(NodeOf).ToList(), dest, "moved", ct);
 
     /// <summary>A folder renamed, waiting for the service where there is one (UpdateFolderProperties otherwise).</summary>
     async Task RenameFolderAsync(InventoryFolder f, string name, CancellationToken ct)

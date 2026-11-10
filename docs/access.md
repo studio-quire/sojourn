@@ -879,8 +879,12 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   every pass's begin-rendering (10 places), every barrier (14) and the SPIR-V target would need a second form: large,
   and testable only on her PC.
 - Audio sides (her partner, through Tessel, 2026-10-30): Radegast had left and right reversed for over ten years; in
-  hers that night a stream to her west sounded on her right while facing south, which is right. Worth a check that
-  ours is too (`tools/audio.py`'s tests, and her ears once she has walk mode's sonar).
+  hers that night a stream to her west sounded on her right while facing south, which is right. Ours, read through
+  2026-11-09: world sounds are checked by `tools/audio.py`'s balance step (facing north, a sound to the east is louder in
+  the right channel; facing south, the left), and Access's listener goes the same way (`WalkMode.Listen`, her facing).
+  Voice is panned by the server from the heading we send (`VoiceClient.SetListener`: ahead, left and up in Second Life's
+  frame, as the viewer sends the camera's), not heard on Second Life by us. Her ears with walk mode's sonar and in voice
+  are the real check.
 
 ### Questions for a blind tester
 

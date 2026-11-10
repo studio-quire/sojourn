@@ -1205,20 +1205,26 @@ motorcycle by hand after her partner's by the beacon, jerkily, and asked for veh
 NAME` at the wheel of something that has taken the arrows holds those keys for her, about 10 m behind, or `//follow NAME
 METRES` (3 to 50). It follows the way they went (points every 2.5 m, in the grid's metres so a crossing moves nothing),
 not the straight line to them, and comes down to their pace in time (their pace from their position over half a second,
-4 m/s of braking assumed). It steers by the way the seat faces plus an offset learned on straights while Up drives it,
+2.5 m/s² of slowing assumed, allowing for Down pressed only part of the time). It steers by the way the seat faces plus an offset learned on straights while Up drives it,
 not by the way it's travelling: travel lags the wheel, and steering by it spun the test's kart. The keys are held for a
 share of each 300 ms by how far off it is.
 - **Never backward** (2026-11-09, after her ride on 0.1.0.1045, `docs/access.md` > Driving after her partner, backwards):
   a vehicle's Down is often reverse thrust, so speed is judged along the way it's driven, and Down goes only in presses
-  of a tenth of a second while it's going forward faster than 2 m/s, each followed by a wait for the region's news of it
-  (0.1 s over 6 m/s, 0.2 s over 3, else 0.3); under that it coasts. Going backward faster than 0.8 m/s anyway, it presses
-  Up the same way and doesn't steer (what steers forward circles in reverse), logged; if that hasn't stopped it in 4 s,
+  of a tenth of a second while it's going forward faster than 2 m/s, let go by a thread of their own as the stop's are (a
+  busy window can't stretch one), the next no sooner than 0.25 s after over 6 m/s, 0.35 s over 3, else 0.45 (the region's
+  news shows a press about 0.15 s on); under 2 m/s it coasts. Going backward faster than 0.8 m/s anyway, it presses
+  Up the same way and doesn't steer (what steers forward circles in reverse), logged, and for 1.5 s after that's stopped
+  no Down (its Up presses could tip it forward into Down again, rocking); if that hasn't stopped it in 4 s,
   "The scooter is going backward and Up didn't stop it, so I've let go of the keys.". Before, Down was held while the
   speed alone (either way) read as closing on them: her scooter's Down took it to 10 m/s backward, which read as closing
   faster, so it held on and steered, and she circled her stopped partner backwards for half a minute. The test's kart
   backed at 4 m/s the same way. The offset it steers by is learned only while Up drives it (learned while backing, it
   took the back for the front), at most 100 degrees. A turn of over 90 degrees is taken at 3 m/s at most (Down pressed
-  over 5), as a driver brakes for a U-turn; over 57, 6 m/s as before. It aims at the first point of their way at least a second
+  over 5), as a driver brakes for a U-turn; over 57, 6 m/s as before. The log's lines say how many presses of each went
+  since the last line. An independent review (Claude Opus 5.5, 2026-11-09) found the first version held Down over a
+  crossing and braked more weakly than the room to stop assumed; both changed (below and above). What it can't settle: a
+  vehicle whose Down and Up step a throttle that stays where it's left (her scooter crawled at 1 m/s with Up held after
+  some Down presses, and twice sat 7-8 s with Up held before moving), which the local grid's kart doesn't have. It aims at the first point of their way at least a second
 ahead (5 m at least), skipping points it has come within that of or gone past to one side; close behind them, where their
 way runs out within that, at a point that far on past them the way they're heading (2026-11-08: it used to aim at their
 last point, which at her 3 m gap at 11 m/s was 0.5 to 3 m ahead, so every half-metre to one side read as a sharp turn and
@@ -1233,8 +1239,8 @@ beacon, saying why; the same if the seat hasn't taken her keys. Checked on the l
 over a border; real vehicles' turning and braking, roads, and how close a gap holds are for her and her partner.
 - **Over a border** (2026-11-08, after her scooter trip on 0.1.0.996, `docs/access.md` > A scooter trip and a train that
   lost its guide): until the region she's entering has sent her avatar and its seat, where she is can come in the frame of
-  the region she left, so the keys stay as they were (as a driver holds the throttle over a border) and nothing is decided
-  or said; 0.1.0.996 said "getting away, 289 metres off" there, and 918 276 and 226. The keys reading as untaken don't end
+  the region she left, so nothing is decided or said, Up staying as it was (as a driver holds the throttle over a border),
+  the wheel straight and no Down (a Down press or a turn held over the crossing's second or two would back or swerve her); 0.1.0.996 said "getting away, 289 metres off" there, and 918 276 and 226. The keys reading as untaken don't end
   it for 10 s after a crossing (the region left and the one entered each send their word on the script's keys, in either
   order), elsewhere after 2 s; then "The vehicle let go of your keys at the crossing into Berbera, so no longer driving
   after Kestrel. Sitting on it again usually gives them back." (on her trip they stayed untaken until she stood and sat
