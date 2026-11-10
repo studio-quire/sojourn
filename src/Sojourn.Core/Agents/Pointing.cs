@@ -37,9 +37,9 @@ public sealed class Pointing
         lock (_lock) return _last.TryGetValue(who, out var p) ? p : null;
     }
 
-    // EffectType's numbers (llhudobject.h) and the select kinds of EPointAtType and ELookAtType
-    const byte Beam = 7, Edit = 13, LookAt = 14, PointAt = 15;
-    const byte PointSelect = 1, PointGrab = 2, LookSelect = 7;
+    // EffectType's numbers (llhudobject.h) and the select and clear kinds of EPointAtType and ELookAtType
+    const byte BeamFx = 7, EditFx = 13, LookAtFx = 14, PointAtFx = 15;
+    const byte PointSelect = 1, PointGrab = 2, PointClear = 3, LookSelect = 7, LookClear = 10;
     const int ByPointAt = 1, ByLookAt = 2;
 
     public void Wire(GridClient c) =>
@@ -59,16 +59,16 @@ public sealed class Pointing
             var target = new UUID(data, 16);
             switch (b.Type)
             {
-                case PointAt when data.Length == 57:
+                case PointAtFx when data.Length == 57:
                     if (data[56] is PointSelect or PointGrab && target != UUID.Zero) Point(who, target, "select", ByPointAt);
                     else LetGo(who, ByPointAt);
                     break;
                 // sent with the PointAt by the official viewer; alone by one that keeps its PointAt private
-                case LookAt when data.Length == 57:
+                case LookAtFx when data.Length == 57:
                     if (data[56] == LookSelect && target != UUID.Zero) Point(who, target, "select", ByLookAt);
                     else LetGo(who, ByLookAt);
                     break;
-                case Beam or Edit when data.Length == 56 && target != UUID.Zero:
+                case BeamFx or EditFx when data.Length == 56 && target != UUID.Zero:
                     Point(who, target, "beam", 0);
                     break;
             }
@@ -114,5 +114,137 @@ public sealed class Pointing
             if (w.PrimById(target) is { } prim) return !_s.Objects.IsAttachment(w, prim, out _, out _);
         }
         return true;
+    }
+
+    // --- the person's own pointing ----------------------------------------------------------------------------------
+    //
+    // Sojourn Access's Point at (docs/access-app.md > Pointing at something yourself; Radegast's Point At): the person's
+    // avatar points its arm at a thing, so a sighted friend nearby sees which one they mean. Only Access's own keys start
+    // it, on the person's own press, so it's on no API: the assistant can't point their arm (the VR client's call against
+    // sending these, docs/viewer-gaps.md, was about the arm moving for what the assistant did). What's sent is what the
+    // official viewer sends while its person has a thing selected, a PointAt and a LookAt of type select at the very prim,
+    // so it reads in every viewer as a sighted person's selection, plus the edit beam it sends about once a second while
+    // building (LLSelectMgr's selection beam, in its default effect colour), which is what makes it stand out; Radegast
+    // sends beams too. It ends by itself after its time, when the person moves a few metres from where they stood (a
+    // teleport too), or when the thing goes: Radegast's guide calls a point left on rude.
+
+    public enum Ended { Asked, Time, Moved, Gone }
+
+    /// <summary>The thing the person points at now, zero when nothing.</summary>
+    public UUID Mine { get { lock (_lock) return _mine; } }
+
+    /// <summary>The person's pointing ended by itself (the timer's thread): its time up, they moved away, the thing went.</summary>
+    public event Action<UUID, Ended>? MineEnded;
+
+    UUID _mine;
+    DateTime _mineUntil;
+    Vector3d _mineFrom;
+    int _mineTicks;
+    Timer? _mineTimer;
+    readonly UUID _pointId = UUID.Random(), _lookId = UUID.Random(), _beamId = UUID.Random();
+    const double MovedAway = 3;   // metres from where they stood
+
+    /// <summary>Point at a thing in the world (a prim, root or part) for this long, sent at once; again on the same thing,
+    /// for this long from now. False when not in a region.</summary>
+    public bool PointAt(UUID target, TimeSpan lasting)
+    {
+        if (_s.Client is not { Network.Connected: true } c || c.Network.CurrentSim is null) return false;
+        lock (_lock)
+        {
+            _mine = target;
+            _mineUntil = DateTime.UtcNow + lasting;
+            _mineFrom = c.Self.GlobalPosition;
+            _mineTicks = 0;
+            _mineTimer ??= new Timer(_ => _s.Guard("pointing", Tick));
+            _mineTimer.Change(TimeSpan.Zero, TimeSpan.FromSeconds(1));
+        }
+        return true;
+    }
+
+    /// <summary>The person's pointing put down; false when they weren't pointing.</summary>
+    public bool StopPointing() => End(Ended.Asked, null) != UUID.Zero;
+
+    /// <summary>Each second while pointing: the beam again (the PointAt and LookAt every fifth, for anyone who missed them),
+    /// or the end. Sent under the lock, so a tick can't point again after a stop has let go.</summary>
+    void Tick()
+    {
+        UUID target;
+        Ended why;
+        lock (_lock)
+        {
+            target = _mine;
+            if (target == UUID.Zero) return;
+            if (_s.Client is not { Network.Connected: true } c || c.Network.CurrentSim is null)
+            {
+                // logged out or dropped: nothing to let go of, nothing to say
+                _mine = UUID.Zero;
+                _mineTimer?.Dispose();
+                _mineTimer = null;
+                return;
+            }
+            Ended? ended = DateTime.UtcNow >= _mineUntil ? Ended.Time
+                : Vector3d.Distance(c.Self.GlobalPosition, _mineFrom) > MovedAway ? Ended.Moved
+                : !_s.VisibleRegions().Any(w => w.PrimById(target) != null) ? Ended.Gone
+                : null;
+            if (ended is { } e) why = e;
+            else
+            {
+                if (_mineTicks++ % 5 == 0) Send(c, target, PointSelect, LookSelect, float.MaxValue / 4);
+                // re-sent under one id, it lives on in the viewers as one beam (LLHUDEffectSpiral::triggerLocal)
+                c.Self.BeamEffect(c.Self.AgentID, target, Vector3d.Zero, Color4.White, 1.5f, _beamId);
+                return;
+            }
+        }
+        End(why, target);
+    }
+
+    /// <summary>Stops the timer and lets go in the viewers (the PointAt and LookAt cleared, the beam's life ended), as the
+    /// official viewer does when a selection ends; said (MineEnded) unless asked for. Only that target when one is given (a
+    /// new pointing begun meanwhile stands). Returns what was pointed at.</summary>
+    UUID End(Ended why, UUID? only)
+    {
+        UUID was;
+        lock (_lock)
+        {
+            was = _mine;
+            if (was == UUID.Zero || only is { } o && o != was) return UUID.Zero;
+            _mine = UUID.Zero;
+            _mineTimer?.Dispose();
+            _mineTimer = null;
+            if (_s.Client is { Network.Connected: true } c) Send(c, UUID.Zero, PointClear, LookClear, 0, endBeam: was);
+        }
+        if (why != Ended.Asked) MineEnded?.Invoke(was, why);
+        return was;
+    }
+
+    /// <summary>The PointAt and LookAt in one packet, as the official viewer's LLHUDManager::sendEffects packs what changed
+    /// in a frame: a region may hold back a packet of only LookAts and beams from people whose camera is far off (OpenSim
+    /// does past 10 m, Scene.ShouldSendDiscardableEffect), never one with a PointAt. Ending, the beam's life too.</summary>
+    void Send(GridClient c, UUID target, byte point, byte look, float duration, UUID? endBeam = null)
+    {
+        var self = c.Self.AgentID;
+        byte[] Data(byte kind, int length)
+        {
+            var d = new byte[length];
+            Buffer.BlockCopy(self.GetBytes(), 0, d, 0, 16);
+            if (target != UUID.Zero) Buffer.BlockCopy(target.GetBytes(), 0, d, 16, 16);
+            if (length == 57) d[56] = kind;   // (the offset between, 24 bytes of a position, stays zero: the prim's middle)
+            return d;
+        }
+        ViewerEffectPacket.EffectBlock Block(UUID id, byte type, float secs, byte[] data, byte[]? color = null) =>
+            new() { AgentID = self, Color = color ?? new byte[4], Duration = secs, ID = id, Type = type, TypeData = data };
+        var blocks = new List<ViewerEffectPacket.EffectBlock> { Block(_pointId, PointAtFx, duration, Data(point, 57)), Block(_lookId, LookAtFx, duration, Data(look, 57)) };
+        if (endBeam is { } beam)
+        {
+            var d = new byte[56];
+            Buffer.BlockCopy(self.GetBytes(), 0, d, 0, 16);
+            Buffer.BlockCopy(beam.GetBytes(), 0, d, 16, 16);
+            blocks.Add(Block(_beamId, BeamFx, 0, d, Color4.White.GetBytes()));
+        }
+        c.Network.SendPacket(new ViewerEffectPacket
+        {
+            AgentData = { AgentID = self, SessionID = c.Self.SessionID },
+            Effect = blocks.ToArray(),
+        });
     }
 }

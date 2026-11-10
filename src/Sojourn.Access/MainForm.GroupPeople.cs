@@ -14,7 +14,7 @@ namespace Sojourn.Access;
 /// </summary>
 public sealed partial class MainForm
 {
-    sealed record GroupPerson(UUID Id, string Name, string Words, bool Owner, bool TextStopped);
+    sealed record GroupPerson(UUID Id, string Name, string Words, bool Owner, bool TextStopped, string Title = "", string Online = "");
 
     readonly Dictionary<(UUID Group, bool Chat), Form> _groupWindows = new();
 
@@ -51,6 +51,8 @@ public sealed partial class MainForm
         var find = new LineBox { Name = "groupFind", AccessibleName = "Find a name", Dock = DockStyle.Fill };
         var list = List("groupPeople", listName);
         var close = new Button { Name = "groupPeopleClose", Text = "Close", AutoSize = true };
+        // (Radegast's Save member list; the members' window only)
+        var save = chat ? null : new Button { Name = "groupSaveList", Text = "&Save the list...", AutoSize = true };
         var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(6) };
         t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -61,7 +63,14 @@ public sealed partial class MainForm
         t.Controls.Add(find, 1, 0);
         t.Controls.Add(new Label { Text = "&" + listName, AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, TabIndex = 2 }, 0, 1);
         t.Controls.Add(list, 1, 1);
-        t.Controls.Add(close, 1, 2);
+        if (save != null)
+        {
+            var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
+            buttons.Controls.AddRange(new Control[] { save, close });
+            t.Controls.Add(buttons, 1, 2);
+            buttons.TabIndex = 4;
+        }
+        else t.Controls.Add(close, 1, 2);
         find.TabIndex = 1; list.TabIndex = 3; close.TabIndex = 4;
         form.Controls.Add(t);
 
@@ -101,6 +110,7 @@ public sealed partial class MainForm
         };
         list.Enter += (_, _) => { if (list.FocusedItem == null && list.Items.Count > 0) list.Items[0].Focused = true; };
         close.Click += (_, _) => form.Close();
+        if (save != null) save.Click += (_, _) => SaveMembers(form, g, people);
         form.CancelButton = close;
         form.KeyDown += (_, e) =>
         {
@@ -124,6 +134,29 @@ public sealed partial class MainForm
         form.Show(this);
     }
 
+    /// <summary>Save the list (Radegast's Save member list): the members as a CSV file, by Windows' own Save window (the run's
+    /// SOJOURN_TEST_FILES folder in its place in tests), a row each with their title, whether they own it, and when they
+    /// were last on, as the list has them; said where it went.</summary>
+    void SaveMembers(Form form, MyGroup g, List<GroupPerson> people)
+    {
+        var bad = Path.GetInvalidFileNameChars();
+        var file = new string($"{g.Name} members {DateTime.Now:yyyy-MM-dd}.csv".Select(c => bad.Contains(c) ? '_' : c).ToArray());
+        string path;
+        if (Environment.GetEnvironmentVariable("SOJOURN_TEST_FILES") is { Length: > 0 } test) path = Path.Combine(test, file);
+        else
+        {
+            using var d = new SaveFileDialog { Title = $"Save the members of {g.Name}", FileName = file, Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*", DefaultExt = "csv", AddExtension = true, OverwritePrompt = true };
+            if (d.ShowDialog(form) != DialogResult.OK) { Reader?.Answer("The list wasn't saved.", keep: false); return; }
+            path = d.FileName;
+        }
+        static string Cell(string s) => s.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0 ? $"\"{s.Replace("\"", "\"\"")}\"" : s;
+        var lines = new List<string> { "Name,Title,Owner,Last on" };
+        lines.AddRange(people.Select(p => string.Join(",", Cell(p.Name), Cell(p.Title), p.Owner ? "yes" : "no", Cell(p.Online))));
+        try { File.WriteAllLines(path, lines, new System.Text.UTF8Encoding(true)); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException) { Reader?.Answer($"Couldn't save the list: {e.Message}", keep: false); return; }
+        Answer($"Saved the {Count(people.Count, "member")} of {g.Name} to {Path.GetFileName(path)} in {Path.GetFileName(Path.GetDirectoryName(path))}.");
+    }
+
     /// <summary>The group's members (owners first, each with their title and whether they're on), or who's in its chat now
     /// (joining it first, as the viewer's chat window does when it opens), or why not.</summary>
     async Task<(List<GroupPerson>? People, string? Why)> LoadGroupPeopleAsync(MyGroup g, bool chat)
@@ -144,7 +177,7 @@ public sealed partial class MainForm
                 if (owner) words.Add("an owner");
                 if (m.Str("title") is { Length: > 0 } title) words.Add(title);
                 if (m.Str("online") is { Length: > 0 } on) words.Add(on);
-                people.Add(new GroupPerson(id, name, Mine(id, string.Join(", ", words)), owner, false));
+                people.Add(new GroupPerson(id, name, Mine(id, string.Join(", ", words)), owner, false, m.Str("title") ?? "", m.Str("online") ?? ""));
             }
             return (people, null);
         }

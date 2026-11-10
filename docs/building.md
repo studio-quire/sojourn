@@ -269,7 +269,10 @@ format_version, client, creation_date, author, grid, linkset, prim by Firestorm'
 asset with J2C textures), written only to `Documents\Sojourn\Backups`. Contents aren't kept yet (said in `left_out`).
 A restore makes each prim, sets its shape, faces and settings and links them; textures are uploaded again only where
 the grid hasn't got them (the same grid: none, free), then confirmed as a spend where uploads cost. Restored builds are
-never temporary and never for sale.
+never temporary and never for sale. A restore reads Radegast's XML export too (LibreMetaverse's prim list, its textures as
+.jp2 beside it), turned into a manifest first. `ExportAsync` is the backup in memory, for a host app that writes it where
+the person chose: Access's Export, as an .oxp, Radegast's XML or a Collada model (Session's `Building/Collada.cs`;
+`docs/access-app.md` > Export and import).
 
 ## What waits for the person
 

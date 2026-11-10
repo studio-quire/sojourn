@@ -8,7 +8,7 @@ covers about, region, covenant, access and the lists, eject, freeze, passes, buy
 settings, lag and returns, the region's switches, terraforming and holdings; selling, dividing, joining, deeding and
 the estate's lists go through `client_api`. None of it is on incognito's blind allowlist
 (`Session/Private/Allowlist.cs`); with "let it see" it runs as usual, gated as always. Sojourn Access has About Land by
-keys over the same ops (Control+L, `docs/access-app.md` > About Land).
+keys over the same ops (Control+L, `docs/access-app.md` > About Land), its Estate tab the estate's tools and lists.
 
 Code: `Core/Agents/ParcelOps.cs` (About Land, the lists, the parcel by place), `ParcelOps.Deals.cs` (sell, buy, pass,
 abandon, deed, reclaim, divide, join), `ParcelOps.Terraform.cs`, `EstateOps.cs` (region, covenant, estate),
@@ -130,9 +130,10 @@ From `llfloaterregioninfo.cpp`, `llfloatertopobjects.cpp`:
   owner; refused before sending otherwise, as the viewer greys its controls): `estate` (the EstateAccess capability on
   Second Life and OpenSim, with ban dates and who banned on SL; else getinfo's setaccess per list; the estate's name,
   owner and switches from getinfo's estateupdateinfo), `estateAdd`,
-  `estateRemove {list: managers|allowed|allowed_groups|banned, all_estates?}` (estateaccessdelta, then read back),
-  `kick` (kickestate), `sendHome {to | everyone}` (teleporthomeuser, teleporthomeallusers), `message {text, estate?}`
-  (simulatormessage to the region, instantmessage to the estate), `setRegion` (setregioninfo or DispatchRegionInfo,
+  `estateRemove {list: managers|allowed|allowed_groups|banned, all_estates?}` (estateaccessdelta, then read back; `estateAdd`'s
+  `kick` kicks anyone banned who's still in the region once the ban shows), `kick` (kickestate), `sendHome {to | everyone}`
+  (teleporthomeuser, teleporthomeallusers), `message {text, estate?}` (simulatormessage to the region, instantmessage to the
+  estate; at most 254 bytes, one EstateOwnerMessage parameter, as the viewer truncates it), `setRegion` (setregioninfo or DispatchRegionInfo,
   every field kept unless named), `regionDebug` (setregiondebug, the three kept unless named), `restart {delay 30-240,
   120 | cancel}`, `topScripts`, `topColliders {owner | object | parcel}` (LandStatRequest with STAT_FILTER_BY_OWNER,
   OBJECT or PARCEL_NAME), `returnObjects {ids}` (ParcelReturnObjects, the whole region, by task id, as Top Objects'

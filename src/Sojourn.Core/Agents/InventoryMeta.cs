@@ -112,6 +112,16 @@ public sealed class InventoryMeta
         return _meta.TryGetValue(id, out var m) ? m : (UUID.Zero, false);
     }
 
+    /// <summary>The folder the service has an item or folder in (a move confirmed by it, InventoryOps.MoveNodeAsync);
+    /// null when its answer names none, or it didn't answer.</summary>
+    public async Task<UUID?> ParentOnServiceAsync(UUID id, bool folder, CancellationToken ct)
+    {
+        var (status, body) = await GetAsync(folder ? $"category/{id}" : $"item/{id}", ct);
+        if (body is null) { _s.Log.LogInformation("inventory service: {Id} read for its folder answered {Status}", id, status); return null; }
+        Absorb(body);
+        return body.ContainsKey("parent_id") ? body["parent_id"].AsUUID() : null;
+    }
+
     /// <summary>Every favourite in the inventory: the whole tree read from the service once a session (a subtree at a
     /// time; one the service finds too big is split by its folders), then kept current by our own changes.</summary>
     public async Task<JsonObject> FavoritesAsync(bool refresh, CancellationToken ct)

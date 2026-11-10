@@ -321,7 +321,7 @@ public sealed class LandWiring : IDisposable
                 string detail = (list, add) switch
                 {
                     ("managers", true) => Lang.T("Estate managers can change nearly everything about the estate and its regions, its lists and its land."),
-                    ("banned", true) => Lang.T("They can't enter any region of it."),
+                    ("banned", true) => Lang.T(a.Bool("kick", false) ? "They can't enter any region of it, and anyone of them here now is sent home." : "They can't enter any region of it."),
                     ("allowed", false) or ("allowed_groups", false) => Lang.T("If the estate isn't public, they can't enter it then."),
                     _ => "",
                 };
@@ -336,7 +336,7 @@ public sealed class LandWiring : IDisposable
                     Lang.F("Now {0} m². The group can hold that much land on your account; on Second Life it counts toward your monthly land use fee.", was));
             }
             case "kick":
-                return (Lang.F("Kick {0} out of the estate", await NamesAsync(a, ct)), Lang.T("They're sent home."));
+                return (Lang.F("Eject {0} from the estate", await NamesAsync(a, ct)), Lang.T("They're sent home."));
             case "sendHome":
                 return a.Bool("everyone", false)
                     ? (Lang.F("Send everyone in {0} home", RegionName()), Lang.T("All but you are teleported to their homes."))
@@ -350,7 +350,10 @@ public sealed class LandWiring : IDisposable
             }
             case "setRegion":
             {
-                var changes = a.Where(kv => kv.Key != "op").Select(kv => $"{kv.Key}: {Short(kv.Value)}");
+                // in the Region tab's words, not the op's ("Flying blocked: on", not "block_fly: True")
+                var changes = a.Where(kv => kv.Key != "op").Select(kv => RegionWords.TryGetValue(kv.Key, out var w)
+                    ? $"{Lang.T(w)}: {(kv.Value is JsonValue v && v.TryGetValue<bool>(out var on) ? Lang.T(on ? "on" : "off") : Short(kv.Value))}"
+                    : $"{kv.Key}: {Short(kv.Value)}");
                 return (Lang.F("Change the settings of {0}", RegionName()), string.Join("; ", changes));
             }
             case "regionDebug":
@@ -442,6 +445,16 @@ public sealed class LandWiring : IDisposable
         ["access_list"] = "Only the allowed list may enter", ["access_group"] = "The group may enter", ["pass_list"] = "Passes sold",
         ["deny_no_payment_info"] = "No one without payment info", ["deny_under_18"] = "No one under 18", ["voice"] = "Voice",
         ["voice_parcel_only"] = "Voice kept to this parcel",
+    };
+
+    /// <summary>The Region tab's words for SojournLand setRegion's fields (Access's About Land rows say the same).</summary>
+    static readonly Dictionary<string, string> RegionWords = new()
+    {
+        ["block_terraform"] = "Terraforming blocked", ["block_fly"] = "Flying blocked", ["block_fly_over"] = "Flying over blocked",
+        ["allow_damage"] = "Damage allowed in the region", ["restrict_push"] = "Pushing restricted in the region",
+        ["allow_land_resell"] = "Land can be resold", ["allow_parcel_changes"] = "Parcels can be joined and divided",
+        ["block_parcel_search"] = "Parcels hidden from search", ["agent_limit"] = "People at most", ["maturity"] = "Maturity",
+        ["object_bonus"] = "Object bonus",
     };
 
     static JsonObject CentreOf(JsonObject a) =>

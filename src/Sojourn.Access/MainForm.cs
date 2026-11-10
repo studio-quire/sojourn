@@ -163,6 +163,7 @@ public sealed partial class MainForm : Form
         _cmd.Music = MusicWords;
         _cmd.TeleportFallback = () => _set.WalkTeleportFallback;
         _cmd.AlwaysRun = () => _set.WalkAlwaysRun;
+        _cmd.RoundPeople = () => _set.WalkRoundPeople;
         _cmd.CueText = cue => _set.WalkText(cue);
         var planner = _cmd.Planner = new Sojourn.Access.Walk.PathPlanner(host.Session, rays);
         host.Session.Motion.Router = (c, from, to) => RouteAsync(planner, from, to);
@@ -170,6 +171,9 @@ public sealed partial class MainForm : Form
         _cmd.WalkMode = _walk;
         _walk.Walking = () => _cmd.Heading;
         StartRouteRecording(rays);
+        StartAutoSit();
+        _cmd.Export = words => (Task)Invoke(() => ExportWordsAsync(words));
+        _cmd.Import = words => (Task)Invoke(() => ImportWordsAsync(words));
         StartRides();
         // sound as a map (M4): a sound per kind of thing arriving, standing in for the viewer's new-IM and alert sounds
         _earcons = new Sojourn.Access.Sound.Earcons(_set, _walk, e => _set.IsMuted(SourceOf(e)) || InFriendsBurst(e)
@@ -188,6 +192,7 @@ public sealed partial class MainForm : Form
         AddVoiceSettings(host.SettingsApi);
         StartBuilders();
         StartPointing();
+        StartPointAt();
         _cmd.Voice = words => (Task)Invoke(() => VoiceWordsAsync(words));
         _cmd.ImSound = words => (Task)Invoke(() => ImSoundWordsAsync(words));
         StartSessionTools();
@@ -237,6 +242,7 @@ public sealed partial class MainForm : Form
         _ = SayIfNewerBuildAsync();
         _ = SayChatLogsOnceAsync();
         _ = SayCacheClearedAsync();
+        AutoSitArrived("login", 0);
     }
 
     void Tick()
@@ -642,6 +648,7 @@ public sealed partial class MainForm : Form
         Going places
         Control+G: teleport to the SLurl on the clipboard
         Control+Shift+H: teleport home
+        Control+Shift+S: auto-sit on or off: sat back on your seat when you log in or teleport there (an object's Applications key in Objects: Auto-sit on it; //autosit)
         Control+Shift+1: region info
         F3: walk mode (F1 there for its keys)
         R in walk mode, or //record: record a route by walking it
@@ -683,6 +690,8 @@ public sealed partial class MainForm : Form
         undo takes back the last change
         Escape: back where Control+B came from
         //build and a command, from any input
+        export in its command box, or //export NAME: save something you made to a file (a backup, Radegast's XML or a Collada model)
+        import, or //import: rebuild one from a file, 2 metres ahead
 
         About Land
         Control+L: About Land, on the parcel you're on
@@ -706,6 +715,7 @@ public sealed partial class MainForm : Form
         Delete on something you wear: take it off
         Take, Delete and Return where you may, on the menu; what isn't yours waits for your confirmation
         Control+Shift+P: what a friend pointed at in their viewer, selected here; a person's menu has Hear what they point at, or //pointing NAME
+        Control+P on a thing or part: point at it for a minute, so people nearby see your arm and a beam on it; again stops; //point NAME, //point off
         A person's menu: What they wear, to touch or pay, and Their animations
 
         Voice
@@ -723,6 +733,7 @@ public sealed partial class MainForm : Form
         //stopanimations: when you're told you're stuck in a pose
         //hover, //displayname, //maturity: say each; with a value, change it
         //run: always run (walking, //go and following), or walk again
+        //walkround: //go and Walk to go round people standing in the way, or straight again
         //profile: your own profile, to read and change, and your picture; //profile NAME: anyone's
         //notes NAME: your own notes on someone
         //about: which version this is
@@ -771,8 +782,15 @@ public sealed partial class MainForm : Form
         form.ShowDialog(this);
     }
 
+    /// <summary>Test runs (SOJOURN_TEST_INPUT): each key as it arrived with what was held, in the log, so a posted key
+    /// that came with a modifier nobody asked for (one held on the real keyboard) can be told from the app's doing.</summary>
+    static readonly bool LogKeys = Environment.GetEnvironmentVariable("SOJOURN_TEST_INPUT") is { Length: > 0 };
+
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (LogKeys && (keyData & Keys.KeyCode) is Keys.Tab or Keys.Enter or Keys.F5 or Keys.Escape or (>= Keys.Left and <= Keys.Down)
+            || LogKeys && (keyData & Keys.Modifiers) != 0)
+            Host?.Log.LogInformation("key {Key}", keyData);
         if (TalkDown(keyData)) return true;
         switch (keyData)
         {
@@ -801,6 +819,7 @@ public sealed partial class MainForm : Form
             case Keys.Control | Keys.B: GoBuild(); return true;   // the official viewer's Build
             case Keys.Control | Keys.L: GoLand(); return true;   // About Land
             case Keys.Control | Keys.Shift | Keys.H: _ = HomeAsync(); return true;
+            case Keys.Control | Keys.Shift | Keys.S: ToggleAutoSit(); return true;   // auto-sit (MainForm.AutoSit.cs; Radegast issue #156's key)
             case Keys.F6: MuteAll(); return true;
             case Keys.Shift | Keys.F6: MuteSource(); return true;
             case Keys.Control | Keys.OemOpenBrackets: Reader?.Older(); return true;
@@ -1052,7 +1071,7 @@ public sealed partial class MainForm : Form
                 case Sojourn.Core.Agents.TeleportWatch.Outcome.Arrived:
                     // home in this region: no teleport event to say it, so it's said here
                     await Task.Delay(1500);
-                    if (_teleportedAt < asked) Answer(_cmd.ArrivedLine());
+                    if (_teleportedAt < asked) { Answer(_cmd.ArrivedLine()); AutoSitArrived("home", 0); }
                     break;
                 case Sojourn.Core.Agents.TeleportWatch.Outcome.Stalled:
                     break;   // (the session logs in again and says so)

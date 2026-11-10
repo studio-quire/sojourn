@@ -42,6 +42,7 @@ public sealed partial class MainForm
         GroupItem("N&ew notice...", g => NewNotice(g));
         GroupItem("&Invite someone...", g => _ = InviteSomeoneAsync(g));
         GroupItem("&Banned residents...", g => _ = GroupBansAsync(g));
+        GroupItem("Settings an&d roles...", g => GroupSettings(g));
         GroupItem("Chat lo&g", g => ChatLogOf(g.Id.ToString(), g.Name));
         GroupItem("&Receive its notices", g => _ = GroupSwitchAsync(g, "notices"));
         var noticesItem = (ToolStripMenuItem)_groupMenu.Items[^1];

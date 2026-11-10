@@ -105,7 +105,7 @@ public sealed partial class MainForm
 
     async Task LandArrivedAsync(bool sayTab)
     {
-        var intro = _landIntroduced ? "" : " Type a tab's name (general, covenant, objects, options, media, sound, access, region), or a setting and its value; help lists the commands; Tab for the settings.";
+        var intro = _landIntroduced ? "" : " Type a tab's name (general, covenant, objects, options, media, sound, access, region, estate), or a setting and its value; help lists the commands; Tab for the settings.";
         _landIntroduced = true;
         if (!await ReadLandAsync(here: true)) return;
         await ShowLandTabAsync(said: sayTab);
@@ -153,6 +153,7 @@ public sealed partial class MainForm
             // the same parcel: what the other tabs read stays until they're read again
             look.Access = _land!.Access; look.AccessWhy = _land.AccessWhy; look.Objects = _land.Objects; look.ObjectsWhy = _land.ObjectsWhy;
             look.RegionInfo = _land.RegionInfo; look.Covenant = _land.Covenant;
+            look.Estate = _land.Estate; look.EstateWhy = _land.EstateWhy; look.ManagesEstate = _land.ManagesEstate;
         }
         _land = look;
         LandWhere();
@@ -214,6 +215,9 @@ public sealed partial class MainForm
                 if (again || l.RegionInfo == null) { var ri = await _ops.ReadAsync("SojournLand", "region"); l.RegionInfo = PersonOps.Error(ri) == null ? ri : null; }
                 if (tab != "General" && (again || l.Covenant == null)) { var c = await _ops.ReadAsync("SojournLand", "covenant"); l.Covenant = PersonOps.Error(c) == null ? c : null; }
                 break;
+            case "Estate":
+                await LoadEstateAsync(l, again);
+                break;
         }
         if (tab == "Region" && _ops.Client?.Network.CurrentSim is { } sim)
         {
@@ -247,6 +251,7 @@ public sealed partial class MainForm
     {
         if (_land is not { } l) return;
         var tab = LandTabName;
+        l.RestartAt = _restart is { } rs && rs.Region == l.Region && rs.At > DateTime.UtcNow ? rs.At : null;
         var items = LandRows.For(l, tab);
         _landRows.AccessibleName = $"{tab} of {l.Name}";
         RowsInto(_landRows, items, "None.");
@@ -255,6 +260,7 @@ public sealed partial class MainForm
     void SayLandTab(string tab)
     {
         if (_land is not { } l) return;
+        if (tab == "Estate") { Answer(EstateSaid(l)); return; }
         var rows = LandRows.For(l, tab);
         // (a tab whose first row is its own name, Region or Covenant, isn't named twice)
         var head = rows.Count > 0 && rows[0].Words.StartsWith(tab + ":") ? "" : $"{tab}: ";
@@ -280,6 +286,19 @@ public sealed partial class MainForm
             case LandOwner o:
                 if (e.KeyCode == Keys.Enter) { e.Handled = e.SuppressKeyPress = true; Answer($"{item.Text}. Delete returns them to their owner."); }
                 else if (e.KeyCode == Keys.Delete) { e.Handled = e.SuppressKeyPress = true; _ = GuardedAsync(() => ReturnOwnerAsync(o), o.Name); }
+                return;
+            // the Estate tab's (MainForm.Estate.cs)
+            case EstatePerson ep:
+                if (e.KeyCode == Keys.Enter) { e.Handled = e.SuppressKeyPress = true; Answer($"{item.Text}. Delete takes them off the list."); }
+                else if (e.KeyCode == Keys.Delete) { e.Handled = e.SuppressKeyPress = true; _ = GuardedAsync(() => EstateRemoveAsync(ep), ep.Name); }
+                return;
+            case EstateListHead h when e.KeyCode == Keys.Enter:
+                e.Handled = e.SuppressKeyPress = true;
+                _ = GuardedAsync(() => EstateAddAsync(h), h.Label);
+                return;
+            case EstateAction act when e.KeyCode == Keys.Enter:
+                e.Handled = e.SuppressKeyPress = true;
+                _ = GuardedAsync(() => EstateActAsync(act), act.Label);
                 return;
             case BuildRow r:
                 switch (e.KeyCode)
@@ -431,7 +450,8 @@ public sealed partial class MainForm
         + "buy: the land, if it's for sale to you. buy pass. abandon. deed, or deed GROUP. "
         + "divide north half (or south, east, west, ahead, behind, left, right), join north (with the parcel beyond that edge). "
         + "flatten, raise, lower, smooth, roughen or revert: the ground where you stand; add parcel for the whole parcel, for 3 seconds for longer. "
-        + "my land: your land holdings. parcels: every parcel in the region. here, or F5: the parcel you're on now. where. Escape goes back.";
+        + "my land: your land holdings. parcels: every parcel in the region. here, or F5: the parcel you're on now. where. "
+        + "estate: its tab, for the estate's owner and managers; estate help lists its commands (kick, send home, restart, message). Escape goes back.";
 
     Task LandCommandAsync(string text) => GuardedAsync(() => LandCommandCoreAsync(text), text);
 
@@ -463,6 +483,8 @@ public sealed partial class MainForm
             case "holdings": await HoldingsAsync(); return;
             case "covenant" or "region": break;
         }
+        // the estate's (MainForm.Estate.cs): none needs the parcel
+        if (await EstateWordsAsync(verb, rest)) return;
         if (_land == null && !await ReadLandAsync(here: true)) return;
         switch (verb)
         {

@@ -161,8 +161,11 @@ public sealed class GroupOps
     {
         var c = C;
         var gid = Gid(a);
-        if (a.Has("charter") || a.Has("insignia_id")) Need(gid, GroupPowers.ChangeIdentity, "changing the charter or insignia");
-        if (a.Has("open_enrollment") || a.Has("fee") || a.Has("show_in_list") || a.Has("mature")) Need(gid, GroupPowers.ChangeOptions, "changing the group's options");
+        // (as the viewer's General tab enables them: identity for the charter, insignia, search and maturity; options for
+        // who may join and its fee)
+        if (a.Has("charter") || a.Has("insignia_id") || a.Has("show_in_list") || a.Has("mature")) Need(gid, GroupPowers.ChangeIdentity, "changing the charter, insignia, search listing or maturity");
+        if (a.Has("open_enrollment") || a.Has("fee")) Need(gid, GroupPowers.ChangeOptions, "changing who may join or its fee");
+        if (a.Num("fee") is < 0) throw new LeapError("fee: L$0 or more");
         var g = await GroupProfileAsync(gid, ct);   // a struct: the copy below is ours to change
         if (a.Str("charter") is { } ch) g.Charter = ch;
         if (a.Bool("open_enrollment") is { } oe) g.OpenEnrollment = oe;
@@ -225,7 +228,8 @@ public sealed class GroupOps
             arr.Add(new JsonObject
             {
                 ["role_id"] = r.ID.ToString(), ["name"] = r.Name, ["title"] = r.Title, ["desc"] = r.Description,
-                ["powers"] = PowerJson(r.Powers), ["members"] = mem, ["everyone"] = r.ID == UUID.Zero,
+                // (power_bits: every bit, the ones LibreMetaverse has no name for too, so an update keeps them)
+                ["powers"] = PowerJson(r.Powers), ["power_bits"] = ((ulong)r.Powers).ToString(), ["members"] = mem, ["everyone"] = r.ID == UUID.Zero,
             });
         }
         return new JsonObject { ["group_id"] = gid.ToString(), ["roles"] = arr };
@@ -357,19 +361,25 @@ public sealed class GroupOps
         var gid = Gid(a);
         var rid = a.Uuid("role_id") ?? throw new LeapError("need role_id");
         if (a.Has("name") || a.Has("title") || a.Has("desc")) Need(gid, GroupPowers.RoleProperties, "changing a role's name, title or description");
-        if (a.Has("powers")) Need(gid, GroupPowers.ChangeActions, "changing a role's powers");
         var roles = await RolesAsync(new JsonObject { ["group_id"] = gid.ToString() }, ct);
         var cur = (roles["roles"] as JsonArray)!.OfType<JsonObject>().FirstOrDefault(r => r["role_id"]?.GetValue<string>() == rid.ToString())
                   ?? throw new LeapError("no such role in that group");
+        // every bit the role has, not only those with names: a rename that sent the named ones back would drop the rest
+        var now = ulong.TryParse(cur.Str("power_bits"), out var bits) ? (GroupPowers)bits : ParsePowers(cur["powers"]);
+        var powers = a.Has("powers") ? ParsePowers(a["powers"]) : now;
+        // (whether its members are shown is a role's property, as the viewer has it, though it travels as a power)
+        var changed = (ulong)(powers ^ now);
+        if ((changed & ~GroupAbilities.MembersShown) != 0) Need(gid, GroupPowers.ChangeActions, "changing a role's powers");
+        else if (changed != 0) Need(gid, GroupPowers.RoleProperties, "changing whether a role's members are shown");
         var role = new GroupRole
         {
             GroupID = gid, ID = rid, Name = a.Str("name") ?? cur["name"]!.GetValue<string>(),
             Title = a.Str("title") ?? cur["title"]!.GetValue<string>(), Description = a.Str("desc") ?? cur["desc"]!.GetValue<string>(),
-            Powers = a.Has("powers") ? ParsePowers(a["powers"]) : ParsePowers(cur["powers"]),
+            Powers = powers,
         };
         c.Groups.UpdateRole(role);
         await Task.Delay(500, ct);
-        return new JsonObject { ["role_id"] = rid.ToString(), ["name"] = role.Name, ["powers"] = PowerJson(role.Powers) };
+        return new JsonObject { ["role_id"] = rid.ToString(), ["name"] = role.Name, ["powers"] = PowerJson(role.Powers), ["power_bits"] = ((ulong)role.Powers).ToString() };
     }
 
     public JsonObject DeleteRole(JsonObject a)

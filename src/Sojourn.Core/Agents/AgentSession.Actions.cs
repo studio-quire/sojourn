@@ -35,6 +35,7 @@ public sealed partial class AgentSession
                         && Vector2.Distance(new Vector2(c.Self.SimPosition.X, c.Self.SimPosition.Y), new Vector2(pos.X, pos.Y)) < 5)
                     {
                         Log.LogInformation("teleport to {Region} reported failed ({Msg}) but arrived", region, c.Self.TeleportMessage);
+                        Places.TeleportArrived(c);   // (no Finished comes for these, which is what the history records by)
                         return (true, "");
                     }
                     await Task.Delay(100);

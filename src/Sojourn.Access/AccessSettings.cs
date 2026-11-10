@@ -203,6 +203,14 @@ public sealed class AccessSettings
         Walk["always_run"] = on ? "on" : "off";
         Save();
     }
+    /// <summary>A `//go` or a Walk to goes round people standing in its way (Commands.WalkPeople.cs): on unless turned
+    /// off, when walks take no notice of people, as they did before 2026-11-09.</summary>
+    public bool WalkRoundPeople => !Walk.TryGetValue("round_people", out var v) || v == "on";
+    public void SetWalkRoundPeople(bool on)
+    {
+        Walk["round_people"] = on ? "on" : "off";
+        Save();
+    }
     /// <summary>Seated and moving, a line from the vehicle saying its track ends stops it (Walk/WalkMode.Stop.cs): on unless
     /// turned off (the blind tester's ask, 2026-11-01).</summary>
     public bool WalkTrackEnd => !Walk.TryGetValue("track_end", out var v) || v == "on";
@@ -369,6 +377,10 @@ public sealed class AccessSettings
         api.Add("walk_always_run", new SettingsApi.Setting("access", "Sojourn Access: always run, as the viewer's Always Run: walk "
             + "mode's arrows, //go and following run rather than walk (otherwise Shift with the arrows runs)", "on, off", () => WalkAlwaysRun,
             SettingsApi.Switch("walk_always_run", on => { SetAlwaysRun(on); changed(); })));
+        api.Add("walk_round_people", new SettingsApi.Setting("access", "Sojourn Access: a walk by //go or Walk to goes round "
+            + "people standing in its way, and stops short of someone it can't get round (off: walks take no notice of people and "
+            + "may walk into them; the assistant's walks and following never go round people)", "on, off", () => WalkRoundPeople,
+            SettingsApi.Switch("walk_round_people", on => { SetWalkRoundPeople(on); changed(); })));
         // a safeguard against programs on this PC, the assistant's among them: any caller may set it back to refuse, and
         // only the person lowers it to hello, in Alt+0 by their own key or Windows Hello (MainForm.AnswersRow)
         api.Add("access_answers_without_key", new SettingsApi.Setting("access", "Sojourn Access: for people who answer without a "

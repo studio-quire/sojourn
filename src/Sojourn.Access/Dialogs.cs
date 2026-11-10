@@ -23,6 +23,27 @@ public static class Dialogs
         return box.Text.Trim().Length > 0 || allowEmpty ? box.Text.Trim() : null;
     }
 
+    /// <summary>Text of several lines (a group's charter): Enter starts a new line, Control+Enter or OK takes it, Escape
+    /// cancels. The text (empty allowed), or null when cancelled.</summary>
+    public static string? AskLines(IWin32Window owner, string title, string label, string text = "")
+    {
+        using var f = Frame(title);
+        var box = new LineBox
+        {
+            Name = "answer", AccessibleName = label, Text = text.ReplaceLineEndings("\r\n"), Width = 420, Height = 180,
+            Multiline = true, AcceptsReturn = true, ScrollBars = ScrollBars.Vertical, MaxLength = 0,
+        };
+        var t = Table(f, 2);
+        t.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Top, MaximumSize = new Size(200, 0) }, 0, 0);
+        t.Controls.Add(box, 1, 0);
+        t.Controls.Add(Buttons(f), 1, 1);
+        f.AcceptButton = null;   // (Enter is the box's new line)
+        box.KeyDown += (_, e) => { if (e.KeyData == (Keys.Control | Keys.Enter)) { e.Handled = e.SuppressKeyPress = true; f.DialogResult = DialogResult.OK; } };
+        box.SelectionStart = box.Text.Length;
+        f.ActiveControl = box;
+        return f.ShowDialog(owner) == DialogResult.OK ? box.Text.ReplaceLineEndings("\n").TrimEnd() : null;
+    }
+
     public sealed record Someone(UUID Id, string Name, string Where);
 
     /// <summary>

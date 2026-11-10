@@ -36,7 +36,7 @@ import grid          # noqa: E402
 HOME = ROOT / "local" / "invbench"
 ACCOUNT = ("Inventory", "Big")   # (Inventory Bench has a broken first load in it)
 IAR = HOME / "bench.iar"   # (remade for each make, deleted after the load)
-# ports of its own, apart from the test's (9885, 9886, 9790) and ACCESS_ACCOUNTS' (+10)
+# ports of its own, apart from the test's (9885, 9886, 9790) and ACCESS_ACCOUNTS' (+30)
 A.Q_PORT, A.API_PORT = 9897, 9797
 A.EVENTS = HOME / "events.jsonl"
 

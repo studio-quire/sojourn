@@ -87,8 +87,9 @@ public sealed class SojournLand : SessionApi
             (_, ct) => J(e.CovenantAsync(ct)));
         Op("estate", "-> {estate, owner, managers, allowed, allowed_groups, banned: [{id, name, banned?, banned_by?}], public, ...}: the "
             + "estate's lists (its owner and managers)", (_, ct) => J(e.EstateAsync(ct)));
-        Op("estateAdd", "{list: managers|allowed|allowed_groups|banned, to | ids | group, all_estates?} -> estate: onto an estate list "
-            + "(banned: kept out of the whole estate); the person confirms", (a, ct) => J(e.ChangeListAsync(a, add: true, ct)));
+        Op("estateAdd", "{list: managers|allowed|allowed_groups|banned, to | ids | group, all_estates?, kick? (banned: anyone of them still in "
+            + "this region is kicked too)} -> estate (and kicked, still_here?): onto an estate list (banned: kept out of the whole estate); "
+            + "the person confirms", (a, ct) => J(e.ChangeListAsync(a, add: true, ct)));
         Op("estateRemove", "{list, to | ids | group, all_estates?} -> estate: off an estate list; the person confirms",
             (a, ct) => J(e.ChangeListAsync(a, add: false, ct)));
         Op("kick", "{to | ids} -> {kicked, still_here?}: out of the estate (sent home), as Region/Estate > Kick; the person confirms",

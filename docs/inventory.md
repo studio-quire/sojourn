@@ -85,15 +85,26 @@ moves through unasked). The confirmation names six and "N more".
 Moves, moves to the Trash, renames and an item's changes wait for the grid (`InventoryOps.Service.cs`). LibreMetaverse's
 MoveFolder, MoveItem, UpdateFolderProperties and RequestUpdateItem change the store, then on Second Life send the
 change to the inventory service without waiting (`_ = AisClient.MoveCategoryAsync(...)`), so a refusal reached only
-its logger. Ours send the same PATCH (`parent_id`, `name`, or the item's fields) to the service and await it: only a
-success changes the store, and a refusal or no answer within 30 s is the op's error. Without the service (OpenSim)
-the UDP messages go as the official viewer's do (it moves things that way on every grid, with no answer). A purge
-counts as done only if the node has left the store (LibreMetaverse's RemoveItemAsync and RemoveFolderAsync log a
-refusal and return). The store's node is the one callers hold, so a move changes their copy's ParentUUID too: read
-where a thing was before moving it (Sojourn Access's Delete refreshed the folder it had moved to rather than the one it
-left, so a deleted folder stayed in her tree until she logged in again, 2026-11-07). The tests' stand-in for the
-service (`SOJOURN_TEST_AIS`) answers these too, refusing what it's told to, and the UDP message follows so OpenSim
-matches; only Second Life checks the real service's answers.
+its logger. Renames and an item's changes go as the same PATCH (`name`, or the item's fields, its folder unchanged, as
+the viewer's `update_inventory_item` sends it) and are awaited: only a success changes the store, and a refusal or no
+answer within 30 s is the op's error. Moves don't go that way: Second Life's service refuses a PATCH of `parent_id`
+(HTTP 400; every delete the blind tester tried on 0.1.0.996, a landmark and an object, 2026-11-08 and 09), so
+LibreMetaverse's moves never happened there (on 0.1.0.955 she was told a folder of landmarks was deleted, and still saw
+it), and the official viewer moves by its UDP messages on every grid (`LLViewerInventoryItem::updateParentOnServer`).
+Ours do the same, stamped into the Trash as the viewer's delete is, and where there's a service read the thing back
+from it (after 0.25 s, then each 0.5-1 s, up to 15 s) until it shows the new folder: only then is the store moved and
+the move said done; still elsewhere, the store follows the service and the error says it ("Second Life still had X where
+it was 15 seconds later"). An answer naming no folder (the tests' stand-in, which holds no inventory) counts as done.
+Without the service (OpenSim) the store moves at once, as the viewer's does, with no answer. The AO's removal of a
+folder goes the same way. A purge counts as done only if the node has left the store (LibreMetaverse's RemoveItemAsync
+and RemoveFolderAsync log a refusal and return). The store's node is the one callers hold, so a move changes their
+copy's ParentUUID too: read where a thing was before moving it (Sojourn Access's Delete refreshed the folder it had
+moved to rather than the one it left, so a deleted folder stayed in her tree until she logged in again, 2026-11-07).
+The tests' stand-in for the service (`SOJOURN_TEST_AIS`) answers these too, as Second Life does: a PATCH of `parent_id`
+alone refused with 400 (it took them until 2026-11-09, which is how the refusal reached her), a change refused for the
+ids it's told to refuse, and those ids read back in the folder it's given, so a move shows as not done; the UDP message
+follows so OpenSim matches. Only Second Life checks the real service's answers: that a move read back shows its new
+folder within a second or so is reasoning from the viewer's behaviour, not yet seen there.
 
 ## Giving, links, outfits and landmarks
 

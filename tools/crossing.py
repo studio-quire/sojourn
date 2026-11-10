@@ -21,7 +21,7 @@ driver goes, as a train's "Driver missing!"), and connected. No GPU, no window.
       --keep       leave the probe and the visitor running at the end (they log out on their own after 15 minutes)
 
 Needs the grid (tools/grid.py start). Its own accounts (Crossing Rider, Crossing Visitor) and ports (agent API 9814,
-visitor 9914), clear of tools/access.py's (9790 and 9885-9886, and 10 up for ACCESS_ACCOUNTS=Walk) and the other
+visitor 9914), clear of tools/access.py's (9790 and 9885-9890, and 30 up for ACCESS_ACCOUNTS=Walk) and the other
 tools'. Output in local/crossing/ (the probe's log: probe.log).
 Written by Claude Opus 5.5, 2026-11-01.
 """

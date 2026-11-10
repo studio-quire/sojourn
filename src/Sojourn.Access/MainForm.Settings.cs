@@ -71,7 +71,7 @@ public sealed partial class MainForm
             ("earcon_mic", "Mic opening and closing, sound"),
             ("earcon_deleted", "Deleting something, sound"),
         }),
-        new("Walking", "walk mode's cues and their volumes, how far a turn goes, and always running", new (string, string?)[]
+        new("Walking", "walk mode's cues and their volumes, how far a turn goes, always running, and walking round people", new (string, string?)[]
         {
             ("walk_steps", "Footsteps (walk mode)"),
             ("walk_steps_volume", "Footsteps' volume"),
@@ -101,6 +101,7 @@ public sealed partial class MainForm
             ("walk_teleport_fallback", "Teleport when a walk finds no way around"),
             // (Radegast's World > Always Run)
             ("walk_always_run", "Always run: walking, //go and following"),
+            ("walk_round_people", "Walk round people standing in the way (//go, Walk to)"),
         }),
         new("Driving and trains", "your speed, what's ahead, rail switches and the track's end", new (string, string?)[]
         {
@@ -184,9 +185,12 @@ public sealed partial class MainForm
             ("incognito_while_im", "While you're in an IM, incognito"),
             ("incognito_here", "This parcel always incognito"),
         }),
-        new("My avatar", "hover height, animations and RLV", new (string, string?)[]
+        new("My avatar", "hover height, animations, auto-sit and RLV", new (string, string?)[]
         {
             ("hover_height", "Hover height, metres"),
+            // (Radegast's AutoSit, and its issue #156's asks: a seat in several places, a key)
+            ("access_autosit", "Auto-sit: sat back on your seat when you log in or teleport there (Control+Shift+S)"),
+            ("access_autosit_seats", "Auto-sit seats"),
             ("ao", "Animation overrider"),
             ("ao_stands", "Animation overrider's stands"),
             ("typing_animation", "Typing animation on your avatar"),
@@ -251,6 +255,7 @@ public sealed partial class MainForm
             if (item?.Name.StartsWith(HeadingRow) == true) { SettingsHeadingKey(e); return; }
             if (item?.Tag is string words && WordRows.Contains(words) && WordRowKey(words, e)) return;
             if (item?.Tag is string own && own.StartsWith('@') && ProviderKey(own, e)) return;
+            if (item?.Tag is "access_autosit_seats" && AutoSitSeatsKey(e)) return;
             if (e.KeyCode is not (Keys.Enter or Keys.Space or Keys.Left or Keys.Right) || e.Control || e.Alt || item?.Tag is not string name) return;
             e.Handled = e.SuppressKeyPress = true;
             // incognito's off, and letting it see mid-spell, are the person's own key here, judged as it's handled
@@ -619,6 +624,7 @@ public sealed partial class MainForm
             ["@away"] = status["away_response_on"]?.GetValue<bool>() == true ? status.Str("away_response") ?? "" : "off",
             ["@teleports"] = rejects.Str("teleports_response") ?? "",
             ["@friendships"] = rejects.Str("friendships_response") ?? "",
+            ["access_autosit_seats"] = AutoSitSeatsRow(),
         };
     }
 

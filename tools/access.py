@@ -1,6 +1,6 @@
 """Sojourn Access checked without sight, on the local grid (docs/access.md > Testing without sight; python tools/access.py ...).
 
-  python tools/access.py build     build src/Sojourn.Access (Release) at below-normal priority, two MSBuild nodes
+  python tools/access.py build     build src/Sojourn.Access (Release), two MSBuild nodes
   python tools/access.py run       for a person: build if needed, start it on this (visible) desktop with the login
                                    form, the local grid filled in (no test switches)
   python tools/access.py visitor [COMMAND...]
@@ -11,16 +11,21 @@
                                    where a command needs one. `visitor stop` takes its objects back and logs it out.
                                    Its log: local/access-visitor/visitor.log. Commands: tools/visitor/Program.cs.
   python tools/access.py tools     build QuireUia (tools/quireuia) and the Access Visitor (tools/visitor) into local/bin
-  python tools/access.py test      the scripted check below; prints `ok  name: detail` / `FAIL name: detail` per check
+  python tools/access.py test      the scripted check below; prints `ok  name: detail` / `FAIL name: detail` per check,
+                                   a `(step: NAME)` line before each step's, and at the end the steps that had failures
                                    (ACCESS_STEPS=inventory,walk runs only the steps whose names have those words, after
-                                   the login's checks: for working on one part; ACCESS_NO_RENDER=1 starts the app with --no-render,
+                                   the login's checks: for working on one part; =NAME the step named exactly that;
+                                   ACCESS_NO_RENDER=1 starts the app with --no-render,
                                    nothing on the GPU, for steps that don't need the view; ACCESS_NO_GPU=1 hides Vulkan's drivers
                                    from it, as on a PC whose graphics can't run the view: it draws on the processor with
                                    local/lavapipe (fetch-lavapipe), or with ACCESS_NO_SOFTWARE=1 gives up (walk mode runs on
                                    the collision model alone); ACCESS_SOFTWARE=1 draws on the processor with the GPU there;
-                                   ACCESS_ACCOUNTS=Walk runs as Walk Tester and Walk Visitor on ports 10 up, its files in
+                                   ACCESS_ACCOUNTS=Walk runs as Walk Tester and Walk Visitor on ports 30 up, its files in
                                    local/access-test-walk, never throwing out a person's Access Tester; SOJOURN_BUILD_ROOT
                                    builds and runs from a tree of its own)
+  python tools/access.py steps [WORDS]
+                                   the steps in run order with how long each took when it last ran on this PC; with
+                                   WORDS, the ones ACCESS_STEPS=WORDS would run and their sum
   python tools/access.py fetch-lavapipe
                                    Mesa's lavapipe (the view on the processor) into local/lavapipe, from mesa-dist-win's
                                    release, checked by SHA-256; package needs it
@@ -74,6 +79,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 import uuid
@@ -143,11 +149,13 @@ V_PORT = 9886                      # the visitor
 API_PORT = 9790                    # the app's agent API
 
 # ACCESS_ACCOUNTS=Walk: the test's own pair of accounts (Walk Tester, Walk Visitor) and ports, so a run never throws out
-# a person's guided session as Access Tester (it still uses Atelier's spots: run it while nobody's testing there)
+# a person's guided session as Access Tester (it still uses Atelier's spots: run it while nobody's testing there). Ports
+# 30 up: 10 up are the Radegast tools' own QuireUia and visitor (9895, 9896), and a run beside a Radegast session took
+# its server for ours (2026-11-09); 20 up is the package check's (CHECK_Q_PORT)
 if os.environ.get("ACCESS_ACCOUNTS"):
     _first = os.environ["ACCESS_ACCOUNTS"].strip()
     TESTER, VISITOR = (_first, "Tester"), (_first, "Visitor")
-    Q_PORT, V_PORT, API_PORT = Q_PORT + 10, V_PORT + 10, API_PORT + 10
+    Q_PORT, V_PORT, API_PORT = Q_PORT + 30, V_PORT + 30, API_PORT + 30
 TNAME, VNAME = " ".join(TESTER), " ".join(VISITOR)
 # two more bots, the tester's friends (made once, kept on the grid), online before the app logs in: the grid tells of
 # every friend online at login, which the app says as one line (MainForm.FriendsOnline.cs); out of the way in Atelier
@@ -165,6 +173,7 @@ NAMED_TYPES = {"Edit", "Document", "Button", "CheckBox", "RadioButton", "ComboBo
                "Slider", "Spinner", "DataGrid", "Table", "Hyperlink", "MenuItem", "SplitButton"}
 # the contract's controls (AutomationId = WinForms Name) and the UIA types that would be right for them
 ROLES = {"settings": {"List", "DataGrid", "Table"}, "settingsGroup": {"ComboBox"}, "landCommand": {"Edit"}, "landRows": {"List", "DataGrid", "Table"}, "landTab": {"ComboBox"}, "buildCommand": {"Edit"}, "buildRows": {"List", "DataGrid", "Table"}, "buildTab": {"ComboBox"}, "buildFaces": {"List", "DataGrid", "Table"},
+         "groupRows": {"List", "DataGrid", "Table"}, "groupTab": {"ComboBox"}, "groupNewRole": {"Button"},
          "chatInput": {"Edit"}, "chatHistory": {"Edit", "Document"}, "chatPeople": {"List", "DataGrid", "Table"}, "conversations": {"Tab"},
          "convInput": {"Edit"}, "convHistory": {"Edit", "Document"}, "people": {"List", "DataGrid", "Table"},
          "objects": {"List", "DataGrid", "Table"}, "notices": {"List", "DataGrid", "Table"},
@@ -187,9 +196,13 @@ HOURS = ["twelve", "one", "two", "three", "four", "five", "six", "seven", "eight
 # ---- building ---------------------------------------------------------------------------------------------------------
 
 def dotnet_build(project, configuration="Release", *extra):
-    """dotnet build at below-normal priority (inherited by MSBuild's nodes), two nodes, no build server."""
+    """dotnet build on two nodes that end with it (-nr:false: one kept alive sits in the last project's folder, and a
+    worktree or build tree can't be removed under it). The compiling goes to the SDK's compiler server, as
+    tools/client.py's does: with it warm a change in Sojourn.Access builds in about 5 s, 12 s without (2026-11-09); it
+    stays about ten minutes after the last build, holds nothing in the tree (a build tree deletes under it), and runs
+    at normal priority whatever ours is, as MSBuild's second node does."""
     p = subprocess.Popen([str(DOTNET), "build", str(project), "-c", configuration, "-m:2", "-nr:false",
-                          "-p:UseSharedCompilation=false", "-v:m", "-clp:NoSummary", *extra],
+                          "-v:m", "-clp:NoSummary", *extra],
                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                          encoding="utf-8", errors="replace", creationflags=CREATE_NO_WINDOW | BELOW_NORMAL)
     out = p.communicate()[0]
@@ -704,7 +717,12 @@ class ToolError(Exception):
 
 def tcp(port, line, timeout=60):
     """One command to QuireUia's server or the visitor (a line out, everything until the close back)."""
-    with socket.create_connection(("127.0.0.1", port), timeout=timeout) as s:
+    with socket.socket() as s:
+        # a listener on this PC takes the connection at once; with none, Windows tries for 2 s before refusing, which
+        # every poll for a server coming up or going away would sit through
+        s.settimeout(min(timeout, 1))
+        s.connect(("127.0.0.1", port))
+        s.settimeout(timeout)
         s.sendall((line.replace("\r", "").replace("\n", "\\n") + "\n").encode("utf-8"))
         chunks = []
         while True:
@@ -766,6 +784,7 @@ def wait(f, secs, step=0.3):
 
 def port_free(port):
     with socket.socket() as s:
+        s.settimeout(0.3)   # (a listener answers at once; Windows takes 2 s to refuse where there's none)
         return s.connect_ex(("127.0.0.1", port)) != 0
 
 
@@ -880,11 +899,42 @@ def selection(sel):
 
 # ---- the event log ------------------------------------------------------------------------------------------------------
 
+_events = {"file": None, "made": 0, "at": 0, "got": []}
+_events_lock = threading.Lock()
+
+
 def events():
-    try:
-        return [json.loads(x) for x in EVENTS.read_text(encoding="utf-8").splitlines() if x.strip()]
-    except (OSError, ValueError):
-        return []
+    """Everything QuireUia's server has logged so far, oldest first. The log only grows (a server started afresh adds to
+    it), so each call reads what's new since the last, whole lines only, and the rest is kept: late in a full run the
+    file is 2 MB, and every mark and every look for an announcement used to parse all of it. The list is shared: slice
+    it, don't change it."""
+    with _events_lock:
+        try:
+            st = EVENTS.stat()
+            size, made = st.st_size, getattr(st, "st_birthtime_ns", 0)   # (when it was created)
+        except OSError:
+            size, made = -1, 0
+        # another log (the package check's), or this one begun again (a run's folder emptied)
+        if _events["file"] != EVENTS or made != _events["made"] or size < _events["at"]:
+            _events.update(file=EVENTS, made=made, at=0, got=[])
+        if size > _events["at"]:
+            try:
+                with open(EVENTS, "rb") as f:
+                    f.seek(_events["at"])
+                    new = f.read()
+            except OSError:
+                new = b""
+            new = new[:new.rfind(b"\n") + 1]   # (a line still being written waits for the next call)
+            _events["at"] += len(new)
+            for x in new.split(b"\n"):
+                if x.strip():
+                    try:
+                        # (strict=False: QuireUia's J leaves control characters other than a tab or a new line as they
+                        # are, and a line said with one in it is still a line said)
+                        _events["got"].append(json.loads(x.decode("utf-8", errors="replace"), strict=False))
+                    except ValueError:
+                        pass
+        return _events["got"]
 
 
 def mark():
@@ -951,7 +1001,7 @@ def ours():
 def online(first, last):
     """Whether the grid has this account logged in (a second login would throw the first out)."""
     import grid
-    return any(re.match(rf"\s*{first}\s+{last}\s", l) for l in grid.console("show users", wait=1))
+    return any(re.match(rf"\s*{first}\s+{last}\s", l) for l in grid.console("show users"))
 
 
 def stop():
@@ -971,17 +1021,20 @@ def sweep():
         print("no Access Visitor account")
         return 1
     # the console's selected region is shared with whoever else uses it, so it's changed back at once
-    lines = grid.console(f"change region {REGION}", wait=1.5, answers=(f"show object owner {vid}", "change region root"))
+    lines = grid.console(f"change region {REGION}", answers=(f"show object owner {vid}", "change region root"))
     n = next((int(m[1]) for l in lines if (m := re.search(r"(\d+) object\(s\) found", l))), 0)
     if n:
-        lines = grid.console(f"change region {REGION}", wait=1.5, answers=(f"delete object owner {vid}", "y", "change region root"))
+        lines = grid.console(f"change region {REGION}", answers=(f"delete object owner {vid}", "y", "change region root"))
     print(f"{n} object(s) of the Access Visitor's in {REGION}" + (", deleted" if n else ""))
     return 0
 
 
-def visitor_id():
+def visitor_id(wait=1):
     import grid
-    for line in grid.console(f"show account {VISITOR[0]} {VISITOR[1]}", wait=1):
+    # (the console's fixed waits are kept here, in account_id, for the Keeper's password and in the steps' own
+    # clear_owned: steps call these between an action and what they check next, and the full run's pacing was settled
+    # with those seconds in it. Only what runs before the login asks without them, wait=None.)
+    for line in grid.console(f"show account {VISITOR[0]} {VISITOR[1]}", wait=wait):
         m = re.search(r"ID:\s*([0-9a-f-]{36})", line)
         if m:
             return m[1]
@@ -994,7 +1047,7 @@ def tester_id_lookup():
     cache = VISITOR_HOME / "tester.id"
     if cache.exists():
         return cache.read_text().strip()
-    for line in grid.console(f"show account {TESTER[0]} {TESTER[1]}", wait=1):
+    for line in grid.console(f"show account {TESTER[0]} {TESTER[1]}"):
         m = re.search(r"ID:\s*([0-9a-f-]{36})", line)
         if m:
             VISITOR_HOME.mkdir(parents=True, exist_ok=True)
@@ -1149,12 +1202,18 @@ class Run:
     def __init__(self):
         self.ok = 0
         self.failed = []
+        self.began = time.time()
+        self.step = None      # the step running now (session's loop)
+        self.failed_in = {}   # step: how many of its checks failed, for the summary
+        self.took = {}        # step: seconds
 
     def check(self, name, cond, detail=""):
         if cond:
             self.ok += 1
         else:
             self.failed.append(name)
+            if self.step:
+                self.failed_in[self.step] = self.failed_in.get(self.step, 0) + 1
         print(f"{'ok  ' if cond else 'FAIL'} {name}: {detail}", flush=True)
         return bool(cond)
 
@@ -1193,6 +1252,19 @@ def pal_start(i):
                      creationflags=CREATE_NO_WINDOW | BELOW_NORMAL | NEW_GROUP)
 
 
+def pal_pids():
+    """(pid, port) of the pals' processes of this run, by command line."""
+    ps = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.Name -ne 'powershell.exe' } | "
+          "ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+    found = []
+    for line in r.stdout.splitlines():
+        pid, _, cmd = line.partition("\t")
+        if pid.isdigit() and str(VISITOR_DLL).lower() in cmd.lower():
+            found += [(int(pid), p) for p in PAL_PORTS if f"--port {p} " in cmd]
+    return found
+
+
 def pal_up(i):
     try:
         return tcp(PAL_PORTS[i], "pos", 5)
@@ -1208,6 +1280,16 @@ def pal_quit(i):
         return False
     wait(lambda: not pal_up(i), 15, 0.5)
     return True
+
+
+def pals_quit():
+    """The run's end: every friend told to log out. Not waited for here: a bot's process ends about 5 s after its quit
+    (LibreMetaverse's wait for the logout's answer), the visitor's too, and shutdown's last look waits for them all."""
+    for i in range(len(PALS)):
+        try:
+            tcp(PAL_PORTS[i], "quit", 10)
+        except (OSError, ToolError):
+            pass
 
 
 def visitor_n():
@@ -1298,8 +1380,7 @@ def test():
     except Exception as e:
         run.check("the run (stopped)", False, f"{type(e).__name__}: {e}")
     finally:
-        for i in range(len(PALS)):
-            pal_quit(i)
+        pals_quit()
         shutdown(run, procs["server"], procs["app"], procs["visitor"])
         if AIS:
             AIS.stop()
@@ -1324,9 +1405,9 @@ def session(run, procs):
     # a run stopped before its cleanup leaves the visitor's things out, and a fixture box left in Atelier obeys its words
     # on channel 7 as the new one does: two menus for one fdance, the dance step's re-sent menu beside a stranger's (it
     # failed so, 2026-11-01). The visitor isn't on the grid elsewhere (checked before), so whatever it owns is a leftover
-    vid = visitor_id()
+    vid = visitor_id(wait=None)
     for region in (REGION, COURSE_REGION):
-        if vid and (n := clear_owned(region, vid)):
+        if vid and (n := clear_owned(region, vid, wait=None)):
             print(f"     ({n} of the visitor's things an earlier run left in {region} cleared)")
     sweep_tester()
 
@@ -1339,12 +1420,15 @@ def session(run, procs):
     where = wait(lambda: v("pos", timeout=5), 60, 1)
     if not check("the visitor logged in", where, where or "no answer in 60 s (local/access-test/visitor/visitor.log)"):
         raise Stop
+    # the tester's two other friends, online before it logs in (friends online at login); they log in while the fixture
+    # is set out. Not before the visitor is in: the grid's first logins after it starts fail when two arrive together
+    # (its login service's "The given key ... was not present in the dictionary", every one of the five times in three
+    # weeks of its log that the first two came within 50 ms), and started with the visitor both friends' did (2026-11-09)
+    for i in range(len(PALS)):
+        pal_start(i)
     vx, vy, vz = visitor_settled()
     fixture = v(f"fixture {FIXTURE_XY[0]} {FIXTURE_XY[1]} {vz + 0.3:.1f}", timeout=60)
     check("the fixture box is out and its script running", fixture.startswith("fixture"), fixture)
-    # the tester's two other friends, online before it logs in (friends online at login)
-    for i in range(len(PALS)):
-        pal_start(i)
     pals = [wait(lambda i=i: pal_up(i), 60, 1) for i in range(len(PALS))]
     check("(the two friends logged in)", all(pals), "; ".join(str(p) for p in pals))
 
@@ -1384,6 +1468,11 @@ def session(run, procs):
     else:
         app_args.append("--no-assistant")
     (OUT / "files").mkdir(parents=True, exist_ok=True)
+    if os.environ.get("ACCESS_STEPS", "").strip():
+        # a run of some steps: the app's once-only word on chat logs comes 12 s after the login, so into whichever step
+        # is first, a line said and in the history that the step didn't make (as the friends' line was for the links
+        # step, below). Started as told already; a full run's first steps, where it has always fallen, still get it
+        (OUT / "app" / "access-settings.json").write_text(json.dumps({"ChatLogsTold": True}), encoding="utf-8")
     if os.environ.get("ACCESS_VOICE") != "1":
         app_args.append("--no-voice")   # voice chat is on by default; its keys' step runs with it only when asked
     if NO_RENDER:
@@ -1439,8 +1528,54 @@ def session(run, procs):
     run.expect("arriving is announced", ["Logged in"], 0, 10)
     global ARRIVED_AT
     ARRIVED_AT = time.time()
+    if os.environ.get("ACCESS_STEPS", "").strip() and not step_wanted("friends online at login"):
+        # a run of some steps: the friends' line comes a couple of seconds after the login, into whichever step is
+        # first (the links step alone found it under the line it goes back to in the history); a full run's first
+        # steps are the ones that wait for it
+        wait(lambda: any("friends online" in (e.get("text") or "") for e in said_since(0)), 6)
 
-    steps = [
+    fresh_at = time.time()
+    for name, step in step_list(run, nonce, tester_id, procs):
+        if not step_wanted(name):
+            continue
+        if FRESH_SERVER_SECS > 0 and time.time() - fresh_at > FRESH_SERVER_SECS:
+            fresh_server(procs)
+            fresh_at = time.time()
+        u(f"mark step: {name}")
+        print(f"     (step: {name})", flush=True)
+        run.step, began = name, time.time()
+        try:
+            step()
+        except Exception as e:
+            check(f"{name} (the step stopped)", False, f"{type(e).__name__}: {e}")
+        back_to_chat()
+        run.took[name], run.step = time.time() - began, None
+
+
+def step_wanted(name):
+    """ACCESS_STEPS=inventory,walk: only the steps whose names have one of those words; =NAME for the step named exactly
+    that (=links, where "links" alone takes three steps). Unset: every step."""
+    asked = os.environ.get("ACCESS_STEPS", "").strip()
+    # (=NAME for a name with commas in it, 18 of the 98: as words its pieces take other steps too, "links" three)
+    if asked.startswith("=") and asked[1:].strip() in step_names():
+        return name == asked[1:].strip()
+    only = [w.strip() for w in asked.split(",") if w.strip()]
+    return not only or any(name == w[1:].strip() if w.startswith("=") else w in name for w in only)
+
+
+_step_names = None
+
+
+def step_names():
+    global _step_names
+    if _step_names is None:
+        _step_names = {n for n, _ in step_list(None, None, None, None)}
+    return _step_names
+
+
+def step_list(run, nonce, tester_id, procs):
+    """Every step in run order, (name, what runs it). `steps` lists the names with no session (nothing is called)."""
+    return [
         ("the outfit while it arrives", lambda: outfit_arriving(run, nonce)),   # (first: within two minutes of the login)
         ("friends online at login", lambda: friends_online(run)),
         ("the window's controls", lambda: tree_check(run, "nearby chat")),
@@ -1482,6 +1617,7 @@ def session(run, procs):
         ("going by name, and blocking by name", lambda: going_and_blocking(run, nonce)),
         ("uploads", lambda: uploads(run, nonce)),
         ("About Land, her own parcel", lambda: about_land(run, nonce, tester_id)),
+        ("the estate from the keys", lambda: estate_tools(run, nonce, tester_id)),
         ("two inventory panes", lambda: two_panes(run, nonce)),
         ("inventory housekeeping and putting herself right", lambda: housekeeping(run, nonce)),
         ("folders given, deleted from the tree, links, outfits and landmarks", lambda: folders_and_links(run, nonce)),
@@ -1493,6 +1629,8 @@ def session(run, procs):
         ("a teleport", lambda: teleport(run)),
         ("the assistant's walk", lambda: pilot_walk(run)),
         ("always running", lambda: always_run(run)),
+        ("auto-sit", lambda: autosit(run, nonce)),
+        ("exporting and importing", lambda: export_import(run, nonce)),
         ("places and a route", lambda: places(run, nonce)),
         ("search, profiles, pay", lambda: search_and_people(run)),
         ("a conference", lambda: conferences(run, nonce, tester_id)),
@@ -1508,9 +1646,11 @@ def session(run, procs):
         ("objects: details, the filter, past the nearest, what people wear", lambda: objects_more(run, nonce)),
         ("objects: a friend's thing, taken, deleted, returned", lambda: objects_rights(run, nonce, tester_id)),
         ("what a friend points at", lambda: pointing(run, nonce, tester_id)),
+        ("pointing at something herself", lambda: own_pointing(run, nonce, tester_id)),
         ("one person's worn things and animations", lambda: their_things(run, nonce)),
         ("groups: a title, its notices", lambda: groups_menu(run, nonce, tester_id)),
         ("groups: running one", lambda: groups_running(run, nonce, tester_id)),
+        ("groups: settings and roles", lambda: groups_settings(run, nonce, tester_id)),
         ("scripts: a new one, moving around in it, inside an object, its errors", lambda: scripts_editing(run, nonce)),
         ("describing", lambda: describing(run, nonce)),
         ("describing a look as it loads", lambda: describing_looks(run, nonce)),
@@ -1526,6 +1666,7 @@ def session(run, procs):
         ("driving after someone over a border", lambda: driving_after_border(run)),
         ("driving after someone lost at a border", lambda: driving_after_lost(run)),
         ("links", lambda: links(run)),
+        ("walking round people", lambda: walking_round_people(run)),
         ("recording a route", lambda: route_recording(run)),
         ("recording a route across a border", lambda: route_crossing(run)),
         ("recording a ride", lambda: ride_recording(run)),
@@ -1536,20 +1677,31 @@ def session(run, procs):
         ("favorite landmarks at login", lambda: favorite_starts(run, nonce, procs)),
         ("logging out, back to the login window", lambda: log_out(run, procs)),
     ]
-    only = [w.strip() for w in os.environ.get("ACCESS_STEPS", "").split(",") if w.strip()]
-    fresh_at = time.time()
-    for name, step in steps:
-        if only and not any(w in name for w in only):
-            continue
-        if FRESH_SERVER_SECS > 0 and time.time() - fresh_at > FRESH_SERVER_SECS:
-            fresh_server(procs)
-            fresh_at = time.time()
-        u(f"mark step: {name}")
-        try:
-            step()
-        except Exception as e:
-            check(f"{name} (the step stopped)", False, f"{type(e).__name__}: {e}")
-        back_to_chat()
+
+
+STEP_TIMES = LOCAL / "access-step-times.json"   # each step's seconds when it last ran, for `steps`
+
+
+def step_times():
+    try:
+        return json.loads(STEP_TIMES.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def list_steps():
+    """`steps [WORDS]`: the steps in run order with how long each took when it last ran here; with WORDS (as ACCESS_STEPS
+    takes them, or ACCESS_STEPS itself) only the ones those would run, and their sum."""
+    if len(sys.argv) > 2:
+        os.environ["ACCESS_STEPS"] = " ".join(sys.argv[2:])
+    times, names = step_times(), [n for n, _ in step_list(None, None, None, None) if step_wanted(n)]
+    for n in names:
+        print(f"{times[n]['s']:5.0f} s  {n}" if n in times else f"      ?  {n}")
+    known = sum(times[n]["s"] for n in names if n in times)
+    unknown = sum(1 for n in names if n not in times)
+    print(f"{len(names)} step{'s' if len(names) != 1 else ''}, {known / 60:.0f} min when last run"
+          + (f" ({unknown} not timed yet)" if unknown else "") + "; a run adds about half a minute around them")
+    return 0
 
 
 FRESH_SERVER_SECS = float(os.environ.get("ACCESS_FRESH_SECS", "300"))   # (0 or less: never)
@@ -2041,8 +2193,7 @@ BUILDERS_AWAY = None   # the reply posted before the app started (with ACCESS_RE
 
 
 def builders_wanted():
-    only = [w.strip() for w in os.environ.get("ACCESS_STEPS", "").split(",") if w.strip()]
-    return not only or any(w in "the builders' tab" for w in only)
+    return step_wanted("the builders' tab")
 
 
 def builders_before_launch(nonce):
@@ -2598,7 +2749,7 @@ def sweep_tester():
         if account == VISITOR or account != TESTER and online(*account):
             continue
         for region in (REGION, COURSE_REGION) + ((PAL_START[0],) if account == TESTER else ()):
-            if n := clear_owned(region, oid):
+            if n := clear_owned(region, oid, wait=None):
                 print(f"     ({n} of {' '.join(account)}'s things an earlier run left in {region} cleared)")
 
     db = sqlite3.connect(bin_ / "inventory.db", timeout=10)
@@ -2726,6 +2877,10 @@ def friends_online(run):
         run.check("(the friends-online check's friendships made)", made, ", ".join(names[i] for i in missing))
         print("     (friendships made now: the login's one line is checked from the next run)")
         return
+    # the line is said about 2 s after "Logged in" (1.7 to 2.1 s in twelve runs' logs: two seconds after the last friend
+    # told of, at the next slow tick). A full run is in the outfit step then; run first (ACCESS_STEPS) this step looked
+    # 2 to 3 s after the login, only the console's waits above ahead of it, and now and then before the line
+    wait(lambda: any("friends online" in (e.get("text") or "") for e in said_since(0)), max(0, 10 - (time.time() - ARRIVED_AT)))
     said = said_since(0)
     burst = [e for e in said if "friends online" in (e.get("text") or "")]
     run.check("friends online at login said once, as one line", len(burst) == 1, " | ".join(e.get("text") or "" for e in burst) or "not said")
@@ -3460,9 +3615,11 @@ def notice_perm(run, tester_id):
 
 
 class AisStandIn:
-    """A stand-in for Second Life's inventory service (AIS3), which OpenSim lacks, for favourites, and for moves, renames
-    and an item's changes, whose answers the app waits for (InventoryOps.Service.cs: then it sends OpenSim the UDP message
-    too, as the stand-in holds no inventory): the app's
+    """A stand-in for Second Life's inventory service (AIS3), which OpenSim lacks, for favourites, and for renames and an
+    item's changes, whose answers the app waits for (InventoryOps.Service.cs: then it sends OpenSim the UDP message too, as
+    the stand-in holds no inventory), and moves, which go by the viewer's UDP message and are confirmed by reading the
+    thing back (a PATCH of parent_id alone it refuses with 400, as Second Life does: the blind tester's deletes on
+    0.1.0.996 were all refused so, and the stand-in had taken them): the app's
     InventoryMeta goes to it by SOJOURN_TEST_AIS when the region offers no InventoryAPIv3 (never where it does). It
     answers as the service's shape has it, read from the official viewer and InventoryMeta: GET category/<id>/children
     (every flag it holds under _embedded, so a sweep from the top finds them all; the real one nests them by folder),
@@ -3476,8 +3633,11 @@ class AisStandIn:
         self.flags = {}        # id -> (is_folder, favourite)
         self.patches = []      # (id, favourite, how it was sent) as they came
         self.sweeps = 0        # GETs of a folder's children (the app's reading of every favourite)
-        self.changes = []      # (item|category, id, body) of every other PATCH: moves, renames, an item's changes
-        self.refuse = set()    # ids whose changes it refuses (409), as the real service might
+        self.changes = []      # (item|category, id, body) of every other PATCH: renames, an item's changes, moves tried
+        self.reads = []        # (item|category, id) of every GET of one thing (a move confirmed by reading it back)
+        # ids whose changes it refuses (409), as the real service might, and whose moves it shows not done: read back,
+        # it names the folder given here as theirs
+        self.refuse = {}
         standin = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -3497,6 +3657,7 @@ class AisStandIn:
                     standin.sweeps += 1
                     self.answer(200, standin.llsd(standin.children(parts[1])))
                 elif len(parts) == 2 and parts[0] in ("item", "category"):
+                    standin.reads.append((parts[0], parts[1]))
                     self.answer(200, standin.llsd(standin.one(parts[1], parts[0] == "category")))
                 else:
                     self.answer(404)
@@ -3510,6 +3671,10 @@ class AisStandIn:
                 # moves, renames and an item's other changes (InventoryOps.Service.cs): kept, refused for ids in refuse
                 if "<key>favorite</key>" not in body:
                     standin.changes.append((parts[0], parts[1], body))
+                    # a move by PATCH: Second Life answers 400 (an item's whole record, its folder unchanged, it takes)
+                    if re.findall(r"<key>([^<]*)</key>", body) == ["parent_id"]:
+                        self.answer(400)
+                        return
                     if parts[1] in standin.refuse:
                         self.answer(409)
                         return
@@ -3536,7 +3701,7 @@ class AisStandIn:
 
     def one(self, id_, folder):
         f, on = self.flags.get(id_, (folder, False))
-        return {"self": self.entry(id_, f, on), "items": [], "categories": []}
+        return {"self": self.entry(id_, f, on), "items": [], "categories": [], "parent": self.refuse.get(id_)}
 
     def children(self, id_):
         flags = list(self.flags.items())
@@ -3552,6 +3717,8 @@ class AisStandIn:
                     f"<key>favorite</key><map><key>toggled</key><boolean>{'1' if on else '0'}</boolean></map></map>")
         key, id_, on = a["self"]
         inner = obj(a["self"])[len("<map>"):-len("</map>")]
+        if a.get("parent"):
+            inner += f"<key>parent_id</key><uuid>{a['parent']}</uuid>"
         emb = "".join(f"<key>{group}</key><map>" + "".join(f"<key>{e[1]}</key>{obj(e)}" for e in a[group]) + "</map>"
                       for group in ("items", "categories"))
         return f"<?xml version=\"1.0\" ?><llsd><map>{inner}<key>_embedded</key><map>{emb}</map></map></llsd>".encode()
@@ -5417,10 +5584,22 @@ def folders_and_links(run, nonce):
     About."""
     back_to_chat()
     root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
-    mine = api("LLInventory", "getBasicFolderID", ft_name="my_otfts")["id"]
+
+    def my_outfits():
+        """My Outfits, or None while the account has none: a new one on the local grid, until its first save makes the
+        folder (the lookup gives the top folder then, where this step looked for the outfit and failed, once an account)."""
+        try:
+            got = api("LLInventory", "getBasicFolderID", ft_name="my_otfts")["id"]
+        except ToolError:
+            return None
+        return got if got != root else None
+
+    mine = my_outfits()
+    if not mine:
+        print("     (no My Outfits folder yet: the first save makes it)")
     prefixes = ("Access Gift ", "Access Too Big ", "Access Links ", "Access Tree Gone ", "Access Refused ", "Access Outfit ")
     # (an interrupted run's leftovers; deleting goes through her confirmation, so by keys)
-    for where in (root, mine):
+    for where in filter(None, (root, mine)):
         for name in [n for n in inv_items(where) if n and n.startswith(prefixes)]:
             delete_by_search(run, name)
 
@@ -5481,24 +5660,25 @@ def folders_and_links(run, nonce):
             print("     (no stand-in for the inventory service: a refused move not tried)")
             continue
         if refuse:
-            AIS.refuse.add(fid)
+            AIS.refuse[fid] = root
         if not run.check(f"({name} selected in the tree)", select_in("id=inventory", name, tries=150), selected_text("id=inventory")):
             continue
         m = mark()
         key("del")
         confirm_in_notices(run, "Trash", m)
         if refuse:
-            run.expect("a move the inventory service refuses is said, plainly", ["Not deleted", "refused the move"], m, 10)
+            run.expect("a move the inventory service still shows undone is said, plainly", ["Not deleted", "still had", "where it was"], m, 25)
             run.check("and it stays where it was", refused in inv_items(root), "")
             run.check("and in the tree", wait(lambda: find(f"type=TreeItem;name={refused}"), 3), "")
-            AIS.refuse.discard(fid)
+            AIS.refuse.pop(fid, None)
             continue
         run.expect("deleted from the tree, said", [f"Deleted {name}"], m, 10)
         run.check("gone from the top of the inventory", wait(lambda: name not in inv_items(root), 6), "")
         run.check("and from the tree, at once", wait(lambda: not find(f"type=TreeItem;name={name}"), 4), "still in the tree")
         if AIS:
-            run.check("(the move went to the inventory service, and was waited for)",
-                      any(k == "category" and i == fid and "parent_id" in b for k, i, b in AIS.changes), f"{len(AIS.changes)} changes seen")
+            run.check("(the move went as the viewer's message, not a PATCH the service refuses, and was read back from the service)",
+                      not any(i == fid for _, i, _ in AIS.changes) and ("category", fid) in AIS.reads,
+                      f"{len(AIS.changes)} changes, {len(AIS.reads)} reads seen")
     for name in (refused,):
         if name in inv_items(root):
             delete_by_search(run, name)
@@ -5532,8 +5712,9 @@ def folders_and_links(run, nonce):
     m = mark()
     say_in_app(f"//saveoutfit {outfit}")
     run.expect("//saveoutfit saves what's worn, saying so", [f"Saved your outfit as {outfit}", "My Outfits"], m, 30)
-    oid = wait(lambda: inv_items(mine).get(outfit), 6)
-    if run.check("a folder of that name in My Outfits", oid, ", ".join(inv_items(mine))):
+    mine = wait(my_outfits, 6)
+    oid = mine and wait(lambda: inv_items(mine).get(outfit), 6)
+    if run.check("a folder of that name in My Outfits", oid, ", ".join(inv_items(mine)) if mine else "no My Outfits folder"):
         items = (api("LLInventory", "getDirectDescendants", folder_id=oid).get("items") or {}).values()
         run.check("holding a link to each thing worn", items and all(i.get("is_link") for i in items) and len(items) == worn,
                   f"{len(items)} links, {worn} worn")
@@ -5866,7 +6047,12 @@ def selected_text(sel):
 
 
 def select_in(sel, words, tries=60):
-    """Home, then Down until the control's selection has the words (a tree or list the focus is in)."""
+    """Home, then Down until the control's selection has the words (a tree or list the focus is in). A list still on
+    its first fill is waited for first ("Objects nearby, looking": held back 3 s in the test, and a step run alone may
+    be the session's first visit): the walk's first reads found nothing there, the fill then put the nearest thing on
+    the first row, and the next Down left it before it was read, for good when that row was the one wanted (auto-sit
+    run alone, 2 of 2, 2026-11-09)."""
+    wait(lambda: not any(c["name"].endswith(", looking") for c in find(sel)), 8, 0.2)
     key("home")
     for _ in range(tries):
         if words in selected_text(sel):
@@ -5988,9 +6174,11 @@ def places(run, nonce):
     if run.check("Tab reaches the teleport history", wait_focus(lambda d: d["id"] == "history" or d["type"] == "ListItem", 3), focus_label()):
         first = selection("id=history")
         run.check("newest first, here now", "here now" in first, first)
-        # the second place in the session's history, whatever it kept (it misses some teleports within a region,
-        # whose finish LibreMetaverse doesn't always report)
+        # the second place in the session's history: Go to region's. (The history missed a teleport within the region
+        # that LibreMetaverse reported failed as it arrived, one in five, until 2026-11-09; whatever it holds is gone
+        # back to, so one miss fails one check)
         before = api("SojournPeople", "teleportHistory", count=2)["places"][1]["pos"]
+        run.check("the one before is where Go to region went", math.dist(before[:2], PLACE_TO[:2]) < 5, f"{before[0]:.0f}, {before[1]:.0f}")
         key("down")
         m = mark()
         key("enter")
@@ -6001,6 +6189,18 @@ def places(run, nonce):
         key("tab")
         rg = wait(lambda: find("type=ListItem;name~=, here") and [t for t in find("type=ListItem;name~=, here") if "people" in t["name"] or "person" in t["name"]], 4)
         run.check("the regions around listed, with people and where", rg and "here" in rg[0]["name"], label(rg[0]) if rg else "none")
+
+    # the route starts beside its first point whatever the history kept. A history that had missed Go to region's
+    # teleport sent her back to her start instead, and the route's first walk from there is 22 m with the visitor
+    # standing on the line: the region's autopilot walked her into him, he slid along in front of her (OpenSim's avatars
+    # don't hold their place while another touches them, nor brake), both went on 7 m past the point, and she said
+    # something was in the way 40 s later; the visitor, left 25 m off, failed the arrivals check too (1 run in 5,
+    # 2026-11-09; every time when started from there)
+    if math.dist(tester_where()[:2], PLACE_TO[:2]) > 3:
+        print(f"     (the history's checks left her at {tester_where()[0]:.0f}, {tester_where()[1]:.0f}, not {PLACE_TO[0]}, {PLACE_TO[1]}: teleported there for the route)")
+        say_in_app(f"//tp {REGION}/{PLACE_TO[0]}/{PLACE_TO[1]}/{PLACE_TO[2]}")
+        wait(lambda: math.dist(tester_where()[:2], PLACE_TO[:2]) < 3, 30, 1)
+        time.sleep(2)
 
     # a route from a notecard, step by step
     m = mark()
@@ -6398,6 +6598,154 @@ def pointing(run, nonce, tester_id):
         v(f"derez {chest}", timeout=30)
 
 
+def own_pointing(run, nonce, tester_id):
+    """Pointing at something herself (docs/access-app.md > Pointing at something yourself; Radegast's Point At): Point at on
+    Objects' menu, and a UI Automation invoke of it (a program's press) refused, nothing sent; Control+P on the visitor's box
+    behind her turning her to face it, the visitor receiving what the official viewer's selection sends (a PointAt and a
+    LookAt of type select at it, from her) and a beam each second; Stop pointing on the menu then, Control+P again
+    stopping it, the visitor receiving them cleared and no beam after; a treasure chest's lid from Parts, then the box again
+    from Objects; //point, //point NAME (another minute), walking away ending it, the box taken away ending it, //point
+    off with nothing pointed at."""
+    near_visitor()
+    x, y, z, heading = tester_where()
+    box, chest = f"Access Own Point {nonce}", f"Access Own Chest {nonce}"
+
+    def at(bearing, dist):
+        b = math.radians(heading + bearing)
+        return x + math.sin(b) * dist, y + math.cos(b) * dist
+
+    def effects(since):
+        lines = v(f"effects 400 since {since}")
+        return [] if lines == "none" else [json.loads(l) for l in lines.splitlines() if l.startswith("{")]
+
+    def from_her(since, kind, target=None, how=None):
+        return [e for e in effects(since) if e["type"] == kind and e["source"] == tester_id and e["sender"] == tester_id
+                and (target is None or e["target"] == target) and (how is None or e["how"] == how)]
+
+    def to_objects():
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+
+    def latest_n():
+        # (its effects share the visitor's running number, which visitor_n() reads off what it heard and its events only)
+        last = v("effects 1")
+        return max(visitor_n(), json.loads(last)["n"] if last.startswith("{") else 0)
+
+    try:
+        # its camera by it, as a viewer's: the region keeps LookAts and beams for those looking from nearby
+        v("camera on")
+        bx, by = at(180, 2.5)   # behind her: Point at turns her to it
+        cx, cy = at(-30, 2.5)
+        made = v(f"rez {box} {bx:.1f} {by:.1f} {z:.1f}", timeout=30)
+        chest_made = v(f"treasure {chest} {cx:.1f} {cy:.1f} {z:.1f}", timeout=60)
+        box_id, ids = re.search(r" id ([0-9a-f-]{36})", made), re.search(r" id ([0-9a-f-]{36}): lid ([0-9a-f-]{36})", chest_made)
+        if not run.check("(the visitor's box and treasure chest are out)", box_id and ids, f"{made} / {chest_made}"):
+            return
+        box_id, lid_id = box_id[1], ids[2]
+        to_objects()
+
+        def listed():
+            # (F5 until the list, which doesn't change under her, has it: its names can take a few seconds)
+            key("f5")
+            return wait(lambda: find(f"type=ListItem;name~={box}"), 5)
+        if not run.check("(the box is in Objects)", wait(listed, 20, 0.5) and select_in("id=objects", box, 30), selected_text("id=objects")):
+            return
+        # the menu has it; a program's press of it (UI Automation's invoke) doesn't point her arm
+        key("apps")
+        names = menu_names()
+        run.check("Objects' menu has Point at", "Point at" in names, " | ".join(names))
+        n, m = latest_n(), mark()
+        if "Point at" in names:
+            u("invoke type=MenuItem;name=Point at")
+        time.sleep(2.5)
+        refused = [e.get("text") for e in said_since(m) if "key" in (e.get("text") or "") or "pressed" in (e.get("text") or "")]
+        run.check("a program's press of Point at is refused, said, and nothing is sent", refused and not from_her(n, "pointat"),
+                  f"{refused} / {len(from_her(n, 'pointat'))} PointAt")
+        back_to_chat()
+        to_objects()
+        select_in("id=objects", box, 30)
+        # her own key: Control+P, turned to face it, what the official viewer sends at the visitor
+        n, m = latest_n(), mark()
+        key("ctrl+p")
+        run.expect("Control+P points at it, turning her to face it, said", ["Turned to face", box, "for a minute", "arm"], m, 10)
+        got = wait(lambda: from_her(n, "pointat", box_id, 1) and from_her(n, "lookat", box_id, 7), 6)
+        run.check("the visitor gets a PointAt and a LookAt of type select at it, from her", got,
+                  " | ".join(f"{e['type']} {e['how']} {e['target'][:8]}" for e in effects(n)[:6]))
+        time.sleep(2.5)
+        beams = from_her(n, "beam", box_id)
+        run.check("and a beam at it each second", len(beams) >= 2 and all(b["duration"] > 1 for b in beams), f"{len(beams)} beams")
+        _, _, _, now = tester_where()
+        want = (90 - math.degrees(math.atan2(by - y, bx - x))) % 360
+        run.check("she faces it now", abs((now - want + 180) % 360 - 180) < 25, f"heading {now:.0f}, toward it {want:.0f}")
+        key("apps")
+        run.check("the menu on it has Stop pointing then", menu_open("Stop pointing"), " | ".join(menu_names()))
+        key("esc")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 3)
+        n, m = latest_n(), mark()
+        key("ctrl+p")
+        run.expect("Control+P on it again stops, said", [f"Stopped pointing at {box}"], m, 8)
+        cleared = wait(lambda: from_her(n, "pointat", how=3) and from_her(n, "lookat", how=10)
+                       and [b for b in from_her(n, "beam") if b["duration"] == 0], 5)
+        run.check("the visitor gets them cleared and the beam ended", cleared,
+                  " | ".join(f"{e['type']} {e['how']} {e['duration']}" for e in effects(n)[:6]))
+        time.sleep(1.5)
+        n2 = latest_n()
+        time.sleep(2.5)
+        run.check("and no beam after", not from_her(n2, "beam"), f"{len(from_her(n2, 'beam'))} beams")
+        # a part: the chest's lid, from Parts
+        select_in("id=objects", chest, 30)
+        key("tab")
+        wait_focus(lambda d: d["id"] == "parts" or d["type"] == "ListItem", 4)
+        if run.check("(the lid in Parts)", wait(lambda: select_in("id=parts", "Part 2 of 4", 6), 10), selected_text("id=parts")):
+            key("apps")
+            run.check("Parts' menu has Point at", menu_open("Point at"), " | ".join(menu_names()))
+            key("esc")
+            wait_focus(lambda d: d["id"] == "parts" or d["type"] == "ListItem", 3)
+            n, m = latest_n(), mark()
+            key("ctrl+p")
+            run.expect("Control+P on a part points at the part, said so", [f"part 2 of {chest}", "for a minute"], m, 10)
+            run.check("the visitor's PointAt is at the lid itself", wait(lambda: from_her(n, "pointat", lid_id, 1), 6),
+                      " | ".join(f"{e['type']} {e['target'][:8]}" for e in effects(n)[:4]))
+            # the box again from Objects: the point moves there
+            key("shift+tab")
+            wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+            select_in("id=objects", box, 30)
+            n, m = latest_n(), mark()
+            key("ctrl+p")
+            run.expect("pointing at another thing moves it there", [box, "for a minute"], m, 10)
+            run.check("the visitor's PointAt moves to the box", wait(lambda: from_her(n, "pointat", box_id, 1), 6),
+                      " | ".join(f"{e['type']} {e['target'][:8]}" for e in effects(n)[:4]))
+        # //point
+        m = mark()
+        say_in_app("//point")
+        run.expect("//point says what she points at", [f"Pointing at {box}", "//point off"], m, 8)
+        m = mark()
+        say_in_app(f"//point {box}")
+        run.expect("//point NAME on it again: another minute", [f"Still pointing at {box}", "another minute"], m, 10)
+        # walking away ends it
+        m, n = mark(), latest_n()
+        say_in_app("//go 4 left")
+        run.expect("walking away ends it, said", [f"Stopped pointing at {box}", "moved away"], m, 25)
+        run.check("and the visitor gets it cleared", wait(lambda: from_her(n, "pointat", how=3), 5), f"{len(effects(n))} effects")
+        wait(lambda: any("Finished walking" in (e.get("text") or "") for e in said_since(m)), 15)
+        # the thing going ends it
+        m = mark()
+        say_in_app(f"//point {box}")
+        run.expect("//point NAME points at it", [box, "for a minute"], m, 10)
+        m = mark()
+        v(f"derez {box}", timeout=20)
+        run.expect("the thing taken away ends it, said", [f"Stopped pointing at {box}", "isn't here any more"], m, 12)
+        m = mark()
+        say_in_app("//point off")
+        run.expect("//point off with nothing pointed at says so", ["You weren't pointing at anything"], m, 8)
+    finally:
+        back_to_chat()
+        say_in_app("//point off")
+        v("camera off")
+        v(f"derez {box}", timeout=20)
+        v(f"derez {chest}", timeout=30)
+
+
 def their_things(run, nonce):
     """One person's worn things and animations, from their menu (Radegast's Attachments and Animations): What they wear lists
     only theirs in Objects, Show's fourth choice named for them, each with where it's worn, touched as what people nearby
@@ -6475,7 +6823,7 @@ def objects_rights(run, nonce, tester_id):
         m = mark()
         key("enter")
         confirm_in_notices(run, "Return", m, answer="esc")
-        run.expect("the confirmation names the owner", ["Owner: Access Palone"], m, 3)
+        run.expect("the confirmation names the owner", [f"Owner: {PALS[0][0]} {PALS[0][1]}"], m, 3)
         run.expect("Escape cancels the return", ["Cancelled"], m, 8)
         run.check("back on the box, still there", wait(lambda: focused()["id"] == "objects" or focused()["type"] == "ListItem", 6) and box in selected_text("id=objects") and flags(), focus_label())
         key("apps")
@@ -6483,7 +6831,7 @@ def objects_rights(run, nonce, tester_id):
         m = mark()
         key("k")
         confirm_in_notices(run, "Take", m, answer="esc")
-        run.expect("Take waits for her confirmation too, naming the owner", ["Owner: Access Palone"], m, 3)
+        run.expect("Take waits for her confirmation too, naming the owner", [f"Owner: {PALS[0][0]} {PALS[0][1]}"], m, 3)
         run.expect("Escape cancels the take", ["Cancelled"], m, 8)
         wait(lambda: focused()["id"] == "objects" or focused()["type"] == "ListItem", 6)
         m = mark()
@@ -6902,6 +7250,218 @@ def groups_running(run, nonce, tester_id):
             made = [k for k, x in (api("LLInventory", "getDirectDescendants", folder_id=cards).get("items") or {}).items() if x.get("name") == f"Access Notice Card {nonce}"]
             if made:
                 gated(run, "(cleanup: the notecard and its copies deleted)", "TesselInventory", "delete", 30, ids=made)
+        except (OSError, ToolError):
+            pass
+
+
+def group_row(gid):
+    """Her group's own settings as the grid keeps them (OpenSim's groups.db: the profile op answers from what was last sent
+    for 10 s, so this is the ground truth)."""
+    import sqlite3
+    db = sqlite3.connect(f"file:{LOCAL / os.environ.get('SOJOURN_GRID', 'grid') / 'bin' / 'groups.db'}?mode=ro", uri=True, timeout=10)
+    try:
+        r = db.execute("select OpenEnrollment, MembershipFee, ShowInList, MaturePublish, Charter from os_groups_groups where GroupID = ?", (gid,)).fetchone()
+    finally:
+        db.close()
+    return dict(zip(("open", "fee", "search", "mature", "charter"), r)) if r else {}
+
+
+def groups_settings(run, nonce, tester_id):
+    """A group's settings and roles (docs/access-app.md > Groups > Settings and roles), on her own group with her Owners title
+    worn (this grid's powers go by the title worn): the group menu's Settings and roles a window, its General tab's rows; Show
+    in search stepped by Right and Left, said and on the grid; Anyone can join behind her confirmation; Cost to join typed,
+    behind it too; the charter written in its box of several lines; a new role by Alt+N, its tab shown; its title typed;
+    Page Down to an ability set; Invite people turned on by Right; Give members any role asking first with the viewer's
+    warning, cancelled; Manage the ban list bringing Eject and Take members off roles with it, Eject then refused while it's
+    on; the role renamed; Delete this role behind her confirmation, gone from the grid; Escape closing it. All put back."""
+    gid = own_group(run)
+    if not gid:
+        return
+    owners = api("TesselGroups", "profile", 15, group_id=gid).get("owner_role")
+    api("TesselGroups", "title", 15, group_id=gid, role_id=owners)
+    role = f"Ushers {nonce}"
+    renamed = f"Hosts {nonce}"
+    before = group_row(gid)
+
+    def roles():
+        return api("TesselGroups", "roles", 15, group_id=gid).get("roles") or []
+
+    def ours():
+        return next((r for r in roles() if r["name"] in (role, renamed)), None)
+
+    def bits():
+        r = ours()
+        return int(r.get("power_bits") or 0) if r else 0
+
+    # an interrupted run's roles of ours, gone first
+    for r in roles():
+        if r["name"].startswith(("Ushers ", "Hosts ")):
+            gated(run, f"(an earlier run's role {r['name']} deleted)", "TesselGroups", "deleteRole", 30, group_id=gid, role_id=r["role_id"])
+    time.sleep(1.5)   # (the title's powers reach the region a moment after)
+
+    def row(words, tries=80):
+        return select_in("id=groupRows", words, tries)
+
+    def step(k, words, secs=10, what=None):
+        m = mark()
+        key(k)
+        run.expect(what or f"{k} on it, said back", words, m, secs)
+        return m
+
+    try:
+        if not run.check("(the group's menu, Settings and roles...)", group_menu("d"), focus_label()):
+            return
+        d = wait_focus(lambda d: d["id"] == "groupRows" or d["type"] == "ListItem", 15)
+        if not run.check("Settings and roles: a window, the focus in its settings list", d and find("id=groupSettings"), focus_label()):
+            return
+        tree_check(run, "Settings and roles", must=("groupRows", "groupTab", "groupNewRole"))
+        rows = list(dict.fromkeys(x["name"] for x in find("type=ListItem") if x["name"].split(":")[0] in ("Charter", "Anyone can join", "Cost to join", "Show in search", "Maturity", "Roles")))
+        run.check("its General tab: charter, Anyone can join, Cost to join, Show in search, maturity, the roles", len(rows) == 6, " | ".join(rows))
+        run.check("the list named for it", any(x["name"] == f"General settings of {GROUP_NAME}" for x in find("id=groupRows")), str(find("id=groupRows")))
+
+        # Show in search: at her press, Right and Left
+        if run.check("(Show in search selected)", row("Show in search:"), selected_text("id=groupRows")):
+            was = "on" if "Show in search: on" in selected_text("id=groupRows") else "off"
+            other = "off" if was == "on" else "on"
+            step("right", [f"Show in search: {other}"], what="Right turns Show in search, said back")
+            run.check("(the grid has it so)", wait(lambda: bool(group_row(gid).get("search")) == (other == "on"), 5), str(group_row(gid)))
+            step("left", [f"Show in search: {was}"], what="Left turns it back")
+        # Anyone can join: who may join, behind her confirmation
+        if run.check("(Anyone can join selected)", row("Anyone can join:"), selected_text("id=groupRows")):
+            m = mark()
+            key("enter")
+            confirm_in_notices(run, "Change the settings of", m)
+            run.expect("Anyone can join turned on behind her confirmation, said back", ["Anyone can join: on."], m, 15)
+            run.check("(the grid has it open)", wait(lambda: str(group_row(gid).get("open")) in ("1", "True"), 5), str(group_row(gid)))
+            wait_focus(lambda d: d["id"] == "groupRows" or d["type"] == "ListItem", 5)
+            row("Anyone can join:")
+            m = mark()
+            key("enter")
+            confirm_in_notices(run, "Change the settings of", m)
+            run.expect("and off again", ["Anyone can join: off."], m, 15)
+        # Cost to join, typed
+        wait_focus(lambda d: d["id"] == "groupRows" or d["type"] == "ListItem", 5)
+        if run.check("(Cost to join selected)", row("Cost to join:"), selected_text("id=groupRows")):
+            key("enter")
+            if run.check("Enter on it asks for the cost", wait_focus(lambda d: d["id"] == "answer", 5), focus_label()):
+                u("set id=answer | 25")
+                m = mark()
+                key("enter", target="id=answer")
+                confirm_in_notices(run, "Change the settings of", m)
+                run.expect("a cost of L$25, behind her confirmation, said back", ["Cost to join: L$25."], m, 15)
+                run.check("(the grid has it)", wait(lambda: group_row(gid).get("fee") == 25, 5), str(group_row(gid)))
+                wait_focus(lambda d: d["id"] == "groupRows" or d["type"] == "ListItem", 5)
+                row("Cost to join:")
+                key("enter")
+                wait_focus(lambda d: d["id"] == "answer", 5)
+                u("set id=answer | 0")
+                m = mark()
+                key("enter", target="id=answer")
+                confirm_in_notices(run, "Change the settings of", m)
+                run.expect("and none again", ["Cost to join: none."], m, 15)
+        # the charter, in a box of several lines
+        wait_focus(lambda d: d["id"] == "groupRows" or d["type"] == "ListItem", 5)
+        if run.check("(Charter selected)", row("Charter:"), selected_text("id=groupRows")):
+            key("enter")
+            if run.check("Enter on the charter opens a box of several lines", wait_focus(lambda d: d["id"] == "answer", 5), focus_label()):
+                u(f"set id=answer | The charter, {nonce}.")
+                m = mark()
+                key("ctrl+enter", target="id=answer")
+                run.expect("Control+Enter saves it, said back", [f"Charter: The charter, {nonce}."], m, 15)
+                run.check("(the grid has it)", wait(lambda: group_row(gid).get("charter") == f"The charter, {nonce}.", 5), str(group_row(gid)))
+
+        # ---- a role: made, its title, abilities, renamed, deleted
+        wait_focus(lambda d: d["id"] == "groupRows" or d["type"] == "ListItem", 5)
+        key("alt+n")
+        if not run.check("New role (Alt+N) asks its name", wait_focus(lambda d: d["id"] == "answer", 6), focus_label()):
+            return
+        u(f"set id=answer | {role}")
+        m = mark()
+        key("enter", target="id=answer")
+        run.expect("made, said, its tab showing", [f"Made the role {role}"], m, 20)
+        run.check("(the grid has the role)", wait(lambda: ours(), 5), json.dumps([r["name"] for r in roles()]))
+        run.check("the list is the role's now, the focus in it", wait(lambda: any(x["name"] == f"Role {role} of {GROUP_NAME}" for x in find("id=groupRows")), 5)
+                  and wait_focus(lambda d: d["id"] == "groupRows" or d["type"] == "ListItem", 4), str(find("id=groupRows")))
+        listed = list(dict.fromkeys(x["name"] for x in find("type=ListItem") if x["name"].startswith(("Name:", "Title:", "Description:", "Members shown", "Members:", "Delete this role", "Abilities:", "Membership:"))))
+        run.check("a role's rows: name, title, description, members shown, members, delete, its abilities by set", len(listed) == 8, " | ".join(listed))
+        if run.check("(Title selected)", row("Title:"), selected_text("id=groupRows")):
+            key("enter")
+            if wait_focus(lambda d: d["id"] == "answer", 5):
+                u("set id=answer | Usher")
+                m = mark()
+                key("enter", target="id=answer")
+                run.expect("its title typed, said once the grid shows it", ["Title: Usher"], m, 15)
+                run.check("(the grid has it)", (ours() or {}).get("title") == "Usher", json.dumps(ours()))
+        wait_focus(lambda d: d["id"] == "groupRows" or d["type"] == "ListItem", 5)
+        key("home")
+        m = mark()
+        key("pgdn")
+        key("pgdn")
+        run.expect("Page Down goes set by set: Membership", ["Membership: 0 of 4 on"], m, 5)
+        key("down")
+        run.check("(Invite people below it)", "Invite people to the group: off" in selected_text("id=groupRows"), selected_text("id=groupRows"))
+        step("right", ["Invite people to the group: on"], 15, "Right turns an ability on, said once the grid shows it")
+        run.check("(the grid has it)", bits() & (1 << 1), str(bits()))
+        if run.check("(Give members any role selected)", row("Give members any role:"), selected_text("id=groupRows")):
+            m = mark()
+            key("right")
+            confirm_in_notices(run, "Change the role", m, answer="esc")
+            run.expect("Give members any role asks first, naming it, with the viewer's warning", ["Give members any role", "up to nearly an owner's"], m, 4)
+            run.expect("Escape leaves it", ["Cancelled"], m, 8)
+            run.check("(not on the grid)", not bits() & (1 << 8), str(bits()))
+        wait_focus(lambda d: d["id"] == "groupRows" or d["type"] == "ListItem", 5)
+        if run.check("(Manage the ban list selected)", row("Manage the ban list:"), selected_text("id=groupRows")):
+            step("right", ["Manage the ban list: on", "With it", "Eject members", "Take members off roles"], 15, "the ban list brings Eject and Take members off roles with it, said")
+            run.check("(the grid has all three)", bits() & (1 << 51) and bits() & (1 << 2) and bits() & (1 << 9), str(bits()))
+            row("Eject members with no role but Everyone:")
+            step("left", ["comes with Manage the ban list", "turn that off first"], 5, "Eject can't go while the ban list is on, said")
+        wait_focus(lambda d: d["id"] == "groupRows" or d["type"] == "ListItem", 5)
+        if run.check("(Name selected)", row("Name:"), selected_text("id=groupRows")):
+            key("enter")
+            if wait_focus(lambda d: d["id"] == "answer", 5):
+                u(f"set id=answer | {renamed}")
+                m = mark()
+                key("enter", target="id=answer")
+                run.expect("renamed, said once the grid shows it", [f"Name: {renamed}"], m, 15)
+                r = ours() or {}
+                run.check("(the grid has the new name, its abilities kept)", r.get("name") == renamed and int(r.get("power_bits") or 0) & (1 << 1), json.dumps(r))
+                run.check("the tab follows the name", wait(lambda: any(x["name"] == f"Role {renamed} of {GROUP_NAME}" for x in find("id=groupRows")), 4), str(find("id=groupRows")))
+        wait_focus(lambda d: d["id"] == "groupRows" or d["type"] == "ListItem", 5)
+        if run.check("(Delete this role selected)", row("Delete this role:"), selected_text("id=groupRows")):
+            m = mark()
+            key("enter")
+            confirm_in_notices(run, "Delete the role", m)
+            run.expect("deleted behind her confirmation, said", [f"Deleted the role {renamed}"], m, 20)
+            run.check("(gone from the grid)", not ours(), json.dumps(ours()))
+            run.check("General is showing again", wait(lambda: any(x["name"] == f"General settings of {GROUP_NAME}" for x in find("id=groupRows")), 4), str(find("id=groupRows")))
+        key("esc")
+        run.check("Escape closes the window", wait(lambda: not find("id=groupSettings"), 4), focus_label())
+
+        # ---- the member list saved (Radegast's Save member list), the run's files folder standing in for the Save window
+        if run.check("(the group's menu, Members...)", group_menu("m"), focus_label()):
+            wait_focus(lambda d: d["id"] == "groupPeople" or d["type"] == "ListItem", 10)
+            saved = OUT / "files" / f"{GROUP_NAME} members {time.strftime('%Y-%m-%d')}.csv"
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            saved.unlink(missing_ok=True)
+            m = mark()
+            key("alt+s")
+            run.expect("Save the list (Alt+S): said where it went", ["Saved the", f"of {GROUP_NAME}", saved.name], m, 6)
+            text = saved.read_text(encoding="utf-8-sig") if saved.exists() else ""
+            # (whether she's said to own it is the grid's word: OpenSim's member list marks no one an owner)
+            run.check("the file: a heading line, then a row each, hers among them", text.startswith("Name,Title,Owner,Last on")
+                      and any(l.startswith(TNAME + ",") for l in text.splitlines()), text[:300])
+            key("esc")
+    finally:
+        back_to_chat()
+        try:
+            for r in roles():
+                if r["name"] in (role, renamed):
+                    gated(run, "(cleanup: the step's role deleted)", "TesselGroups", "deleteRole", 30, group_id=gid, role_id=r["role_id"])
+            def norm(r):
+                return str(r.get("open")) in ("1", "True"), int(r.get("fee") or 0), bool(int(r.get("search") or 0)), r.get("charter") or ""
+            if before and norm(group_row(gid)) != norm(before):
+                o, f, s_, c = norm(before)
+                gated(run, "(cleanup: the group's settings as they were)", "TesselGroups", "update", 30, group_id=gid, open_enrollment=o, fee=f, show_in_list=s_, charter=c)
         except (OSError, ToolError):
             pass
 
@@ -8954,6 +9514,251 @@ def about_land(run, nonce, tester_id):
         wait(lambda: math.dist(tester_where()[:2], home[:2]) < 3, 30, 1)
 
 
+def keeper_login(at):
+    """Estate Keeper, the local grid's estate owner, logged in as a second visitor bot at (region, x, y, z): its process,
+    or None (said) when the account is in use (tools/land.py running) or it didn't come up in a minute."""
+    import grid
+    if online(*KEEPER):
+        return None
+    grid.console(f"reset user password {KEEPER[0]} {KEEPER[1]} {PASSWORD}", wait=2)
+    log = open(OUT / "visitor" / "keeper.log", "w", encoding="utf-8")
+    proc = subprocess.Popen(
+        [str(DOTNET), str(VISITOR_DLL), "--port", str(KEEPER_PORT), "--first", KEEPER[0], "--last", KEEPER[1],
+         "--password", PASSWORD, "--start", "%s/%d/%d/%d" % at, "--login", GRID_URI],
+        cwd=OUT / "visitor", stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+        creationflags=CREATE_NO_WINDOW | BELOW_NORMAL | NEW_GROUP)
+
+    def up():
+        try:
+            return keeper("pos", 5)
+        except (OSError, ToolError):
+            return None
+    if wait(up, 60, 1):
+        return proc
+    proc.kill()
+    return None
+
+
+def keeper_logout(proc):
+    try:
+        keeper("quit", 10)
+    except (OSError, ToolError) as x:
+        print(f"     (the Keeper: {x})")
+    try:
+        proc.wait(20)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+def pal_menu(name, item):
+    """People nearby's menu on someone, and one of its items pressed by UI Automation; False if they or it aren't there."""
+    key("alt+3")
+    wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
+    key("f5")
+    if not select_in("id=people", name):
+        return False
+    key("apps")
+    if not menu_open(item):
+        key("esc")
+        return False
+    u(f"invoke type=MenuItem;name={item}")
+    return True
+
+
+def estate_tools(run, nonce, tester_id):
+    """The estate by her own keys (docs/access-app.md > About Land > The estate), with the estate's owner, Estate Keeper, as a
+    second visitor bot making her a manager and taking it back after. Not a manager: About Land's Estate tab says so, an
+    estate command says only its owner and managers may, a person's menu has no estate items. A manager (the region's
+    handshake saying so, after a teleport out and back): the tab says it and counts its lists, its tools in the list; on
+    the second pal, brought next to her, Eject from estate and Ban from estate from its menu, each behind her confirmation,
+    the pal out of the region (logged in again after, as OpenSim's kick logs out); the ban listed on the tab and lifted by
+    Delete there; a ban by name typed and lifted typed (the other account set's visitor, offline); a restart and sending
+    everyone home cancelled at their confirmations; a message to the region, its words in the confirmation, heard by the
+    visitor."""
+    pal = 1
+    pal_name = " ".join(PALS[pal])
+    pal_id = account_id(*PALS[pal])
+    other = ("Walk" if TESTER[0] == "Access" else "Access", "Visitor")
+    other_name, other_id = " ".join(other), account_id(*other)
+    proc = keeper_login((REGION, 200, 200, 30))
+    if not run.check("(the estate's owner logged in; tools/land.py isn't running)", proc, "logged in" if proc else "Estate Keeper is on the grid already, or didn't come up (visitor/keeper.log)"):
+        return
+    home = tester_where()
+
+    def manages():
+        return api("SojournLand", "region", 15).get("i_manage")
+
+    def banned():
+        return [b["id"] for b in (api("SojournLand", "estate", 25).get("banned") or [])]
+
+    def rehandshake():
+        """Out to the next region and back: the region says who manages it at its handshake."""
+        x, y, z, _ = tester_where()
+        m = mark()
+        say_in_app(f"//tp {COURSE_REGION}/128/128/30")
+        run.expect("(over to the next region)", ["Arrived"], m, 40)
+        m = mark()
+        say_in_app(f"//tp {REGION}/{x:.0f}/{y:.0f}/{z:.0f}")
+        run.expect("(and back)", ["Arrived"], m, 40)
+        time.sleep(1)
+
+    def pal_kicked():
+        """Whether the grid threw the pal out (OpenSim's estate kick logs out; the bot keeps answering from its last state)."""
+        try:
+            return "kicked out" in (OUT / "visitor" / f"pal{pal + 1}.log").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+
+    def pal_again():
+        """The pal's process ended and logged in afresh, at its spot."""
+        for pid, port in pal_pids():
+            if port == PAL_PORTS[pal]:
+                kill(pid)
+        wait(lambda: not pal_up(pal), 10, 0.5)
+        pal_start(pal)
+        return wait(lambda: pal_up(pal) and not pal_kicked(), 60, 1)
+
+    def pal_here():
+        """The pal up and beside her (logged in again if it was thrown out)."""
+        if (pal_kicked() or not pal_up(pal)) and not pal_again():
+            return False
+        x, y, z, _ = tester_where()
+        try:
+            tcp(PAL_PORTS[pal], f"tp {REGION} {x + 2:.0f} {y + 2:.0f} {z:.0f}", 40)
+        except (OSError, ToolError) as e:
+            print(f"     (the pal's teleport: {e})")
+        return wait(lambda: any(p["id"] == pal_id for p in api("TesselAgent", "people", dist=96).get("people", [])), 10)
+
+    def pal_gone():
+        return not any(p["id"] == pal_id for p in api("TesselAgent", "people", dist=512).get("people", []))
+
+    def pal_out():
+        """Thrown out: logged out by the grid (OpenSim's kick), or gone from the region (sent home)."""
+        return "logged out by the grid" if pal_kicked() else "gone from the region" if pal_gone() else None
+
+    try:
+        if manages():
+            keeper(f"estate manager remove {tester_id}")
+            time.sleep(3)
+            rehandshake()
+        # ---- not a manager
+        m = mark()
+        land_cmd("estate")
+        run.expect("estate: About Land's Estate tab read, whose estate it is and that she doesn't manage it", ["Estate:", "owned by Estate Keeper", "You manage it: no"], m, 15)
+        m = mark()
+        land_cmd(f"kick {VNAME}")
+        run.expect("an estate command says only its owner and managers may", ["Only this estate's owner and its managers"], m, 6)
+        back_to_chat()
+        near_visitor()
+        key("alt+3")
+        wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
+        if select_in("id=people", VNAME):
+            key("apps")
+            names = menu_names()
+            run.check("a person's menu has no estate items where she doesn't manage it", names and not any("estate" in n for n in names), " | ".join(names))
+            key("esc")
+
+        # ---- a manager
+        keeper(f"estate manager add {tester_id}")
+        if not wait(manages, 6):
+            rehandshake()
+        if not run.check("(she manages the estate now)", wait(manages, 15), ""):
+            return
+        m = mark()
+        land_cmd("estate")
+        run.expect("estate: she manages it, its lists counted", ["You manage it: yes, as one of its managers", "Managers: ", "Banned residents: "], m, 20)
+        key("tab")
+        if run.check("Tab: the estate's list, its tools in it", wait_focus(lambda d: d["id"] == "landRows" or d["type"] == "ListItem", 4), focus_label()):
+            rows = [x["name"] for x in find("type=ListItem")]
+            for want in ("Send someone home:", "Send everyone home:", "Eject someone from the estate:", "Restart the region:", "Message to the region:", "Manager: "):
+                run.check(f"the tab lists {want.rstrip(': ')}", any(r.startswith(want) for r in rows), " | ".join(rows[:30]))
+
+        # Eject from estate, on the pal's menu
+        if run.check("(the pal beside her)", pal_here(), ""):
+            m = mark()
+            if run.check("a person's menu has Eject from estate where she manages it", pal_menu(pal_name, "Eject from estate"), focus_label()):
+                confirm_in_notices(run, "Eject", m)
+                said = wait(lambda: next((e["text"] for e in said_since(m) if (e.get("text") or "").startswith(("Ejected", "Asked the estate to eject"))), None), 20)
+                run.check("ejected behind her confirmation, said", said and pal_name in said, said or " | ".join(e.get("text") or "" for e in said_since(m)))
+                out = wait(pal_out, 15)
+                run.check("(the pal is out: OpenSim's kick logs out, the region dropping them later)", out, out or "")
+        # Ban from estate, on the pal's menu
+        if run.check("(the pal beside her again)", pal_here(), ""):
+            m = mark()
+            if run.check("a person's menu has Ban from estate", pal_menu(pal_name, "Ban from estate"), focus_label()):
+                confirm_in_notices(run, "to the banned residents", m)
+                run.expect("banned behind her confirmation, said", [f"Banned {pal_name} from the estate"], m, 25)
+                run.check("(on the estate's banned list)", pal_id in banned(), "")
+                out = wait(pal_out, 15)
+                run.check("(and thrown out, the ban's kick)", out, out or "")
+        back_to_chat()
+        m = mark()
+        land_cmd("estate")
+        run.expect("the tab counts the ban", ["Banned residents: 1 person"], m, 15)
+        key("tab")
+        wait_focus(lambda d: d["id"] == "landRows" or d["type"] == "ListItem", 4)
+        if run.check(f"(Banned: {pal_name} in the tab's list)", select_in("id=landRows", f"Banned: {pal_name}", 60), selected_text("id=landRows")):
+            m = mark()
+            key("del")
+            confirm_in_notices(run, "Remove", m)
+            run.expect("Delete on it lifts the ban, behind her confirmation", [f"{pal_name} isn't banned from the estate now"], m, 25)
+            run.check("(off the estate's banned list)", pal_id not in banned(), "")
+            run.check("the focus back in the list", wait_focus(lambda d: d["id"] == "landRows" or d["type"] == "ListItem", 5), focus_label())
+        # typed: someone offline banned by name and the ban lifted
+        m = mark()
+        land_cmd(f"estate ban {other_name}")
+        confirm_in_notices(run, "to the banned residents", m)
+        run.expect("estate ban NAME: someone not here banned by name", [f"Banned {other_name} from the estate"], m, 25)
+        run.check("(on the list)", other_id in banned(), "")
+        m = mark()
+        land_cmd(f"estate unban {other_name}")
+        confirm_in_notices(run, "Remove", m)
+        run.expect("estate unban NAME: lifted, from the list's own names", [f"{other_name} isn't banned from the estate now"], m, 25)
+        # what would act on everyone: asked first, cancelled here
+        m = mark()
+        land_cmd("restart")
+        confirm_in_notices(run, "Restart", m, answer="esc")
+        run.expect("restart asks first, saying when and that everyone's warned", ["in 120 seconds", "warned"], m, 4)
+        run.expect("Escape leaves it", ["Cancelled"], m, 8)
+        m = mark()
+        land_cmd("send everyone home")
+        confirm_in_notices(run, "Send everyone", m, answer="esc")
+        run.expect("send everyone home asks first, cancelled", ["Cancelled"], m, 8)
+        # a message to the region: its words in the confirmation, heard in the region
+        words = f"The estate says hello, {nonce}."
+        n = int((re.findall(r'"n":(\d+)', v("events 1")) or ["0"])[-1])
+        m = mark()
+        land_cmd(f"message {words}")
+        confirm_in_notices(run, "Send this to everyone", m)
+        run.expect("message: its words in the confirmation, sent, said", [f"Sent to everyone in {REGION}", words], m, 15)
+        heard = wait(lambda: words in v(f"events 20 since {n}"), 10)
+        run.check("the visitor gets it", heard, v(f"events 5 since {n}")[-300:])
+        m = mark()
+        land_cmd("estate message " + "x" * 300)
+        run.expect("a message too long is said so, before anything's asked", ["too long", "254 bytes"], m, 6)
+    finally:
+        back_to_chat()
+        try:
+            keeper(f"estate manager remove {tester_id}")
+            for who in (pal_id, other_id):
+                keeper(f"estate unban {who}")
+        except (OSError, ToolError) as x:
+            print(f"     (the Keeper's cleanup: {x})")
+        keeper_logout(proc)
+        try:
+            if pal_kicked() or not pal_up(pal):
+                pal_again()
+            else:
+                tcp(PAL_PORTS[pal], "tp %s %d %d %d" % PAL_START, 40)
+        except (OSError, ToolError) as x:
+            print(f"     (the pal back: {x})")
+        say_in_app(f"//tp {REGION}/{home[0]:.0f}/{home[1]:.0f}/{home[2]:.0f}")
+        wait(lambda: math.dist(tester_where()[:2], home[:2]) < 3, 30, 1)
+        # (her manager's flag goes at the region's next handshake: a teleport out and back, so later steps meet a visitor)
+        if manages():
+            rehandshake()
+
+
 HUD_SCRIPT = 'default { touch_start(integer n) { llSay(0, "Access HUD pressed, link " + (string)llDetectedLinkNumber(0)); } }'
 
 
@@ -9876,14 +10681,26 @@ def menu_bar(run, nonce, tester_id):
     m = mark()
     key("ctrl+shift+1")
     run.expect("Control+Shift+1: region info", [f"Region {REGION}"], m, 8)
-    # Away by the menu, through SojournSettings, and back
-    for want, words in (("on", "Away."), ("off", "Not away.")):
-        m = mark()
-        key("alt+w")
-        if menu_open("Away"):
-            key("a")
-            run.expect(f"World > Away: {want}, said", [words], m, 6)
-            run.check(f"(away {want})", wait(lambda: setting("away") == want, 4), str(setting("away")))
+    # Away by the menu, through SojournSettings, and back. Without away by itself meanwhile: posted keys aren't the PC's
+    # input, so by the app's lights nobody is ever at a hidden desktop's keys, and from five minutes into a session it
+    # sets Away itself, again within a second of each "off". A step that reached here after that mark found her away
+    # ("Not away." for the first press, which passed as holding "away."), and "off" was read only when the check
+    # came before the next second's tick (2026-11-09's full run reached it 2 s after the mark, and read "on")
+    after = setting("away_after")
+    setting("away_after", 0)
+    if setting("away") == "on":
+        setting("away", False)
+    try:
+        for want, words in (("on", "Away."), ("off", "Not away.")):
+            m = mark()
+            key("alt+w")
+            if menu_open("Away"):
+                key("a")
+                said = wait(lambda: next((e["text"] for e in said_since(m) if e.get("text") in ("Away.", "Not away.")), None), 6)
+                run.check(f"World > Away: {want}, said", said == words, said or "not heard")
+                run.check(f"(away {want})", wait(lambda: setting("away") == want, 4), str(setting("away")))
+    finally:
+        setting("away_after", after)
     # a focus-moving item (View > People) lands once the menu has closed
     key("alt+v")
     if run.check("Alt+V opens View", menu_open("People"), focus_label()):
@@ -10167,6 +10984,152 @@ def session_tools(run, procs):
         kill(new_pid)
         run.check("(closed again)", wait(lambda: not alive(new_pid), 10, 0.5), f"pid {new_pid}")
     back_to_chat()
+
+
+AUTOSIT_EAST = "//tp Atelier East/30/40/25"
+
+
+def autosit(run, nonce):
+    """Auto-sit (Radegast's AutoSit, MainForm.AutoSit.cs): a box of hers made Atelier's seat by //autosit NAME, the first
+    seat turning auto-sit on, said, and in the settings with its region; a teleport to Atelier East sits her on nothing
+    and says nothing; one back into Atelier sits her on it by itself, said; standing up stays stood; a teleport within
+    Atelier doesn't sit her; Control+Shift+S turns it off, said, and a teleport there and back then leaves her
+    standing; on again, said with its seat; Objects' menu on the box has Stop auto-sitting on it. Forgotten and off
+    again after, the box deleted (other steps teleport about Atelier)."""
+    back_to_chat()
+    name = f"Access Seat {nonce}"
+    for line in ("//autosit forget all", "//autosit off"):
+        m = mark()
+        say_in_app(line)
+        wait(lambda: said_since(m), 4)
+    m = mark()
+    say_in_app(TP_COMMAND)
+    run.expect("(at the teleport spot)", ["Arrived"], m, 40)
+    x, y, z, _ = tester_where()
+    seat = api("TesselBuild", "create", 20, shape="box", pos=[x + 2, y, z - 0.6], scale=[0.6, 0.6, 0.5], name=name)["id"]
+
+    def sitting():
+        return api("LLAgent", "animations").get("sitting")
+
+    def autosit_said(since):
+        return [e["text"] for e in said_since(since) if "Auto-sit" in (e.get("text") or "")]
+
+    try:
+        wait(lambda: api("TesselObjects", "nearby", dist=10, query=name).get("objects"), 6)
+        m = mark()
+        say_in_app(f"//autosit {name}")
+        run.expect("//autosit NAME: this region's seat, the first turning auto-sit on, said", [f"Auto-sit on {name}", "Atelier", "on now"], m, 10)
+        seats = api("SojournSettings", "get", name="access_autosit_seats")["settings"]["access_autosit_seats"]["value"]
+        run.check("(the seat on the agent API's settings, with its region)", any(s["id"] == seat and s["region"] == "Atelier" for s in seats), json.dumps(seats)[:200])
+        m = mark()
+        say_in_app(AUTOSIT_EAST)
+        run.expect("(to Atelier East)", ["Arrived"], m, 40)
+        time.sleep(5)
+        run.check("no seat in Atelier East: not sat, nothing said", not sitting() and not autosit_said(m), "; ".join(autosit_said(m)) or "")
+        m = mark()
+        say_in_app(TP_COMMAND)
+        run.expect("(back to Atelier)", ["Arrived"], m, 40)
+        run.expect("teleporting into Atelier sits her on her seat, said with the key that turns it off", [f"Auto-sit: sitting on {name}", "Control+Shift+S"], m, 40)
+        run.check("she's sitting", wait(sitting, 5), "")
+        m = mark()
+        say_in_app("//stand")
+        time.sleep(4)
+        run.check("standing up stays stood", not sitting(), "sitting again")
+        m = mark()
+        say_in_app("//tp Atelier/76/40/24")
+        run.expect("(a teleport within Atelier)", ["Arrived"], m, 40)
+        time.sleep(5)
+        run.check("a teleport within the region doesn't sit her", not sitting() and not autosit_said(m), "; ".join(autosit_said(m)) or "")
+        m = mark()
+        key("ctrl+shift+s")
+        run.expect("Control+Shift+S turns it off, said", ["Auto-sit off."], m, 4)
+        run.check("(off on the agent API too)", api("SojournSettings", "get", name="access_autosit")["settings"]["access_autosit"]["value"] is False, "")
+        m = mark()
+        say_in_app(AUTOSIT_EAST)
+        run.expect("(to Atelier East again)", ["Arrived"], m, 40)
+        time.sleep(2)
+        m = mark()
+        say_in_app(TP_COMMAND)
+        run.expect("(and back)", ["Arrived"], m, 40)
+        time.sleep(6)
+        run.check("off: back in Atelier, still standing, nothing said", not sitting() and not autosit_said(m), "; ".join(autosit_said(m)) or "")
+        back_to_chat()
+        m = mark()
+        key("ctrl+shift+s")
+        run.expect("Control+Shift+S again: on, said with its seat", ["Auto-sit on", f"{name} in Atelier"], m, 4)
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("f5")
+        # (the seat listed before the walk down starts: a fill landing under the walk keeps the row she's on, and the
+        # seat, the nearest thing, goes in above it)
+        wait(lambda: find(f"type=ListItem;name~={name}, "), 10)
+        if run.check("(the seat selected in Objects)", select_in("id=objects", name), selected_text("id=objects")):
+            key("apps")
+            run.check("Objects' menu on the seat: Stop auto-sitting on it", menu_open("Stop auto-sitting on it", 3), focus_label())
+            key("esc")
+    finally:
+        back_to_chat()
+        for line in ("//autosit forget all", "//autosit off"):
+            m = mark()
+            say_in_app(line)
+            wait(lambda: said_since(m), 4)
+        gated(run, "the seat deleted", "TesselBuild", "delete", 30, ids=[seat])
+
+
+def export_import(run, nonce):
+    """Export and import (MainForm.Exports.cs; Radegast's Export to XML and DAE and Import object, Firestorm's Backup and
+    Import Linkset): a two-part build of hers exported by //export NAME as a backup (.oxp), then as Radegast's XML and as
+    a Collada model by the words "as xml" and "as dae", each said and written to the run's files folder
+    (SOJOURN_TEST_FILES, for the Save window); the XML is LLSD with both prims; the model read back by the app's own
+    upload (TesselAgent uploadLook: two parts, triangles); the backup and the XML imported by //import PATH, each a new
+    object of two parts named as hers, 2 metres ahead, said, and edited; the visitor's fixture, opened in the build
+    editor, refused by export, saying why. What it made it deletes."""
+    back_to_chat()
+    name = f"Access Export {nonce}"
+    files = OUT / "files"
+    for ext in ("oxp", "xml", "dae"):
+        (files / f"{name}.{ext}").unlink(missing_ok=True)
+    x, y, z, _ = tester_where()
+    a = api("TesselBuild", "create", 20, shape="box", pos=[x + 3, y, z], scale=[0.6, 0.6, 0.4], name=name)["id"]
+    b = api("TesselBuild", "create", 20, shape="cylinder", pos=[x + 3, y, z + 0.5], scale=[0.3, 0.3, 0.6], name=f"{name} top")["id"]
+    api("TesselBuild", "link", 20, ids=[a, b])
+    made = [a]
+
+    def mine_named():
+        return [o for o in api("TesselObjects", "nearby", dist=20, query=name).get("objects") or [] if o.get("name") == name]
+
+    try:
+        wait(lambda: mine_named(), 6)
+        for words, ext, said in (("", "oxp", "as a backup"), (" as xml", "xml", "as Radegast's XML"), (" as dae", "dae", "as a Collada model")):
+            m = mark()
+            say_in_app(f"//export {name}{words}")
+            run.expect(f"//export NAME{words}: exported {said}, said with the file", [f"Exported {name}", "2 parts", said, f"{name}.{ext}"], m, 30)
+            run.check(f"(the .{ext} file written)", wait(lambda: (files / f"{name}.{ext}").exists(), 5), str(files / f"{name}.{ext}"))
+        xml = (files / f"{name}.xml").read_text(encoding="utf-8") if (files / f"{name}.xml").exists() else ""
+        run.check("the XML is LLSD with both prims", "<llsd>" in xml and xml.count(name) >= 2, xml[:120])
+        try:
+            text = json.dumps(api("TesselAgent", "uploadLook", 30, path=str(files / f"{name}.dae")))
+        except ToolError as e:
+            text = str(e)
+        run.check("the model read back by the app's own upload: two parts, triangles",
+                  re.search(r'"parts": 2\b', text) and re.search(r'"triangles": [1-9]', text), text[:300])
+        for ext in ("oxp", "xml"):
+            before = {o["id"] for o in mine_named()}
+            m = mark()
+            say_in_app(f'//import "{files / f"{name}.{ext}"}"')
+            run.expect(f"//import PATH (.{ext}): rebuilt, 2 parts, 2 metres ahead, said, and edited", [f"Imported {name}", "2 parts", "2 metres ahead", "Editing it"], m, 60)
+            new = wait(lambda: [o for o in mine_named() if o["id"] not in before], 6)
+            run.check(f"(a new object named as hers from the .{ext})", new, f"{len(mine_named())} named so")
+            made += [o["id"] for o in new or []]
+        m = mark()
+        say_in_app("//build edit Access Fixture")
+        run.expect("(the visitor's fixture in the build editor)", ["Access Fixture"], m, 10)
+        m = mark()
+        say_in_app("//build export")
+        run.expect("export refused on someone else's thing, saying why", ["Access Fixture can't be exported", "Access Fixture isn't yours"], m, 10)
+    finally:
+        back_to_chat()
+        gated(run, "the step's objects deleted", "TesselBuild", "delete", 30, ids=made)
 
 
 def walk(run):
@@ -10991,13 +11954,14 @@ def walk_vehicle(run, bx, by, g):
     time.sleep(1)
 
 
-def clear_owned(region, owner_id):
-    """Whatever this account owns in a region goes (the grid console)."""
+def clear_owned(region, owner_id, wait=1.5):
+    """Whatever this account owns in a region goes (the grid console). wait=None doesn't pause between the console's
+    commands (the sweeps before anyone logs in, a dozen of these); the steps' own keep the pauses they've always had."""
     import grid
-    lines = grid.console(f"change region {region}", wait=1.5, answers=(f"show object owner {owner_id}", "change region root"))
+    lines = grid.console(f"change region {region}", wait=wait, answers=(f"show object owner {owner_id}", "change region root"))
     n = next((int(m[1]) for l in lines if (m := re.search(r"(\d+) object\(s\) found", l))), 0)
     if n:
-        grid.console(f"change region {region}", wait=1.5, answers=(f"delete object owner {owner_id}", "y", "change region root"))
+        grid.console(f"change region {region}", wait=wait, answers=(f"delete object owner {owner_id}", "y", "change region root"))
     return n
 
 
@@ -11507,6 +12471,13 @@ def driving_after(run):
     time.sleep(1)
     near = wait(lambda: away(target) < 11 or None, 45, 0.3)
     run.check("the visitor walks round behind it and the kart turns and goes after them", near, f"{away(target):.1f} m from where they went")
+    # (the kart's Down is reverse thrust, as her scooter's was: held to keep the gap it backed her round her partner at
+    # 10 m/s for half a minute, 2026-11-09; the old code backed this kart at 4 m/s. A moment of it is the visitor brushing
+    # past the kart as they walk round it: it was shoved back at 1.4 m/s for under a second)
+    log = latest_app_log()
+    backs = [l for l in re.findall(r"convoy: .* m/s backward,.*", log)]
+    backs += [f"backing {ms} ms" for ms in re.findall(r"convoy: no longer going backward, after (\d+) ms", log) if int(ms) > 1000]
+    run.check("never driving the kart backward to keep the gap", not backs, " | ".join(backs[:3]))
 
     key("f3")
     wait_focus(lambda d: d["id"] == "walkPad", 5)
@@ -11933,6 +12904,317 @@ def vehicle_stop(run):
             except Exception:
                 pass
         clear_owned(COURSE_REGION, visitor_id())
+
+
+PEOPLE_COURSE = (236, 80)          # in COURSE_REGION, between the walk course and the route recording's wall
+
+
+def walking_round_people(run):
+    """A //go and the people standing where it would go (Commands.WalkPeople.cs, PathPlanner's people;
+    docs/access-app.md at //go). Until 2026-11-09 a walk went straight into anyone on its line, and on OpenSim shoved
+    them along and slid on metres past its point. On flat ground in Atelier East, with a closed pen 4 m square whose
+    one doorway is a metre wide:
+    - the visitor standing on the line of a 16 m walk: gone round, arriving on the point, never nearer them than
+      0.7 m, and they stand where they stood; said as the plain walk it is to her (the way round is under a metre
+      longer: no "around", no stretches);
+    - //go to the visitor themselves still walks up to them and ends beside them;
+    - the visitor in the middle of a passage too narrow to pass them in (between the pen and a block south of it),
+      the way round the block a couple of metres longer: said with their name and its stretches, each stretch said;
+    - a wall across the way with a doorway, the visitor landing in the doorway once she has set out: gone round by the
+      wall's end, said with how far it is now (over 3 m more than was left);
+    - a 20 m walk with nobody near says what it always did, and the visitor landing on its line once she has set out
+      (15 m along it) is gone round too, said in one short line; the same with Always run on;
+    - the visitor standing in the pen's doorway, the walk's point inside: she's told at the start it's only as far as
+      them, walks up, and ends short of them with who's in the way and where, outside the pen, nothing said of a
+      teleport (walk_teleport_fallback is on: a walk with no way at all would have teleported in); asked again from
+      there she hears the same and stays;
+    - walking round people turned off (World's menu, said; walk_round_people): the same walk says nothing of the
+      visitor; //walkround turns it on again, said;
+    - the same walk from further off, the visitor leaving the doorway while she walks up: "The way is clear now" and
+      she goes on in;
+    - the visitor and her two friends standing against her on open ground, so that no step keeps off them all: she
+      sets out all the same (not "Not walking").
+    Needs no renderer."""
+    bx, by = PEOPLE_COURSE
+    tester_id, vid = api("LLAgent", "getID")["id"], visitor_id()
+    back_to_chat()
+    m = mark()
+    say_in_app(f"//tp {COURSE_REGION}/{bx - 12}/{by - 8}/25")
+    if not run.expect("(to the course for walking round people)", ["Arrived", COURSE_REGION], m, 40):
+        return
+    time.sleep(1.5)
+    g = api("TesselAgent", "ground", points=[[bx, by]])["heights"][0] or 21.0
+    if n := clear_course(tester_id):
+        print(f"     (cleared {n} object(s) a run before left in {COURSE_REGION})")
+    door, inside = (bx + 6, by), (bx + 8.5, by)
+
+    def stand(x, y):
+        """The visitor standing there, and the app's own word on where (what its walks plan by)."""
+        got = visitor_tp(x, y, g + 1.5)
+        at = visitor_settled(6)
+
+        def seen():
+            p = next((p for p in api("TesselAgent", "people", dist=96).get("people", []) if p.get("id") == vid), None)
+            return p and math.dist(p["pos"][:2], at[:2]) < 0.3
+
+        ok = got.startswith("arrived") and math.dist(at[:2], (x, y)) < 1 and wait(seen, 10, 0.3)
+        run.check(f"(the visitor standing at {x}, {y}, the app knowing it)", ok, f"{got}; at {at[0]:.1f}, {at[1]:.1f}")
+        return at
+
+    def go(to, secs=40, once_walking=None):
+        """//go xyz there (or the command given): what was said, and the nearest she came to the visitor on the way.
+        once_walking runs when the walk's first line has been said."""
+        vx, vy, _ = visitor_where()
+        m = mark()
+        say_in_app(to if isinstance(to, str) else f"//go xyz {to[0]},{to[1]}")
+        nearest, t0 = math.inf, time.time()
+        while time.time() - t0 < secs:
+            said = [e.get("text") or "" for e in said_since(m)]
+            if once_walking and any(s.startswith("Walking") for s in said):
+                once_walking()
+                once_walking = None
+                vx, vy, _ = visitor_where()
+            x, y, *_ = tester_where()
+            nearest = min(nearest, math.dist((x, y), (vx, vy)))
+            if any(s.startswith(("Finished walking", "Not walking", "No way")) for s in said):
+                break
+            time.sleep(0.15)
+        time.sleep(1.5)
+        return [e.get("text") or "" for e in said_since(m)], nearest
+
+    def first(said, start):
+        return next((s for s in said if s.startswith(start)), "")
+
+    def off(to):
+        x, y, *_ = tester_where()
+        return math.dist((x, y), to)
+
+    def unmoved(at):
+        now = visitor_where()
+        return math.dist(now[:2], at[:2]) < 0.2, f"the visitor at {now[0]:.1f}, {now[1]:.1f}, {math.dist(now[:2], at[:2]):.1f} m from where it stood"
+
+    moved_pals = False
+    try:
+        parts = [
+            dict(pos=[bx + 6, by - 1.25, g + 1.25], scale=[0.2, 1.5, 2.5]),      # the west wall, its doorway by-0.5 to by+0.5
+            dict(pos=[bx + 6, by + 1.25, g + 1.25], scale=[0.2, 1.5, 2.5]),
+            dict(pos=[bx + 10, by, g + 1.25], scale=[0.2, 4.2, 2.5]),
+            dict(pos=[bx + 8, by - 2, g + 1.25], scale=[4.2, 0.2, 2.5]),
+            dict(pos=[bx + 8, by + 2, g + 1.25], scale=[4.2, 0.2, 2.5]),
+            # a block south of the pen: between them a passage 2.25 m wide, by-4.35 to by-2.1, too narrow to pass someone in
+            dict(pos=[bx + 8, by - 4.85, g + 1.25], scale=[4.2, 1.0, 2.5]),
+        ]
+        stretch_lines = lambda said: [s for s in said if re.match(r"\d+ of \d+: ", s)]
+        made = sum(bool(api("TesselBuild", "create", timeout=20, shape="box", **p).get("id")) for p in parts)
+        run.check("(the pen built)", made == len(parts), f"{made} of {len(parts)} prims on the ground at {g:.1f} m")
+
+        # someone standing on the line
+        lane = by - 8
+        stood = stand(bx - 6, lane)
+        to = (bx + 4, lane)
+        said, nearest = go(to)
+        start = first(said, "Walking")
+        run.check("//go with someone standing on its line says the plain walk it is to her (a step aside, under a metre longer)",
+                  re.fullmatch(r"Walking \d+ metres to \d+, \d+\.", start) and not stretch_lines(said), " | ".join(said))
+        run.check("and arrives on the point", first(said, "Finished walking") and off(to) < 1,
+                  f"{first(said, 'Finished walking') or 'not finished'}; {off(to):.1f} m from it")
+        ok, where = unmoved(stood)
+        run.check("going round them: never touching them, and they stand where they stood", nearest > 0.7 and ok, f"nearest {nearest:.1f} m; {where}")
+
+        # to the person themselves: a plain walk to them, nobody said to be in the way. How near it ends is said, not
+        # checked: letting go of the region's autopilot is a press of forward, a step whichever way she faced before
+        # the walk, so it ended 2.0 to 2.7 m from the visitor in five runs (a check for under 2.6 failed one) and
+        # 0.4 m from it in a sixth, after other steps had left her facing the other way (docs/access-app.md at //go)
+        said, nearest = go(f"//go person {VISITOR[0]}")
+        start, done = first(said, "Walking"), first(said, "Finished walking")
+        run.check("//go to the visitor themselves walks to them, nobody in the way",
+                  re.fullmatch(rf"Walking \d+ metres to {VNAME}\.", start) and re.fullmatch(r"Finished walking, [\w.]+( a)? metres? from the destination\.", done),
+                  " | ".join(said))
+        time.sleep(1)
+        d = off(visitor_where()[:2])
+        ok, where = unmoved(stood)
+        run.check("and they stand where they stood", done and ok, f"she ends {d:.1f} m from them, nearest {nearest:.1f}; {where}")
+
+        # a way round that's a walk of its own: the visitor in the middle of the passage between the pen and the block,
+        # no room to pass them there, the way round the block a couple of metres longer (the planner asked directly:
+        # 1.6 m with a thin wall). Said with who and the stretches, each stretch said as before
+        mid = by - 3.225
+        stood = stand(bx + 8, mid)
+        go_tp(run, "(the tester west of the passage)", bx + 3, mid, g + 1.5)
+        wait(lambda: all(api("SojournCollision", "collide", **{"from": [bx + 8, mid, g + 1], "dir": [0, d, 0], "max": 2}).get("hit") for d in (1, -1)), 30, 1)
+        to = (bx + 13, mid)
+        said, nearest = go(to)
+        start = first(said, "Walking")
+        run.check("a way round someone that's over a metre longer is said with who and its stretches",
+                  re.fullmatch(rf"Walking \d+ metres to [\d.]+, [\d.]+, around {VNAME}: \d stretches\.", start) and stretch_lines(said), " | ".join(said))
+        ok, where = unmoved(stood)
+        run.check("and she arrives, never touching them, and they stand where they stood",
+                  first(said, "Finished walking") and off(to) < 1 and nearest > 0.7 and ok,
+                  f"{first(said, 'Finished walking') or 'not finished'}; {off(to):.1f} m from the point; nearest {nearest:.1f} m; {where}")
+
+        # a way planned afresh mid-walk that's a good deal longer says how far it is now: a wall across the south lane
+        # (10 m long, a doorway a metre wide on the lane), the visitor landing in the doorway once she has set out, the
+        # way round the wall's end 4 to 5 m longer than what was left
+        lane, wall = by - 8, bx - 2
+        visitor_tp(bx, by + 8, g + 1.0)
+        made = sum(bool(api("TesselBuild", "create", timeout=20, shape="box", pos=[wall, lane + dy, g + 1.25], scale=[0.2, 4.5, 2.5]).get("id")) for dy in (-2.75, 2.75))
+        go_tp(run, "(the tester at the south lane's west end)", bx - 11, lane, g + 1.5)
+        run.check("(a wall across the south lane, a doorway in it)",
+                  made == 2 and wait(lambda: api("SojournCollision", "collide", **{"from": [wall - 3, lane + 2, g + 1], "dir": [1, 0, 0], "max": 6}).get("hit"), 30, 1), f"{made} of 2 prims")
+        to, landed = (bx + 2, lane), []
+        said, nearest = go(to, once_walking=lambda: landed.append(visitor_tp(wall, lane, g + 1.0)))
+        changed = first(said, f"{VNAME} is in the way; going round")
+        run.check("the visitor landing in the doorway ahead: gone round by the wall's end, said with how far it is now",
+                  re.fullmatch(rf"{VNAME} is in the way; going round, \d+ metres from here: \d stretches\.", changed), " | ".join(said) + f" (the visitor: {landed})")
+        ok, where = unmoved((wall, lane))
+        run.check("and she arrives, and they stand where they landed", first(said, "Finished walking") and off(to) < 1 and nearest > 0.7 and ok,
+                  f"{first(said, 'Finished walking') or 'not finished'}; {off(to):.1f} m from the point; nearest {nearest:.1f} m; {where}")
+
+        # nobody near, then someone stepping into the line: 15 m along a 20 m walk, so the visitor's teleport (a second
+        # or so, sometimes more) has landed well before she's there, at a run too (at 12 m it landed 8 m ahead of her
+        # walking, and the way round came 2.4 m short of it)
+        lane = by + 8
+        to, step_in = (bx + 8, lane), (bx + 3, lane)
+        for pace in ("walking", "running"):
+            visitor_tp(bx - 6, by - 8, g + 1.0)
+            go_tp(run, f"(the tester at the north lane's west end, {pace})", bx - 12, lane, g + 1.5)
+            setting("walk_always_run", pace == "running")
+            landed = []
+            said, nearest = go(to, once_walking=lambda: landed.append(visitor_tp(*step_in, g + 1.0)))
+            start = first(said, "Walking")
+            if pace == "walking":
+                run.check("a walk with nobody near says what it always did", re.fullmatch(r"Walking \d+ metres to \d+, \d+\.", start), start or " | ".join(said))
+            run.check(f"{pace}, the visitor landing on its line once she's set out is gone round, said in one short line (a step aside)",
+                      landed and landed[0].startswith("arrived") and f"{VNAME} is in the way; going round." in said and not stretch_lines(said),
+                      " | ".join(said) + f" (the visitor: {landed})")
+            ok, where = unmoved(step_in)
+            run.check("she arrives, never touching them, and they stand where they landed",
+                      first(said, "Finished walking") and off(to) < 1 and nearest > 0.7 and ok,
+                      f"{first(said, 'Finished walking') or 'not finished'}; {off(to):.1f} m from the point; nearest {nearest:.1f} m; {where}")
+        setting("walk_always_run", False)
+
+        # someone standing in the only doorway
+        stood = stand(*door)
+        go_tp(run, "(the tester west of the pen's doorway)", bx - 2, by, g + 1.5)
+        wait(lambda: api("SojournCollision", "collide", **{"from": [bx + 3, by + 1.25, g + 1], "dir": [1, 0, 0], "max": 6}).get("hit"), 30, 1)
+        said, nearest = go(inside)
+        start, done = first(said, "Walking"), first(said, "Finished walking")
+        run.check("the visitor in the only doorway: told at the start it's only as far as them",
+                  "toward" in start and start.endswith(f"{VNAME} is in the way and there's no short way round, so only as far as them."), start or " | ".join(said))
+        run.check("the walk ends saying who's in the way and where", f": {VNAME} is in the way, " in done and "o'clock" in done, done or " | ".join(said))
+        x, y, *_ = tester_where()
+        ok, where = unmoved(stood)
+        run.check("short of them, outside the pen, and they stand where they stood", x < bx + 5.3 and nearest > 0.9 and ok,
+                  f"at {x:.1f}, {y:.1f}; nearest {nearest:.1f} m; {where}")
+        tps = [s for s in said if "eleport" in s]
+        run.check("nothing said of a teleport (the fallback is on)", setting("walk_teleport_fallback") is True and not tps,
+                  "; ".join(tps) or f"none; walk_teleport_fallback {setting('walk_teleport_fallback')}")
+        said, _ = go(inside, secs=20)
+        x, y, *_ = tester_where()
+        run.check("asked again from there: the same answer, and she stays outside",
+                  any(f"{VNAME} is in the way" in s for s in said) and not any("eleport" in s for s in said) and x < bx + 5.3,
+                  " | ".join(said) + f"; at {x:.1f}, {y:.1f}")
+        # at a run she's going faster when it lets go, and comes to a stop further on
+        go_tp(run, "(the tester west of the pen's doorway again)", bx - 6, by, g + 1.5)
+        setting("walk_always_run", True)
+        said, nearest = go(inside)
+        setting("walk_always_run", False)
+        x, y, *_ = tester_where()
+        ok, where = unmoved(stood)
+        run.check("running up to them: short of them still, and they stand where they stood",
+                  f": {VNAME} is in the way, " in first(said, "Finished walking") and x < bx + 5.3 and nearest > 0.9 and ok,
+                  " | ".join(said) + f"; at {x:.1f}, {y:.1f}; nearest {nearest:.1f} m; {where}")
+
+        # turned off by World's menu (walk_round_people, kept; //walkround is its command): the same walk says nothing
+        # of the visitor, as walks did before, and is stopped before it reaches them; then on again by the command
+        go_tp(run, "(the tester west of the pen's doorway, to walk with it off)", bx - 4, by, g + 1.5)
+        try:
+            key("alt+w")
+            if run.check("World has Walk round people, with its command", menu_open("Walk round people")
+                         and menu_keys("type=MenuItem;name=Walk round people").endswith("//walkround"), menu_keys("type=MenuItem;name=Walk round people")):
+                m = mark()
+                u("invoke type=MenuItem;name=Walk round people")
+                run.expect("pressed there: off, said", ["Walking straight", "//walkround again"], m, 5)
+            else:
+                key("esc")
+                key("esc")
+            back_to_chat()
+            run.check("(the setting has it off)", setting("walk_round_people") is False, json.dumps(api("SojournSettings", "get", name="walk_round_people"))[:160])
+            m = mark()
+            say_in_app(f"//go xyz {inside[0]},{inside[1]}")
+            start = wait(lambda: first([e.get("text") or "" for e in said_since(m)], "Walking"), 8) or ""
+            say_in_app("//stop")
+            run.check("off, a walk to the point behind the visitor says nothing of them",
+                      start and "in the way" not in start and "only as far" not in start, start or " | ".join(e.get("text") or "" for e in said_since(m)))
+            time.sleep(2)
+            m = mark()
+            say_in_app("//walkround")
+            run.expect("//walkround turns it on again, said", ["Walking round people", "//walkround again"], m, 5)
+            run.check("(the setting has it on)", setting("walk_round_people") is True, "")
+        finally:
+            setting("walk_round_people", True)
+        ok, where = unmoved(stood)
+        run.check("(the visitor in the doorway still)", ok, where)
+
+        # the doorway clearing while she walks up
+        go_tp(run, "(the tester further west)", bx - 12, by, g + 1.5)
+        landed = []
+        said, _ = go(inside, once_walking=lambda: landed.append(visitor_tp(bx, by + 8, g + 1.0)))
+        run.check("from further off, the visitor leaving the doorway as she walks up: the way is clear now, said",
+                  "only as far as them" in first(said, "Walking") and first(said, "The way is clear now"), " | ".join(said) + f" (the visitor: {landed})")
+        run.check("and she goes on in", first(said, "Finished walking") and off(inside) < 1,
+                  f"{first(said, 'Finished walking') or 'not finished'}; {off(inside):.1f} m from the point")
+
+        # standing among people (a landing point's pile): the visitor and her two friends within 0.8 m of her, two
+        # ahead either side of her line and one behind, no step to take that keeps off them all. She sets out all the
+        # same, through them as walks always did (where it ends and whether they're moved isn't checked, only said:
+        # walking into people is what that is, though at 0.62 m either side of her line they've stood still so far)
+        lane = by + 8
+        cx, cy = bx - 8, lane
+        go_tp(run, "(the tester in the north lane)", cx, cy, g + 1.5)
+        cx, cy, *_ = tester_where()
+        spots = ((cx + 0.45, cy + 0.62), (cx + 0.45, cy - 0.62), (cx - 0.78, cy))
+        pals_here = [pal_up(i) for i in range(len(PALS))]
+        if run.check("(her two friends are up, to stand round her)", all(pals_here), str(pals_here)):
+            moved_pals = True
+            got = [v(f"tp {COURSE_REGION} {spots[0][0]:.2f} {spots[0][1]:.2f} {g + 1.0:.1f}", timeout=40)]
+            got += [tcp(PAL_PORTS[i], f"tp {COURSE_REGION} {spots[i + 1][0]:.2f} {spots[i + 1][1]:.2f} {g + 1.0:.1f}", 40) for i in range(len(PALS))]
+
+            def round_her():
+                x, y, *_ = tester_where()
+                return [round(math.dist(p["pos"][:2], (x, y)), 2) for p in api("TesselAgent", "people", dist=3).get("people", [])]
+
+            wait(lambda: len(round_her()) == 3 and max(round_her()) < 1.0, 15, 0.5)
+            time.sleep(1.5)   # (landed and still)
+            near = round_her()
+            run.check("(three people standing against her, the app knowing it)", len(near) == 3 and max(near) < 1.0 and math.dist(tester_where()[:2], (cx, cy)) < 0.3,
+                      f"{near} m from her; {got}")
+            def three():
+                at = [visitor_where()[:2]]
+                for i in range(len(PALS)):
+                    m = re.search(r"<([-\d.]+), ([-\d.]+),", tcp(PAL_PORTS[i], "pos", 5))
+                    at.append((float(m[1]), float(m[2])))
+                return at
+
+            x0, y0, *_ = tester_where()
+            before = three()
+            said, _ = go((cx + 10, cy), secs=25)
+            x, y, *_ = tester_where()
+            run.check("hemmed in among people she still sets out, as walks did before",
+                      first(said, "Walking") and not first(said, "Not walking") and x - x0 > 4,
+                      " | ".join(said) + f"; {x - x0:.1f} m east of where she stood")
+            print("     (the three moved " + ", ".join(f"{math.dist(a, b):.1f}" for a, b in zip(before, three())) + " m as she left)")
+    finally:
+        setting("walk_always_run", False)
+        setting("walk_round_people", True)
+        clear_course(tester_id)
+        visitor_tp(*VISITOR_START, region=REGION)
+        if moved_pals:
+            for i in range(len(PALS)):
+                try:
+                    tcp(PAL_PORTS[i], "tp %s %.2f %d %d" % (PAL_START[0], PAL_START[1] + (i - 0.5) * 0.5, *PAL_START[2:]), 40)
+                except (OSError, ToolError) as e:
+                    print(f"     (a friend's teleport back: {e})")
 
 
 def build_route_course(g):
@@ -12682,14 +13964,12 @@ def walk_unnamed(run):
 # ---- the end ------------------------------------------------------------------------------------------------------------
 
 def shutdown(run, server_pid, app_pid, visitor):
+    # the app's logout and the visitor's take about 5 s each, so the visitor tidies up and leaves while the app closes
     if app_pid:
         try:
             u(f"close {app_pid}")
         except Exception:
             pass
-        if wait(lambda: not alive(app_pid), 10, 0.5) is None:
-            kill(app_pid)
-            print(f"     (the app didn't close in 10 s after WM_CLOSE: killed)")
     if visitor:
         for cmd in ("cleanup", "quit"):
             try:
@@ -12698,6 +13978,10 @@ def shutdown(run, server_pid, app_pid, visitor):
                 pass
             if cmd == "cleanup":
                 time.sleep(2)
+    if app_pid and wait(lambda: not alive(app_pid), 10, 0.5) is None:
+        kill(app_pid)
+        print(f"     (the app didn't close in 10 s after WM_CLOSE: killed)")
+    if visitor:
         try:
             visitor.wait(15)
         except subprocess.TimeoutExpired:
@@ -12725,6 +14009,20 @@ def shown(path):
 def finish(run):
     total = run.ok + len(run.failed)
     print(f"\n{run.ok} of {total} passed" + (f"; failed: {', '.join(run.failed)}" if run.failed else ""))
+    if run.failed_in:
+        print("failed in the steps: " + "; ".join(f"{s} ({n})" for s, n in run.failed_in.items()))
+    if run.took:
+        # (a step that failed took however long its waits ran out: not its time)
+        times = step_times()
+        times.update({s: {"s": round(t, 1), "on": time.strftime("%Y-%m-%d")} for s, t in run.took.items() if s not in run.failed_in})
+        try:
+            STEP_TIMES.write_text(json.dumps(times, indent=1), encoding="utf-8")
+        except OSError:
+            pass
+        slow = sorted(run.took.items(), key=lambda x: -x[1])[:3]
+        print(f"{time.time() - run.began:.0f} s, {sum(run.took.values()):.0f} of them in {len(run.took)} step{'s' if len(run.took) > 1 else ''}"
+              + (": " + ", ".join(f"{s} {t:.0f}" for s, t in slow) + (" ..." if len(run.took) > 3 else "") if len(run.took) > 1 else "")
+              + " (python tools/access.py steps lists each)")
     print(f"logs: {shown(EVENTS)}, {shown(OUT / 'visitor' / 'visitor.log')}, {shown(OUT / 'app')}")
     return 0 if not run.failed else 1
 
@@ -13339,7 +14637,7 @@ if __name__ == "__main__":
     if cmd == "package" and "--check" in sys.argv[2:]:
         cmd = "package-check"
     commands = {"build": build, "run": run_for_person, "visitor": lambda: visitor_command(sys.argv[2:]), "tools": tools,
-                "test": test, "stop": stop, "sweep": sweep, "package": package, "package-check": package_check,
+                "test": test, "steps": list_steps, "stop": stop, "sweep": sweep, "package": package, "package-check": package_check,
                 "fetch-lavapipe": fetch_lavapipe}
     if cmd not in commands:
         print(__doc__)

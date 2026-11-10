@@ -248,7 +248,7 @@ def start(a):
         st = api.status()
         if st and st.get("connected"):
             break
-        time.sleep(2)
+        time.sleep(0.5)
     else:
         out(f"not logged in yet ({(st or {}).get('status_message') or 'no answer'}); on the main grid the person may need to "
             "answer the ToS or an MFA code in the client's console window. It carries on; check with dev.py info.")

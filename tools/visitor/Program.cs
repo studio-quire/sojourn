@@ -36,6 +36,11 @@
 //   heard [N] | events [N] [since S]                      the last N chat lines heard / other things received (script
 //                                                         dialogs, permission questions, IMs and offers), as JSON lines
 //                                                         with a running number "n"; "since S" keeps those after n=S
+//   effects [N] [since S]                                 others' viewer effects received, the same way: a PointAt, a LookAt
+//                                                         or a beam ("type"), its source, sender, target, how (a PointAt's
+//                                                         or LookAt's kind: 1 or 7 select, 3 or 10 clear), duration and id
+//   camera on|off                                         its camera kept at its head (a viewer's is), so the region sends it
+//                                                         the LookAts and beams it keeps for those looking from nearby; off: back
 //   dreply LABEL                                          answer the newest script dialog: a button, or a text box's text
 //   qreply yes|no                                         answer the newest permission question
 //   face DEGREES | goto X Y Z                             turn to a heading (0 east, 90 north) / walk to a spot
@@ -84,6 +89,7 @@
 //                                                         Land's step: a parcel divided off and sold to one buyer, passes
 //                                                         sold on one, and tidy: every parcel not its own reclaimed and
 //                                                         the region joined into one again
+//   estate manager add|remove UUID | estate unban UUID     the estate owner's (Estate Keeper's) for the estate step
 //   point UUID | point clear | point UUID as SOURCE       select a thing as the official viewer does on a right click:
 //                                                         a PointAt and a LookAt of type select at it (clear: let go);
 //                                                         as SOURCE: both claiming another avatar sent them
@@ -107,7 +113,7 @@ static class Program
     static GridClient client;
     static readonly ConcurrentDictionary<UUID, bool> joinedGroupChats = new();
     static readonly ConcurrentDictionary<UUID, UUID> groupInvites = new();   // a group's invitation waiting: its IM session
-    static readonly List<string> heard = new(), events = new();
+    static readonly List<string> heard = new(), events = new(), effects = new();
     static int counter;
     static ScriptDialogEventArgs lastDialog;
     static ScriptQuestionEventArgs lastQuestion;
@@ -209,8 +215,25 @@ static class Program
             Keep(events, "question", $"\"object\":{J(e.ObjectName)},\"owner\":{J(e.ObjectOwnerName)},\"taskId\":{J(e.TaskID.ToString())}," +
                 $"\"perms\":{(int)e.Questions},\"names\":{J(e.Questions.ToString())}");
         };
+        // the region's alerts (an estate's message to the region, a restart's countdown)
+        client.Self.AlertMessage += (s, e) => Keep(events, "alert", $"\"msg\":{J(e.Message)}");
         // Offers stay unanswered (declined when they time out); the IM above has logged them
         client.Inventory.InventoryObjectOffered += (s, e) => e.Accept = false;
+        // others' viewer effects (a PointAt, a LookAt, a beam), apart from the events so a beam each second doesn't
+        // crowd them out: what Sojourn Access's Point at sends, as other viewers receive it
+        client.Network.RegisterCallback(PacketType.ViewerEffect, (s, e) =>
+        {
+            foreach (var b in ((ViewerEffectPacket)e.Packet).Effect)
+            {
+                var kind = b.Type switch { 7 => "beam", 13 => "edit", 14 => "lookat", 15 => "pointat", _ => null };
+                if (kind == null || b.TypeData is not { Length: >= 56 } d) continue;
+                var source = new UUID(d, 0);
+                if (source == client.Self.AgentID) continue;
+                Keep(effects, "effect", $"\"type\":{J(kind)},\"source\":{J(source.ToString())},\"sender\":{J(b.AgentID.ToString())}," +
+                    $"\"target\":{J(new UUID(d, 16).ToString())},\"how\":{(d.Length == 57 ? d[56] : -1)}," +
+                    $"\"duration\":{b.Duration.ToString(System.Globalization.CultureInfo.InvariantCulture)},\"id\":{J(b.ID.ToString())}");
+            }
+        }, false);
     }
 
     static string Recent(List<string> from, string args)
@@ -335,6 +358,7 @@ static class Program
             case "fgive": return Tell("give", rest);
             case "heard": return Recent(heard, rest);
             case "events": return Recent(events, rest);
+            case "effects": return Recent(effects, rest);
             case "dreply":
                 {
                     var d = lastDialog;
@@ -388,12 +412,14 @@ static class Program
                         await Task.Delay(100);
                     return $"arrived {client.Network.CurrentSim?.Name} {client.Self.SimPosition}";
                 }
+            case "camera": return Camera(rest.Trim() == "on");
             case "fly":
                 client.Self.Fly(rest.Trim() != "off");
                 return "ok";
             case "cleanup": return Cleanup();
             case "derez": return Derez(rest);
             case "land": return await Land(rest);
+            case "estate": return Estate(rest);
             default: return "ERR unknown command";
         }
     }
@@ -484,6 +510,22 @@ static class Program
             }
         }
         return "ERR land show|divide|sell|pass|tidy";
+    }
+
+    /// <summary>The estate owner's chores (as Estate Keeper) for the estate step: someone made a manager or not, a ban
+    /// lifted. The region applies estate changes a moment later; the test reads them back through the app.</summary>
+    static string Estate(string rest)
+    {
+        var a = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (a.Length >= 3 && a[0] == "manager" && UUID.TryParse(a[2], out var who))
+        {
+            if (a[1] == "add") client.Estate.AddEstateManager(who, false);
+            else if (a[1] == "remove") client.Estate.RemoveEstateManager(who, false);
+            else return "ERR estate manager add|remove UUID";
+            return "ok";
+        }
+        if (a.Length >= 2 && a[0] == "unban" && UUID.TryParse(a[1], out var banned)) { client.Estate.UnbanUser(banned, false); return "ok"; }
+        return "ERR estate manager add|remove UUID | estate unban UUID";
     }
 
     static string Tell(string what, string who)
@@ -632,6 +674,36 @@ static class Program
         client.Objects.AttachObject(client.Network.CurrentSim, box.LocalID, AttachmentPoint.LeftShoulder, Quaternion.Identity);
         await Task.Delay(1500);
         return $"pet {name} id {box.ID} local {box.LocalID}";
+    }
+
+    static Timer camTimer;
+    static Vector3 camWas, camAt;
+
+    /// <summary>camera on: its camera kept at its head as it moves, as a viewer's is (LibreMetaverse leaves it where it was
+    /// put, at the region's corner here), so the region sends it what's sent only to those looking from nearby: OpenSim holds
+    /// back a packet of only LookAts and beams from anyone whose camera is over 10 m from their sender. camera off: back.</summary>
+    static string Camera(bool on)
+    {
+        camTimer?.Dispose();
+        camTimer = null;
+        var m = client.Self.Movement;
+        if (!on)
+        {
+            m.Camera.Position = camWas;
+            m.SendUpdate(true);
+            return "camera off";
+        }
+        camWas = m.Camera.Position;
+        camAt = new Vector3(-100);
+        camTimer = new Timer(_ =>
+        {
+            var head = client.Self.SimPosition + new Vector3(0, 0, 0.8f);
+            if (Vector3.Distance(head, camAt) < 0.5f) return;
+            camAt = head;
+            m.Camera.Position = head;
+            m.SendUpdate(true);
+        }, null, 0, 1000);
+        return "camera on";
     }
 
     static readonly UUID pointId = UUID.Random(), lookId = UUID.Random();

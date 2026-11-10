@@ -6,9 +6,41 @@ testers said is `docs/access.md` > What a blind tester tells us.
 
 ## The scripted test
 
-`python tools/access.py test`: on the local grid, nothing on the visible desktop; it runs `build` and `tools` first. A
-full run takes about an hour (the walk-mode step alone about 4 minutes). Last full run 2026-11-08, evening, on main
-after that day's five merges (0.1.0.1026): 2027 of 2039, no stall, and the IM sound window that took 2026-11-07's keys
+`python tools/access.py test`: on the local grid, nothing on the visible desktop; it builds the app and the visitor
+first when their sources are newer than their builds (QuireUia only by `python tools/access.py tools`).
+
+**Which steps to run** (Claude Fable 5.2, 2026-11-09). The steps below are a menu: run the ones a change could break
+(the studio's `docs/agent-briefs.md` > Checking in proportion). `ACCESS_STEPS=WORDS` picks them by words in their names,
+`=NAME` one by its whole name; `python tools/access.py steps [WORDS]` lists the steps with how long each took when it
+last ran on this PC, and what a choice of words adds up to. Which steps a change touches is the session's own reading
+of the names and the steps' docstrings: nothing works that out. A run of some steps costs about half a minute around
+them (some 20 s to the first step, 10 s to close; it was 100 s). Each step's checks follow a `(step: NAME)` line, and
+the run ends with the steps that had failures, which are the words for running those again (a name with commas in it
+alone, as `=NAME`: as words its pieces take other steps too). A full run is about 72 minutes
+(2026-11-09: stopping a vehicle 7, walk mode 4, the building steps 1.5 to 3 each; 74 before that day's faster start,
+72 worked out from a run cut short at an hour, which had spent 56.5 minutes in the steps the one before spent 57.4 in,
+with a minute less around them). It earns that when a change sits
+under most steps (the main window's plumbing, the reader, confirmations and Notices, the session host and Sojourn.Core
+under it, whichever app the change was made for; QuireUia's server; the test's helpers for keys, finds and selections)
+or a lot has gone in since the last one; otherwise a build for a tester needs the steps of what changed since the last
+full run, and `package --check` for the packed files. The test's start, its reading of the log and its end run the same
+under any step, so a change there is checked by a few steps (one that starts the app again, and `ACCESS_FRESH_SECS=20`
+for QuireUia started afresh between them). What a run of some steps doesn't show: the app an hour into one session
+(2026-11-07's stall came only late in full runs), and what one feature leaves for another (a tab open, a mode on, the
+focus elsewhere), so a new step hasn't met the others until a full run has had it. And what only a step run alone
+meets: a list's first fill of the session, held back 3 s (auto-sit's walk down Objects started under it and failed 2 of
+2 alone, having passed in every full run; `select_in` now waits for the fill).
+
+Last full run 2026-11-09, 19:57, on main at `7144fc3` (teleports within a region handled in turn, a `//go` that ends
+when it gets no nearer, the test's faster start), in two sessions: 2234 of 2235 through 85 steps and most of stopping a
+vehicle, an hour in one session, when the grid's process ended under it (nothing of a shutdown in `OpenSim.log`, no
+crash on Windows' record, and the same trial passed after: not explained); then that step and the twelve after it in a
+session of their own, with the one step fixed, 300 of 300. The miss was the test's: World > Away read "on" after "Not
+away.", away by itself having come on 2 s before (How it runs, below). The run before, 03:45 that day, on main with
+the estate, a group's settings, auto-sit, export and import, and Point at: 2438 of 2440, both misses timing (Tab to the
+lid's faces before they'd come, the very next check finding them; a picture's colour before its texture). The run
+before 0.1.0.1045: 2192 of 2193 (a group's powers coming after a title's change, since asked again). The night before,
+2026-11-08, on main after that day's five merges (0.1.0.1026): 2027 of 2039, no stall, and the IM sound window that took 2026-11-07's keys
 not seen again. Its twelve failures were all the test's own, fixed that night: "Logged in" unheard as `--autologin`
 raced QuireUia's first contact with the process (now a login by keys, below); the long line's accented words
 re-encoded by a scripted edit, so posted typing lost a character in each sentence; earlier runs' leftovers (now swept,
@@ -43,7 +75,12 @@ our test client's, not a reader's. Long runs of a stall's kind elsewhere ("Weari
 window slow to close) are worth reading the same way first: `cdb -pv -p PID -c "~*k; q"` for every thread's stack
 (WinDbg's cdb; `UIAutomationCore!ObjectReferenceManager` busy on a thread is this).
 
-- `ACCESS_STEPS=inventory` runs only the steps whose names have those words (after the login's checks).
+- `ACCESS_STEPS=inventory,walk` runs only the steps whose names have one of those words (after the login's checks);
+  `=links` the step named exactly that (`links` alone takes three; a whole name with commas in it works when it's
+  all that's asked). A run of some steps waits for the login's own
+  arrivals first (the friends' line, a couple of seconds on) and starts the app as already told about chat logs (said
+  once, 12 s after a first login), so neither lands in whichever step is first: the links step run alone found the
+  friends' line under the one it goes back to. A full run's first steps take both as before.
 - `ACCESS_NO_RENDER=1` starts the app with `--no-render`, nothing on the GPU, for the steps that don't need the view
   (e.g. while someone's in the headset). `ACCESS_NO_GPU=1` hides Vulkan's drivers from it
   (`VK_LOADER_DRIVERS_DISABLE=*`), as on a PC whose graphics can't run the view: it then draws on the processor with
@@ -70,7 +107,8 @@ window slow to close) are worth reading the same way first: `cdb -pv -p PID -c "
   next agent's run doesn't empty them.
 - One scripted run is on the grid at a time, whatever its accounts (they share Atelier's spots and fixtures): a run
   holds `local/access-test.lock` and another refuses to start, or waits its turn with `ACCESS_WAIT=1`.
-- `ACCESS_ACCOUNTS=Walk` runs it as Walk Tester and Walk Visitor on ports 10 up, so it never throws out a person's
+- `ACCESS_ACCOUNTS=Walk` runs it as Walk Tester and Walk Visitor on ports 30 up (10 up are the Radegast tools' own
+  QuireUia and visitor: a run beside a Radegast session once took its server for ours), so it never throws out a person's
   guided session as Access Tester; it still uses Atelier's spots, so run it while nobody's testing there. The test
   refuses to start while its tester or visitor is on the grid (two runs kick each other out).
 - The app's renderer is light (about 0.2% of the GPU), but a run that wants clean GPU timings elsewhere shouldn't
@@ -80,7 +118,18 @@ window slow to close) are worth reading the same way first: `cdb -pv -p PID -c "
 `launch` starts a program there, `serve` records the focus, alert and notification events a screen reader gets and
 drives the app by UI Automation and posted keys; a key's modifiers go into the app's key state, only those asked for:
 attaching to its input resets that state, seemingly from the real keyboard's, and a run of 2026-11-08 got Alt+Shift+4
-for Alt+4, most likely a Shift held on the visible desktop just then), with:
+for Alt+4, most likely a Shift held on the visible desktop just then). That is only half closed: the state is reset
+again when QuireUia lets go after a key with a modifier, and a key posted with none (Tab, F5, arrows) is handled under
+whatever that left, until the next key with one. Suspected, not shown, in two runs of 22 of the places step
+(2026-11-09) where the Tab after Alt+6 and F5 went backwards to Regions around once and nowhere once, as Shift+Tab and
+Alt+Tab would, with someone typing at the PC; nothing else differed in the recorded events up to that key. In test
+runs the app now logs each such key as it arrived with what was held (`key Tab, Shift` in its session log), so the
+next one says which it was. If it is this, the cure is for the key's modifiers to travel with it (a message the app
+sets its own key state by in test runs), not to be lent through the shared input state. Nor are posted keys the PC's
+input, which is what tells the app someone is there: from five minutes into a session the tester is away by itself, for
+the rest of the run, and set away again within a second of being taken off it. A step that sets Away itself turns
+`away_after` off meanwhile (the menu bar's, which reaches it at about the five-minute mark of a full run and failed
+there, 2026-11-09). With:
 - `SOJOURN_TEST_INPUT=keys`: posted keys judged as the person's hardware presses, every other rule of the real-input
   guard applying, so Ctrl+N then a number and a confirmation then Enter are checked against it (`ACCESS_TEST_INPUT=1`
   lets every key through instead);
@@ -241,6 +290,13 @@ docstring with its checks in full):
   nothing selected said; a filter hiding it cleared by Control+Shift+P; a pal's pointing claimed as the visitor's (printed:
   the local grid passes it on); Stop hearing on the menu, then nothing said; `//pointing NAME` saying the last minute's,
   `//pointing`, `//pointing off`.
+- **pointing at something herself** (`ACCESS_STEPS=pointing at something`; about 2 minutes, no renderer needed): the visitor's box behind her
+  and a `treasure` chest; Point at on Objects' menu, a UI Automation invoke of it refused and nothing sent; Control+P turning her
+  to face the box, said, the visitor's `effects` (its `camera on`, or the region holds back beams) getting a PointAt and a
+  LookAt of type select at it from her and a beam each second; Stop pointing on the menu then, Control+P stopping it, the
+  visitor getting both cleared and the beam ended, no beam after; the lid from Parts (its menu's Point at, the PointAt at the lid itself), then the box from Objects moving it there;
+  `//point`, `//point NAME` again (another minute), `//go 4 left` ending it as she moved away, the box derezzed ending it,
+  `//point off` with nothing pointed at.
 - **one person's worn things and animations** (`ACCESS_STEPS=worn things and animations`; under a minute): the visitor's `pet`
   and `animate dance1`; What they wear on its menu going to Objects named "What Walk Visitor wears", the pet's line with
   where and touchable and no distance, Show saying whose, Touch heard by its script; Their animations naming dance1; Alt+7
@@ -260,6 +316,15 @@ docstring with its checks in full):
   confirmation, arriving with Keep as its first key and kept, then taken again from the archive (copies counted in
   Notecards); Invite someone into Greeters, its confirmation cancelled; New group up to its confirmation (L$100 said),
   cancelled, nothing made. Bans aren't on OpenSim, so only Second Life runs them.
+- **groups: settings and roles** (`ACCESS_STEPS=groups: settings`; about 2 minutes, no renderer needed): her Owners title worn;
+  the group menu's Settings and roles a window, its controls named, General's six rows; Show in search stepped by Right and
+  Left, Anyone can join and Cost to join (typed) each behind her confirmation, the charter written in its box of several lines
+  (Control+Enter), each said back and checked in the grid's `groups.db` (the profile op answers from what was last sent for 10 s
+  on OpenSim); a role made by Alt+N, its tab shown and its rows; its title typed; Page Down to Membership; Invite people turned
+  on by Right; Give members any role asking first with the viewer's warning, cancelled; Manage the ban list bringing Eject and
+  Take members off roles, Eject then refused; the role renamed, its abilities kept; Delete this role behind her confirmation;
+  Escape; the members' Save the list (Alt+S) writing its CSV into the run's files folder. Its role and settings put back after
+  (and an interrupted run's role, Ushers or Hosts and a nonce, deleted first).
 - **scripts: a new one, moving around in it, inside an object, its errors** (`ACCESS_STEPS=scripts:`; about 2 minutes, no renderer
   needed): New script on the Scripts folder and its starting text; Control+L, Control+F, F3 and Shift+F3 round the ends, Control+G,
   F8 with nothing; Control+H's Replace window (Find next by Enter, Replace, Match case finding nothing, Replace all saying how many and
@@ -290,6 +355,18 @@ docstring with its checks in full):
   its place, Ctrl+Shift+G's menu with triggers as keys playing one, World > Gestures, the inventory's words, Play and
   Deactivate (its trigger then said as typed) and Activate again.
 - **placing by words**: a block rezzed "a metre to my left" (within 0.3 m, on the ground), then moved "by 50 cm up".
+- **auto-sit** (about 2 minutes, no renderer needed): a box of hers made Atelier's seat by `//autosit NAME`, the first seat
+  turning it on, said, and on the agent API with its region; a teleport to Atelier East neither sits her nor says anything;
+  back into Atelier she's sat on it by itself, said; standing up stays stood; a teleport within Atelier doesn't sit her;
+  Control+Shift+S off, said, and a teleport there and back leaves her standing; on again, said with its seat; Objects' menu
+  on the box has Stop auto-sitting on it. Forgotten and off again after, the box deleted (later steps teleport about Atelier).
+  Not run: a login (it would need the app started again) or a teleport home.
+- **exporting and importing** (about 2 minutes, no renderer needed): a two-part build of hers exported by `//export NAME` as
+  a backup, then `as xml` and `as dae`, each said and written to the run's `files` folder (`SOJOURN_TEST_FILES`); the XML
+  LLSD with both prims; the model read back by the app's own upload (`uploadLook`: two parts, triangles); the backup and
+  the XML imported by `//import PATH`, each a new two-part object named as hers, said and edited; the visitor's fixture,
+  opened in the build editor, refused by `export`, saying why. What it made it deletes. Textures she made aren't in it
+  (the build is plywood): a texture's way out is `docs/building.md`'s backup check.
 - **building a linked object**, **building: copying settings**, **building: locked, repeats per metre, flip and the Features
   rows** (`ACCESS_STEPS=building` runs them with the first; each checks the region as well as what's said) and **going by name,
   and blocking by name** (`//go` by a number, xyz, person, object and a name alone; `//block`, `//blocks`, `//unblock`).
@@ -331,6 +408,16 @@ docstring with its checks in full):
   Say; `//land where` from Say. After, and before it starts (an interrupted run's leftovers), the Keeper reclaims what
   isn't his and joins Atelier into one parcel again; the box is taken and she's back where she was. Skipped, said so,
   while Estate Keeper is on the grid (`tools/land.py` running).
+- **the estate from the keys** (`ACCESS_STEPS=the estate`; about 3 minutes, no renderer needed): Estate Keeper as a second
+  visitor bot (`estate manager add|remove`, `estate unban` in `tools/visitor`). Not a manager: the Estate tab says so, `kick
+  NAME` says only its owner and managers may, the visitor's menu has no estate items. Made a manager (the region says so at its
+  handshake: a teleport to Atelier East and back): the tab says it, its tools listed; the second pal brought beside her, Eject
+  from estate and then Ban from estate from its menu, each behind her confirmation, the pal out of the region (logged in again
+  after when the kick logged it out); Delete on its row lifting the ban; `estate ban NAME` and `estate unban NAME` on the other
+  account set's visitor, offline; `restart` and `send everyone home` cancelled at their confirmations; `message WORDS` heard by
+  the visitor; a message over 254 bytes refused in words. After: her manager's place and the bans taken back by the Keeper, the
+  pal back at its spot, a teleport out and back so later steps meet her as no manager. Skipped while Estate Keeper is on the
+  grid.
 - **favorites in the inventory** (needs nothing of the view): against `AisStandIn`, a stand-in for Second Life's
   inventory service that the test serves on a free port and hands the app as `SOJOURN_TEST_AIS` (Core's InventoryMeta
   uses it only where the region offers no InventoryAPIv3, so never on Second Life). Checked: the app reads every
@@ -388,7 +475,12 @@ docstring with its checks in full):
   so the app sends it again after and half a second on (sent only at once, the walk kept its walk animation); 2026-11-08:
   3.2 m a second walking, 5.2 running. Second Life's autopilot is only seen there.
 - **places and a route**: Go to region, a landmark made and teleported to from the tree, the history, regions around,
-  and a route notecard played by `//route` to its last point.
+  and a route notecard played by `//route` to its last point. The history's second place has to be
+  Go to region's: it missed that teleport one run in five until 2026-11-09 (`docs/access-app.md` > Local teleports
+  reported failed), and the step then went on from her start, where the route's first walk goes into the visitor
+  standing on the line and ended 7 m past the point (what that walk did: `docs/access-app.md`, at `//go`). The route
+  now starts beside its first point whatever came before (teleported there if not, with a line saying so), so a miss
+  fails its own check and not the route's.
 - **a conference**: the visitor's `conferenceline` (a hand-made packet: dialog 0, a session that isn't the pair's, as Second
   Life sends one): said as a new conference, the focus staying, a tab not called a group, a reply recorded on that session
   with no "Not sent", Control+W; Friends' Start a conference asking who, Escape starting nothing, one alone refused, two
@@ -485,6 +577,30 @@ docstring with its checks in full):
   the taps' effect) and "start" (`quiet 1 start 20`: opened to 20% before the arrows, the count short). Each must say
   "Stopped.", end at 0, never go below it and never move back; `ACCESS_STOP_TRIALS=N` (1) runs each kind N times and
   `ACCESS_STOP_KINDS=text,none` picks kinds, and the line after them tallies failures and reversals.
+- **walking round people** (about 3 minutes, no renderer needed; `docs/access-app.md` at `//go` > People on the way): in
+  Atelier East between the walk course and the route's wall, a closed pen 4 m square with one doorway a metre wide.
+  The visitor standing on the line of a 16 m `//go`: gone round, arriving on the point, never nearer it than 0.7 m,
+  the visitor where it stood, and said as the plain walk it is to her (under a metre longer: no "around", no
+  stretches); `//go person` to the visitor is a plain walk to it, nobody said to
+  be in the way, ending beside it (how near isn't checked closely: letting go is a step whichever way she last faced);
+  the visitor in the middle of a passage 2.25 m wide between the pen and a block south of it, too narrow to pass it
+  in: the way round the block, a couple of metres longer, said with its name and stretches, each stretch said; a wall
+  across the south lane with a doorway, the visitor landing in the doorway once she has set out: round the wall's
+  end, said with how far it is now ("... going round, 14 metres from here: 3 stretches.");
+  a 20 m walk with nobody near says what it always did, and the visitor landing on its line once she has set out,
+  15 m along, is gone round, said in one short line with no stretches, at a walk and with Always run on; the visitor
+  in the pen's doorway, the point
+  inside: told at the start it's only as far as them, the end saying who's in the way and where, she outside
+  and it unmoved, nothing said of a teleport (the fallback on), the same again when asked again, and short of it and
+  it unmoved again when she runs up; walking round people turned off by World's menu (said, the setting off): the same
+  walk says nothing of the visitor, and `//walkround` turns it on again; from further off, the visitor leaving the
+  doorway as she walks up: "The way is
+  clear now" and she goes on in; and the visitor and her two friends within 0.8 m round her on open ground (the
+  friends come over from Atelier Northeast and go back): she sets out, not "Not walking". The walks into the visitor
+  that the planning replaced are what the setting off brings back. What the planner does with a way round of a given
+  length (the 10 to 12 m it'll go, the under a metre it doesn't say) was asked of it directly, not on the grid:
+  `PathPlanner.Solve` called by reflection with slabs for walls, from a scratch program; the figures are in
+  `docs/access-app.md` at `//go` > People on the way.
 - **recording a route** (about 2 minutes, no renderer needed): in Atelier East, north of the walk course, a wall with a
   doorway; in walk mode R starts recording, held Up walks through the doorway, taps of Right turn east, held Up walks on,
   then a `//tp` into Atelier Northeast; R's state, N's note (Backspace taking it back, N again), Shift+R's name and the
@@ -673,3 +789,68 @@ theirs to type: before that step, NVDA's log at its default level (no input logg
 6. Alt+F4, Enter. Windows+R `%LOCALAPPDATA%\Sojourn Access`: the logs there, nothing new beside the program.
 7. Removing it as the README says (the folder and the data folder). Record findings in `docs/access.md`, take the item
    off the board.
+
+## Walking round people on Second Life
+
+Not run yet (written 2026-11-09 by Claude Fable 5.2, with the change). Everything in `docs/access-app.md` at `//go` >
+People on the way was built and checked on OpenSim, whose avatars slide when touched; nobody here knows what Second
+Life's do, so this is the first real evidence either way. It needs the user's account in Sojourn Access from the repo
+(its agent API on, and `SOJOURN_WALK_LOG=path` set: each plan is a `go A -> B, N standing: ...` line there), a session
+driving it, and a second avatar whose person has agreed to be stood in the way and, for step 1, walked into (one of
+ours if they're willing, or a friend's), on open ground where building is allowed or a doorway is at hand. Where the
+other avatar is before and after comes from the agent API (`TesselAgent people`, their `pos`), the tester's own from
+`LLAgent getPosition`; ask the other person what they saw too. Eight things, the first three the ones that matter
+(the review of 2026-11-09, also Claude Fable 5.2, added to 1, 3, 5, 6 and 7 and wrote 8):
+
+1. **What does Second Life do when she walks into someone?** Once, with walking round people off (`//walkround off`,
+   or `SOJOURN_WALK_PEOPLE=0`: walks take no notice of people, as before): the other avatar standing 4 m along a 20 m `//go xyz`. Do they get moved, and how far? Does
+   she slide past the point, stop at them, or go round by the region's own doing? Does the other person's viewer show
+   a bump notice? How long until "Finished walking", and what does it say? This decides how much the rest matters.
+   And how near two avatars come before they touch: walked at the other slowly by hand (walk mode's Up, tapped) until
+   one of them is moved or she gets no nearer, how far apart are their positions? On OpenSim that's 0.6 to 0.75 m,
+   and the 0.75 m a way keeps (`PathPlanner.PersonR` plus the body's 0.3) is set from it.
+2. **Round someone standing** (`//walkround on`, so walks heed people again): the same walk. Wanted: the plain
+   "Walking 20 metres to ..." (a step aside for one person isn't said; the walk log's `(round 1)` shows it was
+   planned), an arrival under a metre from the point, the other avatar where they stood to within
+   0.1 m, no bump notice for them. From positions sampled a few times a second, the nearest she came to them: the
+   way's line keeps 0.75 m, a metre where there's room. If Second Life's avatars touch further out than that,
+   `PathPlanner.PersonR` grows; if nearer, it can come down, which is what narrow places want (8).
+3. **Does it count the right people?** The walk log's "N standing" against who is really on their feet nearby,
+   somewhere with a dozen people: are people behind the camera or far off missing (Second Life sends avatars by its
+   own rules), and do people sitting on things get left out as meant? A person sitting on the ground: counted?
+   And someone who has just left: the other avatar teleporting away from the line, then the same walk at once and
+   again ten seconds on. Is "around NAME" still said for someone who isn't there (a copy an avatar leaves behind is
+   dropped some seconds after the region's list stops naming them), and for how long?
+4. **Sitting people**: someone seated on a pose ball or a chair on her line. We don't go round them, on the reading
+   that a seated avatar has no body to walk into: is that true on Second Life (no bump, nobody moved)? If not, they
+   count too.
+5. **A doorway**: the other avatar standing in one, the walk's point inside. Wanted: "... is in the way and there's no
+   short way round, so only as far as them.", then "Finished walking, N metres from the destination: NAME is in the
+   way, ...", her standing about 1.5 m from them, no teleport. Then the same walk from 15 m off, the other stepping
+   out of the doorway once she has set out: "The way is clear now; going on" and she arrives inside. And the first
+   with Always run on: how far from them does she stop? On OpenSim, let go a metre before the way's end, she ran
+   into the visitor; it's now let go sooner at a run, by a guess at how far Second Life carries her on.
+6. **Stepping in**: a 20 m walk over open ground, the other avatar walking onto its line 8 to 10 m ahead of her and
+   stopping there. Wanted: "NAME is in the way; going round." and an arrival, nobody touched. Then the
+   other avatar walking across the line without stopping: nothing said, or one such line and a small detour. The
+   first again with Always run on (it looks two seconds of her going ahead, so further at a run). And the other
+   avatar walking to the same point a few metres ahead of her, as someone she's going somewhere with would: nothing
+   should be said of them while they keep ahead.
+7. **Somewhere busy** (a club's landing point, with people standing about and dancing): `//go` from among them to a
+   spot across the room and back, a few times. Does it set out at all, or say "Not walking ..." where a sighted person
+   would simply walk off (that would mean the room it keeps is too wide for crowds)? How many "going round" lines in
+   one walk, and is that too much to listen to? Does any walk end in a teleport or in silence? Her own account of
+   it, when a blind tester has had it for an evening, counts for more than ours here. Two things to listen for there.
+   Standing with two or more people within a metre of her, a walk with no step that keeps off them sets out through
+   them, as walks did before: does that get her out, or leave her pushing against someone until "Finished walking
+   ...: NAME is in the way"? And what she isn't told: a way round people that's under a metre longer is said as the
+   plain walk, so she never hears who she passed (it was "around NAME: 2 stretches." and "2 of 2: ...", for a first
+   stretch a step long). Does she miss knowing, or is it the noise it looked like?
+8. **A narrow place**: the other avatar standing in the middle of a shop's aisle or a corridor 2 to 2.5 m wide, the
+   walk's point beyond them. The way needs 2.6 m to pass someone standing mid-corridor (`docs/access-app.md` > How
+   much room it needs), so here she's told "only as far as them", unless there's a way round no more than 10 to 12 m
+   longer, which it takes: where it does, was that worth the walk, or would she rather have been stopped (or sent
+   further)? Would a sighted person simply have walked past? With
+   walking round people off, does the same walk get past, and is the other avatar moved or their person bothered? If
+   passing is fine there, a way should be let squeeze by someone (as near as bodies allow, from 1) before it's cut
+   short of them.

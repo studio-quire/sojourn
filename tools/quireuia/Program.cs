@@ -111,6 +111,25 @@ static class Launcher
     [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
     [DllImport("user32.dll")] static extern uint WaitForInputIdle(IntPtr h, uint ms);
     [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr h, out uint code);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentProcessId();
+    delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+    [DllImport("user32.dll")] static extern bool EnumDesktopWindows(IntPtr desktop, EnumWindowsProc cb, IntPtr lParam);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+
+    /// <summary>Whether a process has a window on the desktop: the one given, or with 0 any but ours. A window's thread
+    /// is attached to its desktop, which keeps the desktop alive.</summary>
+    static bool HasWindow(IntPtr desktop, uint pid)
+    {
+        bool found = false;
+        uint me = GetCurrentProcessId();
+        EnumDesktopWindows(desktop, (w, _) =>
+        {
+            GetWindowThreadProcessId(w, out var owner);
+            found = pid != 0 ? owner == pid : owner != 0 && owner != me;
+            return !found;
+        }, IntPtr.Zero);
+        return found;
+    }
 
     // CREATE_NO_WINDOW, never a new console: Windows 11 hands new consoles to Windows Terminal, which opens them as a
     // tab on the person's own desktop. GUI programs ignore the flag.
@@ -133,6 +152,7 @@ static class Launcher
         // process's own threads keep the desktop alive after that.
         var h = CreateDesktop(desktop, IntPtr.Zero, IntPtr.Zero, 0, GENERIC_ALL, IntPtr.Zero);
         if (h == IntPtr.Zero) { Console.Error.WriteLine("CreateDesktop failed: " + Marshal.GetLastWin32Error()); return 1; }
+        bool held = HasWindow(h, 0);   // someone's already on it (the server, when the app is started; the app, for a new server)
 
         var si = new STARTUPINFO { cb = Marshal.SizeOf(typeof(STARTUPINFO)), lpDesktop = "WinSta0\\" + desktop };
         if (!CreateProcess(null, cmd, IntPtr.Zero, IntPtr.Zero, false, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS,
@@ -143,8 +163,11 @@ static class Launcher
         }
         CloseHandle(pi.hThread);
         // Our desktop handle is the only thing keeping a new desktop alive until the process's first thread is
-        // attached to it, so don't exit (closing the handle) before the process has started up.
-        if (WaitForInputIdle(pi.hProcess, 15000) != 0) Thread.Sleep(3000);
+        // attached to it, so don't exit (closing the handle) before the process has started up: a GUI program is idle
+        // for input; a console program (the server, an app run by dotnet.exe) has a window there, or 3 s have passed.
+        // A desktop someone was on already needs no wait: it lives on without our handle.
+        if (WaitForInputIdle(pi.hProcess, 15000) != 0 && !held)
+            for (int i = 0; i < 60 && !HasWindow(h, (uint)pi.dwProcessId); i++) Thread.Sleep(50);
         Console.WriteLine(pi.dwProcessId);
         if (wait)
         {

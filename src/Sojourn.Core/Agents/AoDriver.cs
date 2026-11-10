@@ -646,7 +646,8 @@ default
         var trash = _s.Inventory.FolderFor(FolderType.Trash);
         foreach (var (id, _, folder) in nodes)
         {
-            if (folder) c.Inventory.MoveFolder(id, trash);
+            // (not LibreMetaverse's MoveFolder: on Second Life it sends a PATCH the inventory service refuses)
+            if (folder) await _s.InventoryOps.MoveToAsync(id, trash, ct);
             else await c.Inventory.RemoveItemAsync(id, ct);
         }
         await Task.Delay(300, ct);

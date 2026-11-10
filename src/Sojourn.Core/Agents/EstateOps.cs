@@ -289,11 +289,25 @@ public sealed class EstateOps
         {
             await Task.Delay(i == 0 ? 1500 : 2500, ct);
             now = await EstateAsync(ct);
-            if (now[list] is not JsonArray arr) return now;
+            if (now[list] is not JsonArray arr) return await KickedAsync(now);
             var listed = arr.OfType<JsonObject>().Select(x => x.Str("id")).ToHashSet();
-            if (ids.All(id => listed.Contains(id.ToString()) == add)) return now;
+            if (ids.All(id => listed.Contains(id.ToString()) == add)) return await KickedAsync(now);
         }
         throw new LeapError($"the estate's {list} list didn't change (the estate's owner decides who manages it; managers can change the rest)");
+
+        // kick (a ban): anyone banned still in this region once the ban shows is kicked out of the estate too, as the
+        // estate's Kick, since a region needn't send a banned avatar away by itself
+        async Task<JsonObject> KickedAsync(JsonObject o)
+        {
+            if (!(list == "banned" && add && a.Bool("kick", false))) return o;
+            var here = _s.Region?.Avatars.Values.Select(av => av.ID).ToHashSet() ?? new();
+            var still = ids.Where(here.Contains).ToList();
+            foreach (var id in still) c.Estate.KickUser(id);
+            if (still.Count == 0) { o["kicked"] = new JsonArray(); return o; }
+            var gone = await GoneAsync(still, "kicked", ct);
+            foreach (var (k, v) in gone.ToList()) { gone.Remove(k); o[k] = v; }
+            return o;
+        }
     }
 
     // --- people in the region --------------------------------------------------------------------------------------
@@ -346,13 +360,16 @@ public sealed class EstateOps
         return o;
     }
 
+    public const int MessageBytes = 254;
+
     /// <summary>A message to everyone in the region (simulatormessage) or the whole estate (instantmessage).</summary>
     public JsonObject Message(JsonObject a)
     {
         NeedManager("messaging the region");
         var text = (a.Str("text") ?? "").Trim();
         if (text.Length == 0) throw new LeapError("need text");
-        if (text.Length > 1000) throw new LeapError("1000 characters at most");
+        // (one EstateOwnerMessage parameter: a byte's length, its terminating zero included, as the viewer truncates it)
+        if (System.Text.Encoding.UTF8.GetByteCount(text) > MessageBytes) throw new LeapError($"a message is at most {MessageBytes} bytes of text");
         if (a.Bool("estate", false)) C.Estate.EstateMessage(text); else C.Estate.SimulatorMessage(text);
         return new JsonObject { ["sent_to"] = a.Bool("estate", false) ? "the estate" : "the region", ["text"] = text };
     }

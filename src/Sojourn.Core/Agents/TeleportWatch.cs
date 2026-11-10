@@ -66,6 +66,7 @@ public sealed class TeleportWatch
             _finishArrived = false;
             _completeHandle = 0;
         }
+        WireInTurn(c);   // (before our own below, so LibreMetaverse's handler still runs ahead of them for each message)
         c.Network.RegisterCallback(PacketType.TeleportStart, (_, _) => Started(), false);
         c.Network.RegisterCallback(PacketType.TeleportProgress, (_, e) =>
             Progress(Utils.BytesToString(((TeleportProgressPacket)e.Packet).Info.Message)), false);
@@ -83,6 +84,55 @@ public sealed class TeleportWatch
             if (msg is TeleportFinishMessage f) Finish(c, f.RegionHandle, new IPEndPoint(f.IP, f.Port));
             else if (msg is TeleportFailedMessage m) Failed(m.Reason, m.MessageKey);
         });
+    }
+
+    static readonly System.Reflection.MethodInfo? LmvTeleport =
+        typeof(AgentManager).GetMethod("TeleportHandler", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+    /// <summary>
+    /// LibreMetaverse's teleport handler, one message at a time, and no start after its end. A teleport within the
+    /// region is answered by TeleportStart and TeleportLocal together (OpenSim and Second Life both), and LibreMetaverse
+    /// runs its one handler for each on the thread pool, where the two can interleave or swap: each sets the status
+    /// and message, then raises TeleportProgress with whatever the status is by then. So a teleport that arrived could
+    /// come out as two Starts and no Finished, its TeleportAsync false ("Teleport started": 13 of 40 on the local grid,
+    /// with 35 Finished for the 40, 2026-11-09), or as Finished and then Start. Everything that goes by those
+    /// events then had it wrong until the next teleport: the history without the place, LLTeleport never said,
+    /// controls and "until teleport" derenders kept, and after a late Start world sounds off, voice hidden and music
+    /// ducked. A packet-order registration wouldn't do instead: one handler registered to run on the pool sends every
+    /// handler of that message type there (PacketEventDictionary keeps one flag a type). So LibreMetaverse's handler
+    /// is replaced by one that holds a lock around it and leaves out a TeleportStart or TeleportProgress numbered
+    /// before an end (TeleportLocal, TeleportFailed, TeleportCancel) already handled from that region (by reflection:
+    /// recheck on an upgrade; without it nothing changes). Claude Fable 5.2, 2026-11-09.
+    /// </summary>
+    void WireInTurn(GridClient c)
+    {
+        if (LmvTeleport == null) return;
+        var lmv = (EventHandler<PacketReceivedEventArgs>)Delegate.CreateDelegate(typeof(EventHandler<PacketReceivedEventArgs>), c.Self, LmvTeleport);
+        var gate = new object();
+        Simulator? endSim = null;
+        uint endSeq = 0;
+        void InTurn(object? sender, PacketReceivedEventArgs e)
+        {
+            lock (gate)
+            {
+                uint seq = e.Packet.Header.Sequence;
+                if (e.Packet.Type is PacketType.TeleportStart or PacketType.TeleportProgress)
+                {
+                    if (ReferenceEquals(e.Simulator, endSim) && seq < endSeq)
+                    {
+                        _s.Log.LogInformation("teleport: a {Type} that came after its end, left out", e.Packet.Type);
+                        return;
+                    }
+                }
+                else (endSim, endSeq) = (e.Simulator, seq);
+                lmv(sender, e);
+            }
+        }
+        foreach (var type in new[] { PacketType.TeleportStart, PacketType.TeleportProgress, PacketType.TeleportFailed, PacketType.TeleportCancel, PacketType.TeleportLocal })
+        {
+            c.Network.UnregisterCallback(type, lmv);
+            c.Network.RegisterCallback(type, InTurn, true);
+        }
     }
 
     static readonly System.Reflection.MethodInfo? LmvReply =

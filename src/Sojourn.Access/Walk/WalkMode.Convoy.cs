@@ -28,6 +28,14 @@ public sealed partial class WalkMode
     // only once 4 s have passed since her own last crossing (the region entered names who's in it within a second or two)
     const long ConvoySayLost = 1500, ConvoySearchFor = 20_000, ConvoyRestAtEnd = 4000, ConvoyAfterCrossing = 4000;
     const float ConvoySearchPace = 10f, ConvoyPastBorder = 25f, ConvoyPastPoint = 15f, ConvoyBorderAhead = 40f, ConvoyBorderBehind = 30f;
+    // Down and Up for speed only ever in presses of one decision (100 ms) with time between for the region's news of
+    // them: a vehicle's Down is often reverse thrust (the visitor's kart loses 9.7 m/s in half a second of it), and held
+    // until the news said slow it drove her scooter backwards at 10 m/s round her partner for half a minute (her ride of
+    // 2026-11-09). None under ConvoyBrakeFloor going forward; going backward faster than ConvoyBacking, Up presses alone
+    // (no steering: what steers forward circles in reverse), and if that hasn't stopped it in ConvoyBackingFor, it's
+    // let go of, said. A turn of over ConvoySharp (radians) slows to ConvoyTurnPace first, as a driver brakes for a U-turn.
+    const float ConvoyBrakeFloor = 2f, ConvoyBacking = 0.8f, ConvoySharp = 1.6f, ConvoyTurnPace = 3f, ConvoyMaxOffset = 1.75f;
+    const long ConvoyBackingFor = 4000;
 
     sealed class Convoy(string name, UUID id, float gap)
     {
@@ -43,6 +51,8 @@ public sealed partial class WalkMode
         public string? Region, CrossedInto, Logged;
         public float YawOffset;                       // the way it travels against the way the seat faces, learned on straights
         public bool Fwd, Back, Left, Right, ToldWith, ToldFar, Doubt;
+        public long PressAt, BackAt, BackingSince;    // the last speed press sent (Down or Up), the last Down, backing since
+        public bool Backing;                          // backing up without being asked, Up pressed to stop it (logged once)
         // the last time they were seen: where (the grid's metres), how high, when, in which region, how, and the velocity
         // their copy reported (a copy left frozen where they crossed out keeps the last it had)
         public Vector2? Seen, SeenVel, Raw;
@@ -291,15 +301,39 @@ public sealed partial class WalkMode
         if (Vector2.Distance(aim, me) < reach)
             aim = dist < reach && ConvoyHeading(c) is { } heading ? them + heading * (reach - dist) : them;
 
-        // steered by the way it faces, not the way it's going: travel lags the wheel, and steering by it overshoots into a spin
-        if (speed > 2f && now - c.SteeredAt > 500)
-            c.YawOffset += 0.3f * Wrap(MathF.Atan2(b.Vel.Y, b.Vel.X) - b.Yaw - c.YawOffset);
+        // steered by the way it faces, not the way it's going: travel lags the wheel, and steering by it overshoots into a spin.
+        // The offset (a seat turned on its vehicle) learned only while Up drives it and no Down has lately: learned while
+        // it backed, it took the back for the front
+        if (speed > 2f && now - c.SteeredAt > 500 && c.Fwd && !c.Backing && now - c.BackAt > 1000)
+            c.YawOffset = Math.Clamp(c.YawOffset + 0.3f * Wrap(MathF.Atan2(b.Vel.Y, b.Vel.X) - b.Yaw - c.YawOffset), -ConvoyMaxOffset, ConvoyMaxOffset);
         float err = Wrap(MathF.Atan2(aim.Y - me.Y, aim.X - me.X) - b.Yaw - c.YawOffset);   // positive is to the left
-        float closing = MathF.Max(0f, speed - c.Pace), room = closing * closing / (2 * ConvoyBraking) + closing * 0.3f;
+        // how fast it goes the way it's driven, backward below 0: speed alone read her scooter's backing as closing on him
+        float fwd = Vector2.Dot(new Vector2(b.Vel.X, b.Vel.Y), new Vector2(MathF.Cos(b.Yaw + c.YawOffset), MathF.Sin(b.Yaw + c.YawOffset)));
+        float closing = MathF.Max(0f, fwd - c.Pace), room = closing * closing / (2 * ConvoyBraking) + closing * 0.3f;
         bool close = dist < c.Gap;
-        c.Fwd = dist > c.Gap + room && !(MathF.Abs(err) > 1f && speed > 6f);
-        c.Back = closing > 1f && dist < c.Gap + room * 0.6f;
-        bool steering = c.Fwd || speed > 0.5f;
+        // (no faster than a turn this sharp can be made at)
+        float most = MathF.Abs(err) > ConvoySharp ? ConvoyTurnPace : MathF.Abs(err) > 1f ? 6f : float.MaxValue;
+        bool backing = fwd < -ConvoyBacking || c.Backing && fwd < -0.3f;
+        if (backing != c.Backing)
+        {
+            c.Backing = backing;
+            ConvoyLog(backing ? $"going backward at {-fwd:0.0} m/s: Up to stop it" : $"no longer going backward, after {now - c.BackingSince} ms");
+            c.BackingSince = backing ? now : 0;
+        }
+        if (backing && now - c.BackingSince > ConvoyBackingFor)
+        {
+            EndConvoy($"{b.SeatName ?? "The vehicle"} is going backward and Up didn't stop it, so I've let go of the keys.");
+            return;
+        }
+        bool slower = !backing && fwd > ConvoyBrakeFloor && (closing > 1f && dist < c.Gap + room * 0.6f || fwd > most + 2f);
+        // a press of one decision, then a wait for its news: longer the slower it goes
+        long wait = MathF.Abs(fwd) > 6f ? 100 : MathF.Abs(fwd) > 3f ? 200 : 300;
+        bool press = now - c.PressAt > wait;
+        c.Back = slower && press;
+        c.Fwd = backing ? press : dist > c.Gap + room && fwd < most;
+        if (c.Back || backing && c.Fwd) c.PressAt = now;
+        if (c.Back) c.BackAt = now;
+        bool steering = !backing && (c.Fwd || speed > 0.5f);
         // the keys held for a share of each cycle, by how far off it is: a held key turns as far as the vehicle's script likes
         bool turning = steering && MathF.Abs(err) > ConvoyDeadband
             && now % ConvoySteerCycle < ConvoySteerCycle * Math.Clamp(MathF.Abs(err) / 0.5f, 0.3f, 1f);
@@ -326,7 +360,7 @@ public sealed partial class WalkMode
         {
             string keys = $"{(c.Fwd ? "up " : "")}{(c.Back ? "down " : "")}{(c.Left ? "left " : "")}{(c.Right ? "right" : "")}".TrimEnd();
             string seen = guessing ? "where they'd be by now (not seen)" : $"{c.Name}, by {c.SeenHow} in {c.SeenIn?.Name}";
-            var state = $"{dist:0.0} m from {seen} (their pace {c.Pace:0.0} m/s) at {speed:0.0} m/s, in {b.RegionName} {b.Pos.X:0},{b.Pos.Y:0},"
+            var state = $"{dist:0.0} m from {seen} (their pace {c.Pace:0.0} m/s) at {speed:0.0} m/s{(fwd < -0.3f ? " backward" : "")}, in {b.RegionName} {b.Pos.X:0},{b.Pos.Y:0},"
                 + $" aim {err * 180 / MathF.PI:0} degrees off ({Vector2.Distance(aim, me):0} m on), {c.Way.Count} points ahead, keys {(keys.Length > 0 ? keys : "none")}";
             // (every 2 s while anything changes; waiting still behind them, every 15 s)
             if (state != c.Logged || now - c.LogAt > 15_000) { ConvoyLog(state); c.Logged = state; c.LogAt = now; }

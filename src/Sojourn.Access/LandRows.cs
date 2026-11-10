@@ -25,6 +25,13 @@ public sealed class LandLook
     public JsonObject? Covenant { get; set; }
     public string? Where { get; set; }
     public string? Stats { get; set; }
+    /// <summary>The estate's lists and switches (SojournLand estate), for its owner and managers; else why not.</summary>
+    public JsonObject? Estate { get; set; }
+    public string? EstateWhy { get; set; }
+    /// <summary>Whether she's the estate's owner or a manager here (EstateOps.CanManage, as the region's handshake says).</summary>
+    public bool ManagesEstate { get; set; }
+    /// <summary>When a restart she asked for in this region goes, while it counts down.</summary>
+    public DateTime? RestartAt { get; set; }
 
     public string Name => Parcel.Str("name") is { Length: > 0 } n ? n : "an unnamed parcel";
     public int LocalId => Parcel.Int("local_id", 0);
@@ -59,7 +66,7 @@ public sealed record LandOwner(UUID Id, string Name, int Prims, bool Group, stri
 /// </summary>
 public static class LandRows
 {
-    public static readonly string[] Tabs = { "General", "Covenant", "Objects", "Options", "Media", "Sound", "Access", "Region" };
+    public static readonly string[] Tabs = { "General", "Covenant", "Objects", "Options", "Media", "Sound", "Access", "Region", "Estate" };
 
     static readonly string[] Routing = { "blocked", "landing point", "anywhere" };
     static readonly string[] Maturities = { "general", "moderate", "adult" };
@@ -150,7 +157,8 @@ public static class LandRows
             new("buy_pass", "Access", "Buy a pass", RowKind.Info, Array.Empty<string>(), l => !l.Mine && l.Option("pass_list")),
             // Region
             new("r.name", "Region", "Region", RowKind.Info, Array.Empty<string>(), All),
-            new("r.estate", "Region", "Estate", RowKind.Info, new[] { "estate" }, All),
+            // ("estate" typed is the Estate tab's)
+            new("r.estate", "Region", "Estate", RowKind.Info, Array.Empty<string>(), All),
             new("r.maturity", "Region", "Maturity", RowKind.Choice, new[] { "maturity", "rating" }, Managing),
             new("r.maturity_info", "Region", "Maturity", RowKind.Info, Array.Empty<string>(), NotManaging),
             new("r.agents", "Region", "People at most", RowKind.Number, new[] { "people at most", "agent limit" }, Managing),
@@ -236,6 +244,9 @@ public static class LandRows
                     }
                 }
                 else items.Add(($"Allowed and banned lists: {l.AccessWhy ?? "not read yet; F5 reads them"}", "lists", "lists"));
+                break;
+            case "Estate":
+                items.AddRange(EstateRows.For(l));
                 break;
         }
         return items;

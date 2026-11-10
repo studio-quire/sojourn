@@ -437,6 +437,19 @@ priority, .NET 8 runtime), makes accounts, sends console commands and swaps scen
   (`tools/forest.py`, 27.8k objects and 8.9k textures; `docs/performance.md` > How to measure), so performance work can
   restart and swap scenes without disturbing the usual grid.
 
+A grid just started fails its first logins when two arrive together: the login service answers "The given key
+'Created' (or 'Name') was not present in the dictionary" and that account isn't logged in. Every one of the five times
+in three weeks of `OpenSim.log` that the first two logins came within 50 ms of each other, never otherwise; the stack
+traces put it in the login service's own user-account and avatar tables, each of which reads its column names at
+first use without a lock (Claude Fable 5.2, 2026-11-09). So `grid.py`'s start ends with one whole login of its own
+(account Grid Warmup, by `grid.login`: the viewer's login request with no viewer behind it), and tools that log
+two accounts in at once (`people.py`, `social.py`, the two-client tests) need no order of their own. Checked on fresh
+starts with two logins sent in the same millisecond: one of the pair refused both times without the warm-up, both in
+all five times with it; it adds about a second to a start. The warm-up logs out again (`grid.logout`): OpenSim only
+logs out an avatar that arrived, so that is a viewer's first and last three packets to the region, the avatar in
+Atelier for some 10 ms, and the grid is left as after any account's visit (nobody online, no circuit waiting). A
+login left standing keeps the account online in the grid's presence and GridUser until the grid stops.
+
 Ports in use: grid 9700-9703 and 9709, agent API 9720, voice tests' clients 9730-9731, audio's test client 9732 and
 test radio 9751, the screen reader's test client 9877, the session probes 9760-9761, the local voice server 14223, 14225 and UDP 10000-10100, voice's peer connections UDP 60000-60100. Multitude has 9360-9380, 9450, 8380, 10350-10375 and the
 lab 8300-8899; Tessel 9063, 9070, 9020, 9080.

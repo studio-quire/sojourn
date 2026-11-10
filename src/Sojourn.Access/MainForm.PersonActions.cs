@@ -20,7 +20,7 @@ public sealed partial class MainForm
         var list = new List<InvAction>
         {
             new("Send &IM", () => StartIm(id, name)),
-            new("&Walk to", () => _ = NearAsync(id, name, p => _ = _cmd.WalkAsync(p.Pos, p.Name, 1.5, $"//go tp person {p.Name}"))),
+            new("&Walk to", () => _ = NearAsync(id, name, p => _ = _cmd.WalkAsync(p.Pos, p.Name, 1.5, $"//go tp person {p.Name}", p.Id))),
             new("&Face", () => _ = NearAsync(id, name, p => _ = _cmd.FacePointAsync(p.Pos, p.Name))),
             new("W&here", () => _ = WhereAsync(id, name)),
             new("&Describe", () => _ = DescribeAsync(OfPerson(id, name)), "Control+D"),
@@ -50,6 +50,13 @@ public sealed partial class MainForm
         list.Add(new("How loud in voice...", () => _ = VoiceVolumeAsync(id, name)));
         list.Add(new("Always in&cognito with them", () => IncognitoWith(id, name)));
         list.Add(new(blocked ? "Unbloc&k" : "Bloc&k", () => _ = blocked ? UnblockAsync(new Blocked(id, name, "resident")) : BlockAsync(id, name, "resident")));
+        // where she owns or manages the estate, as Invite to a group is there only for someone in a group (MainForm.Estate.cs;
+        // Ban has no letter: every one of its is taken here)
+        if (Host?.Session.Estate.CanManage == true)
+        {
+            list.Add(new("E&ject from estate", () => _ = EstateEjectAsync(id, name)));
+            list.Add(new("Ban from estate", () => _ = EstateBanAsync(id, name)));
+        }
         list.Add(new(SoundItemText(name, group: false), () => ChooseImSound(id, name, group: false)));
         if (friend) list.Add(new("&End friendship", () => _ = EndFriendshipAsync(new Friend(id, name, true))));
         return list;

@@ -14,7 +14,7 @@ namespace Sojourn.Access;
 /// the whole argument. Directions come back relative to the person (a clock face from their facing, metres); degrees
 /// are Second Life's (0 east, counter-clockwise), as in Radegast. Each answer goes to the reader and the chat history.
 /// </summary>
-public sealed class Commands
+public sealed partial class Commands
 {
     readonly PersonOps _ops;
     readonly Action<string> _say;
@@ -55,7 +55,7 @@ public sealed class Commands
                 case "links": Links?.Invoke(); return true;
                 case "chatlog" or "chatlogs": ChatLog?.Invoke(string.Join(" ", rest)); return true;
                 case "block": if (Block != null) await Block(string.Join(" ", rest)); return true;
-                case "rebake" or "stopanimations" or "hover" or "displayname" or "maturity" or "emptytrash" or "emptylostandfound" or "saveoutfit" or "run":
+                case "rebake" or "stopanimations" or "hover" or "displayname" or "maturity" or "emptytrash" or "emptylostandfound" or "saveoutfit" or "run" or "walkround":
                     if (Self != null) await Self(verb, string.Join(" ", rest));
                     return true;
                 case "profile": if (Profile != null) await Profile(string.Join(" ", rest)); return true;
@@ -103,11 +103,15 @@ public sealed class Commands
                 case "text": await TextAsync(string.Join(" ", rest)); return true;
                 case "outfit": if (Outfit != null) await Outfit(); return true;
                 case "upload": if (Upload != null) await Upload(AfterVerb(line)); return true;
+                case "export": if (Export != null) await Export(AfterVerb(line)); return true;
+                case "import": if (Import != null) await Import(AfterVerb(line)); return true;
+                case "autosit": if (AutoSit != null) await AutoSit(string.Join(" ", rest)); return true;
                 case "build": if (Build != null) await Build(AfterVerb(line)); return true;
                 case "land": if (Land != null) await Land(AfterVerb(line)); return true;
                 case "voice": if (Voice != null) await Voice(string.Join(" ", rest)); return true;
                 case "imsound": if (ImSound != null) await ImSound(string.Join(" ", rest)); return true;
                 case "pointing": if (Pointing != null) await Pointing(string.Join(" ", rest)); return true;
+                case "point": if (PointAt != null) await PointAt(string.Join(" ", rest)); return true;
                 case "sendlog": SendLog?.Invoke(); return true;
                 case "log" or "sessionlog": SessionLog?.Invoke(); return true;
                 case "clearcache": ClearCache?.Invoke(string.Join(" ", rest)); return true;
@@ -189,10 +193,17 @@ public sealed class Commands
         ("land", "//land | //land COMMAND (options, fly off, ban NAME, for sale 500, buy, help)",
             "About Land (Control+L) on the parcel you're on, or one of its commands"),
         ("upload", "//upload | //upload PATH", "upload a picture, sound, animation or model: with no path, choose the file (Control+U)"),
+        ("export", "//export | //export NAME | //export NAME as dae (or xml, oxp)",
+            "save something you made to a file: what you're editing, or the nearest of yours with that name; a backup Firestorm and Sojourn rebuild, Radegast's XML, or a Collada model"),
+        ("import", "//import | //import PATH", "rebuild an object from a file (a Firestorm or Sojourn backup, or Radegast's XML) 2 metres ahead: with no path, choose the file"),
+        ("autosit", "//autosit | //autosit on | //autosit off | //autosit here | //autosit NAME | //autosit now | //autosit forget [NAME | all]",
+            "sit back on your seat in a region when you log in or teleport there (Control+Shift+S turns it on and off): how it stands; on or off; what you're sitting on, or the nearest thing with that name, as this region's seat; sit on it now; forget one"),
         ("voice", "//voice | //voice people | //voice mute all | //voice unmute all | //voice reconnect | //voice answer | //voice decline | //voice mute NAME | //voice unmute NAME | //voice volume NAME N",
             "who's in voice and speaking, your mic; the people in voice to act on (Control+F4); everyone else muted for you, or everyone heard again; voice started afresh; answer or decline a call ringing; one person muted, or how loud they are from 0 to 2, for you alone"),
         ("imsound", "//imsound NAME SOUND | //imsound NAME usual | //imsound NAME | //imsound",
             "a sound of its own for someone's IMs, or a group's chat, in place of the usual one; usual takes it back; with only a name, theirs; with nothing, the sounds and who has one"),
+        ("point", "//point NAME | //point off | //point",
+            "point at the nearest thing within 30 metres with that name (else a part within 10) for a minute, as Control+P in Objects: people nearby see your arm and a beam on it; off stops; with nothing, what you're pointing at"),
         ("pointing", "//pointing NAME | //pointing off | //pointing",
             "hear what someone nearby points at in their own viewer (a right click on something does), Control+Shift+P going to it; off stops; with nothing, whose you hear and what they last pointed at"),
         ("block", "//block NAME", "block anyone by name, or something nearby: what they say, send or ask stops reaching you"),
@@ -204,6 +215,7 @@ public sealed class Commands
         ("emptytrash", "//emptytrash", "delete everything in the Trash for good, after you confirm"),
         ("emptylostandfound", "//emptylostandfound", "delete everything in Lost and Found for good (what's returned from the world lands there), after you confirm"),
         ("run", "//run | //run on | //run off", "always run, or walk again: walking, //go and following all run while it's on"),
+        ("walkround", "//walkround | //walkround on | //walkround off", "walks by //go and Walk to go round people standing in the way, or straight again"),
         ("profile", "//profile | //profile NAME", "your own profile, to read and change; or anyone's, by name"),
         ("notes", "//notes NAME", "your own notes on someone, by name, in their profile: only you see them"),
         ("friend", "//friend NAME", "offer anyone friendship, by name"),
@@ -238,6 +250,7 @@ public sealed class Commands
         if (_ops.Me() is not { } me) { _say("Not in a region yet."); return false; }
         Vector3 target;
         string what;
+        UUID toPerson = default;
         double stop = 0.6;   // the autopilot coasts a little after letting go: routes of waypoints want it close
         var kind = a[0].ToLowerInvariant();
         // a name alone: someone nearby, else something (she typed it so at a lift's top, 2026-11-05, and heard the usage twice)
@@ -260,6 +273,7 @@ public sealed class Commands
             if (await _ops.FindPersonAsync(name) is not { } p) { _say($"Nobody called {name} nearby."); return false; }
             target = p.Pos;
             what = p.Name;
+            toPerson = p.Id;
             stop = 1.5;
         }
         else if (kind == "object")
@@ -302,7 +316,7 @@ public sealed class Commands
         }
         var hint = kind is "person" or "object" ? $"//go tp {kind} {string.Join(" ", a.Skip(1))}"
             : string.Create(CultureInfo.InvariantCulture, $"//go tp xyz {target.X:0},{target.Y:0}");
-        return await WalkAsync(target, what, stop, hint);
+        return await WalkAsync(target, what, stop, hint, toPerson);
     }
 
     CancellationTokenSource? _walk;
@@ -337,8 +351,10 @@ public sealed class Commands
     /// bar) is walked as near as the way goes, said. Seated, it stands first. With no way at all it says so, and
     /// teleports there once where that can work (walk_teleport_fallback; NoWayAsync), else names the command that
     /// would (<paramref name="tpHint"/>). Completes when the walk ends: true when it got there (or within 2.5 m, or as
-    /// near as the way goes).</summary>
-    public Task<bool> WalkAsync(Vector3 target, string what, double stop = 1, string? tpHint = null)
+    /// near as the way goes). People on their feet are gone round like things, those there as it sets out and those
+    /// who step into the way after (Commands.WalkPeople.cs); <paramref name="toPerson"/>, the one it's to, excepted.
+    /// Where the only way is through someone it ends short of them, saying who, and never by the teleport.</summary>
+    public Task<bool> WalkAsync(Vector3 target, string what, double stop = 1, string? tpHint = null, UUID toPerson = default)
     {
         if (_ops.Me() is null || _ops.Client is null) return Task.FromResult(false);
         StopFollowing(quiet: true);
@@ -348,7 +364,7 @@ public sealed class Commands
         tpHint ??= string.Create(CultureInfo.InvariantCulture, $"//go tp xyz {target.X:0},{target.Y:0}");
         return Task.Run(async () =>
         {
-            try { return await RouteAsync(target, what, stop, tpHint, walk.Token); }
+            try { return await RouteAsync(target, what, stop, tpHint, walk.Token, toPerson); }
             finally
             {
                 if (_heading == heading) _heading = null;
@@ -376,61 +392,131 @@ public sealed class Commands
     /// <summary>Walk mode, for //beacon.</summary>
     public Walk.WalkMode? WalkMode { get; set; }
 
-    async Task<bool> RouteAsync(Vector3 target, string what, double stop, string tpHint, CancellationToken ct)
+    async Task<bool> RouteAsync(Vector3 target, string what, double stop, string tpHint, CancellationToken ct, UUID toPerson = default)
     {
         if (!await StandFirstAsync(ct)) return false;
         if (_ops.Me() is not { } me || _ops.Client is not { } c || c.Network.CurrentSim is not { } sim) return false;
         ulong origin = sim.Handle;   // the target's frame: a route's point past a border runs beyond 256 or below 0
         double near = Math.Max(stop, 1.2);
         var flat = new Vector2(target.X - me.Pos.X, target.Y - me.Pos.Y).Length();
-        var route = await PlanAsync(me.Pos, target, ct);
+        var people = new Bystanders(toPerson);
+        var route = await PlanAsync(me.Pos, target, ct, people);
         if (ct.IsCancellationRequested) return false;
-        if (route is { Legs.Count: 0 }) return await NoWayAsync(target, what, tpHint);
-        if (route is not { } r)
+        // no step to take for the people she's standing among: planned again without those against her (Bystanders.Beside)
+        if (route is { Legs.Count: 0, InWay: not null } && SetsOutAmong(people, me.Pos))
         {
-            if (_ops.Global(target) is not { } g) return false;
-            AutoPilotTo(c, g.X, g.Y, g.Z);
-            _say(string.Create(CultureInfo.InvariantCulture, $"Walking {Bearings.Metres(flat)} to {what}."));
-            return await WatchWalkAsync(target, near, ct, origin);
+            route = await PlanAsync(me.Pos, target, ct, people);
+            if (ct.IsCancellationRequested) return false;
         }
+        if (route is { Legs.Count: 0, InWay: null }) return await NoWayAsync(target, what, tpHint);
+        if (route is { Legs.Count: 0, InWay: { } hemmed })
+        {
+            _say(await NotWalkingAsync(hemmed, target, what));
+            return flat < 2.5;
+        }
+        // (no way planned: one straight line by the region's autopilot, watched to its end)
+        var r = route ?? new Route(new List<System.Numerics.Vector2> { new(target.X, target.Y) }, false) { Straight = true };
         var legs = r.Legs;
-        // a goal out of reach (up on a stage, inside a bar): its stand-in, the nearest spot the way goes to
-        Vector3 End() => r.Moved ? new Vector3(legs[^1].X, legs[^1].Y, target.Z) : target;
+        // a goal out of reach (up on a stage, inside a bar): its stand-in, the nearest spot the way goes to; a way cut
+        // short of someone standing in it: where it was cut
+        Vector3 End() => r.Moved || r.InWay != null ? new Vector3(legs[^1].X, legs[^1].Y, target.Z) : target;
         string Short() => r.Moved ? $"; {what} is out of reach, so as near as the way goes, {Bearings.Metres(Flat(End(), target))} short" : "";
-        _say(legs.Count == 1
-            ? $"Walking {Bearings.Metres(Length(me.Pos, legs))} toward {what}{Short()}."
-            : $"Walking {Bearings.Metres(Length(me.Pos, legs))} to {what}, around something in the way: {legs.Count} stretches{Short()}.");
-        int replans = 0;
+        // a step aside for someone (Aside): the same walk to her, so the plain line, and its stretches walked unsaid
+        bool quiet = SameWalk(r, Length(me.Pos, legs) - flat);
+        if (r.Straight) _say(string.Create(CultureInfo.InvariantCulture, $"Walking {Bearings.Metres(flat)} to {what}."));
+        else if (quiet) _say($"Walking {Bearings.Metres(Length(me.Pos, legs))} to {what}.");
+        else
+        {
+            var line = legs.Count == 1 ? $"Walking {Bearings.Metres(Length(me.Pos, legs))} toward {what}{Short()}."
+                : r.Around is { Count: > 0 } round ? $"Walking {Bearings.Metres(Length(me.Pos, legs))} to {what}, around {await NamesAsync(round)}: {legs.Count} stretches{Short()}."
+                : $"Walking {Bearings.Metres(Length(me.Pos, legs))} to {what}, around something in the way: {legs.Count} stretches{Short()}.";
+            _say(r.InWay is { } cutAt ? $"{line} {await OnlyAsFarAsync(cutAt, target)}" : line);
+        }
+        int replans = 0, dodges = 0;
         for (int i = 0; i < legs.Count; i++)
         {
             if (ct.IsCancellationRequested || _ops.Me() is not { } here) return false;
             bool last = i == legs.Count - 1;
             var leg = last ? End() : new Vector3(legs[i].X, legs[i].Y, target.Z);
-            if (i > 0)
+            if (i > 0 && !quiet)
             {
                 var d = new Vector2(leg.X - here.Pos.X, leg.Y - here.Pos.Y);
                 _say($"{i + 1} of {legs.Count}: {Bearings.Metres(d.Length())} to the {Bearings.Point(Bearings.Compass(0, 0, d.X, d.Y))}.");
             }
             if (_ops.Global(leg) is not { } g) return false;
             AutoPilotTo(c, g.X, g.Y, g.Z);
-            var got = await LegAsync(leg, last ? (r.Moved ? 0.6 : near) : 0.5, ct, origin);
+            // someone stepping into the way has it planned afresh round them, a few times a walk, where there's a model to plan by
+            bool dodging = HeedPeople && dodges < Dodges && Planner is { CanAsk: true } && !Beyond(target);
+            Leg got;
+            if (r.Straight)
+            {
+                bool there = await WatchWalkAsync(target, near, ct, origin, null, people, dodging);
+                if (people.Met == null) return there;
+                got = Leg.Met;
+            }
+            else got = await LegAsync(leg, last ? (r.InWay != null ? 1.3 : r.Moved ? 0.6 : near) : 0.5, ct, origin, dodging ? people : null,
+                last && r.InWay != null ? 1.2 : 0);
             if (got == Leg.Cancelled) return false;
+            UUID? who = null;   // whoever the way is planned again for
+            bool cutEnd = false;
             if (got == Leg.Reached)
             {
                 if (!last) continue;
-                return r.Moved ? await WatchWalkAsync(leg, 0.8, ct, origin, (target, what)) : await WatchWalkAsync(target, near, ct, origin);
+                if (r.InWay is not { } cut)
+                    return r.Moved ? await WatchWalkAsync(leg, 0.8, ct, origin, (target, what), people) : await WatchWalkAsync(target, near, ct, origin, null, people);
+                // as far as the way went, short of someone standing in it: let go at once, 1.3 m before its end (she
+                // goes on 1 to 1.5 m at a walk: let go a metre before it she ended 1.1 to 1.6 m from the visitor, for
+                // the 1.5 meant) and sooner at a run (LegAsync's lead: a metre before it at 5 m/s she ran on into the
+                // visitor), and planned once more from here, as they may have moved on while she walked up
+                CancelAutoPilot();
+                (who, cutEnd) = (cut, true);
             }
-            // stuck on the way: something the model hadn't (a thin post, a doorway the region won't fit): marked, planned again
-            CancelAutoPilot();
-            if (_ops.Me() is not { } stuck || Planner == null) return false;
-            var dir = Vector2.Normalize(new Vector2(leg.X - stuck.Pos.X, leg.Y - stuck.Pos.Y));
-            Planner.Block(new System.Numerics.Vector2(stuck.Pos.X + dir.X * 0.7f, stuck.Pos.Y + dir.Y * 0.7f), 0.6f, TimeSpan.FromMinutes(2));
-            if (++replans > 2) return await NoWayAsync(target, what, tpHint);
-            var again = await PlanAsync(stuck.Pos, target, ct);
-            if (again is { Legs.Count: 0 }) return await NoWayAsync(target, what, tpHint);
+            else if (got == Leg.Met)
+            {
+                who = people.Met;
+                people.Met = null;
+                dodges++;
+            }
+            else
+            {
+                CancelAutoPilot();
+                if (_ops.Me() is not { } stuck || Planner == null) return false;
+                // up against someone: it ends here and says who. No spot marked (they'll move), no pushing on at them
+                // again, and never the teleport a way that keeps sticking ends in
+                if (Against(people, stuck.Pos, leg) is { } person) return await EndInWayAsync(person, target, letGo: false);
+                // stuck on the way: something the model hadn't (a thin post, a doorway the region won't fit): marked, planned again
+                var dir = Vector2.Normalize(new Vector2(leg.X - stuck.Pos.X, leg.Y - stuck.Pos.Y));
+                Planner.Block(new System.Numerics.Vector2(stuck.Pos.X + dir.X * 0.7f, stuck.Pos.Y + dir.Y * 0.7f), 0.6f, TimeSpan.FromMinutes(2));
+                if (++replans > 2) return await NoWayAsync(target, what, tpHint);
+            }
+            if (_ops.Me() is not { } from) return false;
+            Vector3? cutStood = cutEnd && who is { } blocker && people.Stood.TryGetValue(blocker, out var stoodAt) ? stoodAt : null;
+            var again = await PlanAsync(from.Pos, target, ct, people);
+            if (ct.IsCancellationRequested) return false;
+            if (again is { Legs.Count: 0, InWay: null }) return await NoWayAsync(target, what, tpHint);
+            // still there, or no step further to take toward them
+            // (let go already unless it was walking on when someone stepped in: letting go is a press of forward, a step more each time)
+            bool walkingOn = got == Leg.Met;
+            if (again is { InWay: { } still } && (again.Value.Legs.Count == 0 || cutEnd && still == who)) return await EndInWayAsync(still, target, walkingOn);
+            // within 2 m of the point no way is planned (PlanAsync), and the straight line left is through them: it ends
+            // here, unless the one the way was cut at has moved on
+            if (again == null && who is { } close && Flat(from.Pos, target) < 2
+                && (!cutEnd || cutStood is { } was && OnFoot(people.To).Any(p => p.Id == close && Flat(p.Pos, was) < 0.4f)))
+                return await EndInWayAsync(close, target, walkingOn);
+            // how much further the new way is than what was left of the old: said from Further up, and under Aside,
+            // round people alone, it's the same walk still (who stepped in is said, the stretches aren't)
+            float left = Length(from.Pos, legs.GetRange(i, legs.Count - i));
             r = again ?? new Route(new List<System.Numerics.Vector2> { new(target.X, target.Y) }, false);
             legs = r.Legs;
-            _say($"Something's in the way; going round: {legs.Count} {(legs.Count == 1 ? "stretch" : "stretches")}.");
+            float now = Length(from.Pos, legs), more = now - left;
+            quiet = again != null && !cutEnd && who != null && SameWalk(r, more);
+            var stretches = $"{legs.Count} {(legs.Count == 1 ? "stretch" : "stretches")}";
+            var far = more >= Further ? $", {Bearings.Metres(now)} from here" : "";
+            if (r.InWay is { } only) _say(await OnlyAsFarAsync(only, target));
+            else if (cutEnd) _say($"The way is clear now; going on{far}: {stretches}.");
+            else if (who is not { } stepped) _say($"Something's in the way; going round{far}: {stretches}.");
+            else if (quiet) _say($"{Cap(await NameOfAsync(stepped))} is in the way; going round.");
+            else if (again != null) _say($"{Cap(await NameOfAsync(stepped))} is in the way; going round{far}: {stretches}.");
             i = -1;
         }
         return false;
@@ -446,14 +532,28 @@ public sealed class Commands
     Vector3? MeIn(ulong origin)
     {
         if (_ops.Me() is not { } me || _ops.Client?.Network.CurrentSim is not { } sim) return null;
-        if (sim.Handle == origin) return me.Pos;
-        Utils.LongToUInts(sim.Handle, out var cx, out var cy);
+        return InFrame(me.Pos, sim.Handle, origin);
+    }
+
+    /// <summary>A position in the region with handle <paramref name="sim"/>, in the frame of the one with <paramref name="origin"/>.</summary>
+    static Vector3 InFrame(Vector3 pos, ulong sim, ulong origin)
+    {
+        if (sim == origin) return pos;
+        Utils.LongToUInts(sim, out var cx, out var cy);
         Utils.LongToUInts(origin, out var ox, out var oy);
-        return me.Pos + new Vector3((float)((double)cx - ox), (float)((double)cy - oy), 0);
+        return pos + new Vector3((float)((double)cx - ox), (float)((double)cy - oy), 0);
     }
 
     /// <summary>A planned way: its waypoints (the last the goal, or its stand-in when the goal was out of reach).</summary>
-    readonly record struct Route(List<System.Numerics.Vector2> Legs, bool Moved);
+    readonly record struct Route(List<System.Numerics.Vector2> Legs, bool Moved)
+    {
+        /// <summary>The people it goes round, when they're all that keeps it from being straight (the first line's words).</summary>
+        public IReadOnlyList<UUID>? Around { get; init; }
+        /// <summary>Someone standing where the only way goes: it ends short of them (no legs: she's that near already).</summary>
+        public UUID? InWay { get; init; }
+        /// <summary>Not planned: one straight line (nothing in the way, or no model to plan by).</summary>
+        public bool Straight { get; init; }
+    }
 
     static float Length(Vector3 from, List<System.Numerics.Vector2> legs)
     {
@@ -465,7 +565,7 @@ public sealed class Commands
 
     /// <summary>The way around what's in the way; null: straight (no collision model, or nothing in the way); no legs:
     /// no way at all.</summary>
-    async Task<Route?> PlanAsync(Vector3 from, Vector3 to, CancellationToken ct)
+    async Task<Route?> PlanAsync(Vector3 from, Vector3 to, CancellationToken ct, Bystanders? people = null)
     {
         if (Planner is not { } planner) return null;
         // beyond this region's edge (a recorded route's crossing): straight, by the region's autopilot
@@ -475,20 +575,25 @@ public sealed class Commands
         if (System.Numerics.Vector2.Distance(a, b) < 2) return null;
         try
         {
-            var plan = await planner.PlanAsync(a, FeetZ?.Invoke() ?? from.Z - 0.95f, b, null, ct, to.Z);
-            Walk.WalkMode.Log($"go {a} -> {b}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct && !plan.GoalMoved ? "direct" : string.Join(" ", plan.Waypoints) + (plan.GoalMoved ? " (goal moved)" : ""))}");
+            var standing = people != null ? ToGoRound(people, from) : null;
+            var plan = await planner.PlanAsync(a, FeetZ?.Invoke() ?? from.Z - 0.95f, b, null, ct, to.Z, standing);
+            Walk.WalkMode.Log($"go {a} -> {b}{(standing != null ? $", {standing.Count} standing" : "")}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct && !plan.GoalMoved && plan.InWay == null ? "direct" : string.Join(" ", plan.Waypoints) + (plan.GoalMoved ? " (goal moved)" : "") + (plan.InWay is { } w ? $" (cut short of someone at {standing![w]})" : "") + (plan.Around.Count > 0 ? $" (round {plan.Around.Count})" : ""))}");
             if (plan == null) return planner.CanAsk ? new Route(new(), false) : null;
-            return plan.Direct && !plan.GoalMoved ? null : new Route(plan.Waypoints, plan.GoalMoved);
+            if (plan.InWay is { } inWay) return new Route(plan.Waypoints, false) { InWay = people!.Given[inWay] };
+            return plan.Direct && !plan.GoalMoved ? null
+                : new Route(plan.Waypoints, plan.GoalMoved) { Around = plan.Around.Select(p => people!.Given[p]).ToList() };
         }
         catch (OperationCanceledException) { return null; }
     }
 
-    enum Leg { Reached, Stalled, Cancelled }
+    enum Leg { Reached, Stalled, Cancelled, Met }
 
     /// <summary>A stretch on the way: until the avatar is within <paramref name="within"/> of its end (0.5 m at a corner:
     /// the next stretch starts without stopping, and a wider berth cut the corner into the wall), or it stops getting
-    /// anywhere for two seconds.</summary>
-    async Task<Leg> LegAsync(Vector3 to, double within, CancellationToken ct, ulong origin)
+    /// anywhere for two seconds, or (with <paramref name="people"/>) someone has stepped into it (Met, people.Met who).
+    /// <paramref name="lead"/>: how much sooner it counts as there for each metre a second she's going over a walk's
+    /// 3.2 (a stretch ending short of someone, where she's let go and has to have stopped before them).</summary>
+    async Task<Leg> LegAsync(Vector3 to, double within, CancellationToken ct, ulong origin, Bystanders? people = null, double lead = 0)
     {
         long start = Environment.TickCount64, progressAt = start;
         double best = double.MaxValue;
@@ -497,7 +602,13 @@ public sealed class Commands
             await Task.Delay(150, CancellationToken.None);
             if (ct.IsCancellationRequested || MeIn(origin) is not { } pos) return Leg.Cancelled;
             double off = new Vector2(to.X - pos.X, to.Y - pos.Y).Length();
+            if (lead > 0 && _ops.Client?.Self.Velocity is { } v) off -= lead * Math.Max(0, new Vector2(v.X, v.Y).Length() - 3.2);
             if (off <= within) return Leg.Reached;
+            if (people != null && _ops.Client?.Network.CurrentSim?.Handle == origin && Stepped(people, pos, to) is { } who)
+            {
+                people.Met = who;
+                return Leg.Met;
+            }
             long now = Environment.TickCount64;
             if (off < best - 0.1) { best = off; progressAt = now; }
             if (now - progressAt > 2000 || now - start > 60_000) return Leg.Stalled;
@@ -635,13 +746,31 @@ public sealed class Commands
         return first ?? straight;
     }
 
-    /// <summary>Waits for the walk to end (stopped near the target, stalled, or a minute), then says Radegast's line;
-    /// walking to a stand-in for a goal out of reach (<paramref name="outOfReach"/>), how near that is to it.</summary>
-    async Task<bool> WatchWalkAsync(Vector3 target, double near, CancellationToken ct, ulong origin, (Vector3 At, string What)? outOfReach = null)
+    /// <summary>Waits for the walk to end, then says Radegast's line; walking to a stand-in for a goal out of reach
+    /// (<paramref name="outOfReach"/>), how near that is to it. It has ended when she has stopped near the target, stood
+    /// still two seconds, got no nearer the target for three (below), or a minute has gone.
+    /// No nearer: movement alone kept the wait going while she got nowhere (someone on the way slid ahead of her and she
+    /// slid on 7 m past the point, then crept: the line came after 40 s, 2026-11-09). It's judged by the region's own
+    /// updates of her, as each comes, not by the clock: the position here is carried on by her last velocity between
+    /// them, and a walk going on through a gap in them (a steady walk has few, a slow region fewer) isn't given up on.
+    /// Nearer is 0.1 m nearer than she has yet been, as a stretch's (LegAsync); a walk here is one straight line by the
+    /// region's autopilot, whose push along anything it meets still closes on the target, so three seconds of updates
+    /// with none nearer is a walk that isn't getting there. While she's still travelling (over 0.25 m/s between two
+    /// updates: sliding on past the point, which the local grid's avatars do for 6 s, the region giving her velocity as
+    /// zero meanwhile) it waits, ten seconds in all at most, so the distance said is where she stops.
+    /// With <paramref name="dodge"/> it returns early, nothing said, when someone has stepped into the line more than
+    /// 2 m from its end (people.Met who: the caller plans afresh). A walk that ends short up against someone says who
+    /// in place of "something was in the way".</summary>
+    async Task<bool> WatchWalkAsync(Vector3 target, double near, CancellationToken ct, ulong origin, (Vector3 At, string What)? outOfReach = null,
+        Bystanders? people = null, bool dodge = false)
     {
-        long start = Environment.TickCount64, stillSince = start;
-        bool moved = false, again = false, pushed = false, letGo = false;
+        long start = Environment.TickCount64, stillSince = start, nearerAt = start, noNearer = 0;
+        bool moved = false, again = false, pushed = false, letGo = false, nearer = false, travelling = false;
         var last = MeIn(origin) ?? target;
+        double nearest = Flat(last, target);
+        var heard = _ops.Client is { } c0 ? SelfUpdateGuard.LastArrival(c0) : null;   // (an update from before the walk)
+        // (someone standing on the very spot, a walk too short to have been planned: let go within reach, as of a person walked to)
+        bool taken = HeedPeople && people != null && OnFoot(people.To).Any(p => Flat(p.Pos, target) < 0.9f && Math.Abs(p.Pos.Z - target.Z) < 2);
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(250, CancellationToken.None);
@@ -654,14 +783,29 @@ public sealed class Commands
             if (going) { stillSince = now; moved = true; }
             var off = new Vector2(target.X - me.Pos.X, target.Y - me.Pos.Y).Length();
             long still = now - stillSince;
+            if (SelfUpdateGuard.LastArrival(c) is { } word && word.Ticks != heard?.Ticks)
+            {
+                var at = InFrame(word.Pos, me.Region, origin);
+                travelling = heard is { } before
+                    && Vector3.Distance(at, before.Pos) > 0.25 * System.Diagnostics.Stopwatch.GetElapsedTime(before.Ticks, word.Ticks).TotalSeconds;
+                heard = (word.Ticks, at);
+                double offHeard = Flat(at, target);
+                if (offHeard < nearest - 0.1) { nearest = offHeard; nearerAt = now; nearer = true; noNearer = 0; }
+                else noNearer = now - nearerAt;
+            }
             // a goal past the border not crossed yet: a route's next line is in the next region's frame, so it isn't done
             // till then. The region's autopilot stops the avatar at the edge and doesn't cross it (seen on the local grid:
             // standing there 15 s, across a second after a forward press), so stood there, it's walked across by the
             // forward control, once
             bool crossing = Beyond(target) && me.Region == origin;
+            if (dodge && people != null && me.Region == origin && off > Math.Max(near, 2) && Stepped(people, me.Pos, target) is { } met)
+            {
+                people.Met = met;
+                return false;
+            }
             // a person or a thing (stopping 1.5 m short): the region's autopilot heads for its middle and pushed on into
             // the visitor's body, never still enough to finish (42 s, 2026-11-08), so it's let go once within reach
-            if (!crossing && !letGo && near >= 1.5 && off <= near)
+            if (!crossing && !letGo && (near >= 1.5 || taken) && off <= near)
             {
                 letGo = true;
                 CancelAutoPilot();
@@ -670,22 +814,28 @@ public sealed class Commands
             {
                 pushed = true;
                 await PushAcrossAsync(c, me.Pos, target, origin);
-                stillSince = Environment.TickCount64;
+                stillSince = nearerAt = Environment.TickCount64;
+                noNearer = 0;
                 continue;
             }
             bool arrived = !crossing && off <= near && still > 700, late = now - start > 60_000;
-            bool stalled = still > (crossing ? 3000 : moved ? 2000 : 4000);
+            // (up to a border not crossed yet, the push across above is what a stop gets, as before)
+            bool held = !crossing && noNearer > (nearer ? 3000 : 4000) && (!travelling || noNearer > 10_000);
+            bool stalled = held || still > (crossing ? 3000 : moved ? 2000 : 4000);
             if (stalled && !arrived && !again && me.Region != origin && off > near)
             {
                 // a crossing on the way: the new region doesn't carry the old one's autopilot on, so asked again once
                 again = true;
                 Utils.LongToUInts(origin, out var ox, out var oy);
                 AutoPilotTo(c, ox + (double)target.X, oy + (double)target.Y, target.Z);
-                stillSince = now;
-                moved = false;
+                stillSince = nearerAt = now;
+                noNearer = 0;
+                moved = nearer = false;
                 continue;
             }
             if (!arrived && !stalled && !late) continue;
+            Walk.WalkMode.Log(string.Create(CultureInfo.InvariantCulture,
+                $"walk over after {(now - start) / 1000.0:0.0} s, {(arrived ? "arrived" : held ? $"no nearer for {noNearer / 1000.0:0.0} s" : late ? "a minute" : "stood still")}: {off:0.0} m off, nearest {nearest:0.0}"));
             if (!arrived) CancelAutoPilot();
             if (outOfReach is { } o && off < 2.5)
             {
@@ -693,8 +843,9 @@ public sealed class Commands
                 return true;
             }
             bool done = arrived || off < 2.5 && !crossing;
-            _say(string.Create(CultureInfo.InvariantCulture,
-                $"Finished walking, {(off < 3 ? (off < 1 ? "under a metre" : Bearings.MetresTenths(off)) : Bearings.Metres(off))} from the destination{(done ? "" : crossing ? " (it didn't cross into the next region)" : " (something was in the way)")}."));
+            var why = done ? "" : crossing ? " (it didn't cross into the next region)"
+                : people != null && Against(people, me.Pos, target) is { } person ? $": {await InWayAsync(person, target)}" : " (something was in the way)";
+            _say(string.Create(CultureInfo.InvariantCulture, $"Finished walking, {OffWords(off)} from the destination{why}."));
             return done;
         }
         return false;
@@ -1065,6 +1216,7 @@ public sealed class Commands
             }
             if (!done.Task.IsCompleted) { _say("Still on the way."); return false; }
             if (done.Task.Result is { } why) { _say($"Teleport didn't work: {why}"); return false; }
+            _s.Places.TeleportArrived(c);   // (for the history: one counted by being there may never report finishing)
             await Task.Delay(500);
             _say(ArrivedLine());
             return true;
@@ -1178,6 +1330,10 @@ public sealed class Commands
 
     /// <summary>//upload [PATH]: the words after the verb as typed (a Windows path's backslashes and spaces kept).</summary>
     public Func<string, Task>? Upload { get; set; }
+    /// <summary>//export [NAME] [as KIND], //import [PATH] (MainForm.Exports.cs); //autosit WORDS (MainForm.AutoSit.cs).</summary>
+    public Func<string, Task>? Export { get; set; }
+    public Func<string, Task>? Import { get; set; }
+    public Func<string, Task>? AutoSit { get; set; }
 
     static string AfterVerb(string line)
     {
@@ -1197,6 +1353,9 @@ public sealed class Commands
 
     /// <summary>`//pointing`'s words: whose pointing is heard (MainForm.Pointing.cs).</summary>
     public Func<string, Task>? Pointing { get; set; }
+
+    /// <summary>`//point`'s words: her own pointing (MainForm.PointAt.cs).</summary>
+    public Func<string, Task>? PointAt { get; set; }
 
     /// <summary>`//outfit`: what's worn by name (MainForm.Outfit.cs).</summary>
     public Func<Task>? Outfit { get; set; }

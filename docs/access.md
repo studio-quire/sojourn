@@ -819,6 +819,32 @@ Two logs with notes (our words). Her typed commands aren't in a log, so what she
   Ribeata switch said 65 m ahead was set to the branch toward a private railyard, and Idia's own stands (described only
   by numbers) were met as she went. A question for her partner.
 
+### Deletes refused, and driving after her partner backwards (0.1.0.996 and 1045, the blind tester, 2026-11-08 and 09)
+
+Three logs with notes (our words).
+- **Nothing could be deleted** (logs `tester-20261109T024202-97c929`, a landmark, and `-20261109T223724-96ebc6`, an
+  object, twice; both 0.1.0.996): each Delete was confirmed and then said "Not deleted: Second Life's inventory service
+  refused the move ... (HTTP 400, Bad Request)". Second Life's service refuses a move sent as a PATCH of the folder
+  (`parent_id`), which is how LibreMetaverse moves things wherever there's a service, and how ours did since 2026-11-08,
+  when we began waiting for its answer; the official viewer moves by its UDP messages. So before that, on 0.1.0.955 and
+  earlier, moves and deletes were said done and never happened on Second Life (her landmark folder that stayed, 2026-11-07;
+  most likely also the notecards she moved into a folder that evening, which would be back where they were). Since
+  2026-11-09 moves go as the viewer's, confirmed by reading the thing back (`docs/inventory.md` > Moving and tidying). The
+  tests' stand-in for the service had taken the PATCH; it now refuses it as Second Life does.
+- **Driving after her partner** (log `tester-20261110T011218-179b76`, 20:07-20:12, 1045, her police scooter after his
+  vehicle, `//follow` at 10 m): she ended up going backwards and not following, and wasn't sure whether it was her doing.
+  It wasn't: from 20:10:15, closing on him where he'd stopped, it held Down to keep the gap, the scooter's Down is reverse,
+  and it went on holding it as the scooter backed at 6-10 m/s, since its speed alone read as closing faster; steering as
+  it backed, she circled him at 1-12 m for 35 s. Fixed (`docs/access-app.md` > Driving after someone > Never backward);
+  the test's kart turned out to back the same way at 4 m/s, unnoticed. Also in the log, not changed: twice Up was held 7-8 s
+  with the scooter not moving before it went (maybe an engine that starts on the first press: a question for her); the
+  first try crawled at about 1 m/s with Up held while he drove off, and she took the wheel; and over the crossing into
+  Sponsa it lost sight of him, found him again by the map 44 m off, and drove on along a tunnel the other way (he was behind
+  her, to the right) until a barricade stopped her 115 m from him. Turning round now slows to 3 m/s first, which a tunnel may
+  still not allow. Then the parcel returned her scooter, and Delete on it in Objects, still listed, asked to "Delete
+  someone (372d0a97)" and said "object not found": a thing gone from the region is now "something no longer here", and
+  that error "it isn't here any more".
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -858,6 +884,15 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
+- Auto-sit (built 2026-11-09 from Radegast's AutoSit and issue #156; nothing reported): did she use Radegast's, and for what
+  (a seat at home, at a club, to stay seated while away)? Ours sits her once on each arrival by logging in or teleporting into
+  the seat's region and then lets her stand; Radegast's sits her again every ten seconds while it's on. Which does she want?
+  Is one seat a region enough, and is Control+Shift+S a good key? Did she use Radegast's PseudoHome (go back to a spot when
+  moved) or LSL Helper (her objects sending her account IMs, gifts and group invites)? Neither is built; what would she use
+  them for?
+- Export and import (built 2026-11-09): has she or her partner exported builds from Radegast (XML) or Firestorm (Backup), and
+  would she bring them here? Which kind would she keep her own builds in? A Collada model goes back up as a mesh by Control+U:
+  would she or her partner do that?
 - For the inventory's housekeeping (2026-11-08): Radegast starts sorted newest first, Access by name (Alt+0's "Inventory
   order", or Sort by date on the Applications key): which does she want to start with? Show: Recent now lists everything
   newest first, each saying when it came, rather than the last day's: is that how she'd find a purchase, or would she rather
@@ -877,8 +912,12 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 - What a friend points at (built 2026-11-08 from Radegast's Master Controls; nothing reported): does her partner or a friend
   right-click things in their own viewer to show her, and do "... points at ..." and Control+Shift+P to go there do what Master
   Controls did for her? Should whose pointing she hears be remembered for next time (it lasts the session now), and should a
-  pointing make a sound too? Would she use a Point at of her own, her avatar's arm pointing at what she has selected so a sighted
-  friend sees which thing she means (Radegast's; not built)? On a person's menu, are What they wear and Their animations any use?
+  pointing make a sound too? On a person's menu, are What they wear and Their animations any use?
+- Point at (built 2026-11-09 from Radegast's Point At; nothing reported): Control+P on a thing or part in Objects, or `//point
+  NAME`, points her arm at it for a minute with a beam from her hand. Did she use Radegast's, and does a sighted friend pick the
+  thing out by it? Is a minute right? Turning her to face it when it's well to a side or behind (so the arm reaches it, as the
+  official viewer does): welcome, or would she rather keep her facing? Would she point at people too (Radegast's people list
+  can; the official viewer never does)? Is Control+P a good key?
 - Display names in fancy letters or symbols (built 2026-11-08 from reasoning; nothing reported): has anyone's come
   through as nothing or nonsense, here or in Radegast? Access now says them in plain letters, the username when there
   are none; Alt+0's People's names also has the display name and username (Radegast's usual), as written, or the
@@ -1031,3 +1070,12 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   with something attached now waits in Notices with Keep as its first key, rather than passing as a line: right, or would she
   rather it were said and kept by itself? Are the members' and chat's windows easy to move around (Find, then the list, Enter
   on someone for what she can do), and is it right that a person's own actions there close the window first?
+- A group's settings and roles (built 2026-11-09, the group menu's Settings and roles; nothing reported): are the abilities' words
+  clear ("Eject members with no role but Everyone", "Give members roles, only ones they have themselves"), and is a switch each,
+  under a heading a set with Page Down between them, quick enough to set up a role, or would she rather a role start from another's
+  abilities (the viewer's Copy role)? Should Anyone can join and Cost to join ask first, as About Land's who may enter does, or
+  change at her press like the rest?
+- The estate (built 2026-11-09, About Land's Estate tab; for someone who owns or manages one, through her if she knows any): Eject
+  from estate and Ban from estate are on a person's menu only where she manages the estate: right, or would she rather they were
+  always there and said no elsewhere, as Radegast lists them? Is a ban that also sends them home if they're there what she'd
+  expect? Are the estate's own switches (open to anyone, payment info, age) wanted changeable here?

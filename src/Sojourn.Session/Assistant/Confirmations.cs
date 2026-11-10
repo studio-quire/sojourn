@@ -361,7 +361,10 @@ public sealed partial class Confirmations
             case ("SojournChatLogs", "delete"):
                 return (Lang.F("Delete your chat log of {0}", a.Str("title") ?? ""), Lang.T("It's gone from this PC for good."));
             case ("TesselGroups", "deleteRole"):
-                return (Lang.T("Delete a group role"), "");
+            {
+                var (role, _) = await RoleAsync(a);
+                return (Lang.F("Delete the role \"{0}\" in {1}", role, GroupName(a.Uuid("group_id"))), Lang.T("Its members lose it and the abilities it gave them."));
+            }
             case ("TesselBuild", "modify" or "modifyEach") when kind == Kind.Delete:
                 return (Lang.F("Make {0} temporary", await ObjectsAsync(a)), Join(Lang.T("The region deletes temporary objects within a minute, for good (not to Trash)."), PermDetail(a)));
             case ("TesselBuild", "rez") when kind == Kind.Delete:
@@ -417,6 +420,10 @@ public sealed partial class Confirmations
                         Lang.T(owners ? "Nobody can take an owner off Owners but the owner themselves." : "A role can carry powers in the group, up to an owner's."))
                     : (Lang.F("Take the role \"{0}\" from {1} in {2}", role, who, GroupName(a.Uuid("group_id"))), "");
             }
+            case ("TesselGroups", "update"):
+                return (Lang.F("Change the settings of {0}", GroupName(a.Uuid("group_id"))), GroupSettingsWords(a));
+            case ("TesselGroups", "createRole" or "updateRole"):
+                return await RoleChangeAsync(op, a);
             case ("TesselGroups", _):
                 return (Lang.F("Change group roles or settings ({0}) in {1}", op, GroupName(a.Uuid("group_id"))), string.Join(", ", a.Where(kv => kv.Key != "op").Select(kv => $"{kv.Key}: {Short(kv.Value)}")));
             case ("LLAgent", "requestTouch"):
@@ -575,6 +582,54 @@ public sealed partial class Confirmations
         return (Lang.T("a role"), false);
     }
 
+    /// <summary>A group's settings as its General tab words them ("Anyone can join: on; Cost to join: L$50").</summary>
+    static string GroupSettingsWords(JsonObject a)
+    {
+        string OnOff(string key) => Lang.T(a.Bool(key, false) ? "on" : "off");
+        var parts = new List<string>();
+        if (a.Str("charter") is { } ch) parts.Add(Lang.F("Charter: “{0}”", ch.Length > 160 ? ch[..160] + "..." : ch));
+        if (a.Has("open_enrollment"))
+            parts.Add(a.Bool("open_enrollment", false) ? Lang.T("Anyone can join: on, without being invited") : Lang.T("Anyone can join: off, only those invited"));
+        if (a.Num("fee") is { } fee) parts.Add(fee > 0 ? Lang.F("Cost to join: L${0}", (int)fee) : Lang.T("Cost to join: none"));
+        if (a.Has("show_in_list")) parts.Add(Lang.F("Show in search: {0}", OnOff("show_in_list")));
+        if (a.Has("mature")) parts.Add(Lang.F("Maturity: {0}", Lang.T(a.Bool("mature", false) ? "moderate" : "general")));
+        if (a.Has("insignia_id")) parts.Add(Lang.T("A new insignia"));
+        return string.Join("; ", parts);
+    }
+
+    /// <summary>A role made or changed, in the role tab's words: its name and title, the abilities given and taken away
+    /// (against the role as the grid has it now), and the viewer's warning for an ability that lets a member raise
+    /// themselves.</summary>
+    async Task<(string Title, string Detail)> RoleChangeAsync(string op, JsonObject a)
+    {
+        var group = GroupName(a.Uuid("group_id"));
+        JsonObject? cur = null;
+        if (op == "updateRole")
+            try
+            {
+                var got = await _s.Api.CallAsync("TesselGroups", new JsonObject { ["op"] = "roles", ["group_id"] = a.Str("group_id") }, true, TimeSpan.FromSeconds(8), default);
+                cur = ((got as JsonObject)?["roles"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().FirstOrDefault(r => r.Str("role_id") == a.Str("role_id"));
+            }
+            catch { }
+        ulong Bits(JsonNode? n, string? bits) => ulong.TryParse(bits, out var b) ? b : (ulong)GroupOps.ParsePowers(n);
+        ulong before = cur == null ? 0 : Bits(cur["powers"], cur.Str("power_bits"));
+        ulong after = a.Has("powers") ? Bits(a["powers"], a["powers"] is JsonValue pv && pv.TryGetValue<string>(out var ps) ? ps : null) : before;
+        var name = a.Str("name") ?? cur?.Str("name") ?? Lang.T("a role");
+        var parts = new List<string>();
+        if (cur != null && a.Str("name") is { } nn && nn != cur.Str("name")) parts.Add(Lang.F("Name: {0} (was {1})", nn, cur.Str("name") ?? ""));
+        if (a.Str("title") is { } t && t != cur?.Str("title")) parts.Add(Lang.F("Title: {0}", t));
+        if (a.Str("desc") is { } d && d != cur?.Str("desc")) parts.Add(Lang.F("Description: “{0}”", d.Length > 120 ? d[..120] + "..." : d));
+        if (((before ^ after) & GroupAbilities.MembersShown) != 0)
+            parts.Add(Lang.F("Members shown outside the group: {0}", Lang.T((after & GroupAbilities.MembersShown) != 0 ? "on" : "off")));
+        var (given, taken) = GroupAbilities.Diff(before, after);
+        if (given.Count > 0) parts.Add(Lang.F("Abilities given: {0}", Listed(given.Select(x => Lang.T(x.Words)).ToList(), 6, "abilities")));
+        if (taken.Count > 0) parts.Add(Lang.F("Abilities taken away: {0}", Listed(taken.Select(x => Lang.T(x.Words)).ToList(), 6, "abilities")));
+        if (op == "createRole" && given.Count == 0) parts.Add(Lang.T("No abilities yet."));
+        var warnings = given.Select(x => GroupAbilities.Warning(x.Bit)).OfType<string>().Select(w => Lang.T(w));
+        var title = op == "createRole" ? Lang.F("Make the role \"{0}\" in {1}", name, group) : Lang.F("Change the role \"{0}\" in {1}", name, group);
+        return (title, Join(string.Join("; ", parts) + (parts.Count > 0 ? "." : ""), string.Join(" ", warnings)));
+    }
+
     async Task<(string Object, string Item)> TaskItemAsync(JsonObject a)
     {
         try
@@ -610,7 +665,10 @@ public sealed partial class Confirmations
                 return Lang.F("{0}, all {1} parts", await NameAsync(root.ID), ids.Count);
         }
         var names = new List<string>();
-        foreach (var id in ids.Take(5)) names.Add(await NameAsync(id));
+        // (an object gone from the region isn't anyone: her scooter, returned by the parcel while her list still showed it,
+        // was "Delete someone (372d0a97)", 2026-11-09)
+        foreach (var id in ids.Take(5))
+            names.Add(_s.Region is { } r && r.PrimById(id) is null && !r.Avatars.Values.Any(av => av.ID == id) ? Lang.T("something no longer here") : await NameAsync(id));
         if (ids.Count > 5) names.AddRange(await RestNamesAsync(ids.Skip(5).ToList()));
         return Listed(names, 5, "objects");
     }

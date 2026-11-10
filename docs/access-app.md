@@ -208,14 +208,14 @@ list; a blind tester, offered groups or a box narrowing the list as you type, ch
 
 `MainForm.Menu.cs`; Alt or F10, then the arrows, or Alt+W, V, R, B, H for a menu. It's there for finding out what exists,
 as Radegast's menus are. World (teleport home, to the SLurl on the clipboard, set home here, landmark here, sit on the
-ground or stand up, fly or stop flying, always run (a check, `//run`), walk mode, Recording a route (its keys and Discard), Gestures: the active ones to play, Away and Do not disturb as checked
-items, incognito, region info, About Land (Control+L) and the region's covenant, parcels in this region, status, what you're wearing, save your outfit, describe where you are, describe
+ground or stand up, fly or stop flying, always run (a check, `//run`), walk round people (a check, `//walkround`), Auto-sit (On, a check, Control+Shift+S; sit back on what you're sitting on; sit on this region's seat now; forget each seat), walk mode, Recording a route (its keys and Discard), Gestures: the active ones to play, Away and Do not disturb as checked
+items, incognito, region info, About Land (Control+L), the region's covenant and the estate (its tabs), parcels in this region, status, what you're wearing, save your outfit, describe where you are, describe
 me, rebake, stop all animations, hover height, my profile, display name, highest rating of region (`MainForm.Self.cs`; each also a `//` command: `//rebake`, `//stopanimations`, `//hover`, `//displayname`, `//maturity`), log out, back to the login window (`//logout`: asked first, Enter goes and Escape stays; the app starts afresh there, the form filled in and the password typed again), another account, in a new window (`//newwindow`; The session itself, below), who's in voice, the people in voice to act on (Control+F4), open mic or push to talk, the sound out of the next device), View (the areas by their Alt+numbers,
 Friends among them, the second inventory pane, the inventory's favorites, the newest notice, Conversations, the conversation ring, closing one),
 Read-out (mute all, mute this conversation, times, arrivals, Recent messages: the last nine as items with their
 Control+numbers, then back, forward, oldest, newest, mark, copy, copy the assistant's last answer, links seen, chat logs, blocked), Build (the
 official viewer's Build menu: the build editor, Control+B; a new box; undo the last build change; the build
-commands; upload a file, Control+U) and Help (keys, the slash
+commands; upload a file, Control+U; export what you're editing to a file; import an object from a file) and Help (keys, the slash
 commands, send a log, read a session's log, message the builders, Newer build?, clear the cache at the next start (checked while it's marked), about; a newer build is also said once after logging in).
 
 - Each item shows its key beside it (`ShortcutKeyDisplayString`, which UI Automation gives screen readers as the item's
@@ -266,15 +266,15 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   confirmation's Confirm and Cancel. Escape anywhere in the notices but on a confirmation (or in the reply box): back
   to the area and control Control+N came from, else to Say. Tab from the list reaches the notice's text, its reply box
   and its buttons ("1: Red", "Delete: Ignore").
-- **A person's actions are one list** (`MainForm.PersonActions.cs`), the same items with the same letters wherever their name is: People nearby (Enter opens them), Friends and Search (Enter: an IM), an IM's message box or history, and their profile (Applications key or its Actions button; there the window closes first). Send IM, Walk to, Face, Where, Describe, Follow, Beacon, Hear what they point at (or Stop hearing; What a friend points at, below), What they wear, Their animations (One person's things, below), Profile, Notes on them, Chat log, Pay..., Give what you copied, Offer teleport, Request teleport, Offer friendship (a friend: Start a conference..., End friendship, confirmed), Invite to a group... (Groups, below), Mute in voice or Unmute in voice, How loud in voice... (0 to 2, 1 as they come; both for you alone and kept), Always incognito with them, Block or Unblock, IM sound for NAME.... What needs them near says so when they aren't ("Kestrel isn't nearby, though online."), rather than the menu changing shape; Where on a friend elsewhere on the grid who lets you see them on the map says the region and spot ("Kestrel is in Bay City, at 128, 64."; `SojournPeople whereFriend`, as the viewers' Show on map). A friend's What they may do has See when you're online, Find you on the map and Edit your objects, checked as they stand, each through her confirmation; edit rights are how a sighted helper helps without logging in as her. `//block NAME`, `//profile NAME` and `//friend NAME` find anyone by name: open conversations, friends, people nearby, then the grid. A new action goes in `PersonActions`, never a list's own menu. On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
-  tag, Choose your title..., Members..., Who's in its chat..., Notices..., New notice..., Invite someone..., Banned residents..., Chat log, Receive its notices, List it in your profile (Groups, below), Group sound for NAME..., Leave (the grid asks in Notices), and New group... (on "In no groups." too, alone). On a friend, Start a conference...: friends online in a list of check boxes, the one you were on marked, Space marking more, Enter starting it with two or more and going to its tab. In a group's message box or history: its sound and Who's in the chat...; in anyone's, Cut, Copy, Paste, Select all after what's above, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
+- **A person's actions are one list** (`MainForm.PersonActions.cs`), the same items with the same letters wherever their name is: People nearby (Enter opens them), Friends and Search (Enter: an IM), an IM's message box or history, and their profile (Applications key or its Actions button; there the window closes first). Send IM, Walk to, Face, Where, Describe, Follow, Beacon, Hear what they point at (or Stop hearing; What a friend points at, below), What they wear, Their animations (One person's things, below), Profile, Notes on them, Chat log, Pay..., Give what you copied, Offer teleport, Request teleport, Offer friendship (a friend: Start a conference..., End friendship, confirmed), Invite to a group... (Groups, below), Mute in voice or Unmute in voice, How loud in voice... (0 to 2, 1 as they come; both for you alone and kept), Always incognito with them, Block or Unblock, then, only where she owns or manages the estate, Eject from estate and Ban from estate (About Land > The estate, below), IM sound for NAME.... What needs them near says so when they aren't ("Kestrel isn't nearby, though online."), rather than the menu changing shape; Where on a friend elsewhere on the grid who lets you see them on the map says the region and spot ("Kestrel is in Bay City, at 128, 64."; `SojournPeople whereFriend`, as the viewers' Show on map). A friend's What they may do has See when you're online, Find you on the map and Edit your objects, checked as they stand, each through her confirmation; edit rights are how a sighted helper helps without logging in as her. `//block NAME`, `//profile NAME` and `//friend NAME` find anyone by name: open conversations, friends, people nearby, then the grid. A new action goes in `PersonActions`, never a list's own menu. On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
+  tag, Choose your title..., Members..., Who's in its chat..., Notices..., New notice..., Invite someone..., Banned residents..., Settings and roles..., Chat log, Receive its notices, List it in your profile (Groups, below), Group sound for NAME..., Leave (the grid asks in Notices), and New group... (on "In no groups." too, alone). On a friend, Start a conference...: friends online in a list of check boxes, the one you were on marked, Space marking more, Enter starting it with two or more and going to its tab. In a group's message box or history: its sound and Who's in the chat...; in anyone's, Cut, Copy, Paste, Select all after what's above, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
   its own window: a read-only text read line by line (name, born, partner, about, interests, picks, groups with their titles, first life, web), their picks and your notes on them a Tab on,
   Send IM, Pay, Give what you copied, Describe pictures, Actions..., Close (Escape) (Your profile and notes, below). Pay asks the amount, then waits for the
   person's confirmation in Notices (refused at once when it can't be afforded). Give what you copied (also on a person
   nearby and a friend) gives what Control+C or Control+X last took in the inventory, each thing confirmed: the blind
   tester's Radegast habit of copying an item and giving it from the person (2026-10-31), beside the inventory's Give
-  to... On an object: Touch, Sit (on what she's sitting on, Stand up), Walk to, Beacon, Face, Describe, Details, Where (with its floating
-  text), Contents, Parts, Move..., and Take into your inventory, Delete and Return to its owner where she may (Objects nearby,
+  to... On an object: Touch, Sit (on what she's sitting on, Stand up), Auto-sit on it (Stop auto-sitting on it on her seat), Walk to, Beacon, Face, Point at (Stop pointing on the one she points at; Pointing at something yourself, below), Describe, Details, Where (with its floating
+  text), Contents, Parts, Move..., Export to a file... (on hers), and Take into your inventory, Delete and Return to its owner where she may (Objects nearby,
   below; Delete, also the key, is confirmed in Notices and goes to the Trash); on something worn only Touch, Describe, Details,
   Where, Parts and Take off (Delete too: back into the inventory, never deleted; the blind tester found no way to take a HUD off there,
   2026-11-02). Each list menu's opening is a line in the session log with what it offered, on what (the inventory's
@@ -441,6 +441,8 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
 - Ctrl+Shift+1: region info (`//siminfo`), Radegast's key.
 - Ctrl+Shift+H: teleport home, Radegast's key: "Teleporting home.", then the arrival; through the session's teleport
   watch as the VR client's way out, so a refusal is said ("Couldn't go home: ...").
+- Ctrl+Shift+S: auto-sit on or off ("Auto-sit off.", "Auto-sit on: Comfy Chair in Bay City."; Auto-sit, below), the key
+  Radegast issue #156 asks for.
 - F6: mute all read-out of what arrives (answers to your keys are still said; a voice call ringing, who starts speaking
   and the music's titles are muted too); Shift+F6: mute or unmute the source you're in (nearby chat, or this
   conversation). Kept in access-settings.json.
@@ -747,15 +749,20 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//beacon NAME` / `//beacon off` / `//beacon` | a sound on the nearest person or thing by name to walk to (walk mode's beacon, below), off, or where it is |
 | `//touch NAME` / `OBJECT PART` / `NAME face DIR` | touch a thing or part by name within 10 m, on a face if given (Parts and faces, below) |
 | `//details NAME` | whose a thing within 30 m is, who made it, its description, what she may do with it (else a named part within 10 m; Objects nearby, below) |
+| `//point NAME` / `//point off` / `//point` | point at the nearest thing within 30 m with that name (else a named part within 10 m) for a minute, as Control+P in Objects; stop; what she's pointing at (Pointing at something yourself, below) |
 | `//pay NAME` / `NAME 50`, `//buy NAME` | pay someone here or something within 30 m, buy something within 30 m (Paying and buying things, below) |
 | `//switch` / `flip` / `main` / `branch` | the next rail switch and how it's set; throw it; set it to the main line or the branch, throwing it only if it isn't already (walk mode's W and Shift+W; Rail switches, below) |
 | `//stop` | as Space in walk mode, from anywhere: seated on something moving, stop it by its controls (Stopping a vehicle, below); otherwise stop a walk, a follow or a route |
 | `//ride` / `stop` / `describe` / `more` | record a ride: start (or, recording, how it's going), stop, have it told, tell more (walk mode's C and Shift+C; Walk mode > Recording a ride) |
 | `//text` / `//text NAME` | floating text: what you're sitting on shows (walk mode's Shift+V), or the nearest thing within 30 m with that name in its name ("Ride Train shows: Throttle 30%, Speed 11 km/h.") |
 | `//run` / `//run on` / `//run off` | Always run (Radegast's World > Always Run; also World's menu and Alt+0's Walking): on, walk mode's arrows, `//go` and following run rather than walk; `//run` alone turns it the other way, said ("Always running: ...", "Walking again: ..."). Kept (`walk_always_run`) |
+| `//walkround` / `//walkround on` / `//walkround off` | whether `//go` and Walk to go round people standing in the way (People on the way, below; also World's menu and Alt+0's Walking): `//walkround` alone turns it the other way, said ("Walking round people: ...", "Walking straight: ..."). Kept (`walk_round_people`, on) |
 | `//outfit` | what you're wearing, by name (Ctrl+Shift+W) |
 | `//saveoutfit NAME` | what you're wearing saved as an outfit: a folder NAME in My Outfits with a link to each thing (with no name, it asks; also World > Save your outfit...) |
 | `//upload` / `//upload PATH` | upload a file: the Open window, or the file at PATH (Ctrl+U; Uploading, below) |
+| `//export` / `//export NAME` / `... as dae` (or `xml`, `oxp`) | save something she made to a file: what's edited, or the nearest of hers with that name; the Save window, its kind chosen there or by the words (Export and import, below) |
+| `//import` / `//import PATH` | rebuild an object from a backup or Radegast's XML, 2 metres ahead: the Open window, or the file at PATH |
+| `//autosit` / `on` / `off` / `here` / `NAME` / `now` / `forget [NAME\|here\|all]` | auto-sit: how it stands; on or off; what she's sitting on, or the nearest thing with that name, as this region's seat; sit on it now; forget one or all (Auto-sit, below) |
 | `//build` / `//build COMMAND` | the build editor (Ctrl+B), or one of its commands on what's being edited, from any input (Building, below) |
 | `//land` / `//land COMMAND` | About Land (Ctrl+L), or one of its commands on the parcel shown (or the one you're on), from any input (About Land, below) |
 | `//describe [here|me|NAME|person NAME|object NAME|more]` | describe (Describing, below) |
@@ -785,10 +792,137 @@ the forward control, facing the goal. A walk ended or stopped cancels the region
 as Up (a train opened a step by the first tap after a `//go`).
 `//go` walks by the region's own autopilot, as Radegast's, around what's in the way (Paths, below): "Walking 9 m to
 232, 43, around something in the way: 3 stretches.", then each new stretch ("2 of 3: 2 m to the west-northwest."). It
-ends, once the avatar has stopped, with "Finished walking, under a metre from the destination." (or how far, and
-"something was in the way" when it stalled), the cue such routes wait for. To a person or a thing it stops 1.5 m
+ends, once the avatar has stopped or is getting no nearer (below), with "Finished walking, under a metre from the
+destination." (or how far, and "something was in the way" when it stalled), the cue such routes wait for. To a person or a thing it stops 1.5 m
 short: the region's autopilot, heading for their middle, is let go once within that (it pushed on into the visitor's
-body for 42 s, never still enough to finish, 2026-11-08). Seated (a chair, a pose ball), it stands
+body for 42 s, never still enough to finish, 2026-11-08).
+
+**People on the way** are gone round, as things are (`Commands.WalkPeople.cs`, Paths below; Claude Fable 5.2,
+2026-11-09). Until then a walk was planned round objects only and went straight into anyone standing on its line. Put
+to the user as a choice between this and walking back after the overshoot (below), they left it to us (2026-11-09),
+and this is ours: a sighted resident walks round people without thinking and a blind one can't unless the app does it;
+being bumped is noticed in Second Life (viewers have bump notices), so the cost is social as well; and it removes the
+case rather than mending it after. How it goes:
+- **Hers to turn off** (2026-11-09, the evening): the setting `walk_round_people`, on unless she turns it off, by
+  `//walkround` (alone the other way, or `on` / `off`), World > Walk round people (a check) or Alt+0's Walking, and
+  on the agent API. Said either way: "Walking round people: //go and Walk to go round anyone standing in the way.
+  //walkround again walks straight." and "Walking straight: //go and Walk to take no notice of people, and may walk
+  into someone standing in the way. //walkround again goes round them." Off, walks are planned and walked as they
+  were before that day (below, what walking into someone does). It's new and untried on Second Life, and she may
+  simply prefer straight walks. A walk under way goes by it from its next look. `SOJOURN_WALK_PEOPLE=0` in the
+  environment is off whatever the setting, for tests.
+- **Who counts**: everyone on their feet in her region who is standing still, and anyone walking within 6 m of her
+  (they'll be about there still as she passes). Not the person the walk is to, and not people sitting (on OpenSim a
+  seated avatar has no body to walk into; Second Life untried). The way's line keeps 0.75 m from each one's middle,
+  a metre where there's room.
+- **What she hears**: a way round people that's under a metre longer than the straight line is the same walk to her,
+  so the plain line, "Walking 16 metres to 240, 72.", and its stretches are walked unsaid (`Aside`; until the evening
+  of 2026-11-09 it was "..., around Kestrel: 2 stretches." and "2 of 2: 10 metres to the east.", for a first stretch
+  of 0.4 m when someone stood beside her). One person on open ground is always that: going round them adds 0.05 to
+  0.85 m (the planner asked directly), the most for someone a metre dead ahead; so are two standing together, and
+  three abreast from 6 m off. So she isn't told who she passes; what she hears named is a way round that's a walk
+  of its own, with only people in the way (someone in a passage too narrow to pass them in, several across the line
+  close by): "Walking 13 metres to 249, 77, around Kestrel: 3 stretches." ("Kestrel and Mira", "3 people"), each
+  stretch said. With things in the way too, the line as it was.
+- **Someone stepping in** after the way was planned: as she walks it looks ahead along its line (0.7 m either side),
+  two seconds of her own going and 4 m at least, for anyone not allowed for, there for a quarter of a second (someone
+  beside or behind her isn't in it, nor someone ahead walking the same way as fast as she is: the person she's going
+  somewhere with), and plans afresh from where she is. What's said goes by how much longer the new way is than what
+  was left of the old: under a metre, round people alone, it's a step aside, "Kestrel is in the way; going round."
+  and no stretches said; otherwise "Kestrel is in the way; going round: 3 stretches."; and from 3 m longer, how far
+  it is now, "Kestrel is in the way; going round, 14 metres from here: 3 stretches." (`Further`: she was told the
+  walk's length as it set out, and it isn't that any more; the same on "Something's in the way; going round" and on
+  "The way is clear now; going on", below). Five times
+  a walk; after that it keeps to the way it has. Someone it went round who has since left costs only the detour. (It
+  looked 4 m whatever her pace until the review of 2026-11-09: seeing someone and planning the way round took most of
+  that, the new way coming 2.4 to 2.9 m short of the visitor at a walk and 1.7 m short at a run, a third of a second
+  at Always run's 5.1 m/s.)
+- **No way round, or none worth walking** (a doorway they stand in, people ringing the spot, or a way round that's
+  10 to 12 m longer than the way through them): it goes as far as them and stops 1.5 m short, said as it sets out:
+  "Walking 6 metres toward 244, 80. Kestrel is in the way and there's no short way round, so only as far as them."
+  Until the evening of 2026-11-09 a way round was walked until it was some 45 m longer or left the area planned:
+  far more than going round one person is worth, for someone who'll likely have moved on by the time she's there,
+  and walking up to them and asking again costs her less. Going through someone now costs the search 38 cells
+  once, however the way would cross them (`PathPlanner.ThroughPerson`; it was 30 for each cell too near them, so
+  45 m through a person's middle and 8 m for a way that brushed one cell). Asked directly, a wall across the way:
+  someone in the middle of its metre-wide doorway, the way round the wall's end is walked when that's 11.3 m
+  further and not at 12.2; someone to one side of a doorway 1.5 m wide, whom the way would only brush, at 10.4 and
+  not at 11.3. A row of nine people across the line 3 m ahead is gone round (7 m longer). Never the teleport
+  fallback: that's for no way at all, and a person in a doorway is gone in a minute, so people never make a room a
+  closed one. Arrived there it plans once more, as they may have moved on while she walked up: "The way is clear now;
+  going on, 4 metres from here: 1 stretch.", or the end, "Finished walking, 4 metres from the destination: Kestrel is in the way, 2 metres,
+  twelve o'clock." Someone on the walk's very spot: "Kestrel is standing there, so only as far as them." Too near
+  them already to take a step: "Not walking to 244, 80: Kestrel is in the way, 2 metres, twelve o'clock, and there's no
+  short way round." The region's autopilot is let go 1.3 m before the way's end (she goes on 1 to 1.5 m at a walk),
+  sooner at a run (1.2 m more for each metre a second over a walk's 3.2, `LegAsync`'s lead), and once only: let go
+  a metre before it at Always run's 5.1 m/s she ran on into the visitor in the doorway and moved it 0.6 m (the
+  review's test, 2026-11-09).
+- **Where a let-go leaves her** (found in that review, not changed): letting go is LibreMetaverse's press of forward
+  (`CancelAutoPilot`), and on OpenSim each press is a step, 0.5 to 1.5 m at a walk and 2 to 3 m at a run, taken, by
+  the look of it, the way she faced before the walk: the region's autopilot turns her as it walks, the app's own
+  heading for her stays, and the press carries that heading. So where a walk that's let go ends depends on which way
+  she happened to face. Ending short of the visitor in the doorway, she stands 1.9 m from it facing it, or 2.7 m
+  from it having faced away ("... is in the way, 3 metres, six o'clock"), and at a run 2.5 m or 7 m. The same
+  for a walk to a person or a thing, which is older: `//go person` let go at 1.5 m ended 2.0 to 2.7 m from the
+  visitor in five runs (stepped back, and again when the walk then ended as stood still and was let go once more)
+  and 0.4 m from it in a sixth, "Finished walking, under a metre from the destination."; with Always run on it passed within
+  0.6 m of the visitor. The visitor wasn't moved in any of these, nor by her walking between two people 0.62 m
+  either side of her line, so bodies on OpenSim meet nearer than the 0.6 to 0.75 m reckoned above (two avatars
+  logged in on one spot settle 0.5 m apart). What Second Life does with the press isn't known; the blind tester's
+  walk logs would show it (a `walk over` line whose `off` is more than its `nearest` is a step back). A let-go that
+  doesn't move her, or one made facing the way she walked with the let-go points set for it, would make where these
+  walks end the app's own choice.
+- Standing right beside someone as she sets out, the way leaves away from them, never nearer than she is. Among
+  several (a landing point's pile, a knot of people talking) there may be no such step: three people within 0.7 m
+  round her, four within a metre or six within 1.5 m left none, and the walk was refused ("Not walking ...") for people
+  she was touching already. So where no step can be taken and two or more stand within 1.1 m of her, those are left
+  out of the way and it sets out through them as every walk did before, still going round everyone else
+  (`Bystanders.Beside`; Claude Fable 5.2's review, 2026-11-09; on the local grid, three within 0.8 m: refused
+  before, and after it she walked out between two of them 0.62 m either side, none moved). One person so near with
+  no step to take is a doorway they stand in, and that stays "Not walking"; so does being ringed by people further
+  off than 1.1 m (the six at 1.5 m), which waits on how near a way may pass someone.
+- A stretch that sticks against someone (within 1.2 m, ahead of her to 60 degrees either side) ends the walk with
+  that last line, not by marking the spot and pushing on, and a straight walk that ends short against someone names
+  them where it said "something was in the way".
+- **How much room it needs** (the planner asked directly, flat ground, 2026-11-09; a quarter-metre grid, so to about
+  0.2 m): past someone standing in the middle of a corridor it goes at 2.6 m wide and is cut short of them at 2.4 m;
+  past someone 0.5 m from one wall, at 1.8 m; between two people, when they stand 1.6 m apart or more. Scattered
+  people, one to every 2 m square, never stopped a 12 m walk in 40 tries (2.3 m longer on average); at one to every
+  1.6 m square 11 of 40 were cut short or not begun. (That was before the limit on how far round a way goes; in a
+  scatter made afresh for it, uniform over 24 by 16 m, the limit changed one 12 m walk in 160: cut short where its
+  way round had been 20 m longer.) Bodies on OpenSim meet at about 0.5 m (above), so 1.6 to 1.8 m
+  of corridor is what passing someone without touching takes: the rest is the room it keeps and the grid. Whether
+  that suits Second Life's shops and clubs is for the checklist there.
+- **Not covered**: a walk of under 2 m or across a border (neither is planned), walk mode's own keys, following and
+  the assistant's walks (the session's autopilot), which go as they did. And nothing here is tried on Second Life yet
+  (`docs/access-testing.md` > Walking round people on Second Life).
+- On the local grid (2026-11-09) the walk that slid, 22 m with the visitor 4 m along it, ends on the point in 11 s,
+  four of four, never nearer the visitor than 1.4 m, the visitor not moved (said then as "Walking 23 metres to 84,
+  46, around Walk Visitor: 2 stretches.", now as the plain line); the doorway, the stepping in and the rest are the
+  test's "walking round people" step. With the setting off (or `SOJOURN_WALK_PEOPLE=0`) it walks as before, which
+  is also how to measure what a grid does when one avatar walks into another.
+
+What walking into someone does, where it still can: on OpenSim it shoves them along. An
+avatar another avatar touches loses the motor that holds it in place and brakes it (ubODE's `OdeCharacter`,
+`IsCollidingObj`), so the visitor, 4 m along a 22 m walk, slid ahead of her at walking speed all the way to the point, and when the
+autopilot arrived there she had no brake either: both slid on 7 m, then crept (six walks of six, the visitor left 25 m
+from where he stood, 2026-11-09; with nobody on the line the same walk ends on the point in 12 s). A walk then ended
+only once she had stood still two seconds, and the creep kept that from passing: "Finished walking, 7 metres from the
+destination (something was in the way)" came 40 s after she set out. So a walk also ends when it gets no nearer (the
+user's choice of the remedies, 2026-11-09; `Commands.WatchWalkAsync`), the backstop still: three seconds of the region's updates of her
+with none 0.1 m nearer the point than she has yet been, and no longer travelling (under 0.25 m/s from one update to
+the next; ten seconds in all at most), so the distance said is where the slide left her, not a point on the way. The
+same walk now says "Finished walking, 6 metres from the destination (something was in the way)" 18-19 s after she set
+out, as the slide ends (nine slides in thirteen walks; twice of those she stood two seconds first, as before). It's judged
+by the updates as they come, not by the clock, so a walk going on through a gap in them isn't given up on (the region
+sends few at a steady walk, and the position between them is her last one carried on by its velocity); the walk is one
+straight line by the region's autopilot, whose push along whatever it meets still closes on the point, so updates that
+come and show her no nearer are a walk that isn't getting there. Up to a border not crossed yet it doesn't apply (the
+push across is what a stop there gets). The stretches of a planned way already ended so (`LegAsync`, two seconds, then
+planned again), and the session's own autopilot (the assistant's walks, in the VR client too) always has (`Motion`).
+What Second Life does where OpenSim slides isn't known.
+
+Seated (a chair, a pose ball), it stands
 first ("Standing up to walk."). A goal out of reach where the floor meets it (up on a stage with no steps, inside a
 bar) is walked as near as the way goes: "Walking 6 metres toward Kestrel; Kestrel is out of reach, so as near as the
 way goes, 2 metres short.", ending "Finished walking, as near to Kestrel as the way goes: Kestrel is 2 metres, twelve
@@ -883,7 +1017,7 @@ in your left ear.
 | marks (`walk_marks`, both) | O | each thing in turn round from ahead to the right, as the sonar: a door knocks (as the warning's door), a seat sinks (two low notes falling), a touchable thing taps (a small high bell) | "Bench, a seat, 4 metres, twelve o'clock. Garden Gate, a door, 4 metres, three o'clock. Bell, touchable, 4 metres, nine o'clock." |
 
 Other settings: `walk_turn_step` (smooth, 10, 15, 22.5, 30, 45, 90 degrees), `walk_turn_rate` (45-180 degrees a
-second), `walk_teleport_fallback` (on).
+second), `walk_teleport_fallback` (on), `walk_round_people` (on: `//go` > People on the way, above).
 
 **The beacon** (M4): while the app walks somewhere (a `//go`, walk to, a follow: on the person as they move, the
 assistant's walk: the session's autopilot's last point), a pip comes from where it's heading, placed a metre from the
@@ -1071,9 +1205,20 @@ motorcycle by hand after her partner's by the beacon, jerkily, and asked for veh
 NAME` at the wheel of something that has taken the arrows holds those keys for her, about 10 m behind, or `//follow NAME
 METRES` (3 to 50). It follows the way they went (points every 2.5 m, in the grid's metres so a crossing moves nothing),
 not the straight line to them, and comes down to their pace in time (their pace from their position over half a second,
-4 m/s of braking assumed; Down while closing, never backing). It steers by the way the seat faces plus an offset learned
-on straights, not by the way it's travelling: travel lags the wheel, and steering by it spun the test's kart. The keys
-are held for a share of each 300 ms by how far off it is. It aims at the first point of their way at least a second
+4 m/s of braking assumed). It steers by the way the seat faces plus an offset learned on straights while Up drives it,
+not by the way it's travelling: travel lags the wheel, and steering by it spun the test's kart. The keys are held for a
+share of each 300 ms by how far off it is.
+- **Never backward** (2026-11-09, after her ride on 0.1.0.1045, `docs/access.md` > Driving after her partner, backwards):
+  a vehicle's Down is often reverse thrust, so speed is judged along the way it's driven, and Down goes only in presses
+  of a tenth of a second while it's going forward faster than 2 m/s, each followed by a wait for the region's news of it
+  (0.1 s over 6 m/s, 0.2 s over 3, else 0.3); under that it coasts. Going backward faster than 0.8 m/s anyway, it presses
+  Up the same way and doesn't steer (what steers forward circles in reverse), logged; if that hasn't stopped it in 4 s,
+  "The scooter is going backward and Up didn't stop it, so I've let go of the keys.". Before, Down was held while the
+  speed alone (either way) read as closing on them: her scooter's Down took it to 10 m/s backward, which read as closing
+  faster, so it held on and steered, and she circled her stopped partner backwards for half a minute. The test's kart
+  backed at 4 m/s the same way. The offset it steers by is learned only while Up drives it (learned while backing, it
+  took the back for the front), at most 100 degrees. A turn of over 90 degrees is taken at 3 m/s at most (Down pressed
+  over 5), as a driver brakes for a U-turn; over 57, 6 m/s as before. It aims at the first point of their way at least a second
 ahead (5 m at least), skipping points it has come within that of or gone past to one side; close behind them, where their
 way runs out within that, at a point that far on past them the way they're heading (2026-11-08: it used to aim at their
 last point, which at her 3 m gap at 11 m/s was 0.5 to 3 m ahead, so every half-metre to one side read as a sharp turn and
@@ -1094,7 +1239,9 @@ over a border; real vehicles' turning and braking, roads, and how close a gap ho
   order), elsewhere after 2 s; then "The vehicle let go of your keys at the crossing into Berbera, so no longer driving
   after Kestrel. Sitting on it again usually gives them back." (on her trip they stayed untaken until she stood and sat
   again). A seat in doubt over a crossing counts as driving for the rest of walk mode too, so a walk's "Blocked." isn't
-  said there. Why they read as untaken, likely (found 2026-11-08 when a test's kart read as not driven): the keys a
+  said there. The region changing counts as doubt from the very tick it changes (2026-11-09: the convoy looks before the
+  crossing is noted, and the new region's first word can have her standing a moment, which ended a test's convoy as
+  "You're off your seat" mid-crossing). Why they read as untaken, likely (found 2026-11-08 when a test's kart read as not driven): the keys a
   script takes are counted as the viewer counts them, each take one up and each release one down, so the order matters,
   and LibreMetaverse ran every handler of that packet on the thread pool in any order (its own handler is registered
   async, which makes all of them so); a release then a take, as a script takes the keys again or two regions hand a
@@ -1246,8 +1393,15 @@ over sloping ground are walked, and what's above that floor in the body's band i
 a table); what the floor can't reach is blocked. With nothing known under the avatar (in the air, or on something the
 model hasn't got) the floor goes on level at its feet. A goal that can't be got to
 moves to the nearest spot that can, within 6 m, unless it's in a space of its own the floor never meets (a closed
-room: no way). People aren't obstacles. A mesh or sculpt still downloading isn't known yet, so a walk that gets stuck
-marks the spot for two minutes and plans again (twice), then counts as no way.
+room: no way). A mesh or sculpt still downloading isn't known yet, so a walk that gets stuck
+marks the spot for two minutes and plans again (twice), then counts as no way. People, where the caller gives them
+(`//go` and Walk to: People on the way, above; follow and the assistant's walks give none), are discs of 0.45 m on the
+floor they stand on, kept off like walls but never walls: stepping in among the cells within 0.3 m of one costs the
+search 38 cells, once, instead of their being closed (so a way round is taken up to 10 to 12 m longer, no further),
+and what can be reached at all is reckoned without them. So a way that has to cross someone
+comes back cut 1.5 m short of them with who (`Plan.InWay`), not as no way; the cells around the start are free only
+where they take her no nearer anyone than she is; and when people are all that keeps the way from being straight, the
+plan names them (`Plan.Around`).
 
 **Recording a route** (`Walk/RouteRecorder.cs`, `MainForm.Routes.cs`; the other half of M3's routes, `//route` playing
 them): the blind tester and her partner write routes as `//go xyz` lines in notecards and on her blog, written once by
@@ -1422,7 +1576,7 @@ from guided testing of Radegast, and no list changes while you're in it):
   unnamed ("described as Play"). Names come from selecting every part briefly, as the edit tool's linked parts are (on
   the local grid neither the root's selection nor a child's family properties brought a child's name). Enter touches
   that part (the part itself, never the root: the renderer's ray counts that part alone first); the Applications key:
-  Touch, Sit, Where, Describe, Details (Alt+Enter), Contents, Faces. F5 reads them again.
+  Touch, Sit, Point at (Control+P; Pointing at something yourself, below), Where, Describe, Details (Alt+Enter), Contents, Faces. F5 reads them again.
 - **Faces of X** (`faces`): the part's faces as the renderer out of sight drew them (`RegionScene.FaceList`: each
   face's mean normal, flatness, whether it faces inward), by direction from where you are, the side facing you first:
   "The side facing you, face 2", "The top, face 0", "The left side" and "The right side" as you face it, "The far
@@ -1490,6 +1644,48 @@ nearby picks out in their own viewer is how they help without logging in as her.
 - Checked on the local grid with the visitor selecting as the official viewer does (its `point` and `beam`); only Second Life
   shows the official viewer's and Firestorm's own selections arriving, and how far away they still reach her.
 
+### Pointing at something yourself
+
+`MainForm.PointAt.cs`, Core's `Agents/Pointing.cs` (Claude Opus 5.5, 2026-11-09; Radegast's Point At; the user's call,
+2026-11-09: in Access, on her own press, and not in the VR client). The other half of What a friend points at: she picks out a
+thing, and her avatar's arm points at it in everyone's viewer, with a beam from her hand, so a sighted friend nearby can say
+"yes, that's the tip jar" without logging in as her.
+- **Where.** Point at on Objects' menu (no letter: every letter of its words is taken there) and on Parts' (P), and Control+P in either
+  list, on the thing or the very part; on the one she's pointing at, the item is Stop pointing and Control+P stops. `//point NAME`:
+  the nearest thing with that name within 30 m, else a named part within 10 (as `//details`), and on the one she's pointing at,
+  another minute; `//point off`; `//point` says what she's pointing at. Only things out in the world: not what's worn, hers or
+  anyone's (the official viewer never points at attachments, and What a friend points at ignores them), and not people
+  (Radegast's people list has Point At; the official viewer never points at avatars).
+- **Said.** "Pointing at Tip Jar for a minute: people nearby see your arm and a beam on it.", a part as "Latch, part 3 of
+  Treasure Chest" or "part 2 of Treasure Chest". Standing, with it over about 53 degrees off her facing (the official viewer's
+  own threshold for turning its avatar toward what it selects, `lltoolselect.cpp`), she's turned to face it first, said so:
+  "Turned to face Tip Jar, pointing at it for a minute: ...". The pointing arm, the left, reaches only ahead and to the left
+  (`LLEditingMotion` folds a target behind it round to the front), so unturned a friend would see it point elsewhere; seated,
+  the seat has the say. Its end, by itself, is said in turn as what arrives is (F6 mutes it, the line kept in nearby chat's
+  history): "Stopped pointing at Tip Jar after a minute.", "...: you moved away." (3 m from where she stood, a teleport too),
+  "...: it isn't here any more."; Stop pointing says "Stopped pointing at Tip Jar." A minute, not a setting: Radegast's guide
+  calls a point left on rude, and pointing again is one key.
+- **What's sent.** What the official viewer sends while its person has a thing selected: a PointAt and a LookAt of type select
+  at the very prim (`LLSelectMgr::updatePointAt`), so it reads in every viewer, Radegast's Master Controls and What a friend
+  points at included, as a sighted person's selection; the two in one packet, as the official viewer packs a frame's effects
+  (`LLHUDManager::sendEffects`), and again every 5 s for anyone who arrived since or missed them. And the edit beam the official
+  viewer sends about once a second while building (white, its default effect colour), re-sent each second under one id so
+  viewers keep it as one beam: that's what makes it stand out. Ending, the PointAt and LookAt are cleared and the beam's life
+  ended, in one packet, as when a selection ends. A region may hold back LookAts and beams sent alone from those looking from
+  far off: OpenSim sends a packet of only those to an avatar only if its camera is within 10 m of the sender
+  (`Scene.ShouldSendDiscardableEffect`), never holding back one with a PointAt in it; whether Second Life has a rule like it
+  isn't known, so a friend whose camera is far away may see the arm without the beam. Radegast's Point At turns the avatar to
+  the thing, sends the PointAt once and three beams of random colours and a sphere each second, and lasts until Unpoint.
+- **Only her own press starts it**: a key on the keyboard or a click, or a key her screen reader passed on for one
+  (`RealInput.Person` at the press, `RealInput.Acting` for `//point`); a program's keys, a UI Automation invoke, or a line a
+  program typed and sent is refused with the usual words, and with answers without a key set to Windows Hello, Hello asks
+  ("Sojourn Access: point at Tip Jar"). Stopping takes any input. No op of the agent API reaches it, so the assistant can't
+  point her arm (the VR client's call against sending these, `docs/viewer-gaps.md`, was about the arm moving for what the
+  assistant did).
+- Checked on the local grid with the visitor receiving it (its `effects`, its camera by it: `camera on`); only Second Life shows
+  how the arm and the beam look in the official viewer and Firestorm, whether a friend picks the thing out by them, and how far
+  off they reach.
+
 ### One person's things
 
 `MainForm.TheirThings.cs` (Claude Opus 5.5, 2026-11-08; Radegast's Attachments and Animations on a person).
@@ -1546,7 +1742,9 @@ wears no tag. The blind tester looked for it (2026-11-08); until then No group t
   they're online, hers ending "you". Enter or the Applications key on someone: what the group lets her do to them, Roles...,
   Eject from Builders, Ban from Builders, then their own actions (`PersonActions`, the window closing first as a profile's does;
   `Mnemonics` keeps the letters apart, so the group's keep theirs and the person's move). On herself only Roles... and Your
-  profile. F5 reads the list again, Escape closes, F1 says the keys. Every change below waits for her confirmation in Notices and
+  profile. F5 reads the list again, Escape closes, F1 says the keys. Save the list... (Alt+S; Radegast's Save member list, 2026-11-09)
+  writes the members as a CSV file by Windows' own Save window ("Builders members 2026-11-09.csv": name, title, whether they own
+  it, when last on), said where it went. Every change below waits for her confirmation in Notices and
   the focus comes back to the window after (`ConfirmedFromAsync`).
   - **Roles...**: every role of the group, theirs ending "has it", Everyone "everyone has it"; Enter on one gives it or takes it
     away ("Give Kestrel the role "Greeters" in the group "Builders""; for Owners the confirmation adds that nobody but that owner
@@ -1593,8 +1791,37 @@ wears no tag. The blind tester looked for it (2026-11-08); until then No group t
   and Cancel. On Second Life a group costs L$100, so Create waits for her confirmation, which says so with her balance
   (`TesselGroups create`, a spend for the gate already); the new group is said and in My groups.
 - **Receive its notices** and **List it in your profile**: checked items, each said back (`TesselGroups membership`).
-- Not here: a role's own settings (making one, its powers, its title), the group's settings (charter, who may join, fee, search),
-  saving the member list (`docs/access-gaps.md`, item 5).
+- **Settings and roles...** (`MainForm.GroupSettings.cs`, `GroupRows.cs`; Claude Opus 5.5, 2026-11-09): the official viewer's
+  General tab's group settings and its Roles tab in a window of their own ("Settings and roles of Builders"), laid out as About
+  Land is: the settings list (the focus starts there), then Tab, a list of tabs: General, then each role, Everyone and Owners
+  first. Enter changes a row (a switch turns, a choice opens its list, anything else asks for it typed), Right and Left step it,
+  F5 reads it all again, Control+Page Down and Page Up go to the next tab and the one before from anywhere in the window, F1 says
+  the keys, Escape closes. Every change is sent at her press, as the viewer's boxes are, and said once the grid shows it ("Show in
+  search: off."; a role's change is read back from the grid for up to 4 s, else "Asked; Builders' roles don't show the change
+  yet."). What her roles there don't allow is said before anything's asked, by the viewer's rules for each row.
+  - **General**: Charter (a box of several lines: Enter a new line, Control+Enter saves; 511 characters), Anyone can join, Cost to
+    join (L$, typed or stepped by 10), Show in search, Maturity (general or moderate), then a line naming the roles. Who may join
+    (Anyone can join, Cost to join) waits for her confirmation, as About Land's who may enter does; the rest doesn't. The charter,
+    search and maturity take the viewer's identity power, who may join its options power (`TesselGroups update` checked the
+    wrong one for search and maturity until now).
+  - **A role**: Name (not Everyone's or Owners'; 20 bytes), Title (20 bytes), Description (not Everyone's; 295 characters),
+    Members shown outside the group (the viewer's Reveal members; not Owners'), Members (who has it), Delete this role (Enter,
+    through her confirmation; not Everyone or Owners), then its abilities: a line counting them ("Abilities: 3 of 48 on; Page
+    Down goes set by set"), and under the viewer's sets (Membership, Roles, Group identity, Parcel management ... Experiences), a
+    heading each ("Membership: 1 of 4 on") and a switch each ability, in plain words (Core's `GroupAbilities`, from the viewer's
+    `role_actions.xml`: "Invite people to the group", "Eject members with no role but Everyone", "Give roles abilities and take them
+    away"). Page Down and Page Up go heading to heading. Owners has one line instead: every ability, always. Post links in group
+    chat is listed only where the region says it has it, as the viewer does.
+  - **As the viewer has it**: Give members any role and Give roles abilities ask first, with the viewer's warning that members
+    could raise themselves to nearly an owner's powers; Manage the ban list brings Eject members and Take members off roles with it
+    (said), and those two can't be turned off while it's on (said; turning it off leaves them, said too).
+  - **New role** (Alt+N, the button after the tabs): its name asked, made with no abilities and its title its name, its tab shown
+    and the focus in its list ("Made the role Ushers ...").
+  - Core: `TesselGroups roles` gives `power_bits`, every bit as a number, and `updateRole` keeps them when it isn't given powers
+    (a rename that sent back only the named powers dropped the environment, Ignore the landing point and Post links, which
+    LibreMetaverse has no names for); whether members are shown takes the role-properties power, not the abilities one, as the
+    viewer has it. The confirmations name the role and list the abilities given and taken away in these words.
+- Not here: the insignia (a picture), the viewer's Copy role.
 
 ### Scripts
 
@@ -1642,6 +1869,45 @@ files, Mono, Running and Reset 2026-11-08).
   lines from what she owns into notices, read out and in nearby chat's history: "Script error in Door: Math error". Other people's
   never (the grid sends them to everyone in range, and no viewer shows them). The same words from the same object at most once in half
   a minute, for a script failing in a loop. Muted by F6 as notices are; its sound is the notices' (off by default).
+
+### Auto-sit
+
+Radegast's AutoSit, with what Radegast issue #156 asks of it (a seat in each of several places, and a key to turn it on and
+off); `MainForm.AutoSit.cs` (Claude Opus 5.5, 2026-11-09). Her seat for a region (a chair at home, a stool at the club) is
+sat on again when she arrives there:
+- **When**: logging in, or the session logging in again by itself after a drop (Back in Second Life); a teleport into the
+  seat's region from another; a teleport home (Control+Shift+H, or one the grid marks as home). Not walking or driving in
+  across a border, nor a teleport within the region, where she meant to go where it took her (one region from the next is
+  told by where the teleport set out from, its first word from the grid, against where it ends).
+- **Once each arrival**: it waits up to a minute and a half for the seat to appear (a big region's objects come slowly),
+  asking every two seconds, and gives up if she moves 4 metres off or sits on something first. Each outcome is said, in turn
+  like what arrives: "Auto-sit: sitting on Comfy Chair. Control+Shift+S turns auto-sit off." (the key once a session);
+  "Auto-sit: you've moved off, so you're not sat on Comfy Chair."; "Auto-sit: Comfy Chair hasn't appeared here in a minute
+  and a half, so you're not sat on it. //autosit now tries again."; the region's refusal in her words. Radegast sits her again
+  every ten seconds while it's on, so there standing up means turning it off first; here she stands up when she likes.
+- **Setting a seat**: Objects' Applications key on a thing, Auto-sit on it (on her seat, Stop auto-sitting on it); sitting on
+  it, `//autosit here` or World > Auto-sit > Sit back on what you're sitting on; `//autosit NAME`, the nearest thing with that
+  name. One seat a region: a new one takes the old one's place, said ("Auto-sit on Stool, in place of Comfy Chair: when you
+  log in or teleport into Bay City, you're sat on it."). The seat is the prim she sits on (a part's own name unless it's
+  only "Object", then its object's); one taken in and put out again is found by its name within 3 metres of where it was.
+- **On and off**: off until she sets a first seat, which turns it on and says so; after that the switch stays as she left
+  it: Control+Shift+S, World > Auto-sit > On (a check), Alt+0's My avatar (Auto-sit, a switch), `//autosit on` and `off`.
+  Turning it on doesn't sit her (`//autosit now` does, as Radegast's Sit button); off ends a wait for a seat.
+- **The seats**: Alt+0's My avatar has Auto-sit seats ("Comfy Chair in Bay City; Stool in Jazz Club"), Enter on it the same
+  menu as World > Auto-sit, each seat to forget; `//autosit` says how it stands; `//autosit forget [NAME | here | all]`.
+- **Kept per account**, in its state dir (`autosit.json`), since a seat is an object on one grid; on the agent API as
+  `access_autosit` and `access_autosit_seats` ([{id, name, region, pos}]).
+- **Run by itself as hers**: the sit goes through `PersonOps.SetUpAsync`, the op itself with no key of hers behind it just
+  then (so incognito's limits on callers, which want things by handle, don't refuse it), allowed only for ops that never
+  wait for a confirmation (`LLAgent requestSit`, the only one). RLV's sit restrictions still hold: they're in the op.
+- **Radegast's other two automations aren't built** (judged 2026-11-09; a question for her in `docs/access.md`). PseudoHome
+  teleports the account back to a saved spot every five seconds whenever it's further off than a tolerance (256 metres by
+  default, so in practice whenever it's in another region): a way to keep an unattended account in place, which here would
+  fight her own walks and teleports and is the recurring automation Second Life's rules for viewers watch for
+  (`docs/tpv-policy.md` > Bots); its useful part, starting somewhere of her own, is the login's Start at a landmark or place.
+  LSL Helper lets objects owned by listed keys drive the account by IM: invite people to her groups, send IMs, give her
+  inventory away and say things, unasked; giving and inviting into a role wait for her own press here, for any caller, and an
+  account scripts drive is a scripted agent.
 
 ### Placing by words
 
@@ -1763,7 +2029,8 @@ words are the local grid's until she's tried them.
   to pick from, Objects' menu Link to what I'm editing on one of hers while a build is open, and a name several share taking
   the nearest and saying so, `unlink`; `edit NAME` (a part of this object by that very name first, then an object, then a
   part with it in its name), `part 2`, `part NAME`, `root`, `next`, `previous`, `parts`, `all parts`, `edit linked on` and
-  `off` (A linked object, below); `lock`, `unlock`; `copy from NAME` (Copying settings, below);
+  `off` (A linked object, below); `lock`, `unlock`; `copy from NAME` (Copying settings, below); `export` (`export as dae`, `as xml`)
+  and `import` (Export and import, below);
   `size`, `position`, `rotation` alone say them;
   in Content `add NAME` (from her inventory), `remove NAME`, `copy NAME`; `undo [N]`, `redo`; `help`; `done`. `help` (and
   Build > Build commands) opens the commands in a window to arrow through, a command a line, as F1's keys (said whole as
@@ -1872,6 +2139,42 @@ words are the local grid's until she's tried them.
   `link` have been tried (2026-11-06): scale on all parts, locked, copying, flip and repeats per metre are the local grid's, and
   every word is the blind tester's and her partner's to judge.
 
+### Export and import
+
+Radegast's Export (XML, and DAE) and Import object, and Firestorm's Backup and Import Linkset; `MainForm.Exports.cs` over
+Core's `Backups` and Session's `Building/Collada.cs` (Claude Opus 5.5, 2026-11-09).
+- **Export** saves one of her objects, always the whole of it, from Build > Export what you're editing to a file..., Objects'
+  Applications key on hers (Export to a file...), the build editor's `export`, or `//export NAME` (the nearest of hers with that
+  name; with none, what's edited). Windows' own Save window picks where (Documents\Sojourn\Backups first, then wherever she saved
+  last) and the kind; `as dae`, `as xml` or `as oxp` in the words choose the kind it starts on:
+  - a backup (.oxp): Firestorm's format 2, which Firestorm's Import Linkset and this app's import rebuild (`docs/building.md` >
+    Backups);
+  - Radegast's XML (.xml): LibreMetaverse's prim list as LLSD XML, as Radegast's PrimExporter writes it, its textures beside it
+    as .jp2 files in a folder named as the file, which Radegast's Import object reads;
+  - a Collada model (.dae): each prim's faces built as the viewer builds them (VolumeBuilder at its highest detail; a sculpt
+    from its own map), placed and turned as in the world with the root at the middle, Z up, metres; faces of one colour and
+    texture share a material, so a prim has a few at most and the model can go up again as a mesh by Control+U (Second Life
+    takes eight a part), whose reader takes it back; her textures as PNGs beside it. Meshes are left out, said.
+  Said as it starts and when done: "Exported Igloo, 2 parts, 1,412 triangles, as a Collada model: Igloo.dae in Backups.", with
+  what was left out ("Left out: 1 texture made by others (plywood instead); the objects' contents (not kept in Sojourn's
+  backups yet).").
+- **Only what she made** (`docs/tpv-policy.md`, 2.b: an export the official viewer lacks takes only content whose creator is
+  the person, every part of it): the rules are Core's Backups', Firestorm's (on Second Life a part only if she owns it and made
+  it, never a mesh, a texture only if her inventory holds one she made; on OpenSim the grid's ExportSupported). Anything else is
+  refused before the Save window, saying which part and why: "Igloo can't be exported: Door was made by someone else. Second
+  Life's rules for viewers let you export only what you made yourself, every part and texture of it." Textures others made go
+  as plywood, said. Radegast checks only the root's creator and takes any full-permission texture.
+- **Import** rebuilds a backup (.oxp, Firestorm's or ours) or Radegast's XML: Build > Import an object from a file... (the Open
+  window), the build editor's `import`, or `//import PATH`. 2 metres ahead, resting on what's there (as placing by words), the
+  backups' restore doing the rest (each prim made, shaped, textured and linked; never temporary, never for sale; one undo
+  step); textures this grid lacks are uploaded again, which on Second Life costs an upload each and is confirmed in Notices
+  first with the total (the restore's own confirmation). Said as it starts ("Importing Igloo.oxp: 2 parts.") and when done
+  ("Imported Igloo, 2 parts, 2 metres ahead, on Floor. Editing it (Control+B)."); it becomes what's edited. A Radegast
+  export's textures come from its folder of .jp2 files where they're there.
+- Only the local grid has run these (2026-11-09); Second Life's checks are `docs/building.md`'s (a backup refused for
+  something bought, a texture made by someone else becoming plywood, a restore uploading on the Beta grid).
+- In tests `SOJOURN_TEST_FILES` stands in for both windows (the export's file named as the object, in that folder).
+
 ### About Land
 
 M6's land settings (Claude Opus 5.5, 2026-11-03; `MainForm.Land.cs`, `LandRows.cs`, over SojournLand's ops,
@@ -1904,8 +2207,39 @@ them. Laid out as the build editor is, with the official viewer's About Land tab
   "Banned: Access Visitor, until Tue 3 Nov 23:27"), Region (its name and type, the estate and its owner, maturity,
   people at most, now: people, active scripts and time dilation, whether she manages it, water height, and the
   estate's switches: terraforming, flying and flying over blocked, damage, pushing, resale, joining and dividing,
-  parcels hidden from search). The lists and owners are read only for her own land or her group's (the region tells no
-  one else; the rows say so).
+  parcels hidden from search), Estate (The estate, below). The lists and owners are read only for her own land or her group's
+  (the region tells no one else; the rows say so).
+- **The estate** (`MainForm.Estate.cs`, `EstateRows.cs`; Claude Opus 5.5, 2026-11-09): the official viewer's World >
+  Region/Estate for its owner and managers (its Estate and Access tabs, the Region tab's tools), and Radegast's Eject from
+  estate and Restart. The Estate tab, for anyone, says whose estate it is and whether she manages it ("You manage it: no: only
+  its owner and managers have the estate's lists and tools"), the region's word at its handshake (`EstateOps.CanManage`, so
+  a manager made meanwhile shows after a teleport). For its owner and managers, the list then has:
+  - its tools, Enter doing each, every one through her confirmation: Send someone home (a person picked, people in the region
+    first), Send everyone home (all but her in the region), Eject someone from the estate (sent home), Restart the region (in 2
+    minutes, the viewer's; everyone there is warned and counted down by the region; while hers counts down the row says how
+    long is left and Enter cancels it, not asked), Message to the region and Message to the estate (typed, its exact words in
+    the confirmation; at most 254 bytes, said before anything's asked, as one estate message's parameter carries no more).
+  - the estate's switches, read only here (open to anyone or its lists, payment info, under 18, scripted agents, voice,
+    direct teleport): changing them is `EstateChangeInfo`, which Core doesn't send yet (`docs/land.md` > Not done).
+  - its four lists, each a heading saying how many and what Enter does ("Banned residents: 1 person. Enter bans someone"),
+    then a row each ("Banned: Kestrel, since 2026-11-03 10:20, by Estate Keeper"); Enter on a heading picks someone (a group of
+    hers for the allowed groups) and adds them, Delete on a row takes them off, both through her confirmation. Only the
+    estate's owner changes its managers, said before anything's asked; nor can its owner or a manager be banned.
+  - On a person's menu, where she owns or manages the estate, Eject from estate (someone in the region) and Ban from estate
+    (also sent home if they're here: `estateAdd`'s `kick`, kicked once the ban shows, as a region needn't send a banned avatar
+    away itself). Not there elsewhere, as Invite to a group isn't for someone in no group; typed, the estate's commands say
+    only its owner and managers may.
+  - Typed (About Land's box, or `//land ...` anywhere): `estate` reads the tab; `estate ban NAME`, `estate unban NAME`,
+    `estate allow NAME`, `estate unallow NAME`, `estate allow group NAME`, `estate unallow group NAME`, `estate manager NAME`,
+    `estate remove manager NAME` (taking off looks in that list's names first); `kick NAME` (or `eject from estate NAME`);
+    `send home NAME`, `send everyone home`; `restart`, `restart in 60 seconds` (30 seconds to 4 minutes), `cancel restart`;
+    `message WORDS` to the region, `estate message WORDS` to the estate; `estate help`.
+  - On the local grid OpenSim's kick logs the avatar out rather than sending it home (its own behaviour), and the region
+    keeps listing them until their connection times out, so the answer there is "Asked the estate to eject Kestrel; the
+    region still shows them here for now." On Second Life the estate's kick teleports them home, by Second Life's own account,
+    so they should leave the region's list at once; not seen here.
+    Whether Second Life sends a banned avatar away by itself isn't known here, hence the kick. A real restart, the estate's
+    switches' words on Second Life, and ban dates (Second Life's EstateAccess has them, OpenSim's not) are Second Life's to show.
 - **The settings list**: named "Options of Our Garden"; rows read "Anyone can fly: on". Enter changes one (a switch
   turns, a choice opens its list, anything else a box with the value as it is; Enter on an action does it, on Landing
   point puts it where she stands); Right and Left (Space too) step it; F5 reads it all again. On someone listed,
@@ -1935,8 +2269,8 @@ them. Laid out as the build editor is, with the official viewer's About Land tab
   description, fly, scripts, category, landing, music) change at her press, as the viewer's checkboxes do: they're
   hers to set and set back. Unfreezing and taking it off sale aren't asked, as in `docs/land.md`.
 - **Not here**: the parcel's picture (snapshot), media's other settings (type, size, loop, the media's description),
-  Experiences, the estate tab's lists and the estate tools for managers (kick, send home, messages, restart, top
-  scripts and colliders, the debug switches: SojournLand has them, the assistant reaches them), claiming public land,
+  Experiences, the estate's switches changed (read only on the Estate tab), the region's top scripts and colliders and the
+  debug switches (SojournLand has them, the assistant reaches them), claiming public land,
   and Second Life itself (only the local grid is checked, where land costs nothing and there's no covenant; there,
   who owns what comes without each owner's newest date). Her verdict on the words and on what asks first.
 
@@ -2305,10 +2639,12 @@ it).
   `MainForm.Favorites.cs` (favourites in the inventory), `MainForm.Backup.cs` (Back up to disk), `StartPlaces.cs` (the Favorites bar's landmarks as start places),
   `MainForm.Places.cs`, `MainForm.Search.cs`, `MainForm.People.cs` (friends, groups, profiles, pay), `MainForm.Groups.cs`,
   `MainForm.GroupPeople.cs` and `MainForm.GroupNotice.cs` (a group's menu, its members and chat, a new notice),
-  `MainForm.Describe.cs` (describing), `MainForm.Parts.cs` and `Linkset.cs` (parts and faces), `MainForm.Pointing.cs` (what a friend points at), `MainForm.TheirThings.cs` (one person's worn things and animations), `MainForm.Huds.cs` (HUD faces and buttons), `MainForm.Place.cs` and
+  `MainForm.GroupSettings.cs` and `GroupRows.cs` (a group's settings and roles), `MainForm.Estate.cs` and `EstateRows.cs`
+  (the estate's tools, About Land's Estate tab),
+  `MainForm.Describe.cs` (describing), `MainForm.Parts.cs` and `Linkset.cs` (parts and faces), `MainForm.Pointing.cs` (what a friend points at), `MainForm.PointAt.cs` (pointing at something yourself), `MainForm.TheirThings.cs` (one person's worn things and animations), `MainForm.Huds.cs` (HUD faces and buttons), `MainForm.Place.cs` and
   `PlaceWords.cs` (placing by words), `MainForm.Outfit.cs`, `MainForm.Incognito.cs`, `MainForm.Voice.cs`,
   `MainForm.Menu.cs` (the menu bar), `MainForm.Session.cs` (a session's log, the cache, another window), `MainForm.Builders.cs` and `BuildersLine.cs` (the builders' tab and its relay
-  calls), `MainForm.Upload.cs` (uploading and its window), `MainForm.Build.cs`, `BuildRows.cs` and
+  calls), `MainForm.Upload.cs` (uploading and its window), `MainForm.Exports.cs` (export and import), `MainForm.AutoSit.cs` (auto-sit), `MainForm.Build.cs`, `BuildRows.cs` and
   `BuildShapes.cs` (the build editor; its settings' words; faces and contacts without a picture), `MainForm.Gestures.cs`, `MainForm.FriendsOnline.cs` (friends online at login as
   one line), `MainForm.Devices.cs` (sound devices), `MainForm.CutLines.cs` (lines cut by typing), `MainForm.Names.cs` (People's
   names: Core's `World/PlainName.cs` does the wording), `EditorForm.cs` (notecards and
@@ -2451,12 +2787,21 @@ it).
 - **Numbers into ops are doubles** (or ints): `Json.AsDouble` reads a `float` JsonValue as nothing, so a position
   built from `Vector3` floats became 0, 0, 0 (a rez landed in the region's corner, and `//go tp` went there too).
   `MainForm.Xyz` makes positions.
-- **Local teleports reported failed**: LibreMetaverse sometimes answers a teleport within the region as failed
-  ("Teleport started" or "Teleport finished") as it arrives; `AgentSession.TeleportAsync` counts it arrived when the
-  agent is at the place asked within 3 s (a Core change; the VR client had the same false failures). A landmark
-  teleport within the region may never report finishing either, so `Commands.TeleportLandmarkAsync` also counts being
-  where the landmark points. The teleport history (`Places.Arrived`, Core) keeps where a teleport within the region
-  landed, even when it came before the parcel's name.
+- **Local teleports reported failed**: LibreMetaverse answered some teleports within the region as failed
+  ("Teleport started" or "Teleport finished") as they arrived, and raised no Finished for them, or a Start after it.
+  The cause (found 2026-11-09): the region answers with TeleportStart and TeleportLocal together (Second Life too),
+  and LibreMetaverse runs its handler for each on the thread pool, where the two interleave or swap (13 of 40 reported
+  failed on the local grid, 35 Finished for the 40; with the cure in, the Start still reached the handler after the
+  Local 17 times of 40). Whatever goes by
+  those events was wrong until the next teleport, in the VR client as well: the history, LLTeleport and so
+  "Arrived" for a teleport she didn't ask for, controls a script had taken, "until teleport" derenders, auto-sit's
+  note of where a teleport set out, and after a late Start world sounds off, voice hidden and music ducked.
+  `TeleportWatch.WireInTurn` (Core) now runs that handler one message at a time and leaves out a Start that comes
+  after its end (40 of 40 arrived and Finished once). What was built around it before stays as a net should a
+  LibreMetaverse upgrade drop the handler's name: `AgentSession.TeleportAsync` counts a teleport arrived when the
+  agent is at the place asked within 3 s, `Commands.TeleportLandmarkAsync` counts being where the landmark points, and
+  both tell the history themselves (`Places.TeleportArrived`; a place told twice is kept once). The teleport history
+  (`Places.Arrived`, Core) keeps where a teleport within the region landed, even when it came before the parcel's name.
 - **The renderer out of sight** (`docs/access.md` > M0b; `Sojourn.Session/Offscreen/`): started after the session
   (`SessionHost.StartOffscreen`; `--no-render` leaves it and the session's render hooks out). It draws from the
   avatar's eyes on a thread of its own, two small frames a second turning around the avatar, more while the assistant
@@ -2660,13 +3005,18 @@ it).
     ("access", in the sidecar's hello, so its prompt and context line say Sojourn Access and the describe tool is
     offered; null in the VR client, whose prompt and tools are as before).
   - For what a friend points at and one person's things (2026-11-08), which the VR client gets too and doesn't use: Core's
-    `Agents/Pointing.cs` (others' selection effects, each person's last; `AgentSession.Pointing`), `SojournPeople
+    `Agents/Pointing.cs` (others' selection effects, each person's last; the person's own Point at, sent; `AgentSession.Pointing`), `SojournPeople
     pointedAt`, `TesselObjects nearby`'s `worn_by`.
   - For HUDs out of sight (2026-11-01): Render's `FrameRenderer.RenderHud` (the HUD pass with no world view;
     `PlanHud` can build without drawing); SojournHud moved from the VR client into Session (`Hud/HudApi.cs` over an
     `IHudScreen`, the client's `HudView` one of them) with `faces`, `buttons`, `save_buttons`, `forget_buttons` and
     presses by face or button, which the VR client's assistant gets too; the `hud` tool's `save_buttons`, and the
     sidecar's reading (`describer.read_buttons`, brain.py's describe key with `of=buttons`).
+  - For export and import (2026-11-09): Core's `Backups.ExportAsync` (a backup in memory, the prims as copies with others'
+    textures plywood, her textures' J2C, what was left out; `backup` writes the same), `Exported.RadegastXml`, a restore
+    reading Radegast's XML export (`Backups.Read`); Session's `Building/Collada.cs` (an export as a Collada model). None
+    takes a path from the agent API: Access writes where the person chose.
+  - For auto-sit (2026-11-09): nothing outside Access (`PersonOps.SetUpAsync` is Access's own).
 
 ## Testing
 

@@ -31,6 +31,7 @@ public sealed partial class MainForm
             var where = s.Client?.Network.CurrentSim?.Name;
             Announce(where is { Length: > 0 } ? $"Back in Second Life, in {where}." : "Back in Second Life.");
             OutfitMoving(login: true);
+            AutoSitArrived("login", 0);
             return;
         }
         if (s.Status == AgentStatus.Stopping) return;   // logging out, by the person's own hand or on quitting

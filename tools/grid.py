@@ -13,6 +13,7 @@ The grid is a copy of Multitude's phase 2 render grid (its Atelier scene), moved
 the .NET 8 runtime in %LOCALAPPDATA%\\Microsoft\\dotnet.
 """
 import os
+import re
 import subprocess
 import sys
 import time
@@ -62,15 +63,43 @@ def ready():
         return False
 
 
-def console(command, wait=2.0, answers=()):
+def console(command, wait=None, answers=()):
+    """A command typed at the grid's console, then each of answers; every line it printed, the echoes and prompts among
+    them. Each is done when the console asks for input again (its prompt, or a question, which the next answer is
+    for), looked for after a tenth of a second and then at longer intervals: most are done within milliseconds.
+    wait=SECONDS sleeps that long after each and reads once instead, for a command whose output comes after its
+    prompt, or that never prompts again (quit)."""
     sid = ET.fromstring(post("/StartSession/", USER="admin", PASS="localdev")).findtext("SessionID")
     try:
-        post(f"/ReadResponses/{sid}/", ID=sid)
+        post(f"/ReadResponses/{sid}/", ID=sid)   # (what the console said before us)
         lines = []
         for c in (command, *answers):
             post("/SessionCommand/", ID=sid, COMMAND=c)
-            time.sleep(wait)
-            lines += [(l.text or "") for l in ET.fromstring(post(f"/ReadResponses/{sid}/", ID=sid)).iter("Line")]
+            if wait is not None:
+                time.sleep(wait)
+                lines += [(l.text or "") for l in ET.fromstring(post(f"/ReadResponses/{sid}/", ID=sid)).iter("Line")]
+                continue
+            # Never read at once: the grid holds a read that arrives before the output until there is some, and now and
+            # then this OpenSim never answers one it held (9 of 1,500 with the processor busy, each a 30 s timeout here;
+            # 2026-11-09). After the nap a quick command's output is all there and the read comes straight back (none
+            # of 1,000 stalled, every one done in its first read).
+            # A command slower than the naps does get a read held, so one that times out is asked again; and no prompt
+            # after two minutes is an error, not an answer: a caller reading "no such line" out of half the output
+            # would take a logged-in account for a free one.
+            nap, end = 0.1, time.time() + 120
+            while True:
+                if time.time() >= end:
+                    raise TimeoutError(f"the grid's console didn't ask for input again within 120 s of {c!r} "
+                                       "(wait=SECONDS for a command that doesn't)")
+                time.sleep(nap)
+                try:
+                    got = list(ET.fromstring(post(f"/ReadResponses/{sid}/", ID=sid)).iter("Line"))
+                except TimeoutError:
+                    continue
+                lines += [(l.text or "") for l in got]
+                if any(l.get("Prompt") == "true" for l in got):
+                    break
+                nap = min(nap * 2, 1.0)
         return lines
     finally:
         post("/CloseSession/", ID=sid)
@@ -86,9 +115,120 @@ def start(timeout=180):
     end = time.time() + timeout
     while time.time() < end:
         if ready():
+            if why := warm():
+                print(f"the grid is up, but its warm-up login went wrong: {why}", file=sys.stderr)
             return True
         time.sleep(2)
     return False
+
+
+def login(first, last, pw="sojourn-local", start="last", timeout=30):
+    """The login a viewer makes (login_to_simulator) with no viewer behind it: the grid's answer, 'login' in it 'true'
+    when the account was let in. Nothing connects to the region, so the avatar never appears there, but the grid has
+    the account as online (its presence, GridUser's Online, a circuit the region waits on) until logout(answer)."""
+    import hashlib
+    import xmlrpc.client
+    ask = {"first": first, "last": last, "passwd": "$1$" + hashlib.md5(pw.encode()).hexdigest(), "start": start,
+           "channel": "grid.py", "version": "1.0", "platform": "Win", "mac": "0" * 32, "id0": "0" * 32,
+           "agree_to_tos": "true", "read_critical": "true", "options": []}
+    req = urllib.request.Request(URL + "/", data=xmlrpc.client.dumps((ask,), "login_to_simulator").encode(),
+                                 headers={"Content-Type": "text/xml"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return xmlrpc.client.loads(r.read())[0][0]
+
+
+def logout(answer, timeout=20):
+    """Logs a login() out as a viewer would; None, or what went unanswered. The grid only logs out an avatar that
+    arrived (its presence and GridUser's Online are cleared when a root agent's connection closes), so this is a
+    viewer's first and last packets to the region: UseCircuitCode, CompleteAgentMovement, and once the region says
+    the arrival is complete, LogoutRequest, until the console's users no longer list the avatar. It is in the region
+    for a moment between the last two."""
+    import socket
+    import struct
+    agent, session = uuid.UUID(answer["agent_id"]).bytes, uuid.UUID(answer["session_id"]).bytes
+    code = struct.pack("<I", int(answer["circuit_code"]))
+    sim = (answer["sim_ip"], int(answer["sim_port"]))
+    USE_CIRCUIT_CODE, COMPLETE_AGENT_MOVEMENT, AGENT_MOVEMENT_COMPLETE, LOGOUT_REQUEST = 3, 249, 250, 252
+    sent = 0
+
+    def send(number, body):
+        nonlocal sent
+        sent += 1   # (reliable, sequence number, no extra header; a low-frequency message's number)
+        so.sendto(struct.pack(">BIB", 0x40, sent, 0) + struct.pack(">HH", 0xFFFF, number) + body, sim)
+
+    def got(number, seconds, again):
+        """Whether the region sent that message within seconds, our own sent again each second it hasn't (a number
+        of None: anything at all). What it sends is never acknowledged: it resends until the logout, no harm."""
+        end = time.time() + seconds
+        while time.time() < end:
+            try:
+                data = so.recv(4096)
+            except socket.timeout:
+                again()
+                continue
+            except OSError:   # (Windows reports a closed port as a reset)
+                return False
+            head = data[6 + data[5]:][:8]
+            if data[0] & 0x80:   # zero-coded: a zero byte is followed by how many zeros it stands for
+                plain, i = b"", 0
+                while i < len(head) - 1 and len(plain) < 4:
+                    plain, i = (plain + bytes(head[i + 1]), i + 2) if head[i] == 0 else (plain + head[i:i + 1], i + 1)
+                head = plain
+            if number is None or head[:4] == struct.pack(">HH", 0xFFFF, number):
+                return True
+        return False
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as so:
+        so.settimeout(1)
+        use = lambda: send(USE_CIRCUIT_CODE, code + session + agent)
+        use()
+        if not got(None, timeout, use):
+            return "the region didn't answer the circuit"
+        send(COMPLETE_AGENT_MOVEMENT, agent + session + code)
+        if not got(AGENT_MOVEMENT_COMPLETE, timeout, lambda: None):   # (not sent twice: the region would arrive it twice)
+            return "the region didn't complete the arrival"
+        # (its LogoutReply isn't waited for: the region closes the connection as it queues it, and none came out)
+        name = re.compile(r"\s*%s\s+%s\s" % tuple(re.escape(answer[k].strip('"')) for k in ("first_name", "last_name")))
+        end = time.time() + timeout
+        while True:
+            send(LOGOUT_REQUEST, agent + session)
+            time.sleep(0.05)
+            if not any(name.match(l) for l in console("show users")):
+                return None
+            if time.time() >= end:
+                return "the region still has the avatar after its logout request"
+
+
+WARMUP = ("Grid", "Warmup")
+
+
+def warm(timeout=60):
+    """One whole login by an account of its own, logged out again, before start() says the grid is up; None, or why
+    it failed. The login service's tables each read their column names at first use, without a lock: when a grid's
+    first logins arrive together, the second reads rows through a list the first is still filling, and fails with "The
+    given key 'Created' (user accounts) or 'Name' (avatars) was not present in the dictionary" (every time in three
+    weeks of OpenSim.log that the first two logins came within 50 ms of each other, never otherwise). A console
+    command doesn't do it: the login service has its own instances of the services. After one login has gone all the
+    way through, any number can arrive at once. The logout leaves the grid as any account's visit does: nobody
+    online, nothing waiting in the region (a login left standing wasn't said or counted by Sojourn Access's people,
+    region, search and friends steps either, but the grid had the account online until it stopped)."""
+    import xmlrpc.client
+    from xml.parsers.expat import ExpatError
+    end = time.time() + timeout
+    while True:
+        try:
+            account(*WARMUP)
+            answer = login(*WARMUP)
+            if answer.get("login") == "true":
+                # (the warm-up is done either way: a logout that failed is said, the login not made again)
+                left = logout(answer)
+                return left and f"it logged in, but not out ({left}): {' '.join(WARMUP)} may still count as online"
+            why = answer.get("message") or str(answer)[:200]
+        except (OSError, ET.ParseError, ExpatError, xmlrpc.client.Error) as e:
+            why = str(e) or type(e).__name__
+        if time.time() >= end:
+            return f"{why}; the grid's first logins may fail if two arrive together"
+        time.sleep(2)
 
 
 def stop():
@@ -270,7 +410,7 @@ def scene(name):
 
 
 def account(first, last, pw="sojourn-local"):
-    shown = console(f"show account {first} {last}", wait=1)
+    shown = console(f"show account {first} {last}")
     if any(f"{first} {last}" in l for l in shown) and not any("No user named" in l for l in shown):
         return "exists"
     return "\n".join(console(f"create user {first} {last} {pw} none@localhost {uuid.uuid4()}", wait=2, answers=("",)))
@@ -285,7 +425,7 @@ if __name__ == "__main__":
     elif cmd == "status":
         print("up" if ready() else "down")
     elif cmd == "console":
-        print("\n".join(console(sys.argv[2], wait=float(sys.argv[3]) if len(sys.argv) > 3 else 2.0)))
+        print("\n".join(console(sys.argv[2], wait=float(sys.argv[3]) if len(sys.argv) > 3 else None)))
     elif cmd == "account":
         print(account(*sys.argv[2:]))
     elif cmd == "scene":

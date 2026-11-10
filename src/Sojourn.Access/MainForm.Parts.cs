@@ -66,6 +66,14 @@ public sealed partial class MainForm
             buyPart.Visible = of is { Mine: false, Sale: not null };
             copyPart.Visible = of is { MayCopy: true };
         };
+        PartItem("&Point at", PointPart);
+        var pointPart = _partMenu.Items[^1];
+        _partMenu.Opening += (_, _) =>
+        {
+            var p = _parts.FocusedItem?.Tag as Linkset.Part;
+            pointPart.Visible = p is { Hud: false };
+            pointPart.Text = p != null && PointingAt(p.Id) ? "Stop &pointing" : "&Point at";
+        };
         PartItem("W&here", p => Answer(p.Hud ? $"{PartName(p)} is {(OnHud(p.Root) ? "on your HUD" : WornByMe(p.Root) ? "part of something you're wearing" : "part of something someone's wearing")}." : $"{PartName(p)} is {_ops.Where(L(p.Pos), full: true)}."));
         PartItem("&Describe", p => _ = DescribeAsync(Of(p)));
         PartItem("Deta&ils", p => _ = ThingDetailsAsync(p.Id, PartName(p)));
@@ -75,7 +83,7 @@ public sealed partial class MainForm
         PartItem("Cop&y its settings to what I'm editing", p => _ = GuardedAsync(() => CopyToEditingAsync(p.Id), PartName(p)));
         var copySettingsPart = _partMenu.Items[^1];
         _partMenu.Opening += (_, _) => copySettingsPart.Visible = _parts.FocusedItem?.Tag is Linkset.Part { Hud: false } q && q.Id != _buildId && BuildPrim() != null;
-        KeysOn(_partMenu, ("&Touch", "Enter"), ("&Describe", "Control+D"), ("Deta&ils", "Alt+Enter"), ("&Faces", "Tab"), ("&Edit this part (build)", "Control+B"));
+        KeysOn(_partMenu, ("&Touch", "Enter"), ("&Point at", "Control+P"), ("&Describe", "Control+D"), ("Deta&ils", "Alt+Enter"), ("&Faces", "Tab"), ("&Edit this part (build)", "Control+B"));
         MenuOn(_parts, _partMenu);
         _parts.KeyDown += (_, e) => PartKey(e);
         _parts.SelectedIndexChanged += (_, _) => { if (_parts.FocusedItem?.Tag is Linkset.Part p && p.Id != _facesOf) _ = RefreshFacesAsync(p); };
@@ -138,6 +146,7 @@ public sealed partial class MainForm
         if (e.KeyCode == Keys.Enter && !e.Alt && _parts.FocusedItem?.Tag is Linkset.Part or HudButtonItem or ReadButtonsItem) { e.Handled = e.SuppressKeyPress = true; PartEnter(); }
         else if (e.KeyCode == Keys.F5 && _objects.FocusedItem?.Tag is PersonOps.Thing t) { e.Handled = true; _ = RefreshPartsAsync(t, said: true); }
         else if (e.KeyData == (Keys.Alt | Keys.Enter) && _parts.FocusedItem?.Tag is Linkset.Part d) { e.Handled = e.SuppressKeyPress = true; _ = ThingDetailsAsync(d.Id, PartName(d)); }
+        else if (e.KeyData == (Keys.Control | Keys.P) && _parts.FocusedItem?.Tag is Linkset.Part pt) { e.Handled = e.SuppressKeyPress = true; PointPart(pt); }
     }
 
     /// <summary>Enter (or Touch) on the parts list: a part touched, a HUD's read button pressed, or its buttons read.</summary>

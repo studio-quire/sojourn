@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using LibreMetaverse;
+using LibreMetaverse.Packets;
 using LibreMetaverse.StructuredData;
 using Microsoft.Extensions.Logging;
 using Sojourn.Core.Leap;
@@ -10,11 +11,14 @@ namespace Sojourn.Core.Agents;
 /// Moves and renames that wait for the grid's answer. LibreMetaverse's MoveFolder, MoveItem, UpdateFolderProperties and
 /// RequestUpdateItem change the local store first and then, on Second Life, send the change to the inventory service
 /// (AIS3) without waiting for it (`_ = AisClient.MoveCategoryAsync(...)`), so a refusal reached only its own logger
-/// while the person was told it had gone. Here the change goes to the service as LibreMetaverse would send it (a PATCH
-/// of parent_id or name), is awaited, and only a success changes the store; a refusal is an error the person hears.
-/// Without the service (OpenSim) the UDP messages go as before; no viewer gets an answer to those. In tests a
-/// stand-in for the service (SOJOURN_TEST_AIS, InventoryMeta.Service) answers instead, and the UDP message follows so
-/// OpenSim's inventory matches. Claude Opus 5.5, 2026-11-07.
+/// while the person was told it had gone. Renames and an item's changes go to the service as the viewer sends them (a
+/// PATCH), are awaited, and only a success changes the store; a refusal is an error the person hears. Moves don't: the
+/// service refuses a PATCH of parent_id (HTTP 400, every delete the blind tester tried on 0.1.0.996), and the official
+/// viewer moves by its UDP messages on every grid, so moves go that way and, where there's a service, are said done once
+/// it shows the thing in its new folder. Without the service (OpenSim) the UDP messages go as before; no viewer gets an
+/// answer to those. In tests a stand-in for the service (SOJOURN_TEST_AIS, InventoryMeta.Service) answers instead,
+/// refusing a PATCH of parent_id as Second Life does, and the UDP message follows so OpenSim's inventory matches.
+/// Claude Opus 5.5, 2026-11-07; moves by the message, 2026-11-09.
 /// </summary>
 public sealed partial class InventoryOps
 {
@@ -56,24 +60,65 @@ public sealed partial class InventoryOps
         }
     }
 
-    /// <summary>A node into a folder: on a grid with the inventory service, once it has said yes (the store follows
-    /// then); without one, the viewer's UDP message, the store moved at once.</summary>
+    static readonly TimeSpan MoveShownWithin = TimeSpan.FromSeconds(15);
+
+    /// <summary>A node into a folder by the official viewer's UDP message (MoveInventoryItem or MoveInventoryFolder, as
+    /// LLViewerInventoryItem::updateParentOnServer sends it, stamped into the Trash as its delete does). On a grid with the
+    /// inventory service, done once the service shows it in that folder (the store follows then); still elsewhere after
+    /// 15 s, an error saying so, the store left as the service has it. Without one, the store moved at once.</summary>
     async Task MoveNodeAsync(InventoryBase n, UUID dest, CancellationToken ct)
     {
         var c = C;
         bool folder = n is InventoryFolder;
-        if (_s.InventoryMeta.Service(out var standIn) is { } cap)
+        bool trash = dest == _s.Inventory.FolderFor(FolderType.Trash);
+        SendMove(c, n.UUID, dest, folder, stamp: trash);
+        if (_s.InventoryMeta.Service(out _) is not null)
         {
-            await PatchAsync(cap, folder, n.UUID, new OSDMap { ["parent_id"] = OSD.FromUUID(dest) }, folder ? $"move of the folder {n.Name}" : $"move of {n.Name}", ct);
-            if (c.Inventory.Store is { } store && store.TryGetValue(n.UUID, out var live) && live != null)
+            var until = DateTime.UtcNow + MoveShownWithin;
+            UUID? shown = null;
+            for (int i = 0; ; i++)
             {
-                live.ParentUUID = dest;
-                store.UpdateNodeFor(live);
+                await Task.Delay(i == 0 ? 250 : i < 4 ? 500 : 1000, ct);
+                shown = await _s.InventoryMeta.ParentOnServiceAsync(n.UUID, folder, ct);
+                // (no parent_id in the answer tells nothing: the tests' stand-in holds no inventory)
+                if (shown is not { } p || p == dest || DateTime.UtcNow > until) break;
             }
-            if (!standIn) return;
+            if (shown is { } at && at != dest)
+            {
+                _s.Log.LogInformation("inventory: move of {Id} into {Dest} sent; the service still shows it in {At}", n.UUID, dest, at);
+                if (c.Inventory.Store is { } st && st.TryGetValue(n.UUID, out var was) && was != null && was.ParentUUID != at)
+                {
+                    was.ParentUUID = at;
+                    st.UpdateNodeFor(was);
+                }
+                throw new LeapError($"Second Life still had {n.Name} where it was {MoveShownWithin.TotalSeconds:0} seconds later");
+            }
         }
-        if (folder) c.Inventory.MoveFolder(n.UUID, dest); else c.Inventory.MoveItem(n.UUID, dest);
+        if (c.Inventory.Store is { } store && store.TryGetValue(n.UUID, out var live) && live != null)
+        {
+            live.ParentUUID = dest;
+            store.UpdateNodeFor(live);
+        }
     }
+
+    static void SendMove(GridClient c, UUID id, UUID dest, bool folder, bool stamp)
+    {
+        if (folder)
+            c.Network.SendPacket(new MoveInventoryFolderPacket
+            {
+                AgentData = { AgentID = c.Self.AgentID, SessionID = c.Self.SessionID, Stamp = stamp },
+                InventoryData = [new MoveInventoryFolderPacket.InventoryDataBlock { FolderID = id, ParentID = dest }],
+            });
+        else
+            c.Network.SendPacket(new MoveInventoryItemPacket
+            {
+                AgentData = { AgentID = c.Self.AgentID, SessionID = c.Self.SessionID, Stamp = stamp },
+                InventoryData = [new MoveInventoryItemPacket.InventoryDataBlock { ItemID = id, FolderID = dest, NewName = Utils.EmptyBytes }],
+            });
+    }
+
+    /// <summary>For things outside InventoryOps that move inventory (the AO's folders into the Trash): MoveNodeAsync.</summary>
+    public Task MoveToAsync(UUID id, UUID dest, CancellationToken ct) => MoveNodeAsync(NodeOf(id), dest, ct);
 
     /// <summary>A folder renamed, waiting for the service where there is one (UpdateFolderProperties otherwise).</summary>
     async Task RenameFolderAsync(InventoryFolder f, string name, CancellationToken ct)

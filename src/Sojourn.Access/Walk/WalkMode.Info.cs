@@ -226,7 +226,9 @@ public sealed partial class WalkMode
 
     /// <summary>Seated before and the region can't say yet whether still (a crossing's first seconds, or the seat not
     /// sent yet): not standing up. The ride recorder holds the seat over it.</summary>
-    public bool SeatInDoubt(Body b) => !b.Sitting && (_crossed != null || _seated && SeatKnown() == null);
+    // (the region changing this tick counts before Crossing has seen it: driving after someone ticks first, and the new
+    // region's first word can have her standing a moment, which ended a convoy as "off your seat" mid-crossing, 2026-11-09)
+    public bool SeatInDoubt(Body b) => !b.Sitting && (_crossed != null || _seated && (_region != null && b.RegionName != _region || SeatKnown() == null));
     /// <summary>The seat as last known (kept over a crossing).</summary>
     public string? LastSeatName => _seatName;
 

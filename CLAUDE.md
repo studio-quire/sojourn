@@ -17,7 +17,7 @@ Our own Second Life client, built for VR first, with a personal AI that operates
   social, land, building, inventory and the AO, the map, voice and media extras, the menus, the login screen, the
   launcher), and RLV/RLVa (2026-11-01, off by default: `docs/rlv.md`). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
 - **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01), a first build editor (2026-11-02) and About Land (2026-11-03); test builds (the assistant bundled) published as releases
-  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1026 (2026-11-08); a blind
+  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1045 (2026-11-09); main is ahead of it with the estate, a group's settings, auto-sit, export and import, Point at, teleports within a region handled in turn and a `//go` that ends when it gets no nearer (the scripted test passed on all of it at `7144fc3`, 2026-11-09, in two sessions: `docs/access-testing.md` > Last full run; changes after that commit go by chosen steps) and, since that run, `//go` walks that go round people (on by default, `//walkround` turns it off; its own step and the steps that walk pass, tried on the local grid only: `docs/access-testing.md` > Walking round people on Second Life), the next build waiting for the tester's log of that evening's rides; a blind
   tester's first session on Second Life was 2026-10-30. `docs/access.md` (plan, milestones, what testers said), `docs/access-app.md` (as built, packaging).
 - **Public source** since 2026-10-29 (`docs/publishing.md`). **First release, 0.1.0.867, published 2026-11-02**: a
   pre-release on studio-quire/sojourn (Velopack: install, updates at the person's press, uninstall; `tools/package.py`,
@@ -202,5 +202,5 @@ The assistant (detail in `docs/assistant.md`):
 
 ## Credit
 
-Built by Claude (Opus 5.5 so far). The user wants credit for whatever their role turns out to be (2026-10-20): so far
+Built by Claude (Opus 5.5, and Fable 5.2 from 2026-11-09). The user wants credit for whatever their role turns out to be (2026-10-20): so far
 the idea, the direction and the key decisions; when something goes public, describe their role as it stands then.

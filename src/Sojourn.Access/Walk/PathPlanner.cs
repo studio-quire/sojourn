@@ -15,7 +15,11 @@ namespace Sojourn.Access.Walk;
 /// short drop down (Drop) from its floor, the ground among them, so stairs, a stage's steps, a ramp and a building's
 /// floor over sloping ground are walked, while a surface out of reach (a stage with no steps, a table) is an obstacle;
 /// what the floor can't reach is blocked. A goal inside something, or out of reach, moves to the nearest spot that can
-/// be reached within GoalReach. People aren't obstacles (they move). Written by Claude Opus 5.5, 2026-10-29.
+/// be reached within GoalReach. Written by Claude Opus 5.5, 2026-10-29.
+/// People on their feet, when the caller gives them (a `//go`, walk to), are gone round too (Claude Fable 5.2,
+/// 2026-11-09): each a disc the path keeps off as it does a wall. Unlike a wall, a person never makes for no way:
+/// where the only way is through someone (a doorway they stand in, a ring of people round the goal), or the way round
+/// is much longer (ThroughPerson), the path stops short of them and says who (Plan.InWay).
 /// </summary>
 public sealed class PathPlanner
 {
@@ -45,6 +49,12 @@ public sealed class PathPlanner
         public float StartFloor { get; init; }
         public float GoalFloor { get; init; }
         public bool FloorKnown { get; init; }
+        /// <summary>The people (indices into those given) the way goes round, when they alone keep it from being
+        /// straight; empty when things are in the way too, or nobody is.</summary>
+        public IReadOnlyList<int> Around { get; init; } = Array.Empty<int>();
+        /// <summary>The person the way is cut short at (its last waypoint StandOff from them; no waypoints when that's
+        /// where the walk starts): the only way on is through them, or the way round is much longer.</summary>
+        public int? InWay { get; init; }
     }
 
     /// <summary>Whether a plan can be asked for now (the view is up): a null plan then means there's no way.</summary>
@@ -61,9 +71,10 @@ public sealed class PathPlanner
     /// <summary>A path from <paramref name="from"/> (feet at <paramref name="feet"/>) to <paramref name="to"/>, both in the
     /// agent's region frame; null when there's no way (or the view can't be asked). <paramref name="toZ"/>: the goal's
     /// height (a person's middle, a thing's, a point on the ground), which tells a goal in a closed room of its own (no
-    /// way) from one up on a stage beside this floor (the nearest spot below it).</summary>
+    /// way) from one up on a stage beside this floor (the nearest spot below it). <paramref name="people"/>: where
+    /// people stand (their middles), for the way to go round them.</summary>
     public async Task<Plan?> PlanAsync(Vector2 from, float feet, Vector2 to, IReadOnlySet<uint>? passable = null, CancellationToken ct = default,
-        float? toZ = null)
+        float? toZ = null, IReadOnlyList<Vector3>? people = null)
     {
         if (!_rays.Ready) return null;
         var lo = Vector2.Min(from, to) - new Vector2(Margin);
@@ -72,7 +83,7 @@ public sealed class PathPlanner
         {
             // too far to plan in one go: the first stretch toward it
             var dir = Vector2.Normalize(to - from);
-            return await PlanAsync(from, feet, from + dir * (MaxSpan / 2 - Margin), passable, ct, null);
+            return await PlanAsync(from, feet, from + dir * (MaxSpan / 2 - Margin), passable, ct, null, people);
         }
         var w = _s.Region;
         float? Ground(float x, float y) => w?.TerrainHeight(x, y);
@@ -86,7 +97,7 @@ public sealed class PathPlanner
                     if (Ground(Math.Min(x, hi.X), Math.Min(y, hi.Y)) is { } g) { zMin = MathF.Min(zMin, g - 2); zMax = MathF.Max(zMax, g + 12); }
         var got = await _rays.SolidsAsync(new Vector3(lo, zMin), new Vector3(hi, zMax), passable, ct);
         if (got is not { } solids) return null;
-        return await Task.Run(() => Solve(solids.Triangles, from, feet, to, toZ, lo, hi, nearGround ? Ground : null), ct);
+        return await Task.Run(() => Solve(solids.Triangles, from, feet, to, toZ, lo, hi, nearGround ? Ground : null, people), ct);
     }
 
     /// <summary>A step up the floor may take from one cell to the next (stairs, a kerb, a stage's steps), and how far
@@ -94,8 +105,24 @@ public sealed class PathPlanner
     const float Step = 0.4f, Drop = 1.2f;
     /// <summary>How far from a goal out of reach (inside a bar, on a stage with no steps) its stand-in may be.</summary>
     public const float GoalReach = 6f;
+    /// <summary>A person as the path sees them: a disc this wide round their middle, so with the body's own half width
+    /// the path's line stays 0.75 m from it (two avatars touch at about 0.6 to 0.75), and a metre where there's room.</summary>
+    public const float PersonR = 0.45f;
+    /// <summary>How far short of someone in the way a path cut at them ends (as a walk to a person stops).</summary>
+    public const float StandOff = 1.5f;
+    /// <summary>What going through someone costs the search, in cells: paid once, on stepping from clear of people to
+    /// too near one (so once for a person, or for a knot of people standing together, however the way would cross
+    /// them). With what being that near anything costs, a way round is walked up to 10 to 12 m longer than the way
+    /// through, and past that the path ends short of them (asked directly, a wall across the way: someone in the
+    /// middle of its metre-wide doorway, round the wall's end is walked at 11.3 m further and not at 12.2; someone
+    /// to one side of a doorway 1.5 m wide, whom the way would only brush, at 10.4 and not at 11.3). Until the
+    /// evening of 2026-11-09 it was 30 for each cell too near someone: some 45 m for a way through a person's
+    /// middle, a long way to send her round for one person who'll likely have moved on, and 8 m for a way that
+    /// brushed a single cell of theirs.</summary>
+    const float ThroughPerson = 38f;
 
-    Plan? Solve(List<Vector3> tris, Vector2 from, float feet, Vector2 to, float? toZ, Vector2 lo, Vector2 hi, Func<float, float, float?>? ground)
+    Plan? Solve(List<Vector3> tris, Vector2 from, float feet, Vector2 to, float? toZ, Vector2 lo, Vector2 hi, Func<float, float, float?>? ground,
+        IReadOnlyList<Vector3>? people = null)
     {
         int nx = (int)MathF.Ceiling((hi.X - lo.X) / Cell), ny = (int)MathF.Ceiling((hi.Y - lo.Y) / Cell);
         int cells = nx * ny;
@@ -204,17 +231,66 @@ public sealed class PathPlanner
             foreach (var (spot, r, _) in _blocked) Disc(solid, nx, ny, lo, spot, r);
         }
 
+        // people standing on this floor (their middle within a body's height of it): the cells under each
+        bool[]? stood = null;
+        if (people != null)
+            for (int p = 0; p < people.Count; p++)
+            {
+                var stands = people[p];
+                int ci = (int)MathF.Floor((stands.X - lo.X) / Cell), cj = (int)MathF.Floor((stands.Y - lo.Y) / Cell), cr = (int)MathF.Ceiling(PersonR / Cell);
+                for (int j = cj - cr; j <= cj + cr; j++)
+                    for (int i = ci - cr; i <= ci + cr; i++)
+                    {
+                        if (i < 0 || j < 0 || i >= nx || j >= ny) continue;
+                        int k = j * nx + i;
+                        if (solid[k] || Vector2.Distance(Centre(i, j), new Vector2(stands.X, stands.Y)) > PersonR) continue;
+                        if (stands.Z < floor[k] - 0.3f || stands.Z > floor[k] + 2.6f) continue;
+                        (stood ??= new bool[cells])[k] = true;
+                    }
+            }
+        bool StoodAt(Vector3 at)
+        {
+            var (i, j) = CellOf(new Vector2(at.X, at.Y));
+            return stood != null && stood[j * nx + i];
+        }
+
         // how far each cell is from anything solid; too close for the avatar's body is blocked, and the path keeps to
-        // the middle of what it passes through where there's room (a corner shaved too close is bumped)
-        var clear = Clearance(solid, nx, ny);
+        // the middle of what it passes through where there's room (a corner shaved too close is bumped). People count
+        // for the room kept (clear) and for where the path goes (blocked), but not for what can be got to at all
+        // (hard: things only), so someone standing in the only doorway doesn't make the room behind them a closed one
+        var clearOfThings = Clearance(solid, nx, ny);
+        var clear = clearOfThings;
+        if (stood != null)
+        {
+            var both = (bool[])solid.Clone();
+            for (int k = 0; k < cells; k++) if (stood[k]) both[k] = true;
+            clear = Clearance(both, nx, ny);
+        }
+        var hard = new bool[cells];
         var blocked = new bool[cells];
-        for (int k = 0; k < blocked.Length; k++) blocked[k] = clear[k] < Body;
-        // standing against a wall: the cells around the start are free (else nothing could leave them)
+        for (int k = 0; k < cells; k++) { hard[k] = clearOfThings[k] < Body; blocked[k] = clear[k] < Body; }
+        // standing against a wall: the cells around the start are free (else nothing could leave them). Standing right
+        // by someone, those that take her no nearer them than she is: she leaves away from them, not brushing past
+        bool TowardSomeone(Vector2 cell)
+        {
+            foreach (var p in people!)
+            {
+                var them = new Vector2(p.X, p.Y);
+                float gap = Vector2.Distance(cell, them);
+                if (gap < PersonR + Body + Cell && gap < Vector2.Distance(from, them) - 0.01f && StoodAt(p)) return true;
+            }
+            return false;
+        }
         int near = (int)MathF.Ceiling(Body / Cell) + 1;
         for (int dj = -near; dj <= near; dj++)
             for (int di = -near; di <= near; di++)
-                if (si + di >= 0 && sj + dj >= 0 && si + di < nx && sj + dj < ny && !solid[(sj + dj) * nx + si + di]) blocked[(sj + dj) * nx + si + di] = false;
-        blocked[start] = false;
+            {
+                int i = si + di, j = sj + dj;
+                if (i < 0 || j < 0 || i >= nx || j >= ny || solid[j * nx + i]) continue;
+                hard[j * nx + i] = false;
+                blocked[j * nx + i] = stood != null && clear[j * nx + i] < Body && TowardSomeone(Centre(i, j));
+            }
+        hard[start] = blocked[start] = false;
 
         // where a body can get to from here (as A* moves: eight ways, no cutting a blocked corner)
         var open = new bool[cells];
@@ -229,7 +305,7 @@ public sealed class PathPlanner
                     int ii = i + di, jj = j + dj;
                     if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
                     int kk = jj * nx + ii;
-                    if (open[kk] || blocked[kk] || di != 0 && dj != 0 && (blocked[j * nx + ii] || blocked[jj * nx + i])) continue;
+                    if (open[kk] || hard[kk] || di != 0 && dj != 0 && (hard[j * nx + ii] || hard[jj * nx + i])) continue;
                     open[kk] = true;
                     queue.Enqueue(kk);
                 }
@@ -293,17 +369,22 @@ public sealed class PathPlanner
                 {
                     int ii = gi + di, jj = gj + dj;
                     if (ii < 0 || jj < 0 || ii >= nx || jj >= ny || !open[jj * nx + ii]) continue;
-                    // (a spot with room round it before one against the edge, where the region's walk rides up it)
+                    // (a spot with room round it before one against the edge, where the region's walk rides up it;
+                    // and one nobody stands at before either)
                     float d = di * di + dj * dj + (clear[jj * nx + ii] < Room ? 16 : 0);
-                    if (d < bestD && d <= r * r) { bestD = d; best = jj * nx + ii; }
+                    if (d > r * r) continue;
+                    if (blocked[jj * nx + ii]) d += 1e6f;
+                    if (d < bestD) { bestD = d; best = jj * nx + ii; }
                 }
             if (best < 0) { WalkMode.Log(Why($"nothing open within {GoalReach} m of the goal")); return null; }
             (gi, gj) = (best % nx, best / nx);
             goalMoved = true;
         }
         var goal = goalMoved ? Centre(gi, gj) : to;
+        int? inWay = null;
+        IReadOnlyList<int> around = Array.Empty<int>();
         Plan Made(List<Vector2> pts, bool direct, float length) =>
-            new(pts, direct, length, goalMoved) { StartFloor = floor[start], GoalFloor = floor[gj * nx + gi], FloorKnown = !level };
+            new(pts, direct, length, goalMoved) { StartFloor = floor[start], GoalFloor = floor[gj * nx + gi], FloorKnown = !level, Around = around, InWay = inWay };
         bool Roomy(int k, float need) => !blocked[k] && (clear[k] >= need || NearEnd(k));
         bool NearEnd(int k)
         {
@@ -312,8 +393,46 @@ public sealed class PathPlanner
         }
         if (Clear(nx, ny, si, sj, gi, gj, k => Roomy(k, Room))) return Made(new List<Vector2> { goal }, true, Vector2.Distance(from, goal));
 
-        var path = AStar(blocked, clear, nx, ny, si, sj, gi, gj);
+        // straight but for people: they're what the way goes round (for the caller's words)
+        bool peopleOnly = stood != null && Clear(nx, ny, si, sj, gi, gj, k => !hard[k] && (clearOfThings[k] >= Room || NearEnd(k)));
+
+        // (so many cells searched with no end to it, people among them: the way as if nobody were there, cut at the first)
+        var path = AStar(hard, blocked, clear, nx, ny, si, sj, gi, gj)
+            ?? (stood != null ? AStar(hard, hard, clearOfThings, nx, ny, si, sj, gi, gj) : null);
         if (path == null) return null;
+        // through someone: the only way, or the way round is much longer. Cut StandOff short of them
+        int first = path.FindIndex(1, k => blocked[k]);
+        if (first > 0 && people != null)
+        {
+            var hit = Centre(path[first] % nx, path[first] / nx);
+            // (whose cells these are: the nearest person, one standing on this floor before one over or under it)
+            float Far(int p) => Vector2.DistanceSquared(new(people[p].X, people[p].Y), hit) + (StoodAt(people[p]) ? 0 : 100);
+            int who = 0;
+            for (int p = 1; p < people.Count; p++) if (Far(p) < Far(who)) who = p;
+            var them = new Vector2(people[who].X, people[who].Y);
+            int end = first - 1;
+            while (end > 0 && Vector2.Distance(Centre(path[end] % nx, path[end] / nx), them) < StandOff) end--;
+            inWay = who;
+            goalMoved = false;   // (not the goal's stand-in any more: where the way was cut)
+            (gi, gj) = (path[end] % nx, path[end] / nx);
+            goal = Centre(gi, gj);
+            if (end == 0) return Made(new List<Vector2>(), false, 0);
+            path.RemoveRange(end + 1, path.Count - end - 1);
+            if (Clear(nx, ny, si, sj, gi, gj, k => Roomy(k, Room))) return Made(new List<Vector2> { goal }, true, Vector2.Distance(from, goal));
+        }
+        else if (peopleOnly && people != null)
+        {
+            // whoever stands too near the straight line for it to pass
+            var line = to - from;
+            var list = new List<int>();
+            for (int p = 0; p < people.Count; p++)
+            {
+                var rel = new Vector2(people[p].X, people[p].Y) - from;
+                float t = Math.Clamp(Vector2.Dot(rel, line) / MathF.Max(line.LengthSquared(), 1e-6f), 0, 1);
+                if (Vector2.Distance(rel, line * t) < PersonR + Room + Cell && StoodAt(people[p])) list.Add(p);
+            }
+            around = list;
+        }
         // pulled straight: from each corner, the furthest cell along the path still in a clear line that keeps the
         // room the path itself had (all of Room where there's that much, else as much as its tightest spot)
         float tight = Room;
@@ -405,7 +524,9 @@ public sealed class PathPlanner
         return true;
     }
 
-    static List<int>? AStar(bool[] blocked, float[] clear, int nx, int ny, int si, int sj, int gi, int gj)
+    /// <summary><paramref name="hard"/>: cells no path enters; <paramref name="blocked"/>: those and the cells too near
+    /// a person, which a path steps in among only at ThroughPerson's price.</summary>
+    static List<int>? AStar(bool[] hard, bool[] blocked, float[] clear, int nx, int ny, int si, int sj, int gi, int gj)
     {
         int start = sj * nx + si, goal = gj * nx + gi;
         var g = new float[nx * ny];
@@ -441,12 +562,12 @@ public sealed class PathPlanner
                     int i = ci + di, j = cj + dj;
                     if (i < 0 || j < 0 || i >= nx || j >= ny) continue;
                     int k = j * nx + i;
-                    if (blocked[k] || closed[k]) continue;
+                    if (hard[k] || closed[k]) continue;
                     // no cutting a blocked corner
-                    if (di != 0 && dj != 0 && (blocked[cj * nx + i] || blocked[j * nx + ci])) continue;
+                    if (di != 0 && dj != 0 && (hard[cj * nx + i] || hard[j * nx + ci])) continue;
                     // dearer close to walls, so it keeps to the middle of a gap or a corridor
                     float near = MathF.Max(0, (Room + 0.2f - clear[k]) / (Room + 0.2f));
-                    float ng = g[cur] + (di != 0 && dj != 0 ? 1.4142f : 1f) * (1 + 3 * near);
+                    float ng = g[cur] + (di != 0 && dj != 0 ? 1.4142f : 1f) * (1 + 3 * near) + (blocked[k] && !blocked[cur] ? ThroughPerson : 0);
                     if (ng >= g[k]) continue;
                     g[k] = ng;
                     came[k] = cur;

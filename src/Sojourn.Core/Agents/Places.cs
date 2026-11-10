@@ -194,6 +194,13 @@ public sealed class Places
         });
     }
 
+    /// <summary>A teleport counted as arrived by where the avatar is, for the history. LibreMetaverse reported some
+    /// teleports within a region as failed while they arrived, and never as finished (about one in five on the local
+    /// grid: 5 of 24, 2026-11-09), so those never reached the history through TeleportProgress. TeleportWatch.WireInTurn
+    /// cures that where it starts; this stays for a LibreMetaverse it can't reach into. One reported as well is
+    /// recorded twice, which keeps the place once.</summary>
+    public void TeleportArrived(GridClient c) => Arrived(c, "teleport");
+
     void Record(string region, UUID regionId, Vector3 pos, string? parcel, string how, (uint X, uint Y) corner, long now)
     {
         lock (_hlock)

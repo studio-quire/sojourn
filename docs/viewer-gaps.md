@@ -52,7 +52,7 @@ search, report abuse with a way out) were all closed 2026-10-25/26; they're amon
 | glTF scenes as assets (`gltfscenemanager.cpp`) | render | L until LL ships it | M | still experimental in the viewer |
 | Beacons, the rest: the 2D arrow at the screen's edge toward a tracked target, the cheesy beacon's pulse, the beacon legend, picking through transparent faces while highlighted, Firestorm's region-corner beacons and chat range spheres | render, info | L | S each | `docs/rendering.md` > Beacons and highlights |
 | Flexi and avatar physics, the rest: flexies in probe captures and on HUDs stay straight, and touches hit the straight shape; the own body's copy in a mirror doesn't bounce | render | L | S each | |
-| Sending point-at and edit beams while the assistant builds or selects (receiving is done) | info for others | L | S: ViewerEffect PointAt/Beam | the user's call: they move your arm in others' viewers (declined for now 2026-10-26); Firestorm makes sending optional |
+| Sending point-at and edit beams while the assistant builds or selects (receiving is done) | info for others | L | S: ViewerEffect PointAt/Beam | the user's call: they move your arm in others' viewers (declined for now 2026-10-26; not needed in VR, the user, 2026-11-09, while Sojourn Access sends it on her own press); Firestorm makes sending optional |
 | Crowds, unmeasured: the impostors' GPU cost (the first numbers were spoiled by another session's VRAM use), and whether near impostors read as solid in the headset | render | L | S | `docs/performance.md` > Crowds |
 
 Done:

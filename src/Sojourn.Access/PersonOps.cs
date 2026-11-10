@@ -26,6 +26,15 @@ public sealed class PersonOps(AgentSession s)
     public Task<JsonObject> DoAsync(string pump, string op, JsonObject? args = null, CancellationToken ct = default) =>
         RealInput.Acting ? RunAsync(pump, op, args, ct) : GatedAsync(pump, op, args, ct);
 
+    /// <summary>What the person set up beforehand to happen by itself at a moment (auto-sit, MainForm.AutoSit.cs): the op
+    /// itself, as theirs, though no key of theirs is behind it just then (so incognito's limits on callers, which want
+    /// things by handle, don't refuse it). Only the ops listed, none of which ever waits for a confirmation: nothing set
+    /// up this way spends, gives, deletes or changes permissions.</summary>
+    public Task<JsonObject> SetUpAsync(string pump, string op, JsonObject? args = null, CancellationToken ct = default) =>
+        SetUpOps.Contains((pump, op)) ? RunAsync(pump, op, args, ct) : throw new InvalidOperationException($"{pump} {op} isn't one that runs by itself");
+
+    static readonly HashSet<(string, string)> SetUpOps = new() { ("LLAgent", "requestSit") };
+
     /// <summary>A lookup that changes nothing in the world or the account: the op itself, whoever asked.</summary>
     public Task<JsonObject> ReadAsync(string pump, string op, JsonObject? args = null, CancellationToken ct = default) =>
         RunAsync(pump, op, args, ct);
@@ -96,6 +105,7 @@ public sealed class PersonOps(AgentSession s)
         w = Regex.Replace(w, $@"^{Api}\s+(?=could not)", "");
         w = Regex.Replace(w, $@"^{Arg}: (?!.*{Arg})", "");
         w = Regex.Replace(w, @"\s*\(HTTP \d+\)", "");
+        w = Regex.Replace(w, @"^object not found( in this region)?$", "it isn't here any more");
         // a clause or bracket naming an API or another op ("(TesselInventory copy)", ": find their id with TesselAgent
         // findAvatar") goes; one only about arguments ("; give group_id") too
         w = Regex.Replace(w, $@"\s*\([^()]*{Api}[^()]*\)", "");

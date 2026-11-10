@@ -15,7 +15,9 @@ namespace Sojourn.Core.Agents;
 /// (creator or the export permission; without it, the owner with full permissions). The file is Firestorm's .oxp
 /// (format 2: zlib over binary LLSD, prims by Firestorm's keys, textures as J2C), so either viewer can restore it.
 /// Backups go into Documents\Sojourn\Backups only; nothing here takes a path to write. Contents are listed but not
-/// kept yet. Claude Opus 5.5, 2026-10-29.
+/// kept yet. Claude Opus 5.5, 2026-10-29. Since 2026-11-09 the same export in memory (<see cref="ExportAsync"/>) for
+/// Access's Export, which writes it where the person chose (an .oxp, Radegast's XML, or a Collada model), and a restore
+/// reads Radegast's XML export too.
 /// </summary>
 public sealed class Backups
 {
@@ -154,14 +156,37 @@ public sealed class Backups
 
     OSDMap PrimLlsd(Primitive p, Primitive root, int faces, Verdict v)
     {
-        var d = p.PrimData;
+        var prim = ShapeLlsd(p, p.LocalID != root.LocalID ? root.ID : null, _s.State.PrimFlagsOf(p), faces, v.Mine.Contains);
         var pr = p.Properties!;
+        prim["name"] = OSD.FromString(pr.Name ?? "");
+        prim["description"] = OSD.FromString(pr.Description ?? "");
+        prim["creation_date"] = OSD.FromBinary(Utils.UInt64ToBytesBig((ulong)Utils.DateTimeToUnixTime(pr.CreationDate) * 1_000_000UL));
+        prim["creator_id"] = OSD.FromUUID(pr.CreatorID);
+        prim["owner_id"] = OSD.FromUUID(pr.OwnerID);
+        prim["group_id"] = OSD.FromUUID(pr.GroupID);
+        prim["last_owner_id"] = OSD.FromUUID(pr.LastOwnerID);
+        prim["base_mask"] = U32((uint)pr.Permissions.BaseMask);
+        prim["owner_mask"] = U32((uint)pr.Permissions.OwnerMask);
+        prim["group_mask"] = U32((uint)pr.Permissions.GroupMask);
+        prim["everyone_mask"] = U32((uint)pr.Permissions.EveryoneMask);
+        prim["next_owner_mask"] = U32((uint)pr.Permissions.NextOwnerMask);
+        prim["sale_info"] = new OSDMap { ["sale_type"] = OSD.FromString(SaleWord(pr.SaleType)), ["sale_price"] = OSD.FromInteger(pr.SalePrice) };
+        prim["touch_name"] = OSD.FromString(pr.TouchName ?? "");
+        prim["sit_name"] = OSD.FromString(pr.SitName ?? "");
+        return prim;
+    }
+
+    /// <summary>A prim's shape, place, faces and settings by Firestorm's keys: what a restore applies. mine: a texture the
+    /// person may take along (others become plywood, a projector's none).</summary>
+    static OSDMap ShapeLlsd(Primitive p, UUID? parent, PrimFlags flags, int faces, Func<UUID, bool> mine)
+    {
+        var d = p.PrimData;
         var prim = new OSDMap();
-        if (p.LocalID != root.LocalID) prim["parent"] = OSD.FromUUID(root.ID);
+        if (parent is { } up) prim["parent"] = OSD.FromUUID(up);
         prim["position"] = Vec(p.Position);
         prim["scale"] = Vec(p.Scale);
         prim["rotation"] = new OSDArray(new List<OSD> { OSD.FromReal(p.Rotation.X), OSD.FromReal(p.Rotation.Y), OSD.FromReal(p.Rotation.Z), OSD.FromReal(p.Rotation.W) });
-        prim["flags"] = U32((uint)_s.State.PrimFlagsOf(p));
+        prim["flags"] = U32((uint)flags);
         prim["volume"] = new OSDMap
         {
             ["path"] = new OSDMap
@@ -195,13 +220,13 @@ public sealed class Backups
                 ["falloff"] = OSD.FromReal(l.Falloff), ["cutoff"] = OSD.FromReal(l.Cutoff),
             };
         if (p.LightMap is { LightTexture: var lt } lm && lt != UUID.Zero)
-            prim["light_texture"] = new OSDMap { ["texture"] = OSD.FromUUID(v.Mine.Contains(lt) ? lt : UUID.Zero), ["params"] = Vec(lm.Params) };
+            prim["light_texture"] = new OSDMap { ["texture"] = OSD.FromUUID(mine(lt) ? lt : UUID.Zero), ["params"] = Vec(lm.Params) };
         var te = new OSDArray();
         if (p.Textures is { } tex)
             for (int i = 0; i < faces; i++)
             {
                 var f = tex.GetFace((uint)i);
-                te.Add(Te(f, v.Mine.Contains(f.TextureID) ? f.TextureID : Plywood));
+                te.Add(Te(f, mine(f.TextureID) ? f.TextureID : Plywood));
             }
         prim["texture"] = te;
         if (p.PhysicsProps is { } ph)
@@ -210,21 +235,6 @@ public sealed class Backups
                 ["PhysicsShapeType"] = OSD.FromInteger((int)ph.PhysicsShapeType), ["Density"] = OSD.FromReal(ph.Density),
                 ["Friction"] = OSD.FromReal(ph.Friction), ["Restitution"] = OSD.FromReal(ph.Restitution), ["GravityMultiplier"] = OSD.FromReal(ph.GravityMultiplier),
             };
-        prim["name"] = OSD.FromString(pr.Name ?? "");
-        prim["description"] = OSD.FromString(pr.Description ?? "");
-        prim["creation_date"] = OSD.FromBinary(Utils.UInt64ToBytesBig((ulong)Utils.DateTimeToUnixTime(pr.CreationDate) * 1_000_000UL));
-        prim["creator_id"] = OSD.FromUUID(pr.CreatorID);
-        prim["owner_id"] = OSD.FromUUID(pr.OwnerID);
-        prim["group_id"] = OSD.FromUUID(pr.GroupID);
-        prim["last_owner_id"] = OSD.FromUUID(pr.LastOwnerID);
-        prim["base_mask"] = U32((uint)pr.Permissions.BaseMask);
-        prim["owner_mask"] = U32((uint)pr.Permissions.OwnerMask);
-        prim["group_mask"] = U32((uint)pr.Permissions.GroupMask);
-        prim["everyone_mask"] = U32((uint)pr.Permissions.EveryoneMask);
-        prim["next_owner_mask"] = U32((uint)pr.Permissions.NextOwnerMask);
-        prim["sale_info"] = new OSDMap { ["sale_type"] = OSD.FromString(SaleWord(pr.SaleType)), ["sale_price"] = OSD.FromInteger(pr.SalePrice) };
-        prim["touch_name"] = OSD.FromString(pr.TouchName ?? "");
-        prim["sit_name"] = OSD.FromString(pr.SitName ?? "");
         return prim;
     }
 
@@ -240,8 +250,37 @@ public sealed class Backups
 
     public async Task<JsonObject> BackupAsync(JsonObject a, CancellationToken ct)
     {
+        var e = await ExportAsync(a.Uuid("id") ?? throw new LeapError("need id"), ct);
+        Directory.CreateDirectory(Dir);
+        var name = SafeName(a.Str("name") ?? e.Name);
+        var path = Path.Combine(Dir, $"{name} {DateTime.Now:yyyy-MM-dd HHmmss}.oxp");
+        await File.WriteAllBytesAsync(path, e.Oxp(), ct);
+        var o = new JsonObject { ["path"] = path, ["prims"] = e.Prims.Count, ["textures"] = e.Textures.Count };
+        if (e.LeftOut.Count > 0) o["left_out"] = Json.Strings(e.LeftOut);
+        return o;
+    }
+
+    /// <summary>
+    /// An object made ready to leave the world in a file, under the rules above (Access's Export, which writes it where the
+    /// person chose in Windows' own Save window: nothing here takes a path). Manifest: the .oxp's LLSD. Prims: copies of
+    /// the linkset's prims, root first (a child's place and turn its root's frame, as LibreMetaverse keeps them), every
+    /// texture not theirs plywood and a projector's none. Textures: the J2C of each texture they made, with its item's
+    /// name. LeftOut: what didn't go, in words.
+    /// </summary>
+    public sealed record Exported(string Name, OSDMap Manifest, List<Primitive> Prims, Dictionary<UUID, (string Name, byte[] J2c)> Textures, List<string> LeftOut)
+    {
+        public byte[] Oxp() => Helpers.ZCompressOSD(Manifest);
+
+        /// <summary>Radegast's Export (PrimExporter): the prims as LibreMetaverse's LLSD XML, keyed by local id, children
+        /// naming their root by its local id; its textures go beside it, in a folder named as the file, one .jp2 each.</summary>
+        public string RadegastXml() => OSDParser.SerializeLLSDXmlString(Helpers.PrimListToOSD(Prims));
+    }
+
+    /// <summary>Refused, with why, when any of it isn't the person's to export (JudgeAsync's rules).</summary>
+    public async Task<Exported> ExportAsync(UUID id, CancellationToken ct)
+    {
         var c = C;
-        var v = await JudgeAsync(a, ct);
+        var v = await JudgeAsync(new JsonObject { ["id"] = id.ToString() }, ct);
         if (v.Refused.Count > 0) throw new LeapError("it can't be backed up: " + string.Join("; ", v.Refused.Take(5)) + (v.Refused.Count > 5 ? $" (and {v.Refused.Count - 5} more)" : ""));
         var prims = new OSDMap();
         var linkset = new OSDArray { OSD.FromUUID(v.Root.ID) };
@@ -253,6 +292,7 @@ public sealed class Backups
         var assets = new OSDMap();
         var items = ItemsByAsset();
         var failed = new List<string>();
+        var j2c = new Dictionary<UUID, (string, byte[])>();
         foreach (var t in v.Mine.Where(t => t != UUID.Zero && t != Plywood))
         {
             var tex = await _s.World.TextureAsync(_s.GridKey, t, ct);
@@ -263,6 +303,7 @@ public sealed class Backups
                 ["name"] = OSD.FromString(it?.Name ?? ""), ["description"] = OSD.FromString(it?.Description ?? ""),
                 ["type"] = OSD.FromString("texture"), ["data"] = OSD.FromBinary(data),
             };
+            j2c[t] = (it?.Name ?? "", data);
         }
         var who = _s.Names.Legacy(c.Self.AgentID) ?? c.Self.Name;
         var manifest = new OSDMap
@@ -272,17 +313,29 @@ public sealed class Backups
             ["grid"] = OSD.FromString(c.Network.CurrentSim?.Features?.Get("OpenSimExtras") is OSDMap ex && ex.ContainsKey("GridName") ? ex["GridName"].AsString() : _s.GridKey),
             ["linkset"] = new OSDArray { linkset }, ["prim"] = prims, ["inventory"] = new OSDMap(), ["asset"] = assets,
         };
-        Directory.CreateDirectory(Dir);
-        var name = SafeName(a.Str("name") ?? v.Root.Properties?.Name ?? "object");
-        var path = Path.Combine(Dir, $"{name} {DateTime.Now:yyyy-MM-dd HHmmss}.oxp");
-        await File.WriteAllBytesAsync(path, Helpers.ZCompressOSD(manifest), ct);
-        var o = new JsonObject { ["path"] = path, ["prims"] = v.Prims.Count, ["textures"] = assets.Count };
-        var left = new JsonArray();
+        var left = new List<string>();
         if (v.NotMine.Count > 0) left.Add($"{v.NotMine.Count} texture{(v.NotMine.Count == 1 ? "" : "s")} made by others (plywood instead)");
         if (failed.Count > 0) left.Add($"{failed.Count} texture{(failed.Count == 1 ? "" : "s")} that didn't download");
         if (v.Prims.Any(p => (_s.State.PrimFlagsOf(p) & PrimFlags.Scripted) != 0 || p.Properties?.InventorySerial > 0)) left.Add("the objects' contents (not kept in Sojourn's backups yet)");
-        if (left.Count > 0) o["left_out"] = left;
-        return o;
+        var copies = new List<Primitive> { Copy(v.Root, v.Mine) };
+        copies.AddRange(v.Prims.Where(p => p.LocalID != v.Root.LocalID).Select(p => Copy(p, v.Mine)));
+        return new Exported(v.Root.Properties?.Name is { Length: > 0 } n ? n : "Object", manifest, copies, j2c, left);
+    }
+
+    /// <summary>A prim as it may leave the world: a copy, every texture not the person's plywood, a projector not theirs
+    /// none (the live prim untouched).</summary>
+    static Primitive Copy(Primitive p, HashSet<UUID> mine)
+    {
+        var c = new Primitive(p);
+        UUID Keep(UUID t) => t == UUID.Zero || mine.Contains(t) ? t : Plywood;
+        if (c.Textures is { } te)
+        {
+            if (te.DefaultTexture is { } d) d.TextureID = Keep(d.TextureID);
+            foreach (var f in te.FaceTextures) if (f is not null) f.TextureID = Keep(f.TextureID);
+        }
+        if (c.LightMap is { } lm && lm.LightTexture != UUID.Zero && !mine.Contains(lm.LightTexture))
+            c.LightMap = new Primitive.LightImage { LightTexture = UUID.Zero, Params = lm.Params };
+        return c;
     }
 
     public JsonObject List()
@@ -315,11 +368,74 @@ public sealed class Backups
     {
         try
         {
+            if (IsRadegastXml(path)) return FromRadegast(path);
             var m = Helpers.ZDecompressOSD(File.ReadAllBytes(path)) as OSDMap ?? throw new LeapError("not a backup (.oxp) file");
             if (m["format_version"].AsInteger() > 2) throw new LeapError("a newer backup format than this reads (2)");
             return m;
         }
         catch (Exception e) when (e is not LeapError) { throw new LeapError($"can't read {Path.GetFileName(path)}: {e.Message}"); }
+    }
+
+    /// <summary>Radegast's export is LLSD XML (its first non-blank character a "&lt;"), the .oxp zlib.</summary>
+    static bool IsRadegastXml(string path)
+    {
+        using var f = File.OpenRead(path);
+        int b;
+        while ((b = f.ReadByte()) is ' ' or '\t' or '\r' or '\n' or 0xEF or 0xBB or 0xBF) { }
+        return b == '<';
+    }
+
+    /// <summary>Radegast's Export (Radegast.Core PrimExporter: LibreMetaverse's prim list as LLSD XML, its textures as
+    /// .jp2 files in a folder beside it named as the file) as a backup's manifest, so a restore rebuilds it as it does a
+    /// Firestorm backup. A linkset is a root (no parent) and the prims naming it; a texture with no file stays as its id,
+    /// there on the grid it came from.</summary>
+    static OSDMap FromRadegast(string path)
+    {
+        var list = OSDParser.DeserializeLLSDXml(File.ReadAllText(path)) as OSDMap ?? throw new LeapError("not a Radegast export (its XML holds no prims)");
+        var prims = Helpers.OSDToPrimList(list);
+        if (prims.Count == 0) throw new LeapError("the Radegast export holds no prims");
+        var dir = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, Path.GetFileNameWithoutExtension(path));
+        foreach (var p in prims) if (p.ID == UUID.Zero) p.ID = UUID.Random();
+        var prim = new OSDMap();
+        var sets = new OSDArray();
+        var used = new HashSet<UUID>();
+        foreach (var root in prims.Where(p => p.ParentID == 0))
+        {
+            var set = new OSDArray { OSD.FromUUID(root.ID) };
+            prim[root.ID.ToString()] = RadegastPrim(root, null);
+            foreach (var child in prims.Where(p => p.ParentID == root.LocalID))
+            {
+                set.Add(OSD.FromUUID(child.ID));
+                prim[child.ID.ToString()] = RadegastPrim(child, root.ID);
+            }
+            sets.Add(set);
+            foreach (var p in prims.Where(p => p.LocalID == root.LocalID || p.ParentID == root.LocalID)) used.UnionWith(TexturesOf(p));
+        }
+        if (sets.Count == 0) throw new LeapError("the Radegast export has no root prim");
+        var assets = new OSDMap();
+        foreach (var t in used.Where(t => t != UUID.Zero && t != Plywood))
+            if (Path.Combine(dir, t + ".jp2") is var file && File.Exists(file))
+                assets[t.ToString()] = new OSDMap
+                {
+                    ["name"] = OSD.FromString($"{Path.GetFileNameWithoutExtension(path)} texture"), ["description"] = OSD.FromString(""),
+                    ["type"] = OSD.FromString("texture"), ["data"] = OSD.FromBinary(File.ReadAllBytes(file)),
+                };
+        return new OSDMap
+        {
+            ["format_version"] = OSD.FromInteger(2), ["client"] = OSD.FromString("Radegast"), ["linkset"] = sets, ["prim"] = prim,
+            ["inventory"] = new OSDMap(), ["asset"] = assets,
+        };
+
+        static OSDMap RadegastPrim(Primitive p, UUID? parent)
+        {
+            var te = p.Textures;
+            int last = -1;
+            if (te is not null) for (int i = 0; i < te.FaceTextures.Length; i++) if (te.FaceTextures[i] is not null) last = i;
+            var m = ShapeLlsd(p, parent, p.Flags, Math.Max(1, last + 1), _ => true);
+            m["name"] = OSD.FromString(p.Properties?.Name ?? "Object");
+            m["description"] = OSD.FromString(p.Properties?.Description ?? "");
+            return m;
+        }
     }
 
     /// <summary>The textures a restore would upload: those this grid doesn't have (looked up by id), or all in the

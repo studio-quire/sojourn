@@ -26,6 +26,7 @@ public sealed partial class MainForm
             case "emptytrash": await EmptyTrashAsync(); break;
             case "emptylostandfound": await EmptyLostAndFoundAsync(); break;
             case "run": AlwaysRunWords(words); break;
+            case "walkround": WalkRoundWords(words); break;
             case "saveoutfit": await SaveOutfitAsync(words); break;
         }
     }
@@ -136,6 +137,28 @@ public sealed partial class MainForm
         _set.SetAlwaysRun(on);
         KeepAlwaysRun();
         Answer(on ? "Always running: walking, //go and following run now. //run again walks." : "Walking again: Shift with the arrows still runs in walk mode.");
+    }
+
+    /// <summary>//walkround: walking round people (Commands.WalkPeople.cs) turned the other way; //walkround on,
+    /// //walkround off: set. Said either way. Kept (walk_round_people); a walk under way goes by it from its next look.</summary>
+    void WalkRoundWords(string words)
+    {
+        switch (words.ToLowerInvariant())
+        {
+            case "": SetWalkRound(!_set.WalkRoundPeople); break;
+            case "on": SetWalkRound(true); break;
+            case "off": SetWalkRound(false); break;
+            default: Answer("//walkround alone turns walking round people on or off; //walkround on and //walkround off set it."); break;
+        }
+    }
+
+    void ToggleWalkRound() => SetWalkRound(!_set.WalkRoundPeople);
+
+    void SetWalkRound(bool on)
+    {
+        _set.SetWalkRoundPeople(on);
+        Answer(on ? "Walking round people: //go and Walk to go round anyone standing in the way. //walkround again walks straight."
+            : "Walking straight: //go and Walk to take no notice of people, and may walk into someone standing in the way. //walkround again goes round them.");
     }
 
     (bool On, GridClient? Client, Simulator? Sim) _runSent;

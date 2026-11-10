@@ -765,6 +765,7 @@ public sealed partial class MainForm
         Locked: lock, or locked on, keeps it from being moved or changed by a slip. unlock, or locked off, frees it
         Copying settings: copy from wall takes everything but its name and place, from an object or part of yours. copy colour from part 2. Any of shape, size, rotation, material, colour, texture, features
         In content: add NAME, remove NAME, copy NAME
+        export: save what you're editing, all of it, to a file (export as dae, or xml): only what you made yourself. import: rebuild one from a file, 2 metres ahead
         undo, redo. done, or Escape, goes back
         """;
 
@@ -804,7 +805,7 @@ public sealed partial class MainForm
     {
         "help", "shapes", "new", "edit", "done", "what", "where", "face", "move", "turn", "scale", "duplicate", "delete", "take",
         "link", "unlink", "part", "parts", "root", "next", "previous", "add", "remove", "copy", "undo", "redo", "look", "general", "object",
-        "features", "texture", "content", "type", "size", "position", "rotation", "unlock", "all parts", "edit linked",
+        "features", "texture", "content", "type", "size", "position", "rotation", "unlock", "all parts", "edit linked", "export", "import",
     };
 
     async Task BuildCommandCoreAsync(string text)
@@ -827,6 +828,8 @@ public sealed partial class MainForm
             case "edit" when rest.Length > 0: await EditNamedAsync(rest); return;
             case "edit": GoBuild(); return;
             case "done" or "close" or "exit": BuildBack(); return;
+            case "import": await ImportWordsAsync(rest); return;
+            case "export" when rest.Length == 0 || rest.StartsWith("as ", StringComparison.OrdinalIgnoreCase): await ExportWordsAsync(rest); return;
         }
         if (BuildLook() is not { } l) { Answer(NothingToEdit); return; }
         switch (verb)

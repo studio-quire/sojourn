@@ -19,7 +19,7 @@ public sealed class TesselGroups : SessionApi
         Op("profile", "{group_id} -> {name, charter, founder, open_enrollment, fee, members, roles, member, my_powers?}", (a, ct) => J(g.ProfileAsync(a, ct)));
         Op("update", "{group_id, charter?, open_enrollment?, fee?, show_in_list?, mature?, insignia_id?}", (a, ct) => J(g.UpdateAsync(a, ct)));
         Op("members", "{group_id} -> {members: [{id, name, title, owner, online, powers}]}", (a, ct) => J(g.MembersAsync(a, ct)));
-        Op("roles", "{group_id} -> {roles: [{role_id, name, title, desc, powers, members, everyone}]}", (a, ct) => J(g.RolesAsync(a, ct)));
+        Op("roles", "{group_id} -> {roles: [{role_id, name, title, desc, powers, power_bits (every bit, as a number), members, everyone}]}", (a, ct) => J(g.RolesAsync(a, ct)));
         Op("invite", "{group_id, to, role_id? | role_ids?}: they get a JoinGroup notification (default role: Everyone)", a => g.Invite(a));
         Op("eject", "{group_id, member} -> {ejected}: as the grid's reply says (owners can't be ejected)", (a, ct) => J(g.EjectAsync(a, ct)));
         Op("bans", "{group_id} -> {bans: [{id, name, since?}]}: who's banned from joining (Second Life only)", (a, ct) => J(g.BansAsync(a, ct)));
@@ -27,7 +27,7 @@ public sealed class TesselGroups : SessionApi
             (a, ct) => J(g.BanAsync(a, true, ct)));
         Op("unban", "{group_id, member | members} -> {unbanned}: the ban lifted (Second Life only)", (a, ct) => J(g.BanAsync(a, false, ct)));
         Op("createRole", "{group_id, name, title?, desc?, powers?: [names] | \"all\"} -> role", (a, ct) => J(g.CreateRoleAsync(a, ct)));
-        Op("updateRole", "{group_id, role_id, name?, title?, desc?, powers?}", (a, ct) => J(g.UpdateRoleAsync(a, ct)));
+        Op("updateRole", "{group_id, role_id, name?, title?, desc?, powers? ([names] | \"all\" | every bit as a number, as power_bits)}: what's not given stays", (a, ct) => J(g.UpdateRoleAsync(a, ct)));
         Op("deleteRole", "{group_id, role_id}", a => g.DeleteRole(a));
         Op("assignRole", "{group_id, role_id, member}", a => g.AssignRole(a, true));
         Op("unassignRole", "{group_id, role_id, member}", a => g.AssignRole(a, false));

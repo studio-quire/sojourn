@@ -8687,7 +8687,7 @@
     "de": "Jetzt {0} m². So viel Land kann die Gruppe über Ihren Account halten; in Second Life zählt es zu Ihrer monatlichen Landnutzungsgebühr.",
     "zh-Hans": "现在是 {0} m²。群组可以用你的账号持有这么多土地；在 Second Life 上，这会计入你每月的土地使用费。"
   },
-  "Kick {0} out of the estate": {
+  "Eject {0} from the estate": {
     "_": "confirmation title (bold first line on the assistant's panel, the safety gate the person presses confirm on; sentence case, imperative; up to 4 lines); SL estate kick",
     "zh": "將 {0} 踢出領地",
     "it": "Espelli {0} dalla proprietà immobiliare",

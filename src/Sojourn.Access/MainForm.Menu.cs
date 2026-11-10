@@ -15,7 +15,7 @@ namespace Sojourn.Access;
 public sealed partial class MainForm
 {
     readonly MenuStrip _menu = new() { Name = "menu", AccessibleName = "Menu bar", TabStop = false };
-    ToolStripMenuItem _sitItem = null!, _flyItem = null!, _runItem = null!, _awayItem = null!, _dndItem = null!, _incognitoItem = null!,
+    ToolStripMenuItem _sitItem = null!, _flyItem = null!, _runItem = null!, _roundItem = null!, _awayItem = null!, _dndItem = null!, _incognitoItem = null!,
         _micItem = null!, _muteItem = null!, _timesItem = null!, _recentItem = null!, _voicePeopleItem = null!;
 
     void BuildMenu()
@@ -29,6 +29,8 @@ public sealed partial class MainForm
             _sitItem = Item("&Sit on the ground", null, () => _ = SitOrStandAsync()),
             _flyItem = Item("&Fly", null, ToggleFly),
             _runItem = Item("Always run", "//run", ToggleAlwaysRun),   // (no mnemonic: its letters are taken in World)
+            _roundItem = Item("Walk round people", "//walkround", ToggleWalkRound),   // (no mnemonic, as Always run: one here could take a letter she knows from an item below)
+            AutoSitMenu(),
             Later("Wal&k mode", "F3", ToggleWalk),
             RouteMenu(),
             RideMenu(),
@@ -42,6 +44,7 @@ public sealed partial class MainForm
             // (no mnemonic: every letter of its words is taken in World)
             Later("About Land", "Control+L", () => GoLand()),
             Later("The region's covenant", "covenant", () => { GoLand("Covenant"); }),
+            Later("The estate", "estate", () => { GoLand("Estate"); }),   // (About Land's Estate tab: its tools for its owner and managers)
             Item("&Parcels in this region", null, () => _ = _cmd.RunAsync("//parcelinfo")),
             Item("S&tatus", null, () => _ = _cmd.RunAsync("//status")),
             Item("What you're &wearing", "Control+Shift+W", () => _ = OutfitListAsync()),
@@ -122,7 +125,9 @@ public sealed partial class MainForm
             Item("Undo the last build chan&ge", "undo", () => _ = BuildCommandAsync("undo")),
             Item("Build &commands", "help", ShowBuildHelp),
             new ToolStripSeparator(),
-            Later("&Upload a file...", "Control+U", UploadKey));
+            Later("&Upload a file...", "Control+U", UploadKey),
+            Later("E&xport what you're editing to a file...", "export", () => _ = GuardedAsync(() => ExportWordsAsync(""), "export")),
+            Later("&Import an object from a file...", "import", () => _ = GuardedAsync(() => ImportWordsAsync(""), "import")));
 
         ToolStripMenuItem clearCache;
         var help = Top("&Help",
@@ -166,6 +171,16 @@ public sealed partial class MainForm
             if (keys.FirstOrDefault(k => k.Text == i.Text).Key is { } key) i.ShortcutKeyDisplayString = key;
     }
 
+    /// <summary>World > Auto-sit: its items as things stand, made as it opens (MainForm.AutoSit.cs).</summary>
+    ToolStripMenuItem AutoSitMenu()
+    {
+        var m = new ToolStripMenuItem("A&uto-sit") { Name = "menuAutoSit", ShortcutKeyDisplayString = AutoSitKey };
+        m.DropDownItems.Add(new ToolStripMenuItem("(none yet)"));   // a submenu needs an item to open
+        m.DropDownOpening += (_, _) => FillAutoSitMenu(m.DropDownItems);
+        m.DropDownOpened += (_, _) => Mnemonics.Fix(m.DropDown);
+        return m;
+    }
+
     /// <summary>The World menu as things are now: sitting or standing, flying, away, busy, incognito, the mic.</summary>
     void WorldShown()
     {
@@ -175,6 +190,7 @@ public sealed partial class MainForm
         _flyItem.Text = c?.Self.Movement.Fly == true ? "Stop &flying" : "&Fly";
         _flyItem.Enabled = !sitting;
         _runItem.Checked = _set.WalkAlwaysRun;
+        _roundItem.Checked = _set.WalkRoundPeople;
         _awayItem.Checked = Host?.Session.Presence.Away == true;
         _dndItem.Checked = Host?.Session.Presence.DoNotDisturb == true;
         _incognitoItem.Checked = Host?.Session.Private.On == true;

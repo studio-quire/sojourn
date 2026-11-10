@@ -80,6 +80,9 @@ public sealed partial class MainForm
         var sitItem = _objectMenu.Items[^1];
         Item("&Stand up", t => _ = _cmd.RunAsync("//stand"));
         var standItem = _objectMenu.Items[^1];
+        // her seat for this region, sat on again when she logs in or teleports here (MainForm.AutoSit.cs)
+        Item("Auto-sit on it", t => { if (SeatFor(t.Id) is { } seat) ForgetSeat(seat); else SetSeat(t.Id, t.Name); });
+        var autoSitItem = _objectMenu.Items[^1];
         // as the viewer's pie menu offers them (ThingActions.For; the blind tester's tip jars, 2026-11-05)
         Item("P&ay...", t => _ = PayThingAsync(t.PayTo, t.Name));
         var payItem = _objectMenu.Items[^1];
@@ -90,6 +93,9 @@ public sealed partial class MainForm
         Item("&Walk to", t => _ = _cmd.WalkAsync(t.Pos, t.Name, 1.5, $"//go tp object {t.Name}"));
         Item("&Beacon", t => _walk?.BeaconOn(t.Name, t.Id));
         Item("&Face", t => _ = _cmd.FacePointAsync(t.Pos, t.Name));
+        // her arm on it for a friend to see (MainForm.PointAt.cs; no letter: every letter of its words is taken here)
+        Item("Point at", PointThing);
+        var pointItem = _objectMenu.Items[^1];
         Item("&Describe", t => _ = DescribeAsync(Of(t)));
         Item("Deta&ils", t => _ = ThingDetailsAsync(t.Id, t.Name));
         Item("W&here", t => Answer(t.Hud ? $"{t.Name} is worn {t.Text}."
@@ -106,6 +112,8 @@ public sealed partial class MainForm
         var linkItem = _objectMenu.Items[^1];
         Item("Cop&y its settings to what I'm editing", t => _ = GuardedAsync(() => CopyToEditingAsync(t.Id), t.Name));
         var copySettings = _objectMenu.Items[^1];
+        Item("E&xport to a file...", t => BeginInvoke(() => RealInput.Ours(() => _ = GuardedAsync(() => ExportThingAsync(t.Id, t.Name), "export"))));
+        var exportItem = _objectMenu.Items[^1];
         Item("Bl&ock", t => _ = BlockAsync(t.Id, t.Name, "object"));
         var blockItem = _objectMenu.Items[^1];
         var sortItem = new ToolStripMenuItem("Sort A to &Z", null, (_, _) =>
@@ -152,6 +160,11 @@ public sealed partial class MainForm
             buyItem.Visible = world && sel is { Mine: false, Sale: not null };
             copyItem.Visible = world && sel is { MayCopy: true };
             linkItem.Visible = copySettings.Visible = world && sel is { Mine: true } && LinkableNow(sel);
+            exportItem.Visible = world && sel is { Mine: true };
+            autoSitItem.Visible = world;
+            pointItem.Visible = world;
+            pointItem.Text = sel != null && PointingAt(sel.Id) ? "Stop pointing" : "Point at";
+            autoSitItem.Text = sel != null && SeatFor(sel.Id) != null ? "Stop auto-sitting on it" : "Auto-sit on it";
             // its own click action leads, as the viewer's left click does it
             _objectMenu.Items.Remove(payItem);
             _objectMenu.Items.Remove(buyItem);
@@ -167,13 +180,14 @@ public sealed partial class MainForm
                 Host?.Log.LogInformation("objects: actions on {Name} ({Where}, left click {Click}): {Items}", sel.Name, mine ? "worn" : others ? "worn by someone" : sel.Mine ? "yours, nearby" : "nearby", sel.Click ?? "touch",
                     string.Join(", ", _objectMenu.Items.OfType<ToolStripItem>().Where(i => i.Available).Select(i => i.Text.Replace("&", ""))));
         };
-        KeysOn(_objectMenu, ("&Describe", "Control+D"), ("Deta&ils", "Alt+Enter"), ("&Parts", "Tab"), ("&Edit (build)", "Control+B"), ("De&lete", "Delete"), ("Take &off", "Delete"), ("&Refresh", "F5"));
+        KeysOn(_objectMenu, ("&Describe", "Control+D"), ("Deta&ils", "Alt+Enter"), ("&Parts", "Tab"), ("Point at", "Control+P"), ("&Edit (build)", "Control+B"), ("De&lete", "Delete"), ("Take &off", "Delete"), ("&Refresh", "F5"));
         MenuOn(_objects, _objectMenu);
         _objects.KeyDown += (_, e) => ListKey(_objects, _objectMenu, e, RefreshObjects);
         _objects.KeyDown += (_, e) =>
         {
             if (e.KeyCode == Keys.Enter && _objects.FocusedItem?.Name == MoreRow) { e.Handled = e.SuppressKeyPress = true; MoreObjects(); return; }
             if (e.KeyData == (Keys.Alt | Keys.Enter) && _objects.FocusedItem?.Tag is PersonOps.Thing d) { e.Handled = e.SuppressKeyPress = true; _ = ThingDetailsAsync(d.Id, d.Name); return; }
+            if (e.KeyData == (Keys.Control | Keys.P) && _objects.FocusedItem?.Tag is PersonOps.Thing pt) { e.Handled = e.SuppressKeyPress = true; PointThing(pt); return; }
             if (e.KeyData != Keys.Delete || _objects.FocusedItem?.Tag is not PersonOps.Thing t) return;
             e.Handled = e.SuppressKeyPress = true;
             if (t.Hud) _ = TakeOffWornAsync(t);
