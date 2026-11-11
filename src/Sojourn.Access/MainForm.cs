@@ -267,6 +267,22 @@ public sealed partial class MainForm : Form
         WatchConnection();
         KeepStartPlaces();
         KeepAlwaysRun();
+        WatchMusicTitle();
+    }
+
+    string? _songInHistory;
+
+    /// <summary>Each new song's title a line in the nearby chat history, as the reader says it (AccessWiring.Music), so
+    /// one missed can be found again (the blind tester, 2026-11-10: read out, but nowhere in chat). Its switch is the
+    /// read-out's (Alt+0, Music titles); F6's mute leaves the line, as it does chat's.</summary>
+    void WatchMusicTitle()
+    {
+        if (Host?.Audio is not { } audio) return;
+        var m = audio.Music;
+        var title = Host.Settings.Music && m.On && m.State == "playing" ? m.Title : null;
+        if (string.IsNullOrWhiteSpace(title) || Sojourn.Session.Audio.MusicStream.SameSong(title, _songInHistory)) return;
+        _songInHistory = title;
+        if (Host.Settings.ScreenReader.Music) AppendChat($"Now playing: {title}");
     }
 
     string? _lastRegion;
@@ -446,6 +462,7 @@ public sealed partial class MainForm : Form
         if (e.Kind == FeedKind.Notice)
         {
             if (InFriendsBurst(e)) return null;   // said with the others once they stop (MainForm.FriendsOnline.cs)
+            if (OwnPayNotice(e)) return null;     // her own payment's answer says it (MainForm.Buying.cs)
             var said = Sentences(line);
             NoticeSaid(said, LogWords.FromOf(e), e.NoticeId);
             return said;

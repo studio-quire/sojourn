@@ -78,12 +78,38 @@ public static class SessionLog
     {
         readonly ThreadLocal<StringBuilder> _line = new(() => new StringBuilder());
         public override Encoding Encoding => a.Encoding;
-        static bool Off => Paused?.Invoke() == true;
-        public override void Write(char value) { if (Off) return; a.Write(value); ToFile(value.ToString()); }
-        public override void Write(string? value) { if (Off) return; a.Write(value); ToFile(value); }
-        public override void Write(char[] buffer, int index, int count) { if (Off) return; a.Write(buffer, index, count); ToFile(new string(buffer, index, count)); }
-        public override void WriteLine(string? value) { if (Off) return; a.WriteLine(value); ToFile(value + NewLine); }
+        readonly ThreadLocal<bool> _cut = new();
+        public override void Write(char value) => Take(value.ToString());
+        public override void Write(string? value) => Take(value);
+        public override void Write(char[] buffer, int index, int count) => Take(new string(buffer, index, count));
+        public override void WriteLine(string? value) => Take(value + NewLine);
         public override void Flush() { a.Flush(); Safe(b.Flush); }
+
+        /// <summary>A piece of a line from this thread: nothing of it while paused, and a line the pause began or ended
+        /// inside goes whole, the pieces on either side of the pause too. Kept, a time stamp written just before a spell
+        /// of incognito began stood in front of the first line after it ("08:05:42 08:05:44 info: ...", no record to
+        /// Send a log's filter: a test run's log, 2026-11-10), and the end of a line begun inside one would have been
+        /// logged after it.</summary>
+        void Take(string? s)
+        {
+            if (string.IsNullOrEmpty(s)) return;
+            if (Paused?.Invoke() == true)
+            {
+                _line.Value!.Clear();
+                _cut.Value = s[^1] != '\n';
+                return;
+            }
+            if (_cut.Value)
+            {
+                int end = s.IndexOf('\n');
+                if (end < 0) return;
+                _cut.Value = false;
+                s = s[(end + 1)..];
+                if (s.Length == 0) return;
+            }
+            a.Write(s);
+            ToFile(s);
+        }
 
         void ToFile(string? s)
         {

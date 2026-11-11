@@ -249,7 +249,7 @@ public sealed class AccessWiring : IDisposable
     {
         if (_music == null) return;
         var title = _music.On && _music.State == "playing" ? _music.Title : null;
-        if (!string.IsNullOrWhiteSpace(title) && title != _title && MusicMuted?.Invoke() != true) Announcer.Say(AnnounceKind.Music, Lang.F("Now playing: {0}", title));
+        if (!string.IsNullOrWhiteSpace(title) && !Audio.MusicStream.SameSong(title, _title) && MusicMuted?.Invoke() != true) Announcer.Say(AnnounceKind.Music, Lang.F("Now playing: {0}", title));
         if (title != null) _title = title;
     }
 

@@ -97,6 +97,38 @@ static class ComUia
         return lines.Count == 0 ? "ERR no tab controls" : string.Join("\n", lines);
     }
 
+    const int UIA_ValuePatternId = 10002;
+    static IUIAutomation5 unfocusing;
+
+    /// <summary>ValuePattern.SetValue on a window's element by a COM client that doesn't set the focus first
+    /// (IUIAutomation2's AutoSetFocus off, which the managed client can't turn off); false when it has no such pattern
+    /// or the call failed, for the caller to go the managed way and report what that says. Why: Server's `set`.</summary>
+    public static bool SetValueUnfocused(IntPtr hwnd, string text)
+    {
+        IUIAutomationElement e = null;
+        object pattern = null;
+        try
+        {
+            if (unfocusing == null)
+            {
+                var client = (IUIAutomation5)new CUIAutomation8();
+                client.put_AutoSetFocus(0);
+                unfocusing = client;
+            }
+            e = unfocusing.ElementFromHandle(hwnd);
+            pattern = e.GetCurrentPattern(UIA_ValuePatternId);
+            if (!(pattern is IUIAutomationValuePattern value)) return false;
+            value.SetValue(text);
+            return true;
+        }
+        catch (Exception) { return false; }
+        finally
+        {
+            if (pattern != null) Marshal.ReleaseComObject(pattern);
+            if (e != null) Marshal.ReleaseComObject(e);
+        }
+    }
+
     delegate bool EnumProc(IntPtr h, IntPtr l);
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
     [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr p, EnumProc f, IntPtr l);
@@ -187,7 +219,7 @@ static class ComUia
         void CheckNotSupported(); void get_ReservedNotSupportedValue(); void get_ReservedMixedAttributeValue();
         void ElementFromIAccessible(); void ElementFromIAccessibleBuildCache();
         // IUIAutomation2
-        void get_AutoSetFocus(); void put_AutoSetFocus(); void get_ConnectionTimeout(); void put_ConnectionTimeout();
+        void get_AutoSetFocus(); void put_AutoSetFocus(int autoSetFocus); void get_ConnectionTimeout(); void put_ConnectionTimeout();
         void get_TransactionTimeout(); void put_TransactionTimeout();
         // IUIAutomation3
         void AddTextEditTextChangedEventHandler(); void RemoveTextEditTextChangedEventHandler();
@@ -213,6 +245,15 @@ static class ComUia
         void SetFocus(); void GetRuntimeId(); void FindFirst(); void FindAll(); void FindFirstBuildCache();
         void FindAllBuildCache(); void BuildUpdatedCache();
         [return: MarshalAs(UnmanagedType.Struct)] object GetCurrentPropertyValue(int propertyId);
+        void GetCurrentPropertyValueEx(); void GetCachedPropertyValue(); void GetCachedPropertyValueEx();
+        void GetCurrentPatternAs(); void GetCachedPatternAs();
+        [return: MarshalAs(UnmanagedType.IUnknown)] object GetCurrentPattern(int patternId);
+    }
+
+    [ComImport, Guid("a94cd8b1-0844-4cd6-9d2d-640537ab39e9"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IUIAutomationValuePattern
+    {
+        void SetValue([MarshalAs(UnmanagedType.BStr)] string value);
     }
 
     [ComImport, Guid("c270f6b5-5c69-4290-9745-7a7f97169468"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

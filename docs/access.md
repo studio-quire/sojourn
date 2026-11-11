@@ -204,8 +204,9 @@ said when the keys rest. Since 2026-11-01 routes are recorded by walking them (R
 moves, the walk becomes `//go xyz` lines in her and her partner's format, points kept only at turns, level changes,
 doorways walked through, region borders, teleports, seats and touches, with her own notes as lines `//route` reads out;
 saved as a notecard in Routes, playable at once (access-app.md > Walk mode > Recording a route); checked on the local
-grid by walking a turn through a doorway and teleporting into another region, then playing it back. Left: paths
-across levels (stairs count as walls); recording's defaults and words judged by a blind tester, Second Life's own
+grid by walking a turn through a doorway and teleporting into another region, then playing it back. Left: a floor
+over another (stairs are walked since 2026-10-31, but a path keeps one floor a cell, so an upstairs or a
+balcony over where it starts isn't reached: `Walk/PathPlanner.cs`); recording's defaults and words judged by a blind tester, Second Life's own
 places (landing points, busy regions), a crossing on foot recorded and replayed; SL's own vehicles and crossings (only the local grid's tried); the sound design and
 every default judged by a blind tester.
 
@@ -844,6 +845,21 @@ Three logs with notes (our words).
   still not allow. Then the parcel returned her scooter, and Delete on it in Objects, still listed, asked to "Delete
   someone (372d0a97)" and said "object not found": a thing gone from the region is now "something no longer here", and
   that error "it isn't here any more".
+
+### Song titles at a jazz club (0.1.0.1074, the blind tester, 2026-11-10)
+
+A log with a note and two messages (our words; log `tester-20261111T024341-8bc53c`, 19:21-21:43, at clubs, tipping DJs).
+- **Titles not in chat**: she wasn't sure the stream's titles were being read; they were, 28 times, but nowhere she could
+  look back for one she'd missed. Each is now a line in the nearby chat history too, and a song a station sends twice in
+  other words within seconds is said once (`docs/access-app.md` > Read-out).
+- **Each tip said three times**: the answer, Second Life's "You paid ..." and that again after a key cut it off. Her own
+  payment is now said once, by its answer (`docs/access-app.md` > Paying and buying things).
+- **The window held 13 s** at 19:25:39, with nothing in the log around it to say why; her logs since 11-08 have 16 holds of
+  a second or more, most while starting (1-5.5 s, the 5.5 said aloud). The log now has the held thread's stack at 2 s
+  and 10 s (`docs/access-app.md` > How it fits > The window's thread held), so the next one names its cause.
+- Also seen, nothing changed: for a minute the parcel's music address was what reads like a line of chat (a club's stream
+  changer taking it, most likely), refused as no address and logged, the music back when a real one was set; near the end she went through Reading out's rows and
+  left "Lines cut off by my typing said again" off, maybe on purpose: a question for her if it stays off.
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 

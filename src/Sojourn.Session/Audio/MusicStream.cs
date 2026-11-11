@@ -36,6 +36,19 @@ public sealed partial class MusicStream : IDisposable
     /// <summary>The status changed (a title, playing, an error): for the menu.</summary>
     public event Action? Changed;
 
+    /// <summary>Two titles naming the same song in other words: the same words but "by" and punctuation, in any order. Some
+    /// stations send a song twice within seconds, worded two ways ("X by Y", then "Y - X": the blind tester's log,
+    /// 2026-11-10), and the second is no news.</summary>
+    public static bool SameSong(string? a, string? b)
+    {
+        if (a == null || b == null) return a == b;
+        static string[] Words(string t) => t.ToLowerInvariant()
+            .Split(t.Where(c => !char.IsLetterOrDigit(c)).Distinct().ToArray(), StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w != "by").Order(StringComparer.Ordinal).ToArray();
+        var (x, y) = (Words(a), Words(b));
+        return x.Length > 0 && x.SequenceEqual(y);
+    }
+
     public MusicStream(Action<string> log)
     {
         _log = log;

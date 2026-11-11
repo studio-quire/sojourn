@@ -42,7 +42,8 @@
                                    made removed (--keep leaves the folder). --bare: as on a PC with no Vulkan driver and
                                    no Media Foundation (Windows N): Vulkan's drivers hidden, sojourn_voice.dll removed; the
                                    view draws on the processor (the package's lavapipe), or gives up with --no-software
-  python tools/access.py stop      close whatever a broken run left (our app, visitors and QuireUia server, by path)
+  python tools/access.py stop      close whatever a broken run left (our app, visitors and QuireUia server, by path):
+                                   a live run's as readily, whoever started it, so never as a look for leftovers
   python tools/access.py sweep     delete whatever the Access Visitor still owns in Atelier (the grid console)
 
 How it sees without the screen: the app runs on a hidden Win32 desktop ("sojourn-access"), started there by QuireUia
@@ -361,6 +362,7 @@ def package_build():
     env = dict(os.environ, SOJOURN_BUILD_ROOT=str(build_root))
     p = subprocess.Popen([str(DOTNET), "publish", str(src / APP_PROJECT.relative_to(ROOT)), "-c", "Release", "-r", RID, "--self-contained", "true",
                           "-p:PublishSingleFile=true", f"-p:Version={version}", f"-p:SourceRevisionId={commit}",
+                          *(["-p:PublishReadyToRun=true"] if os.environ.get("ACCESS_R2R") == "1" else []),
                           "-p:DebugType=embedded", "-p:SatelliteResourceLanguages=en", "-o", str(stage),
                           "-m:2", "-nr:false", "-p:UseSharedCompilation=false", "-v:m", "-clp:NoSummary"],
                          env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -377,6 +379,9 @@ def package_build():
     for f in [*stage.rglob("*.pdb"), stage / "aspnetcorev2_inprocess.dll"]:
         f.unlink(missing_ok=True)
     shutil.copy2(NVDA_DIR / "x64" / "nvdaControllerClient.dll", stage)
+    # the runtime's own reader of its state (the DAC), which a single file leaves out: the window watch reads the held
+    # thread's stack with it (WindowWatch.LogStack), and would otherwise fetch one from Microsoft's symbol server
+    shutil.copy2(runtime_pack(build_root) / "runtimes" / RID / "native" / "mscordaccore.dll", stage)
     (stage / "lavapipe").mkdir()   # the view on the processor, where no GPU can run it (fetch_lavapipe)
     for n in LAVAPIPE_FILES:
         shutil.copy2(LAVAPIPE / n, stage / "lavapipe" / n)
@@ -390,7 +395,7 @@ def package_build():
     if not lean and bundle_assistant(stage, source=src) != 0:
         return 1
 
-    expected = ["SojournAccess.exe", "nvdaControllerClient.dll", "sojourn_voice.dll", "openjp2.dll", "libSkiaSharp.dll",
+    expected = ["SojournAccess.exe", "nvdaControllerClient.dll", "mscordaccore.dll", "sojourn_voice.dll", "openjp2.dll", "libSkiaSharp.dll",
                 "shaderc_shared.dll", "lavapipe/vulkan_lvp.dll", "lavapipe/lvp_icd.x86_64.json", "Shaders", "Character", "Textures", "Fonts", "linden"]
     if not lean:
         expected += ["python/python.exe", "assistant/main.py"]
@@ -602,6 +607,14 @@ def private_commit(public):
     return next((priv for pub, priv in reversed(publish_map()) if pub.startswith(public)), None)
 
 
+def runtime_pack(build_root):
+    """The .NET runtime pack the publish put inside SojournAccess.exe (its version from project.assets.json)."""
+    assets = json.loads((build_root / "obj" / "Sojourn.Access" / "project.assets.json").read_text(encoding="utf-8"))
+    deps = [d for f in assets["project"]["frameworks"].values() for d in f.get("downloadDependencies", [])]
+    version = next(d["version"] for d in deps if d["name"] == f"Microsoft.NETCore.App.Runtime.{RID}").strip("[]").split(",")[0].strip()
+    return NUGET / f"microsoft.netcore.app.runtime.{RID}" / version
+
+
 def licences(dest, build_root, src=ROOT):
     """The licences of what ships: our notices for the parts that need one, the texts beside them, and every NuGet
     package with files in the package (from the publish's project.assets.json) with its licence. src: the tree built."""
@@ -736,7 +749,23 @@ def tcp(port, line, timeout=60):
     return reply
 
 
+_fast_set = {}   # QuireUia's port: whether the server there sets a focused box's text at once
+
+
+def fast_set():
+    """Whether QuireUia's server is one whose `set` doesn't take 2 s on a box the focus is in (one built since
+    2026-11-10, and not started with QUIREUIA_SLOW_SET=1; an older one doesn't know the question)."""
+    if Q_PORT not in _fast_set:
+        try:
+            _fast_set[Q_PORT] = tcp(Q_PORT, "fastset", 10) == "on"
+        except ToolError:
+            _fast_set[Q_PORT] = False
+    return _fast_set[Q_PORT]
+
+
 def u(line, timeout=60):
+    if line.startswith("set ") and fast_set():
+        heard_out()
     try:
         return tcp(Q_PORT, line, timeout)
     except ToolError as e:
@@ -948,6 +977,32 @@ def said_since(start):
 
 def focus_events_since(start):
     return [e for e in events()[start:] if e.get("kind") == "focus"]
+
+
+_heard = {"got": None, "n": 0, "ends": 0.0}
+
+
+def heard_out(most=2.0):
+    """Before text is put in a box (every `set`: Say's box is cleared by one before each line typed): waits until the
+    lines that have arrived so far would have been heard, at most 2 s. A person hears a line out and then types, and
+    the app goes by that: a key typed into an arrival's speaking time cut it off, and it's said again once the keys rest
+    (MainForm.CutLines.cs: 30 ms a character and half a second at least, each line after the one before it; only what
+    arrives by itself, which UI Automation is handed to be read in turn, "All", where an answer to her own key cuts
+    in). Until 2026-11-10 every `set` took 2 s by itself (UI Automation setting the focus first and waiting, off the
+    input desktop: QuireUia's Server.cs), a fifth of a run, which paced the typing this way by accident. Waiting only
+    while an arrival is still being said, and never longer than those 2 s, leaves what gets cut and said again as it
+    was: without it the scripts step typed its second //touch 1.2 s after the first one's error was said, and heard the
+    error again."""
+    got = events()
+    if _heard["got"] is not got:   # (another log, or this one begun again)
+        _heard.update(got=got, n=0, ends=0.0)
+    for e in got[_heard["n"]:]:
+        if e.get("kind") == "notification" and e.get("processing") == "All":
+            _heard["ends"] = max(e.get("t", 0) / 1000, _heard["ends"]) + min(max(len(e.get("text") or "") * 0.03, 0.5), 10)
+    _heard["n"] = len(got)
+    left = min(_heard["ends"] + 0.1 - time.time(), most)
+    if left > 0:
+        time.sleep(left)
 
 
 # ---- processes ----------------------------------------------------------------------------------------------------------
@@ -1266,6 +1321,21 @@ def pal_pids():
 
 
 def pal_up(i):
+    """Where a friend is, or None when its bot doesn't answer or the grid has logged it out. The bot goes on answering
+    `pos` from its last state after that, and its teleports then each take 40 s to fail: an estate ban's "Your access
+    to the region was revoked and TP home failed - you have been logged out" left one so on 2026-11-10 (only "kicked
+    out" was looked for), and walking round people, forty steps on, stopped on its teleport timing out. Its log is
+    its own process's, begun again when it is."""
+    try:
+        if "Shutdown: raising Disconnected" in (OUT / "visitor" / f"pal{i + 1}.log").read_text(encoding="utf-8", errors="replace"):
+            return None
+    except OSError:
+        pass
+    return pal_answers(i)
+
+
+def pal_answers(i):
+    """Whether a friend's bot is there to answer at all (its process up and listening), logged in or not."""
     try:
         return tcp(PAL_PORTS[i], "pos", 5)
     except (OSError, ToolError):
@@ -1278,7 +1348,7 @@ def pal_quit(i):
         tcp(PAL_PORTS[i], "quit", 10)
     except (OSError, ToolError):
         return False
-    wait(lambda: not pal_up(i), 15, 0.5)
+    wait(lambda: not pal_answers(i), 15, 0.5)
     return True
 
 
@@ -1328,6 +1398,72 @@ def grid_lock():
             time.sleep(10)
 
 
+RUN_LOGS = LOCAL / "access-runs"   # each run's every line, the newest 40 runs kept
+
+
+class Brief:
+    """What a run prints, cut to its answer (ACCESS_BRIEF=0: every line, as it was until 2026-11-10): every line goes
+    to the run's own file in local/access-runs, and of them the FAILs come out whole, under their step's name; a step
+    with none is one line, its checks counted and its seconds. A line that is neither a check nor one of the run's own
+    remarks (a check's detail going on over more lines, an error from somewhere else) comes out only after a FAIL or
+    at a step's start. A line beginning NOTE comes out wherever it falls, with its step: for what no check fails on
+    but a reader of the run should see (the app killed at the end because it didn't close)."""
+
+    def __init__(self):
+        RUN_LOGS.mkdir(parents=True, exist_ok=True)
+        for old in sorted(RUN_LOGS.glob("*.log"))[:-39]:
+            old.unlink(missing_ok=True)
+        self.path = RUN_LOGS / f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}.log"
+        self.file = open(self.path, "w", encoding="utf-8")
+        self.out, self.rest, self.name = sys.stdout, "", None
+        self.part("before the steps", "")
+        sys.stdout = self
+
+    def part(self, name, kind="step: "):
+        """The next step begins (or the run's start, or its end): the one before it summed up."""
+        if self.name:
+            n, secs = self.passed + self.failed, time.time() - self.began
+            self.out.write(f"ok   {self.name}: {n} check{'' if n == 1 else 's'}, {secs:.0f} s\n" if not self.failed else
+                           f"     ({self.failed} of its {n} check{'' if n == 1 else 's'} failed, {secs:.0f} s)\n")
+            self.out.flush()
+        self.name, self.kind, self.passed, self.failed, self.began, self.showing = name, kind, 0, 0, time.time(), True
+
+    def write(self, text):
+        self.file.write(text)
+        if self.name is None:   # (after done: the run's totals)
+            return self.out.write(text)
+        *lines, self.rest = (self.rest + text).split("\n")
+        for line in lines:
+            if step := re.fullmatch(r"     \(step: (.*)\)", line):
+                self.part(step[1])
+            elif line.startswith("FAIL"):
+                if not self.failed:
+                    self.out.write(f"     ({self.kind}{self.name})\n")
+                self.failed, self.showing = self.failed + 1, True
+                self.out.write(line + "\n")
+            elif line.startswith("NOTE"):
+                self.out.write(f"{line} ({self.kind}{self.name})\n")
+            elif line.startswith("ok  "):
+                self.passed, self.showing = self.passed + 1, False
+            elif line.startswith("     "):
+                self.showing = False
+            elif self.showing:
+                self.out.write(line + "\n")
+        return len(text)
+
+    def flush(self):
+        self.file.flush()
+        self.out.flush()
+
+    def done(self):
+        """The steps and the shutdown are over: the last part summed up, and the run's totals printed as they come."""
+        self.part(None)
+
+    def close(self):
+        sys.stdout = self.out
+        self.file.close()
+
+
 def test():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     import grid
@@ -1372,19 +1508,28 @@ def test():
     (OUT / "visitor").mkdir(parents=True)
     (OUT / "app").mkdir(parents=True)
 
+    brief = Brief() if os.environ.get("ACCESS_BRIEF") != "0" else None
     procs = {"server": None, "app": None, "visitor": None}
     try:
-        session(run, procs)
-    except Stop:
-        pass
-    except Exception as e:
-        run.check("the run (stopped)", False, f"{type(e).__name__}: {e}")
+        try:
+            session(run, procs)
+        except Stop:
+            pass
+        except Exception as e:
+            run.check("the run (stopped)", False, f"{type(e).__name__}: {e}")
+        finally:
+            if brief:
+                brief.part("the end", "")
+            pals_quit()
+            shutdown(run, procs["server"], procs["app"], procs["visitor"])
+            if AIS:
+                AIS.stop()
+            if brief:
+                brief.done()
+        return finish(run, brief)
     finally:
-        pals_quit()
-        shutdown(run, procs["server"], procs["app"], procs["visitor"])
-        if AIS:
-            AIS.stop()
-    return finish(run)
+        if brief:
+            brief.close()
 
 
 def session(run, procs):
@@ -1442,6 +1587,7 @@ def session(run, procs):
                SOJOURN_NO_BROWSER="1",   # a link says it's opening, and no browser comes up on the PC
                SOJOURN_TEST_HOLD_WINDOW="1",   # //holdwindow SECONDS holds the window's thread (the window watch's step)
                SOJOURN_TEST_CONVOY_BLIND="1",   # //blindconvoy AFTER SECONDS: the one driven after goes unseen (driving after someone lost)
+               SOJOURN_TEST_AWAY_BY_ITSELF="1",   # //awaybyitself: away as five minutes without her sets it (the menu bar's step)
                SOJOURN_VOICE_OUT_FILE=str(HEARD), SOJOURN_WALK_LOG=str(OUT / "walk.log"),   # world audio to a file (local grid only), never the speakers
                SOJOURN_TEST_GROUPS_PAGE="1",   # a page of groups so short that any search has a further one
                SOJOURN_LOGINS=str(OUT / "logins"),   # remembered passwords in the run's own folder, not the repo's saved logins
@@ -1534,10 +1680,10 @@ def session(run, procs):
         # steps are the ones that wait for it
         wait(lambda: any("friends online" in (e.get("text") or "") for e in said_since(0)), 6)
 
+    import grid
     fresh_at = time.time()
-    for name, step in step_list(run, nonce, tester_id, procs):
-        if not step_wanted(name):
-            continue
+    steps = [(name, step) for name, step in step_list(run, nonce, tester_id, procs) if step_wanted(name)]
+    for i, (name, step) in enumerate(steps):
         if FRESH_SERVER_SECS > 0 and time.time() - fresh_at > FRESH_SERVER_SECS:
             fresh_server(procs)
             fresh_at = time.time()
@@ -1548,6 +1694,23 @@ def session(run, procs):
             step()
         except Exception as e:
             check(f"{name} (the step stopped)", False, f"{type(e).__name__}: {e}")
+        if run.failed_in.get(name) and not grid.ready():
+            # the grid gone from under the run (2026-11-09's full run, an hour in): said once, here, and the run ends,
+            # where every later step used to fail check by check against nothing
+            left = [n for n, _ in steps[i + 1:]]
+            check("the local grid stayed up", False,
+                  f"it went down during \"{name}\", so this step's failures above are likely its doing; {grid.how_ended()}"
+                  + (f". Not run, {len(left)} step{'s' if len(left) > 1 else ''}: {'; '.join(left)}" if left else ""))
+            run.took[name], run.step = time.time() - began, None
+            raise Stop
+        # (after a step with failures only: a step that ends at the login window, as the last does, has no focus by
+        # rights; and nothing focused for a second and a half, not the moment between one window closing and the
+        # next taking over)
+        try:
+            if run.failed_in.get(name) and focused() is None and wait_focus(lambda d: True, 1.5) is None and alive(APP_PID):
+                focus_lost()
+        except Exception:
+            pass
         back_to_chat()
         run.took[name], run.step = time.time() - began, None
 
@@ -1723,11 +1886,54 @@ def fresh_server(procs):
     wait(lambda: u("help", timeout=5), 20)
     if not wait(lambda: any(e.get("src") == "server" and e.get("kind") == "listening" and e.get("text") == "com notification"
                             for e in events()[n:]), 15, 0.5):
-        print("     (QuireUia started afresh, but not listening for announcements yet)")
+        print("NOTE QuireUia started afresh, but not listening for announcements yet", flush=True)
     u(f"watch {procs['app']}")
     # (not activated again: the server's small window doesn't take the foreground, and activating the main window
     # moved the focus out of a window of the app's own, a script's editor, and onto the tab strip)
     u("mark QuireUia started afresh")
+
+
+def pc_foreground():
+    """The window in front on the PC's own desktop, as "CLASS of PROCESS" (no title: it's the person's)."""
+    import ctypes
+    from ctypes import wintypes
+    user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    h = user32.GetForegroundWindow()
+    if not h:
+        return "nothing"
+    cls, pid = ctypes.create_unicode_buffer(200), wintypes.DWORD()
+    user32.GetClassNameW(wintypes.HWND(h), cls, 200)
+    user32.GetWindowThreadProcessId(wintypes.HWND(h), ctypes.byref(pid))
+    name, n = ctypes.create_unicode_buffer(520), wintypes.DWORD(520)
+    proc = kernel32.OpenProcess(0x1000, False, pid.value)   # (PROCESS_QUERY_LIMITED_INFORMATION)
+    if proc:
+        kernel32.QueryFullProcessImageNameW(wintypes.HANDLE(proc), 0, name, ctypes.byref(n))
+        kernel32.CloseHandle(wintypes.HANDLE(proc))
+    return f"{cls.value} of {Path(name.value).name or f'pid {pid.value}'}"
+
+
+def focus_lost():
+    """The app left with no focus at all (no active window on its thread): said once a step, with what's in front on
+    the PC's own desktop, and the app activated again so the steps after aren't lost to it. Seen 2026-11-10: with a
+    Windows flyout open on the visible desktop (ControlCenterWindow of ShellHost.exe: Quick Settings or the notification
+    centre, left open by the person; a menu or Start would likely do the same) SetForegroundWindow does nothing at all
+    for a process on a hidden desktop, where it otherwise activates the window on its own desktop, and Windows
+    activates nothing there when the active window closes. So a window of the app's that closes and hands over with
+    Form.Activate alone (a card opened from a card, back to the first) leaves nothing active: the notecards step's
+    "Escape comes back to the card's window" failed 5 of 5 with the flyout open and passed with it closed, the same
+    binaries, and 28 steps after it failed with "nothing focused". Returns to the main window still worked (they set
+    the focus on a control, which activates its window whatever the foreground's state). The person at the app's own
+    window can't meet it: there the app is the foreground process."""
+    print(f"NOTE the app was left with no focus; in front on the PC's own desktop: {pc_foreground()}. A Windows flyout "
+          "or menu open there stops windows on the hidden desktop being activated (access.py's focus_lost), and this "
+          "step's failures may be that. The app is activated again for the steps after", flush=True)
+    try:
+        u(f"activate {APP_PID}")
+    except ToolError as e:
+        print(f"     (activate: {e})")
+    wait_focus(lambda d: True, 3)
 
 
 def back_to_chat():
@@ -6127,6 +6333,11 @@ def window_held(run):
     run.check("and logged: held 5 s, then how long", "window: its thread has been held 5 s" in text
               and re.findall(r"window: its thread was held (\d+\.\d) s", text)[before + 1:] != [],
               "; ".join(re.findall(r"window: its thread [^\r\n]*", text)[-3:]))
+    # what it was doing, read from a snapshot at 2 s: here the test's own command asleep
+    stacks = re.findall(r"window: held \d+\.\d s, its thread in [^\r\n]*", text)
+    run.check("and what it was doing: the stack names the command that held it",
+              stacks and "Commands" in stacks[-1] and "Sleep" in stacks[-1],
+              (stacks[-1] if stacks else "; ".join(re.findall(r"window: held [^\r\n]*", text)[-2:]) or "no stack logged")[:700])
 
 
 def places(run, nonce):
@@ -7537,7 +7748,11 @@ def scripts_editing(run, nonce):
         item_id = inv_items(folder).get(name)
         if not run.check("(her box is out)", box_id, json.dumps(made)) or not run.check("(the script found)", item_id, ""):
             return
-        src = 'default { state_entry() { llSay(0, "scripted ready"); } touch_start(integer n) { llSay(DEBUG_CHANNEL, "%s"); } }' % word
+        # (its first two touches' error says one thing and the later ones another, so the switch is checked on words
+        # not said yet, without sitting out the half minute the same words stay unsaid: 31 s of the step until
+        # 2026-11-10; that they're said again after it is the one line in SocialFeed.ScriptError, not checked here)
+        src = ('integer touches; default { state_entry() { llSay(0, "scripted ready"); } touch_start(integer n) { '
+               'if (++touches > 2) llSay(DEBUG_CHANNEL, "%s more"); else llSay(DEBUG_CHANNEL, "%s"); } }' % (word, word))
         api("TesselInventory", "writeScript", 20, item_id=item_id, text=src)
         gated(run, "the script put in", "TesselBuild", "addToContents", 30, id=box_id, item_id=item_id)
         key("alt+7")
@@ -7607,9 +7822,8 @@ def scripts_editing(run, nonce):
         say_in_app(f"//touch {boxname}")
         time.sleep(3)
         run.check("the same words again aren't said again", not any(f"Script error" in (e.get("text") or "") for e in said_since(m)), "")
-        # past the half minute: nothing with the switch off, and said again with it on
+        # its third touch on says other words: nothing with the switch off, and said with it on
         setting("access_script_errors", "off")
-        time.sleep(31)
         m = mark()
         say_in_app(f"//touch {boxname}")
         time.sleep(3)
@@ -7617,7 +7831,7 @@ def scripts_editing(run, nonce):
         setting("access_script_errors", "on")
         m = mark()
         say_in_app(f"//touch {boxname}")
-        run.expect("on again, said again", [f"Script error in {boxname}: {word}"], m, 15)
+        run.expect("on again, its new words said", [f"Script error in {boxname}: {word} more"], m, 15)
         made = v(f"whoops {other} {x + 3:.1f} {y + 2:.1f} {z:.1f} | whoops{nonce}", timeout=40)
         if run.check("(the visitor's box with an error of its own)", " id " in made, made):
             time.sleep(1)
@@ -9614,7 +9828,7 @@ def estate_tools(run, nonce, tester_id):
         for pid, port in pal_pids():
             if port == PAL_PORTS[pal]:
                 kill(pid)
-        wait(lambda: not pal_up(pal), 10, 0.5)
+        wait(lambda: not pal_answers(pal), 10, 0.5)
         pal_start(pal)
         return wait(lambda: pal_up(pal) and not pal_kicked(), 60, 1)
 
@@ -10699,7 +10913,26 @@ def menu_bar(run, nonce, tester_id):
                 said = wait(lambda: next((e["text"] for e in said_since(m) if e.get("text") in ("Away.", "Not away.")), None), 6)
                 run.check(f"World > Away: {want}, said", said == words, said or "not heard")
                 run.check(f"(away {want})", wait(lambda: setting("away") == want, 4), str(setting("away")))
+        # Away by itself isn't hers: picking Away then makes it hers ("Away.", and it stays), where it used to take the
+        # pick for turning Away off ("Not away."), the opposite of what she asked, in the moment between her first key
+        # after a while and the app noticing she's back (//awaybyitself is the test's own: posted keys can't be waited out)
+        say_in_app("//awaybyitself")
+        st = wait(lambda: (lambda s: s if s.get("away_automatic") else None)(api("SojournPeople", "status")), 4)
+        if run.check("(away by itself)", st, json.dumps(api("SojournPeople", "status"))[:120]):
+            for words, want in (("Away.", (True, False)), ("Not away.", (False, False))):
+                m = mark()
+                key("alt+w")
+                if menu_open("Away"):
+                    key("a")
+                    said = wait(lambda: next((e["text"] for e in said_since(m) if e.get("text") in ("Away.", "Not away.")), None), 6)
+                    st = api("SojournPeople", "status")
+                    run.check("World > Away while away by itself: \"Away.\", and it's her own now" if want[0]
+                              else "World > Away again: \"Not away.\"",
+                              said == words and (st.get("away"), st.get("away_automatic")) == want,
+                              f"{said or 'not heard'}; away {st.get('away')}, by itself {st.get('away_automatic')}")
     finally:
+        if setting("away") == "on":
+            setting("away", False)
         setting("away_after", after)
     # a focus-moving item (View > People) lands once the menu has closed
     key("alt+v")
@@ -12167,8 +12400,12 @@ def rail_switches(run):
         u("keyup focus | 38")
         at = walk_pos()
         got = SWITCH_LINE.match((said or {}).get("text") or "")
+        # (in time to act, and no further than it is from where the kart starts: the app looks 7 s of travel ahead, 60 m
+        # at least (AheadFor), so at the kart's speed it's said from 60 to 70 m off by how soon the kart is up to
+        # speed and the switch read; 60 was the most allowed here until 2026-11-10, met exactly the run before and
+        # failed at 65)
         run.check("driving toward a switch says it once, with its setting and where the main line goes",
-                  got and 25 <= int(got[1]) <= 60, ((said or {}).get("text") or "not said") + f" (at {at[0]:.1f}, {at[1]:.1f})")
+                  got and 25 <= int(got[1]) <= a - x0, ((said or {}).get("text") or "not said") + f" (at {at[0]:.1f}, {at[1]:.1f})")
         run.check("with the switch cue", cues_since(t0, "Switch"), json.dumps(cues_since(t0)[-5:]))
         time.sleep(3)   # the kart coasts to a stop
         x1 = walk_pos()[0]
@@ -12655,12 +12892,13 @@ def vehicle_stop(run):
     throttle train (each Up press 5% of 10 m/s, each Down 5% less, on past 0 into reverse), opened 8 taps and stopped by
     Space, again by //stop from the Say box, then opened 12 taps and run past the end of its track, where it says "sensor :
     No further track guide detected": the urgent cue, "Track ends: stopping.", "Stopped.", its throttle back at 0 and never
-    below, and it never moves back. Then the trials: fresh trains stopped by Space and at the track's end, each kind
-    ACCESS_STOP_TRIALS times (1; ACCESS_STOP_KINDS picks them): "text", every third press lost on the way and its throttle
-    shown only as floating text (the blind tester's train); "lines", every third lost, its throttle said aloud; "none",
-    every third lost, its throttle said nowhere Access hears; "start", said nowhere, opened to 20% before the arrows. Each
-    must say "Stopped.", end at throttle 0 (as the train tells the visitor), never below, and never move back; the
-    failures and reversals are tallied. Needs no renderer."""
+    below, and it never moves back. Then the trials, a fresh train of each kind stopped once (ACCESS_STOP_TRIALS times;
+    ACCESS_STOP_KINDS picks kinds; ACCESS_STOP_HOWS=space,end stops each kind both ways): "text", every third press lost
+    on the way and its throttle shown only as floating text (the blind tester's train), stopped at the track's end; and
+    by Space, "lines", every third lost, its throttle said aloud; "none", every third lost, its throttle said nowhere
+    Access hears; "start", said nowhere, opened to 20% before the arrows. Each must say "Stopped.", end at throttle 0 (as
+    the train tells the visitor), never below, and never move back; the failures and reversals are tallied. Needs no
+    renderer."""
     back_to_chat()
     m = mark()
     say_in_app(f"//tp {COURSE_REGION}/100/60/40")
@@ -12884,10 +13122,17 @@ def vehicle_stop(run):
 
         kinds = {"text": "hover 1 quiet 1 lose 3", "lines": "lose 3", "none": "quiet 1 lose 3", "start": "quiet 1 start 20"}
         pick = [k for k in os.environ.get("ACCESS_STOP_KINDS", ",".join(kinds)).split(",") if k in kinds]
+        # One trial a kind (2026-11-10; each was run both ways until then, 8 trials and most of the step's 7 minutes).
+        # A kind is a way of knowing the throttle, and each has code of its own; Space and the track's end are two ways
+        # into the one stop (StartVehicleStop), both run above on a train that loses nothing, and they differ below
+        # only in how far the throttle is open. So the blind tester's kind of train at the track's end, where hers
+        # ran off, and the others by Space, the shorter trial. ACCESS_STOP_HOWS=space,end runs every kind both ways,
+        # for a change to the stop or the throttle's reading (with ACCESS_STOP_TRIALS: the stop goes by timing).
+        hows = [h for h in os.environ.get("ACCESS_STOP_HOWS", "").split(",") if h in ("space", "end")]
         tally = {}
         for i in range(int(os.environ.get("ACCESS_STOP_TRIALS", "1"))):
             for kind in pick:
-                for how in ("space", "end"):
+                for how in hows or (("end",) if kind == "text" else ("space",)):
                     ok, back, detail = trial(kind, kinds[kind], how)
                     t = tally.setdefault(f"{kind} by {'Space' if how == 'space' else 'the track end'}", [0, 0, 0])
                     t[0] += 1
@@ -13507,7 +13752,8 @@ def ride_recording(run):
         go_tp(run, "the tester beside the train", x0 - 1, y - 2, g(x0) + 1.5)
         m = mark()
         say_in_app("//sit Ride Train")
-        if not run.expect("the train's script takes the keys", ["kart controls taken"], m, 15):
+        taken = run.expect("the train's script takes the keys", ["kart controls taken"], m, 15)
+        if not taken:
             return
 
         # standing up before anything moved is going to the ride: the recording goes on (her waterslide, 2026-11-04)
@@ -13522,6 +13768,9 @@ def ride_recording(run):
         m = mark()
         say_in_app("//stopride")
         run.expect("//stopride stops it", ["ride recorded"], m, 5)
+        # (an object's same line isn't said again within 10 s, Announcer.Repeated, and the train's line on sitting
+        # back is the one it said on sitting: it came some 15 s after that while every line typed took 2 s longer)
+        wait(lambda: time.time() * 1000 - taken["t"] > 10_500, 12, 0.2)
         m = mark()
         say_in_app("//sit Ride Train")
         run.expect("(back on the train)", ["kart controls taken"], m, 15)
@@ -13981,7 +14230,7 @@ def shutdown(run, server_pid, app_pid, visitor):
                 time.sleep(2)
     if app_pid and wait(lambda: not alive(app_pid), 10, 0.5) is None:
         kill(app_pid)
-        print(f"     (the app didn't close in 10 s after WM_CLOSE: killed)")
+        print("NOTE the app didn't close in 10 s after WM_CLOSE: killed", flush=True)
     if visitor:
         try:
             visitor.wait(15)
@@ -14007,7 +14256,7 @@ def shown(path):
         return str(path)
 
 
-def finish(run):
+def finish(run, brief=None):
     total = run.ok + len(run.failed)
     print(f"\n{run.ok} of {total} passed" + (f"; failed: {', '.join(run.failed)}" if run.failed else ""))
     if run.failed_in:
@@ -14024,7 +14273,8 @@ def finish(run):
         print(f"{time.time() - run.began:.0f} s, {sum(run.took.values()):.0f} of them in {len(run.took)} step{'s' if len(run.took) > 1 else ''}"
               + (": " + ", ".join(f"{s} {t:.0f}" for s, t in slow) + (" ..." if len(run.took) > 3 else "") if len(run.took) > 1 else "")
               + " (python tools/access.py steps lists each)")
-    print(f"logs: {shown(EVENTS)}, {shown(OUT / 'visitor' / 'visitor.log')}, {shown(OUT / 'app')}")
+    print((f"every line of the run: {shown(brief.path)} (ACCESS_BRIEF=0 prints them); " if brief else "")
+          + f"logs: {shown(EVENTS)}, {shown(OUT / 'visitor' / 'visitor.log')}, {shown(OUT / 'app')}")
     return 0 if not run.failed else 1
 
 
@@ -14233,6 +14483,7 @@ def package_check():
                    APPDATA=str(env_dirs["APPDATA"]),
                    SOJOURN_TEST_INPUT="keys",            # posted keys judged as the hand's
                    SOJOURN_TEST_NO_CLIPBOARD="1",
+                   SOJOURN_TEST_HOLD_WINDOW="1",         # //holdwindow: the window watch reading a held stack
                    SOJOURN_VOICE_OUT_FILE=str(out / "heard.wav"),   # world audio to a file, never the speakers
                    SOJOURN_VOICE_MIC_FILE="none")         # and no microphone
         if bare:
@@ -14350,6 +14601,17 @@ def package_check():
             text = got["text"]
             check("//about names the public source", "github.com/studio-quire/sojourn" in text, text[:200])
             check("//about names the data folder", str(data) in text, text[-160:])
+        # the window held: its stack read with the package's own mscordaccore.dll (a single file has none inside),
+        # and ClrMD's copy of it taken out of %TEMP% again (the last checks see that folder)
+        say_in_app("//holdwindow 3")
+        def stack_line():
+            text = "".join(f.read_text(encoding="utf-8", errors="replace") for f in (data / "logs").glob("*.log"))
+            return [l for l in text.splitlines() if "window: held" in l]
+        held = wait(lambda: [l for l in stack_line() if "its thread in" in l or "couldn't" in l or "no mscordaccore" in l], 15, 0.5)
+        check("the window held 3 s: its stack read with the package's own DAC, naming the command",
+              held and "Commands" in held[-1] and "Sleep" in held[-1], (held[-1] if held else "nothing logged")[-400:])
+        wait(lambda: any("its thread was held" in l for l in "".join(f.read_text(encoding="utf-8", errors="replace")
+                                                                  for f in (data / "logs").glob("*.log")).splitlines()), 10, 0.5)
         if not relay:
             m = mark()
             key("ctrl+d")

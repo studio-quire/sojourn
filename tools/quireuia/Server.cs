@@ -17,7 +17,7 @@ using Accessibility;
 static class Server
 {
     // Shift, Control, Alt, each side's, and the Windows keys
-    static readonly int[] Modifiers = { 0x10, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C };
+    public static readonly int[] Modifiers = { 0x10, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C };
 
     public const string Help = @"commands (a SEL is key=value pairs joined by ';': pid, name (exact), name~ (contains), id (AutomationId),
 type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index among matches); pid defaults to the watched one):
@@ -30,7 +30,8 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
   focus [up]                the focused element (up: and its ancestors), and the foreground window
   find SEL                  matching elements
   get SEL                   one element in detail, with its full value or text
-  set SEL | TEXT            ValuePattern.SetValue
+  set SEL | TEXT            ValuePattern.SetValue (a box the focus is in: at once; any other takes the focus, 2 s)
+  fastset                   on, or off with QUIREUIA_SLOW_SET=1 in the server's environment (every set 2 s, as it was)
   invoke SEL                InvokePattern.Invoke (toolbar buttons, menu items)
   click SEL                 BM_CLICK to a Win32 button (Invoke fails on them off the input desktop)
   select SEL                SelectionItemPattern.Select
@@ -200,9 +201,21 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
             case "set":
                 {
                     var e = One(selPart);
+                    // UI Automation sets the focus on an element itself before any pattern's method, and off the input
+                    // desktop then waits 2 s before going on, every time (so do toggle, select, invoke, expand and
+                    // setfocus here). Most sets are of a box the focus is in already: Sojourn Access's test clears
+                    // Say's box before each line it types, 51 of the 59 sets in a run of three steps, 106 s of its 621
+                    // (2026-11-10). Those go through a COM client with that turned off: the same provider's SetValue,
+                    // without the wait, and without the focus events UI Automation raised for a focus that hadn't
+                    // moved. A box the focus isn't in goes as before and takes the focus, as callers may count on.
+                    // QUIREUIA_SLOW_SET=1 (the server's environment): every set as before.
+                    var h = (IntPtr)e.Current.NativeWindowHandle;
+                    if (h != IntPtr.Zero && !slowSet && ThreadFocus(h) == h && ComUia.SetValueUnfocused(h, tail ?? "")) return "ok";
                     ((ValuePattern)e.GetCurrentPattern(ValuePattern.Pattern)).SetValue(tail ?? "");
                     return "ok";
                 }
+            // (whether set goes that way: a caller that paced itself by set's 2 s paces itself another way then)
+            case "fastset": return slowSet ? "off" : "on";
             case "invoke": ((InvokePattern)One(selPart).GetCurrentPattern(InvokePattern.Pattern)).Invoke(); return "ok";
             // Win32 buttons' Invoke wants to take focus first, which fails off the input desktop; BM_CLICK doesn't.
             case "click": Native.PostMessage(Hwnd(One(selPart)), 0x00F5, IntPtr.Zero, IntPtr.Zero); return "ok";
@@ -223,14 +236,13 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
                         var mods = bits.Take(bits.Length - 1).Select(m => m.ToLowerInvariant()).ToList();
                         uint target = 0, me = 0;
                         byte[] saved = null;
-                        if (mods.Count > 0)
+                        if (!lentKeys) KeyState.Hold(h, mods);
+                        else if (mods.Count > 0)
                         {
+                            // (QUIREUIA_KEYS=lent, as it was until 2026-11-10: the modifiers lent for the chord alone)
                             target = Native.GetWindowThreadProcessId(h, out _);
                             me = Native.GetCurrentThreadId();
                             Native.AttachThreadInput(me, target, true);
-                            // attaching resets the key state (AttachThreadInput's documentation), by the look of it
-                            // from the real keyboard's, so a Shift held on the visible desktop just then was held for
-                            // the app too (an Alt+4 arrived as Alt+Shift+4, 2026-11-08): only the modifiers asked for
                             saved = new byte[256];
                             Native.GetKeyboardState(saved);
                             foreach (var vkMod in Modifiers) saved[vkMod] = 0;
@@ -259,6 +271,7 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
                             Native.SetKeyboardState(saved);
                             Native.AttachThreadInput(me, target, false);
                         }
+                        else if (!lentKeys && mods.Count > 0) KeyState.Hold(h, new List<string>());
                     }
                     return "ok";
                 }
@@ -271,6 +284,7 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
                     uint lp = 1u | (scan << 16);
                     if ((vk >= 0x21 && vk <= 0x28) || vk == 0x2D || vk == 0x2E || (vk >= 0x5B && vk <= 0x5D)) lp |= 1u << 24;
                     bool down = verb == "keydown";
+                    if (!lentKeys) KeyState.Hold(h, new List<string>());   // (its modifiers all up, whatever was left)
                     Native.PostMessage(h, down ? 0x0100u : 0x0101u, (IntPtr)vk, (IntPtr)(long)(down ? lp : lp | (3u << 30)));
                     return "ok";
                 }
@@ -284,6 +298,7 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
                     Native.ScreenToClient(h, ref pt);
                     var lp = (IntPtr)((pt.Y << 16) | (pt.X & 0xffff));
                     bool right = (tail ?? "left").Trim() == "right";
+                    if (!lentKeys) KeyState.Hold(h, new List<string>());   // (a plain click, as a plain key: KeyState)
                     Native.PostMessage(h, right ? 0x0204u : 0x0201u, (IntPtr)(right ? 2 : 1), lp);
                     Thread.Sleep(30);
                     Native.PostMessage(h, right ? 0x0205u : 0x0202u, IntPtr.Zero, lp);
@@ -292,6 +307,10 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
             case "chars":
                 {
                     var h = Target(selPart);
+                    // typed with no modifier down, as a plain key is: the characters come after a `set` or `setfocus`
+                    // as often as after a key, and what UI Automation's focus left in the key state (KeyState) would
+                    // otherwise be held through them (WinForms takes a character with Alt down for a menu's letter)
+                    if (!lentKeys) KeyState.Hold(h, new List<string>());
                     foreach (var ch in tail ?? "") { Native.PostMessage(h, 0x0102, (IntPtr)ch, (IntPtr)1); Thread.Sleep(5); }
                     return "ok";
                 }
@@ -332,6 +351,17 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
                         Thread.Sleep(300);
                         var gi = new Native.GUITHREADINFO { cbSize = Marshal.SizeOf(typeof(Native.GUITHREADINFO)) };
                         ok = Native.GetGUIThreadInfo(target, ref gi) && gi.hwndActive == w;
+                        if (!ok)
+                        {
+                            // Neither does anything while a Windows flyout or menu is open on the visible desktop
+                            // (Quick Settings, the notification centre: 2026-11-10, the app left with no active
+                            // window by one of its own closing, and every later step of a run failing). Activating
+                            // it as its own thread would, through the input attached above, needs no say over the
+                            // foreground.
+                            Native.SetActiveWindow(w);
+                            Thread.Sleep(100);
+                            ok = Native.GetGUIThreadInfo(target, ref gi) && gi.hwndActive == w;
+                        }
                     }
                     if (fg != 0) Native.AttachThreadInput(me, fg, false);
                     Native.AttachThreadInput(me, target, false);
@@ -346,6 +376,16 @@ type (Edit, Button, List, Document, Tab, TabItem, ...), class, n (0-based index 
             case "stalls": return Stalls.Command(arg, PidArg(arg.Split(' ').Skip(1).FirstOrDefault() ?? ""), MainWindow);
             default: return "ERR unknown command; try help";
         }
+    }
+
+    static readonly bool slowSet = Environment.GetEnvironmentVariable("QUIREUIA_SLOW_SET") == "1";
+    static readonly bool lentKeys = Environment.GetEnvironmentVariable("QUIREUIA_KEYS") == "lent";
+
+    /// <summary>The window with the keyboard focus in the GUI thread a window belongs to.</summary>
+    static IntPtr ThreadFocus(IntPtr h)
+    {
+        var gi = new Native.GUITHREADINFO { cbSize = Marshal.SizeOf(typeof(Native.GUITHREADINFO)) };
+        return Native.GetGUIThreadInfo(Native.GetWindowThreadProcessId(h, out _), ref gi) ? gi.hwndFocus : IntPtr.Zero;
     }
 
     // "focus" is the window with the keyboard focus in the watched app's GUI thread (which UIA can't tell on a desktop
@@ -784,6 +824,97 @@ static class Stalls
     }
 }
 
+/// <summary>The app's key state as a posted key is handled: the modifiers asked for and no others, set by one thread of
+/// ours that attaches to the app's input once and never lets go (2026-11-10).
+///
+/// Why: attaching to a thread's input and letting go of it each reset its key state from the real keyboard's. `key`
+/// attached for a chord and let go after it, and UI Automation does the same when it sets the focus (set on a box the
+/// focus isn't in, setfocus, toggle, select, invoke), so whatever modifier the person at the PC held in that moment
+/// stayed down for the app, and every plain key after it (posted with the state left as it was) arrived with it, until
+/// the next chord: Tab as Alt+Tab, fourteen Page Downs in a row with Alt, Home and Down with Shift, a window's Escape
+/// and Enter doing nothing for a minute; one step in each of three runs with someone at the keyboard, and four in a
+/// fourth. Never letting go, nothing of ours resets it; and since every key sets the whole of it first, what UI
+/// Automation's own letting go leaves lasts only until the next key, typed characters or click (each sets it). The
+/// hidden desktop gets no real input, so it stays as set between keys. QUIREUIA_KEYS=lent in the server's environment:
+/// as before.
+///
+/// What it can't reach: the PC's own keyboard. Both threads are on the hidden desktop (attaching across desktops
+/// fails, and that's an error here), the state written is that one input queue's, and a lock key's bit written there
+/// doesn't reach the system's (tried with Scroll Lock, 2026-11-10: another process still saw it off). If this process
+/// ends mid-chord, Windows takes the attachment apart and the app's state is the real keyboard's again, as after any
+/// letting go.</summary>
+static class KeyState
+{
+    static readonly System.Collections.Concurrent.BlockingCollection<Action> work = new System.Collections.Concurrent.BlockingCollection<Action>();
+    static uint attachedTo;
+    // (a handle to the thread attached to: while it's open Windows gives that thread's id to no other, so the app
+    // started again, as the login steps do, is never taken for the thread already attached, which would leave its
+    // chords with no modifiers; and it says when that thread has ended)
+    static IntPtr attachedThread;
+    static Thread thread;
+
+    /// <summary>These modifiers down and the rest up in the key state of the thread that owns the window, from now on.</summary>
+    public static void Hold(IntPtr h, ICollection<string> mods)
+    {
+        lock (work)
+            if (thread == null)
+            {
+                thread = new Thread(() => { foreach (var w in work.GetConsumingEnumerable()) w(); }) { IsBackground = true, Name = "keys" };
+                thread.Start();
+            }
+        Exception error = null;
+        using (var done = new ManualResetEventSlim())
+        {
+            work.Add(() => { try { Set(h, mods); } catch (Exception e) { error = e; } finally { done.Set(); } });
+            done.Wait();
+        }
+        if (error != null) throw error;
+    }
+
+    static void Set(IntPtr h, ICollection<string> mods)
+    {
+        var state = new byte[256];
+        Native.GetKeyboardState(state);   // (also what gives this thread the message queue attaching needs)
+        // (the thread attached to has ended, the app closed: Windows took the attachment apart with it)
+        if (attachedTo != 0 && attachedThread != IntPtr.Zero && Native.WaitForSingleObject(attachedThread, 0) == 0) Forget();
+        uint target = Native.GetWindowThreadProcessId(h, out _);
+        // (0: the window has gone, as the box a chord just closed has when its modifiers are let up; the state is
+        // the thread's, which is still the one attached to)
+        if (target == 0 && attachedTo == 0) return;
+        if (target != 0 && attachedTo != target)
+        {
+            // one thread's input at a time: attached to two, theirs would be one input between them, focus and all
+            // (another process of the app, the launcher and its client)
+            uint me = Native.GetCurrentThreadId();
+            if (attachedTo != 0) Native.AttachThreadInput(me, attachedTo, false);
+            Forget();
+            var handle = Native.OpenThread(0x00100000 /* SYNCHRONIZE */, false, target);
+            if (!Native.AttachThreadInput(me, target, true))
+            {
+                if (handle != IntPtr.Zero) Native.CloseHandle(handle);
+                throw new InvalidOperationException("couldn't attach to the input of thread " + target + " (QUIREUIA_KEYS=lent posts keys the old way)");
+            }
+            (attachedTo, attachedThread) = (target, handle);
+            Native.GetKeyboardState(state);
+        }
+        foreach (var vk in Server.Modifiers) state[vk] = 0;
+        foreach (var m in mods)
+        {
+            if (m == "ctrl") { state[0x11] = state[0xA2] = 0x80; }
+            else if (m == "shift") { state[0x10] = state[0xA0] = 0x80; }
+            else if (m == "alt") { state[0x12] = state[0xA4] = 0x80; }
+            else throw new ArgumentException("unknown modifier " + m);
+        }
+        Native.SetKeyboardState(state);
+    }
+
+    static void Forget()
+    {
+        if (attachedThread != IntPtr.Zero) Native.CloseHandle(attachedThread);
+        (attachedTo, attachedThread) = (0, IntPtr.Zero);
+    }
+}
+
 static class Native
 {
     [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr result);
@@ -803,9 +934,13 @@ static class Native
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder sb, int n);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] public static extern IntPtr SetActiveWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr h, bool altTab);
     [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool attach);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+    [DllImport("kernel32.dll")] public static extern IntPtr OpenThread(uint access, bool inherit, uint tid);
+    [DllImport("kernel32.dll")] public static extern uint WaitForSingleObject(IntPtr h, uint ms);
+    [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
     [DllImport("user32.dll")] public static extern bool GetKeyboardState(byte[] state);
     [DllImport("user32.dll")] public static extern bool SetKeyboardState(byte[] state);
     [StructLayout(LayoutKind.Sequential)]

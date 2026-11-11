@@ -14,6 +14,26 @@ namespace Sojourn.Access;
 /// </summary>
 public sealed partial class MainForm
 {
+    long _ownPayUntil;
+
+    /// <summary>Her own payment, through her confirmation. Second Life's "You paid ..." notice for it says what the answer
+    /// ("Paid Kestrel L$50. You have L$1480.") already does, and was said again after a key cut it off: three times for
+    /// each tip in the blind tester's log (2026-11-10). So while it's under way and for 10 s after a confirmed answer, that
+    /// notice isn't read (OwnPayNotice); it's still a line in the history. One the grid hasn't confirmed is read as ever.</summary>
+    async Task<JsonObject?> PayConfirmedAsync(JsonObject args)
+    {
+        Interlocked.Exchange(ref _ownPayUntil, long.MaxValue);
+        JsonObject? r = null;
+        try { return r = await ConfirmedAsync("TesselAgent", "pay", args); }
+        finally
+        {
+            bool answered = r != null && PersonOps.Error(r) is null && r["balance"] != null;
+            Interlocked.Exchange(ref _ownPayUntil, answered ? Environment.TickCount64 + 10_000 : 0);
+        }
+    }
+
+    bool OwnPayNotice(Sojourn.Session.Social.FeedEntry e) => e.NoticeName == "PaymentSent" && Environment.TickCount64 < Interlocked.Read(ref _ownPayUntil);
+
     /// <summary>What a thing's line adds for paying and buying.</summary>
     static string DealWords(PersonOps.Thing t) =>
         (t.Sale != null && !t.Mine ? (t.Price == 0 ? ", for sale, free" : $", for sale, L${t.Price}") : "") + (t.Money ? ", takes payment" : "");
@@ -38,7 +58,7 @@ public sealed partial class MainForm
             if (!int.TryParse(text, out int typed) || typed <= 0) { Answer("That isn't an amount."); return; }
             amount = typed;
         }
-        if (await ConfirmedAsync("TesselAgent", "pay", new JsonObject { ["to"] = to.ToString(), ["amount"] = amount }) is not { } r) return;
+        if (await PayConfirmedAsync(new JsonObject { ["to"] = to.ToString(), ["amount"] = amount }) is not { } r) return;
         if (PersonOps.Error(r) is { } e) { Answer($"Not paid: {e}"); return; }
         Answer(r["balance"] is { } b ? $"Paid {name} L${amount}. You have L${b}." : $"Paying {name} L${amount}; the grid hasn't confirmed yet.");
     }

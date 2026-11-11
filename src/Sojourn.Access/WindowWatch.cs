@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using Microsoft.Diagnostics.Runtime;
 
 namespace Sojourn.Access;
 
@@ -15,18 +16,22 @@ namespace Sojourn.Access;
 /// Held 1 s or more is logged when it ends, for a tester's log. At 5 s it's said once, and at 30 s, then each minute,
 /// with the way out: Control+Shift+Q, registered only while the thread is held, starts Sojourn Access again at the
 /// login window (nothing else could: the window's own keys need that thread, and Windows' "not responding" dialog is
-/// nothing to rely on). If it comes back after being said, that's said too. docs/access-app.md > How it fits.
+/// nothing to rely on). If it comes back after being said, that's said too. At 2 s, and again at 10 s, what the thread
+/// is doing is logged: its stack, read from a snapshot of this process (ClrMD), since a tester's log said only how long
+/// (13 s once, 2026-11-10, with nothing around it to say why). docs/access-app.md > How it fits.
 /// </summary>
 sealed class WindowWatch
 {
-    const long LogFrom = 1000, SayAt = 5000, OfferAt = 30_000, OfferEvery = 60_000;
+    const long LogFrom = 1000, SayAt = 5000, OfferAt = 30_000, OfferEvery = 60_000, StackAt = 2000, StackAgainAt = 10_000;
+    const int StacksAtMost = 12;   // a session's: a PC that keeps stalling needn't fill the log
     const int HotKeyId = 1, MOD_CONTROL = 2, MOD_SHIFT = 4, MOD_NOREPEAT = 0x4000, VK_Q = 0x51, WM_HOTKEY = 0x0312, PM_REMOVE = 1;
 
     readonly Control _ear = new();
     readonly Action<string> _say, _log;
     readonly Action _restart;
+    readonly int _windowThread = Environment.CurrentManagedThreadId;   // (made on the window's thread)
     long _stamp = Environment.TickCount64;
-    int _asked;
+    int _asked, _stacks;
 
     /// <param name="say">Said through the reader, from the watch's thread.</param>
     /// <param name="log">Into the session's log, from the watch's thread.</param>
@@ -44,6 +49,7 @@ sealed class WindowWatch
     {
         long last = Environment.TickCount64, heldFrom = 0, offerAt = 0;
         bool said = false, hotKey = false;
+        int stacksThisTime = 0;
         while (true)
         {
             Thread.Sleep(250);
@@ -67,11 +73,18 @@ sealed class WindowWatch
                     if (hotKey) UnregisterHotKey(0, HotKeyId);
                     heldFrom = 0;
                     said = hotKey = false;
+                    stacksThisTime = 0;
                 }
                 continue;
             }
             if (heldFrom == 0) heldFrom = stamp;
             if (Debugger.IsAttached) continue;
+            if (held >= (stacksThisTime == 0 ? StackAt : StackAgainAt) && stacksThisTime < 2 && _stacks < StacksAtMost)
+            {
+                stacksThisTime++;
+                _stacks++;
+                LogStack(held);
+            }
             if (!said && held >= SayAt)
             {
                 said = true;
@@ -96,6 +109,57 @@ sealed class WindowWatch
                 _restart();
                 return;
             }
+        }
+    }
+
+    /// <summary>The window's thread's stack into the log, innermost first, from a thread of its own (a snapshot can take
+    /// a second, and the watch must go on).</summary>
+    void LogStack(long held) => new Thread(() =>
+    {
+        try
+        {
+            var took = Stopwatch.StartNew();
+            // the runtime's reader of its state: the package's own copy beside the exe (a single file leaves it out); from
+            // source, the installed runtime's. Never fetched from Microsoft's symbol server, ClrMD's last resort
+            var dac = Path.Combine(AppContext.BaseDirectory, "mscordaccore.dll");
+            bool single = string.IsNullOrEmpty(typeof(WindowWatch).Assembly.Location);
+            if (single && !File.Exists(dac)) { _log($"window: held {held / 1000.0:0.0} s; no mscordaccore.dll beside the app to read its stack"); return; }
+            using var target = DataTarget.CreateSnapshotAndAttach(Environment.ProcessId);
+            using var runtime = File.Exists(dac) ? target.ClrVersions[0].CreateRuntime(dac) : target.ClrVersions[0].CreateRuntime();
+            if (runtime.Threads.FirstOrDefault(t => t.ManagedThreadId == _windowThread) is not { } thread)
+            {
+                _log($"window: held {held / 1000.0:0.0} s; its thread not found in the snapshot");
+                return;
+            }
+            var frames = new List<string>();
+            foreach (var f in thread.EnumerateStackTrace())
+                if (Frame(f) is { } name && (frames.Count == 0 || frames[^1] != name)) frames.Add(name);
+            _log($"window: held {held / 1000.0:0.0} s, its thread in (innermost first; read in {took.ElapsedMilliseconds} ms): "
+                + string.Join(" < ", frames.Take(32)) + (frames.Count > 32 ? $" < ... {frames.Count - 32} more" : ""));
+        }
+        catch (Exception e) { _log($"window: held {held / 1000.0:0.0} s; its stack couldn't be read ({e.GetType().Name}: {e.Message})"); }
+    }) { IsBackground = true, Name = "window watch stack" }.Start();
+
+    static string? Frame(ClrStackFrame f)
+    {
+        if (f.Method is { } m) return $"{Short(m.Type?.Name)}.{Plain(m.Name)}";
+        return f.FrameName is { Length: > 0 } n ? $"[{n}]" : null;
+
+        // "Sojourn.Access.Commands+<RunAsync>d__10" as "Commands+<RunAsync>": an async method's or lambda's own name kept
+        static string Short(string? type)
+        {
+            if (type == null) return "?";
+            var nested = type.IndexOf("+<", StringComparison.Ordinal);
+            if (nested > 0 && type.IndexOf('>', nested) is var end and > 0) return Short(type[..nested]) + type[(nested)..(end + 1)];
+            var plain = Plain(type);
+            return plain[(plain.LastIndexOf('.') + 1)..];
+        }
+
+        static string Plain(string? name)   // generic arguments left out
+        {
+            if (name == null) return "?";
+            var generic = name.IndexOfAny(new[] { '[', '`' });
+            return generic > 0 ? name[..generic] : name;
         }
     }
 

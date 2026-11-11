@@ -191,7 +191,7 @@ public sealed partial class MainForm
         _flyItem.Enabled = !sitting;
         _runItem.Checked = _set.WalkAlwaysRun;
         _roundItem.Checked = _set.WalkRoundPeople;
-        _awayItem.Checked = Host?.Session.Presence.Away == true;
+        _awayItem.Checked = Host?.Session.Presence is { Away: true, AwayIsAuto: false };   // (her own Away: what picking it turns off)
         _dndItem.Checked = Host?.Session.Presence.DoNotDisturb == true;
         _incognitoItem.Checked = Host?.Session.Private.On == true;
         _voicePeopleItem.ShortcutKeyDisplayString = $"Control+{KeyName}";
@@ -247,11 +247,14 @@ public sealed partial class MainForm
         _walk.ToggleFly();
     }
 
-    /// <summary>Away or Do not disturb, on or off, through SojournSettings (the session's own switches).</summary>
+    /// <summary>Away or Do not disturb, on or off, through SojournSettings (the session's own switches). Away set by
+    /// itself (nobody at the keys for a while) isn't hers to turn off: picked then, Away becomes her own and stays when
+    /// she's back. It's cleared within a quarter second of her first key, and until then the item took her pick for
+    /// turning it off: "Not away." to someone back at the keys and quick through Alt+W, A.</summary>
     async Task PresenceAsync(string name)
     {
         if (Host?.Session.Presence is not { } p) return;
-        bool on = name == "away" ? !p.Away : !p.DoNotDisturb;
+        bool on = name == "away" ? !p.Away || p.AwayIsAuto : !p.DoNotDisturb;
         var r = await SettingsOp(new JsonObject { [name] = on }, "set");
         if (PersonOps.Error(r) is { } e) { Answer($"Not changed: {e}"); return; }
         Answer(name == "away" ? (on ? "Away." : "Not away.") : on ? "Do not disturb: offers are turned away and others see you busy." : "Do not disturb off.");

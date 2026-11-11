@@ -163,7 +163,7 @@ public sealed partial class MainForm
         var text = given?.ToString() ?? Dialogs.Ask(this, $"Pay {name}", "Amount in L$");
         if (text == null) { Reader?.Answer("Not paid.", keep: false); return; }
         if (!int.TryParse(text.Trim().TrimStart('L', '$').Trim(), out var amount) || amount <= 0) { Reader?.Answer($"{text} isn't an amount.", keep: false); return; }
-        if (await ConfirmedAsync("TesselAgent", "pay", new JsonObject { ["to"] = id.ToString(), ["amount"] = amount }) is not { } r) return;
+        if (await PayConfirmedAsync(new JsonObject { ["to"] = id.ToString(), ["amount"] = amount }) is not { } r) return;
         if (PersonOps.Error(r) is { } e) { Answer($"Not paid: {e}"); return; }
         Answer(r["balance"] is { } b ? $"Paid {name} L${amount}. You have L${b}." : $"Paying {name} L${amount}; the grid hasn't confirmed yet.");
     }

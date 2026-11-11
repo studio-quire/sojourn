@@ -72,6 +72,10 @@ public sealed partial class Commands
                     WalkMode?.BlindConvoy(double.Parse(rest[0], System.Globalization.CultureInfo.InvariantCulture),
                         double.Parse(rest[1], System.Globalization.CultureInfo.InvariantCulture));
                     return true;
+                case "awaybyitself" when Environment.GetEnvironmentVariable("SOJOURN_TEST_AWAY_BY_ITSELF") == "1":
+                    // (the scripted test's: away as five minutes without her sets it, which its posted keys can't wait for)
+                    _s.Presence.SetAway(true, auto: true);
+                    return true;
                 case "about" or "version": _say(About?.Invoke() ?? "Sojourn Access."); return true;
                 case "describe": if (Describe != null) await Describe(string.Join(" ", rest)); return true;
                 case "go": return await GoAsync(rest);

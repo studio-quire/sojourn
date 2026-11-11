@@ -450,6 +450,37 @@ logs out an avatar that arrived, so that is a viewer's first and last three pack
 Atelier for some 10 ms, and the grid is left as after any account's visit (nobody online, no circuit waiting). A
 login left standing keeps the account online in the grid's presence and GridUser until the grid stops.
 
+**How the grid ended** (Claude Fable 5.2, 2026-11-10). The grid runs under a keeper (`grid.py keep`, which `start`
+runs detached) that waits for it and writes `local/grid/ends.log`: a line at each start, and at each end how long it
+was up, its exit code and what the code means; `grid.py status` on a grid that's down prints the last of it. For
+anything but its own shutdown it also keeps, in `local/grid/ends/`, every process running at that moment (parent,
+start time, command line) and, for a crash, Windows' dump, with the faulting module and offset from the Application
+log in the line. Exit code 1 or -1 is a kill from outside (taskkill, Python's and Java's kills, Stop-Process); 0xC...
+is a crash inside it; a start with no end and the keeper gone too means something outside took both. Why it was
+needed, and what to know of any process a session starts here:
+- Whatever Claude Code starts inherits its error mode (`GetErrorMode()` is 3: no fault dialogs), and under it Windows
+  Error Reporting records nothing when the process crashes: no Application event, no dump. The same crash without
+  `SEM_NOGPFAULTERRORBOX` (the keeper sets its own mode to 1 before starting the grid, which inherits it; the
+  creation flag `CREATE_DEFAULT_ERROR_MODE` does it too) leaves event 1000 and a
+  minidump in `%LOCALAPPDATA%\CrashDumps` (this PC keeps the newest ten there, for every program; the keeper copies
+  the grid's). So "Windows recorded no crash" says nothing about a process started from a session.
+- .NET writes to stderr only for what it sees. Tried on .NET 8, started as the grid is: an unhandled exception, a
+  stack overflow, FailFast and an access violation under a managed thread each left their lines; a crash on a native
+  library's own thread, a native `abort()` (both end as 0xC0000409), heap corruption (0xC0000374) and a native
+  `exit()` left nothing at all, on stderr or in the event log. .NET's own dump setting (`DOTNET_DbgEnableMiniDump`)
+  only fired for the first group.
+- So a process gone with nothing written isn't shown to be a kill. 2026-11-09's (an hour into a full Access run, a
+  second after the visitor made a kart; `docs/access-testing.md`) stays unexplained, as do two more ends of the same
+  look in three weeks of `OpenSim.log` that no shutdown or restart of the PC accounts for (2026-10-28, idle, and
+  2026-11-04, as a visitor logged in). Ruled out for the 9th: any session's tool call in the 20 s around it (none
+  killed or stopped anything); a tree kill reaching the grid through its dead parent's reused pid (tried: with the
+  pid taken again by a new process, neither `taskkill /T` nor Java's `descendants()`, which Old Faithful's harness
+  ended a game with that very second, counts the orphan as its child); two copies of native SQLite (Multitude's test
+  host died of that the same silent way; a grid's process has the one in `lib64`); the kart's creation by itself
+  (1,400 made and removed by a visitor on a copy of the grid, none sat on: no end). Barely tried: the karts driven,
+  which is the physics library at work (the stop step with `ACCESS_STOP_TRIALS=3` on that copy, 14 karts sat on,
+  driven and removed: no end; the step had run some hundreds before the one that ended). The next end has its line.
+
 Ports in use: grid 9700-9703 and 9709, agent API 9720, voice tests' clients 9730-9731, audio's test client 9732 and
 test radio 9751, the screen reader's test client 9877, the session probes 9760-9761, the local voice server 14223, 14225 and UDP 10000-10100, voice's peer connections UDP 60000-60100. Multitude has 9360-9380, 9450, 8380, 10350-10375 and the
 lab 8300-8899; Tessel 9063, 9070, 9020, 9080.

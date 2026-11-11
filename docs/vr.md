@@ -766,8 +766,11 @@ most 72 degrees off the body, under any animation that moves the head at priorit
 
 - **Meta XR Simulator** (an OpenXR runtime with a simulated Quest 3, in a window), unpacked in `local/xrsim/v207.1`
   (873 MB, not installed; it doesn't touch the registry). `tools/client.py vr-sim` points `XR_RUNTIME_JSON` at it for
-  that process only. It keeps settings in `%APPDATA%\MetaXR\MetaXrSimulator`. It looks for its companion app for ~30 s
-  first (`Cannot connect to a companion app`), then runs without it; hence `--xr-wait 90`. To get it again:
+  that process only. It keeps settings and a log of each run in `%APPDATA%\MetaXR\MetaXrSimulator`. It starts its
+  companion app (`MetaXRSimulator.exe`) itself and the session is focused about 6 s after the client starts (every run
+  of 2026-10-28 to 11-02, by those logs). Until 2026-10-27 the companion never connected and every run sat 31 s first
+  (`Cannot connect to a companion app` in the client's console, then on without it), which is what `--xr-wait 90` and
+  the scripts' waits allow for; that line in a console again means each run is paying it. To get the simulator again:
   `https://www.facebook.com/horizon_devcenter_download?app_id=28549923061320041&sdk_version=207` redirects to the MSI
   (the app id is in the Unity package `com.meta.xr.simulator` on npm.developer.oculus.com), then
   `msiexec /a <msi> /qn TARGETDIR=<dir>` extracts it without installing.

@@ -14,12 +14,17 @@ first when their sources are newer than their builds (QuireUia only by `python t
 `=NAME` one by its whole name; `python tools/access.py steps [WORDS]` lists the steps with how long each took when it
 last ran on this PC, and what a choice of words adds up to. Which steps a change touches is the session's own reading
 of the names and the steps' docstrings: nothing works that out. A run of some steps costs about half a minute around
-them (some 20 s to the first step, 10 s to close; it was 100 s). Each step's checks follow a `(step: NAME)` line, and
-the run ends with the steps that had failures, which are the words for running those again (a name with commas in it
-alone, as `=NAME`: as words its pieces take other steps too). A full run is about 72 minutes
-(2026-11-09: stopping a vehicle 7, walk mode 4, the building steps 1.5 to 3 each; 74 before that day's faster start,
-72 worked out from a run cut short at an hour, which had spent 56.5 minutes in the steps the one before spent 57.4 in,
-with a minute less around them). It earns that when a change sits
+them (some 20 s to the first step, 10 s to close; it was 100 s). A run prints its answer (2026-11-10): a step whose
+checks all passed is one line (`ok   auto-sit: 20 checks, 51 s`), a failed check's line comes out whole under its
+step's name, and the run ends with its totals and the steps that had failures, which are the words for running those
+again (a name with commas in it alone, as `=NAME`: as words its pieces take other steps too). A line beginning `NOTE`
+comes out too, with its step: what no check fails on but a reader should see (the app killed at the end because it
+didn't close within 10 s, QuireUia started afresh and not listening). Every line (each check
+with its detail, the remarks in parentheses) is in the run's own file in `local/access-runs/`, named on the run's last
+line, the newest 40 runs kept, so a run needn't be redirected to be read afterwards; `ACCESS_BRIEF=0` prints every
+line as it comes, as before. A full run is 55 minutes (2026-11-10, one session, 3317 s: stopping a vehicle 3.5,
+walk mode 3, walking round people 2.5 to 3.5, the estate 2; 76 by the steps' times before that day's faster `set`,
+shorter scripts step and fewer stop trials, below). It earns that when a change sits
 under most steps (the main window's plumbing, the reader, confirmations and Notices, the session host and Sojourn.Core
 under it, whichever app the change was made for; QuireUia's server; the test's helpers for keys, finds and selections)
 or a lot has gone in since the last one; otherwise a build for a tester needs the steps of what changed since the last
@@ -31,10 +36,24 @@ focus elsewhere), so a new step hasn't met the others until a full run has had i
 meets: a list's first fill of the session, held back 3 s (auto-sit's walk down Objects started under it and failed 2 of
 2 alone, having passed in every full run; `select_in` now waits for the fill).
 
-Last full run 2026-11-09, 19:57, on main at `7144fc3` (teleports within a region handled in turn, a `//go` that ends
+Last full run 2026-11-10, 07:40, on main at `5ae8a8f` (0.1.0.1074's app and what main has had since, the faster `set`, the key
+state held, the review of both), all 99 steps in one session, 55 minutes with nobody at the PC and nothing else of ours running: 2479
+of 2482 (Claude Fable 5.2). The three misses, each fixed and its step run again with the estate, incognito and chat
+logs steps, 206 of 206: the rail switch said at 65 metres where the check allowed 60 (the app looks 7 s of travel
+ahead, 60 to 70 m at the kart's speed, and the run before had said exactly 60: the check now allows up to where the
+kart starts); a line of the session log with two time stamps, the app's (`SessionLog`'s writer kept a time stamp
+written just as a spell of incognito began and put it in front of the first line after: a line cut by a pause now goes
+whole, either side; a tester's log could have had such a line, rarely, without the test's log of every key); and
+walking round people stopped on a friend's teleport timing out, the test's: the estate step's ban had logged that
+friend out with words the step didn't look for ("TP home failed - you have been logged out"; only "kicked out" was),
+its bot went on answering `pos`, and forty steps on its teleports took 40 s each to fail (`pal_up` now reads a
+disconnected bot's log as down, so the estate step logs it in again). A first try that morning, at 07:12, lost 28
+steps to a flyout left open on the PC (A flyout or menu open on the PC's own desktop, below). The run before,
+2026-11-09, 19:57, on main at `7144fc3` (teleports within a region handled in turn, a `//go` that ends
 when it gets no nearer, the test's faster start), in two sessions: 2234 of 2235 through 85 steps and most of stopping a
 vehicle, an hour in one session, when the grid's process ended under it (nothing of a shutdown in `OpenSim.log`, no
-crash on Windows' record, and the same trial passed after: not explained); then that step and the twelve after it in a
+crash on Windows' record, and the same trial passed after: not explained, and neither says kill rather than crash:
+`docs/client.md` > How the grid ended, which also has what now records the next one); then that step and the twelve after it in a
 session of their own, with the one step fixed, 300 of 300. The miss was the test's: World > Away read "on" after "Not
 away.", away by itself having come on 2 s before (How it runs, below). The run before, 03:45 that day, on main with
 the estate, a group's settings, auto-sit, export and import, and Point at: 2438 of 2440, both misses timing (Tab to the
@@ -105,6 +124,12 @@ window slow to close) are worth reading the same way first: `cdb -pv -p PID -c "
   `sojourn_voice.dll`, without which world audio is silent and its checks fail).
 - A run with `SOJOURN_BUILD_ROOT` keeps its logs in a folder named for it too (`local/access-test-walk-NAME`), so the
   next agent's run doesn't empty them.
+- The grid going down under a run ends the run there: after a step with failures the test asks the grid, and if it
+  doesn't answer says so once ("the local grid stayed up": which step, what the grid's `ends.log` has on how it ended,
+  the steps not run) where every later step used to fail check by check (19 of them, 2026-11-09).
+- `python tools/access.py stop` closes the app, bots and QuireUia server of the run with its accounts and build root
+  (the default ones with nothing set), live or left over, anyone's: it isn't a way to look for leftovers. Run to check
+  after a run on other accounts, it closed another session's run in its second step (2026-11-10).
 - One scripted run is on the grid at a time, whatever its accounts (they share Atelier's spots and fixtures): a run
   holds `local/access-test.lock` and another refuses to start, or waits its turn with `ACCESS_WAIT=1`.
 - `ACCESS_ACCOUNTS=Walk` runs it as Walk Tester and Walk Visitor on ports 30 up (10 up are the Radegast tools' own
@@ -116,17 +141,46 @@ window slow to close) are worth reading the same way first: `cdb -pv -p PID -c "
 
 **How it runs.** The app runs on a hidden Win32 desktop (`tools/quireuia`, from the Radegast contributions' tools:
 `launch` starts a program there, `serve` records the focus, alert and notification events a screen reader gets and
-drives the app by UI Automation and posted keys; a key's modifiers go into the app's key state, only those asked for:
-attaching to its input resets that state, seemingly from the real keyboard's, and a run of 2026-11-08 got Alt+Shift+4
-for Alt+4, most likely a Shift held on the visible desktop just then). That is only half closed: the state is reset
-again when QuireUia lets go after a key with a modifier, and a key posted with none (Tab, F5, arrows) is handled under
-whatever that left, until the next key with one. Suspected, not shown, in two runs of 22 of the places step
-(2026-11-09) where the Tab after Alt+6 and F5 went backwards to Regions around once and nowhere once, as Shift+Tab and
-Alt+Tab would, with someone typing at the PC; nothing else differed in the recorded events up to that key. In test
-runs the app now logs each such key as it arrived with what was held (`key Tab, Shift` in its session log), so the
-next one says which it was. If it is this, the cure is for the key's modifiers to travel with it (a message the app
-sets its own key state by in test runs), not to be lent through the shared input state. Nor are posted keys the PC's
-input, which is what tells the app someone is there: from five minutes into a session the tester is away by itself, for
+drives the app by UI Automation and posted keys).
+
+**Keys and the modifiers held** (Claude Fable 5.2, 2026-11-10). A posted key is handled under the app's key state, and
+QuireUia sets all of it before each one: the modifiers asked for down, every other up, by a thread of its own that
+attaches to the app's input once and stays attached (`KeyState` in `tools/quireuia/Server.cs`; a chord's modifiers stay
+down 400 ms for the app to take it, then go up; `chars` and `mouse` set it too, all up, since typed text follows a
+`set` or `setfocus` as often as a key; it keeps a handle to the app's thread, so the app started again by a step is
+never taken for the thread already attached). None of it reaches the PC's own keyboard: both threads are on the hidden
+desktop, the state is that input queue's alone, and a lock key's bit written there doesn't reach the system's (tried
+with Scroll Lock). Until then it attached for each chord and let go after it, and both
+attaching and letting go reset the app's key state from the real keyboard's; UI Automation does the same when it sets
+the focus (`set` on a box the focus isn't in, `setfocus`, `toggle`, `select`, `invoke`). So whatever modifier the person
+at the PC held in that moment stayed down for the app, and every plain key after it (Tab, arrows, Enter, posted with
+the state as it was) arrived with it until the next chord. It was seen first as Alt+Shift+4 for Alt+4 (2026-11-08) and
+suspected in the places step (2026-11-09: a Tab gone backwards, as Shift+Tab); the app's log of each key as it arrived
+with what was held (`key Tab, Alt`, in test runs) showed it on 2026-11-10, when four runs with the user at the keyboard
+each lost steps to it: a Tab arriving as Alt+Tab, a profile window's Escape and Enter doing nothing for a minute,
+fourteen Page Downs with Alt and a list walked with Shift held in the settings step. With the state held the same
+steps passed in the run after. A key that seems to have done something else: that log first.
+`QUIREUIA_KEYS=lent` in the run's environment posts keys the way before.
+
+**A flyout or menu open on the PC's own desktop** (Claude Fable 5.2, 2026-11-10). On a hidden desktop
+SetForegroundWindow returns false but still activates the window on its own desktop, which is what WinForms'
+`Form.Activate` leans on there. While a Windows flyout is in front on the visible desktop (seen with Quick Settings,
+`ControlCenterWindow of ShellHost.exe`, left open by the person, and with the notification centre; a menu or Start
+would likely do the same) it does nothing at all, SwitchToThisWindow neither, and Windows activates nothing on the
+hidden desktop when its active window closes. So a window of the app's that hands over by `Activate` alone leaves the
+app with no active window: a card opened from a card and closed (the notecards step's "Escape comes back to the
+card's window", 5 of 5 failing with the flyout open, on the inspector before and after that day's changes, passing
+with it closed), and until that day every step after it failed with "nothing focused" (28 of them in the first full
+run on the faster inspector). Handovers that set the focus on a control (back to the main window's tree) still work,
+since SetFocus activates its window whatever the foreground's state. Now `back_to_chat` notices the app with no focus
+after a step, prints a `NOTE` naming what's in front on the PC (class and process, no title), and has QuireUia
+activate it again, whose `activate` falls back to SetActiveWindow through attached input; the step it happened in
+still fails, and its failures with that NOTE under them are the PC's state, not the app's: run it again. The person
+at the app's own window can't meet it (there the app is the foreground process). The app's `Activate`-only handovers
+(the card from a card, the group windows, the profile's) setting a control's focus as well would take the test out of
+its reach; not done.
+
+Posted keys aren't the PC's input, which is what tells the app someone is there: from five minutes into a session the tester is away by itself, for
 the rest of the run, and set away again within a second of being taken off it. A step that sets Away itself turns
 `away_after` off meanwhile (the menu bar's, which reaches it at about the five-minute mark of a full run and failed
 there, 2026-11-09). With:
@@ -136,6 +190,26 @@ there, 2026-11-09). With:
 - `SOJOURN_TEST_NO_NVDA=1` (on a hidden desktop NVDA's controller client claims NVDA runs, so speech would go nowhere);
 - `SOJOURN_TEST_NO_CLIPBOARD=1` (the clipboard left alone);
 - `SOJOURN_TEST_LIST_DELAY_MS`: the lists' first fills held back 3 s, as Second Life's objects wait for names.
+
+**Text put in a box, and the typing's pace** (Claude Fable 5.2, 2026-11-10). UI Automation sets the focus on an element
+itself before any pattern's method, and off the input desktop then waits 2 s before going on: QuireUia's `set`,
+`toggle`, `select`, `invoke`, `expand` and `setfocus` each took 2.07 s whatever they did (a `get` 0.07 s). Say's box is
+cleared by a `set` before every line the test types, and in a profile of three steps those were 51 of 59 sets, 106 s
+of the run's 621. QuireUia's `set` on a box the focus is already in now goes through a COM client with that turned off
+(`IUIAutomation2.AutoSetFocus`): the same provider's SetValue in 0.07 s, with none of the focus events UI Automation
+raised for a focus that hadn't moved. A box the focus isn't in goes as before and takes the focus (2 s), as do the
+other five commands: a step that wants one fast puts the focus there by keys first. Those 2 s had been pacing the
+typing: without them the scripts step typed its second `//touch` 1.2 s after the first one's error was said, inside
+its speaking time, so the app took the line for cut off by typing and said it again (`MainForm.CutLines.cs`), and the
+check that it isn't said twice failed. So before a `set` the test waits until the lines that have arrived would have
+been heard by the app's own reckoning (30 ms a character and half a second at least, each after the one before; only
+what UI Automation is handed to read in turn, "All": an answer to her own key cuts in and is never said again), and
+never longer than the 2 s it always waited (`heard_out`), which leaves what gets cut and said again as it was. One
+other step leaned on those seconds, of the 99, each run on it since (in runs of some, not one session): the ride
+step sat back on its train inside the 10 s an object's same line isn't said again, and now waits those out. Whatever
+else did shows as a step failing that passed before: `QUIREUIA_SLOW_SET=1` in the run's
+environment is every `set` as it was, to tell (the server's `fastset` says which it is, and a server built before this
+answers no, so the test paces as it did).
 
 A bot (`tools/visitor`, Access Visitor) talks, IMs, and owns scripted fixtures: a box sending menus, llTextBox,
 permission requests and offers; `facebox` (says each touch's face and surface coordinates); `treasure` (a chest whose
@@ -218,7 +292,9 @@ docstring with its checks in full):
 - **the menu bar and the review's new keys**: the World, View and Help menus with each item's key shown (QuireUia's
   `get` gives UI Automation's access and accelerator keys), items doing what their keys do, the context menus' keys,
   Control+1 to 9, a notice's keys on its Applications key, Escape from Notices back where Control+N came from,
-  the no-conversations line, Control+Page Up and Down, the StatusBar with the location. Alt alone and F10 aren't
+  the no-conversations line, Control+Page Up and Down, the StatusBar with the location; World > Away on and off, and
+  picked while away by itself (the test's own `//awaybyitself`, with `SOJOURN_TEST_AWAY_BY_ITSELF=1`: posted keys
+  can't be waited out) saying "Away." and leaving it hers. Alt alone and F10 aren't
   pressed (WinForms opens the menu bar for them only in the foreground window, which a hidden desktop never has).
 - **settings**: Alt+0's groups: Page Down through all of them, each heading said and selected and the list named for it, round
   both ends; the list of groups a Tab away by arrows and a letter, back by Tab and Enter; a heading's Enter, Left and Right;
@@ -335,7 +411,8 @@ docstring with its checks in full):
   editor, the errors said and F8 on one; fixed, compiled; Mono ticked with its description, Alt+M turning it off (said, the focus left in
   the text) and a save, the `vm` the grid then reports printed (the local grid says Mono whatever was asked); Alt+R stopping and running it, the grid asked; Alt+E resetting it, its
   `state_entry` heard again by the visitor; Mono back on and Escape asking first; Space stopping and starting it; `//touch` making it say a line on the debug channel,
-  read out and in the history, not twice in half a minute, nothing with the switch off, again with it on; the visitor's `whoops`
+  read out and in the history, not said again for the same words, nothing with the switch off, said with it on (its third touch on
+  says other words, so the half minute the same words stay unsaid isn't sat out; that they're said again after it isn't checked); the visitor's `whoops`
   never read out. Second Life's compiler has its own wording and numbers its lines from nought, which the code allows for without
   the local grid showing it; a real run-time error there is still to be seen.
 - **your HUDs**: a two-prim HUD made and worn (its script put in through the confirmation by keys); named by
@@ -562,7 +639,7 @@ docstring with its checks in full):
   away, the keys, giving up or "Blocked."; the session log has the loss, with what each region had of them, and the
   finding. Then unseen for good while it stands with them: "...; going to where they were." and "Couldn't find ... again"
   within about 10 s.
-- **stopping a vehicle** (about 10 minutes, no renderer needed): on a flat stretch of Atelier East, the visitor's `kart`
+- **stopping a vehicle** (about 3.5 minutes, no renderer needed): on a flat stretch of Atelier East, the visitor's `kart`
   as a car, a held Up, then Space with Up still held: "Stopping.", "Stopped.", nothing said of moving backward, and it
   never moves back (`ACCESS_STOP_CARS=N` runs the car N times, a flake check, and `ACCESS_STOP_TRAIN=0` skips the rest;
   the app's `SOJOURN_TEST_STOP_STALL=MS` holds the window's thread up to that long a tick in three while stopping, and
@@ -570,13 +647,19 @@ docstring with its checks in full):
   a throttle train (`throttle 5`, on past 0 into reverse, each change said), opened 8 taps of Up (walk mode counting
   8) and stopped by Space, again by `//stop` from Say, then opened 12 and run past the end of its track (`endx`): "Track
   ends: stopping." with the TrackEnd cue, "Stopped.", the throttle's lines ending at 0 and never below, still, never
-  moving back, and its later "No Guide found" lines not starting another stop. Then the trials, each a fresh train
-  stopped once by Space and once at the track's end, its throttle as the train tells the visitor (`llOwnerSay`): "text"
-  (`hover 1 quiet 1 lose 3`: every third press lost on the way, the throttle shown only as floating text, as the blind
-  tester's train), "lines" (`lose 3`, said aloud), "none" (`quiet 1 lose 3`, said nowhere the app hears: the count and
-  the taps' effect) and "start" (`quiet 1 start 20`: opened to 20% before the arrows, the count short). Each must say
-  "Stopped.", end at 0, never go below it and never move back; `ACCESS_STOP_TRIALS=N` (1) runs each kind N times and
-  `ACCESS_STOP_KINDS=text,none` picks kinds, and the line after them tallies failures and reversals.
+  moving back, and its later "No Guide found" lines not starting another stop. Then the trials, a fresh train of each
+  kind stopped once, its throttle as the train tells the visitor (`llOwnerSay`): "text" (`hover 1 quiet 1 lose 3`:
+  every third press lost on the way, the throttle shown only as floating text, as the blind tester's train) at the
+  track's end, and by Space "lines" (`lose 3`, said aloud), "none" (`quiet 1 lose 3`, said nowhere the app hears: the
+  count and the taps' effect) and "start" (`quiet 1 start 20`: opened to 20% before the arrows, the count short). Each
+  must say "Stopped.", end at 0, never go below it and never move back; `ACCESS_STOP_TRIALS=N` (1) runs each kind N
+  times and `ACCESS_STOP_KINDS=text,none` picks kinds, and the line after them tallies failures and reversals. Until
+  2026-11-10 every kind was stopped both ways, eight trials and 322 s of the step's 428: a kind is a way of knowing the
+  throttle, with code of its own, where Space and the track's end are two ways into the one stop, both run earlier in
+  the step, and differ in a trial only in how far the throttle is open. `ACCESS_STOP_HOWS=space,end` runs every kind
+  both ways: that, with `ACCESS_STOP_TRIALS`, is the check for a change to `WalkMode.Stop.cs` or `WalkMode.Throttle.cs`
+  (the stop goes by timing; 80 of 80 on 2026-11-02, and one failure in the 88 trials of eleven full runs since, a train
+  not sat on).
 - **walking round people** (about 3 minutes, no renderer needed; `docs/access-app.md` at `//go` > People on the way): in
   Atelier East between the walk course and the route's wall, a closed pen 4 m square with one doorway a metre wide.
   The visitor standing on the line of a 16 m `//go`: gone round, arriving on the point, never nearer it than 0.7 m,
@@ -653,7 +736,8 @@ dotnet on PATH and %TEMP%, %LOCALAPPDATA% and %APPDATA% pointed into the check's
 VR client or dev mode. It checks:
 - no .NET loaded from outside the exe; logged in to the local grid; the main window and the focus in Say; arriving;
   F1's keys window; `//about` read out as UIA notifications (naming github.com/studio-quire/sojourn and the data
-  folder);
+  folder); the window held 3 s (`//holdwindow`) and its stack logged, read with the package's own `mscordaccore.dll`
+  (2026-11-11);
 - with the assistant: its sidecar on the package's own Python, its provider checked (a saved Claude account read as
   none chosen), Alt+9's box named for it and Alt+0's provider row offering no Claude account; Control+D's absence said
   once in two presses (with the assistant: why it's off and how to choose);

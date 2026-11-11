@@ -49,7 +49,9 @@ own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access 0.1.0.
   87 MB zipped): `SojournAccess.exe`, self-contained single-file (the .NET 10 runtime, WinForms and ASP.NET's Kestrel
   inside; our pdbs embedded, so stack traces have lines); beside it the natives it loads by name: `sojourn_voice.dll`
   (voice and world audio, from `local/voice`), `openjp2.dll`, `shaderc_shared.dll` and `libSkiaSharp.dll` (the
-  renderer), `nvdaControllerClient.dll` (from `local/nvda`); the folders `Shaders`, `Character`, `Textures`, `Fonts`,
+  renderer), `nvdaControllerClient.dll` (from `local/nvda`), `mscordaccore.dll` (the runtime's reader of its own state,
+  from the runtime pack the exe was published with, which a single file leaves out: the window watch reads a held
+  thread's stack with it, How it fits > The window's thread held); the folders `Shaders`, `Character`, `Textures`, `Fonts`,
   `linden`; `lavapipe` (Mesa's software Vulkan driver for the view on a PC whose graphics can't run it, 56 MB, about
   21 MB of the zip: How it fits > On the processor; `python tools/access.py fetch-lavapipe` puts it in `local/lavapipe`
   first, from mesa-dist-win's release, checked by SHA-256); `README.txt` (for a screen-reader user: the template is `src/Sojourn.Access/Package/README.txt`);
@@ -224,6 +226,12 @@ commands, send a log, read a session's log, message the builders, Newer build?, 
   `away` and `do_not_disturb`, set home by `TesselAgent setHome`, a landmark by `TesselInventory createLandmark`), as
   the person's own press: items run as they're pressed, and those that move the focus do so once the menu has closed
   and given it back (`Later`, as our own move for the person).
+- Away is her own Away: its check and what picking it does leave out away set by itself (five minutes without her,
+  `away_after`). Picked while that's on, it says "Away." and the away stays as hers when she's back; it used to take
+  the pick for turning away off and say "Not away." (Claude Fable 5.2, 2026-11-10). That needs her pick inside the
+  quarter second between her first key after a while and the people tick clearing away by itself (`PeopleWiring.Away`),
+  so Alt+W, A at a practised speed, not at a reader's pace. Alt+0's `away` row and the VR menu's switch still show
+  and flip the plain state.
 - No two items on an open menu share a letter: the menu bar's menus go through `Mnemonics.Fix` as they open, as the
   context menus do (World had two on N, Recording a route and Stop all animations, so N there did nothing).
 - The menus' letters avoid the areas' own label mnemonics (so inventory's and objects' Show is Alt+O and Places'
@@ -637,7 +645,10 @@ the window's bottom-left corner and reads its name and its children's, so "Statu
   long line sent in parts isn't read back; "Sent in 3 parts." is said instead (Long lines, above).
 - A conference is read and sounds as an IM does, being addressed to her though it's a session of many ("Kestrel, new conference: ..." first, then its name), with the IM's switches and sound; its tab reads "Kestrel's Conference" or "NAME (conference)", and a reply goes to the session, so to everyone in it. Second Life sends a conference's lines as dialog 0, like an IM, so Core tells one by its session not being the pair's (`AgentSession.ConferenceLine`), as the viewer's `computeSessionID` would; before, the tab was the first speaker's and replies went to them alone. Checked on the local grid only by the session's own record, since OpenSim passes a session's message on to nobody, and it starts no conference; Second Life alone shows a reply heard and one started. Inviting someone into a conference already going isn't here.
 - One-off notices (friends online, alerts, a teleport that failed) are also status lines in the nearby chat history,
-  as in Radegast.
+  as in Radegast. So is each new song's title on the parcel's stream ("Now playing: ..."; `MainForm.WatchMusicTitle`),
+  with the read-out's switch (Alt+0, Music titles) and whatever F6 mutes, so a title missed can be found again (the
+  blind tester, 2026-11-10: they were read, but not in chat). A title that names the song already playing in other words
+  ("X by Y", then "Y - X", which one station sent two seconds apart) isn't news, read or written (`MusicStream.SameSong`).
 - Friends online at login are one line (`MainForm.FriendsOnline.cs`): the grid tells of every friend online as the
   session starts, which the blind tester heard as 23 lines in the same second (2026-10-31). Those arriving while
   logging in and for 30 s after arriving (or after logging in again), with any that follow within 3 s of the last, are
@@ -2532,6 +2543,10 @@ person does. `//pay NAME` or `//pay NAME 50`: someone in the region by name, els
 within 10; `//buy NAME`: the nearest within 30 m. An object in the region beside hers is paid through that region.
 `tools/access.py`'s step "paying and buying things" (the visitor's `tipjar` and `forsale`). The local grid has no money,
 so a paid confirmation and a paid purchase haven't run there: only the amount, the refusal and a free purchase.
+Her own payment (a person or a thing) is said once, by its answer ("Paid Kestrel L$50. You have L$1480."): Second Life's
+"You paid ..." notice for it isn't read while it's under way or for 10 s after a confirmed answer, though it's still a line
+in the history (`PayConfirmedAsync`, `OwnPayNotice`); in the blind tester's log of 2026-11-10 each tip was said three times,
+the notice cut off by a key and said again. One the grid hasn't confirmed, or one the assistant made, is read as ever.
 
 ### Sending a log
 
@@ -2739,7 +2754,14 @@ it).
   at the login window, the form filled in. NVDA hears it through its API; for another reader the announcer's
   notification would wait on the held thread, so Windows' own voice (SAPI) says it, only with a reader running. The
   test's `//holdwindow SECONDS` (with `SOJOURN_TEST_HOLD_WINDOW=1`) holds the thread; Control+Shift+Q and the SAPI
-  voice aren't in the scripted test (a hotkey takes real keys).
+  voice aren't in the scripted test (a hotkey takes real keys). What the thread was doing (2026-11-11, after a tester's
+  13 s with nothing around it in the log, and 16 holds of 1-5 s in her logs since 11-08, most of them while starting): at 2 s
+  held, and again at 10 s, its stack goes to the log, innermost first ("window: held 2.1 s, its thread in ...: Thread.Sleep <
+  Commands+<RunAsync>.MoveNext < ... < Program.Main"), read on a thread of its own from a snapshot of the process
+  (ClrMD's `DataTarget.CreateSnapshotAndAttach`; the first read takes about 2 s here, loading the runtime's reader, later
+  ones 0.1 s), at most 12 a session. Managed frames only: a wait inside a native call shows as the call into it. The
+  runtime's reader is the package's `mscordaccore.dll` or, from source, the installed runtime's; never fetched from
+  Microsoft's symbol server, ClrMD's last resort, so a package without it logs that instead.
 - **An exception escaping on the window's thread** goes to the session log ("access: unhandled on the window's thread")
   and is said, at most once a minute, the app carrying on (`Program`: WinForms' own exception dialog would take the
   focus and sit on a Details button).

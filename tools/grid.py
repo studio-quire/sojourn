@@ -1,6 +1,7 @@
 """Sojourn's local OpenSim grid (local/grid, standalone; region Atelier on :9700, neighbours 9701-9703).
 
-  python tools/grid.py start|stop|status
+  python tools/grid.py start|stop|status       status of a grid that's down says how it ended (local/grid/ends.log,
+                                               written by the keeper a start runs it under: keep(), below)
   python tools/grid.py console "show users"
   python tools/grid.py account First Last [password]
   python tools/grid.py scene light|dense       swap the region database (restarts the grid)
@@ -108,10 +109,9 @@ def console(command, wait=None, answers=()):
 def start(timeout=180):
     if ready():
         return True
-    log = open(GRID / "console.log", "a")
-    p = subprocess.Popen([str(DOTNET), "OpenSim.dll", "-console=rest"], cwd=BIN, stdout=log, stderr=log,
-                         stdin=subprocess.DEVNULL, creationflags=DETACHED | BELOW_NORMAL)
-    (GRID / "grid.pid").write_text(str(p.pid))
+    # under a keeper of its own (keep(), below), which stays to write down how the grid ended
+    subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "keep"], stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=DETACHED | BELOW_NORMAL)
     end = time.time() + timeout
     while time.time() < end:
         if ready():
@@ -120,6 +120,144 @@ def start(timeout=180):
             return True
         time.sleep(2)
     return False
+
+
+# --- how the grid ended -------------------------------------------------------------------------------------------
+# The grid's process went away under a full Access run (2026-11-09, an hour in) with nothing to say why: OpenSim.log
+# and console.log just stop, and Windows had no record. That silence doesn't tell a kill from a crash. Whatever Claude
+# Code starts inherits its error mode (SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX), under which Windows Error
+# Reporting records nothing for a crashed process: no Application event, no dump. And .NET itself only writes to stderr
+# for what it sees (an unhandled exception, a stack overflow, FailFast, an access violation under a managed thread).
+# Tried on .NET 8 as the grid is started: a crash on a native library's own thread, a native abort(), heap corruption
+# and a native exit() all ended the process with nothing on stderr and nothing in the event log. So the grid now runs
+# without SEM_NOGPFAULTERRORBOX (a crash gets its Application event 1000, with the module and offset, and a dump
+# where Windows keeps them), under a keeper that waits for it and writes its exit code to ends.log: a crash, a kill
+# and a shutdown each have their own. (Claude Fable 5.2, 2026-11-10.)
+
+SEM_FAILCRITICALERRORS = 1
+ENDS = GRID / "ends.log"
+EXIT_CODES = {
+    0: "its own shutdown (the console's quit)",
+    1: "ended from outside, most likely: taskkill /F, Python's kill() and Java's destroyForcibly() end a process with 1 "
+       "(a native library's exit(1) would look the same)",
+    0xFFFFFFFF: "ended from outside: .NET's Process.Kill and PowerShell's Stop-Process end a process with -1",
+    0xC0000005: "an access violation inside it",
+    0xC0000409: "a fast fail inside it (a native library's abort(), a crash on a native library's own thread, a "
+                "stack buffer overrun; two copies of native SQLite in one process end this way)",
+    0xC0000374: "heap corruption inside it (a native library's)",
+    0xC00000FD: "a stack overflow inside it",
+    0xE0434352: "an unhandled .NET exception (console.log has it)",
+    0x80131623: ".NET's FailFast (console.log has it)",
+    0x40010004: "ended by Windows at sign-out or shutdown",
+    0xC000013A: "Ctrl+C, or its console closed",
+}
+
+
+def _note_end(text):
+    with open(ENDS, "a", encoding="utf-8") as f:
+        f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + text + "\n")
+
+
+def _powershell(command, timeout=60):
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-Command", command], capture_output=True, timeout=timeout,
+                           creationflags=0x08000000)
+        return r.stdout.decode("utf-8", errors="replace")
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def keep():
+    """Starts the grid and waits for it to end (`grid.py keep`, which start() runs detached; nobody else needs to).
+    ends.log gets a line when it starts and one when it ends, with how long it was up, its exit code and what that
+    code means. For anything but a shutdown of its own it also keeps, in local/grid/ends/: every process running at
+    that moment with its parent, start time and command line (whoever ended it from outside is often still there, or
+    its parent is), and Windows' dump of the crash where there is one, with the Application event's module and offset
+    in the line. A grid gone with no line after its "started" means this keeper was ended too: something outside
+    took both."""
+    import ctypes
+    began = time.time()
+    # the grid inherits this process's error mode: still no dialog for a critical error (a drive not ready, a bad
+    # image), but without SEM_NOGPFAULTERRORBOX, which is what keeps Windows from recording a crash
+    ctypes.windll.kernel32.SetErrorMode(SEM_FAILCRITICALERRORS)
+    with open(GRID / "console.log", "a") as log:
+        p = subprocess.Popen([str(DOTNET), "OpenSim.dll", "-console=rest"], cwd=BIN, stdout=log, stderr=log,
+                             stdin=subprocess.DEVNULL, creationflags=DETACHED | BELOW_NORMAL)
+    (GRID / "grid.pid").write_text(str(p.pid))
+    _note_end(f"started, pid {p.pid} (its keeper {os.getpid()})")
+    code = p.wait() & 0xFFFFFFFF
+    stamp = time.strftime("%Y-%m-%d-%H%M%S")
+    up = int(time.time() - began)
+    crash = code >= 0x80000000
+    what = EXIT_CODES.get(code) or ("a crash inside it" if crash else "an exit code OpenSim or a library chose")
+    # (gone at: when the process was gone. A crash happened some seconds sooner, while Windows wrote it up; the
+    # Application event has that moment)
+    line = (f"ended, pid {p.pid}, gone at {time.strftime('%H:%M:%S')}, up {up // 3600} h {up % 3600 // 60} min {up % 60} s: "
+            f"exit code 0x{code:X}, {what}")
+    if code == 0:
+        _note_end(line)
+        return
+    kept = GRID / "ends"
+    kept.mkdir(exist_ok=True)
+    running = _powershell("Get-CimInstance Win32_Process | Sort-Object CreationDate | ForEach-Object { '{0:HH:mm:ss} {1} "
+                          "(parent {2}) {3}: {4}' -f $_.CreationDate, $_.ProcessId, $_.ParentProcessId, $_.Name, $_.CommandLine }")
+    if running:
+        (kept / f"{stamp}-running.txt").write_text("\n".join(l[:500] for l in running.splitlines()), encoding="utf-8")
+        line += f"; what was running then: ends/{stamp}-running.txt"
+    if crash:
+        # (Windows writes the dump before the process is gone; a few seconds' grace for the copy to be whole)
+        dump = Path(os.environ["LOCALAPPDATA"]) / "CrashDumps" / f"dotnet.exe.{p.pid}.dmp"
+        end = time.time() + 10
+        while time.time() < end and not dump.exists():
+            time.sleep(1)
+        if dump.exists():
+            import shutil
+            time.sleep(2)
+            try:
+                shutil.copyfile(dump, kept / f"{stamp}-dotnet.{p.pid}.dmp")
+                line += f"; Windows' dump: ends/{stamp}-dotnet.{p.pid}.dmp (the faulting thread's stack: cdbX64 -z FILE -c \".ecxr; k; q\")"
+            except OSError as e:
+                line += f"; Windows' dump at {dump} (not copied: {e})"
+        else:
+            line += "; no dump from Windows (it keeps one where the registry has Windows Error Reporting's LocalDumps key)"
+        event = _powershell("Get-WinEvent -FilterHashtable @{LogName='Application';Id=1000;StartTime=(Get-Date).AddMinutes(-3)} "
+                            "-ErrorAction SilentlyContinue | ForEach-Object { $_.Message -replace '\\s+', ' ' }")
+        for m in event.splitlines():
+            pid = re.search(r"Faulting process id: (0x[0-9a-fA-F]+)", m)
+            if pid and int(pid[1], 16) == p.pid:
+                where = re.search(r"Faulting module name: ([^,]+).*?Fault offset: (0x[0-9a-fA-F]+)", m)
+                line += f"; Windows' Application log (event 1000): in {where[1]} at {where[2]}" if where else f"; Windows: {m[:300]}"
+                break
+        else:
+            line += "; nothing in Windows' Application log for it"
+    _note_end(line)
+
+
+def how_ended(wait=20):
+    """What ends.log says of a grid found down, as a sentence for a tool to print: its last end, or, where the last
+    line is a start, that the keeper went too (waiting up to wait seconds for a keeper still writing it down)."""
+    def last():
+        try:
+            lines = ENDS.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return None
+        return lines[-1] if lines else None
+
+    line = last()
+    if line is None:
+        return "nothing in ends.log (a grid started before 2026-11-10 had no keeper)"
+    end = time.time() + wait
+    while keeper := re.search(r" started, pid (\d+) \(its keeper (\d+)\)", line):
+        r = subprocess.run(["tasklist", "/FI", f"PID eq {keeper[2]}", "/NH", "/FO", "CSV"], capture_output=True, text=True,
+                           creationflags=0x08000000)
+        if f'"{keeper[2]}"' not in r.stdout:
+            return f"ends.log has its start and no end ({line}): its keeper went with it, so something outside ended both"
+        if time.time() >= end:
+            return (f"ends.log has its start and no end yet ({line}), and its keeper is still there: the grid's "
+                    f"process {keeper[1]} hasn't ended (not answering?), or the keeper is still writing it down")
+        time.sleep(1)
+        line = last()
+    return "ends.log: " + line
 
 
 def login(first, last, pw="sojourn-local", start="last", timeout=30):
@@ -422,8 +560,13 @@ if __name__ == "__main__":
         print("up" if start() else "failed")
     elif cmd == "stop":
         stop_and_wait()   # a plain stop returns while it's still answering, so a start straight after saw it "up"
+    elif cmd == "keep":
+        keep()
     elif cmd == "status":
-        print("up" if ready() else "down")
+        up = ready()
+        print("up" if up else "down")
+        if not up:
+            print(how_ended(wait=0))
     elif cmd == "console":
         print("\n".join(console(sys.argv[2], wait=float(sys.argv[3]) if len(sys.argv) > 3 else None)))
     elif cmd == "account":
