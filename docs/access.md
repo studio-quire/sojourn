@@ -204,9 +204,12 @@ said when the keys rest. Since 2026-11-01 routes are recorded by walking them (R
 moves, the walk becomes `//go xyz` lines in her and her partner's format, points kept only at turns, level changes,
 doorways walked through, region borders, teleports, seats and touches, with her own notes as lines `//route` reads out;
 saved as a notecard in Routes, playable at once (access-app.md > Walk mode > Recording a route); checked on the local
-grid by walking a turn through a doorway and teleporting into another region, then playing it back. Left: a floor
-over another (stairs are walked since 2026-10-31, but a path keeps one floor a cell, so an upstairs or a
-balcony over where it starts isn't reached: `Walk/PathPlanner.cs`); recording's defaults and words judged by a blind tester, Second Life's own
+grid by walking a turn through a doorway and teleporting into another region, then playing it back. Stairs are
+walked since 2026-10-31, and since 2026-11-11 floors over one another too (an upstairs over where she stands, a
+balcony, a bridge: the path is planned per floor over each cell, `Walk/PathPlanner.cs`), checked on the local grid in
+a two-storey house by `//go` up and down, out onto a balcony and down under it, following and the assistant's walk.
+Left: floors on Second Life (what its autopilot makes of a stretch's height, sent as given there: her log says if it flies her; stairs more than 12 m outside a walk's
+area aren't found); recording's defaults and words judged by a blind tester, Second Life's own
 places (landing points, busy regions), a crossing on foot recorded and replayed; SL's own vehicles and crossings (only the local grid's tried); the sound design and
 every default judged by a blind tester.
 
@@ -861,6 +864,55 @@ A log with a note and two messages (our words; log `tester-20261111T024341-8bc53
   changer taking it, most likely), refused as no address and logged, the music back when a real one was set; near the end she went through Reading out's rows and
   left "Lines cut off by my typing said again" off, maybe on purpose: a question for her if it stays off.
 
+### Driving after her partner, smoother, and once past him (0.1.0.1074, the blind tester, 2026-11-11)
+
+A log with a note (our words; log `tester-20261111T151640-1c4767`, 09:47-10:16, her police scooter after her partner's
+motorbike across sixteen regions, `//follow` at 10 m). Much smoother than before, she said; once she zoomed past him and
+neither could tell why.
+- **Past him at a crossing** (10:00:18): she crossed into Rivula about 6 m behind him, where he'd stopped 5 m over the
+  border, and the region took 6 s to send her seat (by the log's whole seconds the other 19 crossings' seats came 0-1 s
+  on). Until the seat comes nothing is decided, by design, so nothing slowed her: the scooter ran on about 70 m and ended
+  22 m past him. It was most likely going full ahead because of one Up press a moment before, against a backward reading
+  (next item): the log has Up let go then, and over the 70 m (about 6.5 s) the scooter went faster than before the
+  crossing, so her scooter seems to hold or keep its drive with no key held. Now, past 1.5 s without the seat, where she
+  is comes from the region's map list, which names her, or where she was last known, near him or past him Up is let go,
+  and Down pressed, once for each new pace by the lists, where that pace is sure (`docs/access-app.md` > Driving after
+  someone > Over a border).
+- **"Going backward" for a moment**: the seat's velocity as the region reports it, logged every 2 s, swung between 0.2
+  and 13 m/s while by where it was the scooter covered a steady 7-9 m/s, and 85 times in the drive it read backward, for
+  125-578 ms, each time pressing Up and stopping the steering. 84 of the 85 came in the same 2 s log line's span as the
+  drive's own Down presses or the one after (it pressed Down in 61% of the spans, so about 15 would have come with no
+  press near by chance, and 1 did), so they were
+  most likely real kicks into reverse by its Down presses, her scooter's Down being strong (on 11-09, with a key held
+  steady, the readings were steady), and an Up press on her scooter can send it full ahead. Now: what one Down press
+  takes off is learned from each press, and a press goes only where that leaves a margin (else it coasts); backward
+  counts when the seat's moves over the last quarter second don't say it's going on forward (so a reading alone isn't
+  answered with Up, and real reverse is answered sooner than by the half second's), it isn't steered while they disagree, the room to slow
+  is reckoned by the moves, and a Down goes only while both say forward (`docs/access-app.md` > Driving after someone >
+  Never backward). At 09:55:08, as the drive let go (next item) with the scooter already going backward at 3 m/s by the
+  reading and two of its Down presses in the 2 s before, the vehicle stop started and said "Let go, but it's moving
+  backward, at 3 metres a second", and she told him she was going backwards again. The stop had pressed nothing: its
+  first press, judged on the tick it began with the reading saying backward, was let go before any key went out. What
+  was wrong was the line ("Let go" with nothing sent) and that it would have braked a vehicle already reversing for a
+  second as a car going that way, each press adding reverse. Now it says so plainly, doesn't press Down into a vehicle
+  going backward by the way driving after someone learned it goes forward, and stops at once if Down speeds it up
+  (`docs/access-app.md` > Stopping a vehicle > Already backing).
+- **A crossing taken for a teleport** (09:55:08): as he rode into Astarte something put him over 100 m from where he'd
+  been, and the drive let go ("jumped away, a teleport most likely"); 33 s later he was 33 m ahead, waiting. The log
+  doesn't say what it was (a copy of him or the map list's word, mid-crossing). Now that's a jump only after 2 s of it on
+  end (a tick without him, or her own crossing, starts it again); meanwhile he counts as unseen, the drive going on where
+  he went, and the log says by what and where he was seen.
+- **An independent review of those changes** (an agent given the commit and docs, 2026-11-11) found, besides the
+  backward readings and the stop above: the map list's whole metres could make a true 1-1.6 m/s read over the 3 m/s the
+  first version braked from, and that code ran briefly in many ordinary crossings; two lists close together brought back
+  the pace from before the crossing; with him lost before her crossing it braked against where he'd been; and "2 s on
+  end" wasn't. All four fixed (`docs/access-app.md` > Driving after someone > Over a border), and its test of the
+  backward readings made to test only what it says.
+- **Pushed into things with Up held**: three times it drove her into something (a table, a wall, a sign, each named by the
+  warning of what's ahead), and "isn't moving" came after 34 s and 16 s, and once not at all before he came back: the
+  word read 0.3-0.8 m/s now and then against them, each restarting its 6 s. Now that's judged by where the seat goes over
+  2 s. Why the way led into them (corners cut aiming a second ahead along his way, or his own way through) is open.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -882,6 +934,12 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   (~0.25-0.3 GB of working set), against the first picture, face list or touch waiting for it to start and, on her
   2400G, for its shaders (minutes, by her log); `docs/performance.md` > Sojourn Access on a small PC. Undecided.
 - Branch `fix/own-voice` (arrivals in Access's own voice) is WIP, not wired in.
+- A low sun tints what's described without counting as dark (2026-11-11): the scripted test's moss green sweater came out
+  dark teal, about (11, 28, 32), in the afternoon runs on the local grid (its dusk), where the morning's had it green; the
+  sun was over the 10 degrees that relight people and things, and the picture's middle (bright sky behind) over the
+  dim mark, so it wasn't drawn again as at midday (`OffscreenRenderer.Shots.cs`). On Second Life at sunset a describer
+  would name such colours wrong. Measuring the subject rather than the frame's middle, or a higher sun line, would
+  catch it; undecided. Until then that check fails when the local grid's sun is low.
 - Her PC's log (2026-10-31) named both chips at Vulkan 1.1.125 (driver 2.0.116, by its look a 2019 OEM driver): the view
   now draws on the processor there. Her logs of 2026-11-01 showed a session's first frame taking 1-3 minutes of
   compiling, then ~1 s a picture; the compiling was cut that day (`docs/performance.md` > The first picture after

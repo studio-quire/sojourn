@@ -886,7 +886,7 @@ public sealed partial class MainForm : Form
     {
         var a = new System.Numerics.Vector2(from.X, from.Y);
         var b = new System.Numerics.Vector2(to.X, to.Y);
-        if (System.Numerics.Vector2.Distance(a, b) < 2) return null;
+        if (System.Numerics.Vector2.Distance(a, b) < 2 && !Commands.OtherFloor(from, to)) return null;
         var plan = await planner.PlanAsync(a, _walk?.Me()?.Feet ?? from.Z - 0.95f, b, null, default, to.Z);
         Sojourn.Access.Walk.WalkMode.Log($"route {a} -> {b}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct && !plan.GoalMoved ? "direct" : string.Join(" ", plan.Waypoints) + (plan.GoalMoved ? " (goal moved)" : ""))}");
         if (plan == null)

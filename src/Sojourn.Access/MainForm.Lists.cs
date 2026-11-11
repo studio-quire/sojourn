@@ -90,7 +90,7 @@ public sealed partial class MainForm
         var buyItem = _objectMenu.Items[^1];
         Item("Take a &copy", t => _ = TakeCopyAsync(t.Id, t.Name));
         var copyItem = _objectMenu.Items[^1];
-        Item("&Walk to", t => _ = _cmd.WalkAsync(t.Pos, t.Name, 1.5, $"//go tp object {t.Name}"));
+        Item("&Walk to", t => _ = _cmd.WalkAsync(t.Pos, t.Name, 1.5, $"//go tp object {t.Name}", thing: t.Id));
         Item("&Beacon", t => _walk?.BeaconOn(t.Name, t.Id));
         Item("&Face", t => _ = _cmd.FacePointAsync(t.Pos, t.Name));
         // her arm on it for a friend to see (MainForm.PointAt.cs; no letter: every letter of its words is taken here)

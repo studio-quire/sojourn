@@ -600,6 +600,16 @@ docstring with its checks in full):
 - **walk mode's warning, its name not in** (under a minute): Second Life sends no names with objects, and the tester's
   own new prims bring theirs, so the visitor puts a Green Gate (`rez NAME X Y Z size SX SY SZ`) on open ground in
   Atelier East and a held Up toward it must be warned of by name ("Green Gate, 4 metres."), not "Wall".
+- **walking between floors** (under 2 minutes, no renderer needed): a two-storey house the tester builds in Atelier
+  East's north-east, clear of the render scenes (a door with steps down to the ground, upstairs 3.2 m up over all but a
+  stairwell along the north wall, 14 steps a metre wide between two walls, a balcony out over the ground): `//go person`
+  to the visitor upstairs over her says "up 3 metres" and walks up, and back down to it under her; from outside,
+  `//go xyz` onto the balcony, then to the ground under it; following the visitor upstairs ("With" it up there); a
+  `//go xyz` to a point just under the upstairs slab, kept on the ground floor; outside, `//go` to a 9 m block by name
+  (walked to its side), and following the visitor up on a pillar with no steps (at its foot, "... above you; no way up
+  from here.", never "With"); the assistant's walk to a point upstairs. Each ends on the right floor, said, with no
+  teleport and no flying animation on her (OpenSim's autopilot flies to a point high over the ground:
+  `Commands.AutoPilotTo`).
 - **distance walked**: three taps of Up said once as one stretch, close to how far the avatar went (the run prints the
   metres a tap), Down said "backward", M and Shift+M, nothing with `walk_distance` off.
 - **rail switches** (about 2 minutes, no renderer needed): on a flat stretch of Atelier East found first (and a ray along
@@ -625,12 +635,25 @@ docstring with its checks in full):
   with the place teleports.
 - **driving after someone** (about 2 minutes, no renderer needed): on the gentlest patch of Atelier East, the visitor's
   kart, `//follow` with a gap, the visitor ahead to the left: it steers there and stops short without touching them; the
-  visitor walks round behind and it turns and goes after them; an arrow takes the wheel back.
+  visitor walks round behind and it turns and goes after them; an arrow takes the wheel back. Then backed by hand
+  (Down held 1.2 s) and Space: "It's going backward ..., so I haven't pressed it." and no "Stopping." (the way the kart
+  goes forward learned by the drive). The run prints what the drive's first Down press took off and the way forward
+  it learned.
 - **driving after someone over a border** (about a minute, no renderer needed): the visitor just inside Atelier East, the
   tester's kart 35 m west in Atelier on the strip at its east edge as high as Atelier East's flat; `//follow` drives it
   over: the crossing said with the seat held, then "With" them; nothing said of the keys let go, them getting away or
   lost, or "Blocked."; the session log has the convoy's lines (its crossing too) and the `controls:` line of the kart's
-  take; `//stand` ends it, said. OpenSim's word on a script's keys at a crossing needn't be Second Life's.
+  take; `//stand` ends it, said. OpenSim's word on a script's keys at a crossing needn't be Second Life's. With
+  `//glitchconvoy 1.3` through the drive (the region's word on the velocity reversed for a tick, as single words read
+  backward on her scooter; only while the kart's moves go on forward, what's tested): none taken for backing. Then, with them: seen 150 m off for 1 s
+  (`//farconvoy`), not a jump, logged with where; for 2 s on end, "jumped away" said.
+- **driving after someone, the seat not sent over a border** (about a minute, no renderer needed): as above, in a kart
+  of its own name (what a Down press takes off is learned per seat name, and the Border Kart's from the steps before
+  could decide whether it brakes), crossing at about 7-9 m/s, and `//doubtconvoy 6`: the seat counts as not sent for 6 s from the crossing, as into Rivula on
+  her ride of 2026-11-11 (this kart coasts on at its speed with no key held, so with nothing decided it would run about
+  50 m). The log has it going by where it was and Atelier East's map list, a Down among those lines, and the seat sent
+  after about 6 s; the kart gets no further than the visitor; then "With" them. OpenSim sends the map list seconds apart,
+  Second Life about once a second.
 - **driving after someone lost at a border** (about 2 minutes, no renderer needed): the same kart and strip a row over,
   the visitor walking east from 8 m inside Atelier East as the kart sets off, and `//blindconvoy 0.5 6` (the test's own
   command: the convoy doesn't see them from half a second on, for 6 s, since nothing on the local grid hides someone):

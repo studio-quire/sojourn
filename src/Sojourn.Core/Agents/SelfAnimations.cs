@@ -112,6 +112,9 @@ public sealed class SelfAnimations
         return out_;
     }
 
+    /// <summary>Whether the agent API started it.</summary>
+    public bool Mine(UUID id) => _mine.ContainsKey(id);
+
     /// <summary>The agent API started it (the name it was asked for: an item's, or a built-in's).</summary>
     public void Started(UUID id, string? name) => _mine[id] = name ?? "";
 
@@ -147,7 +150,7 @@ public sealed class SelfAnimations
         return false;
     }
 
-    static bool WornByMe(RegionWorld w, Primitive p, UUID me)
+    internal static bool WornByMe(RegionWorld w, Primitive p, UUID me)
     {
         var cur = p;
         for (var depth = 0; cur.ParentID != 0 && depth < 8; depth++)

@@ -4382,5 +4382,21 @@
     "az": "Nə etdiyini görmək üçün bir düyməyə yönəlt.",
     "de": "Zeige auf eine Taste, um zu sehen, was sie tut.",
     "zh-Hans": "指向一个按键，看看它的作用。"
+  },
+  "{0} may have left its pose on you after you stood up. If you're still in it, logging out and in again clears it": {
+    "_": "chat feed notice, a whole sentence of the client's own (also read out by the screen reader), a few seconds after standing up from something that may have left its pose on the person (a seat can make its pose their standing pose, which only logging in again undoes once the seat is gone); {0} is the seat's name; no full stop at the end, as shown",
+    "zh": "{0} 可能在你起身後把它的姿勢留在你身上。如果你還維持那個姿勢，登出再登入即可解除",
+    "it": "{0} potrebbe averti lasciato la sua posa dopo che ti sei alzato. Se sei ancora in quella posa, uscire e rientrare la toglie",
+    "es": "Puede que {0} te haya dejado su pose al levantarte. Si sigues en ella, cerrar sesión y volver a entrar la quita",
+    "pt": "{0} pode ter deixado a pose dele em você depois que você se levantou. Se ainda estiver nela, sair e entrar de novo a remove",
+    "ja": "{0}のポーズが、立ち上がった後もあなたに残っているかもしれません。まだそのポーズのままなら、ログアウトしてもう一度ログインすると直ります",
+    "tr": "{0}, kalktıktan sonra pozunu üzerinizde bırakmış olabilir. Hâlâ o pozdaysanız, çıkış yapıp yeniden giriş yapmak bunu düzeltir",
+    "fr": "{0} vous a peut-être laissé sa pose après que vous vous êtes levé. Si vous y êtes encore, vous déconnecter puis vous reconnecter la retire",
+    "da": "{0} har måske efterladt sin positur på dig, efter du rejste dig. Hvis du stadig er i den, hjælper det at logge ud og ind igen",
+    "ru": "{0}, возможно, оставил на вас свою позу после того, как вы встали. Если вы всё ещё в ней, выйдите и войдите снова: это её снимет",
+    "pl": "{0} mógł zostawić na tobie swoją pozę po tym, jak wstałeś. Jeśli wciąż w niej jesteś, wylogowanie i ponowne zalogowanie to naprawi",
+    "az": "{0} ayağa qalxdıqdan sonra pozasını sizdə qoymuş ola bilər. Hələ də o pozadasınızsa, çıxıb yenidən daxil olmaq bunu düzəldir",
+    "de": "{0} hat Ihnen nach dem Aufstehen womöglich seine Pose hinterlassen. Falls Sie noch darin sind, hilft Ab- und wieder Anmelden",
+    "zh-Hans": "{0} 可能在你起身后把它的姿势留在你身上。如果你还保持那个姿势，登出后重新登录即可解除"
   }
 }

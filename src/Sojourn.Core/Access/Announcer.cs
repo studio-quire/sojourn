@@ -32,7 +32,7 @@ public static class LineSources
         null or "FriendOnlineOffline" or "FriendshipAccepted" or "FriendshipDeclined" or "InventoryAccepted" or "InventoryDeclined"
             or "UserGiveItem" or "InvOfferAutoAcceptUser" or "InvOfferAutoAcceptObject" or "PaymentReceived" or "PaymentSent"
             or "PaymentFailure" or "DisplayNameUpdate" or "IMNotShownNotFriend" or "RadarReport" or "WayOut" or "TeleportStalled"
-            or "CouldNotTeleportReason" or "CollisionAlert" or "AntiSpamBlocked" or "DoNotDisturbHeld" or "LookAround"
+            or "CouldNotTeleportReason" or "CollisionAlert" or "AntiSpamBlocked" or "DoNotDisturbHeld" or "LookAround" or "PoseLeft"
             or "SetDisplayNameSuccess" or "VoiceCallAutoRejected" or "TeleportViaSLAPP" or "GroupLeaveConfirmMember"
             or "JoinGroupCanAfford" or "JoinGroupNoCost" or "JoinGroupCannotAfford" => LineFrom.App,
         _ => LineFrom.People,

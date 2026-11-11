@@ -78,6 +78,11 @@ public sealed partial class WalkMode
         public float SampleAlong, PrevAlong;
         public System.Numerics.Vector3 SampleVel, SamplePos;
         public string Why = "";
+        // the last press or Down tap begun, its speed along the way then, and how fast that was rising before it (by the
+        // seat's moves; null: not known): Down speeding it up ends the stop
+        public long KickAt;
+        public float KickV;
+        public float? KickGain;
     }
 
     VehicleStop? _vstop;
@@ -108,8 +113,7 @@ public sealed partial class WalkMode
             StopOthers?.Invoke();
             ReleaseAll();
             if (_vstop != null) { Line("Still stopping."); return; }
-            StartVehicleStop(seated, "manual", heldUp);
-            Line("Stopping.");
+            Line(StartVehicleStop(seated, "manual", heldUp) ?? "Stopping.");
             return;
         }
         StopAll();
@@ -118,9 +122,25 @@ public sealed partial class WalkMode
     // moving enough to stop by its controls: a train at its lowest throttle creeps at 0.5 m/s
     bool Moving(Body b) => Speed(b) > 0.3f || (SeatSpeed(2000) ?? 0) > 0.3f;
 
-    void StartVehicleStop(Body b, string why, bool heldUp)
+    /// <summary>Starts stopping it; or, going backward by the way it faces, doesn't, and says so (the line, else null).</summary>
+    string? StartVehicleStop(Body b, string why, bool heldUp)
     {
         long now = Environment.TickCount64;
+        // going backward by the way this seat's vehicle goes forward (learned by driving after someone): its Down is most
+        // likely reverse thrust and would speed it up (the review of 8700ca8: her scooter backing as the drive let go).
+        // Not where a seat may face either way along the vehicle (rails, a throttle): driving after someone doesn't learn there
+        if (LearnedFacing(b) is { } offset && _railTrack == null && Throttle == null)
+        {
+            var ahead = new Vector2(MathF.Cos(b.Yaw + offset), MathF.Sin(b.Yaw + offset));
+            float? byMoves = SeatMove(1000) is { } mv ? Vector2.Dot(mv, ahead) : null;   // (metres over the last second)
+            float back = -(byMoves ?? Vector2.Dot(new Vector2(b.Vel.X, b.Vel.Y), ahead));
+            if (back > 0.3f)
+            {
+                Log($"stop {why}: going backward at {back:F2} by the way it faces ({(byMoves != null ? "its moves" : "the region's word")}): not pressed");
+                S.Log.LogInformation("stop {Why}: going backward at {Back:F2} m/s by the way it faces: Down not pressed", why, back);
+                return $"It's going backward, at {SpeedWords(back)}, and Down would speed it up, so I haven't pressed it.";
+            }
+        }
         var dir = SeatMove(1000) is { } m && m.Length() > 0.3f ? Vector2.Normalize(m) : new Vector2(b.Vel.X, b.Vel.Y) is { } v && v.Length() > 0.1f ? Vector2.Normalize(v) : Vector2.Zero;
         var s = new VehicleStop
         {
@@ -138,8 +158,16 @@ public sealed partial class WalkMode
         // a vehicle that says its throttle is tapped by what it says (not a car driven by holding Up: its throttle
         // falls back by itself as Up's let go); the first tap on the next tick
         if (_thr is { } said && !heldUp) (s.Reading, s.Taps, s.StartReading, s.LastReading) = (true, true, said.Value, said.Value);
+        // the region's word along the way it's going says it's nearly still or going back: no press yet (one would be let
+        // go before it was sent); Settle presses if the word comes round within 0.6 s
+        else if (s.SampleAlong < Margin)
+        {
+            (s.PressAt, s.PressV, s.Released, s.ReleasedAt) = (now, s.SampleAlong, true, now);
+            Log($"stop {why}: not pressed yet, its speed along the way {s.SampleAlong:F2}");
+        }
         else Press(s, now, 0, s.SampleAlong);
         new Thread(() => Watch(s)) { IsBackground = true, Priority = ThreadPriority.Highest, Name = "vehicle stop" }.Start();
+        return null;
     }
 
     /// <summary>The region's word on the velocity along the way it was going (positions lag: they're judged over a
@@ -209,8 +237,26 @@ public sealed partial class WalkMode
         if (s.Dir != Vector2.Zero && now - s.Start > 300 && -along > 0.3f && !putBack)
         {
             if (s.Down) lock (_controlsLock) s.Down = false;
-            EndStop(s, s.Released || s.Taps ? $"Let go, but it's moving backward, at {SpeedWords(-along)}."
+            // ("Let go" only when something was pressed: on 2026-11-11 it was said with nothing sent)
+            EndStop(s, s.TapTimes.Count == 0 ? $"It's moving backward, at {SpeedWords(-along)}, so I haven't pressed Down."
+                : s.Released || s.Taps ? $"Let go, but it's moving backward, at {SpeedWords(-along)}."
                 : $"Let go: it began moving backward, at {SpeedWords(-along)}.");
+            return;
+        }
+        // faster along its way than when the last press or Down tap went, once that's had time to show, and faster than it
+        // was gaining before it, by the region's word and by where the seat went over the last quarter second: Down speeds
+        // it up (a vehicle already backing, its Down reverse thrust, the way the stop takes it being backward), so no more of
+        // it. Not while tapping by the throttle it says, which never goes below 0, nor without the moves to say how it was
+        // going (a train just opened gains on after a tap that leaves it under its new speed). Within a second: coasting
+        // downhill gains more slowly than that
+        if (!s.Reading && s.KickAt > 0 && s.KickGain is { } gain && s.Dir != Vector2.Zero && now - s.KickAt >= 300 && now - s.KickAt <= 1000
+            && fresh && s.SampleAt - s.KickAt >= 250 && SeatVelocity(250) is { } quick
+            && along > s.KickV + MathF.Max(0f, gain) * (now - s.KickAt) / 1000f + Math.Max(0.5f, 0.1f * Math.Abs(s.KickV))
+            && Vector2.Dot(quick, s.Dir) > s.KickV + 0.3f)
+        {
+            if (s.Down) lock (_controlsLock) s.Down = false;
+            Log($"stop +{now - s.Start}: {along:F2} along, from {s.KickV:F2} at the press {now - s.KickAt} ms before, gaining {gain:F1} m/s² then: Down speeds it up");
+            EndStop(s, $"Let go: Down speeds it up. It's moving at {SpeedWords(along)}.");
             return;
         }
         if (now > s.Deadline)
@@ -278,6 +324,13 @@ public sealed partial class WalkMode
     {
         // said stopped once the longer measure agrees
         if (IsNearStill(along, reported)) { EndStop(s, "Stopped."); return; }
+        // not pressed at the start, the region's word saying it wasn't going on: pressed now if that comes round soon
+        if (s.TapTimes.Count == 0 && now - s.Start <= 600 && along >= Margin + 0.3f)
+        {
+            s.PhaseAt = now;
+            Press(s, now, 0, along);
+            return;
+        }
         if (!s.Car)
         {
             if (!s.Judged && now - s.PhaseAt >= StopHoldJudge) Judge(s, now, reported);
@@ -504,6 +557,7 @@ public sealed partial class WalkMode
         s.TapTimes.Add(now);
         (s.LastTapAt, s.LastTapShown, s.TapReading) = (now, false, reading);
         ThrottleEdge(up ? 1 : -1, now);
+        if (!up) (s.KickAt, s.KickV, s.KickGain) = (now, s.SampleAlong, SeatGain(s.Dir));
         s.NextAt = now + StopTapDown;
         Volatile.Write(ref s.PressUntil, now + StopTapDown + 100);
         s.TapDown = s.Down = true;
@@ -514,6 +568,7 @@ public sealed partial class WalkMode
     void Press(VehicleStop s, long now, long len, float v)
     {
         (s.PressAt, s.PressLen, s.PressV, s.Measured, s.Released, s.CoastAt, s.UpTap) = (now, len, v, false, false, 0, false);
+        (s.KickAt, s.KickV, s.KickGain) = (now, v, SeatGain(s.Dir));
         Volatile.Write(ref s.PressUntil, now + (len > 0 ? len : BlindLen(v)));
         s.Edges++;
         s.TapTimes.Add(now);
@@ -617,6 +672,50 @@ public sealed partial class WalkMode
 
     float? SeatSpeed(long ms) => SeatMove(ms) is { } m ? m.Length() * 1000f / ms : null;
 
+    /// <summary>The seat's velocity over the ground by where the region put it (global metres a second): from its latest
+    /// move and the one about <paramref name="ms"/> before that, at the ticks they came, so a pause in the region's news
+    /// doesn't read as slowing. Null without a move in the last 0.7 s or one at least half as far back.</summary>
+    Vector2? SeatVelocity(long ms)
+    {
+        // (the track has an entry each tick its place changed, and one every 250 ms while it didn't)
+        int last = _seatTrack.Count - 1;
+        while (last > 0 && _seatTrack[last].P == _seatTrack[last - 1].P) last--;
+        if (last <= 0 || Environment.TickCount64 - _seatTrack[last].T > 700) return null;
+        var (t1, p1) = _seatTrack[last];
+        int from = -1;
+        for (int i = last - 1; i >= 1; i--)
+        {
+            if (_seatTrack[i].P == _seatTrack[i - 1].P) continue;
+            from = i;
+            if (t1 - _seatTrack[i].T >= ms) break;
+        }
+        if (from < 0 || t1 - _seatTrack[from].T < ms / 2) return null;
+        var (t0, p0) = _seatTrack[from];
+        return (p1 - p0) * 1000f / (t1 - t0);
+    }
+
+    /// <summary>How fast the seat was gaining speed along dir over about the last 0.6 s by where the region put it (m/s²: its
+    /// speed over the latest 0.3 s against the 0.3 s before); null without its moves.</summary>
+    float? SeatGain(Vector2 dir)
+    {
+        long now = Environment.TickCount64;
+        return SeatAlongOver(now - 600, now - 300, dir) is { } early && SeatAlongOver(now - 300, now, dir) is { } late ? (late - early) / 0.3f : null;
+    }
+
+    /// <summary>The seat's speed along dir between two times by its track's places nearest them; null with under 0.15 s between.</summary>
+    float? SeatAlongOver(long t0, long t1, Vector2 dir)
+    {
+        int i0 = -1, i1 = -1;
+        for (int i = 0; i < _seatTrack.Count; i++)
+        {
+            if (_seatTrack[i].T <= t0) i0 = i;
+            if (_seatTrack[i].T <= t1) i1 = i;
+        }
+        if (i0 < 0 || i1 <= i0 || _seatTrack[i1].T - _seatTrack[i0].T < 150) return null;
+        var ((ta, pa), (tb, pb)) = (_seatTrack[i0], _seatTrack[i1]);
+        return Vector2.Dot(pb - pa, dir) * 1000f / (tb - ta);
+    }
+
     // --- what the seat says ----------------------------------------------------------------------------------------------
 
     readonly record struct HeardLine(UUID Source, UUID Owner, string Name, string Text, bool OwnerOnly);
@@ -680,8 +779,8 @@ public sealed partial class WalkMode
         _trackEndAt = now;
         bool heldUp = DrivenByHolding();
         ReleaseAll();
-        StartVehicleStop(b, "track end", heldUp);
+        string? not = StartVehicleStop(b, "track end", heldUp);
         Sounds.Play(CueSounds.Cue.TrackEnd, 0.7f, null);   // urgent and rare: whatever the other cues are set to
-        Line("Track ends: stopping.");
+        Line(not == null ? "Track ends: stopping." : $"Track ends. {not}");
     }
 }

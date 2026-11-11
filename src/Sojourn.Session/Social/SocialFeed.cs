@@ -490,7 +490,7 @@ public sealed class SocialFeed
             // the client's own sentences (Core's, the session's), whole: the catalog's templates match them
             "CouldNotTeleportReason" or "Disconnected" or "TeleportStalled" or "RegionLost" or "CrossingFailed" or "RegionRestartMinutes"
                 or "RegionRestartSeconds" or "SetDisplayNameSuccess" or "DoNotDisturbHeld" or "AntiSpamBlocked" or "TeleportViaSLAPP"
-                or "JoinGroupCanAfford" or "JoinGroupCannotAfford" or "JoinGroupNoCost" or "GroupLeaveConfirmMember" or "WayOut" or "LookAround"
+                or "JoinGroupCanAfford" or "JoinGroupCannotAfford" or "JoinGroupNoCost" or "GroupLeaveConfirmMember" or "WayOut" or "LookAround" or "PoseLeft"
                 => ("", Lang.T(Plain(S(n, "message"))), Life(FeedKind.Notice, S(n, "message"))),
             _ => null,
         };

@@ -350,6 +350,11 @@ def package_build():
     # its own bin and obj (Directory.Build.props), so the repo's build folder isn't touched
     build_root = DIST / (f"build-{tag}" if tag else "build")
     shutil.rmtree(stage, ignore_errors=True)
+    # earlier builds' stages go (each ~730 MB unpacked, and its zip holds the same): 32 of them had grown to 23 GB
+    # by 2026-11-11; the zips of released builds are on the front door
+    for old in (out_dir / "stage").glob("Sojourn Access *"):
+        if old != stage:
+            shutil.rmtree(old, ignore_errors=True)
     stage.mkdir(parents=True)
     src = ROOT
     if not dirty_ok:
@@ -1822,12 +1827,14 @@ def step_list(run, nonce, tester_id, procs):
         ("someone's own IM sound", lambda: own_im_sound(run, tester_id)),
         ("walk mode", lambda: walk_mode(run)),
         ("walk mode's warning, its name not in", lambda: walk_unnamed(run)),
+        ("walking between floors", lambda: walk_floors(run)),
         ("distance walked", lambda: distance_walked(run)),
         ("rail switches", lambda: rail_switches(run)),
         ("stopping a vehicle", lambda: vehicle_stop(run)),
         ("driving after someone", lambda: driving_after(run)),
         ("driving after someone over a border", lambda: driving_after_border(run)),
         ("driving after someone lost at a border", lambda: driving_after_lost(run)),
+        ("driving after someone, the seat not sent over a border", lambda: driving_after_doubt(run)),
         ("links", lambda: links(run)),
         ("walking round people", lambda: walking_round_people(run)),
         ("recording a route", lambda: route_recording(run)),
@@ -11395,8 +11402,10 @@ def always_run(run):
         return any(a.get("name") == "run" for a in api("LLAgent", "animations").get("animations", []))
 
     def go(to):
-        """A //go there: the fastest the region moved her over a second or so on the way (its position comes in steps, so
-        a shorter span overstates), and whether its run played."""
+        """A //go there: the fastest the region moved her over a second or more on the way, and whether its run played.
+        Its word on where she is comes in steps (OpenSim: when her velocity changes, about 1.5 s apart at a steady walk),
+        so only the moments a new one came are timed: a span from a stale position to a fresh one had read a walk at 4.3
+        m a second, faster than most runs' 4.7 (2026-11-11)."""
         m = mark()
         say_in_app(f"//go xyz {to[0]},{to[1]}")
         seen, best, ran = [], 0.0, False
@@ -11404,14 +11413,17 @@ def always_run(run):
         while time.time() - t0 < 20:
             x, y, _, _ = tester_where()
             now = time.time()
-            seen.append((now, x, y))
-            back = next(((t, bx, by) for t, bx, by in seen if now - t <= 1.6), None)
-            if back and now - back[0] > 0.9:
-                best = max(best, math.dist((x, y), back[1:]) / (now - back[0]))
+            if not seen or (x, y) != seen[-1][1:]:
+                back = next(((t, bx, by) for t, bx, by in seen if now - t <= 2.5), None)
+                if back and now - back[0] >= 1.0:
+                    best = max(best, math.dist((x, y), back[1:]) / (now - back[0]))
+                seen.append((now, x, y))
             ran = ran or running()
             if any("Finished walking" in (e.get("text") or "") for e in said_since(m)):
                 break
-            time.sleep(0.2)
+            time.sleep(0.05)
+        if not best and len(seen) > 1 and seen[-1][0] - seen[0][0] > 0.5:   # (news too far apart: first to last)
+            best = math.dist(seen[0][1:], seen[-1][1:]) / (seen[-1][0] - seen[0][0])
         return best, ran
 
     walked, walk_ran = go(PILOT_TO)
@@ -12113,6 +12125,228 @@ def walk_club(run, bx, by, g):
               f"at {x:.1f}, {y:.1f}, its middle {z - F:+.1f} m over the floor; the visitor {math.dist((x, y), (vx, vy)):.1f} m away")
 
 
+HOUSE = (232, 160)   # in COURSE_REGION: the two-storey house's south-west corner (its balcony 2.5 m south of it), north of
+                     # the route's wall, clear of the render scenes (a garden's plinths stand west of x 220)
+FLYING = {"fly", "flyslow", "hover", "hover_up", "hover_down"}
+
+
+def house_parts(hx, hy, base, F, U, door_ground):
+    """The two-storey house as prims (walk_floors): its ground floor at F, upstairs at U, a box per part given by its
+    corners (x and y from the house's south-west corner); steps down from the door to the ground outside it."""
+    def box(x0, y0, z0, x1, y1, z1, **kw):
+        return dict(pos=[hx + (x0 + x1) / 2, hy + (y0 + y1) / 2, (z0 + z1) / 2], scale=[x1 - x0, y1 - y0, z1 - z0], **kw)
+    rise = (U - F) / 14
+    n = max(1, math.ceil((F - door_ground) / 0.25))
+    return [
+        box(0, 0, base, 10, 8, F, name="House Floor", material="wood"),
+        *[box(2, -0.3 * k, base, 3.2, -0.3 * (k - 1), F - k * (F - door_ground) / n, name="Door Step") for k in range(1, n)],
+        # the ground floor's walls, a door 1.2 m wide in the south one, 2 m along
+        box(0, 0, F, 2, 0.2, U - 0.2), box(3.2, 0, F, 10, 0.2, U - 0.2),
+        box(0, 7.8, F, 10, 8, U - 0.2), box(0, 0, F, 0.2, 8, U - 0.2), box(9.8, 0, F, 10, 8, U - 0.2),
+        # upstairs, over all of it but the stairwell (2.3-6.2 along, 6.6-7.8 in)
+        box(0, 0, U - 0.2, 10, 6.6, U, name="Upstairs Floor", material="wood"),
+        box(0, 6.6, U - 0.2, 2.3, 8, U), box(6.2, 6.6, U - 0.2, 10, 8, U),
+        # 14 solid steps up the north wall, from 6.2 m along westward to the landing; the stairwell's own wall on their
+        # south side, up to a railing's height upstairs, and a railing at its east end
+        *[box(6.2 - (i + 1) * 0.28, 6.8, F, 6.2 - i * 0.28, 7.8, F + (i + 1) * rise, name="Stair") for i in range(14)],
+        box(2.3, 6.6, F, 6.2, 6.8, U + 1), box(6.1, 6.6, U, 6.2, 7.8, U + 1),
+        # upstairs walls, a door 1.2 m wide out to the balcony in the south one, 4 m along
+        box(0, 7.8, U, 10, 8, U + 2.8), box(0, 0, U, 0.2, 8, U + 2.8), box(9.8, 0, U, 10, 8, U + 2.8),
+        box(0, 0, U, 4, 0.2, U + 2.8), box(5.2, 0, U, 10, 0.2, U + 2.8),
+        # the balcony: 6 by 2.5 m out over the ground on two posts, a railing round it
+        box(2, -2.5, U - 0.2, 8, 0, U, name="Balcony", material="wood"),
+        box(2, -2.5, base, 2.2, -2.3, U - 0.2), box(7.8, -2.5, base, 8, -2.3, U - 0.2),
+        box(2, -2.5, U, 8, -2.4, U + 1), box(2, -2.4, U, 2.1, 0, U + 1), box(7.9, -2.4, U, 8, 0, U + 1),
+    ]
+
+
+def walk_floors(run):
+    """Walks between floors over one another (Walk/PathPlanner.cs's Floors, 2026-11-11: until then a path kept one floor
+    a cell, so from a house's ground floor its upstairs, over where she stood, was taken for the ground floor under it
+    and the stairs led nowhere). A two-storey house built in Atelier East on a floor slab over whatever ground is there
+    (house_parts): 10 by 8 m, a door in the south wall with steps down to the ground, upstairs 3.2 m up over all of it
+    but a stairwell along the north
+    wall, 14 solid steps up between the north wall and the stairwell's own, and upstairs a door onto a balcony out over
+    the ground to the south. Then:
+    - the visitor upstairs over her on the ground floor: //go person says it's up 3 metres and walks up the stairs,
+      no teleport, ending upstairs beside the visitor, walking all the way (OpenSim's autopilot flies to a point high
+      over the ground, so the walk's stretches go no higher than 2 m over it: Commands.AutoPilotTo);
+    - the visitor on the ground floor under her upstairs: //go person walks down;
+    - from outside, //go xyz to a point on the balcony: in at the door, up the stairs, out onto it;
+    - from the balcony, //go xyz to the ground under it: down and out;
+    - following the visitor standing upstairs, from the ground floor: up the stairs, with it upstairs;
+    - //go xyz to a point just under the upstairs floor in the ground floor's room (a light hung from its ceiling):
+      walked there on the ground floor, the slab's underside no floor (it had been taken for one, and the walk went
+      upstairs);
+    - outside, //go to a tall block by name (its middle 4.5 m up, over nothing within a body's height): walked to its
+      side, not a teleport into it for no spot within 6 m;
+    - following the visitor up on a pillar with no way up: walked to its foot, said once there ("... is 3 metres above
+      you; no way up from here.");
+    - the assistant's walk (the session's own autopilot) from the ground floor to a point upstairs.
+    Needs no renderer."""
+    hx, hy = HOUSE
+    tester_id = api("LLAgent", "getID")["id"]
+    back_to_chat()
+    m = mark()
+    say_in_app(f"//tp {COURSE_REGION}/{hx + 5}/{hy - 8}/30")
+    if not run.expect("(to Atelier East for the house)", ["Arrived", COURSE_REGION], m, 40):
+        return
+    time.sleep(1.5)
+    xs, ys = [hx + i for i in range(0, 11, 2)], [hy + j for j in range(-3, 9, 2)]
+    hs = api("TesselAgent", "ground", points=[[x, y] for y in ys for x in xs])["heights"]
+    if not run.check("(ground under the house)", hs and all(h is not None for h in hs), json.dumps(hs)):
+        return
+    lo_g, hi_g = min(hs), max(hs)
+    F = hi_g + 0.3
+    U = F + 3.2
+    print(f"     (the house's ground from {lo_g:.1f} to {hi_g:.1f} m; its ground floor at {F:.1f}, upstairs at {U:.1f})")
+    if n := clear_course(tester_id):
+        print(f"     (cleared {n} object(s) a run before left in {COURSE_REGION})")
+    walk_log = OUT / "walk.log"
+
+    def place(x, y, z, what):
+        """The tester teleported there (z between the floors: she lands on the one under it)."""
+        say_in_app(f"//tp {COURSE_REGION}/{x}/{y}/{z:.1f}")
+        ok = wait(lambda: math.dist(tester_where()[:2], (x, y)) < 1.5 and abs(tester_where()[2] - z) < 3, 25, 0.5)
+        time.sleep(2)
+        at = walk_pos()
+        run.check(f"(the tester {what})", ok, f"at {at[0]:.1f}, {at[1]:.1f}, its middle {at[2] - F:+.1f} m over the ground floor")
+
+    def stand(x, y, z, what):
+        got = visitor_tp(x, y, z)
+        at = visitor_settled(6)
+        run.check(f"(the visitor {what})", got.startswith("arrived") and math.dist(at[:2], (x, y)) < 1,
+                  f"{got}; at {at[0]:.1f}, {at[1]:.1f}, {at[2] - F:+.1f} m over the ground floor")
+        return at
+
+    def walk(command, words, what, where, secs=60):
+        """A walk by command: its first line has the words, it finishes, nothing of a teleport, and it ends where(x, y, z)
+        says (a check's text or None), walking: the region's flying animations never on her."""
+        log_at = walk_log.stat().st_size if walk_log.exists() else 0   # (bytes: the log is read as bytes below)
+        m = mark()
+        say_in_app(command)
+        line = run.expect(f"{what}: said", words, m, 20)
+        flew, t0 = set(), time.time()
+        while time.time() - t0 < secs:
+            flew |= {a.get("name") for a in api("LLAgent", "animations").get("animations", [])} & FLYING
+            if any((e.get("text") or "").startswith(("Finished walking", "No way", "Not walking")) for e in said_since(m)):
+                break
+            time.sleep(0.4)
+        time.sleep(2)
+        said = [e.get("text") or "" for e in said_since(m)]
+        done = next((s for s in said if s.startswith("Finished walking")), None)
+        x, y, z = walk_pos()
+        bad = where(x, y, z)
+        tps = [s for s in said if "eleport" in s]
+        run.check(f"{what}: walked there, no teleport", line and done and not bad and not tps and not flew,
+                  " | ".join(said) + f"; at {x:.1f}, {y:.1f}, its middle {z - F:+.1f} m over the ground floor"
+                  + (f"; {bad}" if bad else "") + (f"; flying: {', '.join(sorted(flew))}" if flew else ""))
+        if not (line and done and not bad):
+            plans = [l for l in walk_log.read_bytes()[log_at:].decode("utf-8", errors="replace").splitlines() if " go " in l or "goal" in l]
+            print("     (the walk log's plans: " + " | ".join(plans[-4:]) + ")")
+
+    try:
+        door_ground = api("TesselAgent", "ground", points=[[hx + 2.6, hy - 0.3 * max(1, math.ceil((F - lo_g) / 0.25))]])["heights"][0] or lo_g
+        parts = house_parts(hx, hy, lo_g - 0.3, F, U, door_ground)
+        made = sum(bool(api("TesselBuild", "create", timeout=20, shape="box", **p).get("id")) for p in parts)
+        if not run.check("the house is built", made == len(parts), f"{made} of {len(parts)} prims"):
+            return
+        # the collision model has it: upstairs over the ground floor, the top step, and the balcony's railing
+        ray = lambda frm, d, mx: api("SojournCollision", "collide", **{"from": frm, "dir": d, "max": mx}).get("hit")
+        seen = wait(lambda: ray([hx + 3, hy + 3, F + 1], [0, 0, 1], 4) and ray([hx + 2.4, hy + 7.3, U + 1], [0, 0, -1], 1.5)
+                    and ray([hx + 5, hy - 1.2, U + 0.5], [0, -1, 0], 2), 30, 1)
+        run.check("(the collision model has the house)", seen, "")
+
+        # up: the visitor upstairs over her
+        stand(hx + 3, hy + 3.5, U + 1.5, "upstairs")
+        place(hx + 3, hy + 3, F + 1, "on the ground floor under it")
+        walk(f"//go person {VISITOR[0]}", ["Walking", VNAME, "up 3 metres"], "//go to the visitor upstairs over her",
+             lambda x, y, z: None if z > U + 0.5 and math.dist((x, y), visitor_where()[:2]) < 2.6
+             else f"not upstairs beside the visitor ({math.dist((x, y), visitor_where()[:2]):.1f} m from it)")
+
+        # down: the visitor on the ground floor under her
+        x, y, _ = walk_pos()
+        stand(round(x, 1), round(y, 1), F + 1.5, "on the ground floor under her")
+        walk(f"//go person {VISITOR[0]}", ["Walking", VNAME, "down 3 metres"], "//go to the visitor downstairs under her",
+             lambda x, y, z: None if z < F + 1.5 and math.dist((x, y), visitor_where()[:2]) < 2.6
+             else f"not downstairs beside the visitor ({math.dist((x, y), visitor_where()[:2]):.1f} m from it)")
+
+        # out onto the balcony from outside, and back down to the ground under it
+        visitor_tp(*VISITOR_START, region=REGION)
+        g_out = api("TesselAgent", "ground", points=[[hx - 3, hy - 5]])["heights"][0]
+        g_under = api("TesselAgent", "ground", points=[[hx + 5, hy - 1.2]])["heights"][0]
+        place(hx - 3, hy - 5, g_out + 1, "outside, south-west of the house")
+        on = (hx + 5, hy - 1.2)
+        walk(f"//go xyz {on[0]},{on[1]},{U + 1:.1f}", ["Walking", ", up "], "//go to a point on the balcony from outside",
+             lambda x, y, z: None if z > U + 0.5 and math.dist((x, y), on) < 1.5 else "not on the balcony at the point")
+        walk(f"//go xyz {on[0]},{on[1]},{g_under + 1:.1f}", ["Walking", ", down "], "//go from the balcony to the ground under it",
+             lambda x, y, z: None if z < U - 1 and math.dist((x, y), on) < 1.5 else "not on the ground under the balcony")
+
+        # following the visitor upstairs
+        stand(hx + 3, hy + 3.5, U + 1.5, "upstairs again")
+        place(hx + 3, hy + 2.5, F + 1, "on the ground floor under it again")
+        m = mark()
+        say_in_app(f"//follow {VISITOR[0]}")
+        run.expect("//follow the visitor upstairs", ["Following", VNAME], m, 8)
+        with_it = run.expect("up the stairs and with it", ["With", VNAME], m, 60)
+        x, y, z = walk_pos()
+        run.check("following it upstairs", with_it and z > U + 0.5 and math.dist((x, y), visitor_where()[:2]) < 4.5,
+                  f"at {x:.1f}, {y:.1f}, its middle {z - F:+.1f} m over the ground floor")
+        say_in_app("//follow stop")
+        time.sleep(1)
+
+        # a point just under the upstairs floor in the ground floor's room: walked to on the ground floor
+        visitor_tp(*VISITOR_START, region=REGION)
+        place(hx + 3, hy + 3, F + 1, "on the ground floor, for a point under its ceiling")
+        light = (hx + 6, hy + 3)
+        walk(f"//go xyz {light[0]},{light[1]},{U - 0.3:.1f}", ["Walking"], "//go to a point just under the ceiling, on the ground floor",
+             lambda x, y, z: None if z < F + 1.5 and math.dist((x, y), light) < 1.5 else "not on the ground floor under the point")
+
+        # outside, west of the house: a tall block and a pillar with no steps
+        tall, pillar, start = (hx - 6, hy + 8), (hx - 6, hy + 4), (hx - 3, hy + 6)
+        g_tall, g_pillar, g_start = api("TesselAgent", "ground", points=[list(tall), list(pillar), list(start)])["heights"]
+        blocks = [dict(pos=[tall[0], tall[1], g_tall + 4.3], scale=[3, 3, 9], name="Tall Block"),
+                  dict(pos=[pillar[0], pillar[1], g_pillar + 1.4], scale=[2, 2, 3.2], name="Stone Pillar")]
+        made = sum(bool(api("TesselBuild", "create", timeout=20, shape="box", **b).get("id")) for b in blocks)
+        run.check("(the tall block and the pillar are built)", made == 2, f"{made} of 2")
+        wait(lambda: ray([tall[0] + 3, tall[1], g_tall + 1], [-1, 0, 0], 3) and ray([pillar[0] + 3, pillar[1], g_pillar + 1], [-1, 0, 0], 3), 20, 1)
+        place(start[0], start[1], g_start + 1, "outside, west of the house")
+        walk("//go Tall Block", ["Walking", "Tall Block"], "//go to a tall block by name",
+             lambda x, y, z: None if z < g_tall + 2 and math.dist((x, y), tall) < 3.5 else f"not at its side ({math.dist((x, y), tall):.1f} m from its middle)")
+
+        # following the visitor up on the pillar: as near as the way goes, and said
+        top = stand(pillar[0], pillar[1], g_pillar + 4, "up on the pillar")
+        place(start[0], start[1], g_start + 1, "outside again, by the pillar")
+        m = mark()
+        say_in_app(f"//follow {VISITOR[0]}")
+        run.expect("//follow the visitor on the pillar", ["Following", VNAME], m, 8)
+        said = run.expect("out of reach, said once she's at its foot", [VNAME, "above you", "no way up from here"], m, 30)
+        time.sleep(1)
+        x, y, z = walk_pos()
+        withs = [e.get("text") for e in said_since(m) if (e.get("text") or "").startswith("With")]
+        run.check("at the pillar's foot, on the ground, never 'With'", said and z < g_pillar + 2 and math.dist((x, y), pillar) < 3 and not withs,
+                  f"at {x:.1f}, {y:.1f}, its middle {z - g_pillar:+.1f} m over the ground; the visitor at {top[2] - g_pillar:+.1f}" + (f"; {withs}" if withs else ""))
+        say_in_app("//follow stop")
+        time.sleep(1)
+
+        # the assistant's walk (the session's own autopilot) from the ground floor to a point upstairs
+        visitor_tp(*VISITOR_START, region=REGION)
+        place(hx + 3, hy + 2.5, F + 1, "on the ground floor for the assistant's walk")
+        to = (hx + 7, hy + 3)
+        gx, gy = (lambda r: (r["global"][0] - r["region"][0], r["global"][1] - r["region"][1]))(api("LLAgent", "getPosition"))
+        api("LLAgent", "startAutoPilot", target_global=[gx + to[0], gy + to[1], U + 1], stop_distance=1.5)
+        time.sleep(1)
+        ended = wait(lambda: not api("LLAgent", "getAutoPilot")["enabled"], 60, 0.3)
+        time.sleep(2)
+        x, y, z = walk_pos()
+        run.check("the assistant's walk to a point upstairs goes up the stairs", ended and z > U + 0.5 and math.dist((x, y), to) < 2.3,
+                  f"{'ended' if ended else 'still going after 60 s'}; at {x:.1f}, {y:.1f}, its middle {z - F:+.1f} m over the ground floor")
+    finally:
+        say_in_app("//follow stop")
+        clear_course(tester_id)
+        visitor_tp(*VISITOR_START, region=REGION)
+
+
 def walk_vehicle(run, bx, by, g):
     """Driving seated (walk mode with a script holding the movement keys): the visitor's cart south of the course, sat
     on by //sit; its script takes the keys (a permission question answered by keys if the region asks); then in walk
@@ -12724,16 +12958,33 @@ def driving_after(run):
     time.sleep(0.2)
     u("keyup focus | 38")
     run.expect("an arrow takes the wheel back, said", ["The wheel's yours", "no longer driving after"], m, 5)
+    log = this_follow(latest_app_log())
+    print("     " + (" | ".join(re.findall(r"convoy: (?:a Down took .*|the way it goes forward learned.*)", log)[:4]) or "(no Down measured)"))
+
+    # backing it by hand, then Space: going backward by the way the drive learned the kart goes forward, the stop doesn't
+    # press Down into it (this kart's Down is reverse thrust, as her scooter's: it would speed it up)
+    learned = "convoy: the way it goes forward learned" in log
+    u("keydown focus | 40")
+    time.sleep(1.2)
+    u("keyup focus | 40")
+    m = mark()
+    key("space")
+    time.sleep(1.5)
+    texts = [e.get("text") or "" for e in said_since(m)]
+    run.check("backing it by hand after driving, Space says it's going backward and presses nothing",
+              learned and any(t.startswith("It's going backward") and "haven't pressed it" in t for t in texts) and "Stopping." not in texts,
+              f"the way forward learned: {learned}; said: {' | '.join(texts) or 'nothing'}")
     key("esc")
     wait_focus(lambda d: d["id"] == "chatInput", 5)
     say_in_app("//stand")
     time.sleep(2)
 
 
-def border_kart(run, visitor_x=22, row=0):
-    """The tester seated in the visitor's Border Kart in Atelier, on the strip at its east edge as high as Atelier East's
-    flat, and the visitor standing just inside Atelier East (35 m east of the kart at visitor_x 22); row: that many rows
-    of 6 m from the middle one (clear of a kart an earlier step left). (y, the visitor's teleport's answer), or None."""
+def border_kart(run, visitor_x=22, row=0, kart="Border Kart"):
+    """The tester seated in the visitor's Border Kart (or a kart of another name) in Atelier, on the strip at its east
+    edge as high as Atelier East's flat, and the visitor standing just inside Atelier East (35 m east of the kart at
+    visitor_x 22); row: that many rows of 6 m from the middle one (clear of a kart an earlier step left). (y, the
+    visitor's teleport's answer), or None."""
     back_to_chat()
     m = mark()
     say_in_app(f"//tp {REGION}/230/100/30")
@@ -12753,14 +13004,14 @@ def border_kart(run, visitor_x=22, row=0):
     gz = max(rows[y])
     v(f"tp {REGION} 230 {y + 3} {gz + 1.5}", timeout=40)
     time.sleep(2)
-    made = v(f"kart Border Kart 222 {y} {gz + 0.4} facing 0", timeout=60)
+    made = v(f"kart {kart} 222 {y} {gz + 0.4} facing 0", timeout=60)
     if not run.check("(the visitor's kart is out)", made.startswith("kart"), made):
         return None
     got = v(f"tp {COURSE_REGION} {visitor_x} {y} {22.5}", timeout=40)
     go_tp(run, "(the tester beside the kart)", 221, y - 2, gz + 1.5)
     m = mark()
-    say_in_app("//sit Border Kart")
-    run.expect("(sitting in the kart)", ["Sitting on Border Kart"], m, 10)
+    say_in_app(f"//sit {kart}")
+    run.expect("(sitting in the kart)", [f"Sitting on {kart}"], m, 10)
     if not run.expect("(the kart's script takes the keys)", ["kart controls taken"], m, 15):
         say_in_app("//stand")
         return None
@@ -12798,7 +13049,7 @@ def driving_after_lost(run):
                   (lost or {}).get("text", "not said"))
         found = walk_said(m, [f"Found {name} again"], 20)
         pos, region = walk_pos(), status().get("status_message", "").removeprefix("in ")
-        log = latest_app_log()
+        log = this_follow(latest_app_log())
         seen = re.search(r"convoy: lost sight of .*? in Atelier East (\d+),(\d+)", log)
         last_x = int(seen.group(1)) if seen else None
         run.check("seen again once the blind's over, said with how far", found and re.search(r"Found .* again, .* away\.", found["text"]), (found or {}).get("text", "not said"))
@@ -12810,11 +13061,11 @@ def driving_after_lost(run):
         texts = [e.get("text") or "" for e in said_since(m)]
         bad = [t for t in texts if any(w in t for w in ("let go of your keys", "jumped away", "Couldn't find", "Blocked", "isn't moving", "Lost " + VISITOR[0]))]
         # (by the convoy's own lines: the seated crossing's spoken line waits for the region to send the seat)
-        tail = latest_app_log().split("convoy: lost sight of", 1)[-1]
+        tail = this_follow(latest_app_log()).split("convoy: lost sight of", 1)[-1]
         run.check("the kart crossed into Atelier East while they were unseen",
                   "convoy: crossed into Atelier East" in tail.split("seen again after", 1)[0], " | ".join(re.findall(r"convoy: (?:crossed|.* seen again).*", tail)[:2]))
         run.check("nothing said of them jumping away, the keys, giving up or Blocked", not bad, " | ".join(bad) or " | ".join(texts))
-        log = latest_app_log()
+        log = this_follow(latest_app_log())
         run.check("the session log has the loss, with what each region in view had of them, and the finding",
                   re.search(r"convoy: lost sight of .*in view: .*Atelier East: ", log) and re.search(r"convoy: going on \d+ m past", log) and "seen again after" in log,
                   " | ".join(re.findall(r"convoy: (?:lost sight|going|.* seen again).*", log)[:3]) or "none")
@@ -12839,6 +13090,13 @@ def driving_after_lost(run):
         time.sleep(2)
 
 
+def this_follow(log):
+    """The session log from the last //follow on (each convoy step's own part: earlier steps lose sight and back too);
+    empty without one."""
+    at = log.rfind("convoy: driving after ")
+    return log[at:] if at >= 0 else ""
+
+
 def latest_app_log():
     logs = sorted((OUT / "app" / "logs").glob("*.log"), key=lambda p: p.stat().st_mtime)
     return logs[-1].read_text(encoding="utf-8", errors="replace") if logs else ""
@@ -12857,6 +13115,9 @@ def driving_after_border(run):
     got = at[1]
     try:
         m = mark()
+        # (a word on the kart's velocity read reversed every 1.3 s, as single words read backward on her scooter on
+        # 2026-11-11: none is taken for backing while its moves say forward)
+        say_in_app("//glitchconvoy 1.3")
         say_in_app(f"//follow {VISITOR[0]} {VISITOR[1]} 6")
         run.expect("//follow in the kart drives after them, across the border", ["Driving Border Kart after"], m, 8)
         crossed = walk_said(m, ["Now in Atelier East"], 40)
@@ -12878,10 +13139,87 @@ def driving_after_border(run):
         # record to Send a log's filter: SessionLog's Tee writes whole lines now)
         torn = [l[:90] for l in log.splitlines() if re.match(r"^\d\d:\d\d:\d\d \d\d:\d\d:\d\d ", l) or re.match(r"^(info|warn|fail|crit|dbug|trce): ", l)]
         run.check("and every line in it whole: no record behind another's time stamp, no logged line without one", not torn, " | ".join(torn[:4]))
+        say_in_app("//glitchconvoy 0")
+        log = this_follow(log)
+        glitches = log.count("(the test's) the region's word on the velocity reversed")
+        disputed = re.findall(r"convoy: the region's word is backward at .*: not taken for backing", log)
+        backed = re.findall(r"convoy: going backward at .*", log)
+        run.check("words on the velocity read backward while the kart went on forward weren't taken for backing",
+                  glitches >= 3 and disputed and not backed, f"{glitches} reversed, {len(disputed)} not taken; taken: {' | '.join(backed[:3]) or 'none'}")
+
+        # them seen 150 m off for 1 s, as her partner's crossing into Astarte read on 2026-11-11: not a jump; for 2 s on end: one
+        m = mark()
+        say_in_app("//farconvoy 0 1")
+        time.sleep(4)
+        texts = [e.get("text") or "" for e in said_since(m)]
+        log = this_follow(latest_app_log())
+        run.check("seen 150 m off for a moment: not taken for a jump, and logged with where",
+                  not any("jumped away" in t for t in texts) and re.search(r"convoy: .* seen \d+ m from where they were, by .*: not taken yet", log)
+                  and "seen where they could be again" in log, " | ".join(texts) or " | ".join(re.findall(r"convoy: .*(?:not taken yet|could be again).*", log)[-2:]) or "nothing logged")
+        m = mark()
+        say_in_app("//farconvoy 0 6")
+        jumped = walk_said(m, ["jumped away"], 6)
+        run.check("seen there for 2 s on end: a jump, said", jumped and jumped["text"] == f"{VISITOR[0]} {VISITOR[1]} jumped away, a teleport most likely, so I've let go of the keys.",
+                  (jumped or {}).get("text", "not said"))
+        say_in_app("//farconvoy 0 0")
+        m = mark()
+        say_in_app(f"//follow {VISITOR[0]} {VISITOR[1]} 6")
+        run.expect("(driving after them again)", ["Driving Border Kart after"], m, 8)
     finally:
+        say_in_app("//glitchconvoy 0")
+        say_in_app("//farconvoy 0 0")
         m = mark()
         say_in_app("//stand")
         run.expect("//stand ends driving after them in its own words", ["No longer driving after"], m, 5)
+        time.sleep(2)
+
+
+def driving_after_doubt(run):
+    """Driving after someone over a border whose seat isn't sent for a while (Walk/WalkMode.Convoy.cs; the blind
+    tester's ride of 2026-11-11: crossing into Rivula her seat took 6 s to come, nothing was decided meanwhile, and her
+    scooter ran on 70 m, past her partner, who had stopped 5 m over the border). The visitor stands 22 m inside Atelier
+    East, the tester's kart starts in Atelier 34 m west of the border and crosses at about 9 m/s, and //doubtconvoy 6 has
+    the seat count as not sent for 6 s from the crossing (this kart coasts on at its speed with no key held, about 50 m
+    in those 6 s). After 1.5 s of that it goes by where she was last known and the region's map list: Up let go and a
+    Down for each new pace by the lists as it nears or passes them. Checked: the log has those lines, a Down among them,
+    and the seat sent after about 6 s; the kart gets no further than the visitor; then "With" them. Needs no renderer."""
+    # (a kart of its own name: what a Down press takes off is learned per seat name, and the Border Kart's from the steps
+    # before, near what this kart's pace before the crossing leaves room for, would decide whether it brakes; this is
+    # the doubt's own braking, as on a drive's first crossing)
+    at = border_kart(run, visitor_x=22, row=4, kart="Doubt Kart")
+    if not at:
+        return
+    name = f"{VISITOR[0]} {VISITOR[1]}"
+    try:
+        say_in_app("//doubtconvoy 6")
+        m = mark()
+        say_in_app(f"//follow {name} 6")
+        run.expect("//follow in the kart drives after them", ["Driving Doubt Kart after"], m, 8)
+        furthest, end = None, time.time() + 30
+        while time.time() < end:
+            x, region = walk_pos()[0], status().get("status_message", "").removeprefix("in ")
+            if region == COURSE_REGION and x < 128:
+                furthest = x if furthest is None else max(furthest, x)
+            if any(f"With {name}" in (e.get("text") or "") for e in said_since(m)):
+                break
+            time.sleep(0.25)
+        log = this_follow(latest_app_log())
+        bymap = re.findall(r"convoy: the seat not sent for .*", log)
+        run.check("the seat counted as not sent past 1.5 s: it goes by where it was and the region's map list", bymap,
+                  " | ".join(bymap[:3]) or " | ".join(re.findall(r"convoy: (?:crossed|the seat).*", log)[-3:]) or "nothing logged")
+        run.check("Up let go and Down pressed by it", any(", a Down" in l for l in bymap), " | ".join(bymap[:4]))
+        sent = re.search(r"convoy: the seat sent after ([\d.]+) s", log)
+        run.check("the seat sent after about 6 s, logged", sent and 5.5 <= float(sent.group(1)) <= 7.5, sent.group(0) if sent else "not logged")
+        print(f"     (the kart got to x {furthest} in Atelier East, the visitor at 22; {' | '.join(bymap[:6])})")
+        # (that day it ran 22 m past him)
+        run.check("and no further than them", furthest is not None and furthest < 22, f"furthest x {furthest} in {COURSE_REGION}, the visitor at 22")
+        with_ = walk_said(m, [f"With {name}"], 30)
+        run.check("then it's with them", with_, f"at {walk_pos()} in {api('LLAgent', 'getPosition').get('region')}")
+    finally:
+        say_in_app("//doubtconvoy 0")
+        m = mark()
+        say_in_app("//stand")
+        run.expect("(standing up)", ["Standing"], m, 5)
         time.sleep(2)
 
 

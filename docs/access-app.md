@@ -43,7 +43,8 @@ marked so in the zip's name and `//about` when `src/` or `assistant/` differ. It
 from that HEAD (`local/publish/map.txt`) for the release notes, or saying there's none yet. `--lean` leaves the assistant out
 (`-lean` in the name); `--tag NAME` builds a try into `local/dist/NAME/`, apart from releases (`-NAME` in the name;
 `package --check` takes its zip only when named). Built through `SOJOURN_BUILD_ROOT=local/dist/build`, so the repo's
-own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access 0.1.0.N/`.
+own bin and obj are untouched; staged in `local/dist/stage/Sojourn Access 0.1.0.N/` (earlier builds' stages removed,
+about 730 MB each; a released build's zip is on the front door).
 
 - **What's in it** (0.1.0.583 with the assistant, 2026-10-30: 274 MB zipped, 641 MB unpacked, 3528 files; lean about
   87 MB zipped): `SojournAccess.exe`, self-contained single-file (the .NET 10 runtime, WinForms and ASP.NET's Kestrel
@@ -746,7 +747,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//sit NAME` / `//sit ground`, `//stand` (`//unsit`) | sit on the nearest thing with that name, on the ground; stand |
 | `//profile` / `//profile NAME`, `//notes NAME` | your own profile to change (Your profile and notes, below), or anyone's, by name; your notes on someone |
 | `//block NAME` / `//unblock NAME` / `//blocks` | block someone or something nearby, take one off, the list (Control+Shift+Y, Enter or Delete unblocks; Block is also on a person's and an object's Applications key, and on B in a notice) |
-| `//follow NAME` / `//follow NAME METRES` / `//follow stop` / `//follow` | follow as they move (2.5 m behind where they'll be in a moment, around what's in the way; at the wheel, Driving after someone, below), stop, or say who; said: when you're with them and they've stopped, when they sit, when they're getting away, when they're gone |
+| `//follow NAME` / `//follow NAME METRES` / `//follow stop` / `//follow` | follow as they move (2.5 m behind where they'll be in a moment, around what's in the way and up or down the stairs; at the wheel, Driving after someone, below), stop, or say who; said: when you're with them and they've stopped, when they sit, when they're getting away, when their floor is out of reach from where you can get to, when they're gone |
 | `//tp list` / `N` / `NAME` / `Region/X/Y/Z` / an SLurl | landmarks in "Radegast Landmarks" (else Landmarks), by number or name; or a place |
 | `//status [doing|region|parcel|location|health|money|time|music]` | any or all of them; music: what the parcel's stream is playing ("Playing: ...", in the whole status only when the parcel has music); health: "Health 80%." (in the whole status only while it's below full; the region sends it only once something hurts you where damage is on, so before that it says so); doing says "always running" while that's on |
 | `//route NOTECARD` / `//route` / `//route stop` / `//route resume` | play a route: a notecard's `//` lines one at a time (with no name, the lines on the clipboard, as copied from a blog), each walk or teleport finished before the next ("Step 2 of 7."), other lines read as notes; a step that doesn't get there pauses it, `//route resume` tries that step again. In the inventory, a notecard's Applications key has Play as a route |
@@ -802,7 +803,8 @@ the forward control, facing the goal. A walk ended or stopped cancels the region
 `Commands.CancelAutoPilot`, never seated: LibreMetaverse cancels by a press of forward, which a vehicle's script hears
 as Up (a train opened a step by the first tap after a `//go`).
 `//go` walks by the region's own autopilot, as Radegast's, around what's in the way (Paths, below): "Walking 9 m to
-232, 43, around something in the way: 3 stretches.", then each new stretch ("2 of 3: 2 m to the west-northwest."). It
+232, 43, around something in the way: 3 stretches." (to another floor, "..., up 3 metres: 5 stretches."), then each new
+stretch ("2 of 3: 2 m to the west-northwest."). It
 ends, once the avatar has stopped or is getting no nearer (below), with "Finished walking, under a metre from the
 destination." (or how far, and "something was in the way" when it stalled), the cue such routes wait for. To a person or a thing it stops 1.5 m
 short: the region's autopilot, heading for their middle, is let go once within that (it pushed on into the visitor's
@@ -1216,15 +1218,39 @@ motorcycle by hand after her partner's by the beacon, jerkily, and asked for veh
 NAME` at the wheel of something that has taken the arrows holds those keys for her, about 10 m behind, or `//follow NAME
 METRES` (3 to 50). It follows the way they went (points every 2.5 m, in the grid's metres so a crossing moves nothing),
 not the straight line to them, and comes down to their pace in time (their pace from their position over half a second,
-2.5 m/s² of slowing assumed, allowing for Down pressed only part of the time). It steers by the way the seat faces plus an offset learned on straights while Up drives it,
+2.5 m/s² of slowing assumed, allowing for Down pressed only part of the time). Its own speed is taken two ways, the
+region's word on the seat's velocity and the seat's moves over the last half second (where the region put it, at the
+times its news came): the room to slow is reckoned by the moves, Down goes only while both say forward, and Up is held only
+while whichever is faster leaves room (2026-11-11: on her ride the word, read every 2 s, went 6.8, 9.8, 12.3, 0.4, 7.7 m/s
+while the seat covered a steady 4-6 m every 2 s, and read backward 85 times in 20 minutes, most likely her scooter kicked
+by the drive's own Down presses, below). It steers by the way the seat faces plus an offset learned on straights while Up drives it,
 not by the way it's travelling: travel lags the wheel, and steering by it spun the test's kart. The keys are held for a
-share of each 300 ms by how far off it is.
+share of each 300 ms by how far off it is. What it learns of the vehicle (that offset, what a Down press does) is kept
+for the next `//follow` on the same seat (by its name), and the stop uses the offset (Stopping a vehicle, below).
 - **Never backward** (2026-11-09, after her ride on 0.1.0.1045, `docs/access.md` > Driving after her partner, backwards):
   a vehicle's Down is often reverse thrust, so speed is judged along the way it's driven, and Down goes only in presses
   of a tenth of a second while it's going forward faster than 2 m/s, let go by a thread of their own as the stop's are (a
-  busy window can't stretch one), the next no sooner than 0.25 s after over 6 m/s, 0.35 s over 3, else 0.45 (the region's
-  news shows a press about 0.15 s on); under 2 m/s it coasts. Going backward faster than 0.8 m/s anyway, it presses
-  Up the same way and doesn't steer (what steers forward circles in reverse), logged, and for 1.5 s after that's stopped
+  busy window can't stretch one), the next no sooner than 0.25 s after over 6 m/s, 0.35 s over 3, else 0.45 (the
+  region's news shows a press about 0.15 s on). **What a press takes off** (2026-11-11, after the review of 8700ca8: 84 of
+  the 85 moments her scooter's word read backward that day came within a couple of seconds of the drive's own Down
+  presses, where about 70 would by chance, so a press most likely kicked it into reverse): each press's effect is measured,
+  the speed just before against the lowest in the 0.45 s after, by the region's word where the seat's moves over a
+  quarter second show at least a quarter of that drop, else by the moves (so a word read wrong teaches nothing; the
+  moves lag the word, so slowing already they'd start high); a word backward while the moves go on forward doesn't
+  count (the test's reversed word, landing in one, had a press of the kart take 11 m/s off), nor a measure a crossing
+  came in. What it loses by itself meanwhile with Up let go counts
+  too, which is on the safe side. A harder one is taken at once, a gentler one a third of the way; 3 m/s (the stop's
+  30 m/s² for a tenth of a second) until one's been seen. A press goes only while that leaves 0.8 m/s (the stop's
+  margin), and the next only once the last one's effect is in; held back, it coasts with Up let go (on a vehicle whose
+  Down is that strong, Up let go is all the slowing it gets until it's faster). Shorter presses to leave the margin, as
+  the stop's pulses are, were tried and dropped: the test's kart loses about 5 m/s² by itself with no key, which a 59 ms
+  press's measure counted as 100 m/s² of braking, and none went where one was needed. Going backward faster than 0.8 m/s anyway by the region's
+  word, unless the seat's moves over the last quarter second say it's going on forward faster than 0.5 m/s (over half a
+  second, as 8700ca8 had it, a real reverse showed 0.3-0.6 s late while it went on steering; on her scooter an Up press
+  can set it going full ahead, one at 10:00:17 most likely did, just before the crossing it ran on through, Over a border
+  below, so a word alone isn't answered with Up), it presses Up the same way and doesn't steer (what steers forward
+  circles in reverse), logged; while the word says backward and the moves forward ("not taken for backing", logged once)
+  it doesn't steer either. For 1.5 s after a backing's stopped
   no Down (its Up presses could tip it forward into Down again, rocking); if that hasn't stopped it in 4 s,
   "The scooter is going backward and Up didn't stop it, so I've let go of the keys.". Before, Down was held while the
   speed alone (either way) read as closing on them: her scooter's Down took it to 10 m/s backward, which read as closing
@@ -1243,8 +1269,13 @@ swung the keys; she felt her steering weave, and a point passed to one side was 
 beacon finds them, but an older copy in a region whose list leaves them out doesn't count, and a copy is carried on by the
 velocity it last reported for up to 1.5 s since its place last changed, as a viewer draws it (a region sends a moving
 avatar's place only now and then). Any arrow, Space or `//stop`, `//follow stop`, `//stand` or standing up ends it; so does
-the vehicle not moving for 6 s, them jumping over 100 m (a teleport, most likely), not finding them again (below; a stop
-follows those last two), or the vehicle's script letting go of her keys (below).
+the vehicle not moving for 6 s with Up held (by where the seat goes over 2 s: against a table on 2026-11-11 the word read
+0.5-0.8 m/s now and then, each starting the 6 s again, and Up was held into it 34 s), them seen over 100 m from where they
+could have got to for 2 s on end (a tick without them, or her own crossing, starts the 2 s again; a teleport, most
+likely; until then they count as unseen, Losing sight of them below:
+her partner riding into Astarte on 2026-11-11 was put that far for a moment and taken for a jump, while 33 s later he was
+33 m on, waiting), not finding them again (below; a stop follows those last two), or the vehicle's script letting go of
+her keys (below).
 Not for what runs on rails or shows a throttle, where Up held opens it all the way and the keys don't steer: she gets a
 beacon, saying why; the same if the seat hasn't taken her keys. Checked on the local grid in a kart, on the flat and
 over a border; real vehicles' turning and braking, roads, and how close a gap holds are for her and her partner.
@@ -1258,7 +1289,23 @@ over a border; real vehicles' turning and braking, roads, and how close a gap ho
   again). A seat in doubt over a crossing counts as driving for the rest of walk mode too, so a walk's "Blocked." isn't
   said there. The region changing counts as doubt from the very tick it changes (2026-11-09: the convoy looks before the
   crossing is noted, and the new region's first word can have her standing a moment, which ended a test's convoy as
-  "You're off your seat" mid-crossing). Why they read as untaken, likely (found 2026-11-08 when a test's kart read as not driven): the keys a
+  "You're off your seat" mid-crossing). For longer than 1.5 s (2026-11-11: into Rivula the seat took 6 s, and with
+  nothing decided the scooter ran on 70 m, ending 22 m past her partner, who had stopped 5 m over the border; her log's
+  whole seconds put the other 19 crossings' seats 0-1 s on, which is up to 2 s, so a shorter wait would act in ordinary
+  crossings), where she is comes from the map list of the region she's in, which names her in whole metres (about once
+  a second on Second Life, seconds apart on the local grid; whether Second Life's list has a seated avatar's real place
+  mid-handover is unknown, so a place further than 5 m and 15 m a second from where she'd be by now isn't taken, which
+  also covers her own teleport), else where she was last known, carried on the way she was driving at her pace: by the
+  lists once two places 0.7 s or more apart show it (a list sooner after the one before keeps the pace the lists last
+  gave), else as it was before the crossing. Within the gap and the room to slow, or past them, Up is let go. A Down
+  only against where they're seen now (lost before her crossing, they're where the search has them by now, and Up is
+  let go near that, but no Down), at a pace sure to be over 2 m/s (the lists' pace less 1.5 m over their time apart:
+  whole metres over a second could make a true 1-1.6 m/s read over 3), going faster than them by over 1 m/s within the
+  room to slow, or past them, where what a press is learned to take off leaves 0.8 m/s at that pace (Never backward,
+  above), once for each
+  new pace by the lists (the one from before the crossing counting once), so each one's effect is in the next before
+  another; the wheel stays straight. So the review of 2026-11-09's "no Down over a crossing" holds for the first 1.5 s.
+  A line for each in the log, and "the seat sent after" how long. Why they read as untaken, likely (found 2026-11-08 when a test's kart read as not driven): the keys a
   script takes are counted as the viewer counts them, each take one up and each release one down, so the order matters,
   and LibreMetaverse ran every handler of that packet on the thread pool in any order (its own handler is registered
   async, which makes all of them so); a release then a take, as a script takes the keys again or two regions hand a
@@ -1273,7 +1320,7 @@ over a border; real vehicles' turning and braking, roads, and how close a gap ho
   of over 3 m. Said once it's lasted 1.5 s: "Lost sight of Kestrel at the border; going where they went." ("at the
   border" when their way meets one within 40 m or they'd come under 30 m over one; standing when lost: "going to where
   they were."). Seen again: "Found Kestrel again, 25 metres away.", the guessed way dropped, on to them (further from
-  where they were seen than 100 m and their pace for the time since: jumped away, as above). Not found: "Couldn't find
+  where they were seen than 100 m and their pace for the time since, for 2 s on end: jumped away, as above). Not found: "Couldn't find
   Kestrel again, so I've let go of the keys." and a stop, 20 s after they were last seen, or after 4 s at rest at the end
   of the way on, but not within 4 s of her own crossing, since the region she's entered names who's in it within a second
   or two. The bounds are ours, chosen so that over a border she ends up inside the region they went into, where she sees
@@ -1297,11 +1344,21 @@ over a border; real vehicles' turning and braking, roads, and how close a gap ho
   each crossing, the keys going and coming back; losing sight of them, with where they were last seen and how, the way on,
   and for each region in view its copy of them (and whether the seat it's on is there), its map list (naming them or not,
   how old) and any copy of them lately dropped as a ghost and why; them seen again (by what, how far from where they were
-  last seen) or the search given up; and its end with why. Until 0.1.0.996 these went only to `SOJOURN_WALK_LOG`, so her
+  last seen) or the search given up; the speed by the seat's moves beside the word's on each line, the word read backward
+  while the moves say forward (once each time), them seen too far to be them (by what, where, and what each region had),
+  the map's lines while the seat isn't sent (and a list place not taken); what a Down press took off, the first one and
+  each that takes more than was thought (by the word and the moves, and what a full press is now taken to do), Down held
+  back on the 2 s lines (for how long, and what one would take off), and the way the vehicle goes forward once learned;
+  and its end with why. Until 0.1.0.996 these went only to `SOJOURN_WALK_LOG`, so her
   trip's log couldn't show why it went astray. The controls scripts take and let go of are logged by Core for everyone
   (`controls: REGION took ...; held now: ...`, at most 30 lines a minute).
 - **Tested** (`tools/access.py`, "driving after someone lost at a border"): no region on the local grid hides someone, so
-  `//blindconvoy AFTER SECONDS` (only with `SOJOURN_TEST_CONVOY_BLIND=1`) has the convoy not see them for a while.
+  `//blindconvoy AFTER SECONDS` (only with `SOJOURN_TEST_CONVOY_BLIND=1`) has the convoy not see them for a while. Under
+  the same switch, for what her scooter and Second Life did that the local grid doesn't: `//glitchconvoy SECONDS` (the
+  region's word on the seat's velocity reversed for one tick that often, only while its moves go on forward over 1 m/s:
+  one landing as it starts off, or just after a crossing, is rightly taken for backing), `//farconvoy AFTER SECONDS` (them seen 150 m east
+  of where they are) and `//doubtconvoy SECONDS` (the next crossing's seat counted as not sent that long), in "driving
+  after someone over a border" and "driving after someone, the seat not sent over a border".
 
 **Stopping a vehicle** (`Walk/WalkMode.Stop.cs`; Claude Opus 5.5, 2026-11-01, after the blind tester's freight train, an
 SLRR-style train driven by the arrows, ran off the end of its track and derailed or stranded her: once she had to
@@ -1367,6 +1424,19 @@ teleport away and walk to where she could rez it again). Her train says so in ne
   starts moving back the way it came ("Let go: it began moving backward, at 1 metre a second."), and as soon as it's
   nearly still (its velocity and its last 0.7 s both under 0.5 m/s). A throttle is never tapped below 0 by what it
   says, and by the count only half at once and the rest at a steady speed forward.
+- **Already backing** (2026-11-11, after the review of 8700ca8; Claude Opus 5.5): the way the stop takes it is the way
+  the seat went over the last second, so a vehicle already reversing would be braked as a car going that way, each
+  press adding reverse thrust. So: (1) seated where driving after someone learned which way the vehicle goes forward
+  (the same seat, by its name; never on rails or a throttle, where a seat may face either way), going backward over
+  0.3 m/s by that over the last second, nothing is pressed: "It's going backward, at 3 metres a second, and Down would
+  speed it up, so I haven't pressed it." in place of "Stopping." (2) The region's word along the way it's going under
+  0.8 m/s at the start: no press yet, pressed if the word comes round within 0.6 s; going backward then, "It's moving
+  backward, at 3 metres a second, so I haven't pressed Down." ("Let go" only when something was pressed: on 2026-11-11
+  at 09:55:09 it said "Let go, but it's moving backward" with nothing sent.) (3) Any press or Down tap after which,
+  between 0.3 and 1 s on, it goes faster along its way than when it went, by 0.5 m/s and a tenth more than it was
+  gaining before (by the seat's moves over the 0.6 s before: a train just opened gains on after a tap that leaves it
+  under its new speed), by the word and the seat's moves over a quarter second; not while tapping by a throttle it
+  says, nor without the moves: "Let go: Down speeds it up. It's moving at 3 metres a second." and the stop ends.
 - **"Stopped."** only once it's nearly still: under 0.2 m/s over the last 2 s by where the seat went, and by the
   region's velocity (the visitor's train at 5% creeps on at 0.5 m/s, which the earlier 0.5 m/s mark called stopped).
 - **10 s at most**, longer while taps are taking effect (6 s more after each drop of the throttle it says, 4 s after
@@ -1404,18 +1474,63 @@ heightmap. How it's built: How it fits, below.
 collision model's solid triangles over the walk's area plus 12 m, on a grid of 0.25 m cells, what stands between knee
 and head height (0.45-1.8 m over the floor) as obstacles; nearer than 0.3 m to them is blocked (a 0.8 m doorway still
 passes), and A* pays more within 0.75 m, so the path keeps to the middle of gaps; then pulled straight where a line
-keeps that room. The floor is followed out from where the avatar stands (2026-10-31): from each cell to the next, the
-highest surface (or the ground) no more than 0.4 m up or 1.2 m down, so stairs, a stage's steps, ramps and a floor
-over sloping ground are walked, and what's above that floor in the body's band is in the way (a stage with no steps,
-a table); what the floor can't reach is blocked. With nothing known under the avatar (in the air, or on something the
-model hasn't got) the floor goes on level at its feet. A goal that can't be got to
-moves to the nearest spot that can, within 6 m, unless it's in a space of its own the floor never meets (a closed
-room: no way). A mesh or sculpt still downloading isn't known yet, so a walk that gets stuck
+keeps that room. A face lying on a cell's edge counts only in the cell behind it (2026-11-11: walls on round
+coordinates, with a walk to a round number lining the grid up with them, took the free cells beside them too, and a
+stair a metre wide between two walls had no cell a body fits in). The floor is followed out from where the avatar
+stands (2026-10-31): from each cell to the next, the highest surface (or the ground) no more than 0.4 m up or 1.2 m
+down, so stairs, a stage's steps, ramps and a floor over sloping ground are walked, and what's above that floor in the
+body's band is in the way (a stage with no steps, a table); what the floor can't reach is blocked. With nothing known
+under the avatar (in the air, or on something the model hasn't got) the floor goes on level at its feet.
+
+**Floors over one another** (2026-11-11) are each walked: the plan is over nodes, a floor over a cell, so a cell holds
+the ground floor and an upstairs over it, a balcony and the ground under it, a bridge and the road below, a spiral
+stair's turns. The floor followed into a cell joins the node there within 0.45 m of its height, or starts another;
+walls, the room kept, people, stuck spots (on the floor she stuck on) and the cells freed round the start are each
+node's own. A step goes from a node only to the floor it reaches next door (until then any two neighbouring cells
+were joined, whatever their floors), and a step more than 0.4 m down, off a stage's edge, may land beside what it
+stepped off, which from the floor below is a wall. Until then a cell had one floor, the first to reach it, so from a
+house's ground floor its upstairs over where she stood was taken for the ground floor, and the stairs led nowhere.
+The goal's floor is the one under its height: the highest surface facing up (or the ground) from 0.2 m over it to
+2.5 m under it, a ceiling's underside never one. The height is a person's middle, the point given, or for a thing a
+metre over its lowest point (its linked set's boxes; its own middle where that's lower, `Commands.FootOf`): a thing's
+position is its middle, upstairs for a two-storey house in one mesh and high over anything for a tower. With nothing
+under the height within that (someone hovering, a light hung 2.9 m up in a ground floor room), the goal's floor is the
+highest reached there at or under the height, else the lowest; with no height, the floor nearest hers. A goal that can't be got to moves to the nearest
+spot that can, within 6 m, a spot more than 1.5 m over or under the goal's floor counting that height as distance too,
+and of spots within half a metre of the nearest, the one nearest her (a `//go` to a block or a bar ends on her side of
+it, not round the back for the grid's quarter-metre); unless it's in a space of its own the floor never meets (a closed
+room, a room upstairs behind a shut door: no way), which a thing's own inside, closed all round like a room with no
+door, never is. A line pulled straight follows the floor as she will, so the waypoints, X and Y alone (both
+autopilots steer by them, and the floor carries her up the stairs), lead up the stairs in order; it keeps the room the
+path had between its two ends, so a squeeze or a stage's edge stepped off beside its side brings only that stretch as
+close. A walk to another floor says so in place of what's in the way ("Walking 15
+metres to Kestrel, up 3 metres: 5 stretches."); a point 2 m or more over or under her is planned even within 2 m
+across. Following plans to where they'll be, at their height, and goes by the stairs, the way's corners in turn without
+stopping at each (looked at ten times a second, the autopilot never counting a corner as reached); she's "With" them
+only on their floor, and where their floor is out of reach (hovering, up on a stage with no steps, a balcony a
+teleporter goes to) she goes as near as the way does, and once there hears it, once until they're in reach again:
+"Kestrel is 3 metres above you; no way up from here." (with how far and which way when they aren't overhead; "No way to
+Kestrel from here: ..." when they're at her level). Walking off Second Life, the region's autopilot gets each
+stretch's point no higher than 2 m over the ground under it (`Commands.AutoPilotTo`): OpenSim's flies the avatar to
+any point higher than one and a half avatar heights over the ground there (its `ScenePresence.MoveToTarget`, read in
+the grid's decompiled code), so a walk to someone upstairs would have been a flight; on the local grid the walks
+upstairs are walked, no flying animation on her. Second Life's gets the height as given, as it always has and as the
+official viewer's Go here sends it (a skybox's floor is thousands of metres over the ground): what it makes of a
+point upstairs isn't known, and a flying animation on her during a walk is logged once, in the session's log ("go: a
+flying animation (fly) on the walk to ...", with where she was and what the autopilot was last sent), so her logs say
+whether it ever flies her. The way to a floor is only found within the walk's area plus 12 m: stairs further out than
+that leave the goal out of reach. Planning costs a fifth to two thirds more than one floor a cell did (one core, the same
+synthetic scenes through both by reflection, the PC otherwise quiet: a walk in the club 1.3-1.9 ms against 1.0-1.4, a
+follow's 6 m 1.2 against 1.0, 30 m of open ground 3.8 against 2.3, 150 m through a town of blocks 53 against 39, 40 m
+through 57,600 triangles of clutter 13 against 11).
+
+A mesh or sculpt still downloading isn't known yet, so a walk that gets stuck
 marks the spot for two minutes and plans again (twice), then counts as no way. People, where the caller gives them
 (`//go` and Walk to: People on the way, above; follow and the assistant's walks give none), are discs of 0.45 m on the
 floor they stand on, kept off like walls but never walls: stepping in among the cells within 0.3 m of one costs the
-search 38 cells, once, instead of their being closed (so a way round is taken up to 10 to 12 m longer, no further),
-and what can be reached at all is reckoned without them. So a way that has to cross someone
+search 38 cells, once, instead of their being closed (so a way round is taken up to 10 to 12 m longer, no further;
+landing off a stage's edge among people standing at its foot too), and what can be reached at all is reckoned without
+them. So a way that has to cross someone
 comes back cut 1.5 m short of them with who (`Plan.InWay`), not as no way; the cells around the start are free only
 where they take her no nearer anyone than she is; and when people are all that keeps the way from being straight, the
 plan names them (`Plan.Around`).

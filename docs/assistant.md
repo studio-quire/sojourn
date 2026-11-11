@@ -811,7 +811,15 @@ teleport home, and the assistant could neither see nor stop it.
   region's, worn things' and others' are left), with a log line "stood up from X: stopped its N animations". Sitting
   back on the same linkset within the grace cancels it; leaving while the old region is still a neighbour (a vehicle
   over a border) waits up to 10 s for it to seat you again. Its prims animating you are noted while you sit, so it
-  still works once a teleport has left the seat behind. Nothing else from a seat lingers here: Sojourn doesn't take up
+  still works once a teleport has left the seat behind. The revoke also resets a pose the seat set as your standing,
+  flying or walking one (`llSetAnimationOverride`, which stopping animations can't touch: the region plays it again for
+  the state), as the viewer's "Stop animating me" does, but only while the seat is in the region: one gone by then (a
+  tour vehicle deleting itself as it puts you off) leaves it until you log in again. So 3 s after, what still animates
+  you besides the region's own is logged ("after standing from X: still animating me: ..."), and if any of it is the
+  seat's, or has no source and isn't yours, the AO's or the agent API's, it's said: "X may have left its pose on you
+  after you stood up. If you're still in it, logging out and in again clears it" (notice `PoseLeft`; 2026-11-11, after
+  a blind tester stayed in a tour jet's flying pose through a stop-all ball until she logged in again; what Second Life
+  reports as such an override's source is unseen, so the log line is the check). Nothing else from a seat lingers here: Sojourn doesn't take up
   objects' camera parameters or sit camera offsets at all; controls scripts took follow the region's take/release
   messages (nothing says whose, so they aren't released by seat; Release Keys takes back all); temp attachments stay
   until detached, as in other viewers.

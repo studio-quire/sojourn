@@ -26,6 +26,9 @@ public sealed class SeatLeftovers
     double _acc;
     Seat? _on;
     readonly List<(Seat Seat, DateTime At)> _left = new();
+    readonly List<(Seat Seat, DateTime At)> _check = new();
+    /// <summary>After a seat's leftovers are seen to, what still animates me is logged once this much later.</summary>
+    public static readonly TimeSpan CheckAfter = TimeSpan.FromSeconds(3);
 
     public SeatLeftovers(AgentSession s) => _s = s;
 
@@ -91,6 +94,8 @@ public sealed class SeatLeftovers
             _on = now;
         }
         if (_on is { } seat) Learn(c, seat);
+        for (int i = _check.Count - 1; i >= 0; i--)
+            if (t >= _check[i].At) { StillPlaying(c, w, _check[i].Seat); _check.RemoveAt(i); }
         if (_left.Count == 0) return;
 
         for (int i = _left.Count - 1; i >= 0; i--)
@@ -100,7 +105,10 @@ public sealed class SeatLeftovers
             switch (Judge(left, t - at, unresolved ? null : _on?.Root, w.Handle, near))
             {
                 case Verdict.Wait: continue;
-                case Verdict.Due: StopLeftovers(c, left); break;
+                case Verdict.Due:
+                    StopLeftovers(c, left);
+                    if (_check.Count < 4) _check.Add((left, t + CheckAfter));
+                    break;
             }
             _left.RemoveAt(i);
         }
@@ -112,6 +120,42 @@ public sealed class SeatLeftovers
         foreach (var p in _s.Anims.Now())
             if (p.Source != UUID.Zero && p.Source != c.Self.AgentID && !seat.Sources.Contains(p.Source) && RootOf(p.Source) == seat.Root)
                 seat.Sources.Add(p.Source);
+    }
+
+    /// <summary>What still animates me a moment after standing, besides the region's own (standing, walking), into the
+    /// log; and when what's left looks like the seat's, said. A seat can set its pose as my standing (or flying) one with
+    /// llSetAnimationOverride, which stopping animations can't touch: the region plays it again for the state. Taking the
+    /// seat's animation permissions back resets it (as the viewer's "Stop animating me" does, StopLeftovers), but only
+    /// while the seat is in the region; one gone by then (a tour vehicle deleting itself as it puts the rider off) leaves
+    /// the override until the person logs in again (wiki: llSetAnimationOverride). A blind tester stayed in a jet's flying
+    /// pose after its tour put her off (2026-11-11), through a stop-all ball, until she logged in again. Left: neither the
+    /// seat's own (its prims, still playing after StopLeftovers stopped them) nor one with no source that isn't mine, the
+    /// agent API's or the AO's.</summary>
+    void StillPlaying(GridClient c, RegionWorld w, Seat seat)
+    {
+        string name = seat.Name.Length > 0 ? seat.Name : seat.Root.ToString();
+        var others = _s.Anims.Now().Where(p => !p.BuiltIn).ToList();
+        if (others.Count == 0) { _s.Log.LogInformation("after standing from {Seat}: nothing animates me but the region's own", name); return; }
+        bool left = false;
+        var words = others.Select(p =>
+        {
+            if (p.Source == UUID.Zero || p.Source == c.Self.AgentID)
+            {
+                bool ours = _s.Anims.Mine(p.Id) || _s.Ao.Plays(p.Id);
+                left |= !ours;
+                return $"{p.Id} ({(ours ? "mine" : "no source")})";
+            }
+            bool seats = seat.Sources.Contains(p.Source) || RootOf(p.Source) == seat.Root;
+            left |= seats;
+            if (w.PrimById(p.Source) is not { } prim) return $"{p.Id} (started by {(seats ? name : p.Source.ToString())}, not in this region)";
+            var root = _s.Objects.RootOf(w, prim);
+            var by = root.Properties?.Name ?? prim.Properties?.Name ?? p.Source.ToString();
+            return $"{p.Id} (started by {by}{(SelfAnimations.WornByMe(w, prim, c.Self.AgentID) ? ", worn" : "")})";
+        });
+        _s.Log.LogInformation("after standing from {Seat}: still animating me: {List}", name, string.Join("; ", words));
+        if (left)
+            _s.Notify.Add("PoseLeft", "notify", $"{name} may have left its pose on you after you stood up. If you're still in it, logging out and in again clears it",
+                Notifications.None);
     }
 
     UUID? RootOf(UUID id) => _s.Objects.FindAnywhere(id) is { } f ? _s.Objects.RootOf(f.World, f.Prim).ID : null;
