@@ -233,7 +233,7 @@ public sealed class DescribeApi : LeapApi
         {
             var (pos, fwd, fov, note) = Place(r, sim.Handle, target, dir, halfH, (float)pw / ph, vfov, p => !Theirs(p));
             if (note != null) notes.Add($"{label}: {note}");
-            shots.Add(new ShotSpec(label, pos, fwd, fov, pw, ph) { ShowSelf = self, Hide = others, Subject = id, Daylight = true });
+            shots.Add(new ShotSpec(label, pos, fwd, fov, pw, ph) { ShowSelf = self, Hide = others, Subject = id, Target = target, Daylight = true });
         }
         var whose = self ? "them" : "this person";
         Add($"{whose}, whole, from the front", centre + new Vector3(0, 0, 0.02f * height), f, height * 0.56f, 640, 960, 40 * Deg);
@@ -377,7 +377,7 @@ public sealed class DescribeApi : LeapApi
         var label = worn ? "it, as worn, from the wearer's front" : flat ? "it, face-on" : "it, from the person's side";
         var (pos, fwd, fov, note) = Place(r, sim.Handle, centre, normal, halfFit, (float)pw / ph, vfov, p => !Mine(p));
         if (note != null) notes.Add(note);
-        shots.Add(new ShotSpec(label, pos, fwd, fov, pw, ph) { Subject = root.ID, Daylight = true });
+        shots.Add(new ShotSpec(label, pos, fwd, fov, pw, ph) { Subject = root.ID, Target = centre, Daylight = true });
         // which part and face is in the middle of the face-on view (for its image as uploaded)
         if (flat && r.PickPrims(sim.Handle, pos, fwd, Vector3.Distance(pos, centre) + 2, Mine) is { Surface: { } surf } hit)
         {
@@ -390,7 +390,7 @@ public sealed class DescribeApi : LeapApi
             var side = Vector3.Normalize(Vector3.Transform(normal, System.Numerics.Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 70 * Deg)));
             var (p2, f2, fov2, note2) = Place(r, sim.Handle, centre, side, MathF.Max(half.Z, MathF.Max(half.X, half.Y)) * 1.12f, 4f / 3, vfov, p => !Mine(p));
             if (note2 != null) notes.Add($"the second view: {note2}");
-            shots.Add(new ShotSpec("it, from another side", p2, f2, fov2, 1024, 768) { Subject = root.ID, Daylight = true });
+            shots.Add(new ShotSpec("it, from another side", p2, f2, fov2, 1024, 768) { Subject = root.ID, Target = centre, Daylight = true });
         }
         return shots;
     }
@@ -484,7 +484,13 @@ public sealed class DescribeApi : LeapApi
         if (shot.GroundCells > 0) o["ground"] = Share(shot.GroundCells, shot.Cells);
         // (the person's own avatar never counts in picks: how much of the picture they fill isn't known)
         if (shot.Spec.Subject != UUID.Zero && !shot.Spec.ShowSelf) o["subject_fills"] = Share(shot.SubjectCells, shot.Cells);
-        if (shot.Relit) o["lighting"] = "relit as at midday so colours show: the place itself is dark or dim now (night, dusk, or a dim room), so don't describe this light as the scene's";
+        if (shot.Relit)
+            o["lighting"] = "lit as at midday, with a light at the camera, so colours show true; neither is the place's own light, so don't describe this light as the scene's" + shot.PlaceSun switch
+            {
+                < 0f => "; it's night there now",
+                < 0.17f => "; the sun is low there now (dusk or dawn)",
+                _ => "",
+            };
         // what of the subject's look had arrived (the count of everything in view still loading, out to the draw
         // distance, is the log's: on a busy place it's thousands of far things, and said here it made every picture look
         // unfinished or none)

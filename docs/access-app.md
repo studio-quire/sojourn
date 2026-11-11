@@ -939,7 +939,8 @@ Seated (a chair, a pose ball), it stands
 first ("Standing up to walk."). A goal out of reach where the floor meets it (up on a stage with no steps, inside a
 bar) is walked as near as the way goes: "Walking 6 metres toward Kestrel; Kestrel is out of reach, so as near as the
 way goes, 2 metres short.", ending "Finished walking, as near to Kestrel as the way goes: Kestrel is 2 metres, twelve
-o'clock." With no way there at all (a room of its own behind a closed door) it says so once, and teleports there
+o'clock." With no way there at all (a room of its own behind a closed door, or where walking would leave her a storey
+under them: Walk mode > Paths, below) it says so once, and teleports there
 only where that can land beside it (`walk_teleport_fallback`, on): "No way to walk to 244, 46 found: teleporting
 there." Not where the region has a telehub or the parcel a landing point (its owner excepted), which in Second Life
 is most clubs and shops ("... and a teleport wouldn't land there: the parcel there sends teleports to its landing
@@ -1495,12 +1496,36 @@ The goal's floor is the one under its height: the highest surface facing up (or 
 metre over its lowest point (its linked set's boxes; its own middle where that's lower, `Commands.FootOf`): a thing's
 position is its middle, upstairs for a two-storey house in one mesh and high over anything for a tower. With nothing
 under the height within that (someone hovering, a light hung 2.9 m up in a ground floor room), the goal's floor is the
-highest reached there at or under the height, else the lowest; with no height, the floor nearest hers. A goal that can't be got to moves to the nearest
-spot that can, within 6 m, a spot more than 1.5 m over or under the goal's floor counting that height as distance too,
-and of spots within half a metre of the nearest, the one nearest her (a `//go` to a block or a bar ends on her side of
-it, not round the back for the grid's quarter-metre); unless it's in a space of its own the floor never meets (a closed
-room, a room upstairs behind a shut door: no way), which a thing's own inside, closed all round like a room with no
-door, never is. A line pulled straight follows the floor as she will, so the waypoints, X and Y alone (both
+highest reached there at or under the height, else the lowest; with no height, the floor nearest hers. A goal that
+can't be got to is walked to a spot round it that can, "as near as the way goes", unless it's in a space
+of its own the floor never meets (a closed room, a room upstairs behind a shut door, a fenced platform, or she's shut in
+herself: no way), which a thing's own inside, closed all round like a room with no door, never is. Where the floors
+meet is found by following the goal's floor out as far as the planned area goes (from a goal inside something, a block
+or a seat someone sits on, first out through it, and through a wall it touches too, so a sofa against a closed room's
+wall meets the floor outside) to where hers is beside it and she fits (a crack behind a stage too narrow for her isn't
+hers). The spot is looked for up to 6 m past there, or past a thing's own reach (`Commands.FootOf`: how far its linked
+set's boxes go from its middle), else within 6 m of the goal, and for a person or a point twice as far; one nobody
+stands at goes before one where someone does if it's no more than 6 m further than the nearest. Which spot
+(2026-11-11, evening): for a thing, the bit of its foot nearest her to walk to (where the line on to its middle leaves
+her floor for good within half a metre), as any side of a thing is at it, so `//go` to a block 40 m long from off its
+end goes to that end. For a person or a point, of the spots nearest them round about (a stage's side level with them,
+its corner nearest them, either side of a bar), the one where being nearer is worth the walk, a metre nearer for every
+4 m further to walk (a spot more than 1.5 m over or under their floor counting that height as distance too), then of
+spots right by it within half a metre as near, the one nearest her, back from the edge where there's room. So she's
+walked to her side of a bar or a block; to her side of a stage 14 m across for someone anywhere in its middle, not round
+it (some 28 m) to be a few metres nearer, and round it for someone within about 3 m of its far edge; and following
+someone moving about on it, she stays on her side until then, not going from side to side as they cross its middle
+(the nearest spot alone, as until then, had sent her round for a few centimetres). A spot a storey (2.5 m) or more
+under the goal's floor, where that floor meets hers only 4 m or more from the goal (a room upstairs that a teleporter
+or a balcony at its far end reaches, a deck 3 m up with no steps and the person in its middle), would leave her under
+them, not beside them: `//go` and the assistant's walks take it for no way, so the teleport where it lands, as for a
+room upstairs behind a shut door (`Plan.Beneath`), while following walks on to it and says they're above. A stage a
+metre or two high is walked to whatever its size, and someone 3 m up within 4 m of an edge (a balcony, a pillar) is
+walked to under it. Until 2026-11-11 where the floors meet was looked for only 4 m round the goal and the spot only
+6 m from it, so someone deep in a stage was no way and a teleport. A plan with a spot to find costs 1.5 to 3 ms (the
+synthetic scenes through both by reflection: someone 7 m into a stage, 15 m into one, a block 40 m long by name), up
+to a millisecond more than the nearest spot alone; from 60 to 100 m off some 12 ms against 5, her walk to each spot
+being reckoned out from where she stands. A line pulled straight follows the floor as she will, so the waypoints, X and Y alone (both
 autopilots steer by them, and the floor carries her up the stairs), lead up the stairs in order; it keeps the room the
 path had between its two ends, so a squeeze or a stage's edge stepped off beside its side brings only that stretch as
 close. A walk to another floor says so in place of what's in the way ("Walking 15
@@ -2409,6 +2434,7 @@ them. Laid out as the build editor is, with the official viewer's About Land tab
 ### Chat logs
 
 `MainForm.ChatLogs.cs`, `ChatLogs.cs`; Alt+0's Chat group, Chat logs kept on this PC: all (the default, as in Radegast and the official viewer), conversations (IMs and group chat, no nearby chat), or off. Said once on arriving after the first build that has them.
+- **The assistant's log** (2026-11-11, the blind tester kept forgetting her descriptions): what she asks the assistant (a description as "You: Describe Kestrel") and every reply, in `Assistant.txt` beside the conversations, under the same switch (kept with all or conversations) and incognito's rules; Alt+9's history starts each session with its last 60 lines, under which "(Those are earlier lines. New ones follow.)", as a conversation opened again does (`FillAssistantEarlier`). Read-out > Chat logs lists it with the rest.
 - **The files**: plain text, one a conversation, in the data folder's `chat-logs/GRID/ACCOUNT` ("Nearby chat.txt", "Kestrel - 1a2b3c4d.txt", the end of its session id, as display names change): each run of lines under a line with the date, each line with its time. They're other people's words, so they stay on this PC: Send a log only takes `logs/`, and the assistant's file tools and shell are refused them (`assistant/harness.py`; its `tools/assistant_guard.py` tries).
 - **Reading one**: Read-out > Chat logs (`//chatlog`), the logs with when each last changed, the most recent first, Enter reading one; `//chatlog NAME` the one with that in its name; Chat log on a person's Applications key, on a group's, and in a group's or conference's message box. It opens in a read-only window, as a notecard's, at the newest line: Control+F finds, Control+G goes to a line, Control+K opens a link, Escape closes. The list's Open the folder opens it in Windows, and its Delete (Delete too; last in the Tab order) asks in Notices: gone for good.
 - **A conversation opened again**: closing one no longer loses it. A new tab starts with its last 60 lines, under which "(Those are earlier lines. New ones follow.)", from the log, or with logs off from this session's memory (200 lines each; gone when the app closes). Nearby chat's history isn't filled at login: it's a different place by then. The session's `TesselIM history` isn't used, as `leave` drops it.
@@ -2562,15 +2588,24 @@ What the model gets (SojournDescribe, `Sojourn.Session/Offscreen/DescribeApi.cs`
   named parts placed on it, with its name, where on the screen, its parts' names and its floating text; the describer
   says what it's for, then its controls and readouts by where they sit, labels word for word. Here, four views from
   your eyes, ahead, right, behind and left, 90 degrees each.
-- When the place is dark (its sun under about 10 degrees, and no sky of your own), people, objects and what's worn are
-  lit as at midday (the viewer's own midday sky, for that picture only) so their colours show, and the model is told
-  the light was changed and the place is dark; here keeps its own light (the user's call, 2026-10-29).
-  Since 2026-11-03 a dim place with the sun up counts too (a jazz club indoors on Second Life: a face the describer
-  couldn't make out, clothes "too dark to be sure of", in pictures whose looks had all loaded): each picture of a person
-  or thing is measured, the mean sRGB luma of its middle (60% across, 70% down), and one under 0.15 is drawn again as at
-  midday at once (no settling again), as is the rest of its batch. Our grids' daylit people measure 0.22-0.31; 0.15 is a
-  guess, and each picture's brightness is logged, so testers' logs say where real places fall
-  (`SOJOURN_TEST_DIM_BELOW` forces it in tests: the describing step passed with every picture redrawn).
+- People, objects and what's worn are always lit as at midday (the viewer's own midday sky, for those pictures only)
+  with a white light at the camera, so their colours are their own; here keeps its own light (the user's call,
+  2026-10-29, was people and things relit when it's dark, the place in its own light). The model is told the light was
+  changed and, from the place's own sun, whether it's night or the sun is low there, so it never gives that light as the
+  place's (`lighting`; `describer.py` HOW > Light). The camera's light is a point light at 1.2 (a prim light's
+  intensity) out to 2.5 times the distance to the subject's middle, so every subject gets it alike
+  (`OffscreenRenderer.Shots.cs`, Render's `FrameRequest.CameraLight`). It costs nothing per picture but the midday
+  sky's default reflection probe once in each 32 m square (0.12 s on the studio PC's processor, where these pictures
+  take 0.06-0.2 s): captures under a preset are kept by the preset, not by each time it's put on
+  (`FrameRenderer.Environment.cs`). Not handled: a place's own coloured lights still add to the subject's.
+  Why (Claude Opus 5.5, 2026-11-11): relighting had followed the dark (the sun under about 10 degrees; from 2026-11-03
+  also a picture whose middle came out dim, after a jazz club on Second Life), and at the local grid's dusk neither
+  held, so the scripted test's moss-green sweater, (74, 103, 65) in its texture, came out dark teal, (11, 28, 32). The
+  place's light moves colours at any hour wherever its sun isn't on the side the camera sees (in the grid's afternoon
+  the sweater was (65, 93, 65) facing the sun, about (33, 53, 42) the other three ways), and the midday sky alone has
+  its sun straight overhead, which leaves anything upright to the sky's blue ((13, 30, 33) facing any way). With the
+  camera's light, (70, 100, 69) facing any way, on the GPU and on the processor. (The sweater, a worn box, was also lit
+  wrongly by turned prims' normals, a renderer bug fixed that day: `docs/rendering.md`.)
 - A camera that would be inside a wall comes closer (and wider) or goes round to another side.
 - Each picture lists what's visible in it by name (a 16 x 9 grid of picks through it: who and what, where in the
   picture, how much of it, and where from you, "4 metres, two o'clock"), with how much the subject fills; the names go

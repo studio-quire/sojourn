@@ -39,6 +39,7 @@ public sealed partial class MainForm
     {
         if (Host is not { } h) return;
         Append(_assistantHistory, $"You: {shown ?? text}");
+        Keep(ChatLogs.AssistantKey, "Assistant", $"You: {shown ?? text}", spell: false);
         if (!_opt.Assistant || (!h.Assistant.SidecarAlive && h.Sidecar == null))
         {
             var none = AccessOptions.AssistantInBuild
@@ -84,6 +85,18 @@ public sealed partial class MainForm
                  + $"{(test ? " (not onto the clipboard: a test)" : "")}.", keep: false);
     }
 
+    /// <summary>Alt+9's history starts with the last of the assistant's log (descriptions kept from earlier sessions, the blind
+    /// tester's ask, 2026-11-11), as a conversation opened again does (FillEarlier).</summary>
+    void FillAssistantEarlier()
+    {
+        if (_logs == null || _set.ChatLogs == "off") return;
+        var lines = _logs.Tail(ChatLogs.AssistantKey, EarlierInTab);
+        if (lines.Count == 0) return;
+        var now = _assistantHistory.Text;
+        _assistantHistory.Text = string.Join("\r\n", lines) + "\r\n(Those are earlier lines. New ones follow.)" + (now.Length > 0 ? "\r\n" + now : "");
+        _assistantHistory.SelectionStart = _assistantHistory.TextLength;
+    }
+
     void PollAssistant()
     {
         var a = Host!.Assistant;
@@ -94,7 +107,11 @@ public sealed partial class MainForm
         {
             _repliesVersion = panel.RepliesVersion;
             var replies = panel.Replies;
-            for (int i = Math.Min(_repliesShown, replies.Count); i < replies.Count; i++) Append(_assistantHistory, $"Assistant: {replies[i].Text}");
+            for (int i = Math.Min(_repliesShown, replies.Count); i < replies.Count; i++)
+            {
+                Append(_assistantHistory, $"Assistant: {replies[i].Text}");
+                Keep(ChatLogs.AssistantKey, "Assistant", $"Assistant: {replies[i].Text}", spell: false);
+            }
             _repliesShown = replies.Count;
         }
         var (choices, status, notice) = panel.Read(p => (p.Choices.Select(c => c.Label).ToList(), p.Status, p.Notice));

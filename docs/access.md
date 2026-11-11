@@ -228,15 +228,15 @@ posters, pictures, on request, brief or rich; the lists' names used so it doesn'
 A careful describer's register for outfits (cut, colour, what's pictured, where on the garment). Built: Ctrl+D (what's selected, or where she is), Ctrl+Shift+D (herself), the
 same key again for more, Describe on the Applications key, `//describe`; the assistant gets pictures aimed at the
 subject from the renderer out of sight, each with what's visible in it by name and where from her, and the lists'
-facts. In a dark place people and things are lit as at midday for true colours and the model is told so; a place
-keeps its own light (the user's call). Without a Claude account it says describing needs one, then what the lists know.
+facts. People and things are lit as at midday with a light at the camera for true colours (in the dark only until
+2026-11-11) and the model is told so; a place keeps its own light (the user's call). Without a Claude account it says describing needs one, then what the lists know.
 Replies are read whole (the announcer cuts at 700 characters elsewhere). Judged by hand on the local grid in quick
 mode (Haiku 5.5): answers in 4-7 s; a poster read word for word with its colours; looks garment by garment; a person
 out of view said plainly, nothing made up. What that taught: names sit beside each picture (a named box was once "a
 yellow box"), and once a reply leaked the tooling ("the pictures don't show..."). Since 2026-10-31 a description is one
 lean call, economy (Haiku 5.5 high) by default or best (Opus 5.5 low) in Alt+0, chosen on 19 local-grid captures
 replayed to Haiku, Sonnet and Opus and judged blind (`docs/assistant-cost.md`): Opus made no major errors, Haiku high
-one, its slips mostly sides and shapes. Not seen yet: the midday relighting at night, real SL places, crowds, and mesh
+one, its slips mostly sides and shapes. Not seen yet: the midday relighting on Second Life, real SL places, crowds, and mesh
 clothing with prints, the case that register is for (a capture switch is ready for a sitting there). On Second
 Life (2026-11-01, on the processor, at a busy club) her partner beside her was described untextured, grey-white hair
 and clothes named as his colours, in every picture: confident and uncheckable, the worst kind of error here. Since,
@@ -684,7 +684,7 @@ well as I had hoped... it was worth a try".
   out. I first told her that was the place's description and to describe the person; her next log
   (`tester-20261104T015531-32cb62`) showed she had, the pictures from the front with the look all loaded, and another
   woman there "too dark to be sure of her clothes' colours": a dim club with the sun up, never relit. Corrected to her,
-  and dim pictures are now relit (`docs/access-app.md` > Describing).
+  and dim pictures were relit from then (people and things always, since 2026-11-11: `docs/access-app.md` > Describing).
 - Building: she'd like a big place to play where she can't do damage; a sandbox was suggested, and we offered to find
   her one. Then, on a builders' grid with her partner (log `tester-20261104T025444-eb47e5`, 21:30-21:51): a box named,
   hollowed 50 and made red, taken into her inventory; a box and a sphere made; a script added to the sphere. What got in
@@ -913,6 +913,20 @@ neither could tell why.
   word read 0.3-0.8 m/s now and then against them, each restarting its 6 s. Now that's judged by where the seat goes over
   2 s. Why the way led into them (corners cut aiming a second ahead along his way, or his own way through) is open.
 
+### A waterslide, a tour jet's pose, and the switch she tried (0.1.0.1074, the blind tester, 2026-11-11)
+
+Two more logs and messages that morning (our words; logs `tester-20261111T152536-6b999a` and `-165652-0ce739`).
+- **A ride recorded and told**: a waterslide recorded by `//ride` and told on asking; she thought it worked this time.
+  Later a tour jet's ride was told in four passes of the same recording without trouble.
+- **A pose that stayed**: after a tour jet put her off at its tour's end, her partner saw her still in its flying pose;
+  a stop-all ball said it stopped two animations, and our own stop wasn't tried; logging in again fixed it. Most likely
+  an animation override (`llSetAnimationOverride`) the jet set and then took with it when it deleted itself: only a relog
+  clears one then (the wiki), and our revoke 1.5 s after standing reached nothing. Access now says when a seat may have
+  left its pose and that logging in again clears it, and logs what still animates her after standing
+  (`docs/assistant.md` > A seat's leftovers stop by themselves). Her next such log says what Second Life reports.
+- **"Lines cut off by my typing said again" off**: she turned it off to hear whether chat reads differently, and will try
+  both (her answer to our question).
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -934,12 +948,6 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   (~0.25-0.3 GB of working set), against the first picture, face list or touch waiting for it to start and, on her
   2400G, for its shaders (minutes, by her log); `docs/performance.md` > Sojourn Access on a small PC. Undecided.
 - Branch `fix/own-voice` (arrivals in Access's own voice) is WIP, not wired in.
-- A low sun tints what's described without counting as dark (2026-11-11): the scripted test's moss green sweater came out
-  dark teal, about (11, 28, 32), in the afternoon runs on the local grid (its dusk), where the morning's had it green; the
-  sun was over the 10 degrees that relight people and things, and the picture's middle (bright sky behind) over the
-  dim mark, so it wasn't drawn again as at midday (`OffscreenRenderer.Shots.cs`). On Second Life at sunset a describer
-  would name such colours wrong. Measuring the subject rather than the frame's middle, or a higher sun line, would
-  catch it; undecided. Until then that check fails when the local grid's sun is low.
 - Her PC's log (2026-10-31) named both chips at Vulkan 1.1.125 (driver 2.0.116, by its look a 2019 OEM driver): the view
   now draws on the processor there. Her logs of 2026-11-01 showed a session's first frame taking 1-3 minutes of
   compiling, then ~1 s a picture; the compiling was cut that day (`docs/performance.md` > The first picture after
@@ -1077,8 +1085,8 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   more: does that sit well, or would she rather a key for "more" of its own? Is the brief one the right length (a few
   sentences), and the rich one? For outfits, is going garment by garment (cut, colour, material, what's printed on it
   and where) what she wants, or would she rather the overall look first and details on asking? How much about faces
-  and bodies? When a place is dark, pictures of people and things are lit as at midday for true colours and the
-  description says it's night there: would she want that, or the place's own light? Would an overview on arriving
+  and bodies? Pictures of people and things are lit as at midday for true colours, and the description says when it's
+  night there: would she want that, or the place's own light (a sunset's on a face)? Would an overview on arriving
   somewhere new be welcome as an option, or only ever on her key? Without a Claude account, is hearing what the lists
   know (names, an object's own description, what's worn by name) any use?
 - For parts and faces (M2): is "Part 2 of 4, a box above the root, touchable" the right amount (what, where, whether it

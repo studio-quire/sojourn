@@ -3137,6 +3137,12 @@ def assistant_answer(run, nonce):
     lines = (shown or "").splitlines()
     run.check("Alt+9's history has the answer, its paragraphs on lines of their own",
               any(l.endswith(first) for l in lines) and second in lines, " / ".join(lines[-4:]) or "not shown")
+    # kept in the assistant's own log beside the chat logs, for Alt+9 to start with next time (the blind tester kept
+    # forgetting her descriptions, 2026-11-11)
+    kept = wait(lambda: next((p.read_text(encoding="utf-8") for p in (OUT / "app" / "chat-logs").rglob("Assistant.txt")
+                              if first in p.read_text(encoding="utf-8")), None), 4)
+    run.check("and it's kept in the assistant's log (Assistant.txt beside the chat logs)", kept and f"Assistant: {first}" in kept,
+              (kept or "no Assistant.txt with it")[-200:])
     words = len(answer.split())
     m = mark()
     key("ctrl+shift+l")
@@ -8105,11 +8111,15 @@ def describing(run, nonce):
         p = (r.get("pictures") or [{}])[0]
         run.check("a picture of the fixture box, framed on it and named", p.get("png") and r["subject"].get("name") == "Access Fixture"
                   and int((p.get("subject_fills") or "0%")[:-1]) >= 10, f"{p.get('label')}, fills {p.get('subject_fills')}, {r['subject'].get('where')}")
+    run.check("the visitor's pictures lit as at midday (true colours)", pics and all("midday" in (p.get("lighting") or "") for p in pics),
+              "; ".join(p.get("lighting") or "the place's own light" for p in pics))
     r = timed_look(subject="here", detail="brief")
     labels = [p.get("label", "") for p in r.get("pictures") or []]
     run.check("here: four views round the tester, the visitor among the people around",
               len(labels) == 4 and "ahead" in labels[0] and any(VNAME in s for s in r["subject"].get("people_within_30_metres", [])),
               "; ".join(labels))
+    run.check("(and in the place's own light)", not any(p.get("lighting") for p in r.get("pictures") or []),
+              "; ".join(p.get("lighting") or "" for p in r.get("pictures") or [])[:200])
 
 
 def worn_renamed(run, nonce):
@@ -8199,16 +8209,22 @@ def describing_looks(run, nonce):
         took = time.time() - t0
         pics = r.get("pictures") or []
         look = (pics[0].get("subject_look") or "") if pics else ""
+        lighting = (pics[0].get("lighting") or "") if pics else ""
         print(f"     (subject_look: {look[:400]})")
+        print("     (lighting: " + (lighting or "the place's own") + ")")
         if pics and pics[0].get("png"):
             import base64
             (OUT / "describe-me.png").write_bytes(base64.b64decode(pics[0]["png"]))
             img = Image.open(OUT / "describe-me.png").convert("RGB")
-            # moss green pixels: green over red, not under blue (a dusk sky lights it bluish; an untextured box is grey)
-            green = sum(1 for p in img.getdata() if p[1] >= p[0] + 8 and p[1] >= p[2] - 2 and p[1] >= 25)
+            # moss green pixels (74, 103, 65 in its picture): green well over red and blue. An untextured box is grey,
+            # and lit by the sky alone (a dusk's, or a sun overhead) its front came out dark teal, about (12, 29, 32),
+            # and the looser rule this had (green not under blue less 2) passed that at 6% of the picture
+            green = sum(1 for p in img.getdata() if p[1] >= p[0] + 12 and p[1] >= p[2] + 12 and p[1] >= 40)
             share = green / (img.width * img.height)
         else:
             share = 0
+        # (whatever the hour on the local grid: its sun goes round, and a low one had tinted the sweater teal)
+        run.check("the tester's picture is lit as at midday, not by the place's sky", "midday" in lighting, lighting or "no lighting said")
         if held_for_good:
             run.check("held for good: the sweater's colours said not to have loaded, by name",
                       "hadn't fully loaded" in look and "not loaded on" in look and name in look, look[:300])
@@ -8216,7 +8232,7 @@ def describing_looks(run, nonce):
         else:
             run.check(f"the picture waited for the sweater and says the look had loaded{' (held ' + hold + ')' if hold else ''}",
                       loaded(look), f"{look[:200]}; look {took:.1f} s")
-            run.check("(the sweater is green in the picture)", share > 0.01, f"{share:.1%} of it moss green")
+            run.check("(the sweater is green in the picture)", share > 0.04, f"{share:.1%} of it moss green (the sweater's front is about 10%)")
         vid = visitor_id()
         rv = timed_look(subject=vid, detail="brief")
         vp = (rv.get("pictures") or [{}])[0]
@@ -12182,7 +12198,14 @@ def walk_floors(run):
       side, not a teleport into it for no spot within 6 m;
     - following the visitor up on a pillar with no way up: walked to its foot, said once there ("... is 3 metres above
       you; no way up from here.");
-    - the assistant's walk (the session's own autopilot) from the ground floor to a point upstairs.
+    - the assistant's walk (the session's own autopilot) from the ground floor to a point upstairs;
+    - where the house stood, a stage 13 m square with no steps: //go person to the visitor in its middle, walked to its
+      foot on her side level with it, and //go to the stage by name from off its south-west corner, walked to the bit of
+      its foot nearest her (not along to the middle of that side), each said as near as the way goes (until 2026-11-11
+      both were no way and a teleport: where the stage's floor meets hers was looked for only 4 m round the goal, and a
+      spot beside it only 6 m from it);
+    - in its place a deck a storey (3 m) up with no way up: //go person to the visitor in its middle is no way and
+      teleports her up beside it, as for a room upstairs behind a shut door (walking would leave her under it).
     Needs no renderer."""
     hx, hy = HOUSE
     tester_id = api("LLAgent", "getID")["id"]
@@ -12341,6 +12364,54 @@ def walk_floors(run):
         x, y, z = walk_pos()
         run.check("the assistant's walk to a point upstairs goes up the stairs", ended and z > U + 0.5 and math.dist((x, y), to) < 2.3,
                   f"{'ended' if ended else 'still going after 60 s'}; at {x:.1f}, {y:.1f}, its middle {z - F:+.1f} m over the ground floor")
+
+        # where the house stood, a wide stage with no steps, its middle 6.5 m from every edge: the visitor in its middle
+        # is walked to its foot on her side, level with them, and the stage by name to the bit of its foot nearest her
+        # (not along it to the middle of that side), each said, not teleported to
+        clear_course(tester_id)
+        sx, sy, side = hx, hy - 2, 13
+        mid = (sx + side / 2, sy + side / 2)
+        gs = api("TesselAgent", "ground", points=[[sx + i, sy + j] for j in range(0, side + 1, 2) for i in range(0, side + 1, 2)]
+                 + [[sx - 3, mid[1]], [sx - 3, sy + 1]])["heights"]
+        if not run.check("(ground under the wide stage)", gs and all(h is not None for h in gs), json.dumps(gs)):
+            return
+        g_west, g_sw = gs[-2:]
+        base, deck = min(gs[:-2]) - 0.3, max(gs[:-2]) + 1.5
+        made = api("TesselBuild", "create", timeout=20, shape="box", name="Wide Stage",
+                   pos=[mid[0], mid[1], (base + deck) / 2], scale=[side, side, deck - base]).get("id")
+        if not run.check("(the wide stage is built)", made, ""):
+            return
+        wait(lambda: ray([sx - 3, mid[1], g_west + 1], [1, 0, 0], 4), 20, 1)
+        stand(mid[0], mid[1], deck + 1, "in the middle of the wide stage")
+        at_foot = lambda x, y, z: None if z < deck - 0.5 and sx - 2.5 < x < sx + 0.2 and abs(y - mid[1]) < 4 \
+            else f"not at the stage's west foot by its middle ({x - sx:+.1f} m east of its west edge, {y - mid[1]:+.1f} north of its middle)"
+        place(sx - 3, mid[1], g_west + 1, "west of the wide stage")
+        walk(f"//go person {VISITOR[0]}", ["Walking", VNAME, "as near as the way goes"], "//go to the visitor in the middle of a wide stage with no steps", at_foot)
+        place(sx - 3, sy + 1, g_sw + 1, "south-west of the wide stage")
+        by_her = lambda x, y, z: None if z < deck - 0.5 and sx - 2.5 < x < sx + 0.2 and abs(y - (sy + 1)) < 1.5 \
+            else f"not at the stage's west foot nearest her ({x - sx:+.1f} m east of its west edge, {y - sy - 1:+.1f} north of where she was)"
+        walk("//go Wide Stage", ["Walking", "Wide Stage", "as near as the way goes"], "//go to the wide stage by name, 13 m across", by_her)
+
+        # in its place a deck a storey up (3 m) with no way up: //go person to the visitor in its middle is no way, so
+        # the teleport, up beside it (walking would leave her 3 m under it and its floor meets hers only 6.5 m off, at
+        # its edge: PathPlanner.Plan.Beneath)
+        clear_course(tester_id)
+        high = max(gs[:-2]) + 3
+        made = api("TesselBuild", "create", timeout=20, shape="box", name="High Deck",
+                   pos=[mid[0], mid[1], (base + high) / 2], scale=[side, side, high - base]).get("id")
+        if not run.check("(the high deck is built)", made, ""):
+            return
+        wait(lambda: ray([sx - 3, mid[1], g_west + 2.5], [1, 0, 0], 4), 20, 1)
+        stand(mid[0], mid[1], high + 1, "in the middle of the high deck")
+        place(sx - 3, mid[1], g_west + 1, "west of the high deck")
+        m = mark()
+        say_in_app(f"//go person {VISITOR[0]}")
+        run.expect("//go to the visitor in the middle of a deck a storey up: no way, so it teleports", ["No way to walk to", "teleporting there"], m, 15)
+        run.expect("and lands", ["Teleported to"], m, 25)
+        time.sleep(1.5)
+        x, y, z = walk_pos()
+        run.check("up on the high deck beside the visitor", z > high + 0.3 and math.dist((x, y), visitor_where()[:2]) < 3.5,
+                  f"at {x:.1f}, {y:.1f}, its middle {z - high:+.1f} m over the deck, {math.dist((x, y), visitor_where()[:2]):.1f} m from the visitor")
     finally:
         say_in_app("//follow stop")
         clear_course(tester_id)
@@ -12946,8 +13017,12 @@ def driving_after(run):
     # 10 m/s for half a minute, 2026-11-09; the old code backed this kart at 4 m/s. A moment of it is the visitor brushing
     # past the kart as they walk round it: it was shoved back at 1.4 m/s for under a second)
     log = latest_app_log()
-    # (a state line's "backward" from 0.3 m/s; a push is under the 0.8 m/s that counts as backing)
-    backs = [l for l in re.findall(r"convoy: .* at ([\d.]+) m/s backward,.*", log) if float(l) >= 0.8]
+    # (a state line's "backward" from 0.3 m/s, 0.8 counting as backing, and only where a Down went in that line's
+    # stretch or the one before: the visitor's shove came with no key for 6 s and Down held back, 2026-11-11, and
+    # failed this; backing the drive did itself follows its own Down, and anything longer is the line below)
+    states = re.findall(r"convoy: \d.* m from .*", log)
+    backs = [m.group(1) for i, s in enumerate(states) if (m := re.search(r" at ([\d.]+) m/s backward,", s))
+             and float(m.group(1)) >= 0.8 and any(" of Down" in t for t in states[max(0, i - 1):i + 1])]
     backs += [f"backing {ms} ms" for ms in re.findall(r"convoy: no longer going backward, after (\d+) ms", log) if int(ms) > 1000]
     run.check("never driving the kart backward to keep the gap", not backs, " | ".join(backs[:3]))
 

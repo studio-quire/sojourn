@@ -593,7 +593,8 @@ updateCloudScroll) and `llviewermenu.cpp`.
   offset. Changes are instant. The `sky` setting's presets come through the request's LocalSky; SojournEnvironment `use`
   applies presets, inventory or Library items (`Agents/EnvironmentOps.cs` fetches the settings asset), or an asset by
   id; `shared` goes back. Not kept between sessions but for the `sky` preset. Reflection probes are keyed by the
-  personal environment's version while one is shown.
+  personal environment's version while one is shown, or by the preset while a LocalSky preset shows as put on (2026-11-11:
+  Sojourn Access's pictures of people and things put the midday sky on and off, and found its captures again).
 - **The time of day** (2026-10-29; `PersonalEnvironment.SetTime`, `Environment/TimeOfDay.cs`; SojournEnvironment `time`,
   the `time_of_day` setting, menu > view > time of day in advanced, ±30 min a step), over whatever sky is in use, held
   still. *By sun* is Personal Lighting: the sky as shown, frozen, only the sun and moon moved; the default over a fixed
@@ -685,6 +686,17 @@ half is `Sojourn.Client/Beacons/` (settings in `beacons-settings.json`, `Sojourn
 each region's InterestList capability (and to regions connected later), as the viewer does for its 360 snapshots: the
 region sends everything around the agent rather than what's in front first. The user tried it at Firestorm Social Island
 (2026-10-30): things behind arrive sooner, but off unless chosen. OpenSim has no such capability.
+
+## Turned prims' normals (2026-11-11)
+
+`Shaders/scene.vert` and `alpha_simple.vert` transposed the instance's normal matrix once too often: `GpuInstance`'s
+N0-N2 are the rows of System.Numerics' (row-vector) `Transpose(Invert(model))`, which taken as GLSL columns already are
+the column-vector normal matrix. So every turned prim, attachment, flexible prim, Linden plant and beacon had its
+normals turned the other way (a box turned 90 degrees about Z lit as if it faced the opposite side: sunlight, local
+lights and what reads the G-buffer's normals), in the VR client as in Sojourn Access, since the fork. Rigged meshes,
+avatars, terrain and water (identity matrices) were right. Found when Sojourn Access's light at the camera
+(`docs/access-app.md` > Describing) lit a worn box only while its wearer faced north; fixed in both shaders. Multitude's
+renderer has the same shader line.
 
 ## Test scenes
 

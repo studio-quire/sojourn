@@ -18,6 +18,8 @@ namespace Sojourn.Access;
 public sealed class ChatLogs(string dir)
 {
     public const string NearbyKey = "nearby";
+    /// <summary>The assistant's requests and replies, descriptions among them (the blind tester kept forgetting hers, 2026-11-11).</summary>
+    public const string AssistantKey = "assistant";
     const int TailBytes = 64 * 1024;
 
     public sealed record Log(string Path, string Title, DateTime Last);
@@ -35,11 +37,14 @@ public sealed class ChatLogs(string dir)
     {
         if (_files.TryGetValue(key, out var known) && File.Exists(known)) return known;
         if (!Directory.Exists(dir)) return null;
-        var pattern = key == NearbyKey ? "Nearby chat.txt" : $"* - {Suffix(key)}.txt";
+        var pattern = Fixed(key) ?? $"* - {Suffix(key)}.txt";
         var found = Directory.EnumerateFiles(dir, pattern).FirstOrDefault();
         if (found != null) _files[key] = found;
         return found;
     }
+
+    /// <summary>A log with a name of its own rather than a conversation's.</summary>
+    static string? Fixed(string key) => key switch { NearbyKey => "Nearby chat.txt", AssistantKey => "Assistant.txt", _ => null };
 
     static string SafeName(string title)
     {
@@ -57,7 +62,7 @@ public sealed class ChatLogs(string dir)
         if (path == null)
         {
             Directory.CreateDirectory(dir);
-            path = Path.Combine(dir, key == NearbyKey ? "Nearby chat.txt" : $"{SafeName(title)} - {Suffix(key)}.txt");
+            path = Path.Combine(dir, Fixed(key) ?? $"{SafeName(title)} - {Suffix(key)}.txt");
             _files[key] = path;
         }
         var day = now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);

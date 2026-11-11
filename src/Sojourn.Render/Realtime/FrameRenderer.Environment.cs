@@ -14,6 +14,14 @@ public sealed partial class FrameRenderer
 {
     public EnvironmentSeen? LastEnvironment { get; private set; }
 
+    /// <summary>The place's own environment at a height now: the region's and parcel's, never the person's own or a
+    /// frame's LocalSky (which <see cref="LastEnvironment"/> may hold). Null until the region's has arrived. Render thread.</summary>
+    public EnvironmentSnapshot? PlaceEnvironment(ulong regionHandle, double altitude)
+    {
+        CheckWorld();
+        return _world.Environment(regionHandle) is { Loaded: true } env ? env.Evaluate(DateTime.UtcNow, altitude) : null;
+    }
+
     /// <summary>The person's own environment over every place's (SojournEnvironment; the `sky` setting's fixed skies
     /// come through the request's LocalSky and are applied here when it changes).</summary>
     public PersonalEnvironment Personal { get; } = new();
@@ -25,7 +33,7 @@ public sealed partial class FrameRenderer
     RegionEnvironment? _shownEnv;
     bool _presetSeen;
     LibreMetaverse.UUID? _preset;
-    long _personalVersion;
+    long _personalVersion, _presetVersion = -1;
     Vector2? _lastGlobal;   // the view's place last frame on the grid (x, y): a jump is a teleport
     double _jumpedAt = double.NegativeInfinity;
     static readonly double TickSeconds = 1.0 / Stopwatch.Frequency;
@@ -37,9 +45,10 @@ public sealed partial class FrameRenderer
     {
         // a still is drawn under the sky the person sees, nothing of the fade stepped (FrameRenderer.Still.cs)
         if (_stillEnv && LastEnvironment is { } seen) { localKey = _lastLocalKey; return seen.Snapshot; }
+        bool presetOn = false;
         if (!_presetSeen || req.LocalSky != _preset)
         {
-            if (req.LocalSky is { } id && FixedSky(id) is { } sky) Personal.ApplySky(sky, "preset");
+            if (req.LocalSky is { } id && FixedSky(id) is { } sky) { Personal.ApplySky(sky, "preset"); presetOn = true; }
             else if (_presetSeen) Personal.Clear();
             (_presetSeen, _preset) = (true, req.LocalSky);
         }
@@ -49,7 +58,12 @@ public sealed partial class FrameRenderer
         var (local, version) = Personal.Update(LastEnvironment?.Snapshot, source?.State);
         bool changed = version != _personalVersion;
         _personalVersion = version;
-        localKey = _lastLocalKey = local != null ? version : 0;
+        if (presetOn && Personal.Current is { From: "preset" }) _presetVersion = version;   // (one change applies a frame: a person's own change in the same frame isn't the preset)
+        // a preset as put on keys what's captured under it (reflection probes) by itself rather than by each time it's put
+        // on: pictures that put the midday sky on and take it off again (Sojourn Access's of people and things) find what
+        // it had, rather than capturing the default probe anew each time (0.12 s on the studio PC's processor, where
+        // those pictures took 0.06-0.2 s, 2026-11-11)
+        localKey = _lastLocalKey = local == null ? 0 : _preset is { } p && version == _presetVersion ? -1L - (uint)p.GetHashCode() : version;
 
         var snap = source != null ? source.Evaluate(time, req.Position.Z, local) : new EnvironmentState().Evaluate(time, req.Position.Z, local);
 

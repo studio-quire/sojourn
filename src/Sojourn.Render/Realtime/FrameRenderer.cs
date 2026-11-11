@@ -157,6 +157,10 @@ public sealed record FrameRequest
     public OverlayScene? Overlay { get; init; }
     /// <summary>The person's HUD attachments (Realtime/Hud.cs): drawn after the captures, under the overlay.</summary>
     public HudRequest? Hud { get; init; }
+    /// <summary>A white point light at the camera for this frame only (a photographer's flash): a prim light's intensity
+    /// and its radius in metres. For pictures whose subject's colours matter more than the place's light: Sojourn
+    /// Access's of people and things, whose fronts a sun overhead or behind them leaves to the sky's blue.</summary>
+    public (float Intensity, float Radius)? CameraLight { get; init; }
     /// <summary>Planned, not drawn: what's in view is asked for and counted (FrameStats.Pending) and what has arrived
     /// goes to the GPU, as a still's settling does; nothing is recorded or presented. For a picture's settling where a
     /// drawn frame is dear (the renderer out of sight on the processor).</summary>
@@ -1112,6 +1116,15 @@ public sealed partial class FrameRenderer : IDisposable
         }, dl, frustum, _world.Textures);
         _phases.Particles += Lap(ref tPhase);
         if (_world.Environment(region.Source.Handle) is { Loaded: false }) pending++;
+        if (req.CameraLight is var (flash, flashReach))
+            // as a prim's point light with no falloff (RegionScene.AddLight): the forward terms for see-through faces too
+            dl.Lights.Add(new GpuLight
+            {
+                PositionRadius = new Vector4(req.Position, flashReach),
+                ColorFalloff = new Vector4(new Vector3(flash), 0f),
+                DirectionCutoff = new Vector4(0, 0, -1, -2f),
+                Params = new Vector4(3f / flashReach, 1f, 1f, 0f),
+            });
         SortLights(dl, v.Position);
         _phases.Avatars += avatarMs;
         _phases.Frames++;

@@ -38,8 +38,8 @@ void main()
     uint id = gl_InstanceIndex;
     Instance inst = INSTANCE(id);
     vec4 world = inst.model * vec4(inPosition, 1.0);
-    mat3 nm = mat3(inst.n0.xyz, inst.n1.xyz, inst.n2.xyz);
-    vNormal = normalize(transpose(nm) * inNormal);
+    mat3 nm = mat3(inst.n0.xyz, inst.n1.xyz, inst.n2.xyz);   // (as scene.vert: the inverse transpose as it stands)
+    vNormal = normalize(nm * inNormal);
     vTangent = vec4(normalize(mat3(inst.model) * inTangent.xyz), inTangent.w);
     vWorldPos = world.xyz;
     vUv = inUv;

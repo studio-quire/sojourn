@@ -19,8 +19,11 @@ void main()
     uint id = gl_InstanceIndex;
     Instance inst = INSTANCE(id);
     vec4 world = inst.model * vec4(inPosition, 1.0);
+    // n0-n2 are the rows of System.Numerics' Transpose(Invert(model)), a row-vector matrix: as columns here they make
+    // the column-vector inverse transpose itself (transposed again, every turned prim's normals turned the other way:
+    // a box turned 90 degrees lit as if it faced the opposite side, found 2026-11-11 by a light at the camera)
     mat3 nm = mat3(inst.n0.xyz, inst.n1.xyz, inst.n2.xyz);
-    vNormal = normalize(transpose(nm) * inNormal);
+    vNormal = normalize(nm * inNormal);
     vTangent = vec4(normalize(mat3(inst.model) * inTangent.xyz), inTangent.w);
     vWorldPos = world.xyz;
     vUv = inUv;

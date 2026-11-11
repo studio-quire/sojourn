@@ -14,8 +14,12 @@ namespace Sojourn.Access.Walk;
 /// a jazz club found no way): from a cell to its neighbour, the highest surface no more than a step up (Step) or a
 /// short drop down (Drop) from its floor, the ground among them, so stairs, a stage's steps, a ramp and a building's
 /// floor over sloping ground are walked, while a surface out of reach (a stage with no steps, a table) is an obstacle;
-/// what the floor can't reach is blocked. A goal inside something, or out of reach, moves to the nearest spot that can
-/// be reached within GoalReach. Written by Claude Opus 5.5, 2026-10-29.
+/// what the floor can't reach is blocked. A goal inside something, or out of reach, moves to a spot round it that can be
+/// reached, looked for GoalReach past where its floor meets hers or past a thing's own reach, so in the middle of a wide
+/// stage or by name to a big building too (2026-11-11; until then within GoalReach of the goal itself, and only 4 m
+/// round it was looked at for where the floors meet, so those were no way): for a thing the bit of its foot nearest
+/// her, for a person or a point the spot nearest them where that's worth the walk (Worth). Written by Claude Opus 5.5,
+/// 2026-10-29.
 /// People on their feet, when the caller gives them (a `//go`, walk to), are gone round too (Claude Fable 5.2,
 /// 2026-11-09): each a disc the path keeps off as it does a wall. Unlike a wall, a person never makes for no way:
 /// where the only way is through someone (a doorway they stand in, a ring of people round the goal), or the way round
@@ -69,6 +73,14 @@ public sealed class PathPlanner
         /// body's height (someone hovering, a floor the model hasn't got), one it could be standing on. False: that
         /// floor is out of reach from here, and the way ends as near as it goes on another (meaningful where FloorKnown).</summary>
         public bool OnGoalFloor { get; init; } = true;
+        /// <summary>For a goal out of reach whose floor was followed out to hers: how far from the goal they meet, in
+        /// metres (a stage's edge, a balcony's; 0 where that couldn't be told); null otherwise.</summary>
+        public float? Meets { get; init; }
+        /// <summary>The way ends a storey or more (Storey) under the goal's floor, and that floor meets hers only Far or
+        /// more from the goal, or never (a thing's): under them rather than beside them, as in the room under someone
+        /// upstairs whom only a teleporter or a balcony at the far end reaches. A walk to them takes it for no way (the
+        /// teleport, as for a room upstairs behind a shut door); following walks on and says they're above.</summary>
+        public bool Beneath { get; init; }
     }
 
     /// <summary>Whether a plan can be asked for now (the view is up): a null plan then means there's no way.</summary>
@@ -89,10 +101,11 @@ public sealed class PathPlanner
     /// the floor it's on where floors lie over one another: the floor under it within a body's height, else the highest
     /// at or under it, else the lowest (none: the floor nearest the start's); and tells a goal in a closed room of its own
     /// (no way) from one up on a stage beside this floor (the nearest spot below it). <paramref name="people"/>: where
-    /// people stand (their middles), for the way to go round them. <paramref name="thing"/>: the goal is a thing's, whose
-    /// inside, closed all round as a room with no door is, is never a space of its own: the nearest spot outside it.</summary>
+    /// people stand (their middles), for the way to go round them. <paramref name="thing"/>: the goal is a thing's,
+    /// reaching this many metres across from the point given (its linked set's boxes), whose inside, closed all round as
+    /// a room with no door is, is never a space of its own: the bit of its foot nearest her.</summary>
     public async Task<Plan?> PlanAsync(Vector2 from, float feet, Vector2 to, IReadOnlySet<uint>? passable = null, CancellationToken ct = default,
-        float? toZ = null, IReadOnlyList<Vector3>? people = null, bool thing = false)
+        float? toZ = null, IReadOnlyList<Vector3>? people = null, float? thing = null)
     {
         if (!_rays.Ready) return null;
         var lo = Vector2.Min(from, to) - new Vector2(Margin);
@@ -121,8 +134,22 @@ public sealed class PathPlanner
     /// <summary>A step up the floor may take from one cell to the next (stairs, a kerb, a stage's steps), and how far
     /// down it may drop (off a step, a low stage); further down is an edge.</summary>
     const float Step = 0.4f, Drop = 1.2f;
-    /// <summary>How far from a goal out of reach (inside a bar, on a stage with no steps) its stand-in may be.</summary>
+    /// <summary>How far a goal out of reach (inside a bar, on a stage with no steps) may be from its stand-in: this much
+    /// past where its floor meets hers (a stage's edge) or past a thing's own reach, and as far from the goal itself
+    /// where neither is known. Also how much further a spot nobody stands at may be than the nearest spot (Solve).</summary>
     public const float GoalReach = 6f;
+    /// <summary>Plan.Beneath: a stand-in this much or more under the goal's floor is a storey under it, which a stage
+    /// isn't (a stage a metre or two high, however wide, is walked to its foot); and its floor meeting hers this far or
+    /// further from the goal is too far off for her to be beside them. Under that, she's walked under them as before
+    /// 2026-11-11 (a balcony's edge, a pillar: until then 4 m was as far as where the floors meet was looked for).</summary>
+    public const float Storey = 2.5f, Far = 4f;
+    /// <summary>Where to take her for a person or a point out of reach (Solve): a metre nearer it is worth this many
+    /// metres further to walk. A walk straight toward it is always worth it, a detour only for a good part of it: round
+    /// a stage 14 m across (some 28 m further) to be 8 m nearer, and not to be 6 m nearer.</summary>
+    const float Worth = 4f;
+    /// <summary>A spot is at a thing's foot when the line on from it to the thing's middle leaves the floor she can walk
+    /// within this far and never comes back to it (beside it, half a metre or so from it).</summary>
+    const float FootBy = 0.5f;
     /// <summary>A person as the path sees them: a disc this wide round their middle, so with the body's own half width
     /// the path's line stays 0.75 m from it (two avatars touch at about 0.6 to 0.75), and a metre where there's room.</summary>
     public const float PersonR = 0.45f;
@@ -144,7 +171,7 @@ public sealed class PathPlanner
     static bool StandsOn(float z, float floor) => z >= floor - 0.3f && z <= floor + 2.6f;
 
     Plan? Solve(List<Vector3> tris, Vector2 from, float feet, Vector2 to, float? toZ, Vector2 lo, Vector2 hi, Func<float, float, float?>? ground,
-        IReadOnlyList<Vector3>? people = null, bool thing = false)
+        IReadOnlyList<Vector3>? people = null, float? thing = null)
     {
         int nx = (int)MathF.Ceiling((hi.X - lo.X) / Cell), ny = (int)MathF.Ceiling((hi.Y - lo.Y) / Cell);
         int cells = nx * ny;
@@ -417,6 +444,7 @@ public sealed class PathPlanner
             }
 
         int CellNode(int m) => fl.CellOf[m];
+        Vector2 At(int m) => Centre(CellNode(m) % nx, CellNode(m) / nx);
         // the goal's floor: where it has a height, the floor under that (the goal upstairs or on the ground floor under
         // it), and none there if the walk doesn't reach that floor over this cell. With nothing under the height within a
         // body's (a thing's middle high in a tower, a light hung from a ceiling, someone hovering), the highest floor
@@ -445,26 +473,38 @@ public sealed class PathPlanner
         // over a cell the floor never reached), any
         float? want = under ?? (goal >= 0 ? floor[goal] : toZ == null ? startFloor : null);
 
-        // the goal out of reach in a space of its own (a room behind a closed door, a pen, a room upstairs whose door is
-        // shut): no way. A space that meets this one at an edge (a stage with no steps, a balcony) or the inside of a
-        // thing (a bar, a chair) isn't one
-        bool Enclosed(int g, float z)
+        // where the goal's floor meets hers, for a goal out of reach: its floor followed out (up a step, down any drop to
+        // 10 m) to the first cell where hers is beside it, stepping across or down (a stage with no steps, a balcony over
+        // the ground), and how far that is from the goal, in cells; a goal inside something (a block, a chair someone
+        // sits on) is followed out through it to the floor round it first, and through a wall it touches too, so a sofa
+        // against a closed room's wall meets the floor outside. Hers is only where she can get to (a crack too narrow
+        // for her behind a stage isn't). 0 where it can't be told (nothing under the goal's height, a space too small
+        // to stand in). Null: it never does, the goal is in a space of its own (a room behind a closed door, a pen, a
+        // room upstairs whose door is shut, a closed box in the air within the heights planned, some 12 m over the
+        // ground or her feet, or hers is one; a skybox higher up isn't in the plan at all, and the way goes to the ground
+        // under it). As far as the grid goes: until 2026-11-11 only 4 m round the goal, and a goal in the middle of a
+        // wide stage was taken for one in a closed room
+        float? Meets(int g, float z)
         {
-            if (SurfaceUnder(g, z) is not { } gf || Obstructed(g, gf)) return false;
-            var seen = new Dictionary<int, float> { [g] = gf };
+            if (SurfaceUnder(g, z) is not { } gf) return 0;
+            bool inside = Obstructed(g, gf);
+            var seen = new float[cells];   // the goal's floor over each cell it's followed to (NaN: not)
+            Array.Fill(seen, float.NaN);
+            seen[g] = gf;
+            int got = 1, gi0 = g % nx, gj0 = g / nx;
             var q = new Queue<int>();
             q.Enqueue(g);
-            int r2 = (int)(4 / Cell) * (int)(4 / Cell), gi0 = g % nx, gj0 = g / nx;
             while (q.TryDequeue(out int k))
             {
                 int i = k % nx, j = k / nx;
+                float f = seen[k];
+                bool through = inside && Obstructed(k, f);   // (still in what the goal is inside)
                 for (int d = 0; d < 4; d++)
                 {
                     int ii = i + (d == 0 ? 1 : d == 1 ? -1 : 0), jj = j + (d == 2 ? 1 : d == 3 ? -1 : 0);
-                    if (ii < 0 || jj < 0 || ii >= nx || jj >= ny || (ii - gi0) * (ii - gi0) + (jj - gj0) * (jj - gj0) > r2) continue;
+                    if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
                     int kk = jj * nx + ii;
-                    if (seen.ContainsKey(kk)) continue;
-                    float f = seen[k];
+                    if (!float.IsNaN(seen[kk])) continue;
                     float best = float.NegativeInfinity;
                     if (GroundAt(kk) is { } g2 && g2 <= f + Step) best = g2;
                     for (int e = head[kk]; e >= 0; e = link[e])
@@ -472,13 +512,14 @@ public sealed class PathPlanner
                     // stepping across or down into this space: they meet at an edge (a floor the walk reaches here, and not
                     // one under this space's own, as the ground floor is under a room upstairs)
                     for (int m = fl.First[kk]; m < fl.First[kk + 1]; m++)
-                        if (!solid[m] && floor[m] <= f + Step && floor[m] >= best - Same) return false;
-                    if (best == float.NegativeInfinity || f - best > 10 || Obstructed(kk, best)) continue;
+                        if (open[m] && floor[m] <= f + Step && floor[m] >= best - Same) return MathF.Sqrt((ii - gi0) * (ii - gi0) + (jj - gj0) * (jj - gj0));
+                    if (best == float.NegativeInfinity || f - best > 10 || !through && Obstructed(kk, best)) continue;
                     seen[kk] = best;
+                    got++;
                     q.Enqueue(kk);
                 }
             }
-            return seen.Count >= 16;   // (smaller: the inside of something, not a place to stand)
+            return got >= 16 ? null : 0;   // (smaller: the inside of something, not a place to stand)
         }
         IEnumerable<string> Spans(int k)
         {
@@ -495,51 +536,162 @@ public sealed class PathPlanner
             + $"{string.Join(" ", Spans(sc))}), {nodes} floor nodes over {fl.Cells} of {cells} cells, {open.Count(x => x)} open; the goal cell "
             + (fl.First[gCell] < fl.First[gCell + 1] ? $"reached at {string.Join(", ", Nodes(gCell))}" : "unreached")
             + (under is { } uu ? $", the floor under the goal {uu:0.00}" : "");
-        bool goalMoved = false;
+        bool goalMoved = false, beneath = false;
+        float? meets = null;
         if (goal < 0 || !open[goal])
         {
-            if (toZ is { } tz && !thing && Enclosed(gCell, tz)) { WalkMode.Log(Why("the goal is in a space of its own")); return null; }
+            // how far out its stand-in may be, in cells: GoalReach past where the goal's floor meets hers (a stage's
+            // edge however far in the goal is, a balcony's) or past a thing's own reach (a big block or building), else
+            // GoalReach. A goal in a space of its own has none, no way, but for a thing's: its own inside, closed all
+            // round as a room with no door is, is never one
+            float past = 0;
+            if (toZ is { } tz)
+            {
+                meets = Meets(gCell, tz);
+                if (meets == null && thing == null) { WalkMode.Log(Why("the goal is in a space of its own")); return null; }
+                past = meets ?? 0;
+            }
+            if (thing is { } across) past = MathF.Max(past, across / Cell);
             // the goal inside something (a bar, a chair, a block) or out of reach where this space meets it (up on a
-            // stage with no steps, a balcony): the nearest spot that can be got to, within GoalReach, a floor more than
-            // 1.5 m over or under the goal's counting that height as distance too. Spots about as near as the nearest
-            // (within half a metre) are one: the one nearest her of those, so a //go to a block or a bar ends on her side
-            // of it, not round the back for the grid's quarter-metre
-            var cand = new List<(int M, float D, float Flat)>();
-            float bestD = float.MaxValue, bestFlat = 0;
-            bool anyFree = false;
-            int r = (int)(GoalReach / Cell);
-            for (int dj = -r; dj <= r; dj++)
-                for (int di = -r; di <= r; di++)
-                {
-                    int ii = gi + di, jj = gj + dj;
-                    if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
-                    for (int m = fl.First[jj * nx + ii]; m < fl.First[jj * nx + ii + 1]; m++)
-                    {
-                        if (!open[m]) continue;
-                        // (a spot with room round it before one against the edge, where the region's walk rides up it;
-                        // and one nobody stands at before any where someone does)
-                        float rise = want is { } wf ? MathF.Abs(floor[m] - wf) : 0, dz = level || rise <= 1.5f ? 0 : rise / Cell;
-                        float d = di * di + dj * dj + dz * dz + (clear[m] < Room ? 16 : 0);
-                        if (d > r * r) continue;
-                        cand.Add((m, MathF.Sqrt(d), MathF.Sqrt(di * di + dj * dj)));
-                        anyFree |= !blocked[m];
-                    }
-                }
-            foreach (var (m, d, flatD) in cand)
-                if (blocked[m] != anyFree && d < bestD) (bestD, bestFlat) = (d, flatD);
-            int best = -1;
-            float bestFrom = float.MaxValue;
+            // stage with no steps, a balcony): the spots round it that can be got to, a floor more than 1.5 m over or
+            // under the goal's counting that height as distance too, looked for in rings out from the goal as far as
+            // that (r), for a thing only until none nearer nor as good can come, and for a person or a point twice as
+            // far, as her side of a wide stage can be further than that when the nearest spot is round the back
             const float Tie = 0.5f / Cell;
+            float reach = (thing ?? 0) / Cell;
+            var cand = new List<(int M, float D, float Flat)>();
+            float nearest = float.MaxValue, bestD = float.MaxValue, bestFlat = 0;
+            int r = (int)MathF.Ceiling(GoalReach / Cell + past), aside = (int)(GoalReach / Cell), rings = thing != null ? r : 2 * r;
+            for (int ring = 0; ring <= rings && (thing == null || ring <= nearest + aside + MathF.Max(Tie, reach)); ring++)
+                for (int dj = -ring; dj <= ring; dj++)
+                    for (int di = -ring; di <= ring; di += dj == -ring || dj == ring ? 1 : 2 * ring)
+                    {
+                        int ii = gi + di, jj = gj + dj;
+                        if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+                        for (int m = fl.First[jj * nx + ii]; m < fl.First[jj * nx + ii + 1]; m++)
+                        {
+                            // (not where only standing there already lets her be, against a wall or a stage's side)
+                            if (!open[m] || clearOfThings[m] < Body) continue;
+                            // (a spot with room round it before one against the edge, where the region's walk rides up it)
+                            float rise = want is { } wf ? MathF.Abs(floor[m] - wf) : 0, dz = level || rise <= 1.5f ? 0 : rise / Cell;
+                            float d = di * di + dj * dj + dz * dz + (clear[m] < Room ? 16 : 0);
+                            if (d > rings * rings) continue;
+                            cand.Add((m, MathF.Sqrt(d), MathF.Sqrt(di * di + dj * dj)));
+                            nearest = MathF.Min(nearest, MathF.Sqrt(d));
+                        }
+                    }
+            // and one nobody stands at before any where someone does, up to GoalReach further than the nearest spot
+            float within = MathF.Min(r, nearest + aside);
+            bool anyFree = cand.Any(c => c.D <= within && !blocked[c.M]);
+            foreach (var (m, d, flatD) in cand)
+                if (d <= within && blocked[m] != anyFree && d < bestD) (bestD, bestFlat) = (d, flatD);
+            // (at a thing's foot: the line on from the spot to the goal leaves the floor she walks within FootBy and never
+            // comes back to it; not out on open ground, nor against something else on the way)
+            int gi0 = gi, gj0 = gj;
+            bool Foot(int m)
+            {
+                int k0 = CellNode(m);
+                float x = k0 % nx, y = k0 / nx, dx = gi0 - x, dy = gj0 - y, len = MathF.Sqrt(dx * dx + dy * dy);
+                int steps = (int)MathF.Ceiling(len * 2);
+                bool left = false;
+                for (int s = 1; s <= steps; s++)
+                {
+                    float t = (float)s / steps;
+                    int k = (int)MathF.Round(y + dy * t) * nx + (int)MathF.Round(x + dx * t);
+                    bool on = false;
+                    for (int n = fl.First[k]; n < fl.First[k + 1] && !on; n++) on = open[n] && MathF.Abs(floor[n] - floor[m]) < Same;
+                    if (!on) left = true;
+                    else if (left || len * t * Cell > FootBy) return false;
+                }
+                return left;
+            }
+            // which. For a thing, the nearest for her to walk to of those at its foot within its own reach of the
+            // nearest spot (or within half a metre of that): any side of a thing is at it. For a person or a point, of
+            // the spots nearest the goal round about them (where no step is any nearer: a stage's side level with them,
+            // the corner nearest them, either side of a bar), the one where being nearer is worth the walk, a metre
+            // nearer the goal for every Worth metres further to walk. So she's walked to her side of a bar or a block,
+            // to her side of a wide stage rather than round it to be a little nearer, and round it to someone near its
+            // far edge; and following someone about its middle, she stays on her side until the far one would be
+            // nearer by a quarter of the walk round. Until the evening of 2026-11-11 the nearest spot and, of spots
+            // within half a metre of it, the one nearest her: deep in a stage, round it for a few centimetres
+            // (round about: by the distance alone, as the room kept along a side would make a dip of every corner)
+            var dOf = new float[nodes];
+            var plain = new float[nodes];
+            Array.Fill(dOf, float.NaN);
+            foreach (var (m, d, _) in cand)
+                if (blocked[m] != anyFree) (dOf[m], plain[m]) = (d, clear[m] < Room ? MathF.Sqrt(MathF.Max(0, d * d - 16)) : d);
+            var spots = new List<int>();
             foreach (var (m, d, flatD) in cand)
             {
-                if (blocked[m] == anyFree || d > bestD + Tie || flatD > bestFlat + Tie) continue;
-                float apart = Vector2.DistanceSquared(Centre(CellNode(m) % nx, CellNode(m) / nx), from);
-                if (apart < bestFrom) { bestFrom = apart; best = m; }
+                if (float.IsNaN(dOf[m])) continue;
+                if (thing != null)
+                {
+                    if (d <= bestD + Tie && flatD <= bestFlat + Tie || d <= bestD + MathF.Max(Tie, reach) && Foot(m)) spots.Add(m);
+                    continue;
+                }
+                bool low = true;
+                for (int dj = -1; dj <= 1 && low; dj++)
+                    for (int di = -1; di <= 1 && low; di++)
+                        if ((di != 0 || dj != 0) && fl.Neighbour(m, di, dj, hard) is var k && k >= 0 && !float.IsNaN(dOf[k]) && plain[k] < plain[m] - 1e-3f) low = false;
+                if (low) spots.Add(m);
             }
-            if (best < 0) { WalkMode.Log(Why($"nothing open within {GoalReach} m of the goal")); return null; }
+            if (spots.Count == 0) { WalkMode.Log(Why($"nothing open within {rings * Cell:0.#} m of the goal")); return null; }
+            // how far she'd walk to each (as A* moves, people aside): out from where she stands, until no spot left can
+            // be worth more than the best so far
+            var walked = new float[nodes];
+            Array.Fill(walked, float.MaxValue);
+            var isSpot = new bool[nodes];
+            foreach (var m in spots) isSpot[m] = true;
+            int left = spots.Count, best = -1;
+            float bestCost = float.MaxValue, leastLeft = spots.Min(m => dOf[m]);
+            var reached = new PriorityQueue<int, float>();
+            walked[start] = 0;
+            reached.Enqueue(start, 0);
+            while (left > 0 && reached.TryDequeue(out int cur, out float w))
+            {
+                if (w > walked[cur]) continue;
+                if (thing == null && leastLeft + w / Worth >= bestCost) break;
+                if (isSpot[cur])
+                {
+                    isSpot[cur] = false;
+                    left--;
+                    float cost = thing != null ? w : dOf[cur] + w / Worth;
+                    if (cost < bestCost) (bestCost, best) = (cost, cur);
+                    if (thing != null) break;
+                    if (dOf[cur] <= leastLeft)
+                    {
+                        leastLeft = float.MaxValue;
+                        foreach (var m in spots) if (isSpot[m]) leastLeft = MathF.Min(leastLeft, dOf[m]);
+                    }
+                }
+                for (int dj = -1; dj <= 1; dj++)
+                    for (int di = -1; di <= 1; di++)
+                    {
+                        if (di == 0 && dj == 0) continue;
+                        int k = fl.Neighbour(cur, di, dj, hard);
+                        if (k < 0 || !fl.Enters(cur, k, di != 0 && dj != 0, hard, solid)) continue;
+                        float nw = w + (di != 0 && dj != 0 ? 1.4142f : 1f);
+                        if (nw >= walked[k]) continue;
+                        walked[k] = nw;
+                        reached.Enqueue(k, nw);
+                    }
+            }
+            if (best < 0) best = spots.MinBy(m => dOf[m]);
+            // (and of spots right by it about as near, within half a metre, the one nearest her: back from a stage's side
+            // where there's room)
+            if (thing == null)
+            {
+                var by = At(best);
+                float most = dOf[best] + Tie, bestFrom = Vector2.DistanceSquared(by, from);
+                foreach (var (m, d, _) in cand)
+                    if (d <= most && !float.IsNaN(dOf[m]) && MathF.Abs(floor[m] - floor[best]) < Same && Vector2.Distance(At(m), by) <= Tie * Cell
+                        && Vector2.DistanceSquared(At(m), from) < bestFrom)
+                        (best, bestFrom) = (m, Vector2.DistanceSquared(At(m), from));
+            }
             goal = best;
             (gi, gj) = (CellNode(best) % nx, CellNode(best) / nx);
             goalMoved = true;
+            beneath = !level && under is { } ug && ug - floor[best] >= Storey && (meets is not { } mt || mt * Cell >= Far);
         }
         var goalAt = goalMoved ? Centre(gi, gj) : to;
         int? inWay = null;
@@ -549,6 +701,7 @@ public sealed class PathPlanner
             {
                 StartFloor = startFloor, GoalFloor = floor[goal], FloorKnown = !level, Around = around, InWay = inWay,
                 OnGoalFloor = level || (under is { } uf ? MathF.Abs(floor[goal] - uf) < Same : toZ is not { } tzf || StandsOn(tzf, floor[goal])),
+                Meets = meets * Cell, Beneath = beneath,
             };
         bool Roomy(int m, float need) => !blocked[m] && (clear[m] >= need || NearEnd(m));
         bool NearEnd(int m)
@@ -567,7 +720,6 @@ public sealed class PathPlanner
         var path = fl.AStar(hard, solid, byPeople, clear, start, goal)
             ?? (stood != null ? fl.AStar(hard, solid, null, clearOfThings, start, goal) : null);
         if (path == null) return null;
-        Vector2 At(int m) => Centre(CellNode(m) % nx, CellNode(m) / nx);
         // through someone: the only way, or the way round is much longer. Cut StandOff short of them
         int first = byPeople != null ? path.FindIndex(1, m => byPeople[m]) : -1;
         if (first > 0 && people != null)

@@ -416,7 +416,8 @@ public sealed partial class Commands
     /// how close it got once it has stopped. With the collision model, around what's in the way: a path of waypoints
     /// (PathPlanner), each walked by the region's autopilot in turn, each new stretch said; a stretch that sticks is
     /// marked and the rest planned again (twice). A goal out of reach where this floor meets it (on a stage, inside a
-    /// bar) is walked as near as the way goes, said. Seated, it stands first. With no way at all it says so, and
+    /// bar) is walked as near as the way goes, said, unless that's a storey or more under it with its floor meeting hers
+    /// only far off (PathPlanner.Plan.Beneath: no way). Seated, it stands first. With no way at all it says so, and
     /// teleports there once where that can work (walk_teleport_fallback; NoWayAsync), else names the command that
     /// would (<paramref name="tpHint"/>). Completes when the walk ends: true when it got there (or within 2.5 m, or as
     /// near as the way goes). People on their feet are gone round like things, those there as it sets out and those
@@ -431,11 +432,11 @@ public sealed partial class Commands
         var walk = _walk = new CancellationTokenSource();
         var heading = _heading = new Walk.WalkMode.Target(what, () => new System.Numerics.Vector3(target.X, target.Y, target.Z), false);
         tpHint ??= string.Create(CultureInfo.InvariantCulture, $"//go tp xyz {target.X:0},{target.Y:0}");
-        float? floorAt = thing != UUID.Zero ? FootOf(thing, target) : null;
+        var foot = thing != UUID.Zero ? FootOf(thing, target) : ((float Z, float Reach)?)null;
         return Task.Run(async () =>
         {
             var flying = WatchFlying(what);
-            try { return await RouteAsync(target, what, stop, tpHint, walk.Token, toPerson, floorAt); }
+            try { return await RouteAsync(target, what, stop, tpHint, walk.Token, toPerson, foot); }
             finally
             {
                 flying?.Invoke();
@@ -464,7 +465,7 @@ public sealed partial class Commands
     /// <summary>Walk mode, for //beacon.</summary>
     public Walk.WalkMode? WalkMode { get; set; }
 
-    async Task<bool> RouteAsync(Vector3 target, string what, double stop, string tpHint, CancellationToken ct, UUID toPerson = default, float? floorAt = null)
+    async Task<bool> RouteAsync(Vector3 target, string what, double stop, string tpHint, CancellationToken ct, UUID toPerson = default, (float Z, float Reach)? foot = null)
     {
         if (!await StandFirstAsync(ct)) return false;
         if (_ops.Me() is not { } me || _ops.Client is not { } c || c.Network.CurrentSim is not { } sim) return false;
@@ -472,12 +473,12 @@ public sealed partial class Commands
         double near = Math.Max(stop, 1.2);
         var flat = new Vector2(target.X - me.Pos.X, target.Y - me.Pos.Y).Length();
         var people = new Bystanders(toPerson);
-        var route = await PlanAsync(me.Pos, target, ct, people, floorAt);
+        var route = await PlanAsync(me.Pos, target, ct, people, foot);
         if (ct.IsCancellationRequested) return false;
         // no step to take for the people she's standing among: planned again without those against her (Bystanders.Beside)
         if (route is { Legs.Count: 0, InWay: not null } && SetsOutAmong(people, me.Pos))
         {
-            route = await PlanAsync(me.Pos, target, ct, people, floorAt);
+            route = await PlanAsync(me.Pos, target, ct, people, foot);
             if (ct.IsCancellationRequested) return false;
         }
         if (route is { Legs.Count: 0, InWay: null }) return await NoWayAsync(target, what, tpHint);
@@ -564,7 +565,7 @@ public sealed partial class Commands
             }
             if (_ops.Me() is not { } from) return false;
             Vector3? cutStood = cutEnd && who is { } blocker && people.Stood.TryGetValue(blocker, out var stoodAt) ? stoodAt : null;
-            var again = await PlanAsync(from.Pos, target, ct, people, floorAt);
+            var again = await PlanAsync(from.Pos, target, ct, people, foot);
             if (ct.IsCancellationRequested) return false;
             if (again is { Legs.Count: 0, InWay: null }) return await NoWayAsync(target, what, tpHint);
             // still there, or no step further to take toward them
@@ -604,22 +605,27 @@ public sealed partial class Commands
     /// <summary>The height whose floor a walk to a thing is to: where someone standing at its foot would have their
     /// middle, a metre over its lowest point (its linked set's boxes), or its own middle where that's lower. Its
     /// position is its middle, which for a building of two storeys in one mesh is upstairs, and for a tower or a big
-    /// block high over anything.</summary>
-    float FootOf(UUID thing, Vector3 middle)
+    /// block high over anything. Reach: how far across it goes from that middle (the furthest of its boxes' corners
+    /// seen from above), so the planner looks that far out for a spot beside a big one (PathPlanner.GoalReach).</summary>
+    (float Z, float Reach) FootOf(UUID thing, Vector3 middle)
     {
-        if (_s.Region is not { } w || w.PrimById(thing) is not { } root) return middle.Z;
-        float low = float.MaxValue;
+        if (_s.Region is not { } w || w.PrimById(thing) is not { } root) return (middle.Z, 0);
+        float low = float.MaxValue, reach = 0;
         void Add(Primitive p)
         {
-            // (a box's reach down from its middle: its half sizes along the world's up, as its rotation turns them)
+            // (a box's reach from its middle along the world's axes: its half sizes as its rotation turns them)
             var q = w.RegionRotation(p);
-            float zx = 2 * (q.X * q.Z - q.W * q.Y), zy = 2 * (q.Y * q.Z + q.W * q.X), zz = 1 - 2 * (q.X * q.X + q.Y * q.Y);
-            float down = 0.5f * (Math.Abs(zx) * p.Scale.X + Math.Abs(zy) * p.Scale.Y + Math.Abs(zz) * p.Scale.Z);
-            if (w.TryRegionPosition(p, out var at)) low = Math.Min(low, at.Z - down);
+            float Half(float a, float b, float c) => 0.5f * (Math.Abs(a) * p.Scale.X + Math.Abs(b) * p.Scale.Y + Math.Abs(c) * p.Scale.Z);
+            float down = Half(2 * (q.X * q.Z - q.W * q.Y), 2 * (q.Y * q.Z + q.W * q.X), 1 - 2 * (q.X * q.X + q.Y * q.Y));
+            float ex = Half(1 - 2 * (q.Y * q.Y + q.Z * q.Z), 2 * (q.X * q.Y - q.W * q.Z), 2 * (q.X * q.Z + q.W * q.Y));
+            float ey = Half(2 * (q.X * q.Y + q.W * q.Z), 1 - 2 * (q.X * q.X + q.Z * q.Z), 2 * (q.Y * q.Z - q.W * q.X));
+            if (!w.TryRegionPosition(p, out var at)) return;
+            low = Math.Min(low, at.Z - down);
+            reach = Math.Max(reach, new Vector2(Math.Abs(at.X - middle.X) + ex, Math.Abs(at.Y - middle.Y) + ey).Length());
         }
         Add(root);
         foreach (var (_, p) in w.Prims) if (p.ParentID == root.LocalID && !w.Avatars.ContainsKey(p.LocalID)) Add(p);
-        return low < float.MaxValue ? Math.Min(middle.Z, low + 1) : middle.Z;
+        return (low < float.MaxValue ? Math.Min(middle.Z, low + 1) : middle.Z, reach);
     }
 
     /// <summary>A point past the edge of the region whose frame it's in (a recorded route's step across a border).</summary>
@@ -665,24 +671,26 @@ public sealed partial class Commands
     }
 
     /// <summary>The way around what's in the way; null: straight (no collision model, or nothing in the way); no legs:
-    /// no way at all. <paramref name="floorAt"/>: a thing's foot (FootOf), the height whose floor a walk to that thing
-    /// is to.</summary>
-    async Task<Route?> PlanAsync(Vector3 from, Vector3 to, CancellationToken ct, Bystanders? people = null, float? floorAt = null)
+    /// no way at all. <paramref name="foot"/>: a thing's foot and reach (FootOf), the height whose floor a walk to that
+    /// thing is to and how far across it goes.</summary>
+    async Task<Route?> PlanAsync(Vector3 from, Vector3 to, CancellationToken ct, Bystanders? people = null, (float Z, float Reach)? foot = null)
     {
         if (Planner is not { } planner) return null;
         // beyond this region's edge (a recorded route's crossing): straight, by the region's autopilot
         if (Beyond(to)) return null;
         var a = new System.Numerics.Vector2(from.X, from.Y);
         var b = new System.Numerics.Vector2(to.X, to.Y);
-        float toZ = floorAt ?? to.Z;
+        float toZ = foot?.Z ?? to.Z;
         // (a point just over or under her on another floor is still a way to plan, by the stairs)
         if (System.Numerics.Vector2.Distance(a, b) < 2 && !OtherFloor(from, new Vector3(to.X, to.Y, toZ))) return null;
         try
         {
             var standing = people != null ? ToGoRound(people, from) : null;
-            var plan = await planner.PlanAsync(a, FeetZ?.Invoke() ?? from.Z - 0.95f, b, null, ct, toZ, standing, thing: floorAt != null);
-            Walk.WalkMode.Log($"go {a} -> {b}{(standing != null ? $", {standing.Count} standing" : "")}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct && !plan.GoalMoved && plan.InWay == null ? "direct" : string.Join(" ", plan.Waypoints) + (plan.GoalMoved ? " (goal moved)" : "") + (plan.InWay is { } w ? $" (cut short of someone at {standing![w]})" : "") + (plan.Around.Count > 0 ? $" (round {plan.Around.Count})" : ""))}");
-            if (plan == null) return planner.CanAsk ? new Route(new(), false) : null;
+            var plan = await planner.PlanAsync(a, FeetZ?.Invoke() ?? from.Z - 0.95f, b, null, ct, toZ, standing, thing: foot?.Reach);
+            Walk.WalkMode.Log($"go {a} -> {b}{(standing != null ? $", {standing.Count} standing" : "")}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct && !plan.GoalMoved && plan.InWay == null ? "direct" : string.Join(" ", plan.Waypoints) + (plan.GoalMoved ? $" (goal moved{(plan.Meets is { } mt ? $", the floors meet {mt:0.0} m from it" : "")})" : "") + (plan.InWay is { } w ? $" (cut short of someone at {standing![w]})" : "") + (plan.Around.Count > 0 ? $" (round {plan.Around.Count})" : "") + (plan.Beneath ? " (beneath it: no way)" : ""))}");
+            // (a storey or more under it, where its floor meets hers only far off, as in the room under someone upstairs
+            // whom a teleporter reaches: no way, as for a room upstairs behind a shut door, so the teleport where it lands)
+            if (plan == null || plan.Beneath) return planner.CanAsk ? new Route(new(), false) : null;
             float rise = plan.FloorKnown ? plan.GoalFloor - plan.StartFloor : 0;
             if (plan.InWay is { } inWay) return new Route(plan.Waypoints, false) { InWay = people!.Given[inWay], Rise = rise };
             return plan.Direct && !plan.GoalMoved ? null

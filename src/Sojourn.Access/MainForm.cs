@@ -241,6 +241,7 @@ public sealed partial class MainForm : Form
         _ = ReadFavoritesAfterLoadingAsync();
         _ = SayIfNewerBuildAsync();
         _ = SayChatLogsOnceAsync();
+        FillAssistantEarlier();
         _ = SayCacheClearedAsync();
         AutoSitArrived("login", 0);
     }
@@ -888,8 +889,9 @@ public sealed partial class MainForm : Form
         var b = new System.Numerics.Vector2(to.X, to.Y);
         if (System.Numerics.Vector2.Distance(a, b) < 2 && !Commands.OtherFloor(from, to)) return null;
         var plan = await planner.PlanAsync(a, _walk?.Me()?.Feet ?? from.Z - 0.95f, b, null, default, to.Z);
-        Sojourn.Access.Walk.WalkMode.Log($"route {a} -> {b}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct && !plan.GoalMoved ? "direct" : string.Join(" ", plan.Waypoints) + (plan.GoalMoved ? " (goal moved)" : ""))}");
-        if (plan == null)
+        Sojourn.Access.Walk.WalkMode.Log($"route {a} -> {b}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct && !plan.GoalMoved ? "direct" : string.Join(" ", plan.Waypoints) + (plan.GoalMoved ? " (goal moved)" : "") + (plan.Beneath ? " (beneath it: no way)" : ""))}");
+        // (a storey or more under the point, its floor meeting hers only far off: no way, as a //go takes it)
+        if (plan == null || plan.Beneath)
         {
             if (!planner.CanAsk) return null;
             if (_ops.Client is { } cl) Host?.Session.Motion.StopAutoPilot(cl, false);

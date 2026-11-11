@@ -572,7 +572,8 @@ docstring with its checks in full):
   `//thread //pause 60` named by `//threads`, stopped by `//kill`, then nothing running.
 - **describing** (the test has no assistant, so the path without one): Ctrl+D and Ctrl+Shift+D saying it needs the
   assistant and what the lists know, `//describe more`; with the renderer, SojournDescribe's pictures of the visitor,
-  the fixture box and here framed and named. What the model makes of them is judged by hand (`docs/access.md` >
+  the fixture box and here framed and named, the visitor's lit as at midday and here's in the place's own light. What
+  the model makes of them is judged by hand (`docs/access.md` >
   M5), with a scratch driver like the test's that presses the keys with the assistant running and reads back
   what was announced.
 - **review keys and arrivals**: Ctrl+[, Ctrl+], mark and copy, times in the history; Ctrl+Shift+A and the visitor
@@ -607,9 +608,12 @@ docstring with its checks in full):
   `//go xyz` onto the balcony, then to the ground under it; following the visitor upstairs ("With" it up there); a
   `//go xyz` to a point just under the upstairs slab, kept on the ground floor; outside, `//go` to a 9 m block by name
   (walked to its side), and following the visitor up on a pillar with no steps (at its foot, "... above you; no way up
-  from here.", never "With"); the assistant's walk to a point upstairs. Each ends on the right floor, said, with no
-  teleport and no flying animation on her (OpenSim's autopilot flies to a point high over the ground:
-  `Commands.AutoPilotTo`).
+  from here.", never "With"); the assistant's walk to a point upstairs; then where the house stood, a stage 13 m square
+  with no steps, `//go person` to the visitor in its middle (walked to its foot on her side, level with it) and
+  `//go Wide Stage` from off its south-west corner (to the bit of its foot nearest her), "as near as the way goes". Each
+  ends on the right floor, said, with no teleport and no flying animation on her (OpenSim's autopilot flies to a point
+  high over the ground: `Commands.AutoPilotTo`). Last, in the stage's place a deck 3 m up with no steps: `//go person`
+  to the visitor in its middle is no way and teleports her up beside it (walking would leave her a storey under it).
 - **distance walked**: three taps of Up said once as one stretch, close to how far the avatar went (the run prints the
   metres a tap), Down said "backward", M and Shift+M, nothing with `walk_distance` off.
 - **rail switches** (about 2 minutes, no renderer needed): on a flat stretch of Atelier East found first (and a ray along
