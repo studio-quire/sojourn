@@ -113,7 +113,7 @@ public sealed partial class MainForm
             line = $"{whoName} {(late ? "pointed" : "points")} at {t.Words}{where}. Control+Shift+P goes to it.";
             Host?.Log.LogInformation("pointing: {Who} pointed at {Target} ({How}): {Words}", whoName, p.Target, p.How, t.Words);
             // the list beside her shows which it is, unless she's in it
-            if (_areas.SelectedTab == _objectsPage && !_objects.Focused && !_parts.Focused && !_faces.Focused) _ = RefreshObjects(false);
+            if (_areas.SelectedTab == _objectsPage && !_objects.Focused && !_parts.Focused && !_faces.Focused) _ = RefreshObjectsAsync(false, behind: true);
         }
         if (_set.MuteAll) AppendChat(line);
         else Announce(line);

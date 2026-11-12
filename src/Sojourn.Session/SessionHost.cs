@@ -31,7 +31,8 @@ namespace Sojourn.Session;
 ///
 /// The steps run in the order <see cref="StartAll"/> gives; the VR client (Program.cs) calls them one by one between
 /// its own window, headset and drawn menus, in that same order (the order SojournSettings lists its settings in, and
-/// event handlers run in). An app with no views of its own calls StartAll. Main thread for all of it.
+/// event handlers run in). An app with no views of its own calls StartAll, from any one thread at a time: the console
+/// probe's has none of its own, Sojourn Access runs it off its window's (Task.Run), and the steps touch no window.
 /// </summary>
 public sealed class SessionHost : IAsyncDisposable
 {

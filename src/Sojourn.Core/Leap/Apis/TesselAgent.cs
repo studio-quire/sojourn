@@ -275,13 +275,16 @@ public sealed class TesselAgent : SessionApi
             // the blind tester she'd taken off a pose ball she had sat on, 2026-11-11)
             // (worn by me by the region's avatar list, or by its root's parent being me: just after a crossing the list can
             // lag while the parent is already right, as Access's own check has it)
-            if (S.Region?.PrimById(oid) is not { } p || !(S.Objects.IsAttachment(W, p, out var wearer, out var root) && wearer?.ID == c.Self.AgentID
+            if (S.Region?.PrimById(oid) is { } p && (S.Objects.IsAttachment(W, p, out var wearer, out var root) && wearer?.ID == c.Self.AgentID
                     || (root = S.Objects.RootOf(W, p)).ParentID == c.Self.LocalID && c.Self.LocalID != 0))
-                throw new LeapError("I'm not wearing that (not here, or not an attachment of mine)");
-            var itemId = AgentInventory.AttachItemId(root);
-            if (itemId != UUID.Zero) await S.Wardrobe.DetachAsync(c, itemId, ct);
-            c.Objects.DetachObjects(Sim, new List<uint> { root.LocalID });
-            return new JsonObject();
+            {
+                var itemId = AgentInventory.AttachItemId(root);
+                if (itemId != UUID.Zero) await S.Wardrobe.DetachAsync(c, itemId, ct);
+                c.Objects.DetachObjects(Sim, new List<uint> { root.LocalID });
+                return new JsonObject();
+            }
+            // (given its item too, that goes on: the object can be out of the region's list just after a crossing)
+            if (a.Uuid("item_id") is null) throw new LeapError("I'm not wearing that (not here, or not an attachment of mine)");
         }
         if (a.Uuid("item_id") is { } iid)
         {

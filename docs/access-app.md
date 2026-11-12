@@ -292,8 +292,15 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   whatever the list holds by the time she picks: a refresh under the open menu once had Take off act on the row that
   came in its place, telling her she'd taken off a pose ball while her bag stayed on (2026-11-11). Each list menu's opening is a line in the session log with what it offered, on what (the inventory's
   too, with the item's words), so a log shows what she was given to choose from.
-- Lists: F5 refreshes; a list you're in never changes under you otherwise (it refreshes every 3 s while you're
-  elsewhere). Arriving in a list that hasn't filled yet (Second Life's objects wait up to 3 s for their names), its
+- Lists: F5 refreshes; a list you're in never changes under you by itself (it refreshes every 3 s while you're
+  elsewhere, and one of those under way when you go into it isn't filled; a list's actions menu leaves the focus on
+  the list, so the same holds while it's open). After your own Take, Delete, Return or Take off it refreshes, the thing
+  gone. Objects' rows always belong to the Show they're under: a change of Show (or of whose things) empties the list
+  at once, "looking" until its refresh fills it, and a refresh whose Show, person, filter or More's pages changed while
+  it looked is dropped for the one the change brings (a filter still being typed, its timer's). On 2026-11-11 the
+  blind tester's list held her worn things under Things nearby (two refreshes landing under the Show after theirs,
+  "No HUDs, 89 things worn." then "10 objects."); she opened her bag's actions in it, and the refresh for nearby then
+  put the 200 nearest in its place, the focus on the first, a pose ball, which Take off acted on. Arriving in a list that hasn't filled yet (Second Life's objects wait up to 3 s for their names), its
   name says so ("Objects nearby, looking") and its first item is read as it fills; the landmarks tree has a "Looking
   for landmarks." line, the inventory "Inventory not loaded yet." Only the list you're in tells the screen reader its
   item has the focus (`ReaderList`: otherwise WinForms announced the lists filling beside it, and Alt+7's parts and
@@ -2609,7 +2616,10 @@ What the model gets (SojournDescribe, `Sojourn.Session/Offscreen/DescribeApi.cs`
   (`OffscreenRenderer.Shots.cs`, Render's `FrameRequest.CameraLight`). It costs nothing per picture but the midday
   sky's default reflection probe once in each 32 m square (0.12 s on the studio PC's processor, where these pictures
   take 0.06-0.2 s): captures under a preset are kept by the preset, not by each time it's put on
-  (`FrameRenderer.Environment.cs`). Not handled: a place's own coloured lights still add to the subject's.
+  (`FrameRenderer.Environment.cs`). Lights and projectors in the world, worn ones too, are left out of those pictures
+  and the reflection probes captured for them, and so are projector shadows (`ViewSetup.NoLocalLights`: a club's
+  purple had still tinted people, 2026-11-11); a face of the subject's own that glows or is full bright still shows as
+  it is.
   Why (Claude Opus 5.5, 2026-11-11): relighting had followed the dark (the sun under about 10 degrees; from 2026-11-03
   also a picture whose middle came out dim, after a jazz club on Second Life), and at the local grid's dusk neither
   held, so the scripted test's moss-green sweater, (74, 103, 65) in its texture, came out dark teal, (11, 28, 32). The
@@ -2925,12 +2935,17 @@ it).
   (ClrMD's `DataTarget.CreateSnapshotAndAttach`; the first read takes about 2 s here, loading the runtime's reader, later
   ones 0.1 s), at most 12 a session. Managed frames only: a wait inside a native call shows as the call into it. The
   runtime's reader is the package's `mscordaccore.dll` or, from source, the installed runtime's; never fetched from
-  Microsoft's symbol server, ClrMD's last resort, so a package without it logs that instead.
+  Microsoft's symbol server, ClrMD's last resort, so a package without it logs that instead. What the stacks found and
+  what moved off the thread: chat log writes, Send a log's filter, and the session host's steps at login
+  (`SessionHost.StartAllAsync`, run by `Task.Run` as the console probe runs it: 3.1-3.4 s held on her PC, in the agent
+  API's services made by reflection and voice listing sound devices; "Logging in as" waited behind them too), and
+  Send a log's packing. Closing a window releasing its UI Automation provider (UiaDisconnectProvider) at quit is left.
 - **An exception escaping on the window's thread** goes to the session log ("access: unhandled on the window's thread")
   and is said, at most once a minute, the app carrying on (`Program`: WinForms' own exception dialog would take the
   focus and sit on a Details button).
 - **Objects' refreshes** (`RefreshObjects`): one asked for while another waits up to 3 s for names (Show changed to
-  your HUDs just after Alt+7, F5) runs once that ends, and a list the person is in never refreshes by itself.
+  your HUDs just after Alt+7, F5) runs once that ends, a result whose Show, filter or person changed meanwhile is
+  dropped for it, and a list the person is in never refreshes by itself (Lists, above).
 - **Big inventories** (for a tester with thousands of items, a fishing game's catch; `MainForm.Inventory.cs`):
   - A search or Show's list (worn, recent, trash) walks the inventory off the window's thread (`FindFlat`), reading the
     store as Sojourn.Core's walks do (LibreMetaverse's `GetContents` copies a folder's contents under that folder's

@@ -577,7 +577,9 @@ docstring with its checks in full):
   `//thread //pause 60` named by `//threads`, stopped by `//kill`, then nothing running.
 - **describing** (the test has no assistant, so the path without one): Ctrl+D and Ctrl+Shift+D saying it needs the
   assistant and what the lists know, `//describe more`; with the renderer, SojournDescribe's pictures of the visitor,
-  the fixture box and here framed and named, the visitor's lit as at midday and here's in the place's own light. What
+  the fixture box and here framed and named, the visitor's lit as at midday and here's in the place's own light;
+  **describing a look as it loads** has the tester's moss-green worn box come out green lit as at midday, and again
+  with a purple light 1.1 m from her front (0.6% green before the place's lights were left out, 2026-11-11). What
   the model makes of them is judged by hand (`docs/access.md` >
   M5), with a scratch driver like the test's that presses the keys with the assistant running and reads back
   what was announced.

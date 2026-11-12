@@ -140,6 +140,7 @@ public sealed unsafe class ProbeSystem : IDisposable
             CloudNoiseA = env.CloudNoiseA, CloudNoiseB = env.CloudNoiseB,
             CloudNoiseSlotA = env.CloudNoiseSlotA, CloudNoiseSlotB = env.CloudNoiseSlotB,
             SkyU = env.SkyU, SkyIrradianceU = env.SkyIrradianceU, WaterU = env.WaterU, EnvTime = env.EnvTime, LocalSky = env.LocalSky,
+            NoLocalLights = env.NoLocalLights,
             LodView = lodView,
         };
         v.View = Matrix4x4.CreateLookAt(center, center + FaceLook[face], FaceUp[face]);

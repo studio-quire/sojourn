@@ -83,6 +83,17 @@ public sealed partial class MainForm
         _objects.Focus();
     }
 
+    /// <summary>Show changed (or whose things it lists): its rows go at once, the list "looking" until the refresh for
+    /// the new choice fills it. Left until then, the blind tester's worn things stayed in it under Things nearby, and the
+    /// refresh that came put other rows under her open menu (2026-11-11).</summary>
+    void ObjectsShowChanged()
+    {
+        _objectsPages = 0;
+        _objectsLand = null;
+        _objects.Items.Clear();
+        Looking(_objects, ObjectsName, true);
+    }
+
     /// <summary>Enter on the list's last row: the next page, arriving on the first thing it adds.</summary>
     void MoreObjects()
     {

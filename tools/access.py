@@ -8221,7 +8221,7 @@ def describing_looks(run, nonce):
     if not up:
         return
     tex = up.get("asset_id") or up.get("item_id")
-    x, y, z, _ = tester_where()
+    x, y, z, heading = tester_where()
     # (plain while it's in the world: textured there it would be drawn, and its texture loaded, before it's worn)
     box = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y, z], scale=[0.45, 0.45, 0.45], name=name)["id"]
     api("TesselBuild", "take", 30, ids=[box], folder_id=root)
@@ -8243,17 +8243,7 @@ def describing_looks(run, nonce):
         lighting = (pics[0].get("lighting") or "") if pics else ""
         print(f"     (subject_look: {look[:400]})")
         print("     (lighting: " + (lighting or "the place's own") + ")")
-        if pics and pics[0].get("png"):
-            import base64
-            (OUT / "describe-me.png").write_bytes(base64.b64decode(pics[0]["png"]))
-            img = Image.open(OUT / "describe-me.png").convert("RGB")
-            # moss green pixels (74, 103, 65 in its picture): green well over red and blue. An untextured box is grey,
-            # and lit by the sky alone (a dusk's, or a sun overhead) its front came out dark teal, about (12, 29, 32),
-            # and the looser rule this had (green not under blue less 2) passed that at 6% of the picture
-            green = sum(1 for p in img.getdata() if p[1] >= p[0] + 12 and p[1] >= p[2] + 12 and p[1] >= 40)
-            share = green / (img.width * img.height)
-        else:
-            share = 0
+        share = green_share(pics, "describe-me.png")
         # (whatever the hour on the local grid: its sun goes round, and a low one had tinted the sweater teal)
         run.check("the tester's picture is lit as at midday, not by the place's sky", "midday" in lighting, lighting or "no lighting said")
         if held_for_good:
@@ -8264,6 +8254,19 @@ def describing_looks(run, nonce):
             run.check(f"the picture waited for the sweater and says the look had loaded{' (held ' + hold + ')' if hold else ''}",
                       loaded(look), f"{look[:200]}; look {took:.1f} s")
             run.check("(the sweater is green in the picture)", share > 0.04, f"{share:.1%} of it moss green (the sweater's front is about 10%)")
+            # a place's own coloured light by her (a club's purple, the blind tester's descriptions, 2026-11-11): a
+            # picture lit as at midday leaves it out, so the sweater is still green
+            h = math.radians(heading)
+            lamp = api("TesselBuild", "create", 20, shape="box", scale=[0.1, 0.1, 0.1], name=f"Access Purple Lamp {nonce}",
+                       pos=[x + 0.8 * (math.sin(h) + math.cos(h)), y + 0.8 * (math.cos(h) - math.sin(h)), z + 0.3])["id"]
+            try:
+                api("TesselBuild", "modify", 20, id=lamp, light={"color": [1, 0, 1], "intensity": 1, "radius": 8, "falloff": 0})
+                time.sleep(2)   # (no op reports a prim's light back: a second was enough when this failed before the fix)
+                purple = green_share((timed_look(subject="me", detail="brief").get("pictures") or []), "describe-me-purple.png")
+                run.check("a purple light by her leaves the sweater green (a place's own lights aren't in a picture lit as at midday)",
+                          purple > 0.04, f"{purple:.1%} of it moss green (local/access-test/describe-me-purple.png or the run's folder)")
+            finally:
+                gated(run, "(the lamp deleted)", "TesselBuild", "delete", 30, ids=[lamp])
         vid = visitor_id()
         rv = timed_look(subject=vid, detail="brief")
         vp = (rv.get("pictures") or [{}])[0]
@@ -8295,6 +8298,21 @@ def describing_looks(run, nonce):
     finally:
         api("TesselAgent", "detach", 30, item_id=item)
         back_to_chat()
+
+
+def green_share(pics, save_as):
+    """The share of the first picture that's moss green (74, 103, 65 in the sweater's picture): green well over red and
+    blue. An untextured box is grey, and lit by the sky alone (a dusk's, or a sun overhead) its front came out dark teal,
+    about (12, 29, 32), and the looser rule this had (green not under blue less 2) passed that at 6% of the picture. The
+    picture kept in OUT as save_as."""
+    if not (pics and pics[0].get("png")):
+        return 0
+    import base64
+    from PIL import Image
+    (OUT / save_as).write_bytes(base64.b64decode(pics[0]["png"]))
+    img = Image.open(OUT / save_as).convert("RGB")
+    green = sum(1 for p in img.getdata() if p[1] >= p[0] + 12 and p[1] >= p[2] + 12 and p[1] >= 40)
+    return green / (img.width * img.height)
 
 
 def timed_look(**args):

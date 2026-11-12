@@ -536,7 +536,7 @@ public sealed partial class RegionScene
     void AddLightOf(DrawCtx ctx, SceneObject obj, Vector3 pos, Quaternion rot)
     {
         var prim = obj.Prim;
-        if (prim.Light is not { } light || light.Intensity <= 0 || light.Radius <= 0) return;
+        if (prim.Light is not { } light || light.Intensity <= 0 || light.Radius <= 0 || ctx.V.NoLocalLights) return;
         var v = ctx.V;
         var worldPos = pos + ctx.Offset;
         if (Vector3.Distance(worldPos, v.Position) - light.Radius >= v.DrawDistance) return;

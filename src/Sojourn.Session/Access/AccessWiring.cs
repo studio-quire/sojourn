@@ -97,7 +97,8 @@ public sealed class AccessWiring : IDisposable
         return false;
     }
 
-    /// <summary>On the main thread (UIA's window hook is the window's: hwnd, the app's window). keyName: the key that
+    /// <summary>On the window's thread when it's to hook onto hwnd (UIA's window hook is the window's: hwnd, the app's
+    /// window); with an app's own voice, on any thread (Sojourn Access starts it off its window's). keyName: the key that
     /// answers a notice's button i, in words (the app's keys). voice: the app's own UI Automation voice (Sojourn Access
     /// raises notifications from its standard controls), in place of one hooked onto hwnd; greeting: said on becoming
     /// active.</summary>

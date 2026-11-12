@@ -113,9 +113,8 @@ sealed class SendLogForm : Form
 
     /// <summary>The chosen log with other people's words left out, worked out off the window's thread: on the blind
     /// tester's PC the filter held the window over 2 s (2026-11-11), with nothing read meanwhile.</summary>
-    async Task<(LogShare.Result? Result, string? Why)> FilteredAsync()
+    async Task<(LogShare.Result? Result, string? Why)> FilteredAsync(LogShare.Session chosen)
     {
-        var chosen = Chosen;
         return await Task.Run(() =>
         {
             try
@@ -137,7 +136,7 @@ sealed class SendLogForm : Form
         if (_sending || _reviewing) return;
         _reviewing = true;
         (LogShare.Result? Result, string? Why) got;
-        try { got = await FilteredAsync(); }
+        try { got = await FilteredAsync(Chosen); }
         finally { _reviewing = false; }
         if (IsDisposed || _sending) return;
         if (got.Result is not { } r) { Speak(got.Why!); return; }
@@ -176,9 +175,13 @@ sealed class SendLogForm : Form
         Speak("Sending.");
         try
         {
-            var (filtered, why) = await FilteredAsync();
+            // (the log as chosen at the press: the list could be moved while it's filtered)
+            var chosen = Chosen;
+            var (filtered, why) = await FilteredAsync(chosen);
             if (filtered is not { } r) { Speak(why!); return; }
-            var (body, cut) = Pack(r, _note.Text.Trim());
+            // (packed off the window's thread too: gzip at its smallest, again for each cut while it's too long)
+            var note = _note.Text.Trim();
+            var (body, cut) = await Task.Run(() => Pack(chosen, r, note));
             var res = await LogSend.PostAsync(body, token, $"SojournAccess/{AppInfo.Version}");
             if (res.Unreached is { } unreached)
             {
@@ -188,7 +191,7 @@ sealed class SendLogForm : Form
             }
             if (res.Ok)
             {
-                _log?.LogInformation("sendlog: {File} sent ({Lines} lines, {Out} with words left out, {Kb} KB{Cut})", Path.GetFileName(Chosen.Path),
+                _log?.LogInformation("sendlog: {File} sent ({Lines} lines, {Out} with words left out, {Kb} KB{Cut})", Path.GetFileName(chosen.Path),
                     r.Lines, r.LeftOutLines, body.Length / 1024, cut ? ", cut in the middle to fit" : "");
                 Said = "Log sent to Studio Quire. Thank you." + (cut ? " It was long, so part of the middle was left out." : "");
                 DialogResult = DialogResult.OK;
@@ -212,11 +215,11 @@ sealed class SendLogForm : Form
 
     /// <summary>The note and the filtered log as gzipped JSON (LogSend.Pack: a log too long for the relay loses lines
     /// from its middle, saying so in the log).</summary>
-    (byte[] Body, bool Cut) Pack(LogShare.Result r, string note) =>
+    (byte[] Body, bool Cut) Pack(LogShare.Session chosen, LogShare.Result r, string note) =>
         LogSend.Pack(r.Text, text => new JsonObject
         {
             ["v"] = 1, ["app"] = $"Sojourn Access {AppInfo.Version}", ["commit"] = AppInfo.Commit,
-            ["session"] = Chosen.Started.ToString("yyyy-MM-dd HH:mm:ss"), ["current"] = Words(Chosen).StartsWith("This session"),
+            ["session"] = chosen.Started.ToString("yyyy-MM-dd HH:mm:ss"), ["current"] = Words(chosen).StartsWith("This session"),
             ["note"] = note, ["lines"] = r.Lines, ["left_out"] = r.LeftOutLines, ["log"] = text,
         });
 

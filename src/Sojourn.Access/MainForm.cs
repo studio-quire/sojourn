@@ -37,6 +37,10 @@ public sealed partial class MainForm : Form
     Control? _beforeWalk;
     readonly System.Windows.Forms.Timer _slow = new() { Interval = 250 };
     bool _ended;
+    /// <summary>The session's steps at login (SessionHost.StartAllAsync, off the window's thread).</summary>
+    Task? _starting;
+    /// <summary>The session was ended (logged out, or the app quit), perhaps while it was still starting.</summary>
+    public bool SessionEnded => _ended;
 
     public MainForm(AccessOptions opt, AccessSettings set, string[] args)
     {
@@ -115,8 +119,12 @@ public sealed partial class MainForm : Form
         host.Agent.StateDir = StartPlaces.StateDir(_opt.BaseDir, c.Grid, c.First, c.Last);
         // names worded as she chose from the first line (friends online at login): Alt+0's People's names (MainForm.Names.cs)
         Sojourn.Core.World.NameCache.Style = _set.NameStyle;
-        // no greeting while logging in (arriving says where the keys are); after that, when a screen reader starts
-        await host.StartAllAsync(_args, handle, new FormVoice(this), "");
+        // no greeting while logging in (arriving says where the keys are); after that, when a screen reader starts.
+        // Off the window's thread, as the console probe runs it (FormVoice posts to the window itself): on the blind
+        // tester's PC its steps held the window 3.1-3.4 s at login (2026-11-11: the agent API's services made by
+        // reflection, voice listing sound devices), however much of that is compiling
+        await (_starting = Task.Run(() => host.StartAllAsync(_args, handle, new FormVoice(this), "")));
+        if (_ended) return;   // (the login window closed meanwhile: the window's thread was free to take it)
         StartChatLogs(key, c.First, c.Last);
         // no frame loop here: the autopilot (the assistant's walks) steers by the avatar dead-reckoned between updates
         host.Session.Motion.DeadReckon = Environment.GetEnvironmentVariable("SOJOURN_DEAD_RECKON") != "0";
@@ -387,6 +395,9 @@ public sealed partial class MainForm : Form
         _tick.Stop();
         _slow.Stop();
         _eventsStop.Cancel();
+        // the session's steps run off the window's thread at login: they finish before it's stopped, never beside it
+        if (_starting is { IsCompleted: false } starting)
+            try { await starting.WaitAsync(TimeSpan.FromSeconds(10)); } catch { }
         if (Host is { } h)
         {
             var end = Task.Run(async () => { await h.ShutdownAsync(); await h.DisposeAsync(); });

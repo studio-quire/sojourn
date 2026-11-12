@@ -38,7 +38,7 @@ public sealed partial class MainForm
         _objectsShow.SelectedIndex = 0;
         _objectsShow.SelectedIndexChanged += (_, _) =>
         {
-            _objects.AccessibleName = ObjectsName;
+            ObjectsShowChanged();
             _ = RefreshObjects(_objectsShow.Focused);
         };
         BuildObjectsFilter();

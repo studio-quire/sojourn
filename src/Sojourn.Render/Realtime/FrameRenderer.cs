@@ -822,6 +822,9 @@ public sealed partial class FrameRenderer : IDisposable
             Position = req.Position,
             RegionHandle = req.RegionHandle,
             VFov = req.VerticalFov,
+            // a picture lit as at midday has the midday sky and the camera's light alone: the place's own lights had still
+            // tinted people and things (a club's purple, the blind tester's descriptions, 2026-11-11)
+            NoLocalLights = req.CameraLight != null,
         };
         // the person's, or less while the governor brings it in from the far end: new objects within its cap, those
         // already drawn out to 6 m past it (no blinking at the edge)
@@ -1047,7 +1050,7 @@ public sealed partial class FrameRenderer : IDisposable
         // projector shadows (RenderShadowDetail 2): the two projectors in view with the largest pixel area
         v.ShadowProjectors[0] = v.ShadowProjectors[1] = default;
         v.Sky.spot_shadows = 0;
-        if (Quality.Shadows && Quality.ProjectorShadows)
+        if (Quality.Shadows && Quality.ProjectorShadows && !v.NoLocalLights)
         {
             var candidates = new List<RegionScene.ProjectorCandidate>();
             foreach (var (scene, offset) in scenes) scene.CollectProjectors(v, offset, frustum, candidates);
@@ -1118,6 +1121,7 @@ public sealed partial class FrameRenderer : IDisposable
         if (_world.Environment(region.Source.Handle) is { Loaded: false }) pending++;
         if (req.CameraLight is var (flash, flashReach))
             // as a prim's point light with no falloff (RegionScene.AddLight): the forward terms for see-through faces too
+            // (the only light: ViewSetup.NoLocalLights)
             dl.Lights.Add(new GpuLight
             {
                 PositionRadius = new Vector4(req.Position, flashReach),
@@ -1192,7 +1196,13 @@ public sealed partial class FrameRenderer : IDisposable
 
     // --- reflection probes --------------------------------------------------------------------------
 
-    static long SkyKey(ViewSetup v) => v.LocalKey != 0 ? HashCode.Combine(1, v.LocalKey) : HashCode.Combine(2, v.RegionHandle);
+    static long SkyKey(ViewSetup v)
+    {
+        long key = v.LocalKey != 0 ? HashCode.Combine(1, v.LocalKey) : HashCode.Combine(2, v.RegionHandle);
+        // probes captured without the place's lights never serve a view with them, nor the other way round, whatever
+        // sky each had (a preset is applied a frame late if another change came in that frame)
+        return v.NoLocalLights ? HashCode.Combine(3, key) : key;
+    }
 
     void EnsureCaptureShadowMaps(ViewSetup v)
     {

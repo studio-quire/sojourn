@@ -266,6 +266,10 @@ public sealed class ViewSetup
     /// view's own: a headset's lenses see ~100 degrees at more pixels a degree than a desktop's 60, and the viewer's
     /// zoom compensation would have dropped rigged meshes to a coarser level from ~19 m instead of ~30 (detail 2.5).</summary>
     public float? LodFov;
+    /// <summary>The place's own lights and projectors left out, worn ones too (and so no projector shadows): a picture
+    /// lit as at midday with a light at the camera (FrameRequest.CameraLight), whose colours are to be the subject's own,
+    /// and the reflection probes captured for it (FaceView copies it).</summary>
+    public bool NoLocalLights;
     /// <summary>The projectors holding the two projector shadow maps (region handle, prim local id), or zeros.</summary>
     public (ulong Region, uint LocalId)[] ShadowProjectors = new (ulong, uint)[2];
     /// <summary>The view whose camera picks LODs when it isn't this one (probe faces use the main view's).</summary>

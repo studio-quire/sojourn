@@ -291,7 +291,7 @@ public sealed partial class MainForm
         _listsAt = Environment.TickCount64;
         if (_areas.SelectedTab == _peoplePage && Renewable(_people) || _areas.SelectedTab == _chatPage && Renewable(_chatPeople)) _ = RefreshPeople(false);
         if (_areas.SelectedTab == _peoplePage) RefreshFriendsAndGroups(said: false);
-        if (_areas.SelectedTab == _objectsPage && !_objects.Focused && !_objectsBusy) _ = RefreshObjects(false);
+        if (_areas.SelectedTab == _objectsPage && !_objects.Focused && !_objectsBusy) _ = RefreshObjectsAsync(false, behind: true);
     }
 
     bool _peopleBusy, _objectsBusy;
@@ -364,11 +364,15 @@ public sealed partial class MainForm
         if (_peopleAgain is { } again) { _peopleAgain = null; await RefreshPeople(again.Asked, again.Into); }
     }
 
-    async Task RefreshObjects(bool asked)
+    Task RefreshObjects(bool asked) => RefreshObjectsAsync(asked, behind: false);
+
+    /// <summary>behind: the list kept current while she's elsewhere (every 3 s, a friend's pointing), so it isn't filled
+    /// if she's gone into it meanwhile: the rows moving and her item read again under her.</summary>
+    async Task RefreshObjectsAsync(bool asked, bool behind)
     {
         if (Host?.Session.Online != true) return;
         // (Show changed while a refresh waits up to 3 s for names: a list the person is in never refreshes by itself)
-        if (_objectsBusy) { _objectsAgain = asked || _objectsAgain == true; return; }
+        if (_objectsBusy) { ObjectsAgain(asked, behind); return; }
         _objectsBusy = true;
         bool first = _objects.Items.Count == 0;
         if (first) Looking(_objects, ObjectsName, true);
@@ -377,11 +381,12 @@ public sealed partial class MainForm
             bool worn = ShowingWorn, others = ShowingOthers;
             var one = ShowingOne ? _wornBy : null;
             var filter = ObjectsFilter;
+            int limit = ObjectsLimit, pages = _objectsPages;   // (the limit first: another region starts the pages again)
             // scripted things' names asked again (F5 all of them, else those over 5 s old): a script renaming its
             // object reaches only those who have it selected, so a list holding names for minutes missed renames
             var page = worn ? WornPage(await WornAsync(), filter)
-                : one is { } by ? await _ops.NearbyAsync(512, ObjectsLimit, filter, scan: filter != null, wornBy: by.Id)   // (one person's: wherever they are)
-                : await _ops.NearbyAsync(_set.ObjectsRange, ObjectsLimit, filter, renew: filter != null ? null : asked ? 0 : 5, scan: filter != null, others: others);
+                : one is { } by ? await _ops.NearbyAsync(512, limit, filter, scan: filter != null, wornBy: by.Id)   // (one person's: wherever they are)
+                : await _ops.NearbyAsync(_set.ObjectsRange, limit, filter, renew: filter != null ? null : asked ? 0 : 5, scan: filter != null, others: others);
             // one person's things by name (all at their distance); what a friend pointed at among things nearby
             var things = one != null ? page.Things.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).ToList() : await WithPointedAsync(page.Things);
             if (_objectsAToZ && !worn) things = things.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
@@ -391,26 +396,53 @@ public sealed partial class MainForm
             if (filter != null && !worn && one == null && things.Count == 0 && WornPage(await WornAsync(), filter).Things.Count is var n and > 0)
                 wornHint = (n == 1 ? " One thing you wear has it" : $" {n} things you wear have it") + ": Alt+Shift+7 shows what you wear.";
             await ListDelay(_objects);
-            var items = things.Select(t => (Text: ObjectLine(t), Key: t.Id.ToString(), Tag: (object)t)).ToList();
-            if (page.More > 0) items.Add(($"More: {page.More} further on. Enter lists the next {Math.Min(page.More, ObjectsPage)}.", MoreRow, null!));
-            Fill(_objects, items, ObjectsEmpty(filter) + wornHint);
-            LandAfterMore();
-            if (_objectsAgain == null) _ = LandOnPointedAsync();   // (Control+Shift+P; a refresh still to come has the list as asked)
-            _objects.AccessibleName = ObjectsName;
-            if (asked) Reader?.Answer(ObjectsCount(things, page, filter) + wornHint, keep: false);
-            // the parts below follow the object selected, unless the person is in them
-            // (or the same one renamed: "Parts of" its new name)
-            if (_objects.FocusedItem?.Tag is PersonOps.Thing sel && (sel.Id != _partsOf || _parts.AccessibleName != $"Parts of {sel.Name}")
-                && !_parts.Focused && !_faces.Focused) _ = RefreshPartsAsync(sel);
-            else if (things.Count == 0 && !_parts.Focused && !_faces.Focused) { _partsOf = UUID.Zero; Fill(_parts, new(), "No object selected."); Fill(_faces, new(), "No part selected."); }
+            // what it was asked for changed while it looked (Show, whose things, the filter, More's pages): it's left to
+            // the refresh that change brings (a filter still being typed, to its timer's). Filled anyway, the blind
+            // tester's list held her worn things under Show's things nearby, her own ten counted as "10 objects."
+            // (2026-11-11, 19:49:18); she went into it and opened her bag's actions, and the refresh for nearby then put
+            // the 200 nearest in their place, the focus on the first, a pose ball, which Take off then acted on
+            bool shown = worn == ShowingWorn && others == ShowingOthers && one?.Id == (ShowingOne ? _wornBy?.Id : null) && pages == _objectsPages;
+            if (!shown || filter != ObjectsFilter)
+            {
+                if (!shown || !_objectsFilterTimer.Enabled) ObjectsAgain(asked, behind);
+            }
+            else if (!(behind && _objects.Focused && _objects.Items.Count > 0 && !OnlyEmptyLine(_objects)))
+            {
+                var items = things.Select(t => (Text: ObjectLine(t), Key: t.Id.ToString(), Tag: (object)t)).ToList();
+                if (page.More > 0) items.Add(($"More: {page.More} further on. Enter lists the next {Math.Min(page.More, ObjectsPage)}.", MoreRow, null!));
+                Fill(_objects, items, ObjectsEmpty(filter) + wornHint);
+                LandAfterMore();
+                if (_objectsAgain == null) _ = LandOnPointedAsync();   // (Control+Shift+P; a refresh still to come has the list as asked)
+                _objects.AccessibleName = ObjectsName;
+                if (asked) Reader?.Answer(ObjectsCount(things, page, filter) + wornHint, keep: false);
+                // the parts below follow the object selected, unless the person is in them
+                // (or the same one renamed: "Parts of" its new name)
+                if (_objects.FocusedItem?.Tag is PersonOps.Thing sel && (sel.Id != _partsOf || _parts.AccessibleName != $"Parts of {sel.Name}")
+                    && !_parts.Focused && !_faces.Focused) _ = RefreshPartsAsync(sel);
+                else if (things.Count == 0 && !_parts.Focused && !_faces.Focused) { _partsOf = UUID.Zero; Fill(_parts, new(), "No object selected."); Fill(_faces, new(), "No part selected."); }
+            }
         }
         finally
         {
             _objectsBusy = false;
             if (first) Looking(_objects, ObjectsName, false);
         }
-        if (_objectsAgain is { } again) { _objectsAgain = null; await RefreshObjects(again); }
+        if (_objectsAgain is { } again)
+        {
+            _objectsAgain = null;
+            await RefreshObjectsAsync(again, _objectsAgainBehind);
+        }
     }
+
+    /// <summary>A refresh again once the one under way ends: said if any of those asking asked, kept behind her (not
+    /// filled in the list she's in) only if all of them were.</summary>
+    void ObjectsAgain(bool asked, bool behind)
+    {
+        _objectsAgainBehind = _objectsAgain == null ? behind : _objectsAgainBehind && behind;
+        _objectsAgain = asked || _objectsAgain == true;
+    }
+
+    bool _objectsAgainBehind;
 
     /// <summary>The list's items replaced, the one the person was on still focused (by key), or a line saying it's empty.
     /// <paramref name="under"/>: in under her, on the empty line in the list she's in, with no item made the focused one,

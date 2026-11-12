@@ -147,8 +147,10 @@ sealed class AccessApp : ApplicationContext
             _login.Activate();
             _login.Failed(words);
         };
-        try { await _main.StartAsync(choice); }
-        catch (Exception e) { _login.Failed($"Couldn't start: {e.Message}"); return; }
+        var main = _main;
+        try { await main.StartAsync(choice); }
+        catch (Exception e) { if (!main.SessionEnded) _login.Failed($"Couldn't start: {e.Message}"); return; }
+        if (main.SessionEnded) return;   // (quit while it started: the login window is gone)
         _watch.Start();
     }
 

@@ -33,7 +33,11 @@ public sealed partial class MainForm
             _objectsShow.Items[ShowOne] = choice;
         }
         if (_objectsShow.SelectedIndex != ShowOne) _objectsShow.SelectedIndex = ShowOne;   // (refreshes)
-        else _ = RefreshObjects(false);
+        else
+        {
+            ObjectsShowChanged();
+            _ = RefreshObjects(false);
+        }
         GoArea(_objectsPage);
     }
 

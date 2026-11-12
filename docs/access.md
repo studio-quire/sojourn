@@ -42,7 +42,10 @@ HUD games, a profile picture. Each one closed also ends some account sharing.
   New things are announced and wait; a key goes to them.
 - **Works fully without a Claude account** (decided, the user, 2026-10-29). The aim is everything Radegast does, and the
   new spatial tools (bearings, routes, walk mode, sound), with no assistant; what it still lacks next to Radegast is in
-  `docs/access-gaps.md`. The assistant (description, "do this for me", building from words) is the layer above.
+  `docs/access-gaps.md`. The assistant (description, "do this for me", building from words) is the layer above. Where
+  this doesn't reach: what only a picture says. A HUD that's one picture of buttons is read by the assistant, so
+  without one only its numbered faces remain, and describing has only what the lists know; nothing short of a local
+  model reading pictures would change that.
 - **Familiar where Radegast already works.** Her `//go xyz` routes live in notecards; they should run
   here verbatim. Alt+1-9 areas, Ctrl+Tab between conversations, Enter / Shift+Enter / Ctrl+Enter for
   say / whisper / shout, the Applications key for an item's actions.
@@ -958,7 +961,13 @@ Five logs with her notes (our words): `tester-20261111T215734-f0bf01` (16:16-16:
   she wears, the list most likely refreshed under the open menu to things nearby (their count was said as it opened),
   and Take off acted on the row in its place, a pose ball she'd sat on, saying "Took off M Pose Ball." with nothing
   taken off. Now the menu acts on what it was opened on, Take off is only for what she wears and says so once it's off,
-  and the agent API's detach refuses what isn't worn. What refreshed the list isn't in the log (keys aren't).
+  and the agent API's detach refuses what isn't worn. What refreshed the list, read again with 1110 out (by two
+  independent reviews): at 19:49:18 two refreshes landed under the Show after the one each was for, "No HUDs, 89 things
+  worn." (others' attachments counted as hers) and "10 objects." (her own ten, under Things nearby), so the list held
+  her worn things while Show said nearby; at 19:49:25 she opened her bag's actions in it and the refresh for nearby
+  ("200 objects, 663 more further on.") filled the list with the nearest 200, the focus falling to the first, the pose
+  ball she'd sat on that evening. The next build empties the list when Show changes and drops a refresh whose Show
+  changed while it looked.
 - **Send a log held the window** 2-3 s filtering her log on its thread; now off it. Her ten logs a day on the relay ran
   out that evening (thirty since).
 - The 16:16 session otherwise went well, she said: a submarine, a sailboat and the car toured and told by `//ride`.
