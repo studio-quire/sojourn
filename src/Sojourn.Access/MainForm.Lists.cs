@@ -73,8 +73,11 @@ public sealed partial class MainForm
         _objectsPage = new TabPage("Objects nearby") { Name = "objectsPage", AccessibleName = "Objects nearby" };
         _objects = List("objects", "Objects nearby");
         _objectMenu = new ContextMenuStrip { Name = "objectMenu", AccessibleName = "Actions" };
+        // on the thing the menu was opened on, whatever the list holds by the time she picks: a refresh under the open
+        // menu (Show changing, F5's answer coming late) had Take off act on the row in its place, a pose ball she'd sat
+        // on rather than the bag she wore (the blind tester, 2026-11-11)
         void Item(string text, Action<PersonOps.Thing> act) =>
-            _objectMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_objects.FocusedItem?.Tag is PersonOps.Thing t) act(t); }));
+            _objectMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_objectMenuThing is { } t) act(t); }));
         Item("&Touch", t => _ = TouchThingAsync(t));
         Item("&Sit", t => _ = ThingOpAsync("requestSit", t, $"Sitting on {t.Name}."));
         var sitItem = _objectMenu.Items[^1];
@@ -140,7 +143,7 @@ public sealed partial class MainForm
         // something worn is touched, described, its parts listed; what's in the world has the rest
         _objectMenu.Opening += (_, _) =>
         {
-            var sel = _objects.FocusedItem?.Tag as PersonOps.Thing;
+            var sel = _objectMenuThing = _objects.FocusedItem?.Tag as PersonOps.Thing;
             bool mine = sel is { Hud: true }, others = sel != null && sel.WornBy != UUID.Zero, world = sel != null && !mine && !others;
             foreach (ToolStripItem i in _objectMenu.Items)
                 i.Visible = world || i.Text is "&Touch" or "&Describe" or "Deta&ils" or "W&here" or "&Parts" or "&Refresh";
@@ -208,12 +211,19 @@ public sealed partial class MainForm
         _ = RefreshObjects(false);
     }
 
-    /// <summary>Something worn taken off, back into the inventory (Delete on it, or Take off): never deleted.</summary>
+    /// <summary>The thing the objects list's menu was last opened on (its items act on it).</summary>
+    PersonOps.Thing? _objectMenuThing;
+
+    /// <summary>Something worn taken off, back into the inventory (Delete on it, or Take off): never deleted. Only what she
+    /// wears now, and "Took off" only once the region no longer has it on her (it once said so of a pose ball, 2026-11-11).</summary>
     async Task TakeOffWornAsync(PersonOps.Thing t)
     {
+        if (!WornByMe(t.Id)) { Answer($"{t.Name} isn't something you're wearing now."); _ = RefreshObjects(false); return; }
         var r = await _ops.DoAsync("TesselAgent", "detach", new JsonObject { ["object_id"] = t.Id.ToString() });
-        Answer(PersonOps.Error(r) is { } e ? $"Didn't take off {t.Name}: {e}" : $"Took off {t.Name}.");
-        await Task.Delay(1000);
+        if (PersonOps.Error(r) is { } e) { Answer($"Didn't take off {t.Name}: {e}"); return; }
+        long until = Environment.TickCount64 + 8000;
+        while (WornByMe(t.Id) && Environment.TickCount64 < until) await Task.Delay(200);
+        Answer(WornByMe(t.Id) ? $"{t.Name} is still on you: Second Life hasn't taken it off." : $"Took off {t.Name}.");
         _ = RefreshObjects(false);
     }
 
@@ -375,14 +385,19 @@ public sealed partial class MainForm
             // one person's things by name (all at their distance); what a friend pointed at among things nearby
             var things = one != null ? page.Things.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).ToList() : await WithPointedAsync(page.Things);
             if (_objectsAToZ && !worn) things = things.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            // nothing nearby by those words, but something she wears has them: the list shows nearby things only, and a
+            // HUD looked for there was missing until she found Show (the blind tester, 2026-11-11)
+            var wornHint = "";
+            if (filter != null && !worn && one == null && things.Count == 0 && WornPage(await WornAsync(), filter).Things.Count is var n and > 0)
+                wornHint = (n == 1 ? " One thing you wear has it" : $" {n} things you wear have it") + ": Alt+Shift+7 shows what you wear.";
             await ListDelay(_objects);
             var items = things.Select(t => (Text: ObjectLine(t), Key: t.Id.ToString(), Tag: (object)t)).ToList();
             if (page.More > 0) items.Add(($"More: {page.More} further on. Enter lists the next {Math.Min(page.More, ObjectsPage)}.", MoreRow, null!));
-            Fill(_objects, items, ObjectsEmpty(filter));
+            Fill(_objects, items, ObjectsEmpty(filter) + wornHint);
             LandAfterMore();
             if (_objectsAgain == null) _ = LandOnPointedAsync();   // (Control+Shift+P; a refresh still to come has the list as asked)
             _objects.AccessibleName = ObjectsName;
-            if (asked) Reader?.Answer(ObjectsCount(things, page, filter), keep: false);
+            if (asked) Reader?.Answer(ObjectsCount(things, page, filter) + wornHint, keep: false);
             // the parts below follow the object selected, unless the person is in them
             // (or the same one renamed: "Parts of" its new name)
             if (_objects.FocusedItem?.Tag is PersonOps.Thing sel && (sel.Id != _partsOf || _parts.AccessibleName != $"Parts of {sel.Name}")

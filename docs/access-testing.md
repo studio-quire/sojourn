@@ -323,7 +323,8 @@ docstring with its checks in full):
 - **the quit question**: Alt+F4 asks, Escape stays.
 - **a script menu**, **a text box**, **a permission question**: answered by keys; a menu's announcement said again
   when a key cuts it off (not when silenced by Control alone, nor once answered in Notices); a menu of twelve, minus and equals pressing Next and
-  Back.
+  Back; the fixture's `fmenuchat` menu, whose words it also says to her in chat (a freight HUD's way), both cut by
+  typing: its words said three times in all (the menu, the chat line, said again once), not four.
 - **a dance machine's menu, ignored**: the fixture's `fdance` menu, sent again after each pick: answered by 1, the
   new one picked by itself; Delete Ignore in its keys, Ignore (Delete) on its Applications menu; Delete ignores it
   (the object hears nothing), said with what's left, the focus on the offer under it, then none.
@@ -416,7 +417,11 @@ docstring with its checks in full):
   never read out. Second Life's compiler has its own wording and numbers its lines from nought, which the code allows for without
   the local grid showing it; a real run-time error there is still to be seen.
 - **your HUDs**: a two-prim HUD made and worn (its script put in through the confirmation by keys); named by
-  Ctrl+Shift+W and `//outfit`; Show: Your HUDs lists its parts; Enter on its button heard by its script.
+  Ctrl+Shift+W and `//outfit`; `//touch Play` presses its button by name (SojournHud press), as the blind tester
+  presses hers; Show: Your HUDs lists its parts; Enter on its button heard by its script; Delete takes it off. With
+  `ACCESS_SOFTWARE=1` (on the processor, nothing drawn between pictures, as on her PC) the `//touch` comes before
+  anything has drawn the region, the case that lost her HUD after borders (2026-11-11): before the fix it failed
+  there with her words, "Nothing called Play within 10 metres or on your HUDs"; on the GPU the idle frames hide it.
 - **a HUD that's one picture of buttons**: a painted driver panel (a title and four labelled buttons, uploaded) on one
   thin box worn at HUD Center, its script saying the face and llDetectedTouchST of each touch. SojournHud look draws it
   out of sight (red where the brake is painted); its parts end with the reading line; its faces are only "The front,

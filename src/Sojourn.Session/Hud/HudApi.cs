@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using LibreMetaverse;
+using Microsoft.Extensions.Logging;
 using Sojourn.Core;
 using Sojourn.Core.Agents;
 using Sojourn.Core.Leap;
@@ -58,9 +59,25 @@ public sealed class HudApi : LeapApi
 
     /// <summary>What's placed now; a renderer that can't answer (restarting after a lost GPU, stopped) is said so,
     /// rather than read as no HUDs worn.</summary>
-    async Task<HudsPlaced> PlacedAsync(CancellationToken ct) =>
-        await _screen.WithHudsAsync<HudsPlaced?>((placed, _) => placed, null, ct)
-        ?? throw new LeapError("the HUDs can't be seen just now (the view isn't running: try again in a moment)");
+    async Task<HudsPlaced> PlacedAsync(CancellationToken ct)
+    {
+        var placed = await _screen.WithHudsAsync<HudsPlaced?>((p, _) => p, null, ct)
+            ?? throw new LeapError("the HUDs can't be seen just now (the view isn't running: try again in a moment)");
+        if (placed.Objects.Count == 0) NonePlaced();
+        return placed;
+    }
+
+    /// <summary>The renderer placed no HUDs: what the region says she wears on HUD points, into the log, so a log tells
+    /// a view that lost them (as after a crossing, 2026-11-11) from HUDs the region hasn't sent.</summary>
+    void NonePlaced()
+    {
+        if (S.Client is not { } c || S.Region is not { } w) return;
+        uint self = c.Self.LocalID;
+        int worn = self == 0 ? 0 : w.Prims.Values.Count(p => p.ParentID == self && Sojourn.Render.Realtime.Hud.IsHudPoint((int)p.PrimData.AttachmentPoint));
+        var me = w.AvatarById(c.Self.AgentID);
+        S.Log.LogInformation("HUDs: the view placed none, where {Region} has {Worn} worn on HUD points (my local id {Self}; my avatar there {Avatar})",
+            w.Name, worn, self, me == null ? "not sent" : $"local id {me.LocalID}");
+    }
 
     async Task<JsonNode?> ListAsync(CancellationToken ct)
     {

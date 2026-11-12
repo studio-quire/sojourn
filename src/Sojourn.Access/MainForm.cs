@@ -490,14 +490,15 @@ public sealed partial class MainForm : Form
     // --- a notice cut off --------------------------------------------------------------------------------------------
 
     (string Text, long At, LineFrom From, Guid Id)? _noticeSaid;
-    bool _noticeCut;
+    long _noticeCutAt;        // when a key or focus move cut it (0: not cut)
+    string _noticeCutBy = "";
     nint _focusWas;
     long _focusMovedAt;
 
     /// <summary>A notice just handed to the reader (the announcer's thread).</summary>
     void NoticeSaid(string line, LineFrom from, Guid id)
     {
-        lock (_noticeLock) { _noticeSaid = (line, Environment.TickCount64, from, id); _noticeCut = false; }
+        lock (_noticeLock) { _noticeSaid = (line, Environment.TickCount64, from, id); _noticeCutAt = 0; }
     }
 
     readonly object _noticeLock = new();
@@ -505,7 +506,9 @@ public sealed partial class MainForm : Form
     /// <summary>The screen reader stops speaking at a key press or a focus move, so a notice said a moment before one is
     /// lost (the guided test: "Control N to answer." gone under Alt+1). If one came before the notice could have been
     /// heard out, it's said again, once, when the keys have rested a second; not once the focus has been in the notices
-    /// (they read it there), nor if it no longer waits (answered there, or gone).</summary>
+    /// (they read it there), nor if it no longer waits (answered there, or gone), nor when its words were read after the
+    /// cut or said again already in another line (<see cref="WordsCovered"/>: a HUD saying its dialog's words in chat
+    /// too had them said a third and fourth time, 2026-11-11). The log says what cut it and how far in.</summary>
     void NoticeCutOff()
     {
         long now = Environment.TickCount64;
@@ -522,11 +525,20 @@ public sealed partial class MainForm : Form
             // about as long as a quick screen reader voice takes over it, at least a second and at most three
             long heard = n.At + Math.Clamp(n.Text.Length * 45L, 1000, 3000);
             long cut = Math.Max(RealInput.LastKeyAt, _focusMovedAt);
-            if (!_noticeCut && cut > n.At && cut < heard) _noticeCut = true;
-            if (!_noticeCut) { if (now > heard) _noticeSaid = null; return; }
+            if (_noticeCutAt == 0 && cut > n.At && cut < heard)
+                (_noticeCutAt, _noticeCutBy) = (cut, RealInput.LastKeyAt >= _focusMovedAt ? "a key" : "the focus moving");
+            if (_noticeCutAt == 0) { if (now > heard) _noticeSaid = null; return; }
             if (now - RealInput.LastKeyAt < KeysRest || now - _focusMovedAt < KeysRest) return;
             _noticeSaid = null;
-            if (n.Id == Guid.Empty || Host?.Session.Notify.Get(n.Id) != null) again = n.Text;
+            string why = $"cut by {_noticeCutBy} {_noticeCutAt - n.At} ms in";
+            if (n.Id != Guid.Empty && Host?.Session.Notify.Get(n.Id) == null) Host?.Log.LogInformation("notice not said again ({Why}): it no longer waits", why);
+            else if (WordsCovered(n.Text, n.At, _noticeCutAt) is { } covered) Host?.Log.LogInformation("notice not said again ({Why}): its words were {Covered}", why, covered);
+            else
+            {
+                again = n.Text;
+                SaidAgain(again);
+                Host?.Log.LogInformation("notice said again ({Why})", why);
+            }
         }
         if (again != null && !_set.MuteAll) Reader?.Say(AnnounceKind.Notices, again, keep: false, from, again: true);
     }

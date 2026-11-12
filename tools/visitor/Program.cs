@@ -31,6 +31,8 @@
 //                                                         end), full rights, in the viewer's own format, offered to UUID
 //   conferenceline UUID TEXT                              TEXT to UUID as a conference's line, as Second Life sends one
 //   fmenu12 UUID                                          a script menu of twelve (One ... Ten, Next, Back)
+//   fmenuchat UUID                                        a script menu ("Access Job: ...", OK) whose words the fixture
+//                                                         also says to that avatar in chat, as a freight HUD does
 //   fdance UUID                                           a dance machine's menu (Waltz, Tango): each pick says
 //                                                         "danced X" and sends the menu again
 //   heard [N] | events [N] [since S]                      the last N chat lines heard / other things received (script
@@ -352,6 +354,7 @@ static class Program
             case "stand": return await Stand(rest);
             case "fmenu": return Tell("menu", rest);
             case "fmenu12": return Tell("menu12", rest);
+            case "fmenuchat": return Tell("menuchat", rest);
             case "fdance": return Tell("dance", rest);
             case "ftext": return Tell("text", rest);
             case "fperm": return Tell("perm", rest);
@@ -952,6 +955,8 @@ static class Program
                 string cmd = llList2String(w, 0);
                 key who = (key)llList2String(w, 1);
                 if (cmd == "menu") llDialog(who, "Access Menu: pick one.", ["Red", "Green", "Blue"], chMenu);
+                // a freight HUD's way: its menu's words said in chat to the person too, at once
+                else if (cmd == "menuchat") { llDialog(who, "Access Job: delivered to the depot, all done.", ["OK"], chMenu); llRegionSayTo(who, 0, "Access Job: delivered to the depot, all done."); }
                 else if (cmd == "menu12") llDialog(who, "Access Long Menu: pick one.", ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Next", "Back"], chMenu);
                 else if (cmd == "dance") llDialog(who, "Access Dance: pick a dance.", ["Waltz", "Tango"], chDance);
                 else if (cmd == "text") llTextBox(who, "Access Box: type a word.", chText);

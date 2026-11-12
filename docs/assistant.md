@@ -817,7 +817,7 @@ teleport home, and the assistant could neither see nor stop it.
   tour vehicle deleting itself as it puts you off) leaves it until you log in again. So 3 s after, what still animates
   you besides the region's own is logged ("after standing from X: still animating me: ..."), and if any of it is the
   seat's, or has no source and isn't yours, the AO's or the agent API's, it's said: "X may have left its pose on you
-  after you stood up. If you're still in it, logging out and in again clears it" (notice `PoseLeft`; 2026-11-11, after
+  now you're off it. If you're still in it, logging out and in again clears it" (notice `PoseLeft`; 2026-11-11, after
   a blind tester stayed in a tour jet's flying pose through a stop-all ball until she logged in again; what Second Life
   reports as such an override's source is unseen, so the log line is the check). Nothing else from a seat lingers here: Sojourn doesn't take up
   objects' camera parameters or sit camera offsets at all; controls scripts took follow the region's take/release

@@ -346,7 +346,7 @@ def admin_call(method, path, secret, timeout=60):
 
 def log_checks(check, token, name, secret, day_limit):
     """The log endpoints as Sojourn Access and relay.py use them; every log sent here is deleted again. day_limit: also
-    send until the day's limit refuses one (ten logs: for the local check)."""
+    send until the day's limit refuses one (thirty logs: for the local check)."""
     gz = {"content-type": "application/gzip"}
     doc = {"v": 1, "app": "Sojourn Access check", "session": "2026-01-02 10:00:00", "note": "a check's note: nothing happened",
            "log": "Sojourn Access session log, as sent\n10:00:01 info: sojourn[0] a check's line\n"}
@@ -389,13 +389,13 @@ def log_checks(check, token, name, secret, day_limit):
             check(f"{what} is refused", s == want, f"{s} {body if s != want else ''}")
         if day_limit:
             n = 1
-            while n < 12:
+            while n < 32:
                 s, body, _ = call("POST", "/relay/log", token, raw=packed(doc), headers=gz)
                 if s != 200:
                     break
                 sent.append(body["id"])
                 n += 1
-            check("past ten a day, a log is refused with a plain sentence", s == 429 and n == 10
+            check("past thirty a day, a log is refused with a plain sentence", s == 429 and n == 30
                   and "a day" in body.get("error", {}).get("message", ""), f"{n} taken, then {s} {body}")
         if lid:
             s, _, _ = admin_call("DELETE", f"/relay/admin/logs/{lid}", secret)

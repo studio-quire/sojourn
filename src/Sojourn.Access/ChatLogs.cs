@@ -27,6 +27,15 @@ public sealed class ChatLogs(string dir)
     readonly Dictionary<string, string> _files = new();
     readonly HashSet<string> _headed = new();
     string _day = "";
+    // lines go to disk from a thread of their own: a write once held the window 2.1 s on the blind tester's PC (its stack in
+    // her log, 2026-11-11), twice in an afternoon. Everything that touches the files holds _lock; readers wait for what's
+    // queued first, so a tab opened again still has the line just said
+    readonly object _lock = new();
+    readonly System.Collections.Concurrent.BlockingCollection<(string Key, string Title, string Line, DateTime At)> _queue = new();
+    int _pending;
+    Thread? _writer;
+    /// <summary>A line couldn't be written (from the writer's thread): said once by the window.</summary>
+    public Action<Exception>? Failed { get; set; }
     static readonly Regex Ending = new(@" - [0-9a-f]{8}$", RegexOptions.Compiled);
 
     public string Dir => dir;
@@ -54,10 +63,36 @@ public sealed class ChatLogs(string dir)
         return name.Length > 0 ? name : "Someone";
     }
 
-    /// <summary>A line added, under a new line with the date when the day or the run of lines has changed.</summary>
+    /// <summary>A line added, under a new line with the date when the day or the run of lines has changed; written on the
+    /// writer's thread, so this never waits on the disk.</summary>
     public void Add(string key, string title, string line)
     {
-        var now = DateTime.Now;
+        Interlocked.Increment(ref _pending);
+        _queue.Add((key, title, line, DateTime.Now));
+        if (_writer == null)
+            lock (_queue)
+                if (_writer == null) (_writer = new Thread(Write) { IsBackground = true, Name = "chat logs", Priority = ThreadPriority.BelowNormal }).Start();
+    }
+
+    void Write()
+    {
+        foreach (var (key, title, line, at) in _queue.GetConsumingEnumerable())
+        {
+            try { lock (_lock) Append(key, title, line, at); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Failed?.Invoke(e); }
+            finally { Interlocked.Decrement(ref _pending); }
+        }
+    }
+
+    /// <summary>What's queued written first (at most 3 s: a disk that slow is no reason to hang a reader for ever).</summary>
+    void Settle()
+    {
+        var until = Environment.TickCount64 + 3000;
+        while (Volatile.Read(ref _pending) > 0 && Environment.TickCount64 < until) Thread.Sleep(10);
+    }
+
+    void Append(string key, string title, string line, DateTime now)
+    {
         var path = Existing(key);
         if (path == null)
         {
@@ -76,6 +111,12 @@ public sealed class ChatLogs(string dir)
     /// <summary>The conversation's last lines, for a tab opened again; none without a log.</summary>
     public List<string> Tail(string key, int lines)
     {
+        Settle();
+        lock (_lock) return TailLocked(key, lines);
+    }
+
+    List<string> TailLocked(string key, int lines)
+    {
         if (Existing(key) is not { } path) return new();
         try
         {
@@ -92,13 +133,23 @@ public sealed class ChatLogs(string dir)
     /// <summary>Every log, the most recent first, named as the conversation was when it began.</summary>
     public List<Log> All()
     {
+        Settle();
+        lock (_lock) return AllLocked();
+    }
+
+    List<Log> AllLocked()
+    {
         if (!Directory.Exists(dir)) return new();
         return Directory.EnumerateFiles(dir, "*.txt")
             .Select(p => new Log(p, Ending.Replace(Path.GetFileNameWithoutExtension(p), ""), File.GetLastWriteTime(p)))
             .OrderByDescending(l => l.Last).ToList();
     }
 
-    public Log? Of(string key) => Existing(key) is { } path ? All().FirstOrDefault(l => l.Path == path) : null;
+    public Log? Of(string key)
+    {
+        Settle();
+        lock (_lock) return Existing(key) is { } path ? AllLocked().FirstOrDefault(l => l.Path == path) : null;
+    }
 
     /// <summary>The log's words as a window shows them: at most the last two million characters, from a line's start.</summary>
     public static string Read(string path)
@@ -113,6 +164,12 @@ public sealed class ChatLogs(string dir)
 
     /// <summary>A log deleted; false if it isn't one of these.</summary>
     public bool Delete(string file)
+    {
+        Settle();
+        lock (_lock) return DeleteLocked(file);
+    }
+
+    bool DeleteLocked(string file)
     {
         var path = Path.GetFullPath(Path.Combine(dir, Path.GetFileName(file)));
         if (!File.Exists(path) || !string.Equals(Path.GetExtension(path), ".txt", StringComparison.OrdinalIgnoreCase)) return false;

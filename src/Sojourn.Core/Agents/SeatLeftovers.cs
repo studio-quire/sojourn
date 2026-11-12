@@ -154,7 +154,7 @@ public sealed class SeatLeftovers
         });
         _s.Log.LogInformation("after standing from {Seat}: still animating me: {List}", name, string.Join("; ", words));
         if (left)
-            _s.Notify.Add("PoseLeft", "notify", $"{name} may have left its pose on you after you stood up. If you're still in it, logging out and in again clears it",
+            _s.Notify.Add("PoseLeft", "notify", $"{name} may have left its pose on you now you're off it. If you're still in it, logging out and in again clears it",
                 Notifications.None);
     }
 

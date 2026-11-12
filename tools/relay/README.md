@@ -26,8 +26,8 @@ What it answers, for a token's holder (`x-api-key: <token>` or `Authorization: B
   their own (`anonymous`) for 30 days, at most 300 (the oldest go first). Limits: three a day from one IP address
   (per UTC day) and fifty a day from everyone (any 24 hours), each refused with a plain sentence (429). The address is
   never stored: the day's count is kept under the SHA-256 of the ADMIN secret, the address and the date, and those
-  counts are deleted when the day changes. Without the ADMIN secret set it answers 503. At most 1.5 MB as sent and 24 MB unpacked (413), ten a token in
-  any 24 hours (429, a plain sentence); answered `{id, kept_until}`.
+  counts are deleted when the day changes. Without the ADMIN secret set it answers 503. At most 1.5 MB as sent and 24 MB unpacked (413), thirty a token in
+  any 24 hours (429, a plain sentence; ten until 2026-11-11); answered `{id, kept_until}`.
 - `POST /relay/messages`, `{"text": "..."}`: the holder's message to the Claude sessions building Sojourn Access
   (Access's builders' tab, Control+Shift+B; docs/access-app.md > Messages to the builders), what they typed and nothing
   else: at most 4,000 characters, a hundred in any 24 hours (429, a plain sentence), a relay token in it replaced by

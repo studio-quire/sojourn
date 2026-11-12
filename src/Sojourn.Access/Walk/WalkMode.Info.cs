@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
 using LibreMetaverse;
+using Microsoft.Extensions.Logging;
 using Sojourn.Render.World;
 using Vector3 = System.Numerics.Vector3;
 
@@ -240,6 +241,7 @@ public sealed partial class WalkMode
     {
         if (_region != null && b.RegionName != _region && _seated) _crossed = (b.RegionName, now);
         bool? seated = b.Sitting ? true : _crossed != null || _seated ? SeatKnown() : false;
+        if (b.Sitting) NoteSeat();
         bool judged = false;
         if (_crossed is { } x && now - x.At > 2500 && (seated != null || now - x.At > 15_000))
         {
@@ -249,8 +251,33 @@ public sealed partial class WalkMode
                 : seated == false ? $"Now in {x.Region}; the crossing left you standing."
                 : $"Now in {x.Region}; it hasn't said yet whether you're still seated.";
             Log($"seated crossing into {x.Region}: {(seated == true ? "seated" : seated == false ? "standing" : "not known")} after {now - x.At} ms");
+            if (seated == null)
+            {
+                _unsure = (x.Region, now);
+                S.Log.LogInformation("seated crossing into {Region}: not known after {Ms} ms: {Where}", x.Region, now - x.At, SeatWhere());
+            }
             if (_set.WalkText("vehicle")) { if (seated == true) ByItself(line); else Line(line); }
             ForHistory?.Invoke(line);
+        }
+        else if (_unsure is { } u)
+        {
+            // what the region says after "it hasn't said yet", once it does: unsaid, she was left wondering (2026-11-11)
+            if (b.RegionName != u.Region) _unsure = null;
+            else if (seated != null)
+            {
+                _unsure = null;
+                judged = true;
+                var seat = (seated == true ? b.SeatName : null) ?? _seatName ?? "your seat";   // (on something else by then: that)
+                var line = seated == true ? $"{u.Region} has you on {seat} now." : $"{u.Region} has you standing now, off {seat}.";
+                S.Log.LogInformation("seated crossing into {Region}: {Seated} {Ms} ms after it wasn't known", u.Region, seated == true ? "seated" : "standing", now - u.At);
+                if (_set.WalkText("vehicle")) Line(line);
+                ForHistory?.Invoke(line);
+            }
+            else if (now - u.At > 120_000)
+            {
+                _unsure = null;
+                S.Log.LogInformation("seated crossing into {Region}: still not known 2 minutes on: {Where}", u.Region, SeatWhere());
+            }
         }
         if (b.Sitting && Speed(b) > 1f) _seatMovingAt = now;
         _region = b.RegionName;
@@ -270,6 +297,34 @@ public sealed partial class WalkMode
     }
 
     long _seatMovingAt = long.MinValue / 2;
+    (string Region, long At)? _unsure;   // a seated crossing said as not known yet, in that region
+    uint _seatLocal;
+    UUID _seatRoot;                      // the seat's linkset's root as last seen sat on, for the log
+
+    void NoteSeat()
+    {
+        if (S.Client is not { } c || S.Region is not { } w || w.AvatarById(c.Self.AgentID) is not { ParentID: not 0 } av || av.ParentID == _seatLocal) return;
+        if (!w.Prims.TryGetValue(av.ParentID, out var seat)) return;
+        _seatLocal = av.ParentID;
+        _seatRoot = S.Objects.RootOf(w, seat).ID;
+    }
+
+    /// <summary>For the log when a seated crossing isn't known 15 s on: what the region has of her avatar, and where the
+    /// seat is now. (A tour car's crossing on 2026-11-11 left the log unable to say whether the car stayed behind, was
+    /// gone, or the region never sent her at all.)</summary>
+    string SeatWhere()
+    {
+        if (S.Client is not { } c || S.Region is not { } w) return "no region";
+        var av = w.AvatarById(c.Self.AgentID);
+        string me = av == null ? $"{w.Name} hasn't sent my avatar"
+            : av.ParentID == 0 ? $"{w.Name} has me standing"
+            : $"{w.Name} has me on local id {av.ParentID}, which it hasn't sent";
+        string seat = _seatRoot == UUID.Zero ? "the seat unknown"
+            : S.Objects.FindAnywhere(_seatRoot) is var (sw, sp) ? $"{_seatName ?? "the seat"} in {sw.Name} at {Where(sw.RegionPosition(sp))}"
+            : $"{_seatName ?? "the seat"} ({_seatRoot}) in no region heard";
+        return $"{me}; {seat}";
+        static string Where(LibreMetaverse.Vector3 p) => string.Create(CultureInfo.InvariantCulture, $"{p.X:F0}, {p.Y:F0}, {p.Z:F0}");
+    }
 
     /// <summary>Seated (true) or standing (false) as the current region has the avatar, or null while it can't say: the
     /// avatar not sent yet (a crossing's first seconds), or sent sitting on something that hasn't come yet.</summary>

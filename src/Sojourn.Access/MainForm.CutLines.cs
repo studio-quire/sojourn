@@ -38,6 +38,7 @@ public sealed partial class MainForm
             // the reader's queue: each line starts once what's before it has been said
             long starts = Math.Max(l.At, _spokenEnds);
             _spokenEnds = starts + Speaking(l.Text);
+            if (!l.Again) NoteWords(l.Text, l.At, again: false, notice: l.Kind == AnnounceKind.Notices);
             if (l.Again || l.From == LineFrom.Me
                 || l.Kind is not (AnnounceKind.Nearby or AnnounceKind.Objects or AnnounceKind.Ims or AnnounceKind.Group)) return;
             _othersAt = l.At;
@@ -79,6 +80,10 @@ public sealed partial class MainForm
             _cut.RemoveAll(s => RealInput.SilencedAt > s.At);
             if (_cut.Count == 0 || now - RealInput.LastKeyAt < KeysRest) return;
             if (_othersAt > typed || !_set.ReadCut) { _cut.Clear(); return; }
+            // words a notice said again a moment ago (a HUD's dialog and its chat line carry the same) aren't said twice
+            _cut.RemoveAll(s => WordsCovered(s.Text, s.At, long.MaxValue) != null);
+            if (_cut.Count == 0) return;
+            foreach (var s in _cut) NoteWords(s.Text, now, again: true, notice: false);
             again = Again(_cut);
             kind = _cut[^1].Kind;
             from = _cut.Select(s => s.From).Aggregate(LineSources.Join);
@@ -86,6 +91,73 @@ public sealed partial class MainForm
         }
         if (!_set.MuteAll) reader?.Say(kind, again, keep: false, from, again: true);
     }
+
+    // --- the same words twice ----------------------------------------------------------------------------------------
+
+    /// <summary>Words lately handed to the reader or said again (their letters and digits), for not saying them again:
+    /// a HUD often says its dialog's words in chat too, a second on, and a notice cut off and said again had them a
+    /// third time and the chat line's own saying again a fourth (the blind tester's freight deliveries, 2026-11-11).</summary>
+    readonly List<(string Words, long At, bool Again, bool Notice)> _words = new();
+
+    void NoteWords(string text, long at, bool again, bool notice)
+    {
+        lock (_spokenLock)
+        {
+            _words.RemoveAll(w => at - w.At > 30_000);
+            if (LetterWords(text) is { Length: > 0 } words) _words.Add((words, at, again, notice));
+        }
+    }
+
+    /// <summary>A line said again now: its words noted, so the other way of saying lines again doesn't say them too.</summary>
+    void SaidAgain(string text) => NoteWords(text, Environment.TickCount64, again: true, notice: true);
+
+    /// <summary>Why a line cut off at <paramref name="cutAt"/> (said at <paramref name="at"/>) needn't be said again, or
+    /// null: its words said again since it was said, or read in another line (not a notice) handed to the reader after
+    /// the cut and heard out. One cut in turn doesn't count: the lines' own way may not say it again (Alt+0's switch off,
+    /// the talk moved on), so this one is said, and that way then leaves the same words out.</summary>
+    string? WordsCovered(string text, long at, long cutAt)
+    {
+        var words = LetterWords(text);
+        if (words.Length == 0) return null;
+        lock (_spokenLock)
+        {
+            foreach (var w in _words)
+            {
+                if (!SameWords(words, w.Words)) continue;
+                if (w.Again && w.At >= at) return "said again already";
+                // and nothing pressed or moved since it went to the reader: any key stops the reader mid-line, not only one
+                // typed into a box (which is all _cut records), so a line a later arrow cut wasn't heard out either
+                if (!w.Again && !w.Notice && w.At > cutAt && Math.Max(RealInput.LastKeyAt, _focusMovedAt) < w.At
+                    && !_cut.Any(c => c.At == w.At && SameWords(LetterWords(c.Text), w.Words)))
+                    return "read after the cut, in another line";
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Lower-case letters and digits, one space between runs: "TASK COMPLETE ======. Job" and "TASK COMPLETE
+    /// ====== Job" are the same words.</summary>
+    static string LetterWords(string text)
+    {
+        var sb = new System.Text.StringBuilder(text.Length);
+        foreach (char ch in text)
+        {
+            if (char.IsLetterOrDigit(ch)) sb.Append(char.ToLowerInvariant(ch));
+            else if (sb.Length > 0 && sb[^1] != ' ') sb.Append(' ');
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>The same words, a notice's own "Control N to answer." after them aside; not a short line within a long one
+    /// (both start with the object's name, so a short status line would have stood for a longer menu and lost its rest).</summary>
+    static bool SameWords(string a, string b)
+    {
+        if (a == b) return true;
+        var (shorter, longer) = a.Length <= b.Length ? (a, b) : (b, a);
+        return shorter.Length >= 24 && longer.Length - shorter.Length <= HintLength && longer.StartsWith(shorter, StringComparison.Ordinal);
+    }
+
+    static int HintLength => LetterWords(Sojourn.Session.Lang.T("Control N to answer.")).Length + 1;   // (AccessWiring adds it, translated)
 
     /// <summary>The words for lines said again: all of them in the order they came, or past three lines or 500
     /// characters the newest that fit, after how many there were (the review keys have them all).</summary>

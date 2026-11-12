@@ -269,9 +269,15 @@ public sealed class TesselAgent : SessionApi
     async Task<JsonNode?> DetachAsync(JsonObject a, CancellationToken ct)
     {
         var c = C;
-        if (a.Uuid("object_id") is { } oid && S.Region?.PrimById(oid) is { } p)
+        if (a.Uuid("object_id") is { } oid)
         {
-            var root = S.Objects.RootOf(W, p);
+            // only what I wear: a detach for anything else does nothing, and its caller said it had (Sojourn Access told
+            // the blind tester she'd taken off a pose ball she had sat on, 2026-11-11)
+            // (worn by me by the region's avatar list, or by its root's parent being me: just after a crossing the list can
+            // lag while the parent is already right, as Access's own check has it)
+            if (S.Region?.PrimById(oid) is not { } p || !(S.Objects.IsAttachment(W, p, out var wearer, out var root) && wearer?.ID == c.Self.AgentID
+                    || (root = S.Objects.RootOf(W, p)).ParentID == c.Self.LocalID && c.Self.LocalID != 0))
+                throw new LeapError("I'm not wearing that (not here, or not an attachment of mine)");
             var itemId = AgentInventory.AttachItemId(root);
             if (itemId != UUID.Zero) await S.Wardrobe.DetachAsync(c, itemId, ct);
             c.Objects.DetachObjects(Sim, new List<uint> { root.LocalID });

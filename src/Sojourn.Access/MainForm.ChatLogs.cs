@@ -22,7 +22,15 @@ public sealed partial class MainForm
 
     void StartChatLogs(string gridKey, string first, string last)
     {
-        _logs = new ChatLogs(Path.Combine(_opt.BaseDir, "chat-logs", gridKey, $"{first}.{last}".ToLowerInvariant()));
+        _logs = new ChatLogs(Path.Combine(_opt.BaseDir, "chat-logs", gridKey, $"{first}.{last}".ToLowerInvariant()))
+        {
+            Failed = e =>
+            {
+                if (_logFailed) return;
+                _logFailed = true;
+                Reader?.Answer($"Chat logs can't be written: {e.Message}", keep: false);
+            },
+        };
         Host!.Session.Api.Register(new ChatLogApi(Host.Session, _logs));
     }
 
@@ -38,13 +46,7 @@ public sealed partial class MainForm
         lines.Add($"[{DateTime.Now:HH:mm}] {line}");
         if (lines.Count > RememberedLines) lines.RemoveAt(0);
         if (_logs == null || _set.ChatLogs == "off" || (key == ChatLogs.NearbyKey && _set.ChatLogs != "all")) return;
-        try { _logs.Add(key, title, line); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            if (_logFailed) return;
-            _logFailed = true;
-            Reader?.Answer($"Chat logs can't be written: {e.Message}", keep: false);
-        }
+        _logs.Add(key, title, line);   // (written on the logs' own thread; a failure comes back by Failed, said once)
     }
 
     /// <summary>A new tab's history starts with the conversation's last lines, the caret after them, where new ones arrive.</summary>

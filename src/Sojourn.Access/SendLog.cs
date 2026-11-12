@@ -98,7 +98,7 @@ sealed class SendLogForm : Form
         Controls.Add(t);
         ActiveControl = _note;
 
-        _review.Click += (_, _) => Review();
+        _review.Click += async (_, _) => await ReviewAsync();
         _send.Click += async (_, _) => await SendAsync();
     }
 
@@ -111,26 +111,36 @@ sealed class SendLogForm : Form
 
     LogShare.Session Chosen => _logs[Math.Max(0, _which.SelectedIndex)];
 
-    LogShare.Result? Filtered(out string? why)
+    /// <summary>The chosen log with other people's words left out, worked out off the window's thread: on the blind
+    /// tester's PC the filter held the window over 2 s (2026-11-11), with nothing read meanwhile.</summary>
+    async Task<(LogShare.Result? Result, string? Why)> FilteredAsync()
     {
-        why = null;
-        try
+        var chosen = Chosen;
+        return await Task.Run(() =>
         {
-            var r = LogShare.Filter(LogShare.Read(Chosen.Path), Chosen.Started);
-            if (r is null) why = "That log is from an older version and can't be sent.";
-            return r;
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            why = $"That log couldn't be read ({e.Message}).";
-            return null;
-        }
+            try
+            {
+                var r = LogShare.Filter(LogShare.Read(chosen.Path), chosen.Started);
+                return (r, r is null ? "That log is from an older version and can't be sent." : null);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return ((LogShare.Result?)null, $"That log couldn't be read ({e.Message}).");
+            }
+        });
     }
 
     /// <summary>The filtered text in a read-only window, as F1's keys are shown; Escape closes it.</summary>
-    void Review()
+    async Task ReviewAsync()
     {
-        if (Filtered(out var why) is not { } r) { Speak(why!); return; }
+        // (the buttons left as they are: one disabled under the focus would move it, and the reader with it)
+        if (_sending || _reviewing) return;
+        _reviewing = true;
+        (LogShare.Result? Result, string? Why) got;
+        try { got = await FilteredAsync(); }
+        finally { _reviewing = false; }
+        if (IsDisposed || _sending) return;
+        if (got.Result is not { } r) { Speak(got.Why!); return; }
         using var f = new Form
         {
             Name = "sendLogText", Text = "What's sent", AccessibleName = "What's sent", Size = new Size(720, 560),
@@ -154,18 +164,20 @@ sealed class SendLogForm : Form
         f.ShowDialog(this);
     }
 
-    bool _sending;
+    bool _sending, _reviewing;
 
     async Task SendAsync()
     {
+        if (_reviewing) { Speak("Still getting the log ready to review: press Send after."); return; }
         if (_sending) return;
-        if (Filtered(out var why) is not { } r) { Speak(why!); return; }
         if (ProviderKeys.RelayToken() is not { } token) { Speak("The Studio Quire token isn't kept any more: the key row in Alt+0's Assistant group takes it."); return; }
         _sending = true;
         _send.Enabled = _review.Enabled = false;
         Speak("Sending.");
         try
         {
+            var (filtered, why) = await FilteredAsync();
+            if (filtered is not { } r) { Speak(why!); return; }
             var (body, cut) = Pack(r, _note.Text.Trim());
             var res = await LogSend.PostAsync(body, token, $"SojournAccess/{AppInfo.Version}");
             if (res.Unreached is { } unreached)

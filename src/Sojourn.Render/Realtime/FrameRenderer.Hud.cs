@@ -286,6 +286,11 @@ public sealed partial class FrameRenderer
         CheckWorld();
         _world.Textures.DataOnly = !Quality.Textures;
         ApplyRegionChanges();
+        // the HUDs are among the region's objects as its scene has them, and a scene is read only by a frame drawing it or
+        // a tick keeping one drawn before current: a region come since the last frame (on the processor there are none
+        // between pictures) was an empty scene here, so a crossing into it lost every HUD until the next picture (the blind
+        // tester's GTFO HUD for over a minute after a border, 2026-11-11). Read whole now if it never was, kept by ticks after.
+        if (_world.Region(h.Region) is { Source.HasSimulator: true } scene) scene.Sync(terrain: false);
         _world.BeginFrame();
         Periodic();
         try

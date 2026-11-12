@@ -927,6 +927,42 @@ Two more logs and messages that morning (our words; logs `tester-20261111T152536
 - **"Lines cut off by my typing said again" off**: she turned it off to hear whether chat reads differently, and will try
   both (her answer to our question).
 
+### A tour car's border, her freight HUD after borders, a delivery said four times, a bag left on (0.1.0.1095, the blind tester, 2026-11-11 afternoon and evening)
+
+Five logs with her notes (our words): `tester-20261111T215734-f0bf01` (16:16-16:55), `-215615-ceb5d0` and `-232109-5647bd`
+(the session from 16:55), `tester-20261112T000556-68e47c` and `-005543-7b09dd` (from 18:21).
+- **Off a tour car at a border** ("we got kicked off", sent with the start of the next session's log): a tour company's
+  demo car, driving itself on its route with her and her partner aboard (not driving after someone), crossed into
+  another region and stopped. The crossing went through as the day's others did (the region took her: its greeter
+  welcomed her), but that region never had her seated on the car: 15 s on it was "it hasn't said yet whether you're
+  still seated", the car's tour talk stopped mid-script (the same company's boat that afternoon went on to its closing
+  lines), and its sit pose stayed on her, so she logged in again. Both riders lost it at once, so most likely the car
+  didn't get across, or the land there refused or returned it: Second Life's or the land's doing, not the viewer's, as
+  far as the log shows; it can't say which. Ours: nothing followed "it hasn't said yet", and the pose notice said "after
+  you stood up". Now what the region says next is said ("X has you standing now, off Triumph TR3."), the notice says
+  "now you're off it", and the log says at 15 s (and 2 minutes) what the region had of her avatar and where the car was.
+- **Her GTFO HUD out of reach after borders** ("I suddenly could not touch my GTFO HUD"): `//touch gtfo` answered
+  "Nothing called gtfo within 10 metres or on your HUDs" for over a minute after her train crossed a border, and in the
+  next log after three more borders, until something drew a picture. The view out of sight places HUDs from the
+  region's scene, which only a drawn frame read, and on her processor there are none between pictures: a region come
+  after the last picture (her ride recording had ended ten minutes before) had an empty scene. Ours; the HUD's region
+  is now read whenever a HUD is asked about. Reproduced on the local grid drawing on the processor, her words exactly,
+  and passing after (`docs/access-testing.md` > your HUDs).
+- **A delivery's words read again** ("the area where I delivered got read out again after it was completed"): GTFO
+  says "task complete" in a menu and the same words in chat a second on (the HUD's doing); then a key or her typing cut
+  the menu off in its first seconds, so it was said again, and while she typed the chat line was said again too: four
+  times. The repeats were ours. Now a menu cut off isn't said again when its words were heard after the cut in another
+  line, nor lines with words a menu has just been said again with (`docs/access-app.md` > Read-out). Whether a HUD's
+  chat line repeating its menu should be left unread (kept in the history) would be hers to say.
+- **Take off acting on a pose ball** ("It said I had removed the pose ball"): she opened the actions on her bag in what
+  she wears, the list most likely refreshed under the open menu to things nearby (their count was said as it opened),
+  and Take off acted on the row in its place, a pose ball she'd sat on, saying "Took off M Pose Ball." with nothing
+  taken off. Now the menu acts on what it was opened on, Take off is only for what she wears and says so once it's off,
+  and the agent API's detach refuses what isn't worn. What refreshed the list isn't in the log (keys aren't).
+- **Send a log held the window** 2-3 s filtering her log on its thread; now off it. Her ten logs a day on the relay ran
+  out that evening (thirty since).
+- The 16:16 session otherwise went well, she said: a submarine, a sailboat and the car toured and told by `//ride`.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's

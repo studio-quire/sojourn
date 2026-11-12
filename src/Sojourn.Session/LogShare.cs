@@ -476,9 +476,20 @@ public static class LogShare
             return false;
         }
 
-        static readonly Regex NotWord = new(@"[^\p{L}\p{N}]+", RegexOptions.Compiled);
-
-        static string[] Words(string s) => NotWord.Replace(s.ToLowerInvariant(), " ").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        /// <summary>Its runs of letters and digits, lower-cased: by hand rather than a regex's replace and a split, as this
+        /// runs for every line of a log (on the blind tester's PC the filter took over 2 s, 2026-11-11).</summary>
+        static string[] Words(string s)
+        {
+            var words = new List<string>();
+            var sb = new StringBuilder();
+            foreach (char ch in s)
+            {
+                if (char.IsLetter(ch) || char.IsNumber(ch)) sb.Append(char.ToLowerInvariant(ch));
+                else if (sb.Length > 0) { words.Add(sb.ToString()); sb.Clear(); }
+            }
+            if (sb.Length > 0) words.Add(sb.ToString());
+            return words.ToArray();
+        }
     }
 
     // ---- masks ----------------------------------------------------------------------------------------------------------

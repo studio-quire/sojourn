@@ -1180,7 +1180,7 @@ def visitor_command(args):
     if not args:
         return 0
     verb, rest = args[0], args[1:]
-    if verb in ("fmenu", "fmenu12", "fdance", "ftext", "fperm", "fgive", "offer", "friend") and not rest:
+    if verb in ("fmenu", "fmenu12", "fmenuchat", "fdance", "ftext", "fperm", "fgive", "offer", "friend") and not rest:
         rest = [tester_id_lookup()]
     elif verb in ("im", "tplure") and not (rest and UUID_RE.match(rest[0])):
         rest = [tester_id_lookup()] + rest
@@ -3614,6 +3614,37 @@ def notice_menu(run, tester_id):
         if open_newest_notice(run, ["Access Menu"]):
             key("del")
             time.sleep(0.5)
+    # a menu whose words its object says in chat too (a freight HUD's "task complete"), both cut off by typing: said again
+    # once, not as the menu and then as its chat line again (the blind tester heard a delivery's words four times, 2026-11-11)
+    back_to_chat()
+    u("set id=chatInput |")
+    time.sleep(1)
+    m = mark()
+    typing_on = threading.Event()
+
+    def typist():
+        while not typing_on.is_set():
+            key("x", target="id=chatInput")
+            time.sleep(0.15)
+    t = threading.Thread(target=typist)
+    t.start()
+    try:
+        v(f"fmenuchat {tester_id}")
+        words = "Access Job: delivered to the depot"
+        run.check("(a menu and its words in chat, said while typing)",
+                  wait(lambda: len([e for e in said_since(m) if words in (e.get("text") or "")]) >= 2 or None, NOTICE_SECS),
+                  " | ".join(e.get("text") or "" for e in said_since(m))[-300:])
+        time.sleep(0.6)
+    finally:
+        typing_on.set()
+        t.join()
+    time.sleep(3.5)
+    said = [e.get("text") or "" for e in said_since(m) if words in (e.get("text") or "")]
+    run.check("its words said again once after the typing, not twice", len(said) == 3, f"{len(said)} times: " + " | ".join(said))
+    u("set id=chatInput |")
+    if open_newest_notice(run, ["Access Job"]):
+        key("del")
+        time.sleep(0.5)
     # cut off by going to answer it (Control+N), answered there, back in chat: not said again (a vehicle's menu was,
     # each time, after its answer)
     back_to_chat()
@@ -10063,6 +10094,25 @@ def huds(run, nonce):
         m = mark()
         say_in_app("//outfit")
         run.expect("//outfit says it too", ["Wearing", name], m, 6)
+        # pressed by name, as the blind tester presses her freight HUD (//touch gtfo): the view out of sight places the HUDs
+        # from the region's scene, which on the processor nothing may have drawn yet (no frames between pictures), and her
+        # HUD was out of reach after borders until a picture came (2026-11-11); ACCESS_SOFTWARE=1 runs it that way
+        n = visitor_n()
+        m = mark()
+        say_in_app("//touch Play")
+        run.expect("//touch Play presses the HUD's button by its name", ["Pressed Play"], m, 10)
+        run.heard_by_visitor("(its script heard it)", lambda d: "Access HUD pressed, link 2" in d["msg"], n, 10, "pressed, link 2")
+        # looked for by name among things nearby, it's said to be among what she wears, with the key (the blind tester's
+        # HUD missing from Objects until she found Show, 2026-11-11)
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("ctrl+f")
+        if wait_focus(lambda d: d["id"] == "objectsFilter", 4):
+            m = mark()
+            type_text(name, "id=objectsFilter")
+            run.expect("its name in the filter of things nearby: said to be something she wears, with the key", ["One thing you wear has it", "Alt+Shift+7"], m, 25)
+            key("esc", target="id=objectsFilter")
+            wait(lambda: focused()["id"] != "objectsFilter", 8)
         m = mark()
         key("alt+shift+7")   # Objects showing what you wear, HUDs first (the blind tester found no way to her HUDs)
         wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)

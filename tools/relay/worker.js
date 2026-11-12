@@ -63,7 +63,8 @@ const LOG_MAX = 1_500_000;        // bytes as sent (gzipped)
 const LOG_UNPACKED = 24_000_000;  // bytes unpacked
 const LOG_NOTE = 4000;            // characters of the person's note
 const LOG_DAYS = 30;
-const LOGS_A_DAY = 10;            // per token, in any 24 hours
+const LOGS_A_DAY = 30;            // per token, in any 24 hours (10 until 2026-11-11, when the blind tester's tenth
+                                   // of a busy day was refused)
 const LOGS_KEPT = 30;             // per token: the oldest go beyond this
 const DAY = 86_400_000;
 // reports without a token (Sojourn's menu > about > report a problem, the launcher after a crash): kept in a logbook of
