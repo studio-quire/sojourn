@@ -30,6 +30,9 @@ put the studio's key in, make and manage personal tokens, read their spending, a
   python tools/relay.py logs fetch [ID ...|--all]   saved as local/relay-logs/<token>-<id>.txt (the note and the log;
                                            --all: every one not saved yet)
   python tools/relay.py logs delete ID     one deleted from the relay (they go by themselves after 30 days)
+  python tools/relay.py logs watch [--every 120]   in the background: once testers' logs arrive that weren't there at
+                                           the start (the scripted tests' own token left out), lists them with their
+                                           notes, fetches them, and exits
   python tools/relay.py messages           the conversations testers have with us (Sojourn Access's builders' tab;
                                            docs/access.md > Who directs it): token, messages, the last, how many of
                                            theirs since our last reply, whether that reply reached their app
@@ -640,11 +643,15 @@ def cmd_logs(args):
         logs = logs_list(secret)
         if not logs:
             print("no logs")
+        unread = [l["id"] for l in logs if not read_in_docs(l)]
         for l in logs:
             when = time.strftime("%Y-%m-%d %H:%M", time.localtime(l["at"] / 1000))
             note = (l.get("note") or "").replace("\n", " ")
             print(f"{l['id']}  {l.get('token')}  sent {when}  {l.get('size', 0) // 1024} KB  session {l.get('session') or '?'}"
-                  f"  {l.get('app') or ''}" + (f"\n    {note[:120]}" if note else ""))
+                  f"  {l.get('app') or ''}" + ("  NOT IN access.md" if l["id"] in unread else "") + (f"\n    {note[:120]}" if note else ""))
+        if unread:
+            print(f"\n{len(unread)} of the testers' Access logs aren't named in docs/access.md (each one read goes in its tester's"
+                  f" section there, as tester-<id> or -<time>-<hex>): {', '.join(unread)}")
         return 0
     what, rest = args[0], args[1:]
     if what == "fetch":
@@ -674,6 +681,8 @@ def cmd_logs(args):
         if not ids:
             print("nothing new to fetch")
         return 0
+    if what == "watch":
+        return watch_logs(secret, int(rest[rest.index("--every") + 1]) if "--every" in rest else 120)
     if what == "delete" and rest:
         for lid in rest:
             s, body, _ = admin_call("DELETE", f"/relay/admin/logs/{lid}", secret)
@@ -681,6 +690,44 @@ def cmd_logs(args):
         return 0
     print(__doc__)
     return 2
+
+
+TEST_TOKENS = {"access-check"}   # the scripted tests' (tools/access.py), whose logs they send and delete themselves
+ACCESS_DOC = ROOT / "docs" / "access.md"
+
+
+def read_in_docs(l):
+    """Whether an Access tester's log is named in docs/access.md, where each one read is noted (two of 2026-11-11 went
+    unread for two days); others' logs (the VR app's, the tests') count as read."""
+    if l.get("token") in TEST_TOKENS or not (l.get("app") or "").startswith("Sojourn Access"):
+        return True
+    if not hasattr(read_in_docs, "text"):
+        read_in_docs.text = ACCESS_DOC.read_text(encoding="utf-8") if ACCESS_DOC.exists() else ""
+    return l["id"].split("T", 1)[-1] in read_in_docs.text
+
+
+def watch_logs(secret, every):
+    """Testers' logs that weren't on the relay at the start: once some are, each listed with its note, all fetched
+    (cmd_logs fetch), and it exits. Sent with Send a log, they come without a message on the builders' line, so the
+    messages watch doesn't see them. A relay that can't be reached is asked again at the next turn."""
+    def tester_logs():
+        return [l for l in logs_list(secret) if l.get("token") not in TEST_TOKENS]
+    known = {l["id"] for l in tester_logs()}
+    print(f"watching testers' logs from {when(int(time.time() * 1000))}, every {every} s ({len(known)} there already)", flush=True)
+    while True:
+        time.sleep(every)
+        try:
+            new = [l for l in tester_logs() if l["id"] not in known]
+        except (OSError, SystemExit, ValueError):
+            continue
+        if not new:
+            continue
+        for l in sorted(new, key=lambda l: l["at"]):
+            note = (l.get("note") or "(no note)").replace("\n", " ")
+            print(f"--- {l['id']}  {l.get('token')}  sent {when(l['at'])}  {l.get('size', 0) // 1024} KB  {l.get('app') or ''}")
+            print(f"    {note}", flush=True)
+        cmd_logs(["fetch", *[l["id"] for l in new]])
+        return 0
 
 
 # ---- the testers' messages to us (Sojourn Access's builders' tab) ----------------------------------------------------------

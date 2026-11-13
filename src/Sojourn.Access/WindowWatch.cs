@@ -13,7 +13,8 @@ namespace Sojourn.Access;
 /// come after them. (Not a sent ping: a wait inside a COM call still answers those. Not a WinForms timer: its ticks
 /// stop under a flood of posted messages while the window still answers, and a COM wait can dispatch them.)
 ///
-/// Held 1 s or more is logged when it ends, for a tester's log. At 5 s it's said once, and at 30 s, then each minute,
+/// Held 1 s or more is logged when it ends, for a tester's log, with the thread's own processor time over it (waiting or
+/// at work), how busy the PC's processors were and its memory free. At 5 s it's said once, and at 30 s, then each minute,
 /// with the way out: Control+Shift+Q, registered only while the thread is held, starts Sojourn Access again at the
 /// login window (nothing else could: the window's own keys need that thread, and Windows' "not responding" dialog is
 /// nothing to rely on). If it comes back after being said, that's said too. At 2 s, and again at 10 s, what the thread
@@ -30,6 +31,7 @@ sealed class WindowWatch
     readonly Action<string> _say, _log;
     readonly Action _restart;
     readonly int _windowThread = Environment.CurrentManagedThreadId;   // (made on the window's thread)
+    readonly nint _thread = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, false, GetCurrentThreadId());   // (the same)
     long _stamp = Environment.TickCount64;
     int _asked, _stacks;
 
@@ -50,6 +52,7 @@ sealed class WindowWatch
         long last = Environment.TickCount64, heldFrom = 0, offerAt = 0;
         bool said = false, hotKey = false;
         int stacksThisTime = 0;
+        var quiet = Read(last);   // the times when the thread last answered promptly, to measure a hold from
         while (true)
         {
             Thread.Sleep(250);
@@ -68,13 +71,14 @@ sealed class WindowWatch
             {
                 if (heldFrom != 0)
                 {
-                    _log($"window: its thread was held {(stamp - heldFrom) / 1000.0:0.0} s");
+                    _log($"window: its thread was held {(stamp - heldFrom) / 1000.0:0.0} s ({During(quiet, now)})");
                     if (said) _say("The window is back.");
                     if (hotKey) UnregisterHotKey(0, HotKeyId);
                     heldFrom = 0;
                     said = hotKey = false;
                     stacksThisTime = 0;
                 }
+                if (held < 600) quiet = Read(now);
                 continue;
             }
             if (heldFrom == 0) heldFrom = stamp;
@@ -89,7 +93,7 @@ sealed class WindowWatch
             {
                 said = true;
                 offerAt = heldFrom + OfferAt;
-                _log("window: its thread has been held 5 s");
+                _log($"window: its thread has been held 5 s ({During(quiet, now)})");
                 _say("The window isn't answering. Waiting for it.");
             }
             if (said && now >= offerAt)
@@ -163,6 +167,38 @@ sealed class WindowWatch
         }
     }
 
+    /// <summary>The window's thread's processor time and the PC's (100 ns units; the kernel's time includes idle time).</summary>
+    readonly record struct Times(long At, long Thread, long Idle, long All);
+
+    Times Read(long at)
+    {
+        long thread = GetThreadTimes(_thread, out _, out _, out var kernel, out var user) ? kernel + user : -1;
+        if (!GetSystemTimes(out var idle, out var sysKernel, out var sysUser)) idle = sysKernel = sysUser = 0;
+        return new(at, thread, idle, sysKernel + sysUser);
+    }
+
+    /// <summary>Over a hold, for telling who held it: a thread with little processor time of its own was kept waiting (the
+    /// disk, a lock, another program), one at work throughout was busy with something of ours; and how busy the PC was and
+    /// how much memory it had left (a tester's 9 s, 2026-11-11, had a stack 2.1 s in and nothing to say about the rest).</summary>
+    string During(Times from, long now)
+    {
+        var to = Read(now);
+        var parts = new List<string>();
+        if (from.Thread >= 0 && to.Thread >= 0)
+            parts.Add($"its own processor time {(to.Thread - from.Thread) / 1e7:0.0} s of the {(to.At - from.At) / 1000.0:0.0} s measured");
+        long all = to.All - from.All;
+        if (all > 0) parts.Add($"the PC's processors {100 - 100.0 * (to.Idle - from.Idle) / all:0}% busy");
+        var m = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
+        if (GlobalMemoryStatusEx(ref m))
+        {
+            long mine;
+            try { using var p = Process.GetCurrentProcess(); mine = p.PrivateMemorySize64; }
+            catch (Exception) { mine = Environment.WorkingSet; }
+            parts.Add($"{m.AvailPhys / 1e9:0.0} GB of its {m.TotalPhys / 1e9:0.0} GB memory free, this app {mine / 1e9:0.0} GB");
+        }
+        return string.Join("; ", parts);
+    }
+
     void Answered()
     {
         Interlocked.Exchange(ref _stamp, Environment.TickCount64);
@@ -186,6 +222,15 @@ sealed class WindowWatch
     [StructLayout(LayoutKind.Sequential)]
     struct Msg { public nint Hwnd; public int Message; public nint WParam, LParam; public uint Time; public int X, Y; }
 
+    [StructLayout(LayoutKind.Sequential)]
+    struct MemoryStatus { public uint Length, Load; public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual; }
+
+    const int THREAD_QUERY_LIMITED_INFORMATION = 0x0800;
+    [DllImport("kernel32.dll")] static extern nint OpenThread(int access, bool inherit, int id);
+    [DllImport("kernel32.dll")] static extern int GetCurrentThreadId();
+    [DllImport("kernel32.dll")] static extern bool GetThreadTimes(nint thread, out long creation, out long exit, out long kernel, out long user);
+    [DllImport("kernel32.dll")] static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
+    [DllImport("kernel32.dll")] static extern bool GlobalMemoryStatusEx(ref MemoryStatus status);
     [DllImport("user32.dll", SetLastError = true)] static extern bool RegisterHotKey(nint hwnd, int id, int mods, int vk);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(nint hwnd, int id);
     [DllImport("user32.dll")] static extern bool PeekMessage(out Msg msg, nint hwnd, uint min, uint max, uint remove);

@@ -5306,7 +5306,7 @@ def search_more_and_links(run, nonce, tester_id):
     run.expect("(the line said)", ["a parcel"], m, 10)
     said = " | ".join(str(e.get("text") or e.get("name") or e) for e in said_since(m))
     run.check("said: no thirty-six characters", "secondlife:" not in said, said[:200])
-    run.check("said: the place by its region, the rest by its kind", f"go to {REGION} (a place) or see a parcel ok" in said, said[:200])
+    run.check("said: the place by its region, the rest by its kind", f"go to {REGION} (a place) or see (a parcel) ok" in said, said[:200])
     wait(lambda: f"{REGION} (a place)" in value_of("id=chatHistory"), 5)
     hist = value_of("id=chatHistory")
     run.check("the history reads the same", f"{REGION} (a place)" in hist and "secondlife:" not in hist.splitlines()[-1], hist[-160:])
@@ -12993,6 +12993,7 @@ def links(run):
     the history's line opens the first on it; Control+Shift+K lists both, the newest first, and Enter there opens the
     one selected. No browser comes up (SOJOURN_NO_BROWSER)."""
     back_to_chat()
+    start = tester_where()
     m = mark()
     v("say a page https://example.com/some/page, and that's it.")
     run.expect("(the web link said)", ["example.com"], m, 10)
@@ -13021,6 +13022,73 @@ def links(run):
     run.expect("Enter on the history's line with a place teleports there", ["Teleporting", REGION], m, 8)
     back_to_chat()
     time.sleep(3)
+
+    # the other ways a place comes (the blind tester's partner sent her one she couldn't open, 2026-11-11): the map's
+    # link with its title on, a parcel's link, a landmark's of hers and one of someone else's
+    def home():   # (in the visitor's chat range again: each link opened takes her away)
+        if math.dist(tester_where()[:2], start[:2]) > 4:
+            say_in_app(f"//tp {REGION}/{start[0]:.0f}/{start[1]:.0f}/{start[2]:.0f}")
+            wait(lambda: math.dist(tester_where()[:2], start[:2]) < 4, 30, 1)
+            time.sleep(1)
+
+    def enter_on(line_said, what, words, secs=10):
+        home()
+        m = mark()
+        v(f"say {line_said}")
+        run.expect(f"({what}: said)", [line_said.split()[0]], m, 10)
+        time.sleep(0.5)
+        key("shift+tab")
+        wait_focus(lambda d: d["id"] == "chatHistory", 5)
+        key("ctrl+end")   # (the visitor's line is the last)
+        m = mark()
+        key("enter")
+        ok = all([run.expect(what if i == 0 else f"{what} ({w})", [w] if isinstance(w, str) else w, m, secs) for i, w in enumerate(words)])             if isinstance(words[0], list) else run.expect(what, words, m, secs)
+        back_to_chat()
+        time.sleep(2)
+        return ok
+
+    enter_on(f"mapped https://maps.secondlife.com/secondlife/{REGION}/62/58/24?title=The%20Pier&msg=come", "a map link with a title on teleports",
+             ["Teleporting", REGION])
+    home()
+    lm = api("TesselInventory", "createLandmark", name=f"Links Mark {uuid.uuid4().hex[:4]}")
+    about = api("TesselInventory", "landmarkAbout", 20, item_id=lm.get("item_id")) if lm.get("item_id") else {}
+    pid = (about.get("parcel") or {}).get("parcel_id")
+    if run.check("(a parcel id from her landmark's About)", pid, json.dumps(about)[:200]):
+        enter_on(f"parcel secondlife:///app/parcel/{pid}/about", "a parcel's link: said with its region, then a teleport",
+                 ["Teleporting to", "a parcel:", REGION], 15)
+        home()
+        m = mark()
+        v(f"say again secondlife:///app/parcel/{uuid.uuid4()}/about")   # (another parcel: the same one in another form keeps its words)
+        # (numbered after whatever parcel links came before in the session: the links-in-words step has one)
+        got = wait(lambda: next((e.get("text") for e in said_since(m) if re.search(r"again \(a parcel \d+\)", e.get("text") or "")), None), 10)
+        run.check("another link of that kind reads as its own, numbered", got, got or " | ".join(e.get("text") or "" for e in said_since(m))[-200:])
+        time.sleep(0.5)
+    # a sentence with a link's words in it isn't a link (two kinds read alike, and a line without one had opened the last)
+    home()
+    m = mark()
+    v("say I just bought a parcel by the sea")
+    run.expect("(a sentence with a parcel in it: said)", ["bought a parcel"], m, 10)
+    time.sleep(0.5)
+    key("shift+tab")
+    wait_focus(lambda d: d["id"] == "chatHistory", 5)
+    key("ctrl+end")
+    m = mark()
+    key("enter")
+    time.sleep(4)
+    went = [e.get("text") or "" for e in said_since(m) if "Teleporting" in (e.get("text") or "")]
+    run.check("Enter on it opens nothing", not went, " | ".join(went))
+    back_to_chat()
+    enter_on(f"mark secondlife:///app/landmark/{lm.get('item_id')}/about", "a link to her own landmark teleports by it", ["Teleporting to Links Mark"])
+    other = "6c7a3b1e-0d2f-4e55-9a8b-1f2e3d4c5b6a"
+    enter_on(f"theirs secondlife:///app/landmark/{other}/about", "someone else's landmark: said why it doesn't open", ["landmark in someone else's inventory"])
+    logs = sorted((OUT / "app" / "logs").glob("*.log"), key=lambda p: p.stat().st_mtime)
+    log = logs[-1].read_text(encoding="utf-8", errors="replace") if logs else ""
+    shapes = re.findall(r"link not opened: .*", log)
+    run.check("the session log has the link's shape, not its id", any("secondlife:///app/landmark/[id]/[word]" in x for x in shapes)
+              and not any(other in x for x in shapes), " | ".join(shapes[-2:]) or "none")
+    if lm.get("item_id"):
+        gated(run, "(her landmark deleted)", "TesselInventory", "delete", 30, ids=[lm["item_id"]], purge=True)
+    home()
 
 
 def driving_after(run):
@@ -14781,12 +14849,12 @@ def ps_json(script):
 
 
 def sockets_of(pid):
-    """The process's TCP connections and listeners and its UDP endpoints: (kind, local, port, remote, state)."""
+    """The process's TCP connections and listeners and its UDP endpoints: (kind, local, port, remote, state, remote port)."""
     rows = ps_json(f"@(Get-NetTCPConnection -OwningProcess {pid} -ErrorAction SilentlyContinue | ForEach-Object {{ "
-                   "[pscustomobject]@{k='tcp'; l=$_.LocalAddress; p=$_.LocalPort; r=$_.RemoteAddress; s=[string]$_.State} }) + "
+                   "[pscustomobject]@{k='tcp'; l=$_.LocalAddress; p=$_.LocalPort; r=$_.RemoteAddress; s=[string]$_.State; rp=$_.RemotePort} }) + "
                    f"@(Get-NetUDPEndpoint -OwningProcess {pid} -ErrorAction SilentlyContinue | ForEach-Object {{ "
-                   "[pscustomobject]@{k='udp'; l=$_.LocalAddress; p=$_.LocalPort; r=''; s=''} }) | ConvertTo-Json -Compress")
-    return [(x["k"], x["l"], x["p"], x["r"], x["s"]) for x in rows]
+                   "[pscustomobject]@{k='udp'; l=$_.LocalAddress; p=$_.LocalPort; r=''; s=''; rp=0} }) | ConvertTo-Json -Compress")
+    return [(x["k"], x["l"], x["p"], x["r"], x["s"], x.get("rp") or 0) for x in rows]
 
 
 def loopback(addr):
@@ -15016,7 +15084,10 @@ def package_check():
             # every program's are): nothing can connect to them; the connections themselves are rows of their own
             bound = [s for s in socks if s[0] == "tcp" and s[4] == "Bound"]
             used = [s for s in socks if s not in bound]
-            wide = [s for s in used if not loopback(s[1]) or (s[0] == "tcp" and not loopback(s[3]) and s[4] != "Listen")]
+            # (with --relay the app itself talks to Studio Quire's relay over HTTPS, its provider check from the login on
+            # and Send a log: an outgoing connection, nothing that can be reached from outside)
+            out = [s for s in used if relay and s[0] == "tcp" and s[4] == "Established" and s[5] == 443]
+            wide = [s for s in used if s not in out and (not loopback(s[1]) or (s[0] == "tcp" and not loopback(s[3]) and s[4] != "Listen"))]
             if assistant:   # the agent API, for the sidecar: on loopback, at the port asked for, and nothing else
                 api_only = all(s[2] == CHECK_API_PORT and loopback(s[1]) for s in listen) and listen
                 check(f"listening only on the agent API, on loopback ({when})", api_only,

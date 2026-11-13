@@ -86,7 +86,7 @@ public sealed record Place(string Region, double X, double Y, double Z)
 public static class Places
 {
     static readonly Regex Slurl = new(
-        @"^(?:secondlife:///app/(?:teleport|region|worldmap)/|secondlife://(?:/)?|https?://(?:maps|slurl)\.secondlife\.com/secondlife/|https?://slurl\.com/secondlife/|hop://[^/]+/)?" +
+        @"^(?:secondlife:///app/(?:teleport|region|worldmap)/|secondlife://(?:/)?|https?://(?:maps|slurl)\.secondlife\.com/secondlife/|https?://(?:www\.)?slurl\.com/secondlife/|hop://[^/]+/)?" +
         @"(?<region>[^/]+?)(?:/(?<x>-?[\d.]+)(?:/(?<y>-?[\d.]+)(?:/(?<z>-?[\d.]+))?)?)?/?$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
@@ -102,6 +102,8 @@ public static class Places
             return new Place(p[0], N(p.ElementAtOrDefault(1), 128), N(p.ElementAtOrDefault(2), 128), N(p.ElementAtOrDefault(3), 30));
         }
         bool linked = t.Contains("://");
+        // a link's query or anchor isn't part of the place (the map's ?title=...&msg=..., a page's #top)
+        if (linked && t.IndexOfAny(['?', '#']) is var q and > 0) t = t[..q];
         var m = Slurl.Match(t);
         if (!m.Success) return null;
         var region = Uri.UnescapeDataString(m.Groups["region"].Value.Replace('+', ' ')).Trim();

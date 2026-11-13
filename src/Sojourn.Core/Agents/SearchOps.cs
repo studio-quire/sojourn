@@ -231,6 +231,64 @@ public sealed class SearchOps
         return new JsonObject { ["classifieds"] = arr, ["found"] = found.Count };
     }
 
+    /// <summary>Where a parcel, an event or a classified is, by its id: what secondlife:///app/parcel, app/event and
+    /// app/classified links name (the viewer opens its place, event or classified panel for them, each with a Teleport
+    /// button), asked as search's second ask does.</summary>
+    public async Task<JsonObject> WhereAsync(JsonObject a, CancellationToken ct)
+    {
+        var c = C;
+        var kind = (a.Str("kind") ?? "").Trim().ToLowerInvariant();
+        var id = (a.Str("id") ?? "").Trim();
+        JsonObject Found(string? name, string? region, double gx, double gy, double gz, string? about)
+        {
+            if (string.IsNullOrEmpty(region)) throw new LeapError($"the grid didn't say where that {kind} is");
+            var o = new JsonObject
+            {
+                ["kind"] = kind, ["name"] = name ?? "", ["region"] = region,
+                ["pos"] = new JsonArray(Math.Floor(gx % 256), Math.Floor(gy % 256), Math.Max(0, Math.Floor(gz))),
+                ["go_to"] = GoTo(region, gx, gy, gz),
+            };
+            if (about is { Length: > 0 }) o["about"] = Short(about, 240);
+            return o;
+        }
+        switch (kind)
+        {
+            case "parcel":
+            {
+                if (!UUID.TryParse(id, out var pid)) throw new LeapError("id: a parcel's UUID");
+                var info = await DetailsAsync<UUID, ParcelInfoReplyEventArgs, ParcelInfo>(new[] { pid },
+                    h => c.Parcels.ParcelInfoReply += h, h => c.Parcels.ParcelInfoReply -= h, e => (e.Parcel.ID, e.Parcel), k => c.Parcels.RequestParcelInfo(k), ct);
+                if (info[0] is not { } p) throw new LeapError("the grid didn't answer about that parcel");
+                return Found(p.Name, p.SimName, p.GlobalX, p.GlobalY, p.GlobalZ, p.Description);
+            }
+            case "event":
+            {
+                if (!uint.TryParse(id, out var eid)) throw new LeapError("id: an event's number");
+                var info = await DetailsAsync<uint, EventInfoReplyEventArgs, DirectoryManager.EventInfo>(new[] { eid },
+                    h => c.Directory.EventInfoReply += h, h => c.Directory.EventInfoReply -= h, e => (e.MatchedEvent.ID, e.MatchedEvent),
+                    k => c.Directory.EventInfoRequest(k), ct);
+                if (info[0] is not { } ei) throw new LeapError("the grid didn't answer about that event");
+                var o = Found(ei.Name, ei.SimName, ei.GlobalPos.X, ei.GlobalPos.Y, ei.GlobalPos.Z, ei.Desc);
+                var starts = DateTimeOffset.FromUnixTimeSeconds(ei.DateUTC);
+                o["starts"] = starts.ToLocalTime().ToString("ddd d MMM HH:mm");
+                var now = DateTimeOffset.UtcNow;
+                if (starts <= now && now < starts.AddMinutes(ei.Duration)) o["on_now"] = true;
+                else if (now >= starts.AddMinutes(ei.Duration)) o["ended"] = true;
+                return o;
+            }
+            case "classified":
+            {
+                if (!UUID.TryParse(id, out var cid)) throw new LeapError("id: a classified's UUID");
+                var info = await DetailsAsync<UUID, ClassifiedInfoReplyEventArgs, ClassifiedAd>(new[] { cid },
+                    h => c.Avatars.ClassifiedInfoReply += h, h => c.Avatars.ClassifiedInfoReply -= h, e => (e.ClassifiedID, e.Classified),
+                    k => c.Avatars.RequestClassifiedInfo(k), ct);
+                if (info[0] is not { } ci) throw new LeapError("the grid didn't answer about that classified");
+                return Found(ci.Name, ci.SimName, ci.Position.X, ci.Position.Y, ci.Position.Z, ci.Desc);
+            }
+            default: throw new LeapError("kind: parcel, event or classified");
+        }
+    }
+
     readonly SemaphoreSlim _classifieds = new(1, 1);
     readonly SemaphoreSlim _land = new(1, 1);
 

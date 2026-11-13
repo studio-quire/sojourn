@@ -241,14 +241,19 @@ public sealed class AudioWiring : IDisposable
             // device (and no mute or volume to explain it) means it isn't playing, whatever Windows said
             var probe = AudioEngine.ProbeAsync(700);
             AudioEngine.Chime(gain);
-            var quiet = AudioEngine.State(false)?.Quiet;
+            var state = AudioEngine.State(false);
+            var quiet = state?.Quiet;
+            string? low = null;
             if (await probe is var (heard, sent))
             {
                 _say($"audio: {check.Device}: {heard:0.0} dBFS reached it, {sent:0.0} sent{(quiet != null ? $" ({quiet})" : "")}");
                 if (sent > -70 && heard < sent - 40 && quiet == null)
                     check = new(false, check.Device, "Windows passed none of the sound on to it");
+                // a volume under half said only where it shows in what reaches the device (her TV's 25%, 20 dB down):
+                // many devices run there as a matter of course, and some take the sound before their volume
+                else if (sent > -70 && heard < sent - 12) low = state?.Low;
             }
-            LastNote = quiet;
+            LastNote = quiet ?? low;
         }
         if (check.Ok)
         {

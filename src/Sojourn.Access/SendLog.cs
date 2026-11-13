@@ -100,6 +100,16 @@ sealed class SendLogForm : Form
 
         _review.Click += async (_, _) => await ReviewAsync();
         _send.Click += async (_, _) => await SendAsync();
+        // Cancel (its button, Escape, Alt+F4) while sending: closing would have let the send go on unheard, the log sent
+        // though she said not to. Before it's on its way it stops there; once it is, it can't be called back.
+        FormClosing += (_, e) =>
+        {
+            // (Windows shutting down, or the app quitting, closes it whatever's on the way)
+            if (!_sending || DialogResult == DialogResult.OK || e.CloseReason is not (CloseReason.UserClosing or CloseReason.None)) return;
+            e.Cancel = true;
+            if (!_stop) Speak(_posting ? "It's already on its way to Studio Quire, so it can't be stopped now." : "Stopping.");
+            _stop = true;
+        };
     }
 
     string Words(LogShare.Session s) =>
@@ -163,7 +173,25 @@ sealed class SendLogForm : Form
         f.ShowDialog(this);
     }
 
-    bool _sending, _reviewing;
+    bool _sending, _reviewing, _posting, _stop;
+
+    /// <summary>A send that didn't go, said: in the window, or once it's closed when Cancel was pressed meanwhile (said
+    /// before the window closed, the reader would stop mid-line as the focus moved).</summary>
+    void Failed(string words)
+    {
+        if (_stop) Said = words;
+        else Speak(words);
+    }
+
+    /// <summary>Cancel pressed while it was getting ready: closed, nothing sent.</summary>
+    bool Stopped()
+    {
+        if (!_stop) return false;
+        Said = "Not sent.";
+        _sending = false;
+        DialogResult = DialogResult.Cancel;
+        return true;
+    }
 
     async Task SendAsync()
     {
@@ -178,15 +206,19 @@ sealed class SendLogForm : Form
             // (the log as chosen at the press: the list could be moved while it's filtered)
             var chosen = Chosen;
             var (filtered, why) = await FilteredAsync(chosen);
+            if (Stopped()) return;
             if (filtered is not { } r) { Speak(why!); return; }
             // (packed off the window's thread too: gzip at its smallest, again for each cut while it's too long)
             var note = _note.Text.Trim();
             var (body, cut) = await Task.Run(() => Pack(chosen, r, note));
+            if (Stopped()) return;
+            _posting = true;
             var res = await LogSend.PostAsync(body, token, $"SojournAccess/{AppInfo.Version}");
+            _posting = false;
             if (res.Unreached is { } unreached)
             {
                 _log?.LogWarning("sendlog: {Msg}", unreached);
-                Speak($"Not sent: Studio Quire couldn't be reached ({unreached}).");
+                Failed($"Not sent: Studio Quire couldn't be reached ({unreached}).");
                 return;
             }
             if (res.Ok)
@@ -199,7 +231,7 @@ sealed class SendLogForm : Form
             }
             var told = res.Message;
             _log?.LogWarning("sendlog: the relay answered {Status}: {Msg}", res.Status, told ?? "");
-            Speak(res.Status switch
+            Failed(res.Status switch
             {
                 401 => "Studio Quire didn't accept your token. Nothing was sent.",
                 429 => told ?? "Too many logs sent today. Try again tomorrow.",
@@ -208,8 +240,10 @@ sealed class SendLogForm : Form
         }
         finally
         {
-            _sending = false;
-            if (!IsDisposed && DialogResult != DialogResult.OK) _send.Enabled = _review.Enabled = true;
+            _sending = _posting = false;
+            // Cancel pressed while it was on its way, and it didn't go (why said once it's closed): closed now, as asked
+            if (_stop && DialogResult != DialogResult.OK && !IsDisposed && Visible) DialogResult = DialogResult.Cancel;
+            else if (!IsDisposed && DialogResult != DialogResult.OK) _send.Enabled = _review.Enabled = true;
         }
     }
 

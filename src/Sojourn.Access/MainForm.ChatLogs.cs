@@ -52,8 +52,9 @@ public sealed partial class MainForm
     /// <summary>A new tab's history starts with the conversation's last lines, the caret after them, where new ones arrive.</summary>
     void FillEarlier(Conversation cv)
     {
-        var lines = _logs != null && _set.ChatLogs != "off" ? _logs.Tail(cv.SessionId, EarlierInTab)
-            : _remembered.TryGetValue(cv.SessionId, out var kept) ? kept : new();
+        // (the log's lines if the disk gives them at once, else this session's)
+        var lines = (_logs != null && _set.ChatLogs != "off" ? _logs.Tail(cv.SessionId, EarlierInTab) : null)
+            ?? (_remembered.TryGetValue(cv.SessionId, out var kept) ? kept : new());
         if (lines.Count == 0) return;
         cv.History.Text = FriendlyLinks(string.Join("\r\n", lines)) + "\r\n(Those are earlier lines. New ones follow.)";
         cv.History.SelectionStart = cv.History.TextLength;

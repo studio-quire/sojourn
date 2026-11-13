@@ -23,7 +23,9 @@ public sealed class SojournSearch : SessionApi
         Op("classifieds", $"{{text (3+ characters), category?: {string.Join("|", SearchOps.ClassifiedCategories)}, limit=8}} -> "
             + "{classifieds: [{name, region, parcel, go_to, about}], found}: the ads residents pay to list",
             async (a, ct) => await o.ClassifiedsAsync(a, ct));
-        Op("land", $"{{type?: {string.Join("|", SearchOps.LandTypes)}, max_price?, min_area?, sort?: {string.Join("|", SearchOps.LandSorts)}, "
+        Op("where", "{kind: parcel|event|classified, id} -> {kind, name, region, pos (in the region), go_to, about?, starts?, on_now?, ended?}: "
+            + "where one is, by the id a secondlife:///app/parcel|event|classified link carries", async (a, ct) => await o.WhereAsync(a, ct));
+        Op("land",$"{{type?: {string.Join("|", SearchOps.LandTypes)}, max_price?, min_area?, sort?: {string.Join("|", SearchOps.LandSorts)}, "
             + "limit=8, start?} -> {land: [{name, price, area, price_per_m, auction?, region, go_to, about}], found}: land for sale "
             + "(SojournLand buy, there, buys it)", async (a, ct) => await o.LandAsync(a, ct));
     }

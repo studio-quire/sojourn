@@ -91,7 +91,7 @@ public sealed partial class MainForm
     {
         if (_logs == null || _set.ChatLogs == "off") return;
         var lines = _logs.Tail(ChatLogs.AssistantKey, EarlierInTab);
-        if (lines.Count == 0) return;
+        if (lines is not { Count: > 0 }) return;
         var now = _assistantHistory.Text;
         _assistantHistory.Text = string.Join("\r\n", lines) + "\r\n(Those are earlier lines. New ones follow.)" + (now.Length > 0 ? "\r\n" + now : "");
         _assistantHistory.SelectionStart = _assistantHistory.TextLength;

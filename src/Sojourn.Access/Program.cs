@@ -69,6 +69,7 @@ sealed class AccessApp : ApplicationContext
         _login.FormClosed += (_, _) => { if (!_shown) _ = QuitAsync(); };
         _watch.Tick += (_, _) => Watch();
         _held = new WindowWatch(SayWhileHeld, LogWhileHeld, RestartWhileHeld);
+        RealInput.Late = LogWhileHeld;   // (the keys pressed meanwhile, as the window's thread gets to them)
         _login.Show();
     }
 

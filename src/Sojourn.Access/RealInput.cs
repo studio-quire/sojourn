@@ -89,8 +89,9 @@ public sealed class RealInput : IMessageFilter
             {
                 LastKeyAt = now;
                 int vk = (int)m.WParam;
-                if (m.Msg == WM_KEYDOWN && vk is not (VK_SHIFT or VK_CONTROL) && (Control.ModifierKeys & (Keys.Control | Keys.Alt)) == 0
-                    && Control.FromHandle(m.HWnd) is TextBoxBase { ReadOnly: false })
+                bool typed = m.Msg == WM_KEYDOWN && vk is not (VK_SHIFT or VK_CONTROL) && (Control.ModifierKeys & (Keys.Control | Keys.Alt)) == 0
+                    && Control.FromHandle(m.HWnd) is TextBoxBase { ReadOnly: false };
+                if (typed)
                 {
                     LastTypedAt = now;
                     _typed[_typedNext++ % _typed.Length] = now;
@@ -98,6 +99,9 @@ public sealed class RealInput : IMessageFilter
                 if (vk is VK_SHIFT or VK_CONTROL) { if (((long)m.LParam & 0x40000000) == 0) _loneModifier = vk; }
                 else _loneModifier = 0;
                 var from = Source();
+                if (Late != null && from != InputSource.Posted && ((long)m.LParam & 0x40000000) == 0 && vk is not (VK_SHIFT or VK_CONTROL or VK_MENU)
+                    && now - MessageTime(now) >= 1000 && _lateSaid++ < 100)
+                    Late($"window: {KeyName(vk, typed, Control.FromHandle(m.HWnd) is TextBoxBase { ReadOnly: false })} handled {(now - MessageTime(now)) / 1000.0:0.0} s after it was pressed{(from == InputSource.Injected ? " (passed on by the screen reader or a program)" : "")}");
                 s = _judge.KeyDown((int)m.WParam, from, now, MessageTime(now), ((long)m.LParam & 0x40000000) != 0, GetAncestor(m.HWnd, GA_ROOT));
                 // an injected key with no press behind it: a program, or a screen reader that hooked in after us
                 if (!s.Person && from == InputSource.Injected) _hook?.Refresh();
@@ -137,6 +141,23 @@ public sealed class RealInput : IMessageFilter
             return src.OriginId switch { IMO_HARDWARE => InputSource.Hand, IMO_INJECTED => InputSource.Injected, _ => InputSource.Posted };
         }
         catch (EntryPointNotFoundException) { return InputSource.Posted; }
+    }
+
+    /// <summary>A key handled a second or more after it was pressed, the window's thread held meanwhile, for the session log
+    /// (Program sets it): what the person pressed while nothing answered, and in what order it then acted (a tester's train
+    /// she couldn't stop, 2026-11-11, left only what was read out once the window came back). Keys named, never what's
+    /// typed into a box; at most 100 a session.</summary>
+    public static Action<string>? Late { get; set; }
+    static int _lateSaid;
+
+    static string KeyName(int vk, bool typed, bool inBox)
+    {
+        var mods = Control.ModifierKeys;
+        // (AltGr arrives as Control+Alt: @ or the euro sign typed on many layouts)
+        bool altGr = inBox && (mods & (Keys.Control | Keys.Alt)) == (Keys.Control | Keys.Alt);
+        if ((typed || altGr) && MapVirtualKey((uint)vk, MAPVK_VK_TO_CHAR) >= ' ') return "a key typed into a box";   // (Enter, Backspace, Tab named)
+        return (mods.HasFlag(Keys.Control) ? "Control+" : "") + (mods.HasFlag(Keys.Alt) ? "Alt+" : "")
+            + (mods.HasFlag(Keys.Shift) ? "Shift+" : "") + (Keys)vk;
     }
 
     /// <summary>When the message being handled happened, on Environment.TickCount64's clock (GetMessageTime is its low 32 bits).</summary>
@@ -239,7 +260,7 @@ public sealed class RealInput : IMessageFilter
     const int WM_KEYDOWN = 0x0100, WM_KEYUP = 0x0101, WM_CHAR = 0x0102, WM_DEADCHAR = 0x0103, WM_SYSKEYDOWN = 0x0104, WM_SYSKEYUP = 0x0105,
         WM_SYSCHAR = 0x0106, WM_SYSDEADCHAR = 0x0107, WM_IME_CHAR = 0x0286, WM_LBUTTONDOWN = 0x0201, WM_LBUTTONUP = 0x0202,
         WM_SETFOCUS = 0x0007, WM_ACTIVATEAPP = 0x001C;
-    const int VK_SHIFT = 0x10, VK_CONTROL = 0x11;
+    const int VK_SHIFT = 0x10, VK_CONTROL = 0x11, VK_MENU = 0x12, MAPVK_VK_TO_CHAR = 2;
     const int IMDT_UNAVAILABLE = 0, IMO_HARDWARE = 0x01, IMO_INJECTED = 0x02;
     const int WH_CALLWNDPROC = 4, GA_ROOT = 2;
 
@@ -252,6 +273,7 @@ public sealed class RealInput : IMessageFilter
     [DllImport("user32.dll")] static extern bool GetCurrentInputMessageSource(out InputMessageSource source);
     [DllImport("user32.dll")] static extern uint InSendMessageEx(nint reserved);
     [DllImport("user32.dll")] static extern int GetMessageTime();
+    [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
     [DllImport("user32.dll")] static extern nint GetAncestor(nint hwnd, int flags);
     [DllImport("user32.dll")] static extern nint SetWindowsHookEx(int id, HookProc proc, nint module, uint thread);
     [DllImport("user32.dll")] static extern nint CallNextHookEx(nint hook, int code, nint wParam, nint lParam);

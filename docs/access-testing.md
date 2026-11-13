@@ -643,7 +643,9 @@ docstring with its checks in full):
   a LOCALAPPDATA of its own and finds none. Not the build's fault.
 - **links** (under a minute, no renderer needed): a web link and a place in the visitor's chat; Control+Shift+K lists
   them, Enter on the web one says it's opening (`SOJOURN_NO_BROWSER`: no browser comes up), Enter on the history's line
-  with the place teleports.
+  with the place teleports. Then Enter on lines with the map's link with a `?title=` on it (teleports), a parcel's link
+  (the parcel id from a landmark's About; said with its region, then teleports), a link to her own landmark (teleports by
+  it) and to someone else's (says why it doesn't open, and the session log has the link's shape without its id).
 - **driving after someone** (about 2 minutes, no renderer needed): on the gentlest patch of Atelier East, the visitor's
   kart, `//follow` with a gap, the visitor ahead to the left: it steers there and stops short without touching them; the
   visitor walks round behind and it turns and goes after them; an arrow takes the wheel back. Then backed by hand

@@ -60,7 +60,9 @@ The product:
   possibly shipped under its own name, and separate from the sighted desktop UI to come. Directed by Claude models and
   fully usable without a Claude account (user, 2026-10-29). `docs/access.md`.
 - **Two apps, shipped separately, one repo** (user, 2026-10-29): no one uses both, so each has its own package and
-  releases. The source is public as one repo plus Access's code-free front door (`docs/publishing.md`).
+  releases. Kept when the blind tester suggested one app with a toggle as likelier to be approved for Linden Lab's
+  directory (the user, 2026-11-12: a good suggestion, but they stay distinct; Access's application says it shares
+  Sojourn's code, so they can be reviewed together). The source is public as one repo plus Access's code-free front door (`docs/publishing.md`).
 
 How it's built:
 - **A fork of Multitude's client core and renderer** (Claude Opus 5.5, 2026-10-20): .NET 10 on LibreMetaverse, plus

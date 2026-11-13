@@ -516,7 +516,7 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
 
 ### Links
 
-`MainForm.Links.cs`. Enter on a history's line opens the first link on it; Control+Shift+K (`//links`) lists the last ones seen, the newest first, with who said them. A web page opens in the browser, a place teleports, a person's link is their profile, a group's says About the group; nothing else opens. On the way to the screen reader, the histories, notices and profiles, a Second Life link reads as what it is: "Builders (a group)" (just "a group" the first time one she isn't in comes up, its name read for the next time), "Bay City (a place)" (with where, if two in a region have come up), "a parcel", "an event", "a classified", "Hat (an item)", "a link for viewers". Web pages read as they are. The words are remembered so Enter and Control+K still open them; a chat log's file keeps the link itself, and reads the same way in its window.
+`MainForm.Links.cs`. Enter on a history's line opens the first link on it; Control+Shift+K (`//links`) lists the last ones seen, the newest first, with who said them. A web page opens in the browser, a place teleports, a person's link is their profile, a group's says About the group; a parcel, event or classified teleports, and the rest as Links, below. On the way to the screen reader, the histories, notices and profiles, a Second Life link reads as what it is: "Builders (a group)" ("(a group)" the first time one she isn't in comes up, its name read for the next time), "Bay City (a place)" (with where, if two in a region have come up), "(a parcel)", "(an event)", "(a classified ad)", "(a landmark)", "Hat (an item)", "(a link for viewers)"; words that already stand for another link are numbered, "(an event 2)", so Enter on a line opens its own (the same thing in another form, a profile's `/about` and `/inspect`, keeps its words) (the brackets keep "a parcel" in someone's sentence from being taken for one; NVDA doesn't say them at its usual punctuation). Web pages read as they are. The words are remembered so Enter and Control+K still open them; a chat log's file keeps the link itself, and reads the same way in its window.
 
 ### Long lines
 
@@ -1227,10 +1227,18 @@ the nearest 200 past 30 m). Beyond the draw distance (128 m by default) the regi
 
 **Links** (`MainForm.Links.cs`; Claude Opus 5.5, 2026-11-04, the blind tester's ask): Control+K in a notecard or script opens the first link on the caret's line (Enter makes a new line there). Enter on a line of a history opens
 the first link on it; Control+Shift+K (`//links`, the Read-out menu) lists the last 50 seen in chat, IMs and notices, newest
-first, with who said them, Enter opening one. A web page (http or https only) goes to her browser, an SLurl teleports, a
-person's `secondlife:///app/agent` link opens their profile; any other `secondlife:` link is refused in words. A script's
-llLoadURL opens in the browser on Go to page (Access had nothing wired to it before). Second Life's other app links,
-`app/group` and the rest, aren't opened yet.
+first, with who said them, Enter opening one. A web page (http or https only) goes to her browser, an SLurl teleports (its
+query or anchor, the map's `?title=...`, left off), a person's `app/agent` link opens their profile and a group's its
+details. The other app links (2026-11-13, after her partner sent a place she couldn't open): `app/parcel`, `app/event` and
+`app/classified` are asked where they are (SojournSearch `where`), said with their name and region, and teleported to;
+`app/landmark` teleports by the landmark when it's hers (asked of the inventory service for up to 2.5 s when its folder
+isn't loaded, "Looking for that landmark in your inventory.") and says why not when it's someone else's (the id is an item in
+the sender's inventory, as the viewer reads it), `app/inventory` says where hers is or that it's theirs to give;
+`app/objectim` says where the object is. Anything else is said as what it would have a viewer do. A link not opened puts
+its shape in the session log (`link not opened: secondlife:///app/landmark/[id]/[word]`: Second Life's hosts and app
+kinds kept, every other part only as a number, an id or a word, the query's keys without values), since the log leaves
+out the words it came in. A script's llLoadURL opens in the browser on Go to page (Access had nothing wired to it
+before).
 
 **Driving after someone** (`Walk/WalkMode.Convoy.cs`; Claude Opus 5.5, 2026-11-04, after the blind tester steered a
 motorcycle by hand after her partner's by the beacon, jerkily, and asked for vehicles following each other): `//follow
@@ -2454,7 +2462,7 @@ them. Laid out as the build editor is, with the official viewer's About Land tab
 
 `MainForm.ChatLogs.cs`, `ChatLogs.cs`; Alt+0's Chat group, Chat logs kept on this PC: all (the default, as in Radegast and the official viewer), conversations (IMs and group chat, no nearby chat), or off. Said once on arriving after the first build that has them.
 - **The assistant's log** (2026-11-11, the blind tester kept forgetting her descriptions): what she asks the assistant (a description as "You: Describe Kestrel") and every reply, in `Assistant.txt` beside the conversations, under the same switch (kept with all or conversations) and incognito's rules; Alt+9's history starts each session with its last 60 lines, under which "(Those are earlier lines. New ones follow.)", as a conversation opened again does (`FillAssistantEarlier`). Read-out > Chat logs lists it with the rest.
-- **The files**: plain text, one a conversation, in the data folder's `chat-logs/GRID/ACCOUNT` ("Nearby chat.txt", "Kestrel - 1a2b3c4d.txt", the end of its session id, as display names change): each run of lines under a line with the date, each line with its time. Written by a thread of their own (a write once held the window 2.1 s on the blind tester's PC, twice in an afternoon, 2026-11-11); reading, listing and deleting wait for what's queued first, at most 3 s. They're other people's words, so they stay on this PC: Send a log only takes `logs/`, and the assistant's file tools and shell are refused them (`assistant/harness.py`; its `tools/assistant_guard.py` tries).
+- **The files**: plain text, one a conversation, in the data folder's `chat-logs/GRID/ACCOUNT` ("Nearby chat.txt", "Kestrel - 1a2b3c4d.txt", the end of its session id, as display names change): each run of lines under a line with the date, each line with its time. Written by a thread of their own (a write once held the window 9 s on the blind tester's PC, as her train came into its station, 2026-11-11); reading, listing and deleting wait for what's queued first, at most 3 s, and a tab's earlier lines half a second, after which they're this session's (a tab opened by an arriving IM mustn't wait out a slow disk). They're other people's words, so they stay on this PC: Send a log only takes `logs/`, and the assistant's file tools and shell are refused them (`assistant/harness.py`; its `tools/assistant_guard.py` tries).
 - **Reading one**: Read-out > Chat logs (`//chatlog`), the logs with when each last changed, the most recent first, Enter reading one; `//chatlog NAME` the one with that in its name; Chat log on a person's Applications key, on a group's, and in a group's or conference's message box. It opens in a read-only window, as a notecard's, at the newest line: Control+F finds, Control+G goes to a line, Control+K opens a link, Escape closes. The list's Open the folder opens it in Windows, and its Delete (Delete too; last in the Tab order) asks in Notices: gone for good.
 - **A conversation opened again**: closing one no longer loses it. A new tab starts with its last 60 lines, under which "(Those are earlier lines. New ones follow.)", from the log, or with logs off from this session's memory (200 lines each; gone when the app closes). Nearby chat's history isn't filled at login: it's a different place by then. The session's `TesselIM history` isn't used, as `leave` drops it.
 - **Incognito**: nothing from a spell is written or remembered, seeing or blind, so a tab opened after one doesn't bring it back. What's on screen in an open tab stays as it is. Nor is anything kept with someone marked Always incognito with them, or any IM while IMs are incognito: their spell starts only once the conversation is in focus, so a first line would otherwise be kept.
@@ -2523,7 +2531,8 @@ is listed only while Windows has it (the TV on). A change takes effect at once a
 so the person hears where sound comes out now; one that doesn't start, or that Windows passes no sound to, is put
 back and said so with why ("Not changed: ... didn't start: another program is using it exclusively, error 0x8889000a.
 Sound stays on Speakers (3- EPOS PC 8 USB)."); one that plays but that Windows has muted or near 0% is kept, with
-"But Windows has it muted." A chosen device that's unplugged plays through the default until it's back. The blind
+"But Windows has it muted.", and one under half with "But Windows has its volume at 25%." (her TV's, 2026-11-07: the
+sound reached it 20 dB under what was sent, and she heard nothing) A chosen device that's unplugged plays through the default until it's back. The blind
 tester switches her headset and speakers in Radegast (2026-10-31); on 0.1.0.737 she chose her TV's HDMI output (its
 own speakers) from the row, Access said so, the shim had it open, and she heard nothing (2026-11-01; why is open:
 the log now has the output's format, Windows' volumes for it and what it took, see `docs/voice.md`). The shim follows Windows by itself (the default as
@@ -2727,6 +2736,8 @@ Studio Quire token kept it says so and gives the issues page instead; anonymous 
 window, the focus in What happened (a note, Enter a new line), then Session (this one, then earlier ones by day and
 time), What's sent (read-only, the plain line below), Send (Alt+N; Enter elsewhere), Review what's sent (the filtered
 text in a read-only window, as F1's) and Cancel. "Sending.", then the outcome said; a failure keeps the window open.
+Cancel (or Escape) while it's getting ready stops it ("Stopping.", then "Not sent."); once it's on its way it says it
+can't be stopped, and the window closes when it's done.
 The relay keeps it 30 days (`tools/relay/README.md`); `python tools/relay.py logs` and `logs fetch` read it here.
 
 What's sent never holds other people's words (ToS 6.2(i), `docs/tpv-policy.md` > Data and privacy), so the log marks
@@ -2922,7 +2933,13 @@ it).
   the last was answered), which stamps the time when handled; the stamp stands still while the thread is held, or kept
   from input by a flood of posted messages (not a sent ping: a wait inside a COM call still answers those; not a
   WinForms timer: its ticks starve under posted messages, and a COM wait can dispatch them). Held 1 s or more is
-  logged when it ends ("window: its thread was held 2.3 s"), for a tester's log; at 5 s it's said ("The window isn't
+  logged when it ends ("window: its thread was held 2.3 s (its own processor time 0.1 s of the 2.4 s measured; the
+  PC's processors 97% busy; 1.2 GB of its 8.0 GB memory free, this app 2.1 GB)"), for a tester's log: little processor
+  time of its own means the thread was kept waiting (the disk, a lock), most of it that it was at work (2026-11-13,
+  after her 9 s as her train came into its station, with a stack 2.1 s in and nothing on the rest). Each key handled
+  a second or more after it was pressed is logged by name as the thread gets to it ("window: F3 handled 7.9 s after
+  it was pressed"; never what's typed into a box; `RealInput.Late`): what she pressed while nothing answered. At 5 s
+  it's said ("The window isn't
   answering. Waiting for it.") and "The window is back." when it is; from 30 s, each minute, it offers Control+Shift+Q,
   registered as a hotkey only while the thread is held, which logs out if it can (3 s at most) and starts the app again
   at the login window, the form filled in. NVDA hears it through its API; for another reader the announcer's
@@ -2930,7 +2947,8 @@ it).
   test's `//holdwindow SECONDS` (with `SOJOURN_TEST_HOLD_WINDOW=1`) holds the thread; Control+Shift+Q and the SAPI
   voice aren't in the scripted test (a hotkey takes real keys). What the thread was doing (2026-11-11, after a tester's
   13 s with nothing around it in the log, and 16 holds of 1-5 s in her logs since 11-08, most of them while starting): at 2 s
-  held, and again at 10 s, its stack goes to the log, innermost first ("window: held 2.1 s, its thread in ...: Thread.Sleep <
+  held, and again at 10 s, its stack goes to the log, innermost first, the time being when it was read, not how long the
+  hold lasted ("window: held 2.1 s, its thread in ...: Thread.Sleep <
   Commands+<RunAsync>.MoveNext < ... < Program.Main"), read on a thread of its own from a snapshot of the process
   (ClrMD's `DataTarget.CreateSnapshotAndAttach`; the first read takes about 2 s here, loading the runtime's reader, later
   ones 0.1 s), at most 12 a session. Managed frames only: a wait inside a native call shows as the call into it. The

@@ -162,6 +162,11 @@ public static class AudioEngine
             : Volume is >= 0 and < 0.05f ? $"Windows has its volume at {Math.Round(Volume * 100)}%"
             : AppVolume is >= 0 and < 0.05f ? $"this app's volume on it in Windows' volume mixer is {Math.Round(AppVolume * 100)}%"
             : null;
+
+        /// <summary>Windows' volume for the device when it's low enough to hear little, but not so low as <see cref="Quiet"/>
+        /// (the blind tester's TV over HDMI at 25%, sound reaching it 20 dB under what was sent, and her hearing nothing:
+        /// 2026-11-01 and 11-07); null otherwise.</summary>
+        public string? Low => Quiet == null && Volume is >= 0.05f and < 0.5f ? $"Windows has its volume at {Math.Round(Volume * 100)}%" : null;
     }
 
     /// <summary>The direction's state; null from a shim without the report, or before the engine starts.</summary>

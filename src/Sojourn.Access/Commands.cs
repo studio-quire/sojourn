@@ -1398,10 +1398,11 @@ public sealed partial class Commands
         ? string.Create(CultureInfo.InvariantCulture, $"Arrived in {me.Region}, at {Math.Round(me.Pos.X):0}, {Math.Round(me.Pos.Y):0}, {Math.Round(me.Pos.Z):0}.")
         : "Arrived.";
 
-    /// <summary>Teleport to a place (an SLurl, Region/x/y/z): said as it goes, and the arrival with where.</summary>
-    public async Task<bool> GoToAsync(Place place)
+    /// <summary>Teleport to a place (an SLurl, Region/x/y/z): said as it goes, with what it is when there's more to say
+    /// ("Teleporting to Pier Party, an event on now: Bay City 62, 58, 24."), and the arrival with where.</summary>
+    public async Task<bool> GoToAsync(Place place, string? what = null)
     {
-        _say($"Teleporting to {place}.");
+        _say(what != null ? $"Teleporting to {what}: {place}." : $"Teleporting to {place}.");
         OwnTeleport = true;
         try
         {

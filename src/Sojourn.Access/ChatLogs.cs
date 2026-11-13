@@ -27,9 +27,9 @@ public sealed class ChatLogs(string dir)
     readonly Dictionary<string, string> _files = new();
     readonly HashSet<string> _headed = new();
     string _day = "";
-    // lines go to disk from a thread of their own: a write once held the window 2.1 s on the blind tester's PC (its stack in
-    // her log, 2026-11-11), twice in an afternoon. Everything that touches the files holds _lock; readers wait for what's
-    // queued first, so a tab opened again still has the line just said
+    // lines go to disk from a thread of their own: a write once held the window 9 s on the blind tester's PC (its stack in
+    // her log 2.1 s in, 2026-11-11, as her train came into its station and she couldn't stop it). Everything that touches
+    // the files holds _lock; readers wait for what's queued first, so a tab opened again still has the line just said
     readonly object _lock = new();
     readonly System.Collections.Concurrent.BlockingCollection<(string Key, string Title, string Line, DateTime At)> _queue = new();
     int _pending;
@@ -84,11 +84,13 @@ public sealed class ChatLogs(string dir)
         }
     }
 
-    /// <summary>What's queued written first (at most 3 s: a disk that slow is no reason to hang a reader for ever).</summary>
-    void Settle()
+    /// <summary>What's queued written first (at most 3 s: a disk that slow is no reason to hang a reader for ever); false if
+    /// some of it still isn't.</summary>
+    bool Settle(int ms = 3000)
     {
-        var until = Environment.TickCount64 + 3000;
+        var until = Environment.TickCount64 + ms;
         while (Volatile.Read(ref _pending) > 0 && Environment.TickCount64 < until) Thread.Sleep(10);
+        return Volatile.Read(ref _pending) == 0;
     }
 
     void Append(string key, string title, string line, DateTime now)
@@ -108,11 +110,17 @@ public sealed class ChatLogs(string dir)
         File.AppendAllText(path, text.ToString(), new UTF8Encoding(false));
     }
 
-    /// <summary>The conversation's last lines, for a tab opened again; none without a log.</summary>
-    public List<string> Tail(string key, int lines)
+    /// <summary>The conversation's last lines, for a tab opened again; none without a log; null when what's queued isn't
+    /// written within half a second, or a write still holds the files then. A tab is opened by an arriving IM, on the
+    /// window's thread, which mustn't wait out a disk holding the writer (one line took her PC seconds, 2026-11-11: the
+    /// window was held 9 s as her train came into its station); the caller has this session's lines instead.</summary>
+    public List<string>? Tail(string key, int lines)
     {
-        Settle();
-        lock (_lock) return TailLocked(key, lines);
+        const int Wait = 500;
+        long until = Environment.TickCount64 + Wait;
+        if (!Settle(Wait) || !Monitor.TryEnter(_lock, (int)Math.Max(0, until - Environment.TickCount64))) return null;
+        try { return TailLocked(key, lines); }
+        finally { Monitor.Exit(_lock); }
     }
 
     List<string> TailLocked(string key, int lines)

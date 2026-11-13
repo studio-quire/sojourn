@@ -768,7 +768,17 @@ On the builders' line and log `tester-20261107T150406-3fe8fa` (our words). She d
 
 ### A folder given, a folder deleted, and links (0.1.0.947, the blind tester, 2026-11-07 evening)
 
-On two of her logs (our words). What's built from it is in `docs/access-app.md` > Keys.
+On two of her logs (our words; `tester-20261107T230900-bc507d` and `-231955-9e9c36`, on 0.1.0.947). What's built from it is in
+`docs/access-app.md` > Keys. Three more that night on 0.1.0.955, named here only on 2026-11-13: `tester-20261108T011605-ff1e19`
+(the deleted things had gone, shown once she logged in again: the folder shown again, above), `-034027-39129c` (renaming,
+moving and making notecards, "very well") and `-020428-3496db`, below.
+- **Sound on her TV** (`-020428-3496db`, 21:02-21:04: "Still unable to switch to the computer monitor speakers"): she
+  chose "4 - 2D HD LG TV" (an AMD HDMI output) five times; each time it opened, took its sound without a gap, and the
+  chime reached it at -44 dBFS against -24 sent, where her PC's speakers got -23 of -24. Windows had the TV's output at
+  25% (her speakers at 42%), which accounts for the 20 dB, and the TV's own volume comes after that. So Windows passed
+  the sound on, quietly; whether the TV played it the log can't say. Since 2026-11-13 a switch to an output Windows has
+  under half says so ("But Windows has its volume at 25%."). Worth asking her whether other programs' sound comes out of
+  the TV (NVDA with the TV as Windows' default, say), and whether the TV's own volume is up.
 - **Giving a folder** of folders of landmarks was said given when nothing went. The library underneath gathered the
   folder item by item (nearly two minutes), then dropped the give without a word when it held more than it would send
   (66 things, folders counted, by the look of it); the confirmation had counted only the folder's own items, none. She
@@ -932,8 +942,30 @@ Two more logs and messages that morning (our words; logs `tester-20261111T152536
 
 ### A tour car's border, her freight HUD after borders, a delivery said four times, a bag left on (0.1.0.1095, the blind tester, 2026-11-11 afternoon and evening)
 
-Five logs with her notes (our words): `tester-20261111T215734-f0bf01` (16:16-16:55), `-215615-ceb5d0` and `-232109-5647bd`
-(the session from 16:55), `tester-20261112T000556-68e47c` and `-005543-7b09dd` (from 18:21).
+Seven logs with her notes (our words): `tester-20261111T215734-f0bf01` (16:16-16:55), `-215615-ceb5d0`, `-230153-b16ce6`,
+`-231709-90a91f` and `-232109-5647bd` (the session from 16:55), `tester-20261112T000556-68e47c` and `-005543-7b09dd` (from
+18:21). The two in the middle weren't read until 2026-11-13.
+- **A place her partner sent that wouldn't open** (`-230153-b16ce6`: her partner "tried to send me a link to teleport to ... the
+  viewer said it couldn't open it"): an IM from him at 18:00:29, then "That link is for something Sojourn Access can't
+  open." at 18:00:51. The log leaves his words out, so which link it was can't be known. What Access refused then: a map
+  link with anything after the place (`?title=...`, which the map's own links carry), and every `secondlife:///app` link
+  but a person's or a group's, among them a parcel's, an event's, a classified's and a landmark's. Now those open (a
+  parcel, event or classified asked where it is and teleported to; her own landmark teleports, someone else's is said to
+  be theirs to give), anything still refused says what kind it was, and the session log has a refused link's shape without
+  its words (`docs/access-app.md` > Links). How he made the link (the map's Copy SLurl, a landmark dragged in, the location
+  bar) is worth asking.
+- **A train she couldn't stop at its station** (`-231709-90a91f`, read 2026-11-13: "there was a period when I was trying
+  to stop the train at the end, but I could not do anything"; to her partner then, "Access stopped responding"): her
+  Gazelle (an Atomic Infinity Free Train, throttle 20%) on a GTFO run into Sweetbay. As GTFO said she'd arrived
+  (18:15:41), the window's thread was held 9.0 s, 2.1 s in waiting on Windows to write a line into her chat log; "The
+  window isn't answering" at 5 s, back at 18:15:50. Then F3, F3 or Escape, F3 acted (walk mode on, off, on: pressed in
+  the freeze and queued, or after; the log can't say) and Down took the throttle to idle by 18:15:56, the train stopping
+  29 m on from where it was at 18:15:38. The crossing six seconds before had gone through (controls taken again). Ours:
+  chat logs are written by a thread of their own since 1110 (from this hold, read then as two of 2.1 s: the stack line's
+  time is when it was read, not how long); now a tab's earlier lines don't wait on a slow disk either, a hold's line says
+  the thread's own processor time over it and the PC's load and memory, and keys handled late are logged by name. Why
+  one line took her PC seconds the log can't say; its stack took 8.4 s to read, against 0.2-1.2 s in her other logs, so
+  the PC as a whole was struggling then.
 - **Off a tour car at a border** ("we got kicked off", sent with the start of the next session's log): a tour company's
   demo car, driving itself on its route with her and her partner aboard (not driving after someone), crossed into
   another region and stopped. The crossing went through as the day's others did (the region took her: its greeter
@@ -956,7 +988,7 @@ Five logs with her notes (our words): `tester-20261111T215734-f0bf01` (16:16-16:
   the menu off in its first seconds, so it was said again, and while she typed the chat line was said again too: four
   times. The repeats were ours. Now a menu cut off isn't said again when its words were heard after the cut in another
   line, nor lines with words a menu has just been said again with (`docs/access-app.md` > Read-out). Whether a HUD's
-  chat line repeating its menu should be left unread (kept in the history) would be hers to say.
+  chat line repeating its menu should be left unread (kept in the history) is hers to say: asked with 1113.
 - **Take off acting on a pose ball** ("It said I had removed the pose ball"): she opened the actions on her bag in what
   she wears, the list most likely refreshed under the open menu to things nearby (their count was said as it opened),
   and Take off acted on the row in its place, a pose ball she'd sat on, saying "Took off M Pose Ball." with nothing
@@ -971,6 +1003,8 @@ Five logs with her notes (our words): `tester-20261111T215734-f0bf01` (16:16-16:
 - **Send a log held the window** 2-3 s filtering her log on its thread; now off it. Her ten logs a day on the relay ran
   out that evening (thirty since).
 - The 16:16 session otherwise went well, she said: a submarine, a sailboat and the car toured and told by `//ride`.
+- She suggested merging the two viewers into one with a toggle, as likelier to be approved by Linden Lab. The user
+  (2026-11-12): a good suggestion, but they stay distinct (CLAUDE.md > Decisions); told her with the reasons (#282).
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
@@ -988,6 +1022,10 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   paragraph keys (a recalled line may be read twice).
 
 ### Open threads (ours, not hers to answer)
+
+- Small, from the reviews of 2026-11-11: `package --check --relay`'s network check now leaves out the app's own HTTPS
+  connection to the relay, not yet run since (run it with the next relay check). Cancel during Send a log's sending stops
+  it since 2026-11-13 (before it's on its way; once it is, it says it can't be stopped), not run against a slow send.
 
 - The renderer out of sight could start only when needed: on the processor, unseen, it's ~700 MB of committed memory
   (~0.25-0.3 GB of working set), against the first picture, face list or touch waiting for it to start and, on her
@@ -1014,6 +1052,10 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   are the real check.
 
 ### Questions for a blind tester
+
+- Sent with 0.1.0.1113 (#281 on the builders' line, 2026-11-11 late): should a HUD's chat line that repeats its own menu
+  (GTFO's "task complete", said in its menu and in nearby chat a second on) go unread, kept in the history, so she hears
+  it once?
 
 - Auto-sit (built 2026-11-09 from Radegast's AutoSit and issue #156; nothing reported): did she use Radegast's, and for what
   (a seat at home, at a club, to stay seated while away)? Ours sits her once on each arrival by logging in or teleporting into
