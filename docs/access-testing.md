@@ -36,38 +36,14 @@ focus elsewhere), so a new step hasn't met the others until a full run has had i
 meets: a list's first fill of the session, held back 3 s (auto-sit's walk down Objects started under it and failed 2 of
 2 alone, having passed in every full run; `select_in` now waits for the fill).
 
-Last full run 2026-11-10, 07:40, on main at `5ae8a8f` (0.1.0.1074's app and what main has had since, the faster `set`, the key
-state held, the review of both), all 99 steps in one session, 55 minutes with nobody at the PC and nothing else of ours running: 2479
-of 2482 (Claude Fable 5.2). The three misses, each fixed and its step run again with the estate, incognito and chat
-logs steps, 206 of 206: the rail switch said at 65 metres where the check allowed 60 (the app looks 7 s of travel
-ahead, 60 to 70 m at the kart's speed, and the run before had said exactly 60: the check now allows up to where the
-kart starts); a line of the session log with two time stamps, the app's (`SessionLog`'s writer kept a time stamp
-written just as a spell of incognito began and put it in front of the first line after: a line cut by a pause now goes
-whole, either side; a tester's log could have had such a line, rarely, without the test's log of every key); and
-walking round people stopped on a friend's teleport timing out, the test's: the estate step's ban had logged that
-friend out with words the step didn't look for ("TP home failed - you have been logged out"; only "kicked out" was),
-its bot went on answering `pos`, and forty steps on its teleports took 40 s each to fail (`pal_up` now reads a
-disconnected bot's log as down, so the estate step logs it in again). A first try that morning, at 07:12, lost 28
-steps to a flyout left open on the PC (A flyout or menu open on the PC's own desktop, below). The run before,
-2026-11-09, 19:57, on main at `7144fc3` (teleports within a region handled in turn, a `//go` that ends
-when it gets no nearer, the test's faster start), in two sessions: 2234 of 2235 through 85 steps and most of stopping a
-vehicle, an hour in one session, when the grid's process ended under it (nothing of a shutdown in `OpenSim.log`, no
-crash on Windows' record, and the same trial passed after: not explained, and neither says kill rather than crash:
-`docs/client.md` > How the grid ended, which also has what now records the next one); then that step and the twelve after it in a
-session of their own, with the one step fixed, 300 of 300. The miss was the test's: World > Away read "on" after "Not
-away.", away by itself having come on 2 s before (How it runs, below). The run before, 03:45 that day, on main with
-the estate, a group's settings, auto-sit, export and import, and Point at: 2438 of 2440, both misses timing (Tab to the
-lid's faces before they'd come, the very next check finding them; a picture's colour before its texture). The run
-before 0.1.0.1045: 2192 of 2193 (a group's powers coming after a title's change, since asked again). The night before,
-2026-11-08, on main after that day's five merges (0.1.0.1026): 2027 of 2039, no stall, and the IM sound window that took 2026-11-07's keys
-not seen again. Its twelve failures were all the test's own, fixed that night: "Logged in" unheard as `--autologin`
-raced QuireUia's first contact with the process (now a login by keys, below); the long line's accented words
-re-encoded by a scripted edit, so posted typing lost a character in each sentence; earlier runs' leftovers (now swept,
-below) in front of two tree walks and under the builders' box; a confirmation pressed at a fixed 1.5 s that a slow
-first upload hadn't asked yet; `near_visitor` teleporting her onto the visitor, where the lists rightly said "under a
-metre, below you" to checks wanting metres, and Tabbing into People nearby before it had filled after the teleport;
-the group step's chat left open, so the sound map's Control+Tab landed there. Those steps and their neighbours then
-passed, 648 of 648 on the default accounts; no full run since.
+Last full run 2026-11-13, 20:10, on main at `cf3ef52` with `UiaRelease` (Claude Opus 5.5): all 101 steps in one
+session, 59 minutes, 2582 of 2582; the review's fixes after it, the chat logs, links, inventory and window held steps,
+324 of 324. The run before, at 19:00 with the window watched finely (`SOJOURN_WINDOW_WATCH=120,150`, How it fits > The
+window's thread held): 2567 of 2575, the window held step's three (its lines in hundredths then) and a permission
+question's and two questions and a menu's five, which passed alone after. What that run found: in an hour of every
+step, about ten holds of 0.12 s or more on this PC, most while starting or the test's own, the rest clearing a list a
+reader had touched (the parts list, Alt+0's groups), which is how `UiaRelease` came. Older full runs are in git's
+history of this file.
 
 **The test client's references.** Every element QuireUia's managed UI Automation client (System.Windows.Automation)
 hands out stays a reference in the app's UIA server for as long as QuireUia is connected: GC and finalizers don't let it

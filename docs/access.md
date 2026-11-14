@@ -1023,9 +1023,11 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Open threads (ours, not hers to answer)
 
-- Small, from the reviews of 2026-11-11: `package --check --relay`'s network check now leaves out the app's own HTTPS
-  connection to the relay, not yet run since (run it with the next relay check). Cancel during Send a log's sending stops
-  it since 2026-11-13 (before it's on its way; once it is, it says it can't be stopped), not run against a slow send.
+- Cancel during Send a log's sending stops it since 2026-11-13 (before it's on its way; once it is, it says it can't be
+  stopped), not run against a slow send.
+- From the reviews of 2026-11-13: positions from parcel, event and classified links are taken modulo 256, wrong on
+  OpenSim's larger regions (Second Life's are all 256 m). (A tab's earlier lines read on the window's thread and link
+  words cleared at 1000 were closed the same day.)
 
 - The renderer out of sight could start only when needed: on the processor, unseen, it's ~700 MB of committed memory
   (~0.25-0.3 GB of working set), against the first picture, face list or touch waiting for it to start and, on her
@@ -1052,6 +1054,11 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   are the real check.
 
 ### Questions for a blind tester
+
+- Sent with 0.1.0.1125 (#283, 2026-11-13): how her partner made the place link that wouldn't open (the map, the
+  location, a landmark dragged in); whether she pressed anything but F3 and Down while the window froze at the
+  station, and whether anything else was busy on her PC then; for her TV, whether turning up Windows' or the TV's
+  volume brings the sound, and whether other programs' sound comes out of it.
 
 - Sent with 0.1.0.1113 (#281 on the builders' line, 2026-11-11 late): should a HUD's chat line that repeats its own menu
   (GTFO's "task complete", said in its menu and in nearby chat a second on) go unread, kept in the history, so she hears

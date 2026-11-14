@@ -17,14 +17,20 @@ namespace Sojourn.Access;
 /// at work), how busy the PC's processors were and its memory free. At 5 s it's said once, and at 30 s, then each minute,
 /// with the way out: Control+Shift+Q, registered only while the thread is held, starts Sojourn Access again at the
 /// login window (nothing else could: the window's own keys need that thread, and Windows' "not responding" dialog is
-/// nothing to rely on). If it comes back after being said, that's said too. At 2 s, and again at 10 s, what the thread
+/// nothing to rely on). If it comes back after being said, that's said too. At 1 s, and again at 10 s, what the thread
 /// is doing is logged: its stack, read from a snapshot of this process (ClrMD), since a tester's log said only how long
 /// (13 s once, 2026-11-10, with nothing around it to say why). docs/access-app.md > How it fits.
 /// </summary>
 sealed class WindowWatch
 {
-    const long LogFrom = 1000, SayAt = 5000, OfferAt = 30_000, OfferEvery = 60_000, StackAt = 2000, StackAgainAt = 10_000;
-    const int StacksAtMost = 12;   // a session's: a PC that keeps stalling needn't fill the log
+    const long SayAt = 5000, OfferAt = 30_000, OfferEvery = 60_000, StackAgainAt = 10_000;
+    // SOJOURN_WINDOW_WATCH=LOG_MS,STACK_MS, for finding on a fast PC what holds the window seconds on a slow one (the blind
+    // tester's cores are some 2.5 times slower, her disk slower still): holds logged from LOG_MS, a stack at STACK_MS,
+    // looked at every 50 ms, up to 400 stacks. Otherwise from 1 s, a stack at 1 s (2 s until 2026-11-13: most of the blind
+    // tester's holds are 1-2 s and went unexplained), every 250 ms, 12 a session (a PC that keeps stalling needn't fill the log)
+    readonly long LogFrom = 1000, StackAt = 1000;
+    readonly int Poll = 250, StacksAtMost = 12;
+    readonly bool _fine;
     const int HotKeyId = 1, MOD_CONTROL = 2, MOD_SHIFT = 4, MOD_NOREPEAT = 0x4000, VK_Q = 0x51, WM_HOTKEY = 0x0312, PM_REMOVE = 1;
 
     readonly Control _ear = new();
@@ -43,6 +49,12 @@ sealed class WindowWatch
         _say = say;
         _log = log;
         _restart = restart;
+        if (Environment.GetEnvironmentVariable("SOJOURN_WINDOW_WATCH")?.Split(',') is [var l, var st]
+            && long.TryParse(l, out var logFrom) && long.TryParse(st, out var stackAt))
+        {
+            (LogFrom, StackAt, Poll, StacksAtMost, _fine) = (Math.Max(100, logFrom), Math.Max(100, stackAt), 50, 400, true);
+            _log($"window: watched finely, holds logged from {LogFrom} ms, a stack at {StackAt} ms");
+        }
         _ = _ear.Handle;   // (made now, on the window's thread: what the watch's posts go to; WinForms parks it, hidden)
         new Thread(Run) { IsBackground = true, Name = "window watch", Priority = ThreadPriority.AboveNormal }.Start();
     }
@@ -55,7 +67,7 @@ sealed class WindowWatch
         var quiet = Read(last);   // the times when the thread last answered promptly, to measure a hold from
         while (true)
         {
-            Thread.Sleep(250);
+            Thread.Sleep(Poll);
             long now = Environment.TickCount64;
             // the watch itself didn't run for a while (the PC asleep, or everything starved): that says nothing of the window
             if (now - last > 3000) Interlocked.Exchange(ref _stamp, now);
@@ -71,19 +83,22 @@ sealed class WindowWatch
             {
                 if (heldFrom != 0)
                 {
-                    _log($"window: its thread was held {(stamp - heldFrom) / 1000.0:0.0} s ({During(quiet, now)})");
+                    _log($"window: its thread was held {Secs(stamp - heldFrom)} s ({During(quiet, now)})");
                     if (said) _say("The window is back.");
                     if (hotKey) UnregisterHotKey(0, HotKeyId);
                     heldFrom = 0;
                     said = hotKey = false;
                     stacksThisTime = 0;
                 }
-                if (held < 600) quiet = Read(now);
+                if (held < (_fine ? 2 * Poll : 600)) quiet = Read(now);
                 continue;
             }
             if (heldFrom == 0) heldFrom = stamp;
             if (Debugger.IsAttached) continue;
-            if (held >= (stacksThisTime == 0 ? StackAt : StackAgainAt) && stacksThisTime < 2 && _stacks < StacksAtMost)
+            // (the last few of a session's stacks kept for holds of 3 s or more: a dozen short ones mustn't leave the long one
+            // that matters unexplained)
+            long firstAt = _fine || _stacks < StacksAtMost - 4 ? StackAt : Math.Max(StackAt, 3000);
+            if (held >= (stacksThisTime == 0 ? firstAt : StackAgainAt) && stacksThisTime < 2 && _stacks < StacksAtMost)
             {
                 stacksThisTime++;
                 _stacks++;
@@ -116,6 +131,9 @@ sealed class WindowWatch
         }
     }
 
+    /// <summary>A hold's length as its lines give it: tenths of a second, hundredths when watched finely.</summary>
+    string Secs(long ms) => (ms / 1000.0).ToString(_fine ? "0.00" : "0.0", System.Globalization.CultureInfo.InvariantCulture);
+
     /// <summary>The window's thread's stack into the log, innermost first, from a thread of its own (a snapshot can take
     /// a second, and the watch must go on).</summary>
     void LogStack(long held) => new Thread(() =>
@@ -127,21 +145,21 @@ sealed class WindowWatch
             // source, the installed runtime's. Never fetched from Microsoft's symbol server, ClrMD's last resort
             var dac = Path.Combine(AppContext.BaseDirectory, "mscordaccore.dll");
             bool single = string.IsNullOrEmpty(typeof(WindowWatch).Assembly.Location);
-            if (single && !File.Exists(dac)) { _log($"window: held {held / 1000.0:0.0} s; no mscordaccore.dll beside the app to read its stack"); return; }
+            if (single && !File.Exists(dac)) { _log($"window: held {Secs(held)} s; no mscordaccore.dll beside the app to read its stack"); return; }
             using var target = DataTarget.CreateSnapshotAndAttach(Environment.ProcessId);
             using var runtime = File.Exists(dac) ? target.ClrVersions[0].CreateRuntime(dac) : target.ClrVersions[0].CreateRuntime();
             if (runtime.Threads.FirstOrDefault(t => t.ManagedThreadId == _windowThread) is not { } thread)
             {
-                _log($"window: held {held / 1000.0:0.0} s; its thread not found in the snapshot");
+                _log($"window: held {Secs(held)} s; its thread not found in the snapshot");
                 return;
             }
             var frames = new List<string>();
             foreach (var f in thread.EnumerateStackTrace())
                 if (Frame(f) is { } name && (frames.Count == 0 || frames[^1] != name)) frames.Add(name);
-            _log($"window: held {held / 1000.0:0.0} s, its thread in (innermost first; read in {took.ElapsedMilliseconds} ms): "
+            _log($"window: held {Secs(held)} s, its thread in (innermost first; read in {took.ElapsedMilliseconds} ms): "
                 + string.Join(" < ", frames.Take(32)) + (frames.Count > 32 ? $" < ... {frames.Count - 32} more" : ""));
         }
-        catch (Exception e) { _log($"window: held {held / 1000.0:0.0} s; its stack couldn't be read ({e.GetType().Name}: {e.Message})"); }
+        catch (Exception e) { _log($"window: held {Secs(held)} s; its stack couldn't be read ({e.GetType().Name}: {e.Message})"); }
     }) { IsBackground = true, Name = "window watch stack" }.Start();
 
     static string? Frame(ClrStackFrame f)

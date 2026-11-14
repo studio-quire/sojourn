@@ -127,7 +127,9 @@ def wrangler(*args, stdin=None):
     npx = shutil.which("npx")
     if not npx:
         raise SystemExit("npx isn't on PATH (Node.js)")
-    r = subprocess.run([npx, "--no-install", "wrangler", *args], cwd=WORKER, input=stdin, capture_output=True, text=True,
+    # (fetched by npx when its cache lacks the newest 4.x: --no-install refused once the registry's moved past the cache's,
+    # 2026-11-13, and the package check's cap step failed on it; the major version pinned against surprises)
+    r = subprocess.run([npx, "--yes", "wrangler@4", *args], cwd=WORKER, input=stdin, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
     out = (r.stdout + r.stderr).strip()
     if r.returncode:

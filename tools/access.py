@@ -1354,6 +1354,9 @@ def pal_quit(i):
     except (OSError, ToolError):
         return False
     wait(lambda: not pal_answers(i), 15, 0.5)
+    # and its process gone: one still shutting down wrote "raising Disconnected" into the log pal_start opens afresh, and
+    # pal_up took the new bot for logged out (friends online at login, twice on 2026-11-13 with the PC short of memory)
+    wait(lambda: not any(port == PAL_PORTS[i] for _, port in pal_pids()), 20, 0.5)
     return True
 
 
@@ -5090,9 +5093,21 @@ def chat_logs(run, nonce, tester_id):
     # ---- closed and opened again
     close_conversation()
     if run.check("Send IM again: its input", reopen(), focus_label()):
+        # (read from the log on its own thread, so a moment after the tab)
+        wait(lambda: first in value_of("id=convHistory"), 3)
         hist = value_of("id=convHistory")
         run.check("the tab opened again starts with what was said", first in hist, hist[-200:])
         run.check("and says they're earlier lines", hist.rstrip().endswith("New ones follow.)"), hist[-80:])
+    # ---- opened again by an arriving IM: the earlier lines go before it, and it's there once
+    close_conversation()
+    second = f"Second words {nonce}"
+    im_and_open(second)
+    back_to_chat()
+    to_conversation(VNAME)
+    wait(lambda: first in value_of("id=convHistory"), 3)
+    hist = value_of("id=convHistory")
+    at_first, at_note, at_second = hist.find(first), hist.find("New ones follow.)"), hist.find(second)
+    run.check("a tab opened by an IM: earlier lines, then the IM, once", -1 < at_first < at_note < at_second and hist.count(second) == 1, hist[-300:])
     # ---- a spell of incognito: on screen, kept nowhere
     secret_near, secret_im = f"Spell line {nonce}", f"Spell IM {nonce}"
     back_to_chat()
@@ -6080,6 +6095,12 @@ def inventory(run, nonce):
     if not run.check("(fixtures: a folder, notecards, a crate in it)", have, ", ".join(have or {}) or "the crate never arrived"):
         return
 
+    # lists and trees are emptied without waiting on screen readers' providers (UiaRelease.cs), reaching into WinForms'
+    # private members: a .NET update that moved them would bring the wait back
+    applog = "".join(p.read_text(encoding="utf-8", errors="replace") for p in (OUT / "app" / "logs").glob("*.log"))
+    run.check("lists cleared with readers' providers released afterward (WinForms' members found)",
+              "uia: lists cleared with readers' providers released afterward" in applog,
+              next((l for l in applog.splitlines() if "uia: lists cleared" in l), "no uia line in the log"))
     key("alt+4")
     d = wait_focus(lambda d: d["id"] == "inventory", 4)
     run.check("Alt+4 goes to the inventory tree", d, label(d) if d else focus_label())
@@ -6377,7 +6398,7 @@ def window_held(run):
     run.check("and logged: held 5 s, then how long", "window: its thread has been held 5 s" in text
               and re.findall(r"window: its thread was held (\d+\.\d) s", text)[before + 1:] != [],
               "; ".join(re.findall(r"window: its thread [^\r\n]*", text)[-3:]))
-    # what it was doing, read from a snapshot at 2 s: here the test's own command asleep
+    # what it was doing, read from a snapshot at 1 s: here the test's own command asleep
     stacks = re.findall(r"window: held \d+\.\d s, its thread in [^\r\n]*", text)
     run.check("and what it was doing: the stack names the command that held it",
               stacks and "Commands" in stacks[-1] and "Sleep" in stacks[-1],
@@ -12993,7 +13014,6 @@ def links(run):
     the history's line opens the first on it; Control+Shift+K lists both, the newest first, and Enter there opens the
     one selected. No browser comes up (SOJOURN_NO_BROWSER)."""
     back_to_chat()
-    start = tester_where()
     m = mark()
     v("say a page https://example.com/some/page, and that's it.")
     run.expect("(the web link said)", ["example.com"], m, 10)
@@ -13025,11 +13045,8 @@ def links(run):
 
     # the other ways a place comes (the blind tester's partner sent her one she couldn't open, 2026-11-11): the map's
     # link with its title on, a parcel's link, a landmark's of hers and one of someone else's
-    def home():   # (in the visitor's chat range again: each link opened takes her away)
-        if math.dist(tester_where()[:2], start[:2]) > 4:
-            say_in_app(f"//tp {REGION}/{start[0]:.0f}/{start[1]:.0f}/{start[2]:.0f}")
-            wait(lambda: math.dist(tester_where()[:2], start[:2]) < 4, 30, 1)
-            time.sleep(1)
+    def home():   # (in the visitor's chat range again: each link opened takes her away, and the step may begin in another region)
+        near_visitor()
 
     def enter_on(line_said, what, words, secs=10):
         home()

@@ -202,7 +202,7 @@ public sealed partial class MainForm
         _landmarks.BeginUpdate();
         try
         {
-            _landmarks.Nodes.Clear();
+            UiaRelease.Clear(_landmarks.Nodes);
             if (tops.Count == 0) _landmarks.Nodes.Add(new TreeNode("No landmarks yet."));
             foreach (var top in tops) _landmarks.Nodes.Add(Node(top));
             foreach (var n in Descendants(_landmarks.Nodes).Where(n => open.Contains(n.Name) || n.Parent == null).ToList()) n.Expand();

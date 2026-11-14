@@ -136,6 +136,8 @@ public sealed partial class MainForm : Form
         // what's allocated, by type, every five minutes: for a long ride's log
         _allocs ??= Sojourn.Render.Realtime.AllocProfile.Every(line => host.Log.LogInformation("{Line}", line), 300_000);
         host.StartDescribe(view);
+        // (WinForms' private members it reaches into: if a .NET update moved them, clearing lists waits on readers again)
+        host.Log.LogInformation("uia: lists cleared {How}", UiaRelease.Ready ? "with readers' providers released afterward" : "as WinForms does it (its members not found)");
 
         _ops = new PersonOps(host.Session);
         _cmd = new Commands(_ops, Answer)

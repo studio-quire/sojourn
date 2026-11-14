@@ -305,7 +305,7 @@ public sealed partial class MainForm
         if (_settingsRows.Count == 0) { Fill(_settingsList, new(), "No settings (not logged in?)."); return; }
         var items = new List<(string, string, object)> { (SettingsHeading(), HeadingRow + ShownGroup.Name, null!) };
         items.AddRange(RowsOfGroup(ShownGroup).Select(name => (_settingsRows[name], name, (object)name)));
-        if (atHeading) _settingsList.Items.Clear();   // (Fill keeps the row she's on, which can be in the next group too)
+        if (atHeading) UiaRelease.Clear(_settingsList);   // (Fill keeps the row she's on, which can be in the next group too)
         Fill(_settingsList, items, "");
     }
 

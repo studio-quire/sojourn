@@ -90,7 +90,7 @@ public sealed partial class MainForm
     {
         _objectsPages = 0;
         _objectsLand = null;
-        _objects.Items.Clear();
+        UiaRelease.Clear(_objects);
         Looking(_objects, ObjectsName, true);
     }
 

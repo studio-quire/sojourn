@@ -129,7 +129,7 @@ public sealed partial class MainForm
         {
             var at = Rows.FocusedItem?.Index ?? 0;
             Rows.BeginUpdate();
-            Rows.Items.Clear();
+            UiaRelease.Clear(Rows);
             foreach (var e in _things) Rows.Items.Add(new ListViewItem(e.Words) { Name = e.Id, Tag = e });
             Rows.EndUpdate();
             if (Rows.Items.Count == 0) return;

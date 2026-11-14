@@ -30,6 +30,7 @@ grid unless the script says so).
 - `gpuarrival.py`: arrival's GPU cost from a `SOJOURN_GPU_LOG` run.
 - `cputrace.py`: where a running client's CPU goes. `alloctrace.py`: where its allocations come from. `heapwho.py`: what holds its managed heap (`--path TYPE`: what keeps a type's objects alive).
 - `accesssoak.py`: a long Sojourn Access session moving round the perf grid's places (teleports and walks, or seated), its view on the processor: memory, garbage and pauses every 10 s, with heap dumps and allocation traces along the way.
+- `windowholds.py`: the window's thread's holds in Sojourn Access session logs (a tester's from the relay, or the test's), grouped by where of ours they were held; with `SOJOURN_WINDOW_WATCH=120,150` on a test run, holds from 0.12 s, the short ones here that are seconds on a slower PC.
 - `firstpicture.py`: how soon the first description's pictures come after logging in with the view on the processor (perf grid, Access held to four cores and their twins; `--when cold|warm`, `--fresh`, `--burn N`); `lvpsample/` (`--sample S`): where the processor's time goes meanwhile (LLVM compiling, the shaders it made, the rasteriser), by sampling threads against lavapipe's symbols, no elevation needed.
 - `render_scenes.py`: rendering test scenes (mirrors, mist, a flower field, lights, particles). `animesh.py`: an animated object.
 

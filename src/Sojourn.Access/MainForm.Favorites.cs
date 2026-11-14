@@ -101,7 +101,7 @@ public sealed partial class MainForm
         p.Finding = null;
         p.Fills.Clear();
         p.Mode = "favorites";
-        p.Tree.Nodes.Clear();
+        UiaRelease.Clear(p.Tree.Nodes);
         p.Tree.SelectedNode = p.Tree.Nodes.Add(line);
         if (said) Reader?.Answer(line, keep: false);
         if (focus) p.Tree.Focus();

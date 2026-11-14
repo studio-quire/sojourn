@@ -3,6 +3,7 @@
   python tools/grid.py start|stop|status       status of a grid that's down says how it ended (local/grid/ends.log,
                                                written by the keeper a start runs it under: keep(), below)
   python tools/grid.py console "show users"
+  python tools/grid.py console-password        a new random password for the REST console (grid stopped)
   python tools/grid.py account First Last [password]
   python tools/grid.py scene light|dense       swap the region database (restarts the grid)
   python tools/grid.py voice up|down|status    the local voice server (legion-voice-mixer in Docker Desktop) and
@@ -33,17 +34,28 @@ GRID = LOCAL / os.environ.get("SOJOURN_GRID", "grid")
 BIN = GRID / "bin"
 
 
-def _port():
+def _ini(key, default):
     try:
         for line in (BIN / "OpenSim.ini").read_text(errors="replace").splitlines():
-            if line.strip().startswith("http_listener_port"):
-                return int(line.split("=")[1].strip())
-    except (OSError, ValueError):
+            if line.strip().startswith(key):
+                return line.split("=", 1)[1].strip().strip('"')
+    except (OSError, IndexError):
         pass
-    return 9700
+    return default
+
+
+def _port():
+    try:
+        return int(_ini("http_listener_port", "9700"))
+    except ValueError:
+        return 9700
 
 
 URL = f"http://127.0.0.1:{_port()}"
+# The REST console answers on every interface (OpenSim can't bind it to one), and the house network carries an RV
+# park's guests, so its password is a random one kept only in the grid's own OpenSim.ini, never in the repo
+# (2026-11-13). A grid copied fresh from Multitude still has its "localdev" until set_console_password().
+CONSOLE_USER, CONSOLE_PASS = _ini("ConsoleUser", "admin"), _ini("ConsolePass", "localdev")
 DOTNET = Path(os.environ["LOCALAPPDATA"]) / "Microsoft" / "dotnet" / "dotnet.exe"
 DETACHED = 0x08000000 | 0x00000200 | 0x01000000   # no window, new process group, breakaway from job
 BELOW_NORMAL = 0x00004000
@@ -55,9 +67,21 @@ def post(path, **form):
         return r.read().decode("utf-8", errors="replace")
 
 
+def set_console_password():
+    """A new random console password in this grid's OpenSim.ini (the grid must be stopped: OpenSim reads it at start)."""
+    import secrets
+    ini = BIN / "OpenSim.ini"
+    raw = ini.read_bytes()
+    new, n = re.subn(rb'(?m)^(\s*ConsolePass\s*=\s*)"?[^"\r\n]*"?', lambda m: m[1] + b'"' + secrets.token_urlsafe(24).encode() + b'"', raw, count=1)
+    if not n:
+        return "no ConsolePass line in " + str(ini)
+    ini.write_bytes(new)
+    return "console password set"
+
+
 def ready():
     try:
-        sid = ET.fromstring(post("/StartSession/", USER="admin", PASS="localdev")).findtext("SessionID")
+        sid = ET.fromstring(post("/StartSession/", USER=CONSOLE_USER, PASS=CONSOLE_PASS)).findtext("SessionID")
         post("/CloseSession/", ID=sid)
         return True
     except (OSError, ET.ParseError):   # not listening yet, or up but its console not yet
@@ -70,7 +94,7 @@ def console(command, wait=None, answers=()):
     for), looked for after a tenth of a second and then at longer intervals: most are done within milliseconds.
     wait=SECONDS sleeps that long after each and reads once instead, for a command whose output comes after its
     prompt, or that never prompts again (quit)."""
-    sid = ET.fromstring(post("/StartSession/", USER="admin", PASS="localdev")).findtext("SessionID")
+    sid = ET.fromstring(post("/StartSession/", USER=CONSOLE_USER, PASS=CONSOLE_PASS)).findtext("SessionID")
     try:
         post(f"/ReadResponses/{sid}/", ID=sid)   # (what the console said before us)
         lines = []
@@ -562,6 +586,11 @@ if __name__ == "__main__":
         stop_and_wait()   # a plain stop returns while it's still answering, so a start straight after saw it "up"
     elif cmd == "keep":
         keep()
+    elif cmd == "console-password":
+        if ready():
+            print("stop the grid first (python tools/grid.py stop)")
+        else:
+            print(set_console_password())
     elif cmd == "status":
         up = ready()
         print("up" if up else "down")

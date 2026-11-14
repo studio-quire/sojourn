@@ -28,10 +28,11 @@ public sealed class ChatLogs(string dir)
     readonly HashSet<string> _headed = new();
     string _day = "";
     // lines go to disk from a thread of their own: a write once held the window 9 s on the blind tester's PC (its stack in
-    // her log 2.1 s in, 2026-11-11, as her train came into its station and she couldn't stop it). Everything that touches
-    // the files holds _lock; readers wait for what's queued first, so a tab opened again still has the line just said
+    // her log 2.1 s in, 2026-11-11, as her train came into its station and she couldn't stop it). Reading a tab's earlier
+    // lines is queued there too, so it comes after every line queued before it and before any queued after. Everything
+    // that touches the files holds _lock; the window's other readers wait for what's queued first
     readonly object _lock = new();
-    readonly System.Collections.Concurrent.BlockingCollection<(string Key, string Title, string Line, DateTime At)> _queue = new();
+    readonly System.Collections.Concurrent.BlockingCollection<Action> _queue = new();
     int _pending;
     Thread? _writer;
     /// <summary>A line couldn't be written (from the writer's thread): said once by the window.</summary>
@@ -67,8 +68,50 @@ public sealed class ChatLogs(string dir)
     /// writer's thread, so this never waits on the disk.</summary>
     public void Add(string key, string title, string line)
     {
+        var at = DateTime.Now;
+        Queue(() => { lock (_lock) Append(key, title, line, at); });   // (a failure goes to Failed)
+    }
+
+    /// <summary>The conversation's last lines, for a tab opened again, handed to `done` on the writer's thread once every
+    /// line queued before this is written, so none queued after (the line that opened the tab); none without a log. The
+    /// window never waits on the disk for them: a tab is opened by an arriving IM, on its thread.</summary>
+    public void TailThen(string key, int lines, Action<List<string>> done) => Then(() => TailLocked(key, lines), new List<string>(), done);
+
+    /// <summary>Every log, the most recent first, named as the conversation was when it began, to `done` on the writer's
+    /// thread after what's queued (Read-out > Chat logs: the window doesn't wait on the disk for the list either).</summary>
+    public void AllThen(Action<List<Log>> done) => Then(AllLocked, new List<Log>(), done);
+
+    /// <summary>A conversation's log, or null, as AllThen.</summary>
+    public void OfThen(string key, Action<Log?> done) =>
+        Then(() => Existing(key) is { } path ? AllLocked().FirstOrDefault(l => l.Path == path) : null, null, done);
+
+    /// <summary>A log's words as a window shows them (Read), or why they couldn't be read, as AllThen.</summary>
+    public void ReadThen(string path, Action<(string? Text, string? Error)> done) => Queue(() =>
+    {
+        (string? Text, string? Error) got;
+        try { lock (_lock) got = (Read(path), null); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { got = (null, e.Message); }
+        Hand(done, got);
+    });
+
+    void Then<T>(Func<T> read, T failed, Action<T> done) => Queue(() =>
+    {
+        T got;
+        try { lock (_lock) got = read(); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { got = failed; }
+        Hand(done, got);
+    });
+
+    static void Hand<T>(Action<T> done, T got)
+    {
+        try { done(got); }
+        catch (Exception e) when (e is InvalidOperationException or ObjectDisposedException) { }   // (the window closing)
+    }
+
+    void Queue(Action work)
+    {
         Interlocked.Increment(ref _pending);
-        _queue.Add((key, title, line, DateTime.Now));
+        _queue.Add(work);
         if (_writer == null)
             lock (_queue)
                 if (_writer == null) (_writer = new Thread(Write) { IsBackground = true, Name = "chat logs", Priority = ThreadPriority.BelowNormal }).Start();
@@ -76,10 +119,15 @@ public sealed class ChatLogs(string dir)
 
     void Write()
     {
-        foreach (var (key, title, line, at) in _queue.GetConsumingEnumerable())
+        foreach (var work in _queue.GetConsumingEnumerable())
         {
-            try { lock (_lock) Append(key, title, line, at); }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Failed?.Invoke(e); }
+            // (anything thrown on this thread would end the app without a word: said, as a write's failure is)
+            try { work(); }
+            catch (Exception e)
+            {
+                try { Failed?.Invoke(e); }
+                catch (Exception) { }
+            }
             finally { Interlocked.Decrement(ref _pending); }
         }
     }
@@ -110,19 +158,6 @@ public sealed class ChatLogs(string dir)
         File.AppendAllText(path, text.ToString(), new UTF8Encoding(false));
     }
 
-    /// <summary>The conversation's last lines, for a tab opened again; none without a log; null when what's queued isn't
-    /// written within half a second, or a write still holds the files then. A tab is opened by an arriving IM, on the
-    /// window's thread, which mustn't wait out a disk holding the writer (one line took her PC seconds, 2026-11-11: the
-    /// window was held 9 s as her train came into its station); the caller has this session's lines instead.</summary>
-    public List<string>? Tail(string key, int lines)
-    {
-        const int Wait = 500;
-        long until = Environment.TickCount64 + Wait;
-        if (!Settle(Wait) || !Monitor.TryEnter(_lock, (int)Math.Max(0, until - Environment.TickCount64))) return null;
-        try { return TailLocked(key, lines); }
-        finally { Monitor.Exit(_lock); }
-    }
-
     List<string> TailLocked(string key, int lines)
     {
         if (Existing(key) is not { } path) return new();
@@ -138,25 +173,12 @@ public sealed class ChatLogs(string dir)
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return new(); }
     }
 
-    /// <summary>Every log, the most recent first, named as the conversation was when it began.</summary>
-    public List<Log> All()
-    {
-        Settle();
-        lock (_lock) return AllLocked();
-    }
-
     List<Log> AllLocked()
     {
         if (!Directory.Exists(dir)) return new();
         return Directory.EnumerateFiles(dir, "*.txt")
             .Select(p => new Log(p, Ending.Replace(Path.GetFileNameWithoutExtension(p), ""), File.GetLastWriteTime(p)))
             .OrderByDescending(l => l.Last).ToList();
-    }
-
-    public Log? Of(string key)
-    {
-        Settle();
-        lock (_lock) return Existing(key) is { } path ? AllLocked().FirstOrDefault(l => l.Path == path) : null;
     }
 
     /// <summary>The log's words as a window shows them: at most the last two million characters, from a line's start.</summary>

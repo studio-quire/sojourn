@@ -425,7 +425,9 @@ Written by Claude Opus 5.5, 2026-11-01 (batch R; the TPV policy's side in `docs/
 
 `local/grid/` (gitignored) is a copy of Multitude's phase 2 render grid (`projects/multitude/local/grid-p2`) moved
 to Sojourn's ports: region Atelier on 9700 (UDP 9700), Atelier North/East/Northeast on 9701-9703, private port 9709;
-REST console admin/localdev. Account: Sojourn Pilot / sojourn-local. `tools/grid.py` starts it (below-normal
+REST console user admin, its password a random one only in the grid's `OpenSim.ini` (the console answers on every
+interface and the house network carries an RV park's guests; `grid.py console-password` makes a new one, grid
+stopped). Account: Sojourn Pilot / sojourn-local. `tools/grid.py` starts it (below-normal
 priority, .NET 8 runtime), makes accounts, sends console commands and swaps scenes:
 
 - `light`: Multitude's Atelier test scene as built (`projects/multitude/docs/render.md`): 116 prims in 50 objects:

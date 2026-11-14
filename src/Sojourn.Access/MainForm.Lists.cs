@@ -465,7 +465,7 @@ public sealed partial class MainForm
         list.BeginUpdate();
         try
         {
-            list.Items.Clear();
+            UiaRelease.Clear(list);
             if (items.Count == 0) list.Items.Add(new ListViewItem(empty) { Name = "" });
             foreach (var (text, key, tag) in items) list.Items.Add(new ListViewItem(text) { Name = key, Tag = tag });
             if (under && items.Count > 0) return;

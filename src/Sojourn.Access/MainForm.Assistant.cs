@@ -90,11 +90,7 @@ public sealed partial class MainForm
     void FillAssistantEarlier()
     {
         if (_logs == null || _set.ChatLogs == "off") return;
-        var lines = _logs.Tail(ChatLogs.AssistantKey, EarlierInTab);
-        if (lines is not { Count: > 0 }) return;
-        var now = _assistantHistory.Text;
-        _assistantHistory.Text = string.Join("\r\n", lines) + "\r\n(Those are earlier lines. New ones follow.)" + (now.Length > 0 ? "\r\n" + now : "");
-        _assistantHistory.SelectionStart = _assistantHistory.TextLength;
+        _logs.TailThen(ChatLogs.AssistantKey, EarlierInTab, lines => BeginInvoke(() => PutEarlier(_assistantHistory, lines)));
     }
 
     void PollAssistant()

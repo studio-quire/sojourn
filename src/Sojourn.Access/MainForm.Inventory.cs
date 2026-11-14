@@ -225,7 +225,7 @@ public sealed partial class MainForm
         if (Store is not { RootFolder: { } root } store || _ops.Client is not { } client)
         {
             p.Fills.Clear();
-            tree.Nodes.Clear();
+            UiaRelease.Clear(tree.Nodes);
             tree.SelectedNode = tree.Nodes.Add("Inventory not loaded yet. F5 to look again.");
             if (focus) tree.Focus();
             return;
@@ -280,13 +280,18 @@ public sealed partial class MainForm
         // what a search left out in the Trash is counted, and Show: Trash lists it
         var trashed = inTrash > 0 ? $"{inTrash} in the Trash (Show: Trash lists {(inTrash == 1 ? "it" : "them")})" : "";
         var shown = System.Diagnostics.Stopwatch.StartNew();
+        long clearMs = 0, addMs = 0;
+        int had = 0;
         p.Fills.Clear();   // (a big folder still going in has left the tree)
         tree.BeginUpdate();
         try
         {
-            tree.Nodes.Clear();
+            had = tree.GetNodeCount(true);
+            UiaRelease.Clear(tree.Nodes);
+            clearMs = shown.ElapsedMilliseconds;
             foreach (var (n, path) in ordered)
                 tree.Nodes.Add(MakeNode(p, n, worn, path.Length > 0 ? path : "My Inventory"));
+            addMs = shown.ElapsedMilliseconds - clearMs;
             var nothing = "Nothing " + ask.By switch { ByCreator => $"made by {words}", ByDescription => $"with {words} in its description", _ => $"called {words}" };
             if (ordered.Count == 0)
                 tree.Nodes.Add(new TreeNode(p.Mode switch
@@ -314,9 +319,11 @@ public sealed partial class MainForm
                 : trashed.Length > 0 ? $"{many} found, and {trashed}." : $"{many} found.", keep: false);
         }
         if (focus) tree.Focus();
-        // (how long each part took, for a tester's log: the walk off the window's thread, the list on it)
-        _ops.Session.Log.LogInformation("inventory {Mode}: {Seen} looked at, {Found} listed, {InTrash} in the Trash; walked in {Walk} ms, shown in {Shown} ms",
-            p.Mode, seen, ordered.Count, inTrash, walkMs, shown.ElapsedMilliseconds);
+        // (how long each part took, for a tester's log: the walk off the window's thread, the list on it; on the blind tester's
+        // PC a list of 3 to 20 took 0.3-1.3 s to show where ours take 20-50 ms, 2026-11-11, so how long the old nodes took to
+        // go, the new ones to go in, and the rest, selecting and the focus among it)
+        _ops.Session.Log.LogInformation("inventory {Mode}: {Seen} looked at, {Found} listed, {InTrash} in the Trash; walked in {Walk} ms, shown in {Shown} ms ({Had} nodes cleared in {Clear} ms, added in {Add} ms, the rest {Rest} ms)",
+            p.Mode, seen, ordered.Count, inTrash, walkMs, shown.ElapsedMilliseconds, had, clearMs, addMs, shown.ElapsedMilliseconds - clearMs - addMs);
     }
 
     const int FlatLimit = 500;
@@ -464,7 +471,7 @@ public sealed partial class MainForm
                 if (IsDisposed) return;
                 BeginInvoke(() =>
                 {
-                    if (!node.IsExpanded || store.GetContents(folder).Count == 0) { if (!Filled(node)) node.Nodes.Clear(); return; }
+                    if (!node.IsExpanded || store.GetContents(folder).Count == 0) { if (!Filled(node)) UiaRelease.Clear(node.Nodes); return; }
                     FillFolder(p, node, folder);
                 });
             });
@@ -488,7 +495,7 @@ public sealed partial class MainForm
             tree.BeginUpdate();
             try
             {
-                nodes.Clear();
+                UiaRelease.Clear(nodes);
                 nodes.AddRange(made[..now]);
                 // (opening one fills it, and it opens its own open folders in turn)
                 OpenAgain(p, made[..now]);

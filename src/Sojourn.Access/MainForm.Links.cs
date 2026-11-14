@@ -27,6 +27,14 @@ public sealed partial class MainForm
     static readonly Regex OtherAppLink = new(@"^secondlife:///app/(?<kind>[a-z_]+)(?:/(?<rest>[^?]*))?(?:\?(?<query>.*))?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     /// <summary>The words a link reads as, and the link they stand for.</summary>
     readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _linkWords = new();
+    // past LinkWordsKept the least lately seen go; their words aren't given out again (the next number for each plain form
+    // is kept), as a line still showing them would open the new link. What a link reads as is found by its plain form and
+    // what it points at, so a burst of links costs no more each than one
+    const int LinkWordsKept = 5000;
+    readonly LinkedList<string> _linkWordsUsed = new();   // the least lately seen first
+    readonly Dictionary<string, (LinkedListNode<string> Used, (string Plain, string Key) Found)> _linkWordsOf = new();   // by words
+    readonly Dictionary<(string Plain, string Key), string> _linkWordsFor = new();
+    readonly Dictionary<string, int> _linkWordsNext = new();
     readonly System.Collections.Concurrent.ConcurrentDictionary<UUID, string> _groupNames = new();
 
     sealed record SeenLink(string Url, string From);
@@ -67,9 +75,27 @@ public sealed partial class MainForm
                 // link: two events' links had both read "an event", and the newest opened from either (now that they teleport).
                 // The same thing in another form (a profile's /about and /inspect) keeps its words.
                 var plain = words;
-                for (int n = 2; _linkWords.TryGetValue(words, out var other) && LinkKey(other) != LinkKey(url); n++)
-                    words = plain.EndsWith(')') ? $"{plain[..^1]} {n})" : $"{plain} {n}";
-                if (_linkWords.Count > 1000) _linkWords.Clear();
+                var found = (plain, LinkKey(url));
+                if (_linkWordsFor.TryGetValue(found, out var same) && _linkWordsOf.TryGetValue(same, out var seen))
+                {
+                    words = same;
+                    _linkWordsUsed.Remove(seen.Used);
+                    _linkWordsUsed.AddLast(seen.Used);
+                }
+                else
+                {
+                    int next = _linkWordsNext.GetValueOrDefault(plain, 1);
+                    words = next == 1 ? plain : plain.EndsWith(')') ? $"{plain[..^1]} {next})" : $"{plain} {next}";
+                    _linkWordsNext[plain] = next + 1;
+                    _linkWordsFor[found] = words;
+                    _linkWordsOf[words] = (_linkWordsUsed.AddLast(words), found);
+                    while (_linkWordsUsed.Count > LinkWordsKept && _linkWordsUsed.First is { } oldest)
+                    {
+                        _linkWordsUsed.RemoveFirst();
+                        if (_linkWordsOf.Remove(oldest.Value, out var gone)) _linkWordsFor.Remove(gone.Found);
+                        _linkWords.TryRemove(oldest.Value, out _);
+                    }
+                }
                 _linkWords[words] = url;
             }
             return words + after;

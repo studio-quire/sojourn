@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 using LibreMetaverse;
+using Microsoft.Extensions.Logging;
 using Sojourn.Core;
 using Sojourn.Core.Access;
 
@@ -24,11 +25,15 @@ public sealed partial class MainForm
     {
         _logs = new ChatLogs(Path.Combine(_opt.BaseDir, "chat-logs", gridKey, $"{first}.{last}".ToLowerInvariant()))
         {
+            // (from the logs' own thread)
             Failed = e =>
             {
+                Host?.Log.LogWarning("chat logs: {Error}", e.ToString());
                 if (_logFailed) return;
                 _logFailed = true;
-                Reader?.Answer($"Chat logs can't be written: {e.Message}", keep: false);
+                var words = e is IOException or UnauthorizedAccessException ? $"Chat logs can't be written: {e.Message}" : $"Something went wrong with the chat logs: {e.Message}";
+                try { BeginInvoke(() => Reader?.Answer(words, keep: false)); }
+                catch (InvalidOperationException) { }   // (closing)
             },
         };
         Host!.Session.Api.Register(new ChatLogApi(Host.Session, _logs));
@@ -49,15 +54,40 @@ public sealed partial class MainForm
         _logs.Add(key, title, line);   // (written on the logs' own thread; a failure comes back by Failed, said once)
     }
 
-    /// <summary>A new tab's history starts with the conversation's last lines, the caret after them, where new ones arrive.</summary>
+    /// <summary>A new tab's history starts with the conversation's last lines, the caret after them, where new ones arrive.
+    /// The log's lines come from its own thread and go before whatever the tab has by then (the IM that opened it), so the
+    /// window never waits on the disk: one line once took her PC seconds (2026-11-11). With logs off, or no answer from
+    /// the log in 2 s, this session's lines as they were when the tab opened.</summary>
     void FillEarlier(Conversation cv)
     {
-        // (the log's lines if the disk gives them at once, else this session's)
-        var lines = (_logs != null && _set.ChatLogs != "off" ? _logs.Tail(cv.SessionId, EarlierInTab) : null)
-            ?? (_remembered.TryGetValue(cv.SessionId, out var kept) ? kept : new());
-        if (lines.Count == 0) return;
-        cv.History.Text = FriendlyLinks(string.Join("\r\n", lines)) + "\r\n(Those are earlier lines. New ones follow.)";
-        cv.History.SelectionStart = cv.History.TextLength;
+        var kept = _remembered.TryGetValue(cv.SessionId, out var k) ? new List<string>(k) : new();
+        if (_logs == null || _set.ChatLogs == "off") { PutEarlier(cv.History, kept); return; }
+        bool filled = false;
+        void Fill(List<string> lines)
+        {
+            if (filled || lines.Count == 0) return;   // (none this session: the log's may still come)
+            filled = true;
+            PutEarlier(cv.History, lines);
+        }
+        _logs.TailThen(cv.SessionId, EarlierInTab, lines => BeginInvoke(() => Fill(lines)));
+        _ = Fallback();
+        async Task Fallback()
+        {
+            await Task.Delay(2000);
+            Fill(kept);
+        }
+    }
+
+    /// <summary>Earlier lines put before what the history has, without moving the person's place if they're in it.</summary>
+    void PutEarlier(TextBox box, List<string> lines)
+    {
+        if (box.IsDisposed || lines.Count == 0) return;
+        bool reviewing = box.Focused;
+        int start = box.SelectionStart, length = box.SelectionLength;
+        var head = FriendlyLinks(string.Join("\r\n", lines)) + "\r\n(Those are earlier lines. New ones follow.)" + (box.TextLength > 0 ? "\r\n" : "");
+        box.Text = head + box.Text;
+        if (reviewing) box.Select(start + head.Length, length);
+        else box.SelectionStart = box.TextLength;
     }
 
     /// <summary>Once, for anyone: that logs are being kept, where to read them and how to stop it.</summary>
@@ -75,7 +105,26 @@ public sealed partial class MainForm
     void ShowChatLogs(string? words = null)
     {
         if (_logs == null) { Answer("Not in world yet."); return; }
-        var all = _logs.All();
+        var back = SaySlow("Reading the chat logs.");
+        _logs.AllThen(all => BeginInvoke(() => { back(); RealInput.Ours(() => ShowChatLogs(all, words)); }));
+    }
+
+    /// <summary>Something read from the logs' own thread: said if it hasn't come in half a second (a disk that slow says
+    /// nothing otherwise). The returned action marks it come.</summary>
+    Action SaySlow(string words)
+    {
+        bool come = false;
+        _ = Later();
+        return () => come = true;
+        async Task Later()
+        {
+            await Task.Delay(500);
+            if (!come && !IsDisposed) Answer(words);
+        }
+    }
+
+    void ShowChatLogs(List<ChatLogs.Log> all, string? words)
+    {
         if (words is { Length: > 0 }) all = all.Where(l => l.Title.Contains(words, StringComparison.OrdinalIgnoreCase)).ToList();
         if (all.Count == 0)
         {
@@ -130,16 +179,31 @@ public sealed partial class MainForm
     /// <summary>A conversation's log by its session, from a person's or a group's menu.</summary>
     void ChatLogOf(string key, string name)
     {
-        if (_logs?.Of(key) is { } log) OpenChatLog(log);
-        else Answer(_set.ChatLogs == "off" ? "Chat logs are turned off, in Alt+0's Chat group." : $"No chat log of {name} yet.");
+        if (_logs == null) { Answer("Not in world yet."); return; }
+        var back = SaySlow("Looking for the chat log.");
+        _logs.OfThen(key, log => BeginInvoke(() =>
+        {
+            back();
+            if (log != null) OpenChatLog(log);
+            else Answer(_set.ChatLogs == "off" ? "Chat logs are turned off, in Alt+0's Chat group." : $"No chat log of {name} yet.");
+        }));
     }
 
     /// <summary>A log in a read-only window, as a notecard's (find, go to a line, a line's link), the caret at the newest line.</summary>
     void OpenChatLog(ChatLogs.Log log)
     {
-        string text;
-        try { text = ChatLogs.Read(log.Path); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Answer($"Couldn't read it: {e.Message}"); return; }
+        if (_logs == null) return;
+        var back = SaySlow("Reading it.");
+        _logs.ReadThen(log.Path, got => BeginInvoke(() =>
+        {
+            back();
+            if (got.Text is { } text) RealInput.Ours(() => ShowChatLog(log, text));
+            else Answer($"Couldn't read it: {got.Error}");
+        }));
+    }
+
+    void ShowChatLog(ChatLogs.Log log, string text)
+    {
         var form = new EditorForm("Chat log", log.Title, FriendlyLinks(text), _ => Task.FromResult<(string, string?, string?)>(("", null, null)), t => Reader?.Answer(t, keep: false, from: LineFrom.People), readOnly: true);
         form.OpenFirstLink = OpenFirstLink;
         form.FormClosed += (_, _) => { if (!IsDisposed) Activate(); };
