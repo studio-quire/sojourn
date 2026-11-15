@@ -89,6 +89,7 @@ public sealed partial class MainForm : Form
 
     /// <summary>Makes the session for this account and starts it (login begins); the window stays hidden until arrival.</summary>
     Sojourn.Render.Realtime.AllocProfile? _allocs;
+    Sojourn.Render.Realtime.HeapCompaction? _compaction;
 
     public async Task StartAsync(LoginChoice c)
     {
@@ -136,6 +137,8 @@ public sealed partial class MainForm : Form
         _view = view;
         // what's allocated, by type, every five minutes: for a long ride's log
         _allocs ??= Sojourn.Render.Realtime.AllocProfile.Every(line => host.Log.LogInformation("{Line}", line), 300_000);
+        // (SOJOURN_COMPACT_HEAP=MINUTES: the large object heap compacted now and then, measuring what that costs)
+        _compaction ??= Sojourn.Render.Realtime.HeapCompaction.Start(line => host.Log.LogInformation("{Line}", line));
         host.StartDescribe(view);
         // (WinForms' private members it reaches into: if a .NET update moved them, clearing lists waits on readers again)
         host.Log.LogInformation("uia: lists cleared {How}", UiaRelease.Ready ? "with readers' providers released afterward" : "as WinForms does it (its members not found)");

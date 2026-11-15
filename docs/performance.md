@@ -261,8 +261,12 @@ place, 131k texture decodes for 17k textures, the governor at level 2-3 througho
 - Also let go now: geometry built under lag but not yet uploaded, when idle (~250 MB uploaded for nobody after a
   teleport); the particle tracker's entries with their region; animations after 10 minutes unplayed, or past a minute
   while over 64 MB. Deliberate caches: mesh bytes (256 MB, oldest out), decoded pixels waiting (the caps above).
-- The console's memory part tells live from fragmented: `memory WS MB (heap H MB, F fragmented, C committed; last full
-  collection left gen2 G, large L)`; the assets part says `N MB decoded waiting`.
+- The console's memory part tells live from fragmented: `memory WS MB, private P MB (heap H MB, F fragmented, C
+  committed; last full collection left gen2 G (g free), large L (l free))`: the working set, private bytes (what's
+  committed, paged out or not: on a PC short of memory the working set falls below the heap), and each part's free
+  space after the last full collection (the large object heap is never compacted, so its free space stays committed);
+  the assets part says `N MB decoded waiting`. `tools/heapwho.py exact` reads the running process itself and says
+  what each part holds: live, dead and free bytes, by type and by holders.
 
 The reproduction: `places` with `SOJOURN_TEX_FULL=1 SOJOURN_GOVERNOR_PERIOD_MS=2 SOJOURN_VRAM_BUDGET_MB=4000
 SOJOURN_FETCH_LATENCY_MS=120`, two Quest-sized eyes, `tools/teleports.py` (before: the user's build of 2026-10-28):
@@ -354,6 +358,119 @@ whole, what's in view loaded, and on a processor the shaders compiled: minutes o
 of touches landing on a face's surface until it's up. Undecided; her sessions describe from the start. Its idle rate
 isn't the lever on the processor: it draws no frames between pictures (`idle_hz` 0 there whatever
 `access_view_rate` says); what runs between them is the tick above and, once a session, the warm-up.
+
+#### What holds it, and the big arrays
+
+Her log of 2026-11-14 (0.1.0.1132, three hours riding vehicles across 10-15 regions, ~50,000 prims around, some of it
+among many avatars): the process 2.1 GB private at login, 3.1-3.4 GB later; the managed heap up to 2.3 GB committed, a
+full collection leaving 0.6-1.0 GB in gen2 and 0.4-1.5 GB in the large object heap, the free space between live
+objects up to 1.2 GB. So 1.1-1.7 GB of the process isn't the managed heap (the view's Vulkan memory, 0.6-0.7 GB by the
+governor line, then the runtime and native libraries; by subtraction, not measured). The large object heap is where it
+grows and stays: after one of her logins 1.4 GB was allocated in 22 s, and a minute in the large object heap stood at
+775 MB, about 500 MB of it free space, which it kept for the next hour. Nothing compacts that heap (workstation
+collections, mostly background ones, don't), so the free space a burst of big arrays leaves stays committed; her freeze
+of 13 s just after a login came with 0.5 GB of her 6.3 GB free. (Claude Opus 5.5, 2026-11-14.)
+
+Measured on the perf grid's places, roaming 40 minutes, the process read exactly (`tools/heapwho.py exact`):
+- After full collections the large object heap is 60-75% free space (65-152 MB free of 110-209, 40-92 MB live).
+- Gen2 holds 51-57 MB live with ~16,000 prims around, about 3 KB a prim across everything that keeps prims (the world
+  model, the view's scenes, the collision index). At her 50,000-66,000 prims that's 150-200 MB: the per-prim holders
+  explain a quarter of her gen2 at most (scaled, not measured; SL's prims carry more than ours).
+- What an arrival allocates (`alloctrace`, 40 s over a walk, a teleport and its loading): three quarters of it the
+  collision model decoding meshes through LibreMetaverse (its vertex lists, every part of each asset inflated, the
+  triangle list growing), the byte, Vector3 and vertex arrays her rides allocate most.
+
+Measured over a Second Life cache (4,765 meshes from the user's VR sessions there: SL's content, not her route;
+`tools/decodecheck`):
+- 28% of the meshes have no hull of their own, so the collision model keeps their drawn triangles: 131 KB each on
+  average as a flat list, 147 of the 170 MB in arrays big enough for the large object heap. (A mesh's physics, which
+  the collision line counts as 4 KB, decodes to 4 KB on average.)
+- Decoding one for the collision model allocated 0.93 MB on average (LibreMetaverse's decode at the highest LOD); the
+  renderer's decode of any mesh at its highest LOD 1.4 MB, 61% of it inflating parts it doesn't read (the other LODs,
+  the physics).
+- Its 324 sounds (7.6 s on average): a sound heard is decoded twice, for the mixer (Session's `SoundBank`) and for its
+  loudness and length (Core's `SoundCatalog`, the session's hearing of sounds), 10 MB allocated a sound between them,
+  eight times its samples, by type float arrays 75%, NVorbis's Huffman nodes 10%, int arrays 4.5%, byte arrays 3.6%.
+  Her log standing still among many avatars with no pictures has the same mix (float arrays 61% of 4 MB/s, the
+  Huffman nodes 5%, int and byte arrays 3% each; in proportion to the floats within a few points of the decodes'), and
+  NVorbis's nodes are in every allocation line of hers (1-5%): those floats are most likely heard sounds being decoded,
+  some 0.3 new sounds a second. That's read from the types alone (no stacks from her PC), against SL's sounds decoded
+  here.
+
+Changed, with the same answers (`tools/decodecheck`: bit for bit over those meshes and the perf and local grids', 6,144 in
+all, each plain, mirrored, inverted and both; the renderer's field by field at all four LODs; 3,000 random prims; 330
+sounds):
+- The collision model reads a mesh's triangles itself (`Collision/MeshTriangles.cs`): only the high LOD's block
+  inflated, into a pooled buffer, positions only. 89% less allocated for the SL meshes it reads (731 to 83 MB). A skin,
+  no high LOD or anything malformed goes to LibreMetaverse's decode as before.
+- Its shapes keep their triangles as vertices and indices, 16-bit where they fit (`Collision/DrawnTriangles.cs`): SL
+  meshes' 55% smaller (70 to 32 MB), prims' 58%; rays read them about as fast (4.8-8.1 against 4.9-8.6 ms for every
+  triangle of them once).
+- The renderer decodes a mesh from a copy of the asset holding only the LOD it wants and the skin (`World/MeshParts.cs`;
+  the VR client's too): 54% less allocated over the four LODs (19.5 to 9.0 GB for the SL meshes).
+- Sounds: the mixer's decode reads into one array (`SoundBank.Decode`), the catalog sums the same samples as it decodes
+  (`SoundConvert.VorbisLevels`) instead of keeping them: 40% less allocated a sound (3.3 to 2.0 GB over 330 sounds),
+  one sound-sized float array instead of four; what's left is NVorbis's own, about 2.3 MB a decode. The samples and
+  the numbers are the same, bit for bit.
+- One difference is possible: an asset whose other parts are corrupt or too big, which LibreMetaverse refuses whole
+  and these read, the part they need being sound.
+
+The soak before and after (`tools/accesssoak.py`, 40 minutes roaming, the view on the processor, LP_NUM_THREADS=4, a
+description every 5 minutes; mean after the first 5 minutes, most in brackets; before = main at 345872a with the new
+memory line; "collision decode" has only the first change; "all of it" without the sounds' change, there being no
+sounds on the perf grid; one run each):
+
+| | before | collision decode | all of it |
+|---|---|---|---|
+| private bytes, MB | 1157 (1247) | 1159 (1214) | 1195 (1264) |
+| heap committed, MB | 277 (354) | 270 (321) | 307 (352) |
+| large object heap after full collections, MB | 141 (209) | 143 (210) | 165 (236) |
+|   of it free | 89 (152) | 86 (119) | 114 (156) |
+|   of it live | 53 (92) | 56 (91) | 51 (80) |
+| gen2 after full collections, MB | 83 (110) | 86 (115) | 92 (129) |
+| allocated, MB/s | 2.3 | 1.4 | 1.3 |
+| gen2 collections | 34 | 22 | 25 |
+| collection pauses, ms a minute | 28 | 26 | 23 |
+
+So on our places the garbage fell by 43% and the collection pauses with it, but what's held didn't come down. The
+large object heap's free space there is set by the first minutes' high-water mark (before: 199 MB at minute 6, 141 of
+it free; all of it: 236, 156 free) and then falls slowly as regions are let go, and one run of each can't tell a change
+of 25 MB in it from how one run differs from the next. Our places' shapes are small (18-22 MB, and their meshes share
+few vertices, so indexing saves 18% of them here against 55% for SL's).
+
+At her scale (scaled from her own lines, not measured): her collision model held 248-422 MB in the busiest stretch,
+most of it in large arrays if it's like the cache above, and should hold about half that; a login's ~700 meshes asked
+for allocated about 1 GB through the renderer's decode, now about half that; a sound heard 10 MB, now 6. Less of that
+churn should leave less free space in the large object heap, but that's the reasoning to check, not a measurement. Her
+next long log says: the memory line has private bytes and each part's free space after the last full collection, the
+collision line splits its megabytes by kind (prims, sculpts, meshes' drawn triangles and physics, and how much is in
+large arrays), and the allocation line says for its top types the size half their bytes come in at or above and the
+large share.
+
+Open:
+- Her float arrays while a ride was recorded (65-79% of 11-19 MB/s, a picture every few seconds from a moving seat):
+  on our places a description every 10 s while roaming allocates 6 MB/s, and the new allocation line says what: float
+  arrays half of them 256 KB or more (93-97% large: a region's height grid's size), terrain vertices in 2 MB arrays,
+  indices in 375 KB ones, mesh vertices, all on the large object heap. By their types and sizes those are the
+  terrain's (no stacks: the traces missed them): a picture from a new spot builds the terrain's mesh for that camera (`Terrain.MeshFor`), a region whose patches changed builds its surface and
+  one for each of up to eight neighbours afresh (about 1.3 MB of arrays each, `TerrainSurface`, every 1.5 s while
+  patches arrive), and a pick that reaches the ground copies the height grid every 2 s (`RegionScene.Ground`). Her ride
+  windows have the same types beside the floats (terrain vertices 7%, indices 5%, mesh vertices 3%), so that's most
+  likely hers too, with sounds (above) (read from the types and sizes, not stacks). Keeping those arrays (a neighbour's
+  surface between rebuilds, the meshes' arrays pooled, the heights by terrain version) is the next lever, not started.
+- Giving the free space back: `SOJOURN_COMPACT_HEAP=MINUTES` compacts the large object heap now and then
+  (`Realtime/HeapCompaction.cs`, off unless set) and logs what it held every thread for and what it gave back. On our
+  places (pictures every 10 s, every 3 minutes when over 64 MB was free): 34-35 ms each time with 130-150 MB live; the
+  large object heap's free space 95-116 MB to none, back to 51-59 MB within two minutes of pictures and arrivals;
+  committed memory 21 MB less the first time and none the second (freed regions are given back to Windows gradually).
+  At her heap (gen2 0.6-1.0 GB) on her processor that would be roughly half a second to a second a time, more where
+  the heap is paged out (a compaction touches every live object), for what may be a few hundred MB after a burst like
+  a login's (scaled, not measured). Every thread waits meanwhile, the window's too. Left off (Claude Opus 5.5,
+  2026-11-15, the session directing Access): what it gave back here was small and didn't last, against a frozen window
+  on her PC each time. Worth another look only if her logs' new memory line shows the free space staying large and
+  her PC paging for it, and then once, at a quiet moment (after login settles), rather than on a timer.
+- Not looked at for want of SL here: what many avatars hold (a party's 60), and the view's pick copies of what it has
+  drawn (positions, UVs and indices of every shape, kept for touches).
 
 #### The first picture after login
 

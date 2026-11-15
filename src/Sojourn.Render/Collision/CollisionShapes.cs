@@ -13,15 +13,15 @@ namespace Sojourn.Render.Collision;
 public readonly record struct ShapeKey(ShapeKind Kind, UUID Asset, int Hash);
 
 /// <summary>
-/// One shape as the collision model without a GPU knows it, in unit-scale object space: its drawn surface as a flat
-/// triangle list (three corners each, wound counter-clockwise seen from outside) and, for a mesh, the asset's physics
-/// (<see cref="MeshPhysics"/>). A mesh whose asset has a hull of its own keeps no drawn triangles: the rule never asks
-/// for them (<see cref="CollisionRule.Triangles"/>), and its box is the mesh's unit domain.
+/// One shape as the collision model without a GPU knows it, in unit-scale object space: its drawn surface's triangles
+/// (wound counter-clockwise seen from outside; vertices and indices, <see cref="DrawnTriangles"/>) and, for a
+/// mesh, the asset's physics (<see cref="MeshPhysics"/>). A mesh whose asset has a hull of its own keeps no drawn
+/// triangles: the rule never asks for them (<see cref="CollisionRule.Triangles"/>), and its box is the mesh's unit domain.
 /// </summary>
 public sealed class CollisionShape
 {
     public required ShapeKey Key { get; init; }
-    public Vector3[]? Drawn { get; private set; }
+    public DrawnTriangles? Drawn { get; private set; }
     public MeshPhysics? Physics { get; private set; }
     public Vector3 Min { get; private set; } = new(-0.5f);
     public Vector3 Max { get; private set; } = new(0.5f);
@@ -37,22 +37,16 @@ public sealed class CollisionShape
     Vector3[]? _hull;
 
     /// <summary>The convex hull of the drawn surface (worked out once, when the rule asks).</summary>
-    public Vector3[] HullOfDrawn() => _hull ??= Drawn is { } d ? ConvexHull.Triangles(d) : Array.Empty<Vector3>();
+    public Vector3[] HullOfDrawn() => _hull ??= Drawn is { } d ? ConvexHull.Triangles(d.Flat()) : Array.Empty<Vector3>();
 
     /// <summary>Roughly what it holds, bytes.</summary>
-    public long Bytes => (Drawn?.Length ?? 0) * 12L + (_hull?.Length ?? 0) * 12L + (Physics != null ? 4096 : 0);
+    public long Bytes => (Drawn?.Bytes ?? 0) + (_hull?.Length ?? 0) * 12L + (Physics != null ? 4096 : 0);
 
-    internal void Set(Vector3[]? drawn, MeshPhysics? physics)
+    internal void Set(DrawnTriangles? drawn, MeshPhysics? physics)
     {
-        Drawn = drawn is { Length: > 0 } ? drawn : null;
+        Drawn = drawn is { Count: > 0 } ? drawn : null;
         Physics = physics;
-        if (Drawn != null)
-        {
-            var lo = new Vector3(float.MaxValue);
-            var hi = new Vector3(float.MinValue);
-            foreach (var p in Drawn) { lo = Vector3.Min(lo, p); hi = Vector3.Max(hi, p); }
-            (Min, Max) = (lo, hi);
-        }
+        if (Drawn != null) (Min, Max) = Drawn.Bounds();
         _ready = true;
     }
 }
@@ -84,6 +78,8 @@ public sealed class CollisionShapes
     /// was kept (2026-11-01), three is enough to turn back.</summary>
     public long IdleMs { get; set; } = 180_000;
     const int Lod = 2;
+    /// <summary>SOJOURN_COLLISION_SLOW_MESH=1: meshes' triangles only by LibreMetaverse's decode (for comparing).</summary>
+    static readonly bool SlowMeshDecode = System.Environment.GetEnvironmentVariable("SOJOURN_COLLISION_SLOW_MESH") == "1";
 
     public CollisionShapes(Action<string> log, int threads)
     {
@@ -107,6 +103,33 @@ public sealed class CollisionShapes
         return (ready, failed, bytes);
     }
 
+    /// <summary>What the ready shapes hold by kind, for the log: prims' and sculpts' triangles, meshes' drawn triangles
+    /// (those without a hull of their own) and their physics (decoded the first time a ray needs it), with how much of it
+    /// is in arrays of 85 KB or more (the large object heap's).</summary>
+    public string Breakdown()
+    {
+        long prims = 0, sculpts = 0, drawn = 0, physics = 0, large = 0;
+        int nPrims = 0, nSculpts = 0, nDrawn = 0, nMeshes = 0;
+        foreach (var s in _shapes.Values)
+        {
+            if (!s.Ready) continue;
+            long d = s.Drawn?.Bytes ?? 0;
+            large += s.Drawn?.LargeBytes ?? 0;
+            switch (s.Key.Kind)
+            {
+                case ShapeKind.Prim: prims += s.Bytes; nPrims++; break;
+                case ShapeKind.Sculpt: sculpts += s.Bytes; nSculpts++; break;
+                default:
+                    nMeshes++;
+                    if (d > 0) { drawn += d; nDrawn++; }
+                    physics += s.Bytes - d;
+                    break;
+            }
+        }
+        return $"prims {nPrims} ({prims >> 20} MB), sculpts {nSculpts} ({sculpts >> 20} MB), meshes {nMeshes} ({drawn >> 20} MB drawn in {nDrawn} without a hull, " +
+               $"{physics >> 20} MB physics); {large >> 20} MB in large arrays";
+    }
+
     /// <summary>The key for a prim's shape (null: it has none: not a volume prim).</summary>
     public static ShapeKey? KeyOf(Primitive prim)
     {
@@ -115,7 +138,7 @@ public sealed class CollisionShapes
         // a sculpt parameter with a map is a sculpt whatever its type, as the renderer takes it (RegionScene.Refresh)
         if (prim.Sculpt is { } sc && sc.SculptTexture != UUID.Zero && (int)sc.Type <= (int)SculptType.Mesh)
         {
-            if (sc.Type == SculptType.Mesh) return new ShapeKey(ShapeKind.Mesh, sc.SculptTexture, 0);
+            if (sc.Type == SculptType.Mesh) return new ShapeKey(ShapeKind.Mesh, sc.SculptTexture, (sc.Invert ? 1 : 0) | (sc.Mirror ? 2 : 0));
             return new ShapeKey(ShapeKind.Sculpt, sc.SculptTexture, Hash(prim, pcode));
         }
         return new ShapeKey(ShapeKind.Prim, UUID.Zero, Hash(prim, pcode));
@@ -172,7 +195,7 @@ public sealed class CollisionShapes
 
     void BuildPrim(CollisionShape shape, Primitive.ConstructionData data)
     {
-        try { shape.Set(Flatten(VolumeBuilder.BuildPrim(data, VolumeBuilder.DetailForLod(Lod))), null); }
+        try { shape.Set(DrawnTriangles.Of(VolumeBuilder.BuildPrim(data, VolumeBuilder.DetailForLod(Lod))), null); }
         catch (Exception e)
         {
             shape.Failed = true;
@@ -184,22 +207,6 @@ public sealed class CollisionShapes
     {
         LocalID = p.LocalID, ID = p.ID, PrimData = p.PrimData, Scale = p.Scale, Sculpt = p.Sculpt,
     };
-
-    static Vector3[] Flatten(VolumeFace[] faces)
-    {
-        int n = 0;
-        foreach (var f in faces) n += f.Indices.Length / 3 * 3;
-        var tris = new Vector3[n];
-        int at = 0;
-        foreach (var f in faces)
-            for (int i = 0; i + 2 < f.Indices.Length; i += 3)
-            {
-                tris[at++] = f.Positions[f.Indices[i]];
-                tris[at++] = f.Positions[f.Indices[i + 1]];
-                tris[at++] = f.Positions[f.Indices[i + 2]];
-            }
-        return tris;
-    }
 
     // --- downloads: nearest first, a few at once ------------------------------------------------------------------
 
@@ -253,7 +260,7 @@ public sealed class CollisionShapes
             if (status == FetchStatus.NotFound && key.Kind == ShapeKind.Sculpt)
             {
                 // a missing map: the viewer's sphere placeholder, as the renderer draws it
-                await Decoded(() => shape.Set(Flatten(VolumeBuilder.BuildSculpt(prim.PrimData, prim.Sculpt!, ReadOnlySpan<byte>.Empty, 0, 0,
+                await Decoded(() => shape.Set(DrawnTriangles.Of(VolumeBuilder.BuildSculpt(prim.PrimData, prim.Sculpt!, ReadOnlySpan<byte>.Empty, 0, 0,
                     VolumeBuilder.DetailForLod(Lod), components: 0, rowsTopDown: false, missingAsset: true)), null)).ConfigureAwait(false);
                 return;
             }
@@ -321,13 +328,15 @@ public sealed class CollisionShapes
     }
 
     /// <summary>A mesh's physics from its header; its drawn triangles too (the highest LOD) only when the rule could
-    /// ask for them: no physics blocks, or no hull of its own.</summary>
+    /// ask for them: no physics blocks, or no hull of its own. Read by <see cref="MeshTriangles"/>, else (what it leaves
+    /// undecided) by LibreMetaverse's decode, with the same result.</summary>
     void DecodeMesh(CollisionShape shape, Primitive prim, byte[] data)
     {
         MeshPhysics? phys = null;
         try { phys = MeshPhysics.FromAsset(data); } catch { }
-        Vector3[]? drawn = null;
-        if (phys?.Hull == null)
+        DrawnTriangles? drawn = null;
+        if (phys?.Hull == null && !SlowMeshDecode && MeshTriangles.Highest(prim, data) is { } fast) drawn = fast.Triangles;
+        else if (phys?.Hull == null)
         {
             var fm = _mesher.GenerateFacetedMeshMesh(prim, data, DetailLevel.Highest);
             if (fm?.Faces is { Count: > 0 } faces)
@@ -343,7 +352,7 @@ public sealed class CollisionShapes
                         tris.Add(V(f.Vertices[a].Position)); tris.Add(V(f.Vertices[b].Position)); tris.Add(V(f.Vertices[c].Position));
                     }
                 }
-                drawn = tris.ToArray();
+                drawn = DrawnTriangles.FromFlat(tris.ToArray());
             }
         }
         shape.Set(drawn, phys);
@@ -390,7 +399,7 @@ public sealed class CollisionShapes
         }
         var faces = VolumeBuilder.BuildSculpt(prim.PrimData, prim.Sculpt!, rgba, w, h, VolumeBuilder.DetailForLod(Lod),
             components: nc < 3 ? nc : 4, rowsTopDown: false);
-        shape.Set(Flatten(faces), null);
+        shape.Set(DrawnTriangles.Of(faces), null);
     }
 
     void Sweep(long now)

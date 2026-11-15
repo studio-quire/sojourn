@@ -3,13 +3,19 @@ spanning tree from the roots, and arrays of 80 KB or more by the chain of types 
 
   python tools/heapwho.py [--pid PID] [--label LABEL] [--top N]
   python tools/heapwho.py summary FILE.gcdump [--top N] [--path TYPE]
+  python tools/heapwho.py exact [--pid PID] [--top N]
 
 Needs dotnet-gcdump (`dotnet tool install --global dotnet-gcdump`; it runs on the .NET 8 runtime OpenSim uses, so
 DOTNET_ROOT is set to that here). Dumps go to local/heapdumps/. --path TYPE: how each object whose type name contains
 TYPE is reached from the roots (its holders, grouped), for finding what keeps something alive. Two or three dumps minutes apart say what grows; the
 console's memory part (heap, fragmented, committed, what the last full collection left) says whether it's live at all.
 
-Written by Claude Opus 5.5, 2026-10-28.
+exact: the process itself read with ClrMD (tools/heapgens, suspended a few seconds), every object counted: per part of
+the heap (gen0-2, the large object heap, pinned) live, dead and free (fragmentation) bytes against what's committed, the
+large object heap's objects by type and by holders, its free blocks by size, gen2's by type. A gcdump is lossy on big
+heaps (EventPipe drops events under .NET 10); this isn't. Run right after a gcdump, which collects in full first.
+
+Written by Claude Opus 5.5, 2026-10-28; exact 2026-11-14.
 """
 import os
 import subprocess
@@ -33,6 +39,17 @@ def summary(dump, top, path=None):
     return subprocess.run([str(cputrace.SDK / "dotnet.exe"), str(ANALYZER), str(dump), str(top), *(["--path", path] if path else [])], capture_output=True, text=True).stdout
 
 
+EXACT = ROOT / "local" / "tools" / "heapgens" / "heapgens.dll"
+
+
+def exact(pid, top):
+    if not EXACT.exists():
+        subprocess.run([str(cputrace.SDK / "dotnet.exe"), "build", str(ROOT / "tools" / "heapgens"), "-c", "Release", "-v:q", "-nologo",
+                        "-o", str(EXACT.parent)], check=True, capture_output=True)
+    r = subprocess.run([str(cputrace.SDK / "dotnet.exe"), str(EXACT), str(pid), str(top)], capture_output=True, text=True)
+    return r.stdout + r.stderr
+
+
 def main():
     args = sys.argv[1:]
 
@@ -42,6 +59,9 @@ def main():
     top = opt("--top", "30")
     if args[:1] == ["summary"]:
         print(summary(args[1], top, opt("--path")))
+        return
+    if args[:1] == ["exact"]:
+        print(exact(int(opt("--pid") or cputrace.sojourn_pid()), top))
         return
     pid = int(opt("--pid") or cputrace.sojourn_pid())
     out = ROOT / "local" / "heapdumps"

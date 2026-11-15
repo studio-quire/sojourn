@@ -3192,7 +3192,9 @@ it).
   columns, 256 a query checked against the world as a safety net, a full rescan when the counts disagree; rays and solid
   triangles in a box, under one lock) and `CollisionShapes.cs` (shapes by key: prims built on the spot, the rest by a
   queue, eight downloads at once, nearest first, decoding on one or two threads; what's within reach is asked for each
-  second, so the rest is what's been left behind, let go after three idle minutes), by
+  second, so the rest is what's been left behind, let go after three idle minutes; each shape's triangles kept as
+  vertices and indices, `DrawnTriangles.cs`, and a mesh's read by `MeshTriangles.cs` rather than LibreMetaverse's whole
+  decode: docs/performance.md > Sojourn Access on a small PC), by
   `CollisionRule` and `CollideMath` (`World/PhysicsShape.cs`), which `RegionScene.CollideRay` (the renderer's, the VR
   client's walk) uses too. Session's `Collision/LocalCollision.cs` wraps it: the physics shape types (`PhysicsShapes`,
   shared with the renderer out of sight), the passable rule (`PhysicsShapes.Collide`), rays off the caller's thread,
@@ -3200,8 +3202,9 @@ it).
   renderer). `SojournCollision status` (prims, shapes ready, waiting, downloading, failed, MB) and `collide`. Its log
   lines are `collision`'s. Cost (2026-10-30, local grid, Atelier East with the walk course, 592 prims, 47 shapes): a
   sonar's 720 rays 3-3.5 ms on one core, a walking probe's 8 under 0.3 ms; the shapes 3.0 MB (`shapes_mb`; 3.5 at
-  LOD 3). Every five minutes, if it changed, the log says what it holds (`collision: R regions, P prims, S shapes (M MB),
-  T physics types known`), so a tester's log shows it on a busy Second Life region; physics types answered over 20
+  LOD 3). Every five minutes, if it changed, the log says what it holds (`collision: R regions, P prims, S shapes (M MB:
+  prims, sculpts, meshes' drawn triangles and physics, and how much is in large arrays), T physics types known`), so a
+  tester's log shows it on a busy Second Life region; physics types answered over 20
   minutes ago are let go (they were kept for the session: 75,000 on a three-hour train ride).
 - **Walk mode** (`Walk/`): `WalkMode.cs` (the body as it is now, footsteps, the listener), `.Keys.cs` (keys to control
   flags, turning, braking, driving), `.Probe.cs` (ten batches of rays a second while moving: ahead, both sides,

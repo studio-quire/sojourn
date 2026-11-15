@@ -116,6 +116,40 @@ public static class SoundConvert
         }
     }
 
+    /// <summary>What <see cref="DecodeVorbis"/>'s samples come to without keeping them: how many, the sum of their
+    /// squares and the largest magnitude, summed over the same mono samples in the same order (so the same doubles), and
+    /// the rate. For a sound's loudness and length (Sound/SoundCatalog), which kept the whole sound twice over in float
+    /// arrays for three numbers.</summary>
+    public static (long Count, double SumSquares, double Peak, int SampleRate) VorbisLevels(byte[] ogg)
+    {
+        try
+        {
+            using var reader = new VorbisReader(new MemoryStream(ogg), closeOnDispose: true);
+            int channels = reader.Channels;
+            var buf = new float[4096 * channels];
+            long count = 0;
+            double sum = 0, peak = 0;
+            int read;
+            while ((read = reader.ReadSamples(buf, 0, buf.Length)) > 0)
+            {
+                for (int i = 0; i + channels <= read; i += channels)
+                {
+                    float m = 0;
+                    for (int c = 0; c < channels; c++) m += buf[i + c];
+                    float x = m / channels;
+                    sum += x * x;
+                    peak = Math.Max(peak, Math.Abs(x));
+                    count++;
+                }
+            }
+            return (count, sum, peak, reader.SampleRate);
+        }
+        catch (Exception e) when (e is not MediaFormatException)
+        {
+            throw new MediaFormatException($"Not a readable Ogg Vorbis stream: {e.Message}");
+        }
+    }
+
     /// <summary>Peak (0-1) and RMS in dBFS.</summary>
     public static (float Peak, double RmsDbfs) Levels(ReadOnlySpan<float> samples)
     {

@@ -1012,8 +1012,10 @@ Three logs of one session (from 18:32) with her notes (our words): `tester-20261
 Page Down for a HUD and it wouldn't work), `-000548-8f76ea` three minutes on (Page Down had worked, she didn't know
 how), then a "grid drive" with friends, riding in their vehicles and a boat over some fifteen regions, and
 `tester-20261115T023115-be2a8c` ("the first part", 21:31: the HUD's Next Leg wanted a second's press she didn't know
-how to give, and a sitting pose from the boat wouldn't stop, so she logged in again). She flew for the first time
-("would never have been able to fly in Radegast").
+how to give, and a sitting pose from the boat wouldn't stop, so she logged in again); after logging in again,
+`tester-20261115T034838-71c24f` (the drive's end, 22:48: the prizes missed, "not the fault of the viewer"; a beamer for
+them wasn't within reach of Objects). She flew for the first time ("would never have been able to fly in Radegast").
+What's below went into 0.1.0.1136, sent that night (#287).
 - **Page Down for a group drive's HUD**: given to her and worn at 18:55, it took the movement keys passed on (as many
   HUDs do), then Down alone; its own lines say to touch its circle for its commands. She pressed Page Down where she
   types (most likely Say), where it did nothing; touched the HUD from what she wears (nothing answered: the circle is
@@ -1100,6 +1102,7 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
+- With 0.1.0.1136 (#287, 2026-11-14 night): nothing new asked; 1125's three still stand.
 - With 0.1.0.1132 (#284, 2026-11-13 evening): nothing new asked; 1125's three still stand.
 - Sent with 0.1.0.1125 (#283, 2026-11-13): how her partner made the place link that wouldn't open (the map, the
   location, a landmark dragged in); whether she pressed anything but F3 and Down while the window froze at the

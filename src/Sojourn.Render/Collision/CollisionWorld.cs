@@ -155,6 +155,9 @@ public sealed class CollisionWorld : IDisposable
         return (regions, prims, placed, _shapes.Count, ready, _shapes.Waiting, _shapes.Fetching, failed, bytes);
     }
 
+    /// <summary>The shapes' bytes by kind (CollisionShapes.Breakdown), for the log.</summary>
+    public string ShapeBreakdown() => _shapes.Breakdown();
+
     static Vector3 Offset(ulong from, ulong to)
     {
         if (from == to) return Vector3.Zero;
@@ -498,16 +501,20 @@ public sealed class CollisionWorld : IDisposable
         {
             var scale = e.Scale;
             if (scale.X <= 0 || scale.Y <= 0 || scale.Z <= 0) return null;
-            var tris = Triangles(e, shape, how, out var pad);
-            if (tris == null) return null;
+            var rule = Triangles(e, shape, how, out var pad);
+            var drawn = rule == null ? shape.Drawn : null;
+            if (rule == null && drawn == null) return null;
+            int n = rule?.Length ?? drawn!.Count;
             var inv = Quaternion.Conjugate(e.Rot);
             var lo = Vector3.Transform(o - e.Pos, inv) / scale;
             var ld = Vector3.Transform(d, inv) / scale;
             if (!RegionScene.Slab(lo, ld, shape.Min - pad, shape.Max + pad, best, out _)) return null;
             CollideHit? hit = null;
-            for (int i = 0; i + 2 < tris.Length; i += 3)
+            for (int i = 0; i + 2 < n; i += 3)
             {
-                Vector3 a = tris[i], b = tris[i + 1], c = tris[i + 2];
+                Vector3 a, b, c;
+                if (rule != null) (a, b, c) = (rule[i], rule[i + 1], rule[i + 2]);
+                else (a, b, c) = (drawn![i], drawn[i + 1], drawn[i + 2]);
                 var nu = Vector3.Cross(b - a, c - a);
                 if (Vector3.Dot(nu, ld) >= 0) continue;
                 if (!RegionScene.Triangle(lo, ld, a, b, c, out float t, out _, out _) || t >= best) continue;
@@ -519,12 +526,13 @@ public sealed class CollisionWorld : IDisposable
             return hit;
         }
 
+        /// <summary>The rule's triangles (flat, three corners each), or null where the drawn ones count (shape.Drawn).</summary>
         static Vector3[]? Triangles(Entry e, CollisionShape shape, CollideAs how, out Vector3 pad)
         {
             var rule = CollisionRule.Triangles(e.Key!.Value.Kind == ShapeKind.Mesh, shape.Physics, how, e.Scale, shape.HullOfDrawn);
             // (a mesh's hull is the asset's, quantised over its own domain: it can reach a little past the drawn box)
             pad = rule != null ? new Vector3(0.02f) : Vector3.Zero;
-            return rule ?? shape.Drawn;
+            return rule;
         }
 
         public void Solids(CollisionShapes shapes, Vector3 min, Vector3 max, Func<Primitive, CollideAs> solid, List<Vector3> into, List<uint> ids)
@@ -544,9 +552,12 @@ public sealed class CollisionWorld : IDisposable
                     var scale = e.Scale;
                     if (scale.X <= 0 || scale.Y <= 0 || scale.Z <= 0) continue;
                     if (shapes.Get(e.Key!.Value, e.Prim, Assets, 0, buildNow: true) is not { } shape) continue;
-                    if (Triangles(e, shape, how, out _) is not { } tris) continue;
-                    foreach (var t in tris) into.Add(e.Pos + Vector3.Transform(t * scale, e.Rot));
-                    for (int i = 0; i + 2 < tris.Length; i += 3) ids.Add(e.Id);
+                    var rule = Triangles(e, shape, how, out _);
+                    var drawn = rule == null ? shape.Drawn : null;
+                    if (rule == null && drawn == null) continue;
+                    int n = rule?.Length ?? drawn!.Count;
+                    for (int i = 0; i < n; i++) into.Add(e.Pos + Vector3.Transform((rule != null ? rule[i] : drawn![i]) * scale, e.Rot));
+                    for (int i = 0; i + 2 < n; i += 3) ids.Add(e.Id);
                 }
             }
         }

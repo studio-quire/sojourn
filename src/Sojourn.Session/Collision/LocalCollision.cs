@@ -126,7 +126,7 @@ public sealed class LocalCollision : IDisposable
                     // what it holds, for a tester's log (a long ride's memory): every five minutes if it changed
                     nextReport = now + 300_000;
                     var st = _world.Status();
-                    var line = $"collision: {st.Regions} regions, {st.Prims} prims, {st.Shapes} shapes ({st.Bytes >> 20} MB), {Physics.Known} physics types known";
+                    var line = $"collision: {st.Regions} regions, {st.Prims} prims, {st.Shapes} shapes ({st.Bytes >> 20} MB: {_world.ShapeBreakdown()}), {Physics.Known} physics types known";
                     if (line != reported) _log(reported = line);
                 }
             }

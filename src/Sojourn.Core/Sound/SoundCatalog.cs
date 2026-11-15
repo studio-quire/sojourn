@@ -23,12 +23,15 @@ public sealed class SoundCatalog
     readonly ConcurrentDictionary<UUID, Task<string?>> _speech = new();
     const int MaxInfo = 20_000;   // a few hundred bytes each
 
-    /// <summary>Ogg Vorbis -> mono samples and rate (set at startup; null means loudness and length stay unknown).</summary>
-    public static Func<byte[], (float[] Samples, int Rate)>? Decoder = data =>
+    // (before Decoder: static fields are set in the order they're written)
+    static readonly Func<byte[], (float[] Samples, int Rate)> DefaultDecoder = data =>
     {
         var d = Media.SoundConvert.DecodeVorbis(data);
         return (d.Samples, d.SampleRate);
     };
+
+    /// <summary>Ogg Vorbis -> mono samples and rate (set at startup; null means loudness and length stay unknown).</summary>
+    public static Func<byte[], (float[] Samples, int Rate)>? Decoder = DefaultDecoder;
 
     public SoundCatalog(WorldHub hub, string grid)
     {
@@ -50,13 +53,22 @@ public sealed class SoundCatalog
         {
             try
             {
+                // with the usual decoder, summed as it decodes rather than from the samples kept (the same numbers)
+                if (ReferenceEquals(Decoder, DefaultDecoder))
+                {
+                    if (await AssetDataAsync(id) is not { } data) return null;
+                    var (count, sum, peak, rate) = Media.SoundConvert.VorbisLevels(data);
+                    if (rate <= 0) return null;
+                    var rms = count > 0 ? Math.Sqrt(sum / count) : 0;
+                    return new SoundInfo(Math.Round(count / (double)rate, 2), Db(rms), Db(peak));
+                }
                 var pcm = await SamplesAsync(id);
                 if (pcm is null || pcm.Value.Rate <= 0) return null;
-                var (s, rate) = pcm.Value;
-                double sum = 0, peak = 0;
-                foreach (var x in s) { sum += x * x; peak = Math.Max(peak, Math.Abs(x)); }
-                var rms = s.Length > 0 ? Math.Sqrt(sum / s.Length) : 0;
-                return new SoundInfo(Math.Round(s.Length / (double)rate, 2), Db(rms), Db(peak));
+                var (s, rate2) = pcm.Value;
+                double sum2 = 0, peak2 = 0;
+                foreach (var x in s) { sum2 += x * x; peak2 = Math.Max(peak2, Math.Abs(x)); }
+                var rms2 = s.Length > 0 ? Math.Sqrt(sum2 / s.Length) : 0;
+                return new SoundInfo(Math.Round(s.Length / (double)rate2, 2), Db(rms2), Db(peak2));
             }
             catch { return null; }
         }));
@@ -65,11 +77,15 @@ public sealed class SoundCatalog
     /// <summary>The asset's samples (mono), for the transcriber.</summary>
     public async Task<(float[] Samples, int Rate)?> SamplesAsync(UUID id)
     {
-        if (Decoder is null) return null;
+        if (Decoder is not { } decoder || await AssetDataAsync(id) is not { } data) return null;
+        return decoder(data);
+    }
+
+    async Task<byte[]?> AssetDataAsync(UUID id)
+    {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var asset = await _hub.AssetAsync(_grid, id, AssetType.Sound, cts.Token);
-        if (asset?.AssetData is not { Length: > 0 } data) return null;
-        return Decoder(data);
+        return asset?.AssetData is { Length: > 0 } data ? data : null;
     }
 
     /// <summary>What a spoken sound says, transcribed once per asset (null: no transcriber, not speech, or failed).</summary>

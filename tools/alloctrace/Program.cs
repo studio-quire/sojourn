@@ -1,6 +1,7 @@
 // Where a running Sojourn allocates: reads a .nettrace holding GCAllocationTick events with stacks (about one per
 // 100 KB allocated, naming the type and carrying the allocating stack) and prints the bytes by type, by the first
-// frame in our own code (or LibreMetaverse's), and by short stacks. Written by Claude Opus 5.5, 2026-10-26.
+// frame in our own code (or LibreMetaverse's), and by short stacks; and the large object heap's share (objects of 85 KB
+// or more, which only a full collection frees and nothing compacts) by site. Written by Claude Opus 5.5, 2026-10-26.
 using Microsoft.Diagnostics.Tracing.Etlx;
 using Microsoft.Diagnostics.Tracing.Parsers.Clr;
 
@@ -14,7 +15,8 @@ var byType = new Dictionary<string, double>();
 var bySite = new Dictionary<string, double>();
 var byStack = new Dictionary<string, double>();
 var byThread = new Dictionary<int, double>();
-double total = 0, start = double.MaxValue, end = 0;
+var largeBySite = new Dictionary<string, double>();
+double total = 0, large = 0, start = double.MaxValue, end = 0;
 
 static bool Ours(string m) =>
     m.StartsWith("Sojourn") || m.StartsWith("OpenMetaverse") || m.StartsWith("LibreMetaverse") || m.StartsWith("Program") ||
@@ -46,6 +48,12 @@ foreach (var ev in log.Events)
     int first = frames.FindIndex(Ours);
     string site = first >= 0 ? frames[first] : frames.FirstOrDefault(f => !f.StartsWith("?")) ?? "?";
     bySite[$"{site}  [{type}]"] = bySite.GetValueOrDefault($"{site}  [{type}]") + bytes;
+    if (a.AllocationKind == GCAllocationKind.Large)
+    {
+        large += bytes;
+        string lsite = string.Join("  <  ", frames.Skip(Math.Max(0, (first >= 0 ? first : 0) - 1)).Take(3));
+        largeBySite[$"[{type}] {lsite}"] = largeBySite.GetValueOrDefault($"[{type}] {lsite}") + bytes;
+    }
     var from = first >= 0 ? first : 0;
     string stack = string.Join("  <  ", frames.Skip(Math.Max(0, from - 1)).Take(depth));
     byStack[$"[{type}] {stack}"] = byStack.GetValueOrDefault($"[{type}] {stack}") + bytes;
@@ -63,4 +71,6 @@ Print("by type:", byType);
 Print("by thread:", byThread.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value));
 Print("by site (first frame in our code or LibreMetaverse):", bySite);
 Print("by stack:", byStack);
+Console.WriteLine($"large objects (85 KB and up): {large / (1 << 20) / secs:F1} MB/s, {100 * large / Math.Max(1, total):F0}% of all");
+Print("large objects by site (percent of all):", largeBySite);
 return 0;

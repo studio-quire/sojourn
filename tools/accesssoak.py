@@ -45,8 +45,10 @@ API_PORT = 9830
 ROUTE = [("Atelier", 200, 200, 30), ("walk", 0, 90), ("Place One", 128, 128, 40), ("Atelier East", 60, 60, 30),
          ("walk", -90, 0), ("Place Two", 128, 128, 40), ("Atelier Northeast", 128, 128, 30), ("walk", 0, -100),
          ("Place Three", 128, 128, 40), ("Atelier North", 128, 100, 30), ("walk", 100, 0), ("Place Four", 128, 128, 40)]
-MEM = re.compile(r"memory (\d+) MB \(heap (\d+) MB, (\d+) fragmented, (\d+) committed; last full collection left gen2 (\d+), "
-                 r"large (\d+)\); gc (\d+)/(\d+)/(\d+), paused (\d+) ms, (\d+) MB allocated")
+# (since 2026-11-14 the line has private bytes and each part's free space after the full collection: -1 when absent)
+MEM = re.compile(r"memory (\d+) MB(?:, private (\d+) MB)? \(heap (\d+) MB, (\d+) fragmented, (\d+) committed; last full collection "
+                 r"left gen2 (\d+)(?: \((\d+) free\))?, large (\d+)(?: \((\d+) free\))?\); gc (\d+)/(\d+)/(\d+), paused (\d+) ms, "
+                 r"(\d+) MB allocated")
 
 
 def api(op_pump, op, timeout=30, **args):
@@ -70,7 +72,11 @@ def last_memory(log):
     except OSError:
         return None
     found = MEM.findall(text[-200_000:])
-    return [int(x) for x in found[-1]] if found else None
+    if not found:
+        return None
+    # (log_ws, heap, frag, committed, gen2_left, loh_left, gc0, gc1, gc2, paused_ms, allocated_mb, then log_private, gen2_free, loh_free)
+    v = [int(x) if x else -1 for x in found[-1]]
+    return [v[0], v[2], v[3], v[4], v[5], v[7], v[9], v[10], v[11], v[12], v[13], v[1], v[6], v[8]]
 
 
 def main():
@@ -86,6 +92,7 @@ def main():
 
     global API_PORT
     minutes, stay = float(opt("--minutes", "40")), float(opt("--stay", "45"))
+    looks_every = float(opt("--looks-every", "300"))
     API_PORT = int(opt("--port", API_PORT))
     user = opt("--as", USER.replace(" ", "/")).replace("/", " ")
     dumps = [float(x) for x in opt("--dump-at", "").split(",") if x]
@@ -121,6 +128,9 @@ def main():
                 r = subprocess.run([sys.executable, str(ROOT / "tools" / "heapwho.py"), "--pid", str(pid), "--label", f"{label}-{m:.0f}m", "--top", "40"],
                                    capture_output=True, text=True)
                 (OUT / f"{label}-heap-{m:.0f}m.txt").write_text(r.stdout + r.stderr, encoding="utf-8")
+                r = subprocess.run([sys.executable, str(ROOT / "tools" / "heapwho.py"), "exact", "--pid", str(pid), "--top", "40"],
+                                   capture_output=True, text=True)
+                (OUT / f"{label}-exact-{m:.0f}m.txt").write_text(r.stdout + r.stderr, encoding="utf-8")
                 notes.append(f"{m:5.1f} min: heap dump")
             if traces and m >= traces[0]:
                 traces.pop(0)
@@ -164,8 +174,9 @@ def main():
                     notes.append(f"{m:5.1f} min: a look, {time.time() - t1:.1f} s, {len(r.get('pictures') or [])} pictures")
                 except Exception as e:
                     notes.append(f"{m:5.1f} min: a look failed: {e}")
-                print(notes[-1], flush=True)
-                next_look = time.time() + 300
+                if looks_every >= 60:
+                    print(notes[-1], flush=True)
+                next_look = time.time() + looks_every
             try:
                 mi = proc.memory_info()
                 cpu = proc.cpu_times()
@@ -183,7 +194,7 @@ def main():
         for p in psutil.process_iter(["cmdline"]):
             if str(base).lower() in " ".join(p.info["cmdline"] or []).lower():
                 p.kill()
-    head = ["s", "private_mb", "ws_mb", "cpu_s", "log_ws", "heap", "frag", "committed", "gen2_left", "loh_left", "gc0", "gc1", "gc2", "paused_ms", "allocated_mb"]
+    head = ["s", "private_mb", "ws_mb", "cpu_s", "log_ws", "heap", "frag", "committed", "gen2_left", "loh_left", "gc0", "gc1", "gc2", "paused_ms", "allocated_mb", "log_private", "gen2_free", "loh_free"]
     with open(OUT / f"{label}.csv", "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(head)
@@ -195,6 +206,8 @@ def main():
         secs = b[0] - a[0]
         out.append(f"  private bytes {a[1]} -> {b[1]} MB (most {max(r[1] for r in full)}), working set {a[2]} -> {b[2]} MB (most {max(r[2] for r in full)})")
         out.append(f"  heap {a[5]} -> {b[5]} MB (most {max(r[5] for r in full)}); last full collection left gen2 {b[8]}, large {b[9]} MB (most {max(r[8] + r[9] for r in full)} together)")
+        if b[17] >= 0:
+            out.append(f"  of which free after it: gen2 {b[16]}, large {b[17]} MB (most large free {max(r[17] for r in full)}, most large live {max(r[9] - r[17] for r in full)})")
         out.append(f"  allocated {(b[14] - a[14]) / secs:.1f} MB/s; collections {b[10] - a[10]}/{b[11] - a[11]}/{b[12] - a[12]}, "
                    f"paused {(b[13] - a[13]) / secs * 60:.0f} ms a minute; CPU {(b[3] - a[3]) / secs * 100:.0f}% of a core")
         # the quieter half (no look, no arrival): the steady rate

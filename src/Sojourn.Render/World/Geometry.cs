@@ -514,7 +514,7 @@ public sealed class GeometryCache
                         }
                         await _gate.WaitAsync().ConfigureAwait(false);
                         if (shape.Evicted) { _gate.Release(); return; }   // let go of while it waited for a thread
-                        try { fm = _mesher.GenerateFacetedMeshMesh(prim, data, lod); }
+                        try { fm = MeshParts.Decode(_mesher, prim, data, lod); }   // (only the parts that LOD needs inflated: MeshParts)
                         finally { _gate.Release(); }
                         break;
                     }

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Attaches to a running .NET process (ClrMD, suspended while it reads) and says what each part of its managed heap
+       holds: per generation and the large object heap, live (reachable from the roots), dead (not yet collected) and
+       free (fragmentation) bytes, by type, and live large objects by the chain of types holding them.
+       tools/heapwho.py exact builds and runs it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Diagnostics.Runtime" Version="4.2.751201" />
+  </ItemGroup>
+</Project>

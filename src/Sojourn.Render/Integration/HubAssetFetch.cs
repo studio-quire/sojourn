@@ -187,18 +187,47 @@ sealed partial class HubAssetSource
         return line;
     }
 
-    /// <summary>The process's memory for the console: the working set, and the managed heap as the last collection
-    /// left it (live and fragmented: free space between live objects, which only a compacting collection gives
-    /// back), the last full collection's survivors, and what the heap has committed.</summary>
+    /// <summary>The process's memory for the console: the working set and private bytes (what it has committed, paged
+    /// out or not: the working set falls below the heap on a PC short of memory), and the managed heap as the last
+    /// collection left it (live and fragmented: free space between live objects, which only a compacting collection
+    /// gives back), what the last full collection left in gen2 and the large object heap with the free space in each,
+    /// and what the heap has committed.</summary>
     static string Memory()
     {
         var any = GC.GetGCMemoryInfo(GCKind.Any);
         GCMemoryInfo bg = GC.GetGCMemoryInfo(GCKind.Background), fb = GC.GetGCMemoryInfo(GCKind.FullBlocking);
         var full = bg.Index > fb.Index ? bg : fb;
-        long Gen(GCMemoryInfo m, int g) => m.GenerationInfo.Length > g ? m.GenerationInfo[g].SizeAfterBytes : 0;
-        return $"memory {System.Environment.WorkingSet >> 20} MB (heap {any.HeapSizeBytes >> 20} MB, {any.FragmentedBytes >> 20} fragmented, " +
-               $"{any.TotalCommittedBytes >> 20} committed; last full collection left gen2 {Gen(full, 2) >> 20}, large {Gen(full, 3) >> 20})";
+        long Gen(int g) => full.GenerationInfo.Length > g ? full.GenerationInfo[g].SizeAfterBytes >> 20 : 0;
+        long Free(int g) => full.GenerationInfo.Length > g ? full.GenerationInfo[g].FragmentationAfterBytes >> 20 : 0;
+        long priv = PrivateBytes() >> 20;
+        return $"memory {System.Environment.WorkingSet >> 20} MB, private {priv} MB (heap {any.HeapSizeBytes >> 20} MB, {any.FragmentedBytes >> 20} fragmented, " +
+               $"{any.TotalCommittedBytes >> 20} committed; last full collection left gen2 {Gen(2)} ({Free(2)} free), large {Gen(3)} ({Free(3)} free))";
     }
+
+    /// <summary>This process's committed private memory, from GetProcessMemoryInfo (microseconds; Process's
+    /// PrivateMemorySize64 snapshots every process on the PC, 0.65 ms here, on the VR client's frame thread). 0 if unknown.</summary>
+    internal static long PrivateBytes()
+    {
+        if (!OperatingSystem.IsWindows()) return 0;
+        try
+        {
+            var c = new MemoryCounters { Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<MemoryCounters>() };
+            return K32GetProcessMemoryInfo(GetCurrentProcess(), ref c, c.Size) ? (long)c.PrivateUsage : 0;
+        }
+        catch (Exception) { return 0; }
+    }
+
+    // PROCESS_MEMORY_COUNTERS_EX
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct MemoryCounters
+    {
+        public uint Size, PageFaultCount;
+        public nuint PeakWorkingSetSize, WorkingSetSize, QuotaPeakPagedPoolUsage, QuotaPagedPoolUsage,
+            QuotaPeakNonPagedPoolUsage, QuotaNonPagedPoolUsage, PagefileUsage, PeakPagefileUsage, PrivateUsage;
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern nint GetCurrentProcess();
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern bool K32GetProcessMemoryInfo(nint process, ref MemoryCounters counters, uint size);
 
     static System.Reflection.FieldInfo? _dmField, _queueField, _activeField;
 

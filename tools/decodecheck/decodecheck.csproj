@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The collision model's mesh triangles (Sojourn.Render's Collision/MeshTriangles.cs), the renderer's trimmed mesh
+       decode (World/MeshParts.cs) and the sound decodes (Session's Audio/SoundBank.Decode, Core's
+       SoundConvert.VorbisLevels) against what they replaced, over every mesh and sound in cache folders, and what each
+       costs and keeps (docs/performance.md > Sojourn Access on a small PC).
+         dotnet run the project tools/decodecheck with -p:SojournOut=(an Access build output dir), then the cache folders after a double dash
+       (the default is Access's bin\Release). Exit code: the number of things read differently. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <SojournOut Condition="'$(SojournOut)' == ''">$(MSBuildThisFileDirectory)..\..\src\Sojourn.Access\bin\Release\net10.0-windows10.0.22621.0</SojournOut>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- (LibreMetaverse logs through Microsoft.Extensions.Logging, which comes with ASP.NET Core's shared framework, as in the apps) -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Reference Include="Sojourn.Render"><HintPath>$(SojournOut)\Sojourn.Render.dll</HintPath></Reference>
+    <Reference Include="Sojourn.Core"><HintPath>$(SojournOut)\Sojourn.Core.dll</HintPath></Reference>
+    <Reference Include="Sojourn.Session"><HintPath>$(SojournOut)\Sojourn.Session.dll</HintPath></Reference>
+    <Reference Include="NVorbis"><HintPath>$(SojournOut)\NVorbis.dll</HintPath></Reference>
+    <Reference Include="LibreMetaverse.Types"><HintPath>$(SojournOut)\LibreMetaverse.Types.dll</HintPath></Reference>
+    <Reference Include="LibreMetaverse.Assets"><HintPath>$(SojournOut)\LibreMetaverse.Assets.dll</HintPath></Reference>
+    <Reference Include="LibreMetaverse.StructuredData"><HintPath>$(SojournOut)\LibreMetaverse.StructuredData.dll</HintPath></Reference>
+    <Reference Include="LibreMetaverse.Rendering.MeshFoundry"><HintPath>$(SojournOut)\LibreMetaverse.Rendering.MeshFoundry.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

@@ -141,25 +141,8 @@ public sealed class SoundBank : IDisposable
 
     unsafe void Load(UUID id, byte[] ogg, Entry e)
     {
-        using var reader = new VorbisReader(new MemoryStream(ogg), closeOnDispose: true);
-        int ch = reader.Channels, rate = reader.SampleRate;
-        if (ch < 1 || rate <= 0) throw new InvalidDataException("no audio");
-        var pcm = new List<float>(reader.TotalSamples is > 0 and < 48000 * 60 ? (int)reader.TotalSamples * ch : 1 << 16);
-        var buf = new float[4096 * ch];
-        int read;
-        while ((read = reader.ReadSamples(buf, 0, buf.Length)) > 0)
-            for (int i = 0; i < read; i++) pcm.Add(buf[i]);
-        // more than two channels (never uploaded through the viewer, but possible): the first two
-        int keep = Math.Min(ch, 2);
-        float[] data;
-        if (keep == ch) data = pcm.ToArray();
-        else
-        {
-            int frames0 = pcm.Count / ch;
-            data = new float[frames0 * keep];
-            for (int f = 0; f < frames0; f++) for (int c = 0; c < keep; c++) data[f * keep + c] = pcm[f * ch + c];
-        }
-        int frames = data.Length / keep;
+        var data = Decode(ogg, out int keep, out int rate, out int count);
+        int frames = count / keep;
         if (frames == 0) throw new InvalidDataException("empty");
         int native;
         fixed (float* p = data) native = AudioNative.sv_buf_load(p, frames, rate, keep);
@@ -171,6 +154,41 @@ public sealed class SoundBank : IDisposable
         e.State = State.Ready;
         Interlocked.Add(ref _held, bytes);
         Trim(id);
+    }
+
+    /// <summary>
+    /// A sound's samples for the mixer, interleaved, the first <paramref name="count"/> of the array (more than two
+    /// channels, never uploaded through the viewer but possible: the first two). Read into one array of the length the
+    /// stream gives, where it gives one: a list grown sample by sample and copied out was three times the sound's size
+    /// in float arrays, on the large object heap past a second or so (with the catalog's decode, SoundCatalog.InfoAsync,
+    /// ten megabytes a heard sound on average over a Second Life cache's, `tools/decodecheck`). The same samples either
+    /// way. Any thread.
+    /// </summary>
+    public static float[] Decode(byte[] ogg, out int channels, out int rate, out int count)
+    {
+        using var reader = new VorbisReader(new MemoryStream(ogg), closeOnDispose: true);
+        int ch = reader.Channels;
+        rate = reader.SampleRate;
+        if (ch < 1 || rate <= 0) throw new InvalidDataException("no audio");
+        long total = reader.TotalSamples;
+        // (up to a minute of stereo at 48 kHz from the header; more, or more channels, grows as it's read)
+        var pcm = new float[total > 0 && total * ch <= 48000L * 60 * 2 ? (int)total * ch : 1 << 16];
+        var buf = new float[4096 * ch];
+        int n = 0, read;
+        while ((read = reader.ReadSamples(buf, 0, buf.Length)) > 0)
+        {
+            if (n + read > pcm.Length) Array.Resize(ref pcm, Math.Max(pcm.Length * 2, n + read));
+            Array.Copy(buf, 0, pcm, n, read);
+            n += read;
+        }
+        int keep = Math.Min(ch, 2);
+        channels = keep;
+        if (keep == ch) { count = n; return pcm; }
+        int frames0 = n / ch;
+        var two = new float[frames0 * keep];
+        for (int f = 0; f < frames0; f++) for (int c = 0; c < keep; c++) two[f * keep + c] = pcm[f * ch + c];
+        count = two.Length;
+        return two;
     }
 
     /// <summary>Over the cap: the sounds not wanted for longest go (never one wanted in the last 30 s, as the viewer's

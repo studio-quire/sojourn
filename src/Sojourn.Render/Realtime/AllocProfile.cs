@@ -8,14 +8,23 @@ namespace Sojourn.Render.Realtime;
 /// share. Cheap enough to leave on for a session; it says what to pool, not where from (no stacks). Sojourn Access
 /// keeps one on in every session at five minutes (<see cref="Every"/>), so a tester's log says what a long ride on
 /// Second Life allocates, which the perf grid doesn't reproduce (docs/performance.md > Sojourn Access on a small PC).
+/// Each top type also says how big the objects it's allocated as are (the size half its bytes come in at or above:
+/// a terrain patch's 1 KB arrays, a sound's megabytes) and how much went to the large object heap, which narrows where
+/// from without stacks. (Which threads allocated told nothing: the thread pool's, a different few each time.)
 /// </summary>
 public sealed class AllocProfile : EventListener
 {
     readonly Action<string> _log;
-    readonly Dictionary<string, long> _bytes = new();
+    readonly Dictionary<string, Tally> _types = new();
     readonly object _lock = new();
     readonly long _period;
     long _lastReport = System.Environment.TickCount64;
+
+    sealed class Tally
+    {
+        public long Bytes, Large;
+        public readonly List<long> Sizes = new();   // the sampled objects' sizes (each sample stands for ~100 KB)
+    }
 
     AllocProfile(Action<string> log, long periodMs) { _log = log; _period = periodMs; }
 
@@ -37,27 +46,53 @@ public sealed class AllocProfile : EventListener
     {
         if (e.EventName == null || !e.EventName.StartsWith("GCAllocationTick") || e.Payload == null || e.PayloadNames == null) return;
         string type = "?";
-        long amount = 100_000;
+        long amount = 100_000, size = 0;
+        bool large = false;
         for (int i = 0; i < e.PayloadNames.Count; i++)
         {
-            if (e.PayloadNames[i] == "TypeName" && e.Payload[i] is string t) type = t;
-            else if (e.PayloadNames[i] == "AllocationAmount64" && e.Payload[i] is ulong a) amount = (long)a;
+            switch (e.PayloadNames[i])
+            {
+                case "TypeName" when e.Payload[i] is string t: type = t; break;
+                case "AllocationAmount64" when e.Payload[i] is ulong a: amount = (long)a; break;
+                case "AllocationKind" when e.Payload[i] is uint k: large = k == 1; break;
+                case "ObjectSize" when e.Payload[i] is ulong s: size = (long)s; break;
+            }
         }
         string? report = null;
         lock (_lock)
         {
-            _bytes[type] = _bytes.GetValueOrDefault(type) + amount;
+            if (!_types.TryGetValue(type, out var tally)) _types[type] = tally = new Tally();
+            tally.Bytes += amount;
+            if (large) tally.Large += amount;
+            if (size > 0 && tally.Sizes.Count < 512) tally.Sizes.Add(size);
             long now = System.Environment.TickCount64;
             if (_period > 0 && now - _lastReport >= _period)   // (events can come from the base constructor, before _period is set)
             {
-                double secs = (now - _lastReport) / 1000.0;
+                report = Report((now - _lastReport) / 1000.0);
                 _lastReport = now;
-                long total = _bytes.Values.Sum();
-                report = $"allocations {total / secs / (1 << 20):F0} MB/s: " + string.Join(", ", _bytes.OrderByDescending(kv => kv.Value).Take(14)
-                    .Select(kv => $"{kv.Key} {100.0 * kv.Value / Math.Max(1, total):F0}%"));
-                _bytes.Clear();
+                _types.Clear();
             }
         }
         if (report != null) _log(report);
     }
+
+    string Report(double secs)
+    {
+        long total = Math.Max(1, _types.Values.Sum(t => t.Bytes));
+        var parts = _types.OrderByDescending(kv => kv.Value.Bytes).Take(14).Select(kv =>
+        {
+            var t = kv.Value;
+            string pct = $"{kv.Key} {100.0 * t.Bytes / total:F0}%";
+            // the top few say what they're made of
+            if (100.0 * t.Bytes / total < 5 || t.Sizes.Count == 0) return pct;
+            t.Sizes.Sort();
+            long median = t.Sizes[t.Sizes.Count / 2];
+            string big = t.Large > 0 ? $", {100.0 * t.Large / t.Bytes:F0}% large" : "";
+            return $"{pct} (half in objects of {Size(median)} or more{big})";
+        });
+        long largeAll = _types.Values.Sum(t => t.Large);
+        return $"allocations {total / secs / (1 << 20):F0} MB/s ({100.0 * largeAll / total:F0}% large objects): " + string.Join(", ", parts);
+    }
+
+    static string Size(long b) => b >= 1 << 20 ? $"{b / 1048576.0:0.#} MB" : b >= 1024 ? $"{b / 1024} KB" : $"{b} bytes";
 }
