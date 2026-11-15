@@ -72,10 +72,14 @@ public sealed partial class MainForm
     }
 
     /// <summary>Enter on a read button: pressed where it is, as a click there.</summary>
-    async Task PressButtonAsync(HudButtonItem b)
+    async Task PressButtonAsync(HudButtonItem b, bool keyHeld = false, double holdFor = 0)
     {
-        var r = await _ops.DoAsync("SojournHud", "press", new JsonObject { ["hud"] = b.Hud.ToString(), ["button"] = b.Number });
-        Answer(PersonOps.Error(r) is { } e ? $"Didn't press {b.Name}: {e}" : r.Str("note") is { } note ? $"{b.Name}: {note}." : $"Pressed {b.Name}.");
+        var args = new JsonObject { ["hud"] = b.Hud.ToString(), ["button"] = b.Number };
+        if (keyHeld) args["until_key_up"] = true;
+        else if (holdFor > 0) args["hold"] = holdFor;
+        var r = await _ops.DoAsync("SojournHud", "press", args);
+        Answer(PersonOps.Error(r) is { } e ? $"Didn't press {b.Name}: {e}" : r.Str("note") is { } note ? $"{b.Name}: {note}."
+            : r.Num("held", 0) is >= 0.5 and var held ? $"Pressed {b.Name}, held {held:0.0} seconds." : $"Pressed {b.Name}.");
     }
 
     /// <summary>Enter on the reading line: the assistant looks at the HUD and saves what buttons it sees, by name and
@@ -110,11 +114,14 @@ public sealed partial class MainForm
     static string Amount(double share) => share > 0.6 ? "most of it" : share > 0.4 ? "about half of it" : share > 0.25 ? "about a third of it"
         : share > 0.1 ? "a little of it" : "a sliver of it";
 
-    async Task TouchHudFaceAsync(HudFaceItem f)
+    async Task TouchHudFaceAsync(HudFaceItem f, bool keyHeld = false, double holdFor = 0)
     {
-        var r = await _ops.DoAsync("SojournHud", "press", new JsonObject { ["part"] = f.Part.Id.ToString(), ["face"] = f.Face });
+        var args = new JsonObject { ["part"] = f.Part.Id.ToString(), ["face"] = f.Face };
+        if (keyHeld) args["until_key_up"] = true;
+        else if (holdFor > 0) args["hold"] = holdFor;
+        var r = await _ops.DoAsync("SojournHud", "press", args);
         var what = $"{PartName(f.Part)}, {f.Words.Split(", at ")[0].ToLowerInvariant()}";
-        Answer(PersonOps.Error(r) is { } e ? $"Didn't touch {what}: {e}" : r.Str("note") is { } note ? $"{what}: {note}." : $"Touched {what}.");
+        Answer(PersonOps.Error(r) is { } e ? $"Didn't touch {what}: {e}" : r.Str("note") is { } note ? $"{what}: {note}." : Touched(what, r));
     }
 
     /// <summary>`//touch NAME` when nothing nearby has the name: a part or read button of a HUD worn.</summary>

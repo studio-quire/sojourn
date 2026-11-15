@@ -211,7 +211,7 @@ call switches beside them, and *turn away calls from*, a switch per group (docs/
 reject switches and their words, inventory kept by itself, a group ("Sojourn People Test", People's own) joined,
 snoozed, off and moderated, display names read and a change refused before asking, notes, the money tracker's shape.
 It needs groups and profiles on the local grid: Multitude's SQLite groups store for OpenSim's Groups V2 (`python
-projects/multitude/grid/groups.py deploy local/grid/bin`), and the standalone profile service on SQLite
+grid/groups.py deploy local/grid/bin` from a clone of github.com/studio-quire/multitude), and the standalone profile service on SQLite
 (`local/grid/bin/config/Sojourn.Profiles.ini`). ChatSessionRequest there is the WebRTC voice module's, so moderation's
 "mute update" answers 400: the confirmation and the moderator check before it are tested, the send isn't. Because
 OpenSim keeps an unanswered friendship offer (above), people.py accepts a waiting offer, or has Peer offer, so

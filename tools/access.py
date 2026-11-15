@@ -8624,6 +8624,16 @@ def parts(run):
         run.expect("Enter on it touches the lid, saying so", [f"Touched part 2 of {CHEST}"], m, 10)
         run.heard_by_visitor("the lid's script takes the touch (not the root)", lambda d: f"chest lid touched by {TNAME}" in d["msg"], n, 10,
                              f"chest lid touched by {TNAME}")
+        let_go = lambda lo, hi: lambda d: (g := re.match(r"chest lid let go after (\d+) tenths", d["msg"])) and lo <= int(g[1]) <= hi
+        run.heard_by_visitor("a tap lets go at once", let_go(0, 4), n, 10, "let go after 0-4 tenths")
+        # Enter held holds the touch, as a mouse button held on it (a HUD's Next Leg wanted a second's press, 2026-11-14)
+        n = visitor_n()
+        m = mark()
+        u("keydown focus | 13")
+        time.sleep(1.5)
+        u("keyup focus | 13")
+        run.expect("Enter held on it holds the touch, saying how long", [f"Touched part 2 of {CHEST}, held 1."], m, 10)
+        run.heard_by_visitor("the lid's script has it held about as long", let_go(12, 25), n, 10, "let go after 12-25 tenths")
         # Radegast's lesson: Tab passing the objects list made the root the target again
         key("shift+tab")
         wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 3)
@@ -8674,6 +8684,10 @@ def parts(run):
         say_in_app("//touch treasure chest latch")
         run.expect("//touch OBJECT PART touches that part by name", ["Touched Latch"], m, 15)
         if not VIEWLESS:
+            # past the GPU loss the run fakes 15 s in (alone, this step reaches here about then: the view restarting
+            # knows no faces)
+            if not SOFTWARE:
+                wait(lambda: (lambda st: st["state"] == "running" and st["losses"] >= 1)(api("SojournView", "status")), 60, 1)
             n = visitor_n()
             m = mark()
             say_in_app("//touch treasure chest face top")
@@ -12521,6 +12535,11 @@ def walk_vehicle(run, bx, by, g):
     if not run.check("the visitor's cart is out, its script running", made.startswith("cart"), made):
         return
     go_tp(run, "the tester beside the cart", at[0] - 1.5, at[1] - 2, g + 1.5)
+    # Page Up or Down where she types does nothing there, so where it does is said (a HUD's Page Down, 2026-11-14)
+    back_to_chat()
+    m = mark()
+    key("pgup")
+    run.expect("Page Up in Say, nothing having taken it, says walk mode's is where it moves you", ["Page Up moves you up in walk mode", "F3"], m, 5)
     n = visitor_n()
     m = mark()
     say_in_app("//sit Walk Cart")
@@ -12536,6 +12555,10 @@ def walk_vehicle(run, bx, by, g):
         back_to_chat()
     if not run.heard_by_visitor("the cart's script takes the movement keys", lambda d: d["msg"] == "cart controls taken", n, 15, "cart controls taken"):
         return
+    back_to_chat()
+    m = mark()
+    key("pgdn")
+    run.expect("Page Down in Say, the cart having taken it, says walk mode gives it to the script", ["A script has taken Page Down", "F3"], m, 5)
     m = mark()
     say_in_app(f"//follow {VNAME}")
     run.expect("//follow at the wheel drives after them", ["Driving Walk Cart after " + VNAME], m, 8)
@@ -15268,6 +15291,9 @@ def package_check():
         network("after the renderer and chat")
         crashes = re.findall(r".*(?:Unhandled exception|fail:|assistant: Traceback|assistant: \w*Error\b).*", log_text())
         check("no unhandled exceptions or failures in the log", not crashes, "; ".join(crashes)[:300] or "none")
+        # (UiaRelease reaches into WinForms' private members: found in the single file too, or lists wait on readers again)
+        uia = next((l for l in log_text().splitlines() if "uia: lists cleared" in l), "no uia line in the log")
+        check("lists cleared with readers' providers released afterward", "released afterward" in uia, uia[-120:])
     except Stop:
         pass
     except Exception as e:

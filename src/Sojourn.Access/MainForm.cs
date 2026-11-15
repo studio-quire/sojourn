@@ -79,7 +79,8 @@ public sealed partial class MainForm : Form
         _walkPad.GotFocus += (_, _) => { _inWalk = true; FocusChanged(); };
         _walkPad.LostFocus += (_, _) => { _inWalk = false; FocusChanged(); };
         Activated += (_, _) => { _active = true; FocusChanged(); };
-        Deactivate += (_, _) => { _active = false; FocusChanged(); _walk?.ReleaseAll(); VoiceRelease(); };
+        Deactivate += (_, _) => { _active = false; FocusChanged(); _walk?.ReleaseAll(); VoiceRelease(); TouchKeyUp(Environment.TickCount64); };
+        RealInput.EnterUp = TouchKeyUp;
         _tick.Tick += (_, _) => Tick();
         _slow.Tick += (_, _) => Slow();
     }
@@ -694,6 +695,7 @@ public sealed partial class MainForm : Form
         Control+Shift+S: auto-sit on or off: sat back on your seat when you log in or teleport there (an object's Applications key in Objects: Auto-sit on it; //autosit)
         Control+Shift+1: region info
         F3: walk mode (F1 there for its keys)
+        In walk mode, a vehicle or HUD that has taken keys gets the arrows, Page Up, Page Down and Enter
         R in walk mode, or //record: record a route by walking it
 
         Inventory
@@ -753,7 +755,7 @@ public sealed partial class MainForm : Form
         The list's last row, when there are more: Enter lists the next ones
         //pay NAME or //pay NAME 50, //buy NAME, //details NAME: the same by name, from Say
         Tab: the selected one's parts, then a part's faces, then the filter and Show
-        On a part or face, Enter: touch
+        On a part or face, Enter: touch; held down, the touch is held as long (a HUD button that wants a long press)
         Alt+Shift+7: what you wear instead (HUDs, then a pet or anything with a menu); Show also lists what people nearby wear; Alt+7 goes back
         Delete on something you wear: take it off
         Take, Delete and Return where you may, on the menu; what isn't yours waits for your confirmation

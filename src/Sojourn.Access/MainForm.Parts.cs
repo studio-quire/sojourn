@@ -48,6 +48,8 @@ public sealed partial class MainForm
             _partMenu.Items.Add(new ToolStripMenuItem(text, null, (_, _) => { if (_parts.FocusedItem?.Tag is Linkset.Part p) act(p); }));
         // (on a HUD's read button or its reading line, Touch is Enter's: press it, read them)
         _partMenu.Items.Add(new ToolStripMenuItem("&Touch", null, (_, _) => PartEnter()));
+        // for a press that can't be held (a braille display's Enter, dictation): two seconds
+        _partMenu.Items.Add(new ToolStripMenuItem("Touch and h&old", null, (_, _) => PartEnter(holdFor: 2)));
         PartItem("&Sit", p => _ = SitPartAsync(p));
         // the object's, from any of its parts; a pay goes to this part if it has the money event
         PartItem("P&ay...", p => _ = PayThingAsync(p.Money ? p.Id : p.Root, p.Money ? PartName(p) : p.RootName));
@@ -83,23 +85,24 @@ public sealed partial class MainForm
         PartItem("Cop&y its settings to what I'm editing", p => _ = GuardedAsync(() => CopyToEditingAsync(p.Id), PartName(p)));
         var copySettingsPart = _partMenu.Items[^1];
         _partMenu.Opening += (_, _) => copySettingsPart.Visible = _parts.FocusedItem?.Tag is Linkset.Part { Hud: false } q && q.Id != _buildId && BuildPrim() != null;
-        KeysOn(_partMenu, ("&Touch", "Enter"), ("&Point at", "Control+P"), ("&Describe", "Control+D"), ("Deta&ils", "Alt+Enter"), ("&Faces", "Tab"), ("&Edit this part (build)", "Control+B"));
+        KeysOn(_partMenu, ("&Touch", "Enter"), ("Touch and h&old", "Enter held"), ("&Point at", "Control+P"), ("&Describe", "Control+D"), ("Deta&ils", "Alt+Enter"), ("&Faces", "Tab"), ("&Edit this part (build)", "Control+B"));
         MenuOn(_parts, _partMenu);
         _parts.KeyDown += (_, e) => PartKey(e);
         _parts.SelectedIndexChanged += (_, _) => { if (_parts.FocusedItem?.Tag is Linkset.Part p && p.Id != _facesOf) _ = RefreshFacesAsync(p); };
 
         _faceMenu = new ContextMenuStrip { Name = "faceMenu", AccessibleName = "Actions" };
         _faceMenu.Items.Add(new ToolStripMenuItem("&Touch", null, (_, _) => FaceEnter()));
+        _faceMenu.Items.Add(new ToolStripMenuItem("Touch and h&old", null, (_, _) => FaceEnter(holdFor: 2)));
         _faceMenu.Items.Add(new ToolStripMenuItem("W&here", null, (_, _) =>
         {
             if (_faces.FocusedItem?.Tag is FaceItem f) Answer($"{_faces.FocusedItem.Text}: {_ops.Where(L(f.Face.Point), full: true)}.");
             else if (_faces.FocusedItem?.Tag is HudFaceItem hf) Answer($"{hf.Words}, on your HUD.");
         }));
-        KeysOn(_faceMenu, ("&Touch", "Enter"));
+        KeysOn(_faceMenu, ("&Touch", "Enter"), ("Touch and h&old", "Enter held"));
         MenuOn(_faces, _faceMenu);
         _faces.KeyDown += (_, e) =>
         {
-            if (e.KeyCode == Keys.Enter && !e.Alt && _faces.FocusedItem?.Tag is FaceItem or HudFaceItem) { e.Handled = e.SuppressKeyPress = true; FaceEnter(); }
+            if (e.KeyCode == Keys.Enter && !e.Alt && _faces.FocusedItem?.Tag is FaceItem or HudFaceItem) { e.Handled = e.SuppressKeyPress = true; if (TouchKeyDown()) FaceEnter(keyHeld: true); }
             else if (e.KeyCode == Keys.F5 && _parts.FocusedItem?.Tag is Linkset.Part p) { e.Handled = true; _ = RefreshFacesAsync(p, said: true); }
         };
 
@@ -143,31 +146,53 @@ public sealed partial class MainForm
 
     void PartKey(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Enter && !e.Alt && _parts.FocusedItem?.Tag is Linkset.Part or HudButtonItem or ReadButtonsItem) { e.Handled = e.SuppressKeyPress = true; PartEnter(); }
+        if (e.KeyCode == Keys.Enter && !e.Alt && _parts.FocusedItem?.Tag is Linkset.Part or HudButtonItem or ReadButtonsItem) { e.Handled = e.SuppressKeyPress = true; if (TouchKeyDown()) PartEnter(keyHeld: true); }
         else if (e.KeyCode == Keys.F5 && _objects.FocusedItem?.Tag is PersonOps.Thing t) { e.Handled = true; _ = RefreshPartsAsync(t, said: true); }
         else if (e.KeyData == (Keys.Alt | Keys.Enter) && _parts.FocusedItem?.Tag is Linkset.Part d) { e.Handled = e.SuppressKeyPress = true; _ = ThingDetailsAsync(d.Id, PartName(d)); }
         else if (e.KeyData == (Keys.Control | Keys.P) && _parts.FocusedItem?.Tag is Linkset.Part pt) { e.Handled = e.SuppressKeyPress = true; PointPart(pt); }
     }
 
-    /// <summary>Enter (or Touch) on the parts list: a part touched, a HUD's read button pressed, or its buttons read.</summary>
-    void PartEnter()
+    /// <summary>Enter (or Touch) on the parts list: a part touched, a HUD's read button pressed, or its buttons read. By
+    /// Enter, the touch is held while the key is, as a mouse button held on it (a group drive's HUD wanted its Next Leg
+    /// "continuously pressed for at least one second", the blind tester's drive of 2026-11-14).</summary>
+    void PartEnter(bool keyHeld = false, double holdFor = 0)
     {
         switch (_parts.FocusedItem?.Tag)
         {
-            case Linkset.Part p: _ = TouchPartAsync(p, null); break;
-            case HudButtonItem b: _ = PressButtonAsync(b); break;
+            case Linkset.Part p: _ = TouchPartAsync(p, null, keyHeld, holdFor); break;
+            case HudButtonItem b: _ = PressButtonAsync(b, keyHeld, holdFor); break;
             case ReadButtonsItem r: ReadButtons(r); break;
         }
     }
 
-    void FaceEnter()
+    void FaceEnter(bool keyHeld = false, double holdFor = 0)
     {
         switch (_faces.FocusedItem?.Tag)
         {
-            case FaceItem f: _ = TouchPartAsync(f.Part, f.Face); break;
-            case HudFaceItem hf: _ = TouchHudFaceAsync(hf); break;
+            case FaceItem f: _ = TouchPartAsync(f.Part, f.Face, keyHeld, holdFor); break;
+            case HudFaceItem hf: _ = TouchHudFaceAsync(hf, keyHeld, holdFor); break;
         }
     }
+
+    /// <summary>Enter went down on something to touch: false for its repeats while it's held. The touch started now is held
+    /// as long as Enter is, counted from when it reaches the region (AgentSession.TouchPress), until Enter comes up
+    /// anywhere, or the window loses the keyboard.</summary>
+    bool TouchKeyDown()
+    {
+        if (RealInput.KeyRepeat) return false;
+        if (Host?.Session is { } s) s.TouchKeyDown(RealInput.KeyAt);
+        return true;
+    }
+
+    /// <summary>Enter came up at that time (on any thread: the keyboard hook's too), or the window lost the keyboard.</summary>
+    void TouchKeyUp(long at)
+    {
+        if (Host?.Session is { } s) s.TouchKeyUp(at);   // (none before login: Enter on the login form)
+    }
+
+    /// <summary>"Touched X." or, held half a second or more, "Touched X, held 1.4 seconds."</summary>
+    static string Touched(string what, JsonObject r) =>
+        r.Num("held", 0) is >= 0.5 and var held ? $"Touched {what}, held {held:0.0} seconds." : $"Touched {what}.";
 
     /// <summary>The selected object's parts (their names asked of the region first, a HUD's by selecting it as the edit
     /// tool does); the part the person was on kept when it's the same object.</summary>
@@ -250,13 +275,15 @@ public sealed partial class MainForm
 
     /// <summary>A part touched as the person's own click on it (the part itself, never its root), on a face when one is
     /// given (where on it the face's middle is, as a script's llDetectedTouchFace and ST read it).</summary>
-    async Task TouchPartAsync(Linkset.Part p, FaceShape? face)
+    async Task TouchPartAsync(Linkset.Part p, FaceShape? face, bool keyHeld = false, double holdFor = 0)
     {
         var args = new JsonObject { ["obj_uuid"] = p.Id.ToString() };
         if (face is { } f) args["face"] = f.Face;
+        if (keyHeld) args["until_key_up"] = true;
+        else if (holdFor > 0) args["hold"] = holdFor;
         var r = await _ops.DoAsync("LLAgent", "requestTouch", args);
         var what = face is { } ff ? $"{PartName(p)}, {Linkset.FaceWords(ff, Eye()).Split(", face")[0].ToLowerInvariant()}" : PartName(p);
-        Answer(PersonOps.Error(r) is { } e ? $"Didn't touch {what}: {e}" : $"Touched {what}.");
+        Answer(PersonOps.Error(r) is { } e ? $"Didn't touch {what}: {e}" : Touched(what, r));
     }
 
     async Task SitPartAsync(Linkset.Part p)

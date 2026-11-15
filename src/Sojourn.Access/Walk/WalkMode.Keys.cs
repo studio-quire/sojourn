@@ -44,6 +44,7 @@ public sealed partial class WalkMode
         Home: fly or land
         Space: stop; seated on something moving, stop it by its controls (also //stop)
         Seated on a vehicle, the arrows drive it: to the vehicle, Up and Down are W and S, Left and Right are A and D, Page Up and Page Down are E and C
+        A HUD or anything else that has taken keys gets them here the same way (a HUD that says to press Page Down or C: Page Down)
         Enter: the mouse button, for a vehicle or weapon that takes clicks, held as long as Enter is
 
         Asking

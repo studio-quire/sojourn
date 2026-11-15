@@ -69,7 +69,7 @@ public sealed class LLAgent : SessionApi
         Op("startAutoPilot", "{target_global, stop_distance?, allow_flying?}", StartAutoPilot);
         Op("stopAutoPilot", "", _ => { S.Motion.StopAutoPilot(C, false); return new JsonObject(); });
         Op("getAutoPilot", "-> {enabled}", _ => new JsonObject { ["enabled"] = S.Motion.Moving });
-        Op("requestTouch", "{obj_uuid | position, at?: [x,y,z] a point on it to touch, face?, hold?: seconds} -> {touched, face, st}: "
+        Op("requestTouch", "{obj_uuid | position, at?: [x,y,z] a point on it to touch, face?, hold?: seconds} -> {touched, face, st, held?}: "
             + "lands where at says, else where the person last pointed at it, else its middle as seen from the eye; "
             + "face alone, where the app can find that face of the prim (Sojourn Access), on its middle", TouchAsync);
         Op("requestSit", "{obj_uuid | position} or none for the ground -> {sitting_on?}: an object's seat waits for the region to seat me", SitAsync);
@@ -209,16 +209,40 @@ public sealed class LLAgent : SessionApi
 
     /// <summary>A click on the object as the viewer's: where on its surface it lands (the point given, else where the
     /// person last pointed at it, else its middle as seen from the eye), so faces, buttons drawn on one face and
-    /// llDetectedTouchST/UV work; held for <c>hold</c> seconds between the press and the release.</summary>
+    /// llDetectedTouchST/UV work; held for <c>hold</c> seconds between the press and the release, or with until_key_up as
+    /// long as the person held the app's touch key (AgentSession.TouchKeyDown), counted from when the press reached the
+    /// region, 10 s at most.</summary>
     async Task<JsonNode?> TouchAsync(JsonObject a, CancellationToken ct)
     {
-        var p = Target(a, true) ?? throw new LeapError("requestTouch could not find the target");
+        // (taken before anything is looked for: a key let go meanwhile is a tap, one held is held as long)
+        var press = a.Bool("until_key_up", false) ? S.CurrentTouchPress : null;
+        // a thing by id not here yet waits up to 3 s: what she wears comes again from each region a vehicle carries her
+        // into, and a HUD's button pressed as it crossed wasn't found (the blind tester's drive, 2026-11-14)
+        long began = Environment.TickCount64;
+        var p = Target(a, true);
+        bool waited = false;
+        for (int i = 0; p == null && a.Has("obj_uuid") && i < 12; i++)
+        {
+            waited = true;
+            await Task.Delay(250, ct);
+            p = Target(a, true);
+        }
+        if (p == null) throw new LeapError("requestTouch could not find the target in this region");
         var at = a.Vec3("at");
         TouchPoint? hit = null;
-        if (at == null && a.Has("face") && S.FindFaceSurface is { } findFace)
-            try { hit = await findFace(p.ID, a.Int("face", 0), ct); } catch (OperationCanceledException) { throw; } catch { }
-        if (hit == null && S.FindTouchSurface is { } find)
-            try { hit = await find(p.ID, at, ct); } catch (OperationCanceledException) { throw; } catch { }
+        // (just come again, it may not be placed or drawn yet: a HUD's screen, a part's faces)
+        for (int i = 0; hit == null && i < (waited ? 4 : 1) && (i == 0 || Environment.TickCount64 - began < 5000); i++)
+        {
+            if (i > 0) await Task.Delay(500, ct);
+            if (at == null && a.Has("face") && S.FindFaceSurface is { } findFace)
+                try { hit = await findFace(p.ID, a.Int("face", 0), ct); } catch (OperationCanceledException) { throw; } catch { }
+            if (hit == null && S.FindTouchSurface is { } find)
+                try { hit = await find(p.ID, at, ct); } catch (OperationCanceledException) { throw; } catch { }
+        }
+        // a HUD found only by waiting (a crossing) and not placed yet: a touch without a surface would reach its buttons
+        // as nowhere in particular, so it's refused rather than sent
+        if (hit == null && waited && Rlv.RlvNames.IsHud((int)S.Objects.RootOf(W, p).PrimData.AttachmentPoint))
+            throw new LeapError("that HUD isn't shown again yet after the region changed: press it again in a moment");
         ulong region = Sim.Handle;
         uint local = p.LocalID;
         var id = p.ID;
@@ -226,10 +250,13 @@ public sealed class LLAgent : SessionApi
         if (hit is { } h) (region, local, id, surface) = (h.Region, h.LocalId, h.Id, h.Surface);
         if (a.Has("face")) surface = surface with { Face = a.Int("face", 0) };
         S.SendGrab(region, local, surface);
+        long pressed = Environment.TickCount64;
         var hold = Math.Clamp(a.Num("hold", 0), 0, 10);
-        if (hold > 0) await Task.Delay(TimeSpan.FromSeconds(hold), CancellationToken.None);
+        if (press != null) await press.HoldAsync(pressed, 10_000).ConfigureAwait(false);
+        else if (hold > 0) await Task.Delay(TimeSpan.FromSeconds(hold), CancellationToken.None).ConfigureAwait(false);
         S.SendDeGrab(region, local, surface);
         var o = new JsonObject { ["touched"] = id.ToString() };
+        if (press != null || hold > 0) o["held"] = Math.Round((Environment.TickCount64 - pressed) / 1000.0, 1);
         if (surface.Face >= 0)
         {
             o["face"] = surface.Face;

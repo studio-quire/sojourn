@@ -110,7 +110,7 @@ The console beside the window prints what's said nearby and IMs; a typed line is
 `http://127.0.0.1:9720/`, loopback only: Tessel's bridge HTTP API (`/status`, `/cmd {pump, data}`, `/listen`,
 `/event`, `/events?since=&wait=`, `/rpc`) over Multitude's LEAP emulation, so `sl.py`-style tools and phase 3's
 assistant drive this session (`src/Sojourn.Session/Bridge/BridgeServer.cs`; what each op does:
-`projects/multitude/docs/api.md`): `TesselAgent move` walks and flies the avatar, `LLChatBar sendChat` speaks, and so
+Multitude's `docs/api.md` at github.com/studio-quire/multitude): `TesselAgent move` walks and flies the avatar, `LLChatBar sendChat` speaks, and so
 on. `sendChat` (on channel 0) and `TesselIM send` put a line over the grid's limit out as several messages
 (`Agents/ChatSplit.cs`; Sojourn Access's docs/access-app.md > Long lines), answering `parts`. While an API move or
 autopilot runs and no key is held, the keys leave the controls alone and the camera follows the body. Snapshot ops (`LLViewerWindow saveSnapshot`) save the next frame as the person
@@ -151,7 +151,7 @@ may do).
   Dropped from the fork: the island's World-module senses, the Whisper sidecar, the spotlight API, render/world
   config. `HostConfig` is still the config type; the client builds one in code (state and caches in
   `local/client/`).
-- `Sojourn.Render`: Multitude's Vulkan port of the viewer's deferred pipeline (`projects/multitude/docs/render.md`
+- `Sojourn.Render`: Multitude's Vulkan port of the viewer's deferred pipeline (Multitude's `docs/render.md` at github.com/studio-quire/multitude
   covers the pipeline, fidelity and the viewer ports). New here: `Realtime/FrameRenderer.cs` replaces the on-demand
   `RenderService` and the render wall; `VulkanContext` takes a `VulkanSetup` (window surface, swapchain, multiview
   feature, or an `IVulkanCreator` that makes the instance and device: the OpenXR runtime); `Renderer.Record` takes a
@@ -423,14 +423,14 @@ Written by Claude Opus 5.5, 2026-11-01 (batch R; the TPV policy's side in `docs/
 
 ## The local grid
 
-`local/grid/` (gitignored) is a copy of Multitude's phase 2 render grid (`projects/multitude/local/grid-p2`) moved
+`local/grid/` (gitignored) is a copy of Multitude's phase 2 render grid moved
 to Sojourn's ports: region Atelier on 9700 (UDP 9700), Atelier North/East/Northeast on 9701-9703, private port 9709;
 REST console user admin, its password a random one only in the grid's `OpenSim.ini` (the console answers on every
 interface and the house network carries an RV park's guests; `grid.py console-password` makes a new one, grid
 stopped). Account: Sojourn Pilot / sojourn-local. `tools/grid.py` starts it (below-normal
 priority, .NET 8 runtime), makes accounts, sends console commands and swaps scenes:
 
-- `light`: Multitude's Atelier test scene as built (`projects/multitude/docs/render.md`): 116 prims in 50 objects:
+- `light`: Multitude's Atelier test scene as built (Multitude's `docs/render.md`): 116 prims in 50 objects:
   a plaza and pavilion, sculpts and meshes, PBR and legacy materials, alpha and alpha masks, local and projector
   lights, Linden trees and grass, a pond, terrain textures, water, the default day.
 - `dense`: the same plus 20 copies of it (`save oar` / `load oar --merge --displacement`), about 2400 prims over the

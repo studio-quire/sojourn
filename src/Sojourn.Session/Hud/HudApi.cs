@@ -200,8 +200,49 @@ public sealed class HudApi : LeapApi
 
     async Task<JsonNode?> PressAsync(JsonObject a, CancellationToken ct)
     {
-        var w = W;
+        // (taken first: a key let go while the HUD is looked at is a tap, one held is held as long)
+        var press = a.Bool("until_key_up", false) ? S.CurrentTouchPress : null;
         double hold = Math.Clamp(a.Num("hold", 0), 0, 10);
+        // what she wears comes again from each region a vehicle carries her into: a press as it crosses looks again for
+        // up to 3 s while the HUD isn't there or placed yet (the blind tester's drive, 2026-11-14)
+        long until = Environment.TickCount64 + 3000;
+        (PickHit Hit, string? What) found;
+        while (true)
+        {
+            try { found = await FindPressAsync(a, ct); break; }
+            catch (LeapError e) when (Environment.TickCount64 < until && (e.Message.StartsWith("no HUD") || e.Message.StartsWith("nothing of a HUD")
+                                                                         || e.Message.StartsWith("no buttons have been read")))
+            {
+                await Task.Delay(250, ct);
+            }
+        }
+        var w = W;
+        var (h, what) = found;
+        var o = new JsonObject { ["touched"] = h.Id.ToString(), ["name"] = what ?? (NameOf(w, h.Id) is { Length: > 0 } n2 ? n2 : NameOf(w, h.RootId)) };
+        if (!Huds.Touchable(S, h.Id))
+        {
+            o["note"] = "it takes no touches (nothing scripted listens there)";
+            return o;
+        }
+        var surface = Huds.Surface(h);
+        S.SendGrab(h.Region, h.LocalId, surface);
+        long pressed = Environment.TickCount64;
+        if (press != null) await press.HoldAsync(pressed, 10_000).ConfigureAwait(false);
+        else if (hold > 0) await Task.Delay(TimeSpan.FromSeconds(hold), CancellationToken.None).ConfigureAwait(false);
+        if (press != null || hold > 0) o["held"] = Math.Round((Environment.TickCount64 - pressed) / 1000.0, 1);
+        S.SendDeGrab(h.Region, h.LocalId, surface);
+        if (surface.Face >= 0)
+        {
+            o["face"] = surface.Face;
+            o["st"] = new JsonArray(Math.Round(surface.ST.X, 3), Math.Round(surface.ST.Y, 3));
+        }
+        return o;
+    }
+
+    /// <summary>What a press lands on, by the request's at, part, button or name, and the words for it.</summary>
+    async Task<(PickHit Hit, string? What)> FindPressAsync(JsonObject a, CancellationToken ct)
+    {
+        var w = W;
         var placed = await PlacedAsync(ct);
         if (placed.Objects.Count == 0) throw new LeapError("no HUDs are worn (or they aren't drawn yet)");
         Func<HudsPlaced, HudPicker, PickHit?> pick;
@@ -261,22 +302,7 @@ public sealed class HudApi : LeapApi
 
         var hit = await _screen.WithHudsAsync<PickHit?>((now, p) => pick(now, p), null, ct);
         if (hit is not { } h) throw new LeapError("nothing of a HUD there");
-        var o = new JsonObject { ["touched"] = h.Id.ToString(), ["name"] = what ?? (NameOf(w, h.Id) is { Length: > 0 } n2 ? n2 : NameOf(w, h.RootId)) };
-        if (!Huds.Touchable(S, h.Id))
-        {
-            o["note"] = "it takes no touches (nothing scripted listens there)";
-            return o;
-        }
-        var surface = Huds.Surface(h);
-        S.SendGrab(h.Region, h.LocalId, surface);
-        if (hold > 0) await Task.Delay(TimeSpan.FromSeconds(hold), CancellationToken.None);
-        S.SendDeGrab(h.Region, h.LocalId, surface);
-        if (surface.Face >= 0)
-        {
-            o["face"] = surface.Face;
-            o["st"] = new JsonArray(Math.Round(surface.ST.X, 3), Math.Round(surface.ST.Y, 3));
-        }
-        return o;
+        return (h, what);
     }
 
     /// <summary>A pick on a read button of a HUD: its middle, or a few points across it, on that HUD's own prims.</summary>

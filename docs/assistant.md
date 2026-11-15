@@ -815,11 +815,19 @@ teleport home, and the assistant could neither see nor stop it.
   flying or walking one (`llSetAnimationOverride`, which stopping animations can't touch: the region plays it again for
   the state), as the viewer's "Stop animating me" does, but only while the seat is in the region: one gone by then (a
   tour vehicle deleting itself as it puts you off) leaves it until you log in again. So 3 s after, what still animates
-  you besides the region's own is logged ("after standing from X: still animating me: ..."), and if any of it is the
-  seat's, or has no source and isn't yours, the AO's or the agent API's, it's said: "X may have left its pose on you
-  now you're off it. If you're still in it, logging out and in again clears it" (notice `PoseLeft`; 2026-11-11, after
-  a blind tester stayed in a tour jet's flying pose through a stop-all ball until she logged in again; what Second Life
-  reports as such an override's source is unseen, so the log line is the check). Nothing else from a seat lingers here: Sojourn doesn't take up
+  you besides the region's own is logged ("after standing from X: still animating me: ..."), and what of it is the
+  seat's (started by its prims, or an animation it played on you while you sat, whatever source the region now names)
+  is stopped again in the region you're in and looked at 3 s later: the stop at standing can go to the region being
+  left as a teleport takes you away, and the pose comes along (a boat's, as a blind tester took a friend's teleport off
+  it, 2026-11-14; she logged in again to clear it). A look waits until 3 s after coming into a region; in another region
+  than the last stop went to, it's a first look there; one that finds nothing in the region the stop went to watches
+  30 s for your coming into another and looks there; sitting on that seat again ends it. What's left at the second
+  look is said, and at the first what can't be the seat's and can't be stopped: no source, once the region has said
+  who started each, and not the agent API's or the AO's (an override, say; a gesture playing then is said too, never
+  stopped): "X may have left its pose on you now you're off it. If you're
+  still in it, stopping all your animations may clear it, and logging out and in again does" (notice `PoseLeft`;
+  2026-11-11, after she stayed in a tour jet's flying pose through a stop-all ball until she logged in again; what
+  Second Life reports as such an override's source is unseen, so the log line is the check). Nothing else from a seat lingers here: Sojourn doesn't take up
   objects' camera parameters or sit camera offsets at all; controls scripts took follow the region's take/release
   messages (nothing says whose, so they aren't released by seat; Release Keys takes back all); temp attachments stay
   until detached, as in other viewers.

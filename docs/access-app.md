@@ -1025,6 +1025,13 @@ leaving out its own parts. A rail switch coming up is said once with how it's se
 throws it (Rail switches, below). Space (or `//stop`) stops it, and a vehicle saying its track ends is stopped by itself
 (Stopping a vehicle, below).
 
+A HUD or anything else worn that has taken keys gets them in walk mode the same way, seated or not (a tour's HUD that
+teleports on Page Down, 2026-11-14). Page Up and Page Down where she types (Say, a conversation) do nothing there, so
+they say where they go: "Page Down moves you down in walk mode: F3, then Page Down.", or with a script holding that key,
+"A script has taken Page Down: in walk mode it gets it. F3, then Page Down." (`MainForm.PageKeyWhereTyping`). Nothing is
+said when a script takes a key: a take can't be told from one that only keeps a script running where scripts are off
+(often one key, passed on), so it would name keys nothing listens for.
+
 **The cues**, each a sound and a line for the screen reader (sound is never the only channel), each with its own
 setting for how it reaches you (both, text, sound or off; Alt+0 says both as "sound and text") and its sound's level
 (quiet, medium, loud, full), in Alt+0 and on SojournSettings (`walk_NAME`, `walk_NAME_volume`). The sounds are our own,
@@ -1759,7 +1766,16 @@ from guided testing of Radegast, and no list changes while you're in it):
   ", touchable" when the part's own script takes touches, ", can sit" for a sit click; a short description when it's
   unnamed ("described as Play"). Names come from selecting every part briefly, as the edit tool's linked parts are (on
   the local grid neither the root's selection nor a child's family properties brought a child's name). Enter touches
-  that part (the part itself, never the root: the renderer's ray counts that part alone first); the Applications key:
+  that part (the part itself, never the root: the renderer's ray counts that part alone first), held for as long as
+  Enter is, as a mouse button held on it, up to 10 s: "Touched nextleg, held 1.4 seconds." once it's let go after half
+  a second or more (a group drive's HUD wanted its Next Leg "continuously pressed for at least one second",
+  2026-11-14). The hold is the key's own length counted from when the press reaches the region, so a surface looked
+  for slowly doesn't shorten it (`AgentSession.TouchPress`: the key messages' own times; the release seen as it happens
+  by the keyboard hook's thread, and by the window's messages wherever the focus is by then; the window losing the
+  keyboard lets go; repeats by the message's repeat bit). The same goes for a face, a HUD's face and a read button
+  (`requestTouch` and `SojournHud.press` with `until_key_up`); the menu's Touch and `//touch` are a click, and its Touch
+  and hold, for a press that can't be held (a braille display's Enter), holds 2 s. A press by id on something not in
+  the region yet (what she wears, while a vehicle crosses) waits up to 3 s for it; the Applications key:
   Touch, Sit, Point at (Control+P; Pointing at something yourself, below), Where, Describe, Details (Alt+Enter), Contents, Faces. F5 reads them again.
 - **Faces of X** (`faces`): the part's faces as the renderer out of sight drew them (`RegionScene.FaceList`: each
   face's mean normal, flatness, whether it faces inward), by direction from where you are, the side facing you first:

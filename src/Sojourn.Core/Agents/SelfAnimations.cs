@@ -112,6 +112,10 @@ public sealed class SelfAnimations
         return out_;
     }
 
+    /// <summary>Whether this region has sent my avatar's animations with what started each (until then <see cref="Now"/>
+    /// has their ids alone, from what I was told was playing).</summary>
+    public bool KnowsSources() => _s.Client is { } c && _s.Region?.AvatarById(c.Self.AgentID)?.Animations != null;
+
     /// <summary>Whether the agent API started it.</summary>
     public bool Mine(UUID id) => _mine.ContainsKey(id);
 

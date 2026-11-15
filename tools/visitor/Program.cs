@@ -858,8 +858,9 @@ static class Program
         client.Objects.SetName(sim, latch.LocalID, "Latch");
         var script = await UploadScript("Chest lid",
             "default { state_entry() { llSay(0, \"chest lid ready\"); } "
-            + "touch_start(integer n) { llSay(0, \"chest lid touched by \" + llDetectedName(0) + \", link \" + (string)llDetectedLinkNumber(0) "
-            + "+ \", face \" + (string)llDetectedTouchFace(0)); } }");
+            + "touch_start(integer n) { llResetTime(); llSay(0, \"chest lid touched by \" + llDetectedName(0) + \", link \" + (string)llDetectedLinkNumber(0) "
+            + "+ \", face \" + (string)llDetectedTouchFace(0)); } "
+            + "touch_end(integer n) { llSay(0, \"chest lid let go after \" + (string)((integer)(llGetTime() * 10)) + \" tenths\"); } }");
         int mark = counter;
         client.Inventory.CopyScriptToTask(lid.LocalID, script, true);
         bool ready = false;

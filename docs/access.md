@@ -1006,6 +1006,51 @@ Seven logs with her notes (our words): `tester-20261111T215734-f0bf01` (16:16-16
 - She suggested merging the two viewers into one with a toggle, as likelier to be approved by Linden Lab. The user
   (2026-11-12): a good suggestion, but they stay distinct (CLAUDE.md > Decisions); told her with the reasons (#282).
 
+### A grid drive: a tour HUD's keys, a boat's pose, a held start (0.1.0.1132, the blind tester, 2026-11-14 evening)
+
+Three logs of one session (from 18:32) with her notes (our words): `tester-20261115T000245-efbf66` (trying to press
+Page Down for a HUD and it wouldn't work), `-000548-8f76ea` three minutes on (Page Down had worked, she didn't know
+how), then a "grid drive" with friends, riding in their vehicles and a boat over some fifteen regions, and
+`tester-20261115T023115-be2a8c` ("the first part", 21:31: the HUD's Next Leg wanted a second's press she didn't know
+how to give, and a sitting pose from the boat wouldn't stop, so she logged in again). She flew for the first time
+("would never have been able to fly in Radegast").
+- **Page Down for a group drive's HUD**: given to her and worn at 18:55, it took the movement keys passed on (as many
+  HUDs do), then Down alone; its own lines say to touch its circle for its commands. She pressed Page Down where she
+  types (most likely Say), where it did nothing; touched the HUD from what she wears (nothing answered: the circle is
+  likely a part of its own); and said in chat she couldn't get it to work. At 19:03:14 she went into walk mode and out
+  four seconds later, and the HUD teleported her to the drive's start: in walk mode Page Down is CONTROL_DOWN, which the
+  HUD had taken. So walk mode served a HUD as it serves vehicles, but nothing said so where she tried. Now Page Up and
+  Page Down where she types say walk mode is where they go, and that a script gets the key there when one has taken it;
+  the keys' F1 lists say so too (`docs/access-app.md` > Walk mode).
+- **The window held 13.4 s** at 18:33:56, a minute and a quarter after login, as the view out of sight finished its
+  first drawing (43.7 s): its own processor time 0.0 s, the PC 16-27% busy, 0.5 GB of its 6.3 GB memory free and this
+  app at 2.1 GB, so most likely Windows paging. Eleven volume presses came through after it. The stack was read 6.2 s
+  late and shows only those keys being handled. No other hold over a second in the half hour after, against several a
+  session on 1095; the inventory's 698 nodes cleared in 101 ms. If the drive's logs show more, the lever is the open
+  thread on starting the view only when needed (`docs/performance.md` > Sojourn Access on a small PC).
+- **A button to hold for a second**: the HUD's buttons sit hidden until its circle is touched, so its picture showed only
+  the compass and the assistant could name them only from the parts list ("nextleg", "reroute", "notecard", "sign0"
+  to "sign3"), which it said. She touched Reroute by mistake (it sent her back to the start), then Next Leg twice, and
+  each time the HUD said it "must be continuously pressed for at least one second": a touch here was a click, the
+  press and release together. Now Enter on a part, a face or a read button holds the touch while Enter is held, up to
+  10 s, and says how long once it's over half a second (`docs/access-app.md` > Parts and faces). A press of Sign 0 as
+  the car crossed into Maryport found nothing ("could not find the target": a worn HUD's prims come again from each
+  region crossed into); a touch by id now waits up to 3 s for it.
+- **The boat's pose stayed on her** (21:28): she stood and took a friend's teleport the same second; the stop for the
+  boat's animation went to the region she was leaving, and the next had her still in it (the 3 s look logged it, "not
+  in this region", and said it might be the boat's). //stand didn't help (it's an animation, not a seat), and she logged
+  in again. Now that look stops what's left again in the region she's in, and says so only if it's still there 3 s on,
+  pointing at stopping all animations before logging in again (`docs/assistant.md`, A seat's leftovers).
+- **Over three hours**: no other hold of the window over 1.3 s (two of 1.2-1.3 s: focus moving, and the screen reader
+  taking a text change). The app grew to 3.1-3.4 GB on the drive, its managed heap to 1.3-1.8 GB with 0.7-1.5 GB of large
+  objects left after full collections while 10-15 regions were around (the collision model's shapes 0-248 MB), and down
+  to 0.7 GB of them at the end; her PC kept 0.6-0.8 GB free and nothing froze for it. What holds that much is the next
+  question if it starts to hurt (no heap breakdown in a tester's log yet).
+- Her sent logs turn every "Life" into a person's number ("Second person 29's viewers", "Relay For person 29"): a name
+  in the log has Life in it, and the filter replaces names wherever they appear, our own lines included. Harmless
+  for privacy (it leaves out more, not less), but it makes a log harder to read; a name that is also a common word could
+  be left in our own lines. Not changed.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -1055,6 +1100,7 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
+- With 0.1.0.1132 (#284, 2026-11-13 evening): nothing new asked; 1125's three still stand.
 - Sent with 0.1.0.1125 (#283, 2026-11-13): how her partner made the place link that wouldn't open (the map, the
   location, a landmark dragged in); whether she pressed anything but F3 and Down while the window froze at the
   station, and whether anything else was busy on her PC then; for her TV, whether turning up Windows' or the TV's

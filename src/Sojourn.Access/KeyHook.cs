@@ -93,7 +93,12 @@ sealed class KeyHook
             int flags = Marshal.ReadInt32(lParam, 8);
             if ((flags & (LLKHF_INJECTED | LLKHF_LOWER_IL_INJECTED)) == 0)
             {
-                if (wParam is WM_KEYUP or WM_SYSKEYUP) _judge.Released(vk);
+                if (wParam is WM_KEYUP or WM_SYSKEYUP)
+                {
+                    _judge.Released(vk);
+                    // (as it happens: the window's message for it waits behind whatever holds the window)
+                    if (vk == VK_RETURN) RealInput.TellEnterUp(RealInput.FromTicks((uint)Marshal.ReadInt32(lParam, 12), Environment.TickCount64));
+                }
                 else if (wParam is WM_KEYDOWN or WM_SYSKEYDOWN && Front() is var w && w != 0) _judge.Pressed(vk, Environment.TickCount64, w);
             }
         }
@@ -109,6 +114,7 @@ sealed class KeyHook
 
     delegate nint HookProc(int code, nint wParam, nint lParam);
 
+    const int VK_RETURN = 0x0D;
     const int WH_KEYBOARD_LL = 13, WM_KEYDOWN = 0x0100, WM_KEYUP = 0x0101, WM_SYSKEYDOWN = 0x0104, WM_SYSKEYUP = 0x0105, WM_TIMER = 0x0113;
     const int WM_REFRESH = 0x8001, WM_HOOK_ON = 0x8002, WM_HOOK_OFF = 0x8003;
     const int LLKHF_INJECTED = 0x10, LLKHF_LOWER_IL_INJECTED = 0x02;

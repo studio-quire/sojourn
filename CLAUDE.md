@@ -17,7 +17,7 @@ Our own Second Life client, built for VR first, with a personal AI that operates
   social, land, building, inventory and the AO, the map, voice and media extras, the menus, the login screen, the
   launcher), and RLV/RLVa (2026-11-01, off by default: `docs/rlv.md`). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
 - **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01), a first build editor (2026-11-02) and About Land (2026-11-03); test builds (the assistant bundled) published as releases
-  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1125 (2026-11-13 night: from two of her logs of 2026-11-11 missed until then, more kinds of place link opening (a map link with a title, parcels, events, classifieds, her own landmarks) and the 9 s freeze as her train came in, with a review's fixes; `relay.py logs` now marks any log of hers `docs/access.md` doesn't name; the steps touched passed, the package check with the relay 54 of 54; the scripted test's full run on 1125's tree 2026-11-13 night, 2550 of 2571, each miss since passing alone, fixed in the test (links after a step in the next region, a helper bot's restart) or gone with the local grid restarted after two days up (scripts' running switch): `docs/access-testing.md`), waiting for her logs with it; a blind
+  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1132 (2026-11-13 evening: lists and trees emptied without waiting on her screen reader, which held the window 0.3-1.3 s showing a few inventory items after browsing (`UiaRelease`, found with the window watched finely on a full run), every chat log read off the window's thread, a stack logged for holds of a second; full run 2582 of 2582, the package check 43 of 43; 1125 the night before: more kinds of place link opening and the 9 s freeze as her train came in), waiting for her logs with it; a blind
   tester's first session on Second Life was 2026-10-30. `docs/access.md` (plan, milestones, what testers said), `docs/access-app.md` (as built, packaging).
 - **Public source** since 2026-10-29 (`docs/publishing.md`). **First release, 0.1.0.867, published 2026-11-02**: a
   pre-release on studio-quire/sojourn (Velopack: install, updates at the person's press, uninstall; `tools/package.py`,
@@ -66,8 +66,8 @@ The product:
 
 How it's built:
 - **A fork of Multitude's client core and renderer** (Claude Opus 5.5, 2026-10-20): .NET 10 on LibreMetaverse, plus
-  Multitude's Vulkan port of the viewer's deferred pipeline (`projects/multitude/src/Multitude.Core`,
-  `Multitude.Render`). Vulkan + OpenXR with multiview is the natural VR stack (the official viewer is OpenGL and mostly
+  Multitude's Vulkan port of the viewer's deferred pipeline (`src/Multitude.Core`,
+  `Multitude.Render`, public at github.com/studio-quire/multitude since Multitude was archived, 2026-11-14). Vulkan + OpenXR with multiview is the natural VR stack (the official viewer is OpenGL and mostly
   single-threaded, and frame rate is SL VR's hardest problem); with the assistant as the main interface the viewer's 2D
   floaters aren't needed; Multitude already served the LEAP APIs and Tessel's bridge API, so the assistant's control
   surface mostly existed; LibreMetaverse is plumbing we don't rewrite.
@@ -138,7 +138,7 @@ The assistant (detail in `docs/assistant.md`):
 
 ## Gotchas and rules
 
-- **Local grid first** (Multitude's dev grid, `projects/multitude/docs/running.md`; `tools/grid.py`). On the main grid
+- **Local grid first** (`local/grid`, `tools/grid.py`). On the main grid
   Sojourn uses the user's old SL account; credentials stay in `local/` and are typed by the user. The grid's terms and
   MFA are answered by the person, never automatically or by the assistant. Main-grid rules for third-party viewers:
   `docs/tpv-policy.md`.
@@ -182,7 +182,7 @@ The assistant (detail in `docs/assistant.md`):
   (spoken replies), `harness.py` (what its sessions may do), `home.py` (memory), `jobs.py`, `build.py`, `provider.py`,
   `prompt*.md`. Its home is `local/assistant/home`, scratch `local/assistant/work`.
 - `tools/` build, run and test scripts: `tools/README.md` is the map.
-- `docs/` (Multitude's `docs/render.md` still describes the pipeline itself):
+- `docs/` (Multitude's `docs/render.md`, at github.com/studio-quire/multitude, still describes the pipeline itself):
   - Running and driving: `client.md` (running, controls, agent API, architecture, local grid, gotchas), `vr.md` (the
     headset: controls, the rig, your body, testing in the XR Simulator), `launcher.md`, `dev-mode.md` (an agent session
     as the assistant: the launcher's "your agent", `--dev`) and `driving.md` (its how-to for sittings), `sittings.md` (what they left open, checks

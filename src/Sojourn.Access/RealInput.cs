@@ -88,6 +88,8 @@ public sealed class RealInput : IMessageFilter
             case WM_KEYDOWN or WM_SYSKEYDOWN:
             {
                 LastKeyAt = now;
+                KeyAt = MessageTime(now);
+                KeyRepeat = ((long)m.LParam & 0x40000000) != 0;
                 int vk = (int)m.WParam;
                 bool typed = m.Msg == WM_KEYDOWN && vk is not (VK_SHIFT or VK_CONTROL) && (Control.ModifierKeys & (Keys.Control | Keys.Alt)) == 0
                     && Control.FromHandle(m.HWnd) is TextBoxBase { ReadOnly: false };
@@ -109,6 +111,7 @@ public sealed class RealInput : IMessageFilter
                 break;
             }
             case WM_KEYUP or WM_SYSKEYUP:
+                if ((int)m.WParam == VK_RETURN) TellEnterUp(MessageTime(now));
                 if (_loneModifier != 0 && (int)m.WParam == _loneModifier) SilencedAt = now;
                 _loneModifier = 0;
                 s = _judge.KeyUp((int)m.WParam, Source(), now);
@@ -148,6 +151,28 @@ public sealed class RealInput : IMessageFilter
     /// she couldn't stop, 2026-11-11, left only what was read out once the window came back). Keys named, never what's
     /// typed into a box; at most 100 a session.</summary>
     public static Action<string>? Late { get; set; }
+
+    /// <summary>Enter came up (when, on Environment.TickCount64's clock), wherever the focus is now: from the window's
+    /// messages, and as it happens from the keyboard hook's own thread (a touch held while Enter is: MainForm.TouchKeyDown).</summary>
+    public static Action<long>? EnterUp { get; set; }
+
+    /// <summary>EnterUp, never throwing: it's called from a message filter and from the keyboard hook's thread.</summary>
+    internal static void TellEnterUp(long at)
+    {
+        try { EnterUp?.Invoke(at); } catch (Exception) { }
+    }
+
+    /// <summary>A 32-bit tick count (a message's or a hook event's time) on Environment.TickCount64's clock.</summary>
+    internal static long FromTicks(uint ticks, long now)
+    {
+        uint ago = unchecked((uint)now - ticks);
+        return ago < 60_000 ? now - ago : now;
+    }
+
+    /// <summary>The key message being handled: when it happened (Environment.TickCount64's clock), and whether it's the
+    /// key's repeat while held.</summary>
+    public static long KeyAt { get; private set; }
+    public static bool KeyRepeat { get; private set; }
     static int _lateSaid;
 
     static string KeyName(int vk, bool typed, bool inBox)
@@ -260,7 +285,7 @@ public sealed class RealInput : IMessageFilter
     const int WM_KEYDOWN = 0x0100, WM_KEYUP = 0x0101, WM_CHAR = 0x0102, WM_DEADCHAR = 0x0103, WM_SYSKEYDOWN = 0x0104, WM_SYSKEYUP = 0x0105,
         WM_SYSCHAR = 0x0106, WM_SYSDEADCHAR = 0x0107, WM_IME_CHAR = 0x0286, WM_LBUTTONDOWN = 0x0201, WM_LBUTTONUP = 0x0202,
         WM_SETFOCUS = 0x0007, WM_ACTIVATEAPP = 0x001C;
-    const int VK_SHIFT = 0x10, VK_CONTROL = 0x11, VK_MENU = 0x12, MAPVK_VK_TO_CHAR = 2;
+    const int VK_RETURN = 0x0D, VK_SHIFT = 0x10, VK_CONTROL = 0x11, VK_MENU = 0x12, MAPVK_VK_TO_CHAR = 2;
     const int IMDT_UNAVAILABLE = 0, IMO_HARDWARE = 0x01, IMO_INJECTED = 0x02;
     const int WH_CALLWNDPROC = 4, GA_ROOT = 2;
 

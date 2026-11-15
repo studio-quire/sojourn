@@ -95,6 +95,64 @@ public sealed partial class AgentSession
         }, sim);
     }
 
+    // a touch held for as long as the person holds a key (Sojourn Access's Enter on a part, as a mouse button held on it):
+    // requestTouch and SojournHud.press with until_key_up hold their press as long as the key was down
+    volatile TouchPress _touchPress = TouchPress.Over();
+
+    /// <summary>The touch key went down at <paramref name="at"/> (Environment.TickCount64 ms, when the key happened, not
+    /// when it was handled): a touch with until_key_up started after this goes by this press. A press still open is let go.</summary>
+    public void TouchKeyDown(long at)
+    {
+        var old = _touchPress;
+        _touchPress = new TouchPress(at);
+        old.Release(at);
+    }
+
+    /// <summary>The key came up at <paramref name="at"/>, or the window lost the keyboard: the press is over. Seen more than
+    /// once (the app's keyboard hook as it happens, its window's messages later), the first counts.</summary>
+    public void TouchKeyUp(long at) => _touchPress.Release(at);
+
+    /// <summary>The touch key's press now: a touch with until_key_up takes it as it starts.</summary>
+    public TouchPress CurrentTouchPress => _touchPress;
+
+    /// <summary>One press of the touch key, held until <see cref="Release"/>: when it went down and came up, so a touch
+    /// that reaches the region late (its surface looked for first, on a slow PC) is still held as long as the key was.</summary>
+    public sealed class TouchPress(long down)
+    {
+        long _up;
+        readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public long Down { get; } = down;
+        /// <summary>0 while the key is down.</summary>
+        public long Up => Interlocked.Read(ref _up);
+        public Task Released => _released.Task;
+
+        /// <summary>The key came up at <paramref name="at"/>; a release from before this press went down (a late one of
+        /// the press before) is passed over.</summary>
+        public void Release(long at)
+        {
+            if (at < Down) return;
+            if (Interlocked.CompareExchange(ref _up, Math.Max(at, Down + 1), 0) == 0) _released.TrySetResult();
+        }
+
+        internal static TouchPress Over()
+        {
+            var p = new TouchPress(0);
+            p.Release(1);
+            return p;
+        }
+
+        /// <summary>After the press reached the region at <paramref name="pressedAt"/>: waits until it's as long as the key
+        /// was held (at most <paramref name="capMs"/>), off the window's thread so a busy window doesn't lengthen it.</summary>
+        public async Task HoldAsync(long pressedAt, int capMs)
+        {
+            await Task.WhenAny(Released, Task.Delay(capMs)).ConfigureAwait(false);
+            long length = Up > 0 ? Up - Down : capMs;
+            long left = Math.Min(length, capMs) - (Environment.TickCount64 - pressedAt);
+            if (left > 0) await Task.Delay((int)left).ConfigureAwait(false);
+        }
+    }
+
     /// <summary>Sit on a prim of a region, at a point of it (the viewer sends the click's offset from the prim, in its
     /// frame, so a seat without a sit target seats you near where you clicked).</summary>
     public void SendSit(ulong region, UUID id, Vector3 offset)

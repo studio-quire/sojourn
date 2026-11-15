@@ -109,6 +109,21 @@ public sealed partial class MainForm
             e.SuppressKeyPress = e.Handled = true;
             Recall(_chatInput, _chatSent, ref _chatRecall, e.KeyCode == Keys.Up ? +1 : -1);
         }
+        else PageKeyWhereTyping(e);
+    }
+
+    /// <summary>Page Up or Page Down where she types, where they do nothing: they reach the world, and a script that has
+    /// taken them, only from walk mode, so that's said. On the blind tester's grid drive (2026-11-14) a tour's HUD that
+    /// teleports on Page Down did nothing from Say, until she tried walk mode.</summary>
+    void PageKeyWhereTyping(KeyEventArgs e)
+    {
+        if (e.Modifiers != Keys.None || e.KeyCode is not (Keys.PageUp or Keys.PageDown)) return;
+        e.SuppressKeyPress = e.Handled = true;
+        bool down = e.KeyCode == Keys.PageDown;
+        string name = down ? "Page Down" : "Page Up";
+        bool taken = Host?.Session is { } s && (s.ControlsTaken & (down ? ScriptControlChange.Down : ScriptControlChange.Up)) != 0;
+        Answer(taken ? $"A script has taken {name}: in walk mode it gets it. F3, then {name}."
+                     : $"{name} moves you {(down ? "down" : "up")} in walk mode: F3, then {name}.");
     }
 
     /// <summary>A line from Say: a gesture's trigger plays it instead of being said (its replacement text, or the rest
@@ -233,6 +248,7 @@ public sealed partial class MainForm
             e.SuppressKeyPress = e.Handled = true;
             Recall(cv.Input, cv.Sent, ref cv.Recall, e.KeyCode == Keys.Up ? +1 : -1);
         }
+        else PageKeyWhereTyping(e);
     }
 
     async Task SendImAsync(Conversation cv, string text)

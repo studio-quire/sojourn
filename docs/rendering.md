@@ -581,7 +581,7 @@ holds the water pass.
 - Still differing from the viewer (Multitude `docs/render.md` > Still differs): finer ripple detail in pond
   reflections, shallow water ~15 levels brighter with its ripple streaks washed out. The shaders read as faithful ports
   (checked again 2026-10-28), so the cause is in their inputs (the probes' reflections, the scene copy, the fog);
-  finding it wants side-by-side shots against the reference viewer (`projects/multitude/local/refviewer`).
+  finding it wants side-by-side shots against the reference viewer (`local/refviewer`, moved here from Multitude; its README says how to run it).
 
 ## The environment over time: the person's own, cross-fades, clouds
 
