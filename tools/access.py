@@ -15,6 +15,7 @@
                                    a `(step: NAME)` line before each step's, and at the end the steps that had failures
                                    (ACCESS_STEPS=inventory,walk runs only the steps whose names have those words, after
                                    the login's checks: for working on one part; =NAME the step named exactly that;
+                                   ACCESS_FROM=NAME from that step on, for a run stopped part way;
                                    ACCESS_NO_RENDER=1 starts the app with --no-render,
                                    nothing on the GPU, for steps that don't need the view; ACCESS_NO_GPU=1 hides Vulkan's drivers
                                    from it, as on a PC whose graphics can't run the view: it draws on the processor with
@@ -1622,7 +1623,7 @@ def session(run, procs):
     else:
         app_args.append("--no-assistant")
     (OUT / "files").mkdir(parents=True, exist_ok=True)
-    if os.environ.get("ACCESS_STEPS", "").strip():
+    if partial_run():
         # a run of some steps: the app's once-only word on chat logs comes 12 s after the login, so into whichever step
         # is first, a line said and in the history that the step didn't make (as the friends' line was for the links
         # step, below). Started as told already; a full run's first steps, where it has always fallen, still get it
@@ -1682,7 +1683,7 @@ def session(run, procs):
     run.expect("arriving is announced", ["Logged in"], 0, 10)
     global ARRIVED_AT
     ARRIVED_AT = time.time()
-    if os.environ.get("ACCESS_STEPS", "").strip() and not step_wanted("friends online at login"):
+    if partial_run() and not step_wanted("friends online at login"):
         # a run of some steps: the friends' line comes a couple of seconds after the login, into whichever step is
         # first (the links step alone found it under the line it goes back to in the history); a full run's first
         # steps are the ones that wait for it
@@ -1723,9 +1724,23 @@ def session(run, procs):
         run.took[name], run.step = time.time() - began, None
 
 
+def partial_run():
+    return bool(os.environ.get("ACCESS_STEPS", "").strip() or os.environ.get("ACCESS_FROM", "").strip())
+
+
 def step_wanted(name):
     """ACCESS_STEPS=inventory,walk: only the steps whose names have one of those words; =NAME for the step named exactly
-    that (=links, where "links" alone takes three steps). Unset: every step."""
+    that (=links, where "links" alone takes three steps). ACCESS_FROM=NAME: from that step on, in run order (named
+    exactly, else the first whose name has those words), with ACCESS_STEPS or without: a run stopped part way (Claude
+    Code reaps background jobs when memory runs short) picked up where it was. Unset: every step."""
+    frm = os.environ.get("ACCESS_FROM", "").strip()
+    if frm:
+        order = [n for n, _ in step_list(None, None, None, None)]
+        start = next((i for i, n in enumerate(order) if n == frm), None)
+        if start is None:
+            start = next((i for i, n in enumerate(order) if frm in n), len(order))
+        if name in order and order.index(name) < start:
+            return False
     asked = os.environ.get("ACCESS_STEPS", "").strip()
     # (=NAME for a name with commas in it, 18 of the 98: as words its pieces take other steps too, "links" three)
     if asked.startswith("=") and asked[1:].strip() in step_names():
@@ -1774,6 +1789,8 @@ def step_list(run, nonce, tester_id, procs):
         ("a permission question", lambda: notice_perm(run, tester_id)),
         ("two questions and a menu", lambda: notice_pile(run, tester_id)),
         ("a confirmation left waiting", lambda: confirm_left_waiting(run, nonce)),
+        ("her own deletes, quick and twice", lambda: own_deletes(run, nonce)),
+        ("an item's properties", lambda: item_properties(run, nonce)),
         ("inventory", lambda: inventory(run, nonce)),
         ("notecards with things in them", lambda: notecards_embedded(run, nonce, tester_id)),
         ("every part", lambda: parts(run)),
@@ -2070,6 +2087,8 @@ def confirm_left_waiting(run, nonce):
     # a give waits for her confirmation (a payment from an account with no L$ is refused before asking)
     notes = api("LLInventory", "getBasicFolderID", ft_name="notecard")["id"]
     item = next((k for n, k in inv_items(notes).items() if n), None)
+    if not item:   # (run alone, before any step has left one there)
+        item = api("TesselInventory", "createNotecard", name=f"Offer Card {nonce}", text="to offer", folder_id=notes).get("item_id")
     if not run.check("(a notecard to offer)", item, item or "none in Notecards"):
         return
 
@@ -2101,6 +2120,189 @@ def confirm_left_waiting(run, nonce):
     key("esc")
     gone = wait(lambda: "Give" not in notices(), 6, 0.3)
     run.check("(cancelled)", gone, notices())
+
+
+def inv_search_off():
+    """The first pane back to the whole inventory (Control+F, Escape), for the steps after."""
+    key("alt+4")
+    wait_focus(lambda d: d["id"] == "inventory", 4)
+    key("ctrl+f")
+    wait_focus(lambda d: d["id"] == "inventorySearch", 3)
+    key("esc", target="id=inventorySearch")
+    wait_focus(lambda d: d["id"] == "inventory", 3)
+
+
+def own_deletes(run, nonce):
+    """Her own deletes, as the blind tester went through copies of a thing one after another (2026-11-15): what's inside
+    an object has its actions on the Applications key, Delete there asking first (with the full 0.8 s: what's removed
+    from an object is gone); Delete on the same thing again while a confirmation waits takes her to it, said, its full
+    wait again, and nothing queues behind it; Enter on her own move to the Trash takes from 0.3 s."""
+    lm_folder = api("LLInventory", "getBasicFolderID", ft_name="landmark")["id"]
+    notes = api("LLInventory", "getBasicFolderID", ft_name="notecard")["id"]
+    lm, card, boxname = f"Own Delete Mark {nonce}", f"Own Delete Card {nonce}", f"Own Delete Box {nonce}"
+    lm_id = api("TesselInventory", "createLandmark", 20, name=lm, folder_id=lm_folder)["item_id"]
+    card_id = api("TesselInventory", "createNotecard", name=card, text="delete me twice", folder_id=notes)["item_id"]
+    x, y, z, _ = tester_where()
+    box = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y, z], scale=[0.4, 0.4, 0.4], name=boxname)["id"]
+    api("TesselBuild", "addToContents", 20, id=box, item_id=lm_id)
+
+    def inside():
+        return [i.get("name") for i in api("TesselBuild", "contents", 20, id=box, running=False).get("items", [])]
+    try:
+        if not run.check("(a landmark put in her box)", wait(lambda: lm in inside(), 8), "; ".join(inside())):
+            return
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("f5")
+        object_row(boxname)
+        if not run.check("(the box selected)", select_in("id=objects", boxname), selected_text("id=objects")):
+            return
+        key("apps")
+        wait(lambda: find("type=MenuItem;name~=Contents"), 4)
+        key("n")
+        if not run.check("(Contents: the landmark in the list)", wait(lambda: find(f"type=ListItem;name~={lm}, landmark"), 15), focus_label()):
+            return
+        select_in("id=buildRows", f"{lm}, landmark")
+        m = mark()
+        key("enter")
+        run.expect("Enter on it points to the Applications key", [f"{lm}, landmark", "Applications key"], m, 6)
+        key("apps")
+        names = menu_names()
+        run.check("its Applications key: Copy into your inventory and Delete (no Open or Run on a landmark)",
+                  "Copy into your inventory" in names and "Delete" in names and "Open" not in names and not any("running" in n for n in names),
+                  "; ".join(names))
+        m = mark()
+        key("l")
+        said = wait(lambda: next((e for e in said_since(m) if "Enter confirms" in (e.get("text") or "")), None), 10)
+        if not run.check("Delete on its menu asks first", said and "Remove" in said["text"] and lm in said["text"],
+                         said["text"] if said else "; ".join(e.get("text") or "" for e in said_since(m))):
+            return
+        time.sleep(0.45)
+        m = mark()
+        key("enter")
+        run.expect("half a second on is too soon there (it can't be undone)", ["just as it appeared"], m, 4)
+        time.sleep(0.6)
+        m = mark()
+        key("enter")
+        run.expect("pressed again, it's removed", [f"Removed {lm}"], m, 10)
+        run.check("and it's gone from the box", wait(lambda: lm not in inside(), 8), "; ".join(inside()))
+        m = mark()
+        build_cmd("//help build")
+        run.expect("a // command typed in the build box runs as from Say", ["//build:", "Usage"], m, 6)
+        key("esc")
+
+        # Delete twice on the same thing, the first confirmation left waiting
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        if not run.check("(the card found)", inv_search(card, card), selection("id=inventory")):
+            return
+        m = mark()
+        key("del")
+        if not run.check("(Delete on it asks)", wait(lambda: any("Enter confirms" in (e.get("text") or "") for e in said_since(m)), 10), ""):
+            return
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        select_in("id=inventory", card)
+        m = mark()
+        key("del")
+        run.expect("Delete again meanwhile: not done, the waiting one first", ["Not done", "answer it first", card, "Enter confirms"], m, 6)
+        run.check("and the focus is on it in Notices", wait_focus(lambda d: d["id"] == "notices" or d["type"] == "ListItem" and "Confirm" in d.get("name", ""), 4), focus_label())
+        # brought to it rather than having just asked it: its full wait again, so an Enter meant for her Delete can't
+        # answer it unheard (the review of 2026-11-15)
+        m = mark()
+        key("enter")
+        run.expect("an Enter at once there is too soon", ["just as it appeared"], m, 4)
+        time.sleep(0.5)
+        m = mark()
+        key("esc")
+        run.expect("(Escape cancels it)", ["Cancelled"], m, 4)
+        time.sleep(2)
+        again = [e.get("text") or "" for e in said_since(m) if "Enter confirms" in (e.get("text") or "")]
+        run.check("nothing waited behind it", not again, "; ".join(again))
+        run.check("and the card is still there", card in inv_items(notes), "")
+
+        # her own move to the Trash, Enter half a second on
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        select_in("id=inventory", card)
+        m = mark()
+        key("del")
+        if not run.check("(Delete on it asks again)", wait(lambda: any("Enter confirms" in (e.get("text") or "") for e in said_since(m)), 10), ""):
+            return
+        time.sleep(0.45)   # (as heard: past her own 0.3 s, short of others' 0.8)
+        m = mark()
+        key("enter")
+        run.expect("Enter half a second on takes, her own move to the Trash", ["Deleted", card], m, 10)
+        run.check("nothing said to be too soon", not any("just as it appeared" in (e.get("text") or "") for e in said_since(m)),
+                  "; ".join(e.get("text") or "" for e in said_since(m)))
+    finally:
+        inv_search_off()
+        back_to_chat()
+        api("TesselBuild", "take", 30, ids=[box], folder_id=notes)
+        time.sleep(1)
+        trash = api("LLInventory", "getBasicFolderID", ft_name="trash")["id"]
+        left = [i for f in (lm_folder, notes, trash) for n, i in inv_items(f).items() if n and n.startswith("Own Delete ")]
+        if left:
+            gated(run, "the step's things deleted", "TesselInventory", "delete", 30, ids=left, purge=True)
+
+
+def item_properties(run, nonce):
+    """An inventory item's Properties, as the viewer's Item Properties (MainForm.ItemProperties.cs): its Applications key
+    has it; the window opens on the name with the description and the switches after it; a description typed and the
+    next owner's transfer turned off by its letter, OK; the permission change asks first; saved, said, and Details reads
+    it so."""
+    notes = api("LLInventory", "getBasicFolderID", ft_name="notecard")["id"]
+    card = f"Props Card {nonce}"
+    card_id = api("TesselInventory", "createNotecard", name=card, text="properties", folder_id=notes)["item_id"]
+    try:
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        if not run.check("(the card found)", inv_search(card, card), selection("id=inventory")):
+            return
+        key("apps")
+        names = menu_names()
+        if not run.check("its Applications key has Properties...", any(n.startswith("Properties") for n in names), "; ".join(names)):
+            key("esc")
+            return
+        key("i")
+        d = wait_focus(lambda d: d["id"] == "propName", 6)
+        if not run.check("Properties opens on its name", d and value_of("id=propName") == card, focus_label()):
+            return
+        run.check("with its description and the switches, the next owner's three on (a new card's)",
+                  all(find(f"id={i}") for i in ("propDesc", "propNextModify", "propNextCopy", "propNextTransfer", "propShared", "propAnyoneCopy")),
+                  "; ".join(x["name"] for x in find("type=CheckBox")))
+        u("set id=propDesc | for the shelf")
+        # the next owner who can't copy keeps transfer (Second Life's rule, the viewer's held box); copy back on frees it
+        key("alt+c")
+        held = wait(lambda: (lambda g: g if "toggle=Off" in u("get id=propNextCopy") and "toggle=On" in g and "disabled" in g else None)(u("get id=propNextTransfer")), 3, 0.2)
+        run.check("copy off for the next owner holds transfer on", held, u("get id=propNextTransfer"))
+        key("alt+c")
+        wait(lambda: "disabled" not in u("get id=propNextTransfer"), 3, 0.2)
+        key("alt+t")
+        time.sleep(0.3)
+        m = mark()
+        key("enter")
+        said = wait(lambda: next((e for e in said_since(m) if "Enter confirms" in (e.get("text") or "")), None), 10)
+        if not run.check("the permission change asks first, saying what", said and "next owner" in said["text"].lower(),
+                         said["text"] if said else "; ".join(e.get("text") or "" for e in said_since(m))):
+            return
+        time.sleep(1.2)   # (it arms 0.8 s after she's on it: only moves to the Trash arm sooner)
+        m = mark()
+        key("enter")
+        run.expect("saved, said", [f"Saved {card}", "description changed", "the next owner may modify, copy"], m, 10)
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        select_in("id=inventory", card)
+        key("apps")
+        wait(lambda: find("type=MenuItem;name~=Details"), 4)
+        m = mark()
+        key("e")
+        run.expect("Details reads it so", ["the next owner may copy, modify.", "Description: for the shelf"], m, 8)
+    finally:
+        inv_search_off()
+        back_to_chat()
+        if card_id:
+            gated(run, "the card deleted", "TesselInventory", "delete", 30, ids=[card_id], purge=True)
 
 
 def chat_out(run, nonce):

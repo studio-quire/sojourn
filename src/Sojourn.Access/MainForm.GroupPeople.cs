@@ -30,7 +30,7 @@ public sealed partial class MainForm
 
     /// <summary>Her confirmation, from a window of hers when there is one: Notices takes it, and the window has the focus back after.</summary>
     Task<JsonObject?> ConfirmedFromAsync(Form? from, string pump, string op, JsonObject args) =>
-        from is { IsDisposed: false } ? ConfirmedCallAsync(_ops.GatedAsync(pump, op, args), args, from) : ConfirmedAsync(pump, op, args);
+        ConfirmedAsync(pump, op, args, from is { IsDisposed: false } ? from : null);
 
     /// <summary>The members (chat: who's in its chat now) in a window of their own; the same group's open already comes forward.</summary>
     async Task GroupPeopleAsync(MyGroup g, bool chat)

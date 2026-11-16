@@ -309,7 +309,7 @@ public sealed partial class InventoryOps
             if ((owner & PermissionMask.Modify) == 0) throw new LeapError("next-owner permissions need modify rights on the item");
             p.NextOwnerMask = Clip(ObjectViews.PermMask(np) | PermissionMask.Move);
         }
-        if (a.Bool("everyone_copy") is { } ec) p.EveryoneMask = ec ? Clip(PermissionMask.Copy) : p.EveryoneMask & ~PermissionMask.Copy;
+        if (a.Bool("everyone_copy") is { } ec) p.EveryoneMask = ec ? p.EveryoneMask | Clip(PermissionMask.Copy) : p.EveryoneMask & ~PermissionMask.Copy;
         if (a.Str("group_perms") is { } gp) p.GroupMask = Clip(ObjectViews.PermMask(gp));
         item.Permissions = p;
         await UpdateItemOnGridAsync(item, () => (item.Name, item.Description, item.Permissions) = (wasName, wasDesc, wasPerms), ct);

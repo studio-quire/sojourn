@@ -85,6 +85,11 @@ public sealed partial class Confirmations
         return kind is { } k ? () => AskAsync(k, pump, op, data) : null;
     }
 
+    /// <summary>Whether the op as asked would wait for the person's answer (its kind alone: a refusal or a fee worked out
+    /// first aside). For an app not starting another while one waits.</summary>
+    public bool WouldAsk(string pump, string op, JsonObject data) =>
+        Classify(pump, op, data) is not null || Cases.Any(c => c.Kind(pump, op, data) is not null);
+
     /// <summary>A confirmation another part of the client adds for its own ops (People/PeopleWiring.cs): the kind of
     /// thing an op does (spend, delete, give, permissions, words; null: it runs at once) and what the person is asked.</summary>
     public sealed record Case(Func<string, string, JsonObject, string?> Kind, Func<string, string, JsonObject, Task<(string Title, string Detail)>> Describe);

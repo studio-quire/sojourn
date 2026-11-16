@@ -47,6 +47,43 @@ public sealed partial class MainForm
 
     sealed record ContentItem(UUID Id, string Name, string Type, bool? Running);
 
+    ContextMenuStrip _contentMenu = null!;
+    ContentItem? _contentMenuItem;
+
+    /// <summary>What's inside a thing, its actions on the Applications key as Objects' and the inventory's are (the blind
+    /// tester found how to delete her teleporter's old landmark only by pressing Enter on it, 2026-11-15): on the item the
+    /// menu was opened on, whatever the list holds by the time she picks.</summary>
+    void BuildContentMenu()
+    {
+        _contentMenu = new ContextMenuStrip { Name = "contentMenu", AccessibleName = "Actions" };
+        ToolStripMenuItem Item(string text, Func<ContentItem, Task> act)
+        {
+            var i = new ToolStripMenuItem(text, null, (_, _) => { if (_contentMenuItem is { } c) _ = GuardedAsync(() => act(c), c.Name); });
+            _contentMenu.Items.Add(i);
+            return i;
+        }
+        var open = Item("&Open", OpenContentAsync);
+        var run = Item("&Run", ContentRunAsync);
+        run.ShortcutKeyDisplayString = "Space";
+        Item("&Copy into your inventory", CopyContentAsync);
+        Item("De&lete", RemoveContentAsync);
+        _contentMenu.Opening += (_, e) =>
+        {
+            if ((_contentMenuItem = _buildRows.FocusedItem?.Tag as ContentItem) is not { } c) { e.Cancel = true; return; }
+            open.Visible = c.Running != null || c.Type == "notecard";
+            run.Visible = c.Running != null;
+            run.Text = c.Running == true ? "Stop &running" : "Start &running";
+        };
+        KeysOn(_contentMenu, ("&Open", "Enter"), ("De&lete", "Delete"));
+        _buildRows.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Apps && e.KeyData != (Keys.Shift | Keys.F10) || _buildRows.FocusedItem?.Tag is not ContentItem) return;
+            e.Handled = e.SuppressKeyPress = true;
+            ShowListMenu(_buildRows, _contentMenu);
+        };
+        _buildRows.MouseUp += (_, e) => { if (e.Button == MouseButtons.Right && _buildRows.FocusedItem?.Tag is ContentItem) ShowListMenu(_buildRows, _contentMenu); };
+    }
+
     string BuildTabName => BuildRows.Tabs[Math.Max(0, _buildTab.SelectedIndex)];
 
     void BuildBuild()
@@ -82,6 +119,7 @@ public sealed partial class MainForm
             }
         };
         _buildRows.KeyDown += (_, e) => BuildRowKey(e);
+        BuildContentMenu();
         _buildFaces.SelectedIndexChanged += (_, _) =>
         {
             if (_buildFaces.FocusedItem is not { } it || !_buildFaces.Focused) return;
@@ -811,6 +849,8 @@ public sealed partial class MainForm
     async Task BuildCommandCoreAsync(string text)
     {
         var t = text.Trim();
+        // a // command runs from here as from any box (the blind tester's //help here met "No build command", 2026-11-15)
+        if (Commands.IsCommand(t)) { await _cmd.RunAsync(t); return; }
         // "rename Table top": the inventory's word for it, as she typed it (2026-11-03)
         if (t.StartsWith("rename ", StringComparison.OrdinalIgnoreCase)) t = "name " + t[7..].Trim();
         var lower = t.ToLowerInvariant();
@@ -1497,7 +1537,7 @@ public sealed partial class MainForm
     async Task ContentEnterAsync(ContentItem c)
     {
         if (c.Running != null || c.Type == "notecard") { await OpenContentAsync(c); return; }
-        Answer($"{ContentWords(c)}. Delete removes it; copy {c.Name} puts a copy in your inventory.");
+        Answer($"{ContentWords(c)}. The Applications key has what you can do with it: Delete removes it, Copy into your inventory puts a copy there.");
     }
 
     /// <summary>A script's running switch (Space).</summary>
@@ -1528,6 +1568,11 @@ public sealed partial class MainForm
     {
         var c = (await ContentsAsync())?.FirstOrDefault(x => x.Name.Contains(name, StringComparison.OrdinalIgnoreCase));
         if (c == null) { Answer($"Nothing called {name} inside it. To copy a prim's settings: copy from NAME, or copy colour from NAME."); return; }
+        await CopyContentAsync(c);
+    }
+
+    async Task CopyContentAsync(ContentItem c)
+    {
         var r = await _ops.DoAsync("TesselBuild", "copyFromContents", new JsonObject { ["id"] = _buildId.ToString(), ["item_id"] = c.Id.ToString() });
         Answer(PersonOps.Error(r) is { } e ? $"Not copied: {Theirs(e)}" : $"Copied {c.Name} into your inventory.");
     }

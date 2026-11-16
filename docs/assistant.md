@@ -924,7 +924,8 @@ answered.
 guard (`RealInput`, `InputJudge`): a hardware key or click, a fresh press, made after the focus, the selected notice
 and the window in front last changed by anything but the person (our own code's moves for them bind presses from then
 on, anything else from 0.7 s after it); the confirmation answered is the one the notice showed, and the person's own
-gated actions wait for the confirmation their call raised (`PendingConfirm.For`). Typed answers (llTextBox, MFA) also
+gated actions wait for the confirmation their call raised (`PendingConfirm.For`; a move to the Trash raised that moment
+arms at 0.3 s rather than 0.8) and aren't started while another waits (`docs/access-app.md` > How it fits). Typed answers (llTextBox, MFA) also
 take a key the screen reader passed on for such a press, and only text the person's keys built. The person's own
 actions skip this gate only when they began with the person's input. For people whose input never comes from a
 physical key, `access_answers_without_key` set to `hello` asks Windows Hello instead. Out of scope here as there:

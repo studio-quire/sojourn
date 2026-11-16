@@ -734,7 +734,7 @@ public sealed partial class MainForm : Form
         help in its command box: the build commands; new box makes one
         Tab: its settings, then the tab, then the faces
         On a setting, Enter changes it, Right and Left step it; F5 reads them again
-        In content: Enter opens a script or notecard inside it, Space runs or stops a script, Delete removes one
+        In content: Enter opens a script or notecard inside it, Space runs or stops a script, Delete removes one, the Applications key: what you can do with one
         undo takes back the last change
         Escape: back where Control+B came from
         //build and a command, from any input
@@ -1017,9 +1017,19 @@ public sealed partial class MainForm : Form
     /// answered the focus goes back where it was. It's this call's own confirmation (raised for these arguments) that's
     /// selected, never another showing first (the assistant's); both moves are our own for the person, so their next
     /// key answers where it put them. Null when the person cancelled it here ("Cancelled." is all they hear).</summary>
-    async Task<JsonObject?> ConfirmedAsync(string pump, string op, JsonObject args)
+    async Task<JsonObject?> ConfirmedAsync(string pump, string op, JsonObject args, Form? from = null)
     {
-        if (await ConfirmedCallAsync(_ops.GatedAsync(pump, op, args), args, _confirmFrom) is not { } r) return null;
+        from ??= _confirmFrom;
+        if (Host?.Assistant.Confirmations.WouldAsk(pump, op, args) == true)
+        {
+            if (ConfirmWaitingFirst(from)) return null;
+            // (a second press, or Delete held, while the last one's confirmation is still being worded: an object's
+            // owner or a content item's name looked up over the network)
+            if (_readying > 0) { Reader?.Answer("Just a moment: the confirmation for what you just asked is on its way.", keep: false); return null; }
+        }
+        // the shorter wait only where a mistake can be undone: her own things moved to the Trash
+        bool quick = pump == "TesselInventory" && op == "delete" && !args.Bool("purge", false);
+        if (await ConfirmedCallAsync(_ops.GatedAsync(pump, op, args), args, from, quick) is not { } r) return null;
         if (op is "delete" or "emptyTrash" or "emptyLostAndFound" && pump is "TesselInventory" or "TesselBuild" && PersonOps.Error(r) == null) _earcons?.Deleted();
         return r;
     }
@@ -1027,18 +1037,64 @@ public sealed partial class MainForm : Form
     /// <summary>A window of her own she's working from (her profile): a confirmation asked meanwhile goes back there.</summary>
     Form? _confirmFrom;
 
+    /// <summary>How soon Enter takes on a confirmation her own key raised that moment, for something that can be undone
+    /// (others' wait PendingConfirm.ArmMs, 0.8 s): longer than a key's double strike or a slip that presses twice,
+    /// shorter than a deliberate second press. "That moment": within OwnArmWithinMs of the key, so one that comes up late
+    /// (a fee looked up, a route's line, a call queued behind another) gets the full wait.</summary>
+    const long OwnArmMs = 300, OwnArmWithinMs = 1500;
+
+    /// <summary>Her own calls waiting for their confirmation to come up.</summary>
+    int _readying;
+
+    /// <summary>A confirmation already waiting (hers, the assistant's): her next action that would wait for one isn't
+    /// queued behind it unheard. She's taken to it in Notices and told it's first, and that action isn't done (the blind
+    /// tester's Enter came too soon on one, she moved on, and each Delete she pressed on the same thing meanwhile queued
+    /// another: five "Deleted" in a row for two things, 2026-11-15). True when one was waiting.</summary>
+    bool ConfirmWaitingFirst(Form? from = null)
+    {
+        if (Host?.Assistant.Panel.Read(p => p.Confirm) is not { } pc) return false;
+        // she's brought to it, not having just asked it (it may be another thing's, or the assistant's): the full wait
+        // from now, or the Enter she'd have pressed for her own action confirms it unheard
+        pc.Rearm();
+        RealInput.Ours(() =>
+        {
+            PollNotices();
+            if (from != null) Activate();
+            GoArea(_noticesPage);
+            if (_notices.Items["confirm"] is { } item)
+            {
+                item.Selected = true;
+                item.Focused = true;
+            }
+            NoteSelection();
+        });
+        // (after the move: an answer cuts off the screen reader reading what took the focus)
+        var detail = pc.Detail.Trim() is { Length: > 0 } d ? (d[^1] is '.' or '!' or '?' ? d : d + ".") + " " : "";
+        Reader?.Answer($"Not done: a confirmation is waiting, answer it first, then do that again. {pc.Title.TrimEnd('.', ' ')}. {detail}Enter confirms, Escape cancels.", keep: false);
+        return true;
+    }
+
     /// <summary>The same for a call already under way whose gate holds these args. from: a window of its own the person is in
     /// (a script's editor), this window coming forward for the answer and that one going back after.</summary>
-    async Task<JsonObject?> ConfirmedCallAsync(Task<JsonObject> call, JsonObject args, Form? from = null)
+    async Task<JsonObject?> ConfirmedCallAsync(Task<JsonObject> call, JsonObject args, Form? from = null, bool quick = false)
     {
         var back = ActiveControl;
         var backPage = _areas.SelectedTab;
         PendingConfirm? mine = null;
-        while (!call.IsCompleted)
+        long from0 = Environment.TickCount64;
+        _readying++;
+        try
         {
-            if (Host!.Assistant.Panel.Read(p => p.Confirm) is { } pc && ReferenceEquals(pc.For, args)) { mine = pc; break; }
-            await Task.WhenAny(call, Task.Delay(100));
+            while (!call.IsCompleted)
+            {
+                if (Host!.Assistant.Panel.Read(p => p.Confirm) is { } pc && ReferenceEquals(pc.For, args)) { mine = pc; break; }
+                // (soon at first: until the focus is on it, an Enter pressed straight after her Delete lands on the list)
+                await Task.WhenAny(call, Task.Delay(Environment.TickCount64 - from0 < 2000 ? 15 : 100));
+            }
         }
+        finally { _readying--; }
+        // (raised by her own key just now, not a timer's, a callback's or a key minutes back)
+        if (quick && RealInput.ActingFor is < OwnArmWithinMs) mine?.ArmSooner(OwnArmMs);
         bool shown = !call.IsCompleted;
         if (shown)
             RealInput.Ours(() =>
@@ -1053,6 +1109,7 @@ public sealed partial class MainForm : Form
                 }
                 NoteSelection();
             });
+        mine?.MarkMoved();   // (its wait from when she's on it, not from when the panel had it)
         var r = await call;
         // (a control on a tab page that isn't showing can't take the focus: the page first)
         if (shown && back is { IsDisposed: false } && backPage != null && _areas.SelectedTab == _noticesPage)

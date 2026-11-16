@@ -120,7 +120,7 @@ public sealed partial class MainForm
         var s = Host!.Session;
         var list = new List<Notice>();
         if (Host.Assistant.Panel.Read(p => p.Confirm) is { } pc)
-            list.Add(new Notice(Guid.Empty, pc, $"Confirm: {pc.Title.TrimEnd('.')}. {pc.Detail}".Trim(), pc.Detail,
+            list.Add(new Notice(Guid.Empty, pc, $"Confirm: {pc.Title.TrimEnd('.')}. {(pc.Detail.TrimEnd() is { Length: > 0 } d && d[^1] is not ('.' or '!' or '?') ? d + "." : pc.Detail)}".Trim(), pc.Detail,
                 new() { ("confirm", "Confirm"), ("cancel", "Cancel") }, false, null, ""));
         foreach (var n in s.Notify.All.Reverse())
         {

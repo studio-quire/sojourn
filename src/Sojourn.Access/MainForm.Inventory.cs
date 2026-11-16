@@ -943,6 +943,7 @@ public sealed partial class MainForm
         }
         list.AddRange(FavoriteActions(p, chosen, folder: false));
         if (one) list.Add(new("Re&name", () => Rename(p), "F2"));
+        if (one) list.Add(new("Propert&ies...", () => _ = PropertiesAsync(items[0])));
         if (p.Mode == "") list.Add(SortAction());
         if (one) list.Add(new("D&etails", () => _ = DetailsAsync(items[0])));
         if (one) list.Add(new("Descri&be", () => DescribeKey(me: false), "Control+D"));

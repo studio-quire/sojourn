@@ -458,6 +458,7 @@ public sealed partial class MainForm
     async Task LandCommandCoreAsync(string text)
     {
         var t = text.Trim();
+        if (Commands.IsCommand(t)) { await _cmd.RunAsync(t); return; }   // (as from any box: MainForm.Build.cs)
         var lower = t.ToLowerInvariant();
         var sp = lower.IndexOf(' ');
         var verb = sp < 0 ? lower : lower[..sp];

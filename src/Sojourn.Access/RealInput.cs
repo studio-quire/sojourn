@@ -226,6 +226,10 @@ public sealed class RealInput : IMessageFilter
     /// awaits), not with a timer, a callback, a posted or injected key with no press behind it, or an invoke.</summary>
     public static bool Acting => TestInput || (Began.Value is { } o && Environment.TickCount64 - o.At < ActLife);
 
+    /// <summary>How long ago the person's input this action began with came (ms), or null when it didn't begin with theirs.
+    /// For what should follow straight on from a press (a confirmation she raised that very moment).</summary>
+    public static long? ActingFor => Began.Value is { } o ? Environment.TickCount64 - o.At : TestInput ? 0 : null;
+
     /// <summary>What's started from here on doesn't carry the person's input (a session that outlives the press).</summary>
     public static void Detach() => Began.Value = null;
 

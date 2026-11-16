@@ -319,9 +319,17 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   tester took for worn or not), and what's marked is what every action takes, else the selected one; an item's words
   follow a wear or take-off as it lands ("worn" comes and goes within a second). The Applications key (or Shift+F10)
   lists every action: Wear, Add to outfit, Take off, Rez on the ground, Rez where you say..., Unbox, Give to..., Cut,
-  Copy, Paste, Paste as link, Rename, Sort by date (or by name), Details (rights, maker, date), Delete; on a folder Replace outfit, Add to outfit, Take off the
+  Copy, Paste, Paste as link, Rename, Properties..., Sort by date (or by name), Details (rights, maker, date), Delete; on a folder Replace outfit, Add to outfit, Take off the
   folder's items, New folder, New notecard, New script, Upload a file here (Control+U; Uploading, below), Expand all in it (and
   Collapse all in it, once open); a notecard also Play as a route (`//route`); a landmark Teleport there and About the place.
+  - **Properties...** (the viewer's Item Properties, Radegast's details pane; `MainForm.ItemProperties.cs`): a window with
+    the name and description, then switches for what the next owner can do (modify, copy, transfer; copy and transfer
+    only where she has them, and transfer held on while the next owner can't copy, as Second Life keeps it), Share with
+    the group, and Anyone can copy (only where she can copy and transfer). OK saves the name and description at once,
+    then the permissions through her confirmation, said back from what the item now has ("Saved Hat: its description
+    changed; the next owner may modify, copy."). Only on what she may modify, as in the viewer; a no-modify item says so.
+    The viewer's rules here are from memory of its Item Properties, not checked against its source. An object's build
+    and contents change only rezzed or worn, as there.
   - **The order** (Radegast's Sort by date, which it starts on; Alt+0's "Inventory order in each folder", `access_inventory_sort`):
     by name, or newest first, folders first and by name either way. The Applications key's Sort by date, newest first (or Sort
     by name) turns it, said ("Sorted newest first: ..."), both panes following with the place kept; searches and Show's lists
@@ -2282,7 +2290,10 @@ words are the local grid's until she's tried them.
   (position 0.1 m, size 0.05 m, rotations 15 degrees, hollow 5%, transparency 10%, glow 0.05...), a choice to the next
   or previous, a switch turned. F5 reads them again. A row that's still the same row keeps its place as its words
   change, so a change never moves her. Content's rows are what's inside ("Door, script, running"): Enter on a script
-  or notecard opens it (Scripts, above), Space runs or stops a script, Delete removes an item (confirmed).
+  or notecard opens it (Scripts, above), Space runs or stops a script, Delete removes an item (confirmed), and the
+  Applications key has them as a menu (Open, Start or Stop running, Copy into your inventory, Delete), as Objects and the
+  inventory do; Enter on anything else says so (the blind tester found Delete there only by pressing Enter on her
+  teleporter's old landmark, 2026-11-15).
 - **What's on each tab**, the editor's own rows: General: name, description, creator, owner, group, share with group,
   anyone can move and copy, for sale (a price and original, copy or contents, or no), next owner can modify, copy and
   transfer, when left-clicked (0 touch ... 8 nothing). Object: edit linked and overall size on a linked object, where
@@ -2883,8 +2894,20 @@ it).
   deleting always go through the gate (`MainForm.ConfirmedAsync` over `GatedAsync`) so the person confirms those too:
   the person asked for it, so its own confirmation (the one raised for that call's arguments, `PendingConfirm.For`,
   never another showing first) comes up selected in Notices with the focus on it, and the focus goes back where it was
-  once it's answered. The person's own cancel of it says "Cancelled." and nothing else (`ConfirmedAsync` gives its
-  caller nothing to say; the op's own refusal is for other callers). Answers to notices go straight to
+  once it's answered. Its wait counts from when the focus is on it. Her own move to the Trash (an inventory Delete, not
+  for good) takes Enter from 0.3 s when it came up within 1.5 s of her key (`OwnArmMs`, `OwnArmWithinMs`,
+  `PendingConfirm.ArmSooner`, `RealInput.ActingFor`); everything else from 0.8 s. There she knows what she asked and a
+  mistake can be undone, so the wait only has to rule out a double press (the blind tester, deleting copies of a thing
+  one after another, met "That came just as it appeared" often enough to call it tricky, 2026-11-15); one that comes up
+  late (a fee looked up, a route's line) or can't be undone keeps the full wait. One asked while another confirmation
+  waits (hers or the assistant's) isn't queued behind it: she's taken to the waiting one, its wait starting again from
+  then (`PendingConfirm.Rearm`, so the Enter she'd press for her own action can't confirm another thing unheard), and
+  hears "Not done: a confirmation is waiting, answer it first, then do that again." with its title and detail
+  (`ConfirmWaitingFirst`, for ops `Confirmations.WouldAsk` says would ask; that day each Delete pressed on the same thing
+  while its confirmation sat unanswered had queued another, five "Deleted" in a row for two things). One asked while her
+  last one's confirmation is still on its way (worded over the network) says "Just a moment" and isn't done either.
+  These were reviewed independently the same day. The person's own cancel of it says "Cancelled." and nothing else
+  (`ConfirmedAsync` gives its caller nothing to say; the op's own refusal is for other callers). Answers to notices go straight to
   `Notifications.RespondAsync`, as A1's keys do; a confirmation answered from Notices answers the one that notice
   showed (`ReaderActions.Confirm(token, ...)`), never one that took its place.
 - **Only the person's own press answers** (confirmations, notices' keys, the ToS's I agree and Continue, the

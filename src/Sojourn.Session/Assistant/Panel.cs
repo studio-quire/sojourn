@@ -42,7 +42,24 @@ public sealed class PendingConfirm
         do { was = Interlocked.Read(ref _shownAt); if (was < 0 || was >= now) return; }
         while (Interlocked.CompareExchange(ref _shownAt, now, was) != was);
     }
-    public bool ArmedAt(long tick) => ShownAt >= 0 && tick - ShownAt >= ArmMs;
+    long _armMs = ArmMs;
+    /// <summary>The person's own action asked this, on what they'd picked (Sojourn Access: Delete on an item), so they know
+    /// what it asks before it's read and the wait only has to rule out a double press. The blind tester, deleting copies
+    /// one after another, pressed Enter within 0.8 s often enough to stumble (2026-11-15).</summary>
+    public void ArmSooner(long ms)
+    {
+        long was;
+        do { was = Interlocked.Read(ref _armMs); if (ms >= was) return; }
+        while (Interlocked.CompareExchange(ref _armMs, ms, was) != was);
+    }
+    /// <summary>The person brought to it now, not by having asked it (Sojourn Access: another action asked while it
+    /// waited): the full wait again from now, as if new, so a key meant for that action can't answer it.</summary>
+    public void Rearm()
+    {
+        Interlocked.Exchange(ref _armMs, ArmMs);
+        MarkMoved();
+    }
+    public bool ArmedAt(long tick) => ShownAt >= 0 && tick - ShownAt >= Interlocked.Read(ref _armMs);
 }
 
 /// <summary>A list a confirmation shows only the start of: what it is ("46 items") and every name, as the confirmation

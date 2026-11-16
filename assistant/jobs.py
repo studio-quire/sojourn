@@ -181,7 +181,9 @@ class JobRunner:
                 await asyncio.to_thread(self.brain.api.cmd, "SojournShow", "remove", 2, id=i)
             return gone
         except Exception as e:
-            self.brain.log(f"couldn't take down a job's things on screen: {e!r}")
+            # (Sojourn Access shows nothing on a screen: it has no SojournShow)
+            if "no such API" not in str(e):
+                self.brain.log(f"couldn't take down a job's things on screen: {e!r}")
             return []
 
     def summary(self, full=False):

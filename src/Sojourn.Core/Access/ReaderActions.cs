@@ -62,11 +62,15 @@ public sealed class ReaderActions
     }
 
     string ConfirmWords(ConfirmView c) =>
-        $"{c.Title.TrimEnd('.', ' ')}. {(c.Detail.Length > 0 ? c.Detail.TrimEnd() + " " : "")}{(c.Whole != null && ConfirmListKey.Length > 0 ? ConfirmListKey + " " : "")}{ConfirmKeys}";
+        $"{c.Title.TrimEnd('.', ' ')}. {(c.Detail.Length > 0 ? Ended(c.Detail) + " " : "")}{(c.Whole != null && ConfirmListKey.Length > 0 ? ConfirmListKey + " " : "")}{ConfirmKeys}";
+
+    /// <summary>A detail as a sentence of its own before the keys ("next owner can: modify, copy." rather than running into
+    /// "Enter confirms").</summary>
+    static string Ended(string d) { d = d.TrimEnd(); return d.Length > 0 && d[^1] is '.' or '!' or '?' ? d : d + "."; }
 
     /// <summary>Said again on the person's ask: its lists whole after its title.</summary>
     string ConfirmWordsWhole(ConfirmView c) => c.Whole == null ? ConfirmWords(c)
-        : $"{c.Title.TrimEnd('.', ' ')}. All of them: {c.Whole} {(c.Detail.Length > 0 ? c.Detail.TrimEnd() + " " : "")}{ConfirmKeys}";
+        : $"{c.Title.TrimEnd('.', ' ')}. All of them: {c.Whole} {(c.Detail.Length > 0 ? Ended(c.Detail) + " " : "")}{ConfirmKeys}";
 
     public bool ConfirmWaiting => Gate?.Waiting != null;
 

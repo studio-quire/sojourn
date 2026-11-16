@@ -345,7 +345,7 @@ public sealed partial class MainForm
     async Task DeletePickAsync(Form form, ListView list, PickRow row)
     {
         var args = new JsonObject { ["pick_id"] = row.Id.ToString(), ["name"] = row.Name };
-        if (await ConfirmedCallAsync(_ops.GatedAsync("TesselAgent", "deletePick", args), args, form) is not { } r) return;
+        if (await ConfirmedAsync("TesselAgent", "deletePick", args, form) is not { } r) return;
         if (PersonOps.Error(r) is { } e) { Reader?.Answer($"Still there: {e}.", keep: false); return; }
         var rows = await RefillPicksAsync(list);
         Reader?.Answer(rows.Any(p => p.Key == row.Id.ToString()) ? $"The grid still has {row.Name}." : $"Pick {row.Name} deleted.", keep: false);

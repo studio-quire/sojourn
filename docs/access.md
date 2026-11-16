@@ -1053,6 +1053,41 @@ What's below went into 0.1.0.1136, sent that night (#287).
   for privacy (it leaves out more, not less), but it makes a log harder to read; a name that is also a common word could
   be left in our own lines. Not changed.
 
+### Her teleporter's landmark, and deleting copies one by one (0.1.0.1132, the blind tester, 2026-11-15 morning)
+
+Two logs of one session (from 08:56, still on 1132; she was getting 1139 installed), with her notes (our words):
+`tester-20261115T141935-59acc8` (09:19: she could reach a landmark inside her teleport button by showing its contents,
+but not delete it) and `tester-20261115T171145-b0bafe` (12:11: deleting many copies of one object, she's so quick that
+her Enter sometimes comes before the confirmation will take it). On the builders' line that morning she also asked
+whether objects can be edited in the inventory, as she'd heard the regular viewer allows.
+- **The teleporter's old landmark**: she and her partner set out to replace "fuzzy" inside her TP Button. First she
+  pressed Delete on the button itself in Objects (asked, cancelled: "I can't figure out how to delete the specific
+  landmark, only the object"); she found Delete in its contents only by pressing Enter on the landmark ("Delete removes
+  it"). Nothing in the log shows her own removal (no confirmation, no "Removed"), yet the button's script found it gone a
+  minute later; her partner, there with her, may have done it from his viewer. She then got `add fuzzy` from the build
+  editor's help (after `//help` there met "No build command"), and the button worked. Now what's inside a thing has its
+  actions on the Applications key, as Objects and the inventory do, and a `//` command typed in the build or land box
+  runs as from Say (`docs/access-app.md` > Building).
+- **Deleting copies of Chat-Range** from outfit folders, some 25 between 09:54 and 10:31, by the item's menu and D, then
+  Enter. Three times Enter came inside the confirmation's 0.8 s ("That came just as it appeared"); twice the next press
+  took. The third time (10:27:50) she moved on with it unanswered, put the thing on and took it off, and pressed Delete on it
+  three more times meanwhile; each queued another confirmation behind the first, so once she answered (10:29:35) she
+  heard "Deleted Chat-Range" five times for two things. Now her own move to the Trash takes Enter from 0.3 s, and one
+  asked while another waits takes her to the waiting one instead of queuing (`docs/access-app.md` > How it fits).
+  Radegast moves to the Trash on Delete without asking (`docs/radegast.md`), which is likely where her speed comes from:
+  a question for her whether she'd rather have that for her own Delete in the inventory, as the official viewer's
+  "Confirm before deleting items" can be turned off.
+- **Memory on 1132, riding the rails** from 09:58: the app at 3.0-4.0 GB with 0.3-0.8 GB of her 6.3 free, and seven holds
+  of the window of 1.0-2.6 s with its own processor time near 0, by the look of it paging; 1139's memory work is for
+  exactly this, so her next long ride's log is the check.
+- Also: the assistant's job cleanup logged an error for SojournShow, which Access doesn't have; now quiet.
+- **A script she couldn't read** (that evening, on 1139, `tester-20261115T233231-6464ed`, 18:32: she opened a script
+  from her inventory but couldn't review the text or tell what she'd be changing, and closed it unsaved). She was looking
+  for "a simple one to play with" with a friend, who gave her a chat-range script; she opened Peep!, Test Script and that
+  one. Each opened with its text (no "Couldn't open"), and the editor says nothing on opening, so the log can't say what
+  she met: NVDA not speaking a script's braces and semicolons at its usual symbol level, moving through the text, or
+  the script's sense itself. Asked her which, with the next build's message; nothing built for it yet.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -1102,7 +1137,8 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- With 0.1.0.1136 (#287, 2026-11-14 night): nothing new asked; 1125's three still stand.
+- With 0.1.0.1136 (#287, 2026-11-14 night) and 0.1.0.1139 (#288, hours later, the memory work, to take instead): nothing
+  new asked; 1125's three still stand.
 - With 0.1.0.1132 (#284, 2026-11-13 evening): nothing new asked; 1125's three still stand.
 - Sent with 0.1.0.1125 (#283, 2026-11-13): how her partner made the place link that wouldn't open (the map, the
   location, a landmark dragged in); whether she pressed anything but F3 and Down while the window froze at the
