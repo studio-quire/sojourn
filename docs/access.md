@@ -1137,6 +1137,12 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
+- Sent with 0.1.0.1142 (#292, 2026-11-15 evening): what got in the way reading a script (NVDA not speaking its
+  symbols, moving through the text, or the script's sense; told NVDA+P and Control+L); whether she'd rather her own
+  Delete in the inventory moved things to the Trash without asking, as Radegast did. Her question about editing
+  objects in the inventory answered there (Properties; the build only rezzed or worn). She answered the Trash one
+  minutes later (#293): moving to the Trash the viewer's way, a confirmation for deleting for good so she has to think.
+  Built that evening (`access_confirm_trash`, off). The script question still stands.
 - With 0.1.0.1136 (#287, 2026-11-14 night) and 0.1.0.1139 (#288, hours later, the memory work, to take instead): nothing
   new asked; 1125's three still stand.
 - With 0.1.0.1132 (#284, 2026-11-13 evening): nothing new asked; 1125's three still stand.

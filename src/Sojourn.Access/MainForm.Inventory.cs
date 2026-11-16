@@ -1510,12 +1510,24 @@ public sealed partial class MainForm
         // where they were, read now: a move changes the store's own node (the tree's), so after it ParentUUID is the
         // Trash, and the folder they left kept showing them until she logged in again (2026-11-07)
         var from = chosen.Select(c => c.ParentUUID).ToList();
-        if (await ConfirmedAsync("TesselInventory", "delete", new JsonObject
-            {
-                ["ids"] = new JsonArray(chosen.Select(c => (JsonNode)c.UUID.ToString()).ToArray()), ["purge"] = forGood,
-            }) is not { } r) return;
+        var args = new JsonObject
+        {
+            ["ids"] = new JsonArray(chosen.Select(c => (JsonNode)c.UUID.ToString()).ToArray()), ["purge"] = forGood,
+        };
+        // into the Trash at once by her own key, unless she wants asking (access_confirm_trash); for good always asks, and
+        // so does a Delete that didn't come from her key (DoAsync goes through the gate then)
+        JsonObject? r;
+        string? worn = null;
+        if (!forGood && !_set.ConfirmTrash && RealInput.Acting)
+        {
+            worn = _ops.Session.InventoryOps.WornNote(args);
+            r = await _ops.DoAsync("TesselInventory", "delete", args);
+            if (PersonOps.Error(r) == null) _earcons?.Deleted();
+        }
+        else if ((r = await ConfirmedAsync("TesselInventory", "delete", args)) == null) return;
         if (PersonOps.Error(r) is { } e) { Answer($"Not deleted: {e}"); return; }
-        Answer(forGood ? $"Deleted {Named(chosen)} for good." : $"Deleted {Named(chosen)} (in the Trash).");
+        var took = worn != null ? " Taken off first." : "";
+        Answer(forGood ? $"Deleted {Named(chosen)} for good." : $"Deleted {Named(chosen)} (in the Trash).{took}");
         Unmark(p);
         await Task.Delay(500);
         RefreshInventory(from.Append(_ops.Session.Inventory.FolderFor(FolderType.Trash)).ToArray());

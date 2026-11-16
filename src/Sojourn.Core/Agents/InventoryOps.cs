@@ -299,17 +299,31 @@ public sealed partial class InventoryOps
         var item = await _s.Inventory.ItemAsync(id, ct) ?? throw new LeapError($"no inventory item {id}");
         if (a.Has("name") && _s.Ao.Protects(item.UUID) && Locked(item) is { } whyItem) throw new LeapError($"{whyItem}; it keeps its name");
         var (wasName, wasDesc, wasPerms) = (item.Name, item.Description, item.Permissions);
-        if (a.Str("name") is { } n) item.Name = n;
-        if (a.Str("desc") is { } d) item.Description = d;
+        // the official viewer's Item Properties (LLSidepanelItemInfo, LLPermissions): its name and description with modify
+        // rights; the next owner's with transfer rights, up to the item's base rights, and a next owner who can't copy
+        // can always transfer; anyone can copy with copy and transfer; landmarks and calling cards keep theirs
         var p = item.Permissions;
         var owner = p.OwnerMask;
+        bool restrictable = item.InventoryType is not (InventoryType.Landmark or InventoryType.CallingCard);
+        if ((a.Has("name") || a.Has("desc")) && (owner & PermissionMask.Modify) == 0)
+            throw new LeapError($"{item.Name} is no-modify, so its name and description stay as they are");
+        if (a.Str("name") is { } n) item.Name = n;
+        if (a.Str("desc") is { } d) item.Description = d;
         PermissionMask Clip(PermissionMask m) => m & owner;  // can't give more than I have
         if (a.Str("next_perms") is { } np)
         {
-            if ((owner & PermissionMask.Modify) == 0) throw new LeapError("next-owner permissions need modify rights on the item");
-            p.NextOwnerMask = Clip(ObjectViews.PermMask(np) | PermissionMask.Move);
+            if (!restrictable) throw new LeapError("a landmark or calling card always goes with every right");
+            if ((owner & PermissionMask.Transfer) == 0) throw new LeapError($"{item.Name} is no-transfer, so there's no next owner to set rights for");
+            var next = (ObjectViews.PermMask(np) & p.BaseMask) | PermissionMask.Move;
+            if ((next & PermissionMask.Copy) == 0) next |= PermissionMask.Transfer;
+            p.NextOwnerMask = next;
         }
-        if (a.Bool("everyone_copy") is { } ec) p.EveryoneMask = ec ? p.EveryoneMask | Clip(PermissionMask.Copy) : p.EveryoneMask & ~PermissionMask.Copy;
+        if (a.Bool("everyone_copy") is { } ec)
+        {
+            if (ec && (owner & (PermissionMask.Copy | PermissionMask.Transfer)) != (PermissionMask.Copy | PermissionMask.Transfer))
+                throw new LeapError("anyone can copy only what you can copy and transfer yourself");
+            p.EveryoneMask = ec ? p.EveryoneMask | PermissionMask.Copy : p.EveryoneMask & ~PermissionMask.Copy;
+        }
         if (a.Str("group_perms") is { } gp) p.GroupMask = Clip(ObjectViews.PermMask(gp));
         item.Permissions = p;
         await UpdateItemOnGridAsync(item, () => (item.Name, item.Description, item.Permissions) = (wasName, wasDesc, wasPerms), ct);

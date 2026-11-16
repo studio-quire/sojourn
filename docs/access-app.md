@@ -323,13 +323,16 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   folder's items, New folder, New notecard, New script, Upload a file here (Control+U; Uploading, below), Expand all in it (and
   Collapse all in it, once open); a notecard also Play as a route (`//route`); a landmark Teleport there and About the place.
   - **Properties...** (the viewer's Item Properties, Radegast's details pane; `MainForm.ItemProperties.cs`): a window with
-    the name and description, then switches for what the next owner can do (modify, copy, transfer; copy and transfer
-    only where she has them, and transfer held on while the next owner can't copy, as Second Life keeps it), Share with
-    the group, and Anyone can copy (only where she can copy and transfer). OK saves the name and description at once,
-    then the permissions through her confirmation, said back from what the item now has ("Saved Hat: its description
-    changed; the next owner may modify, copy."). Only on what she may modify, as in the viewer; a no-modify item says so.
-    The viewer's rules here are from memory of its Item Properties, not checked against its source. An object's build
-    and contents change only rezzed or worn, as there.
+    the name and description, then switches for what the next owner can do (modify, copy, transfer), Share with the
+    group, and Anyone can copy. OK saves the name and description at once, then the permissions through her
+    confirmation, said back from what the item now has ("Saved Hat: its description changed; the next owner may modify,
+    copy."). What may change is the official viewer's rule, read in its source (`LLSidepanelItemInfo`, `LLPermissions`,
+    2026-11-15), and the op (`InventoryOps.UpdateAsync`) holds it for every caller: the name and description with modify
+    rights and not in the Trash (else read-only); the next owner's rights with transfer rights, each only if the item
+    itself has it (its base rights), transfer held on while the next owner can't copy; Anyone can copy with copy and
+    transfer; Share with the group by any owner; a landmark's or calling card's rights never. What she can't change is
+    there read-only or unavailable, saying why; with nothing to change it says so. An object's build and contents change
+    only rezzed or worn, as there.
   - **The order** (Radegast's Sort by date, which it starts on; Alt+0's "Inventory order in each folder", `access_inventory_sort`):
     by name, or newest first, folders first and by name either way. The Applications key's Sort by date, newest first (or Sort
     by name) turns it, said ("Sorted newest first: ..."), both panes following with the place kept; searches and Show's lists
@@ -374,9 +377,14 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
     Second Life." and shows them when they're in. On a grid without the service (OpenSim) the key and Show say
     "Favorites aren't on this grid: ...". The viewer has no key for it; Ctrl+Shift+F is ours. Checked against a
     stand-in for the service (`docs/access-testing.md`); only Second Life checks the real one.
-  - Delete and Give ask first (the confirmation comes up selected in Notices: Enter confirms, Escape cancels, then the
-    focus is back in the tree). As in the official viewer and Firestorm, a worn body part isn't deleted, said at once
-    without asking, and other worn items, the folder's too, are taken off first, the confirmation saying so.
+  - Delete moves things to the Trash at once, as Radegast does ("Deleted Hat (in the Trash).", with " Taken off first."
+    for what was worn); Alt+0's "Ask before my Delete moves things to the Trash" (`access_confirm_trash`, off) makes it
+    ask first, as the official viewer does unless told not to. The blind tester's choice (2026-11-15): the Trash the
+    viewer's way, a confirmation for deleting for good "so I actually have to think". Delete for good, Give, and a Delete
+    that didn't come from her key ask first (the confirmation comes up selected in Notices: Enter confirms, Escape
+    cancels, then the focus is back in the tree). The scripted test runs with asking on, its steps answering the
+    confirmation, and checks it off in "her own deletes". As in the official viewer and Firestorm, a worn body part isn't
+    deleted, said at once without asking, and other worn items, the folder's too, are taken off first, said so.
   - Giving a folder gives everything under it, as the official viewer does: the confirmation counts the items in it and
     its folders, the folders inside it, the no-copy ones, and what stays (no transfer, or worn: left out, as the viewer
     leaves them). Second Life carries at most 42 things in one offer, its folders counted, so a bigger folder (or one
@@ -2894,7 +2902,7 @@ it).
   deleting always go through the gate (`MainForm.ConfirmedAsync` over `GatedAsync`) so the person confirms those too:
   the person asked for it, so its own confirmation (the one raised for that call's arguments, `PendingConfirm.For`,
   never another showing first) comes up selected in Notices with the focus on it, and the focus goes back where it was
-  once it's answered. Its wait counts from when the focus is on it. Her own move to the Trash (an inventory Delete, not
+  once it's answered. Its wait counts from when the focus is on it. With asking before the Trash on (above), her own move to the Trash (an inventory Delete, not
   for good) takes Enter from 0.3 s when it came up within 1.5 s of her key (`OwnArmMs`, `OwnArmWithinMs`,
   `PendingConfirm.ArmSooner`, `RealInput.ActingFor`); everything else from 0.8 s. There she knows what she asked and a
   mistake can be undone, so the wait only has to rule out a double press (the blind tester, deleting copies of a thing

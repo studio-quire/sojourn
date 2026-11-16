@@ -78,6 +78,11 @@ public sealed class AccessSettings
     /// (Radegast's Sort by date, which it starts on); folders stay first, by name, either way.</summary>
     public string InventorySort { get; set; } = "by name";
     public static readonly string[] InventorySorts = { "by name", "newest first" };
+    /// <summary>Her own Delete in the inventory asks before moving things to the Trash. Off by default, as Radegast does
+    /// and as the blind tester asked (2026-11-15: moving to the Trash the viewer's way, a confirmation only for deleting for
+    /// good, "so I actually have to think"); the official viewer asks unless told not to. Deleting for good, deleting in the
+    /// world, removing from inside an object, and anything the assistant deletes always ask.</summary>
+    public bool ConfirmTrash { get; set; }
     public bool InventoryByDate => InventorySort == "newest first";
 
     public void SetInventorySort(bool byDate)
@@ -350,6 +355,9 @@ public sealed class AccessSettings
             + "the assistant's describing): economy, Claude Haiku 5.5, about a tenth of a cent each; best, Claude Opus 5.5, closer "
             + "and surer on detail, about two cents each", string.Join(", ", DescribingChoices), () => Describing,
             SettingsApi.Choice("access_describing", DescribingChoices, i => { Describing = DescribingChoices[i]; Save(); changed(); })));
+        api.Add("access_confirm_trash", new SettingsApi.Setting("access", "Sojourn Access: the person's own Delete in the inventory asks "
+            + "before moving things to the Trash (off: they go at once, as in Radegast; deleting for good always asks)", "on, off", () => ConfirmTrash,
+            SettingsApi.Switch("access_confirm_trash", on => { ConfirmTrash = on; Save(); changed(); })));
         api.Add("access_inventory_sort", new SettingsApi.Setting("access", "Sojourn Access: the order of things in each inventory "
             + "folder, and in searches: by name, or newest first (folders stay first, by name)", string.Join(", ", InventorySorts), () => InventorySort,
             SettingsApi.Choice("access_inventory_sort", InventorySorts, i => { InventorySort = InventorySorts[i]; Save(); changed(); InventorySortChanged?.Invoke(); })));

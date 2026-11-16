@@ -1623,11 +1623,15 @@ def session(run, procs):
     else:
         app_args.append("--no-assistant")
     (OUT / "files").mkdir(parents=True, exist_ok=True)
+    # her own Delete in the inventory asks before the Trash in the run (the steps answer its confirmation); off, as
+    # people get it, in "her own deletes"
+    first_settings = {"ConfirmTrash": True}
     if partial_run():
         # a run of some steps: the app's once-only word on chat logs comes 12 s after the login, so into whichever step
         # is first, a line said and in the history that the step didn't make (as the friends' line was for the links
         # step, below). Started as told already; a full run's first steps, where it has always fallen, still get it
-        (OUT / "app" / "access-settings.json").write_text(json.dumps({"ChatLogsTold": True}), encoding="utf-8")
+        first_settings["ChatLogsTold"] = True
+    (OUT / "app" / "access-settings.json").write_text(json.dumps(first_settings), encoding="utf-8")
     if os.environ.get("ACCESS_VOICE") != "1":
         app_args.append("--no-voice")   # voice chat is on by default; its keys' step runs with it only when asked
     if NO_RENDER:
@@ -2235,6 +2239,24 @@ def own_deletes(run, nonce):
         run.expect("Enter half a second on takes, her own move to the Trash", ["Deleted", card], m, 10)
         run.check("nothing said to be too soon", not any("just as it appeared" in (e.get("text") or "") for e in said_since(m)),
                   "; ".join(e.get("text") or "" for e in said_since(m)))
+
+        # as people get it (access_confirm_trash off, the blind tester's ask): into the Trash at once, nothing to confirm
+        api("SojournSettings", "set", access_confirm_trash=False)
+        try:
+            card2 = f"Own Delete Card Two {nonce}"
+            api("TesselInventory", "createNotecard", name=card2, text="straight to the Trash", folder_id=notes)
+            wait(lambda: card2 in inv_items(notes), 8)
+            key("alt+4")
+            wait_focus(lambda d: d["id"] == "inventory", 4)
+            if run.check("(the second card found)", inv_search(card2, card2), selection("id=inventory")):
+                m = mark()
+                key("del")
+                run.expect("asking off: Delete moves it to the Trash at once", ["Deleted", card2, "in the Trash"], m, 10)
+                run.check("with nothing asked", not any("Enter confirms" in (e.get("text") or "") for e in said_since(m)),
+                          "; ".join(e.get("text") or "" for e in said_since(m)))
+                run.check("and it's in the Trash", wait(lambda: card2 in inv_items(api("LLInventory", "getBasicFolderID", ft_name="trash")["id"]), 8), "")
+        finally:
+            api("SojournSettings", "set", access_confirm_trash=True)
     finally:
         inv_search_off()
         back_to_chat()
