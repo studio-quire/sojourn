@@ -1795,6 +1795,7 @@ def step_list(run, nonce, tester_id, procs):
         ("a confirmation left waiting", lambda: confirm_left_waiting(run, nonce)),
         ("her own deletes, quick and twice", lambda: own_deletes(run, nonce)),
         ("an item's properties", lambda: item_properties(run, nonce)),
+        ("pasting into what's inside an object", lambda: paste_into_contents(run, nonce)),
         ("inventory", lambda: inventory(run, nonce)),
         ("notecards with things in them", lambda: notecards_embedded(run, nonce, tester_id)),
         ("every part", lambda: parts(run)),
@@ -2264,6 +2265,68 @@ def own_deletes(run, nonce):
         time.sleep(1)
         trash = api("LLInventory", "getBasicFolderID", ft_name="trash")["id"]
         left = [i for f in (lm_folder, notes, trash) for n, i in inv_items(f).items() if n and n.startswith("Own Delete ")]
+        if left:
+            gated(run, "the step's things deleted", "TesselInventory", "delete", 30, ids=left, purge=True)
+
+
+def paste_into_contents(run, nonce):
+    """What she copied in the inventory pasted into an object's Contents (the blind tester's ask, 2026-11-15: objects,
+    sounds and scripts by copying and pasting): Control+C on a notecard there, Contents on her box, Control+V: put inside,
+    said; then a script the same way, which asks first as a new script does, and is inside once confirmed."""
+    notes = api("LLInventory", "getBasicFolderID", ft_name="notecard")["id"]
+    card, scr, boxname = f"Paste Card {nonce}", f"Paste Script {nonce}", f"Paste Box {nonce}"
+    api("TesselInventory", "createNotecard", name=card, text="put me inside", folder_id=notes)
+    script = api("TesselInventory", "createScript", 60, name=scr, text='default { state_entry() { llSay(0, "inside"); } }\n')
+    x, y, z, _ = tester_where()
+    box = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y, z], scale=[0.4, 0.4, 0.4], name=boxname)["id"]
+
+    def inside():
+        return [i.get("name") for i in api("TesselBuild", "contents", 20, id=box, running=False).get("items", [])]
+
+    def contents_of_box():
+        key("alt+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        key("f5")
+        object_row(boxname)
+        if not select_in("id=objects", boxname):
+            return False
+        key("apps")
+        wait(lambda: find("type=MenuItem;name~=Contents"), 4)
+        key("n")
+        return wait_focus(lambda d: d["id"] == "buildRows" or d["type"] == "ListItem", 8)
+
+    try:
+        for what, name, kind in (("a notecard", card, "notecard"), ("a script", scr, "script")):
+            key("alt+4")
+            wait_focus(lambda d: d["id"] == "inventory", 4)
+            if not run.check(f"(the {kind} found)", inv_search(name, name), selection("id=inventory")):
+                return
+            m = mark()
+            key("ctrl+c")
+            run.expect(f"(Control+C copies the {kind}, the words naming Contents)", [f"Copied {name}", "Contents"], m, 4)
+            if not run.check(f"(the box's Contents open, for {what})", contents_of_box(), focus_label()):
+                return
+            m = mark()
+            key("ctrl+v")
+            if kind == "script":
+                said = wait(lambda: next((e for e in said_since(m) if "Enter confirms" in (e.get("text") or "")), None), 10)
+                if not run.check("a script pasted in asks first", said, "; ".join(e.get("text") or "" for e in said_since(m))):
+                    return
+                time.sleep(1.2)
+                m = mark()
+                key("enter")
+            run.expect(f"Control+V puts {what} inside, said", [f"Put {name} inside"], m, 15)
+            run.check(f"and {what} is inside", wait(lambda: name in inside(), 8), "; ".join(inside()))
+            key("esc")
+        run.check("(both inside, the notecard kept in the inventory too)", card in inside() and scr in inside() and card in inv_items(notes),
+                  "; ".join(inside()))
+    finally:
+        inv_search_off()
+        back_to_chat()
+        api("TesselBuild", "take", 30, ids=[box], folder_id=notes)
+        time.sleep(1)
+        scripts = api("LLInventory", "getBasicFolderID", ft_name="lsltext")["id"]
+        left = [i for f in (notes, scripts) for n, i in inv_items(f).items() if n and n.startswith("Paste ")]
         if left:
             gated(run, "the step's things deleted", "TesselInventory", "delete", 30, ids=left, purge=True)
 

@@ -1316,7 +1316,7 @@ public sealed partial class MainForm
         _invClip.AddRange(chosen.Select(c => c.UUID));
         _invClipCut = cut;
         Unmark(p);
-        Reader?.Answer($"{(cut ? "Cut" : "Copied")} {Named(chosen)}. Control+V on a folder puts {(chosen.Count == 1 ? "it" : "them")} there.", keep: false);
+        Reader?.Answer($"{(cut ? "Cut" : "Copied")} {Named(chosen)}. Control+V on a folder puts {(chosen.Count == 1 ? "it" : "them")} there, or in an object's Contents, inside it.", keep: false);
     }
 
     async Task PasteAsync(InvPane p)

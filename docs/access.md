@@ -1091,7 +1091,7 @@ whether objects can be edited in the inventory, as she'd heard the regular viewe
   came empty or unreadable; how isn't known. Both go by the same transfer from the region as the official viewer's
   (LibreMetaverse's and the viewer's source read 2026-11-15), and only Second Life has shown it. One weak spot found on
   the way: where Second Life keeps an item's asset id from her (a zero id), LibreMetaverse answers from and stores into
-  its cache under the zero id whoever's item it is; the viewer skips its cache then. Since 1146 that entry is dropped
+  its cache under the zero id whoever's item it is; the viewer skips its cache then. Since 1145 that entry is dropped
   around each read, every read of a notecard or script logs what came ("inventory: script Peep! read: asset id known,
   412 bytes"), bytes with a NUL inside are refused as not text, and a script or card that opens with nothing says so.
   Her next log opening one is what tells.
@@ -1150,7 +1150,10 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   Delete in the inventory moved things to the Trash without asking, as Radegast did. Her question about editing
   objects in the inventory answered there (Properties; the build only rezzed or worn). She answered the Trash one
   minutes later (#293): moving to the Trash the viewer's way, a confirmation for deleting for good so she has to think.
-  Built that evening (`access_confirm_trash`, off). The script question still stands.
+  Built that evening (`access_confirm_trash`, off). Her script answer (#294): nothing read at all (above, A script she
+  couldn't read). Both went out in 0.1.0.1145 (#295), asking her to open one of those scripts again and send a log.
+- Her ask after that (#296-298): putting objects, sounds and scripts into an object's contents by copying in the
+  inventory and pasting. Built at once (`docs/access-app.md` > Building, the Content list's Control+V).
 - With 0.1.0.1136 (#287, 2026-11-14 night) and 0.1.0.1139 (#288, hours later, the memory work, to take instead): nothing
   new asked; 1125's three still stand.
 - With 0.1.0.1132 (#284, 2026-11-13 evening): nothing new asked; 1125's three still stand.

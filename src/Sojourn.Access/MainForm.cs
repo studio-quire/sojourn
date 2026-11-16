@@ -735,6 +735,7 @@ public sealed partial class MainForm : Form
         Tab: its settings, then the tab, then the faces
         On a setting, Enter changes it, Right and Left step it; F5 reads them again
         In content: Enter opens a script or notecard inside it, Space runs or stops a script, Delete removes one, the Applications key: what you can do with one
+        In content, Control+V: what you copied in your inventory put inside (paste in the command box too)
         undo takes back the last change
         Escape: back where Control+B came from
         //build and a command, from any input

@@ -66,6 +66,8 @@ public sealed partial class MainForm
         var run = Item("&Run", ContentRunAsync);
         run.ShortcutKeyDisplayString = "Space";
         Item("&Copy into your inventory", CopyContentAsync);
+        var paste = Item("&Paste what you copied", _ => PasteIntoContentAsync());
+        paste.ShortcutKeyDisplayString = "Control+V";
         Item("De&lete", RemoveContentAsync);
         _contentMenu.Opening += (_, e) =>
         {
@@ -73,6 +75,7 @@ public sealed partial class MainForm
             open.Visible = c.Running != null || c.Type == "notecard";
             run.Visible = c.Running != null;
             run.Text = c.Running == true ? "Stop &running" : "Start &running";
+            paste.Visible = _invClip.Count > 0;
         };
         KeysOn(_contentMenu, ("&Open", "Enter"), ("De&lete", "Delete"));
         _buildRows.KeyDown += (_, e) =>
@@ -602,6 +605,12 @@ public sealed partial class MainForm
     {
         var item = _buildRows.FocusedItem;
         if (e.KeyCode == Keys.F5) { e.Handled = true; _ = RefreshBuildAsync(said: true); return; }
+        if (e.KeyData == (Keys.Control | Keys.V) && BuildTabName == "Content")
+        {
+            e.Handled = e.SuppressKeyPress = true;
+            _ = GuardedAsync(PasteIntoContentAsync, "paste");
+            return;
+        }
         if (item?.Tag is ContentItem c)
         {
             if (e.KeyCode == Keys.Enter) { e.Handled = e.SuppressKeyPress = true; _ = GuardedAsync(() => ContentEnterAsync(c), c.Name); }
@@ -842,7 +851,7 @@ public sealed partial class MainForm
     static readonly string[] BuildVerbs =
     {
         "help", "shapes", "new", "edit", "done", "what", "where", "face", "move", "turn", "scale", "duplicate", "delete", "take",
-        "link", "unlink", "part", "parts", "root", "next", "previous", "add", "remove", "copy", "undo", "redo", "look", "general", "object",
+        "link", "unlink", "part", "parts", "root", "next", "previous", "add", "paste", "remove", "copy", "undo", "redo", "look", "general", "object",
         "features", "texture", "content", "type", "size", "position", "rotation", "unlock", "all parts", "edit linked", "export", "import",
     };
 
@@ -922,6 +931,7 @@ public sealed partial class MainForm
                 await PartStepAsync(l, verb, rest);
                 return;
             case "add": await AddContentAsync(rest); return;
+            case "paste": await PasteIntoContentAsync(); return;
             case "remove" when rest.Length > 0: await RemoveContentNamedAsync(rest); return;
             case "copy" when rest.Length > 0:
                 if (System.Text.RegularExpressions.Regex.Match(rest, @"^(?:(?<what>.*?)\s+)?from\s+(?<source>.+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase) is { Success: true } cm
@@ -1575,6 +1585,42 @@ public sealed partial class MainForm
     {
         var r = await _ops.DoAsync("TesselBuild", "copyFromContents", new JsonObject { ["id"] = _buildId.ToString(), ["item_id"] = c.Id.ToString() });
         Answer(PersonOps.Error(r) is { } e ? $"Not copied: {Theirs(e)}" : $"Copied {c.Name} into your inventory.");
+    }
+
+    /// <summary>What she copied or cut in the inventory (Control+C or Control+X there) put inside what she's editing:
+    /// Control+V in its Content list, the list's Paste, or `paste` in the build box, as dragging it onto the viewer's Content
+    /// tab does (an item she can copy is copied in, one she can't moves in). Each through the op's gate, so a script waits
+    /// for her confirmation as a new script does everywhere; a link puts in what it links to; folders aren't put in (the
+    /// blind tester's ask, 2026-11-15: objects, sounds and scripts, by copying and pasting).</summary>
+    async Task PasteIntoContentAsync()
+    {
+        if (_buildId == UUID.Zero) { Answer("Nothing is being edited: Contents on a thing in Objects, or Control+B, first."); return; }
+        var copied = _invClip.Select(id => Store is { } s && s.Contains(id) ? s[id] : null).OfType<InventoryBase>().ToList();
+        var items = copied.OfType<InventoryItem>().Select(Target).ToList();
+        if (items.Count == 0)
+        {
+            Answer(copied.Count > 0 ? "Folders can't go inside an object: copy the things in one instead."
+                : "Nothing copied: in your inventory, Control+C on what to put inside, then Control+V here.");
+            return;
+        }
+        var put = new List<string>();
+        var not = new List<string>();
+        foreach (var it in items)
+        {
+            var r = await ConfirmedAsync("TesselBuild", "addToContents", new JsonObject { ["id"] = _buildId.ToString(), ["item_id"] = it.UUID.ToString() });
+            if (r == null) not.Add($"{it.Name}, not confirmed");
+            else if (PersonOps.Error(r) is { } e) not.Add($"{it.Name}: {Theirs(e)}");
+            else put.Add(it.Name);
+        }
+        var folders = copied.Count - copied.OfType<InventoryItem>().Count();
+        var words = new List<string>();
+        if (put.Count > 0) words.Add($"Put {Listed(put)} inside.");
+        if (not.Count > 0) words.Add($"Not put in: {string.Join("; ", not)}.");
+        if (folders > 0) words.Add(folders == 1 ? "The folder stays out: folders can't go inside." : $"The {folders} folders stay out: folders can't go inside.");
+        Answer(string.Join(" ", words));
+        if (BuildTabName == "Content") await ShowBuildRowsAsync();
+
+        static string Listed(List<string> n) => n.Count <= 1 ? string.Join("", n) : string.Join(", ", n.Take(n.Count - 1)) + " and " + n[^1];
     }
 
     /// <summary>add NAME: an item from the inventory put inside (a script starts running; a new script waits for the

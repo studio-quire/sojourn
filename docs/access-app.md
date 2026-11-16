@@ -2299,9 +2299,13 @@ words are the local grid's until she's tried them.
   or previous, a switch turned. F5 reads them again. A row that's still the same row keeps its place as its words
   change, so a change never moves her. Content's rows are what's inside ("Door, script, running"): Enter on a script
   or notecard opens it (Scripts, above), Space runs or stops a script, Delete removes an item (confirmed), and the
-  Applications key has them as a menu (Open, Start or Stop running, Copy into your inventory, Delete), as Objects and the
-  inventory do; Enter on anything else says so (the blind tester found Delete there only by pressing Enter on her
-  teleporter's old landmark, 2026-11-15).
+  Applications key has them as a menu (Open, Start or Stop running, Copy into your inventory, Paste what you copied,
+  Delete), as Objects and the inventory do; Enter on anything else says so (the blind tester found Delete there only by
+  pressing Enter on her teleporter's old landmark, 2026-11-15). Control+V in Content (empty or not), the menu's Paste or
+  `paste` in the command box puts what she copied or cut in the inventory inside, as dragging onto the viewer's Content
+  tab does: each item through the op's gate, a script asking first as a new script does, a link putting in what it links
+  to, folders left out and said ("Put Door Bell and Bell Script inside."); her ask the same evening, for objects, sounds
+  and scripts. `add NAME` does the same for one thing by name.
 - **What's on each tab**, the editor's own rows: General: name, description, creator, owner, group, share with group,
   anyone can move and copy, for sale (a price and original, copy or contents, or no), next owner can modify, copy and
   transfer, when left-clicked (0 touch ... 8 nothing). Object: edit linked and overall size on a linked object, where
