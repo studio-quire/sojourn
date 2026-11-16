@@ -1094,7 +1094,26 @@ whether objects can be edited in the inventory, as she'd heard the regular viewe
   its cache under the zero id whoever's item it is; the viewer skips its cache then. Since 1145 that entry is dropped
   around each read, every read of a notecard or script logs what came ("inventory: script Peep! read: asset id known,
   412 bytes"), bytes with a NUL inside are refused as not text, and a script or card that opens with nothing says so.
-  Her next log opening one is what tells.
+  **That was it**: her log on 1145 that evening (`tester-20261116T013840-4c1463`, 20:00) has "inventory: script
+  Chat-Range 2 Script read: asset id kept from us, 2521 bytes" and her "I can read scripts" a few seconds on; she then
+  edited and saved a script inside her rezzed HUD and put a sound in it (with `add`, before 1147's paste). So on Second
+  Life a script's asset id is kept from her (unlike the local grid, which always sends it), and before 1145 the read came
+  from whatever LibreMetaverse held under the zero id. Worth reporting to LibreMetaverse (its RequestInventoryAsset
+  checks and fills the cache under the zero id); a question for the user, as it would go out from Studio Quire.
+  At 19:59, a minute after login, the window held 4.4 s while it built its tabs (its own processor time 0.2 s): her slow
+  start, as before.
+- **An edited object gone** (on 1147, `tester-20261116T024557-63e9b9`, 21:45: she couldn't take it back, and then it was
+  gone, not in the Trash). At a club she rezzed her chat-range HUD at 21:26, put a sound in it and saved its edited script
+  (21:27:45); Take into your inventory at 21:28:50 said "Not taken: 1 of 1 still in place: the region didn't take them".
+  The op waited only 4 s for it to leave the region, as for any edit, with nothing from the region saying no; most likely
+  Second Life took it a little later, into her Objects folder, and she looked in the Trash. (Or the club's auto-return
+  sent it to Lost and Found.) She then found an older copy in the Trash, wore that, and deleted another for good through
+  its confirmation. Told her where to look (#305). Now a take, delete or return is watched for 15 s, a region's refusal
+  said as such, and one only slow says so and is watched two minutes more, saying when it goes and where (`BuildOps.GoneTries`,
+  `MainForm.WatchGoing`).
+- **A person's ID from their profile** (#303-304, that night): in a profile, as she's heard, a button gives the person's
+  agent ID; Access has none (no Copy key on a person's actions). She'll say more tomorrow; likely the viewer's Copy
+  Agent ID / Firestorm's Copy key.
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
@@ -1153,7 +1172,8 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   Built that evening (`access_confirm_trash`, off). Her script answer (#294): nothing read at all (above, A script she
   couldn't read). Both went out in 0.1.0.1145 (#295), asking her to open one of those scripts again and send a log.
 - Her ask after that (#296-298): putting objects, sounds and scripts into an object's contents by copying in the
-  inventory and pasting. Built at once (`docs/access-app.md` > Building, the Content list's Control+V).
+  inventory and pasting. Built at once (`docs/access-app.md` > Building, the Content list's Control+V) and sent in
+  0.1.0.1147 (#299).
 - With 0.1.0.1136 (#287, 2026-11-14 night) and 0.1.0.1139 (#288, hours later, the memory work, to take instead): nothing
   new asked; 1125's three still stand.
 - With 0.1.0.1132 (#284, 2026-11-13 evening): nothing new asked; 1125's three still stand.

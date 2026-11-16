@@ -747,15 +747,20 @@ public sealed class BuildOps
     }
 
     /// <summary>Waits (up to 4 s) for the region's updates to show a change.</summary>
-    static async Task<bool> UntilAsync(Func<bool> done, CancellationToken ct)
+    static async Task<bool> UntilAsync(Func<bool> done, CancellationToken ct, int tries = 20)
     {
-        for (var i = 0; i < 20; i++)
+        for (var i = 0; i < tries; i++)
         {
             if (done()) return true;
             await Task.Delay(200, ct);
         }
         return done();
     }
+
+    /// <summary>How long a take, delete or return is watched for the thing to leave the region. Second Life can take well
+    /// over the 4 s the other edits get for an object just changed (the blind tester's, a script saved and a sound put in
+    /// a minute before, at a busy club, 2026-11-15: told it wasn't taken, it went later and she lost track of it).</summary>
+    const int GoneTries = 75;   // 15 s
 
     public async Task<JsonObject> CreateAsync(JsonObject a, CancellationToken ct)
     {
@@ -1217,11 +1222,14 @@ public sealed class BuildOps
         // a copy leaves the object where it is; the rest take it out of the world, so watch it go
         if (dest == DeRezDestination.AgentInventoryCopy) return new JsonObject { ["count"] = roots.Count, ["requested"] = true };
         var locals = roots.Select(r => r.LocalID).ToList();
-        if (!await UntilAsync(() => locals.All(l => !w.Prims.ContainsKey(l)), ct))
+        if (!await UntilAsync(() => locals.All(l => !w.Prims.ContainsKey(l)), ct, GoneTries))
         {
             var left = locals.Count(l => w.Prims.ContainsKey(l));
-            var said = _s.State.LastAlert is { } al && al.T >= since ? $"; the region said: {al.Message}" : "";
-            throw new LeapError($"{left} of {locals.Count} still in place: the region didn't take them (that needs them to be mine, or my land's for returning){said}");
+            // a refusal says so; with none, it may only be slow (and go later, into the folder it was asked into)
+            if (_s.State.LastAlert is { } al && al.T >= since)
+                throw new LeapError($"{left} of {locals.Count} still in place: the region said: {al.Message}");
+            throw new LeapError($"{left} of {locals.Count} still in place after {GoneTries / 5} seconds: the region hasn't taken them yet, and may "
+                + "only be slow (that needs them to be mine, or my land's for returning)");
         }
         return new JsonObject { ["count"] = roots.Count };
     }

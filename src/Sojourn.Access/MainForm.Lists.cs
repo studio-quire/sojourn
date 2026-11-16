@@ -206,9 +206,34 @@ public sealed partial class MainForm
         if (!MayTake(t)) { Answer($"{t.Name} isn't yours to take."); return; }
         var args = new JsonObject { ["ids"] = new JsonArray(t.Id.ToString()) };
         if ((t.Mine ? await _ops.DoAsync("TesselBuild", "take", args) : await ConfirmedAsync("TesselBuild", "take", args)) is not { } r) return;
-        Answer(PersonOps.Error(r) is { } e ? $"Not taken: {e}" : $"Took {t.Name} into your inventory.");
+        if (PersonOps.Error(r) is { } e && Slow(e)) { Answer($"Not taken yet: Second Life hasn't taken {t.Name} after 15 seconds; you'll hear if it goes."); WatchGoing(t, "it's in your inventory, in Objects"); }
+        else Answer(PersonOps.Error(r) is { } e2 ? $"Not taken: {e2}" : $"Took {t.Name} into your inventory.");
         await Task.Delay(500);
         _ = RefreshObjects(false);
+    }
+
+    /// <summary>A take or delete the region was only slow to do (BuildOps.GoneTries), not one it refused.</summary>
+    static bool Slow(string error) => error.Contains("hasn't taken them yet", StringComparison.Ordinal);
+
+    /// <summary>A thing a take or delete hadn't moved yet, watched for two minutes more: when it leaves the region, said, with
+    /// where it went, so she isn't left thinking it's still there (the blind tester's edited HUD, 2026-11-15).</summary>
+    void WatchGoing(PersonOps.Thing t, string where)
+    {
+        _ = Task.Run(async () =>
+        {
+            for (int i = 0; i < 120; i++)
+            {
+                await Task.Delay(1000);
+                if (Host?.Session.Region?.PrimById(t.Id) != null) continue;
+                BeginInvoke(() =>
+                {
+                    Answer($"{t.Name} went after all: {where}.");
+                    _ = RefreshObjects(false);
+                });
+                return;
+            }
+            BeginInvoke(() => Answer($"{t.Name} is still there, two minutes on: Second Life didn't take it. Take into your inventory again, or ask the land's owner."));
+        });
     }
 
     /// <summary>The thing the objects list's menu was last opened on (its items act on it).</summary>
@@ -232,7 +257,8 @@ public sealed partial class MainForm
     {
         if (!MayDelete(t)) { Answer($"{t.Name} isn't yours to delete."); return; }
         if (await ConfirmedAsync("TesselBuild", "delete", new JsonObject { ["ids"] = new JsonArray(t.Id.ToString()) }) is not { } r) return;
-        Answer(PersonOps.Error(r) is { } e ? $"Not deleted: {e}" : t.Mine ? $"Deleted {t.Name} (in the Trash)." : $"Deleted {t.Name}.");
+        if (PersonOps.Error(r) is { } e && Slow(e)) { Answer($"Not deleted yet: Second Life hasn't taken {t.Name} after 15 seconds; you'll hear if it goes."); WatchGoing(t, t.Mine ? "it's in your Trash" : "it's deleted"); }
+        else Answer(PersonOps.Error(r) is { } e2 ? $"Not deleted: {e2}" : t.Mine ? $"Deleted {t.Name} (in the Trash)." : $"Deleted {t.Name}.");
         await Task.Delay(500);
         _ = RefreshObjects(false);
     }
