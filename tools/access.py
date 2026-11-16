@@ -4992,7 +4992,8 @@ def housekeeping(run, nonce):
 
 
 PERSON_ITEMS = ["Send IM", "Walk to", "Face", "Where", "Describe", "Follow", "Beacon", "Pay...", "Give what you copied", "Offer teleport",
-                "Request teleport", "Always incognito with them", "Hear what they point at", "What they wear", "Their animations"]
+                "Request teleport", "Always incognito with them", "Hear what they point at", "What they wear", "Their animations",
+                "Copy their key"]
 
 
 def person_actions(run, nonce, tester_id):
@@ -5105,6 +5106,8 @@ def person_actions(run, nonce, tester_id):
         run.expect("//unblock takes them off", [far], m, 6)
     say_in_app(f"//profile {VNAME}")
     if run.check("//profile NAME opens their profile", wait_focus(lambda d: d["id"] == "profileText", 8), focus_label()):
+        vid = visitor_id()
+        run.check("with their key, as Radegast's profile shows it", f"Key: {vid}" in value_of("id=profileText"), value_of("id=profileText")[-120:])
         key("apps")
         if run.check("its Applications key has the actions", menu_open("Send IM"), focus_label()):
             names = offered("The profile")

@@ -1098,8 +1098,9 @@ whether objects can be edited in the inventory, as she'd heard the regular viewe
   Chat-Range 2 Script read: asset id kept from us, 2521 bytes" and her "I can read scripts" a few seconds on; she then
   edited and saved a script inside her rezzed HUD and put a sound in it (with `add`, before 1147's paste). So on Second
   Life a script's asset id is kept from her (unlike the local grid, which always sends it), and before 1145 the read came
-  from whatever LibreMetaverse held under the zero id. Worth reporting to LibreMetaverse (its RequestInventoryAsset
-  checks and fills the cache under the zero id); a question for the user, as it would go out from Studio Quire.
+  from whatever LibreMetaverse held under the zero id. Reported upstream with the fix and a test, with the user's yes:
+  cinderblocks/libremetaverse#204 (2026-11-15; `projects/radegast` keeps it). Ibasho isn't affected: its viewer is
+  the official one's code, which skips its cache for a null id.
   At 19:59, a minute after login, the window held 4.4 s while it built its tabs (its own processor time 0.2 s): her slow
   start, as before.
 - **An edited object gone** (on 1147, `tester-20261116T024557-63e9b9`, 21:45: she couldn't take it back, and then it was
@@ -1110,10 +1111,11 @@ whether objects can be edited in the inventory, as she'd heard the regular viewe
   sent it to Lost and Found.) She then found an older copy in the Trash, wore that, and deleted another for good through
   its confirmation. Told her where to look (#305). Now a take, delete or return is watched for 15 s, a region's refusal
   said as such, and one only slow says so and is watched two minutes more, saying when it goes and where (`BuildOps.GoneTries`,
-  `MainForm.WatchGoing`).
+  `MainForm.WatchGoing`); sent in 0.1.0.1150 (#306).
 - **A person's ID from their profile** (#303-304, that night): in a profile, as she's heard, a button gives the person's
-  agent ID; Access has none (no Copy key on a person's actions). She'll say more tomorrow; likely the viewer's Copy
-  Agent ID / Firestorm's Copy key.
+  agent ID; Access had none. Radegast's profile shows it in a read-only Key box, the viewer has Copy Agent ID: built
+  the next morning as Copy their key on a person's actions (wherever they are) and a Key line at the end of the
+  profile's text, before her answer.
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 

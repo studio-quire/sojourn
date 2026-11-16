@@ -38,6 +38,8 @@ public sealed partial class MainForm
             list.Add(new("Notes on the&m", () => _ = ProfileAsync(id, name, toNotes: true)));
         }
         list.Add(new("Chat &log", () => ChatLogOf(((_ops.Client?.Self.AgentID ?? UUID.Zero) ^ id).ToString(), name)));
+        // (no letter: all of its are taken here)
+        list.Add(new("Copy their key", () => CopyKey(id, name)));
         list.Add(new("P&ay...", () => _ = PayAsync(id, name)));
         list.Add(new("&Give what you copied", () => _ = GiveCopiedAsync(id, name)));
         list.Add(new("Offer &teleport", () => _ = PersonIdOpAsync("offerTeleport", id, $"Teleport offered to {name}.")));
@@ -60,6 +62,15 @@ public sealed partial class MainForm
         list.Add(new(SoundItemText(name, group: false), () => ChooseImSound(id, name, group: false)));
         if (friend) list.Add(new("&End friendship", () => _ = EndFriendshipAsync(new Friend(id, name, true))));
         return list;
+    }
+
+    /// <summary>Their key (their UUID, the viewer's Copy Agent ID; Radegast's profile shows it in a box) onto the clipboard,
+    /// for a HUD, a script or a form that asks for it (the blind tester's ask, 2026-11-15).</summary>
+    void CopyKey(UUID id, string name)
+    {
+        try { Clipboard.SetText(id.ToString()); }
+        catch (System.Runtime.InteropServices.ExternalException) { Answer("The clipboard is busy; try again."); return; }
+        Answer($"Copied {name}'s key to the clipboard. It starts {id.ToString()[..8]}.");
     }
 
     /// <summary>The same list as items, a friend's rights under it.</summary>

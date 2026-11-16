@@ -194,6 +194,8 @@ public sealed partial class MainForm
             lines.Add("Groups: " + string.Join(", ", theirGroups.OfType<JsonObject>().Select(g => g.Str("title") is { Length: > 0 } title ? $"{g.Str("name")}, as {title}" : g.Str("name"))) + ".");
         if (r.Str("first_life") is { Length: > 0 } fl) { lines.Add(""); lines.Add("First life:"); lines.Add(fl.Trim()); }
         if (r.Str("url") is { Length: > 0 } url) lines.Add($"Web: {url}");
+        // (as Radegast's profile has it: to read, or copy from here; Copy their key on the Actions button too)
+        lines.Add($"Key: {id}");
         var shownName = r.Str("name") ?? name;
         var form = new Form
         {
