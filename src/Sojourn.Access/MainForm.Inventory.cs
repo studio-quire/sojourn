@@ -1206,6 +1206,8 @@ public sealed partial class MainForm
         bool script = item.AssetType == AssetType.LSLText;
         var r = await _ops.ReadAsync("TesselInventory", script ? "readScript" : "readNotecard", new JsonObject { ["item_id"] = item.UUID.ToString() });
         if (PersonOps.Error(r) is { } e) { Answer($"Couldn't open {item.Name}: {e}"); return; }
+        // (a blank window says nothing to a screen reader: the blind tester's scripts opened so, 2026-11-15)
+        bool empty = string.IsNullOrWhiteSpace(r.Str("text")) && r["embedded"] is not JsonArray { Count: > 0 };
         var card = script ? null : new CardHeld(this, p, item.Name, item.UUID, UUID.Zero, r);
         var editor = new EditorForm(script ? "Script" : "Notecard", item.Name, r.Str("text") ?? "", async text =>
         {
@@ -1228,6 +1230,7 @@ public sealed partial class MainForm
             p.Tree.Focus();
         };
         if (heldSaid != null) editor.Shown += (_, _) => Reader?.Answer(heldSaid, keep: false);
+        else if (empty) editor.Shown += (_, _) => Reader?.Answer($"{item.Name} came with no text: it's empty here, or Second Life sent none.", keep: false);
         editor.Show(this);
     }
 

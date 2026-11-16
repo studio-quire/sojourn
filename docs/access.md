@@ -1086,7 +1086,15 @@ whether objects can be edited in the inventory, as she'd heard the regular viewe
   for "a simple one to play with" with a friend, who gave her a chat-range script; she opened Peep!, Test Script and that
   one. Each opened with its text (no "Couldn't open"), and the editor says nothing on opening, so the log can't say what
   she met: NVDA not speaking a script's braces and semicolons at its usual symbol level, moving through the text, or
-  the script's sense itself. Asked her which, with the next build's message; nothing built for it yet.
+  the script's sense itself. Asked her which with 1142 (#292); her answer (#294): NVDA read nothing at all, "like I was
+  in a blank document". Notecards read in the same window (she edited them on 929), so the scripts' text most likely
+  came empty or unreadable; how isn't known. Both go by the same transfer from the region as the official viewer's
+  (LibreMetaverse's and the viewer's source read 2026-11-15), and only Second Life has shown it. One weak spot found on
+  the way: where Second Life keeps an item's asset id from her (a zero id), LibreMetaverse answers from and stores into
+  its cache under the zero id whoever's item it is; the viewer skips its cache then. Since 1146 that entry is dropped
+  around each read, every read of a notecard or script logs what came ("inventory: script Peep! read: asset id known,
+  412 bytes"), bytes with a NUL inside are refused as not text, and a script or card that opens with nothing says so.
+  Her next log opening one is what tells.
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
