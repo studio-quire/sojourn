@@ -1657,7 +1657,7 @@ the way), else a walk from the last point. The recording lives in the app only u
 the blind tester wished to ride a carnival waterslide, "arrow keys make you go faster, sometimes so fast you fly off",
 and hear it described afterwards). C in walk mode (or `//ride`, or World > Recording a ride) starts it: "Recording the
 ride: a picture every few seconds and what's around, kept on this PC until you ask. C stops it, or it stops when you
-stand up after the ride, or the ride stops; Shift+C then tells it." (With the view still starting or preparing: "pictures start once
+stand up after the ride, and goes on through stops while you stay on; Shift+C then tells it." (With the view still starting or preparing: "pictures start once
 it's up"; "without pictures" only with no view, one given up, or no assistant.) Any time: standing in the queue, or already seated and moving. Standing up before anything has moved doesn't end it (she was on a pose ball at the top of a waterslide, stood to go to the tube, and the slide went unrecorded, 2026-11-04); five minutes standing with no ride does.
 - **What it keeps**, every 3 s a moment: the time from the start, the region, speed over the ground, which way it's
   going, climbing or falling, height and distance from the start, what she rides (when it changes; held over a region
@@ -1676,11 +1676,12 @@ it's up"; "without pictures" only with no view, one given up, or no assistant.) 
   often, so a long ride keeps its whole length. Pictures only while the view is drawing and the assistant is on to
   tell them; otherwise it records the moments alone and says so ("without pictures (the assistant isn't on to tell
   them)").
-- **Ending**: C again or `//ride stop` ("Ride recorded: 1 minute 24 seconds, 28 pictures. Shift+C tells it."); by itself
-  3 s after she stands up (a crossing's doubt about the seat isn't standing), once a ride she sat on has moved (3 s of
-  it at 1 m/s or more, not a jolt: a train flipped round at its platform jumps a few metres at once, which on 835
-  ended her recording before it set off) and then been still for 8 s, or at fifteen minutes (five until 835 cut both
-  her undersea rides short), each said ("The ride stopped moving: ride recorded, ...").
+- **Ending**: C again or `//ride stop` ("Ride recorded: 1 minute 24 seconds, 28 pictures. Shift+C tells it."), or Shift+C
+  asking for it told; by itself 3 s after she stands up once a ride she sat on has moved (3 s of it at 1 m/s or more, not
+  a jolt: a train flipped round at its platform jumps a few metres at once; a crossing's doubt about the seat isn't
+  standing), or at an hour, each said ("You stood up: ride recorded, ..."). A stop never ends it: until 2026-11-17 one did
+  after 8 s still, and she asked for rides to go on through a railway loop's stations (the cap was fifteen minutes then,
+  five until 835 cut both her undersea rides short).
 - **Told**: Shift+C in walk mode (or `//ride describe`, World > Recording a ride > Tell the ride) stops a recording
   still going and sends the ride, through the describe key's path, to one lean call (`describer.py` RIDE_HOW) on her
   describing setting's model (best: Opus 5.5 at low effort): the moments in order as lines, each picture after its

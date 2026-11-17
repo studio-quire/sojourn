@@ -18,8 +18,9 @@ namespace Sojourn.Access.Walk;
 /// how fast they come: one at a time, the next at least 2.5 times as long after as the last took (3-15 s), and one
 /// due while another is still drawing is skipped, never queued, so on a PC drawing on its processor the ride doesn't
 /// wait on them. At most 40 kept: past that every other one goes and they come half as often, so a long ride keeps its
-/// whole length. It ends on her word (C, `//ride stop`), when she stands up, when a ride she sat on has moved (3 s of
-/// it, not a jolt) and then been still for 8 s, or after fifteen minutes. Nothing leaves the PC until she asks for it told
+/// whole length. It ends on her word (C, `//ride stop`), when she stands up after a ride she sat on has moved (3 s of
+/// it, not a jolt), or after an hour; never when the ride stops, since a train on a loop stops at its stations (her ask,
+/// 2026-11-17: it ended 8 s into each stop before). Nothing leaves the PC until she asks for it told
 /// (`Get`, through SojournRide); the last ride stays until the next starts or the session ends. Runs on the window's thread (walk mode's tick); pictures and
 /// looks round come back there. Written by Claude Opus 5.5, 2026-11-01.
 /// </summary>
@@ -34,10 +35,11 @@ public sealed class RideRecorder
     const long MomentEvery = 3000;
     const long FirstInterval = 3000, LongestInterval = 15000;
     const double SlowerThanDrawing = 2.5;      // the next picture at least this many times as long after as the last took
-    // fifteen minutes (five until 835 cut both her rides through an undersea tunnel short; a railway loop runs longer)
-    const long LongestRide = 15 * 60_000;
+    // an hour (five minutes until 835 cut both her rides through an undersea tunnel short, fifteen until she asked for
+    // rides to go on through a loop's stations)
+    const long LongestRide = 60 * 60_000;
     const long NoRideFor = 300_000;   // stood up before anything moved, and nothing has since
-    const long StillFor = 8000, StoodFor = 3000;   // (a crossing drops the seat for a moment: held over it, WalkMode.SeatInDoubt)
+    const long StoodFor = 3000;   // (a crossing drops the seat for a moment: held over it, WalkMode.SeatInDoubt)
     // moving this long seated before a stop can end it: a train flipped round at its platform jumps a few metres at once,
     // which read as a ride that had moved and stopped (0.1.0.835 ended her recording that way before the train set off)
     const long MovedFor = 3000;
@@ -116,7 +118,7 @@ public sealed class RideRecorder
         _last = null;
         _ride = new Ride { Id = DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture), Start = Environment.TickCount64, Began = b.RegionName, Private = incognito };
         _track.Clear();
-        (_seatedEver, _moved, _standingSince, _stillSince, _nextMoment, _nextPicture, _interval, _floor, _shows) = (false, false, 0, 0, 0, 0, FirstInterval, FirstInterval, null);
+        (_seatedEver, _moved, _standingSince, _nextMoment, _nextPicture, _interval, _floor, _shows) = (false, false, 0, 0, 0, FirstInterval, FirstInterval, null);
         (_movingMs, _lastTick) = (0, 0);
         while (_heard.TryDequeue(out _)) { }
         Tick(b, Environment.TickCount64);
@@ -145,7 +147,7 @@ public sealed class RideRecorder
 
     readonly List<(long T, Vector3 G)> _track = new();
     bool _seatedEver, _moved, _shooting, _looking;
-    long _standingSince, _stillSince, _nextMoment, _nextPicture, _interval, _floor, _movingMs, _lastTick;
+    long _standingSince, _nextMoment, _nextPicture, _interval, _floor, _movingMs, _lastTick;
     string? _shows;
 
     public void Tick(WalkMode.Body b, long now)
@@ -163,18 +165,15 @@ public sealed class RideRecorder
         // (0.1.0.835 told her "you were standing on top of Zephyr" from a moment taken mid-crossing)
         bool sitting = b.Sitting || _walk.SeatInDoubt(b);
 
-        // over by itself: stood up, a ride sat on gone still, or the longest a ride is kept
+        // over by itself: stood up after the ride, or the longest a ride is kept (a stop doesn't end it: a loop's stations)
         if (sitting) { _seatedEver = true; _standingSince = 0; }
         else if (_seatedEver && _standingSince == 0) _standingSince = now;
         if (sitting && speed >= 1 && (_movingMs += dt) >= MovedFor) _moved = true;
-        if (speed >= 0.3f) _stillSince = 0;
-        else if (_stillSince == 0) _stillSince = now;
         // standing up before anything moved is walking to the ride: the blind tester started one on a pose ball at the top of
         // a waterslide, stood to go to its tube, and it ended there, the slide itself not recorded (2026-11-04)
         var why = _moved && _standingSince != 0 && now - _standingSince >= StoodFor ? "you stood up"
             : !_moved && _standingSince != 0 && now - _standingSince >= NoRideFor ? "no ride began"
-            : _moved && sitting && _stillSince != 0 && now - _stillSince >= StillFor ? "the ride stopped moving"
-            : now - r.Start >= LongestRide ? "fifteen minutes, the longest a ride is recorded" : null;
+            : now - r.Start >= LongestRide ? "an hour, the longest a ride is recorded" : null;
         if (why != null)
         {
             TakeMoment(r, b, sitting, g, now, speed, climb, compass);

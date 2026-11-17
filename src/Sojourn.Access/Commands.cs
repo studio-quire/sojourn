@@ -202,7 +202,7 @@ public sealed partial class Commands
             "the next rail switch and how it's set; throw it, or set it to the main line or the branch (walk mode's W and Shift+W)"),
         ("stop", "//stop", "stop: seated on something moving, it's stopped by its controls, as Space in walk mode; otherwise a walk, a follow or a route"),
         ("ride", "//ride | //ride stop | //ride describe | //ride more",
-            "record a ride (C in walk mode): pictures every few seconds and what's around, kept on this PC; stop it (it stops by itself when you stand up or the ride stops); have the assistant tell it (Shift+C in walk mode), or tell more"),
+            "record a ride (C in walk mode): pictures every few seconds and what's around, kept on this PC; stop it (it stops by itself when you stand up after the ride, and goes on through stops while you stay on); have the assistant tell it (Shift+C in walk mode), or tell more"),
         ("text", "//text | //text NAME", "floating text: what you're sitting on shows (Shift+V in walk mode), or the nearest thing with that name within 30 metres"),
         ("outfit", "//outfit", "what you're wearing, by name from the worn list: clothing, attachments and where, HUDs, body parts"),
         ("saveoutfit", "//saveoutfit NAME", "save what you're wearing as an outfit: a folder NAME in My Outfits with a link to each thing, as the official viewer's Save Outfit"),

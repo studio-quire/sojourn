@@ -14919,13 +14919,20 @@ def ride_recording(run):
         m = mark()
         key("space")
         run.expect("(Space stops the train)", ["Stopped."], m, 15)
-        said = run.expect("still for 8 s: the recording ends by itself, said", ["ride recorded"], m, 25)
+        # a stop doesn't end it (a loop's stations: her ask, 2026-11-17; it ended 8 s into a stop before)
+        time.sleep(12)
+        rs = api("SojournRide", "status")
+        run.check("still 12 s after the train stopped: still recording", rs.get("recording") and not walk_said(m, ["ride recorded"], 0.1),
+                  json.dumps(rs)[:200])
+        m = mark()
+        key("c")
+        said = run.expect("C ends it, said", ["ride recorded"], m, 10)
         print(f"     ({(said or {}).get('text', '')}; recorded {time.time() - t_start:.0f} s)")
         rs = api("SojournRide", "status")
         ride = rs.get("ride") or {}
         print(f"     (ride: {ride.get('seconds')} s, {ride.get('moments')} moments, {ride.get('taken')} pictures taken, "
               f"{ride.get('skipped')} skipped, last {ride.get('last_picture_ms')} ms; passed {ride.get('names_passed')})")
-        run.check("(stopped: not recording)", not rs.get("recording") and ride.get("ended") == "the ride stopped moving", json.dumps(rs)[:300])
+        run.check("(stopped: not recording)", not rs.get("recording") and ride.get("ended") == "you stopped recording", json.dumps(rs)[:300])
         run.check("a moment every 3 s or so", ride.get("moments", 0) >= ride.get("seconds", 0) / 3.5, f"{ride.get('moments')} in {ride.get('seconds')} s")
         if RELAY and not VIEWLESS:
             run.check("pictures taken along the way", ride.get("taken", 0) >= (2 if SOFTWARE else 4), f"{ride.get('taken')} taken, {ride.get('skipped')} skipped")

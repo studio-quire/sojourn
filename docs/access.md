@@ -1203,7 +1203,7 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- For the build with editing what she wears (after 1153): does her HUD's script open, save and keep working from what you
+- Sent with 0.1.0.1158 (#311, 2026-11-17 morning; #310 had told her what her two logs showed): does her HUD's script open, save and keep working from what you
   wear (Alt+Shift+7) > Contents, the HUD staying on? Are words like "Position Z, up, from HUD Bottom Left" clear? Would she
   want a body attachment's faces named rather than numbered? And when a crossing fails as on 2026-11-16 and the region then
   answers nothing, would she rather Sojourn Access logged her in again by itself after a while, or told her and let her

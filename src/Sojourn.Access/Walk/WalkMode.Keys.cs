@@ -77,7 +77,7 @@ public sealed partial class WalkMode
         Shift+R: stop, name it and save it as a notecard in Routes
 
         Recording a ride
-        C: start recording a ride: a picture every few seconds and what's around, kept on this PC until you ask; C again stops (it stops by itself when you stand up or the ride stops)
+        C: start recording a ride: a picture every few seconds and what's around, kept on this PC until you ask; C again stops (it stops by itself when you stand up after the ride, and goes on through stops while you stay on)
         Shift+C: the ride told by the assistant; again for more
 
         Leaving
