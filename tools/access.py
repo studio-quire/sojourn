@@ -1807,6 +1807,7 @@ def step_list(run, nonce, tester_id, procs):
         ("building a linked object", lambda: building_linked(run, nonce)),
         ("building: copying settings", lambda: building_copy(run, nonce)),
         ("building: locked, repeats per metre, flip and the Features rows", lambda: building_rows(run, nonce)),
+        ("building what she wears", lambda: building_worn(run, nonce)),
         ("going by name, and blocking by name", lambda: going_and_blocking(run, nonce)),
         ("uploads", lambda: uploads(run, nonce)),
         ("About Land, her own parcel", lambda: about_land(run, nonce, tester_id)),
@@ -9700,6 +9701,217 @@ def building_rows(run, nonce):
         run.expect("(no light)", ["Light: off"], m, 12)
     finally:
         build_leftovers()
+
+
+WORN_SCRIPT = 'default { state_entry() { llSay(0, "Access worn ready"); } }\n'
+
+
+def building_worn(run, nonce):
+    """The build editor on what she wears, as the official viewer edits an attachment or a HUD (the blind tester's ask,
+    2026-11-16: her partner edits what's inside his worn HUD as in something rezzed; she had to rez hers). A HUD of two
+    prims with a script, worn: Objects' menu on it in what she wears has Edit (build) and Contents; arriving says where
+    it's worn; the Object tab's position is from there, without physical, temporary or phantom; what's only for things
+    out in the world is said plainly (physical, take, delete, duplicate, link, move by words, turn without an axis) and
+    it stays worn; its position from where it's worn set and the region's offset showing it, a turn round its X, each
+    undone; its Contents: the script opened from it and a change saved through her confirmation (the visitor hears the
+    saved one start), a notecard pasted in by Control+V; Control+B on its button in its parts list edits that part, a
+    face picked as it faces on the screen and coloured. A box worn on her chest: its position from Chest set and shown,
+    its faces by number."""
+    hud, pin, card, scr = f"Access Worn {nonce}", f"Access Pin {nonce}", f"Worn Card {nonce}", f"Access Worn Script {nonce}"
+    point = "HUD Bottom Left"
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+    notes = api("LLInventory", "getBasicFolderID", ft_name="notecard")["id"]
+    scripts = api("LLInventory", "getBasicFolderID", ft_name="lsltext")["id"]
+    near_visitor()
+    x, y, z, _ = tester_where()
+    items = {}
+
+    def worn_id(item):
+        return next((a.get("id") for a in api("LLAgent", "getAttachedObjectsList").get("result", []) if a.get("item_id") == item), None)
+
+    def worn_get(oid):   # the region's: attach_offset and attach_rot, from its attachment point
+        got = api("TesselObjects", "get", ids=[oid], fresh=True).get("objects") or []
+        return got[0] if got else {}
+
+    def turned(a, b):   # degrees between two rotations
+        return math.degrees(2 * math.acos(min(1.0, abs(sum(p * q for p, q in zip(a, b))))))
+
+    def in_what_she_wears(name):
+        key("alt+shift+7")
+        wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+        object_row(name)
+        return select_in("id=objects", name)
+
+    def wear(name, point_, *prims):
+        if len(prims) > 1:
+            api("TesselBuild", "link", 20, ids=list(prims))
+        api("TesselBuild", "take", 30, ids=[prims[0]], folder_id=root)
+        item = wait(lambda: inv_items(root).get(name), 10)
+        if not run.check(f"({name} in the inventory)", item, ""):
+            return None
+        items[name] = item
+        api("TesselAgent", "attach", 30, item_id=item, point=point_)
+        oid = wait(lambda: worn_id(item), 10)
+        run.check(f"(and worn on {point_})", oid, "")
+        return oid
+
+    try:
+        api("TesselInventory", "createNotecard", name=card, text="worn card", folder_id=notes)
+        base = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y, z], scale=[0.05, 0.2, 0.2], name=hud)["id"]
+        knob = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y, z + 0.15], scale=[0.05, 0.08, 0.08], name="Knob")["id"]
+        script = api("TesselInventory", "createScript", 60, name=scr, text=WORN_SCRIPT)
+        items[scr] = script["item_id"]
+        if not gated(run, "its script put in", "TesselBuild", "addToContents", id=base, item_id=script["item_id"]):
+            return
+        hud_id = wear(hud, point, base, knob)
+        pin_box = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y + 0.6, z], scale=[0.1, 0.1, 0.1], name=pin)["id"]
+        pin_id = wear(pin, "Chest", pin_box)
+        if not hud_id or not pin_id:
+            return
+        # Objects' menu on it, in what she wears: Edit (build) and Contents, as for something rezzed
+        if not run.check("(the HUD selected in what she wears)", in_what_she_wears(hud), selected_text("id=objects")):
+            return
+        key("apps")
+        names = menu_names()
+        run.check("Objects' menu on something she wears has Edit (build) and Contents",
+                  any(n.startswith("Edit (build)") for n in names) and any(n.startswith("Contents") for n in names), "; ".join(names))
+        m = mark()
+        key("e")
+        run.check("Edit (build): the editor, the focus in its command box", wait_focus(lambda d: d["id"] == "buildCommand", 6), focus_label())
+        run.expect("arriving says it's worn and where, and that its position is from there",
+                   [f"Editing all 2 parts of {hud}, worn on {point}", "metres overall", "from where it's worn"], m, 12)
+        m = mark()
+        build_cmd("object")
+        got = run.expect("the Object tab: where it's worn, its position from there",
+                         ["Where: worn on " + point, f"Position Z, up, from {point}"], m, 10)
+        run.check("and no physical, temporary or phantom", got and "Physical" not in got["text"] and "Phantom" not in got["text"], got["text"] if got else "")
+        for cmd, words, what in (("physical on", "don't apply to something worn", "physical"),
+                                 ("take", "in your inventory already", "take"),
+                                 ("delete", "isn't deleted from here", "delete"),
+                                 ("duplicate", "can't be duplicated", "duplicate"),
+                                 ("link", "can't be linked", "link"),
+                                 ("move a metre to my left", "isn't moved around you", "move by words"),
+                                 ("turn 90", "X, Y or Z of where it's worn", "turn without an axis")):
+            m = mark()
+            build_cmd(cmd)
+            run.expect(f"{what} on something worn: said plainly", [words], m, 6)
+        run.check("(still worn, and no confirmation asked)", attached(items[hud]) and (focused() or {}).get("id") == "buildCommand", focus_label())
+        m = mark()
+        build_cmd(f"description worn {nonce}")
+        run.expect("General's rows as for anything: its description, said back once the region has it", [f"Description: worn {nonce}"], m, 12)
+        # its position from where it's worn: the region's offset shows it, and undo puts it back
+        was = worn_get(hud_id)
+        m = mark()
+        build_cmd("position z 0.12")
+        run.expect("position z 0.12: said back from where it's worn", [f"Position Z, up, from {point}: 0.12 metres"], m, 12)
+        now = wait(lambda: (lambda o: o if o.get("attach_offset") and abs(o["attach_offset"][2] - 0.12) < 0.005 else None)(worn_get(hud_id)), 5)
+        run.check("the region's offset from the attachment point is 0.12 up, the rest as it was",
+                  now and close(now["attach_offset"][:2], was["attach_offset"][:2], 0.005), json.dumps([was.get("attach_offset"), now and now.get("attach_offset")]))
+        m = mark()
+        build_cmd("undo")
+        run.expect("undo", ["Undone"], m, 15)
+        back = wait(lambda: (lambda o: o if close(o.get("attach_offset") or [9, 9, 9], was["attach_offset"], 0.005) else None)(worn_get(hud_id)), 5)
+        run.check("and the offset is back", back, json.dumps(worn_get(hud_id).get("attach_offset")))
+        m = mark()
+        build_cmd("turn 90 around x")
+        run.expect("turn 90 around x: its rotation said from where it's worn", [f"Rotation from {point}:", "90"], m, 12)
+        rot = wait(lambda: (lambda o: o if abs(turned(o["attach_rot"], was["attach_rot"]) - 90) < 2 else None)(worn_get(hud_id)), 5)
+        run.check("the region has it turned 90 degrees where it's worn", rot, json.dumps([was.get("attach_rot"), worn_get(hud_id).get("attach_rot")]))
+        m = mark()
+        build_cmd("undo")
+        run.expect("(undone)", ["Undone"], m, 15)
+        run.check("(the turn back)", wait(lambda: turned(worn_get(hud_id)["attach_rot"], was["attach_rot"]) < 2 or None, 5), json.dumps(worn_get(hud_id).get("attach_rot")))
+        # its script, opened from it and saved
+        m = mark()
+        build_cmd("content")
+        run.expect("content: what's inside it", ["Content of", scr], m, 10)
+        key("tab")
+        wait_focus(lambda d: d["id"] == "buildRows" or d["type"] == "ListItem", 4)
+        if run.check("(its script selected in the list)", select_in("id=buildRows", scr), selected_text("id=buildRows")):
+            key("enter")
+            d = wait_focus(lambda d: d["id"] == "editorText", 20)
+            text = value_of("id=editorText") if d else ""
+            if run.check("Enter opens the script from what she wears", "Access worn ready" in text, text[:80] or focus_label()):
+                u(f'set id=editorText | default {{ state_entry() {{ llSay(0, "Access worn saved {nonce}"); }} }}')
+                n = visitor_n()
+                m = mark()
+                key("ctrl+s")
+                confirm_in_notices(run, "Replace", m)
+                run.expect("saved and compiled, in the HUD she wears", ["Saved and compiled."], m, 25)
+                run.heard_by_visitor("(the saved script starting, heard by the visitor)", lambda dd: f"Access worn saved {nonce}" in dd["msg"], n, 15, "saved")
+                wait_focus(lambda d: d["id"] == "editorText", 10)
+                key("esc")
+                wait(lambda: not find("id=editor"), 6)
+                run.check("(closed, back in its contents)", wait_focus(lambda d: d["id"] == "buildRows" or d["type"] == "ListItem", 6), focus_label())
+        # a notecard pasted in, from Contents on it in what she wears
+        key("alt+4")
+        wait_focus(lambda d: d["id"] == "inventory", 4)
+        if run.check("(the notecard found)", inv_search(card, card), selection("id=inventory")):
+            m = mark()
+            key("ctrl+c")
+            run.expect("(Control+C copies it)", [f"Copied {card}"], m, 4)
+            if in_what_she_wears(hud):
+                key("apps")
+                wait(lambda: find("type=MenuItem;name~=Contents"), 4)
+                key("n")
+                inside = wait_focus(lambda d: d["id"] == "buildRows" or d["type"] == "ListItem", 8)
+                run.check("Contents: its list, named as worn", inside and any(e["name"].endswith(f"worn on {point}") for e in find("id=buildRows")),
+                          "; ".join(e["name"] for e in find("id=buildRows")))
+                m = mark()
+                key("ctrl+v")
+                run.expect("Control+V puts the notecard inside what she wears", [f"Put {card} inside"], m, 15)
+                run.check("and it's inside", wait(lambda: card in [i.get("name") for i in api("TesselBuild", "contents", 20, id=hud_id).get("items", [])], 8), "")
+        inv_search_off()
+        # its button, from its parts list: that part alone, a face as it faces on the screen
+        if in_what_she_wears(hud):
+            key("tab")
+            wait_focus(lambda d: d["id"] == "parts" or d["type"] == "ListItem", 4)
+            if run.check("(its button selected in its parts)", select_in("id=parts", "Knob, part 2"), selected_text("id=parts")):
+                m = mark()
+                key("ctrl+b")
+                run.expect("Control+B on its button: that part, where it's worn", ["Editing Knob, part 2 of", "this part only", f"worn on {point}"], m, 12)
+                m = mark()
+                build_cmd("face front")
+                run.expect("face front: as it faces on the screen", ["Face: the front, face"], m, 6)
+                m = mark()
+                build_cmd("colour red")
+                run.expect("colour red on that face, said back", ["Colour: red (255, 0, 0)"], m, 12)
+        # a box on her chest: its position from Chest, its faces by number
+        if run.check("(the box on her chest selected)", in_what_she_wears(pin), selected_text("id=objects")):
+            m = mark()
+            key("ctrl+b")
+            run.expect("Control+B on it: worn on Chest", [f"Editing {pin}, worn on Chest"], m, 12)
+            faces = [d["name"] for d in find("type=ListItem")]   # (the window's: the settings list's and the faces list's)
+            run.check("its faces by number, said so", any(n.startswith("All sides (6 faces); on something worn on the body") for n in faces) and "Face 0" in faces,
+                      " | ".join(faces[:10]))
+            m = mark()
+            build_cmd("face top")
+            run.expect("face top: said to go by number there", ["faces go by number"], m, 6)
+            m = mark()
+            build_cmd("position 0 0 0.1")
+            run.expect("position 0 0 0.1: from Chest, said back", ["Position from Chest: 0, 0, 0.1 metres"], m, 12)
+            off = wait(lambda: (lambda o: o if close(o.get("attach_offset") or [9, 9, 9], [0, 0, 0.1], 0.005) else None)(worn_get(pin_id)), 5)
+            run.check("the region's offset from Chest is 0, 0, 0.1", off, json.dumps(worn_get(pin_id).get("attach_offset")))
+            # the agent API's pos on something worn is the region's, as TesselObjects reports it: turned through her into
+            # the offset (it was sent as the offset itself, which would have flung it off her)
+            if off:
+                p = off["pos"]
+                api("TesselBuild", "modify", id=pin_id, pos=[p[0], p[1], p[2] + 0.05])
+                up = wait(lambda: (lambda o: o if close(o.get("attach_offset") or [9, 9, 9], [0, 0, 0.15], 0.01) else None)(worn_get(pin_id)), 5)
+                run.check("the agent API's pos 5 cm higher: the offset from Chest 5 cm higher", up, json.dumps(worn_get(pin_id).get("attach_offset")))
+    finally:
+        back_to_chat()
+        try:
+            key("alt+7")   # (Show back to things nearby, for the steps after)
+        except Exception:
+            pass
+        for name in (hud, pin):
+            if name in items and attached(items[name]):
+                api("TesselAgent", "detach", 30, item_id=items[name])
+        time.sleep(1)
+        left = [i for f in (root, notes, scripts) for n, i in inv_items(f).items() if n in (hud, pin, card, scr)]
+        if left:
+            gated(run, "the step's things deleted", "TesselInventory", "delete", 30, ids=left, purge=True)
 
 
 def tp_beside(run, line, what):

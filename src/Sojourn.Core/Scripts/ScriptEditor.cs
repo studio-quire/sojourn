@@ -319,15 +319,14 @@ public sealed class ScriptEditor
         if (item.AssetType == AssetType.Notecard)
         {
             // read first, so what's embedded stays; if the card can't be read nothing is saved, rather than risk losing it
-            var was = await c.Assets.RequestInventoryAssetAsync(_savedAsset.TryGetValue(itemId, out var had) ? had : item.AssetUUID, item.UUID, prim.ID, item.OwnerID, item.AssetType, true, UUID.Random(), ct)
-                      ?? throw new RpcFail(-32001, "Timeout: the notecard couldn't be read, and saving over it unread could lose what's embedded in it");
+            var was = await TaskTextAsync(prim, item, "Timeout: the notecard couldn't be read, and saving over it unread could lose what's embedded in it", ct);
             // sojourn: remove (embedded item ids) and add ([{item_id, marker}], from my inventory), as writeNotecard has them
             List<(InventoryItem Item, string Marker)> add;
             try { add = await _s.InventoryOps.EmbeddingAsync(p, itemId, ct); }
             catch (Leap.LeapError e) { throw new RpcFail(-32602, $"Invalid params: {e.Message}"); }
             byte[] bytes;
             List<string> moved, removed;
-            try { bytes = NotecardFile.Parse(was.AssetData).Saved(content, p.UuidList("remove"), add, out moved, out removed); }
+            try { bytes = NotecardFile.Parse(was).Saved(content, p.UuidList("remove"), add, out moved, out removed); }
             catch (InvalidOperationException e) { throw new RpcFail(-32603, e.Message); }
             await SaveNotecardAsync(prim, itemId, bytes, ct);
             var saved = new JsonObject { ["success"] = true, ["prim_id"] = primId.ToString(), ["item_id"] = itemId.ToString() };
@@ -459,11 +458,21 @@ public sealed class ScriptEditor
     /// <summary>A script's text as stored (needs copy and modify on it, as the viewer's editor and compile queue ask).</summary>
     internal async Task<string> ScriptTextAsync(Primitive prim, InventoryItem item, CancellationToken ct)
     {
-        var c = C;
+        return Encoding.UTF8.GetString(await TaskTextAsync(prim, item, "Timeout: asset fetch failed", ct)).TrimEnd('\0');
+    }
+
+    /// <summary>A notecard's or script's bytes from a prim's contents (the asset our last save made, if any), through
+    /// TextAssets' guard for an asset id Second Life keeps from her.</summary>
+    async Task<byte[]> TaskTextAsync(Primitive prim, InventoryItem item, string failed, CancellationToken ct)
+    {
+        _ = C;
         var assetId = _savedAsset.TryGetValue(item.UUID, out var saved) ? saved : item.AssetUUID;
-        var asset = await c.Assets.RequestInventoryAssetAsync(assetId, item.UUID, prim.ID, item.OwnerID, item.AssetType, true, UUID.Random(), ct)
-                    ?? throw new RpcFail(-32001, "Timeout: asset fetch failed");
-        return Encoding.UTF8.GetString(asset.AssetData ?? Array.Empty<byte>()).TrimEnd('\0');
+        var kind = item.AssetType == AssetType.LSLText ? "script" : item.AssetType == AssetType.Notecard ? "notecard" : "item";
+        var read = await TextAssets.FetchAsync(_s, item, assetId, prim.ID, item.OwnerID, item.AssetType, kind,
+            $" in {prim.Properties?.Name ?? "a part"}", ct);
+        if (!read.Arrived) throw new RpcFail(-32001, failed);
+        if (read.NotText) throw new RpcFail(-32603, $"Second Life sent something that isn't the {kind}'s text");
+        return read.Data!;
     }
 
     static OSDMap ParseMap(byte[]? data)
@@ -496,20 +505,18 @@ public sealed class ScriptEditor
         if ((item.Permissions.OwnerMask & (PermissionMask.Copy | PermissionMask.Modify)) != (PermissionMask.Copy | PermissionMask.Modify)
             && item.AssetType == AssetType.LSLText)
             throw new RpcFail(-32003, "Forbidden: Insufficient permissions");
-        // the region's listing can lag a save (OpenSim doesn't bump the inventory serial for it): prefer the asset we made
-        var assetId = _savedAsset.TryGetValue(itemId, out var saved) ? saved : item.AssetUUID;
-        var asset = await c.Assets.RequestInventoryAssetAsync(assetId, item.UUID, prim.ID, item.OwnerID, item.AssetType, true, UUID.Random(), ct)
-                    ?? throw new RpcFail(-32001, "Timeout: asset fetch failed");
+        // the region's listing can lag a save (OpenSim doesn't bump the inventory serial for it): the asset we made, if any
+        var data = await TaskTextAsync(prim, item, "Timeout: asset fetch failed", ct);
         var result = new JsonObject { ["success"] = true, ["prim_id"] = primId.ToString(), ["item_id"] = itemId.ToString() };
         if (item.AssetType == AssetType.Notecard)
         {
             // sojourn: what the card holds, as readNotecard lists it
-            var file = NotecardFile.Parse(asset.AssetData);
+            var file = NotecardFile.Parse(data);
             result["content"] = file.Readable;
             if (file.Items.Count > 0) result["embedded"] = InventoryOps.EmbeddedJson(file);
             return result;
         }
-        result["content"] = Encoding.UTF8.GetString(asset.AssetData ?? Array.Empty<byte>()).TrimEnd('\0');
+        result["content"] = Encoding.UTF8.GetString(data).TrimEnd('\0');
         if (item.AssetType == AssetType.LSLText)
         {
             // sojourn: the two boxes of the viewer's script window, Running and Mono (a Lua script is Lua whatever)
@@ -530,10 +537,7 @@ public sealed class ScriptEditor
         var item = (await TaskInventoryAsync(prim, ct)).OfType<InventoryItem>().FirstOrDefault(i => i.UUID == itemId)
                    ?? throw new RpcFail(-32602, "no such item in that object");
         if (item.AssetType != AssetType.Notecard) throw new RpcFail(-32602, $"{item.Name} isn't a notecard");
-        var assetId = _savedAsset.TryGetValue(itemId, out var saved) ? saved : item.AssetUUID;
-        var asset = await c.Assets.RequestInventoryAssetAsync(assetId, item.UUID, prim.ID, item.OwnerID, item.AssetType, true, UUID.Random(), ct)
-                    ?? throw new RpcFail(-32001, "the notecard's text didn't arrive");
-        return (item, NotecardFile.Parse(asset.AssetData));
+        return (item, NotecardFile.Parse(await TaskTextAsync(prim, item, "the notecard's text didn't arrive", ct)));
     }
 
     /// <summary>Diagnostics: a prim's contents as the region lists them (ids, asset ids, masks).</summary>

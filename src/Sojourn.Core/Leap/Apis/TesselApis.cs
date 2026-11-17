@@ -459,7 +459,8 @@ public sealed class TesselBuild : SessionApi
     public TesselBuild(AgentSession s) : base(s)
     {
         Op("create", "{shape=box, pos?, scale=[.5,.5,.5], rot?|rot_euler?, ...modify keys} -> {id, local_id}", (a, ct) => Wrap(S.Build.CreateAsync(a, ct)));
-        Op("modify", "{id | ids, ...keys}: the keys create takes (an unknown key is refused); needs modify rights. Materials (on face or all): "
+        Op("modify", "{id | ids, ...keys}: the keys create takes (an unknown key is refused); needs modify rights. local_pos, local_rot (or "
+            + "local_rot_euler): a child's from its root, a worn object's root from its attachment point (its pos and rot are the region's, through its wearer). Materials (on face or all): "
             + "pbr (a material item, {material?, base_color?, metallic?, roughness?, emissive?, alpha_mode?, alpha_cutoff?, double_sided?, "
             + "base_color_texture?, normal_texture?, metallic_roughness_texture?, emissive_texture?, repeats?, offset?, rotation?, reset?} or false), "
             + "normal {texture, repeats?, offset?, rotation?} or false, specular {texture, color?, glossiness? 0-255, environment? 0-255, repeats?, "

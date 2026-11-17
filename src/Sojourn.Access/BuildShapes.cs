@@ -62,8 +62,9 @@ public static class BuildShapes
     }
 
     /// <summary>A face by the prim's own axes, the 2009 design's naming ("plusx", "minus z", "+y"), or by the compass
-    /// ("north", "the east side"): the outside face whose mean normal points most that way.</summary>
-    public static FaceShape? ByAxis(IReadOnlyList<FaceShape> faces, string words, Quaternion rot)
+    /// ("north", "the east side"; not for something worn, whose frame isn't the region's): the outside face whose mean
+    /// normal points most that way.</summary>
+    public static FaceShape? ByAxis(IReadOnlyList<FaceShape> faces, string words, Quaternion rot, bool compass = true)
     {
         var w = words.Trim().ToLowerInvariant().Replace(" ", "").Replace("side", "").Replace("the", "");
         Vector3? local = w switch
@@ -73,7 +74,7 @@ public static class BuildShapes
             "plusz" or "+z" or "posz" => Vector3.UnitZ, "minusz" or "-z" or "negz" => -Vector3.UnitZ,
             _ => null,
         };
-        Vector3? world = local is { } l ? Vector3.Transform(l, rot) : w switch
+        Vector3? world = local is { } l ? Vector3.Transform(l, rot) : !compass ? null : w switch
         {
             "north" or "n" => Vector3.UnitY, "south" or "s" => -Vector3.UnitY, "east" or "e" => Vector3.UnitX, "west" or "w" => -Vector3.UnitX,
             _ => null,

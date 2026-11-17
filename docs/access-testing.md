@@ -427,6 +427,14 @@ docstring with its checks in full):
 - **building a linked object**, **building: copying settings**, **building: locked, repeats per metre, flip and the Features
   rows** (`ACCESS_STEPS=building` runs them with the first; each checks the region as well as what's said) and **going by name,
   and blocking by name** (`//go` by a number, xyz, person, object and a name alone; `//block`, `//blocks`, `//unblock`).
+- **building what she wears** (about a minute, no renderer needed; with `building`): a two-prim HUD with a script worn at HUD
+  Bottom Left and a box on her chest. Objects' menu in what she wears has Edit (build) and Contents; arriving says where it's
+  worn; the Object tab's position from there and no physical, temporary or phantom; physical, take, delete, duplicate, link,
+  move by words and turn without an axis said plainly, still worn; its description; position z 0.12 and turn 90 around x each
+  said, read back from the region's `attach_offset` and `attach_rot`, and undone; its script opened from Content and saved
+  through the confirmation (the visitor hears it start); a notecard pasted in from its Contents; Control+B on its button in
+  its parts, `face front` as on the screen, colour red; on the chest box, faces by number, `position 0 0 0.1` from Chest, and
+  the agent API's region `pos` 5 cm higher landing as the offset 5 cm higher.
 - **building with her own hands** (about 2 minutes; the faces need no renderer, so it runs the same with
   `ACCESS_NO_RENDER=1`): Control+B's editor and its controls named; by typed commands, a box made 2 metres ahead with
   its underside on the ground, named, sized, hollowed and coloured, each said back once the region shows it; `face top`

@@ -167,8 +167,9 @@ public sealed partial class MainForm
 
     // --- coming and going -------------------------------------------------------------------------------------------
 
-    /// <summary>Control+B: the editor, on what's chosen where the focus is (an object, a part, a face), else what was
-    /// edited last; the focus in its command box.</summary>
+    /// <summary>Control+B: the editor, on what's chosen where the focus is (an object, a part, a face; out in the world or
+    /// worn by her, a HUD too, as the official viewer edits either), else what was edited last; the focus in its command
+    /// box. Someone else's worn things aren't hers to edit.</summary>
     void GoBuild()
     {
         if (!_buildPage.ContainsFocus)
@@ -177,9 +178,10 @@ public sealed partial class MainForm
             _beforeBuildPage = _areas.SelectedTab;
         }
         (UUID Id, int? Face, bool OnePart)? picked = null;
-        if (_objects.Focused && _objects.FocusedItem?.Tag is PersonOps.Thing { Hud: false } t && t.WornBy == UUID.Zero) picked = (t.Id, null, false);
-        else if (_parts.Focused && _parts.FocusedItem?.Tag is Linkset.Part { Hud: false } p) picked = (p.Id, null, true);
+        if (_objects.Focused && _objects.FocusedItem?.Tag is PersonOps.Thing t && t.WornBy == UUID.Zero) picked = (t.Id, null, false);
+        else if (_parts.Focused && _parts.FocusedItem?.Tag is Linkset.Part p && (!p.Hud || WornByMe(p.Root))) picked = (p.Id, null, true);
         else if (_faces.Focused && _faces.FocusedItem?.Tag is FaceItem { Part.Hud: false } f) picked = (f.Part.Id, f.Face.Face, true);
+        else if (_faces.Focused && _faces.FocusedItem?.Tag is HudFaceItem hf && WornByMe(hf.Part.Root)) picked = (hf.Part.Id, hf.Face, true);
         bool fresh = picked is { } pk && (pk.Id != _buildId || pk.OnePart != _buildOnePart);
         if (picked is { } pick) SetBuildTarget(pick.Id, pick.Face, pick.OnePart);
         GoArea(_buildPage);
@@ -261,8 +263,15 @@ public sealed partial class MainForm
     {
         if (Host?.Session is not { } s || s.Region is not { } w) return;
         var missing = BuildLinkset().Where(x => x.Properties == null).ToList();
-        if (missing.Count > 0)
-            try { await s.Objects.FetchAsync(w, missing, TimeSpan.FromSeconds(3), CancellationToken.None); } catch (Exception) { /* said as not known yet */ }
+        if (missing.Count == 0) return;
+        // (a worn object's names come by selecting it, as the edit tool's and the parts list's do)
+        bool worn = s.Objects.IsAttachment(w, missing[0], out _, out _);
+        try
+        {
+            if (worn) await s.Objects.FetchFullAsync(w, missing, TimeSpan.FromSeconds(3), CancellationToken.None);
+            else await s.Objects.FetchAsync(w, missing, TimeSpan.FromSeconds(3), CancellationToken.None);
+        }
+        catch (Exception) { /* said as not known yet */ }
     }
 
     // --- what's being edited ----------------------------------------------------------------------------------------
@@ -276,27 +285,52 @@ public sealed partial class MainForm
         var root = s.Objects.RootOf(w, p);
         var ordered = BuildLinkset();
         int number = Math.Max(1, ordered.FindIndex(x => x.LocalID == p.LocalID) + 1);
-        var pos = w.RegionPosition(p);
-        var rot = w.RegionRotation(p);
-        var shapes = BuildFaceShapes(p, pos, rot);
+        var worn = WornPoint(root);
+        var (pos, rot) = worn != null ? FromPoint(p, root) : (w.RegionPosition(p), w.RegionRotation(p));
+        var shapes = BuildFaceShapes(p, pos, rot, worn != null);
         int count = shapes?.Count ?? Math.Max(1, s.Materials.FaceCount(p));
-        var eye = Eye();
         string FaceName(int i) => shapes?.FirstOrDefault(f => f.Face == i) is { Area: > 0 } fs
-            ? LowerFirst(Linkset.FaceWords(fs, eye)) : $"face {i}";
+            ? LowerFirst(FaceWordsFor(fs, worn)) : $"face {i}";
         string rootName = root.Properties?.Name is { Length: > 0 } rn ? rn : "the object";
         string own = p.Properties?.Name ?? "";
         string name = number == 1 ? (own.Length > 0 ? own : "the object")
             : Linkset.Unnamed(own, rootName) ? $"part {number} of {rootName}" : $"{own}, part {number} of {rootName}";
         string NameOf(UUID id) => s.Names.Complete(id, "someone not known yet");
         string GroupOf(UUID id) => s.State.Groups.TryGetValue(id, out var g) ? g.Name : "a group you're not in";
-        var look = new PrimLook(p, s.State.PrimFlagsOf(p), number == 1, number, ordered.Count, name, rootName, pos, rot, count, FaceName, NameOf, GroupOf, TextureName) { Where = _buildWhere, RootPrim = root };
+        var look = new PrimLook(p, s.State.PrimFlagsOf(p), number == 1, number, ordered.Count, name, rootName, pos, rot, count, FaceName, NameOf, GroupOf, TextureName)
+            { Where = _buildWhere, RootPrim = root, WornOn = worn?.Point, OnHud = worn?.Hud == true };
         if (_buildOnePart || number != 1 || ordered.Count == 1) return look;
         // all of it: each part read in its own right, by number where faces are concerned
-        var parts = ordered.Select((x, i) => i == 0 ? look : new PrimLook(x, s.State.PrimFlagsOf(x), false, i + 1, ordered.Count,
-            Linkset.Unnamed(x.Properties?.Name ?? "", rootName) ? $"part {i + 1} of {rootName}" : $"{x.Properties!.Name}, part {i + 1} of {rootName}",
-            rootName, w.RegionPosition(x), w.RegionRotation(x), PartFaceCount(x), f => $"face {f}", NameOf, GroupOf, TextureName) { RootPrim = root }).ToList();
+        var parts = ordered.Select((x, i) =>
+        {
+            if (i == 0) return look;
+            var (xp, xr) = worn != null ? FromPoint(x, root) : (w.RegionPosition(x), w.RegionRotation(x));
+            return new PrimLook(x, s.State.PrimFlagsOf(x), false, i + 1, ordered.Count,
+                Linkset.Unnamed(x.Properties?.Name ?? "", rootName) ? $"part {i + 1} of {rootName}" : $"{x.Properties!.Name}, part {i + 1} of {rootName}",
+                rootName, xp, xr, PartFaceCount(x), f => $"face {f}", NameOf, GroupOf, TextureName) { RootPrim = root, WornOn = worn?.Point, OnHud = worn?.Hud == true };
+        }).ToList();
         return look with { Name = $"all {ordered.Count} parts of {rootName}", Parts = parts, Overall = OverallOf(parts) };
     }
+
+    /// <summary>Where an object of hers is worn: its attachment point's name and whether it's a HUD's; null when it's out
+    /// in the world.</summary>
+    (string Point, bool Hud)? WornPoint(Primitive root) =>
+        Host?.Session is { Region: { } w } s && s.Objects.IsAttachment(w, root, out _, out _)
+            ? (Sojourn.Core.Agents.ObjectViews.AttachPointName((int)root.PrimData.AttachmentPoint), (int)root.PrimData.AttachmentPoint is >= 31 and <= 38)
+            : null;
+
+    /// <summary>A worn prim's place from where it's worn, as the official editor shows an attachment's (the viewer's
+    /// getPositionEdit and getRotationEdit): the root's own offset from its attachment point, a part's through its root.</summary>
+    static (LibreMetaverse.Vector3 Pos, LibreMetaverse.Quaternion Rot) FromPoint(Primitive p, Primitive root) =>
+        p.LocalID == root.LocalID ? (root.Position, root.Rotation) : (root.Position + p.Position * root.Rotation, p.Rotation * root.Rotation);
+
+    /// <summary>Whether what's being edited is something she wears.</summary>
+    bool EditingWorn => BuildPrim() is { } p && Host?.Session is { Region: { } w } s && WornPoint(s.Objects.RootOf(w, p)) != null;
+
+    /// <summary>A face in words: from where she is; on a HUD, as it faces on the screen; on something worn on the body, by
+    /// number (its directions there turn with her joints, which aren't known without the 3D view).</summary>
+    string FaceWordsFor(FaceShape f, (string Point, bool Hud)? worn) =>
+        worn is not { } on ? Linkset.FaceWords(f, Eye()) : on.Hud ? Linkset.HudFaceWords(f) : $"Face {f.Face}";
 
     int PartFaceCount(Primitive x)
     {
@@ -326,12 +360,13 @@ public sealed partial class MainForm
 
     /// <summary>The prim's faces by direction, from its own volume (no picture needed), or the renderer's for a mesh once
     /// it has drawn it; kept while the prim's shape, size and turn stay the same.</summary>
-    List<FaceShape>? BuildFaceShapes(Primitive p, LibreMetaverse.Vector3 pos, LibreMetaverse.Quaternion rot)
+    List<FaceShape>? BuildFaceShapes(Primitive p, LibreMetaverse.Vector3 pos, LibreMetaverse.Quaternion rot, bool worn = false)
     {
         var key = $"{pos}{rot}{ShapeKey(p)}";
         if (_buildShapesOf == p.ID && _buildShapesKey == key && _buildShapes != null) return _buildShapes;
         var shapes = BuildShapes.Faces(p, new(pos.X, pos.Y, pos.Z), new(rot.X, rot.Y, rot.Z, rot.W));
-        if (shapes == null && _view != null && !ViewWords.Gone(_view))
+        // (the renderer's are in the region's frame, not where it's worn: a worn mesh's faces go by number)
+        if (shapes == null && !worn && _view != null && !ViewWords.Gone(_view))
         {
             // a mesh: the renderer's faces, if it has drawn it (asked in the background; known next time)
             var id = p.ID;
@@ -395,12 +430,14 @@ public sealed partial class MainForm
         if (BuildLook() is not { } l) return "Nothing to edit: it isn't here any more.";
         var rights = l.Locked ? " It's locked: locked off frees it."
             : (l.Flags & PrimFlags.ObjectModify) != 0 ? "" : (l.Flags & PrimFlags.ObjectMove) != 0 ? " You may move it, not change it." : " It isn't yours to change.";
-        var where = l.Where ?? _ops.Where(l.Pos) ?? "here";
+        // something worn: where it's worn, after its name, as Objects' and Parts' lists word it ("Pet, on Left Shoulder")
+        var worn = l.WornOn is { } on ? $", worn on {on}" : "";
+        var where = l.Worn ? "" : $"; {l.Where ?? _ops.Where(l.Pos) ?? "here"}";
         if (l.Parts is { } parts)
         {
             int may = parts.Count(x => (x.Flags & PrimFlags.ObjectModify) != 0);
             if (rights.Length == 0 && may < parts.Count) rights = $" You may change {may} of them.";
-            return $"Editing {l.Name}: {BuildRows.N(l.Overall.X)} by {BuildRows.N(l.Overall.Y)} by {BuildRows.N(l.Overall.Z)} metres overall; {where}.{rights}{AllExplained()}";
+            return $"Editing {l.Name}{worn}: {BuildRows.N(l.Overall.X)} by {BuildRows.N(l.Overall.Y)} by {BuildRows.N(l.Overall.Z)} metres overall{where}.{rights}{AllExplained()}{WornExplained(l)}";
         }
         var size = $"{BuildRows.N(l.P.Scale.X)} by {BuildRows.N(l.P.Scale.Y)} by {BuildRows.N(l.P.Scale.Z)} metres";
         var scope = l.Count == 1 ? "" : l.IsRoot ? $", the root of {l.Count} parts, by itself (moving or turning it moves them all)" : ", this part only";
@@ -410,8 +447,32 @@ public sealed partial class MainForm
             _buildPartExplained = true;
             hint = " all parts edits all of it.";
         }
-        return $"Editing {l.Name}{scope}: {ShapeWords(l)} {size}; {where}.{rights}{hint}";
+        return $"Editing {l.Name}{scope}{worn}: {ShapeWords(l)} {size}{where}.{rights}{hint}{WornExplained(l)}";
     }
+
+    bool _buildWornExplained;
+
+    /// <summary>What's different about something worn, the first time it's edited.</summary>
+    string WornExplained(PrimLook l)
+    {
+        if (!l.Worn || _buildWornExplained) return "";
+        _buildWornExplained = true;
+        return $" Its position and rotation are from where it's worn, {l.WornOn}.";
+    }
+
+    /// <summary>A placement said back with where it is now: for something worn, its position says that already.</summary>
+    string WhereAfter(PrimLook l) => l.Worn || _buildWhere is not { } wh ? "" : $" {Cap(wh)}.";
+
+    /// <summary>What's only for things out in the world, said on something she wears (the official viewer has none of
+    /// these for an attachment).</summary>
+    static string WornOnly(PrimLook l, string what) => what switch
+    {
+        "move" => $"{Cap(l.RootName)} is worn, so it isn't moved around you: position 0 0 0.1 sets where it sits from {l.WornOn}, or position z 0.1 one of them.",
+        "delete" => $"{Cap(l.RootName)} is worn, so it isn't deleted from here: Take off, in what you wear (Alt+Shift+7), puts it back in your inventory.",
+        "take" => $"{Cap(l.RootName)} is worn, so it's in your inventory already: Take off, in what you wear (Alt+Shift+7), takes it off.",
+        "duplicate" => "Something worn can't be duplicated: rez a copy from your inventory and edit that.",
+        _ => "Something worn can't be linked or unlinked: take it off and rez it, and link it there.",
+    };
 
     /// <summary>What all parts means, the first time it's met.</summary>
     string AllExplained()
@@ -441,6 +502,8 @@ public sealed partial class MainForm
     async Task<string?> WhereWordsAsync()
     {
         if (Host?.Session is not { } s || s.Region is not { } w || BuildPrim() is not { } p) return null;
+        // something worn rests on and touches nothing: where it's worn is where it is
+        if (WornPoint(s.Objects.RootOf(w, p)) is { } worn) return $"worn on {worn.Point}";
         var pos = w.RegionPosition(p);
         // one prim, or all of a linked object: what's under its lowest part and against any of them, its own parts aside
         var prims = BuildLook() is { Whole: true } ? BuildLinkset() : new List<Primitive> { p };
@@ -544,7 +607,7 @@ public sealed partial class MainForm
         {
             var contents = await ContentsAsync();
             items = contents == null ? new() : contents.Select(c => (ContentWords(c), "item:" + c.Id, (object)c)).ToList();
-            _buildRows.AccessibleName = l.Whole ? $"Contents of the root of {l.RootName}" : $"Contents of {l.Name}";
+            _buildRows.AccessibleName = (l.Whole ? $"Contents of the root of {l.RootName}" : $"Contents of {l.Name}") + (l.WornOn is { } on ? $", worn on {on}" : "");
             bool mayChange = (Host!.Session.State.PrimFlagsOf(l.P) & PrimFlags.ObjectModify) != 0;
             RowsInto(_buildRows, items, contents == null ? "Its contents couldn't be read."
                 : mayChange ? "Nothing inside. add NAME puts an item from your inventory in."
@@ -586,12 +649,14 @@ public sealed partial class MainForm
         }
         var items = new List<(string Text, string Key, object Tag)> { ($"All sides ({(l.Faces == 1 ? "1 face" : $"{l.Faces} faces")})", "all", null!) };
         var shapes = _buildShapesOf == l.P.ID ? _buildShapes : null;
+        (string, bool)? worn = l.WornOn is { } on ? (on, l.OnHud) : null;
         for (int i = 0; i < l.Faces; i++)
         {
-            var words = shapes?.FirstOrDefault(f => f.Face == i) is { Area: > 0 } fs ? Linkset.FaceWords(fs, Eye()) : $"Face {i}";
+            var words = shapes?.FirstOrDefault(f => f.Face == i) is { Area: > 0 } fs ? FaceWordsFor(fs, worn) : $"Face {i}";
             items.Add((words, i.ToString(CultureInfo.InvariantCulture), i));
         }
-        if (shapes == null && l.Faces > 1) items[0] = (items[0].Text + "; their directions aren't known without the 3D view (a mesh), so by number", "all", null!);
+        if (l.Worn && !l.OnHud && l.Faces > 1) items[0] = (items[0].Text + "; on something worn on the body, faces go by number", "all", null!);
+        else if (shapes == null && l.Faces > 1) items[0] = (items[0].Text + "; their directions aren't known without the 3D view (a mesh), so by number", "all", null!);
         _buildFaces.AccessibleName = $"Faces of {l.Name}";
         Fill(_buildFaces, items, "No faces.");
         var want = _buildFace is { } bf ? bf.ToString(CultureInfo.InvariantCulture) : "all";
@@ -723,7 +788,7 @@ public sealed partial class MainForm
         await ShowBuildRowsAsync();
         if (key.StartsWith("size.") || key.StartsWith("rot.") || key == "type") await ShowBuildFacesAsync();
         Answer(after == null ? $"Sent; Second Life hasn't shown the change yet. F5 reads the settings again."
-            : $"{after}.{ScopeWords(l, key)}{(placed && _buildWhere is { } wh ? $" {Cap(wh)}." : "")}");
+            : $"{after}.{ScopeWords(l, key)}{(placed ? WhereAfter(l) : "")}");
     }
 
     /// <summary>Whether a change just said went to this part or all of it, where the setting's own words don't say.</summary>
@@ -744,7 +809,10 @@ public sealed partial class MainForm
     async Task<bool> ModifyAsync(List<JsonObject> sets)
     {
         foreach (var a in sets)
+        {
             if (!a.ContainsKey("id")) a["id"] = _buildId.ToString();
+            FromWhereWorn(a);
+        }
         bool gate = sets.Any(a => a.Select(kv => kv.Key).Any(Gated.Contains) || a["temp"] is JsonValue tv && tv.TryGetValue<bool>(out var temp) && temp);
         var (op, args) = sets.Count == 1 ? ("modify", sets[0]) : ("modifyEach", new JsonObject { ["edits"] = new JsonArray(sets.ToArray<JsonNode>()) });
         var r = gate ? await ConfirmedAsync("TesselBuild", op, args) : await _ops.DoAsync("TesselBuild", op, args);
@@ -755,6 +823,34 @@ public sealed partial class MainForm
             return false;
         }
         return true;
+    }
+
+    /// <summary>A worn prim's place as the editor reckons it (from where it's worn, BuildLook's frame) put as modify's
+    /// own keys for it: a root's offset from its attachment point, a part's from its root. Out in the world, left as it is.</summary>
+    void FromWhereWorn(JsonObject a)
+    {
+        if (Host?.Session is not { Region: { } w } s || !UUID.TryParse(a.Str("id"), out var id) || w.PrimById(id) is not { } p) return;
+        var root = s.Objects.RootOf(w, p);
+        if (WornPoint(root) == null) return;
+        bool isRoot = root.LocalID == p.LocalID;
+        if (a.Nums("pos") is { Length: 3 } pa)
+        {
+            var v = new LibreMetaverse.Vector3((float)pa[0], (float)pa[1], (float)pa[2]);
+            if (!isRoot) v = (v - root.Position) * LibreMetaverse.Quaternion.Conjugate(root.Rotation);
+            a.Remove("pos");
+            a["local_pos"] = Xyz(v.X, v.Y, v.Z);
+        }
+        LibreMetaverse.Quaternion? q = null;
+        if (a.Nums("rot") is { Length: 4 } ra) q = new LibreMetaverse.Quaternion((float)ra[0], (float)ra[1], (float)ra[2], (float)ra[3]);
+        else if (a.Nums("rot_euler") is { Length: 3 } ea)   // (degrees, as BuildOps reads them)
+            q = LibreMetaverse.Quaternion.CreateFromEulers((float)(ea[0] * Math.PI / 180), (float)(ea[1] * Math.PI / 180), (float)(ea[2] * Math.PI / 180));
+        if (q is { } rq)
+        {
+            var local = LibreMetaverse.Quaternion.Normalize(isRoot ? rq : rq * LibreMetaverse.Quaternion.Conjugate(root.Rotation));
+            a.Remove("rot");
+            a.Remove("rot_euler");
+            a["local_rot"] = new JsonArray((double)local.X, (double)local.Y, (double)local.Z, (double)local.W);
+        }
     }
 
     /// <summary>The op's words are the assistant's ("I don't have modify rights"): said as the person's.</summary>
@@ -812,6 +908,7 @@ public sealed partial class MainForm
         Locked: lock, or locked on, keeps it from being moved or changed by a slip. unlock, or locked off, frees it
         Copying settings: copy from wall takes everything but its name and place, from an object or part of yours. copy colour from part 2. Any of shape, size, rotation, material, colour, texture, features
         In content: add NAME, remove NAME, copy NAME
+        Something you wear (Control+B on it in what you wear, Alt+Shift+7): position 0 0 0.1 and rotation are from where it's worn; turn 90 around z turns it there
         export: save what you're editing, all of it, to a file (export as dae, or xml): only what you made yourself. import: rebuild one from a file, 2 metres ahead
         undo, redo. done, or Escape, goes back
         """;
@@ -883,6 +980,10 @@ public sealed partial class MainForm
         if (BuildLook() is not { } l) { Answer(NothingToEdit); return; }
         switch (verb)
         {
+            // (none of these for something worn, as the official viewer has none for an attachment)
+            case "delete" or "take" or "duplicate" or "link" or "unlink" or "move" or "put" or "place" when l.Worn:
+                Answer(WornOnly(l, verb is "put" or "place" ? "move" : verb));
+                return;
             case "what" or "status" or "summary": await BuildWhereAsync(); Answer(BuildSummary()); return;
             case "where" or "touching" when rest.Length == 0:
                 await BuildWhereAsync();
@@ -951,6 +1052,7 @@ public sealed partial class MainForm
         }
         if (m.Value.Length == 0)
         {
+            if (BuildRows.NotWorn(l, m.Key) is { } notWorn) { Answer(notWorn); return; }
             if (l.Whole && BuildRows.OnesOwn(m.Key)) { Answer(BuildRows.OwnWords(l, m.Key)); return; }
             var face = BuildRows.TabOf(m.Key) == "Texture" ? _buildFace : null;
             if (m.Key == "where") await BuildWhereAsync();
@@ -970,8 +1072,10 @@ public sealed partial class MainForm
         {
             var c = await ContentsAsync();
             await ShowBuildRowsAsync();
-            Answer(c == null ? "Its contents couldn't be read." : c.Count == 0 ? $"Content: nothing inside {l.Name}."
-                : $"Content of {l.Name}, {c.Count} items: {string.Join("; ", c.Select(ContentWords))}.");
+            // (a linked object's are its root's, as the list's name says)
+            var of = l.Whole ? $"the root of {l.RootName}" : l.Name;
+            Answer(c == null ? "Its contents couldn't be read." : c.Count == 0 ? $"Content: nothing inside {of}."
+                : $"Content of {of}, {(c.Count == 1 ? "1 item" : $"{c.Count} items")}: {string.Join("; ", c.Select(ContentWords))}.");
             return;
         }
         await ShowBuildRowsAsync();
@@ -1003,10 +1107,14 @@ public sealed partial class MainForm
             if (int.TryParse(w.Replace("face ", ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n))
                 hit = n >= 0 && n < l.Faces ? n : null;
             else if (shapes != null)
-                hit = (BuildShapes.ByAxis(shapes, w, new(l.Rot.X, l.Rot.Y, l.Rot.Z, l.Rot.W)) ?? Linkset.FindFace(shapes, w, Eye()))?.Face;
+                // (something worn: by its own axes, a HUD's as on the screen; the compass and where she stands say nothing there)
+                hit = (BuildShapes.ByAxis(shapes, w, new(l.Rot.X, l.Rot.Y, l.Rot.Z, l.Rot.W), compass: !l.Worn)
+                       ?? (!l.Worn ? Linkset.FindFace(shapes, w, Eye()) : l.OnHud ? Linkset.FindHudFace(shapes, w) : null))?.Face;
             if (hit is not { } face)
             {
                 Answer(shapes == null && !int.TryParse(w, out _) ? $"Its faces' directions aren't known (a mesh, without the 3D view): a number from 0 to {l.Faces - 1}."
+                    : l.OnHud ? $"No face {words.Trim()}: front, back, top, bottom, left, right, inside, plusx, or a number from 0 to {l.Faces - 1}."
+                    : l.Worn ? $"On something worn on the body, faces go by number, from 0 to {l.Faces - 1}, or by its own axes: plusx, minusz."
                     : $"No face {words.Trim()}: top, bottom, front, far, left, right, inside, north, plusx, or a number from 0 to {l.Faces - 1}.");
                 return;
             }
@@ -1020,7 +1128,11 @@ public sealed partial class MainForm
     async Task SetVectorAsync(string key, double[] v, string label)
     {
         if (key == "scale" && v.Any(x => x < 0.01 || x > 64)) { Answer("Size: each from 0.01 to 64 metres."); return; }
-        if (key == "pos" && (v[0] is < 0 or > 256 || v[1] is < 0 or > 256 || v[2] is < 0 or > 4096)) { Answer("Position: inside the region, 0 to 256 east and north."); return; }
+        if (key == "pos" && BuildLook() is { Worn: true } worn)
+        {
+            if (worn.IsRoot && Math.Sqrt(v.Sum(x => x * x)) > BuildRows.MaxWornOffset) { Answer(BuildRows.WornTooFar(worn)); return; }
+        }
+        else if (key == "pos" && (v[0] is < 0 or > 256 || v[1] is < 0 or > 256 || v[2] is < 0 or > 4096)) { Answer("Position: inside the region, 0 to 256 east and north."); return; }
         var args = new JsonObject { [key] = new JsonArray(v.Select(x => (JsonNode)x).ToArray()) };
         await ChangedAsync(args, label);
     }
@@ -1043,16 +1155,21 @@ public sealed partial class MainForm
         await ShowBuildRowsAsync();
         await ShowBuildFacesAsync();
         Answer(now == null ? $"{label} sent; Second Life hasn't shown the change yet."
-            : $"{now}.{ScopeWords(before, key == "size" ? "size.x" : key + ".x")} {Cap(_buildWhere ?? "")}.");
+            : $"{now}.{ScopeWords(before, key == "size" ? "size.x" : key + ".x")}{WhereAfter(BuildLook() ?? before)}");
     }
 
-    /// <summary>Its size, position or rotation, as said back.</summary>
-    static string Said(PrimLook l, string key) => key switch
+    /// <summary>Its size, position or rotation, as said back (something worn's from where it's worn, in centimetres' detail).</summary>
+    static string Said(PrimLook l, string key)
     {
-        "size" => $"Size: {BuildRows.N(l.P.Scale.X)} by {BuildRows.N(l.P.Scale.Y)} by {BuildRows.N(l.P.Scale.Z)} metres",
-        "pos" => $"Position: {BuildRows.N(l.Pos.X, 2)}, {BuildRows.N(l.Pos.Y, 2)}, {BuildRows.N(l.Pos.Z, 2)}",
-        _ => $"Rotation: {BuildRows.N(BuildRows.Euler(l.Rot).X, 1)}, {BuildRows.N(BuildRows.Euler(l.Rot).Y, 1)}, {BuildRows.N(BuildRows.Euler(l.Rot).Z, 1)} degrees",
-    };
+        var from = l.WornOn is { } on ? $" from {on}" : "";
+        int dp = l.Worn ? 3 : 2;
+        return key switch
+        {
+            "size" => $"Size: {BuildRows.N(l.P.Scale.X)} by {BuildRows.N(l.P.Scale.Y)} by {BuildRows.N(l.P.Scale.Z)} metres",
+            "pos" => $"Position{from}: {BuildRows.N(l.Pos.X, dp)}, {BuildRows.N(l.Pos.Y, dp)}, {BuildRows.N(l.Pos.Z, dp)}{(l.Worn ? " metres" : "")}",
+            _ => $"Rotation{from}: {BuildRows.N(BuildRows.Euler(l.Rot).X, 1)}, {BuildRows.N(BuildRows.Euler(l.Rot).Y, 1)}, {BuildRows.N(BuildRows.Euler(l.Rot).Z, 1)} degrees",
+        };
+    }
 
     /// <summary>move WORDS: where from the person ("a metre to my left", "2 metres ahead"), set down on what's under the
     /// spot; "by 20 cm up" from where it is; "to 128 64 25" in the region.</summary>
@@ -1089,7 +1206,13 @@ public sealed partial class MainForm
     {
         if (BuildLook() is not { } l) return;
         var w = words.ToLowerInvariant();
-        if (BuildRows.Numbers(w, false) is not { Count: 1 } nums) { Answer("turn 90, turn 45 right, turn 90 around x."); return; }
+        if (BuildRows.Numbers(w, false) is not { Count: 1 } nums) { Answer(l.Worn ? "turn 90 around z (or x, or y)." : "turn 90, turn 45 right, turn 90 around x."); return; }
+        // something worn has no left and right from above: it turns round its attachment point's own X, Y or Z
+        if (l.Worn && !System.Text.RegularExpressions.Regex.IsMatch(w, @"\b(around|about) [xyz]\b"))
+        {
+            Answer($"Something worn turns round the X, Y or Z of where it's worn, {l.WornOn}: turn {BuildRows.N(nums[0])} around z, for one.");
+            return;
+        }
         double deg = nums[0] * (w.Contains("right") || w.Contains("clockwise") && !w.Contains("counter") && !w.Contains("anti") ? -1 : 1);
         var axis = w.Contains("around x") || w.Contains("about x") ? LibreMetaverse.Vector3.UnitX
             : w.Contains("around y") || w.Contains("about y") ? LibreMetaverse.Vector3.UnitY : LibreMetaverse.Vector3.UnitZ;
@@ -1136,7 +1259,7 @@ public sealed partial class MainForm
         if (BuildLook() is not { Whole: true } now) return;
         var overall = $"{BuildRows.N(now.Overall.X)} by {BuildRows.N(now.Overall.Y)} by {BuildRows.N(now.Overall.Z)} metres overall";
         var far = now.Overall.Length() > 54 ? " Second Life's links reach about 54 metres, so that may not hold there." : "";
-        Answer(Shown() ? $"Scaled {l.Name} by {BuildRows.N(f)}: {overall}.{far} {Cap(_buildWhere ?? "")}."
+        Answer(Shown() ? $"Scaled {l.Name} by {BuildRows.N(f)}: {overall}.{far}{WhereAfter(now)}"
             : $"Scale {BuildRows.N(f)} sent, and Second Life shows {overall} so far: not all of it may have taken. undo goes back.{far}");
     }
 
@@ -1262,6 +1385,7 @@ public sealed partial class MainForm
     async Task LinkThingAsync(PersonOps.Thing t)
     {
         if (Host?.Session is not { } s || s.Region is not { } w || BuildPrim() is not { } p || BuildLook() is not { } l) { Answer("Nothing is being edited: Control+B on something first."); return; }
+        if (l.Worn) { Answer(WornOnly(l, "link")); return; }
         await LinkToAsync(l, s.Objects.RootOf(w, p), t, "");
     }
 
@@ -1318,16 +1442,21 @@ public sealed partial class MainForm
         }).Replace(" prims", " parts");
 
     /// <summary>edit NAME: a part of this object by that very name first (once linked in, it's no object of its own any
-    /// more), then an object nearby, then a part with the name in it.</summary>
+    /// more), then an object nearby or something she wears (by that very name before one with it in its name), then a
+    /// part with the name in it.</summary>
     async Task EditNamedAsync(string name)
     {
         await ReadPartsAsync();
-        void EditPart(Primitive part) => EditThing(part.ID, null, part.ParentID != 0);
+        void EditPart(Primitive part) => EditThing(part.ID, null,
+            Host?.Session is { Region: { } w } s && s.Objects.RootOf(w, part).LocalID != part.LocalID);
         if (PartNamed(name, exact: true) is { } exact) { EditPart(exact); return; }
-        var hit = (await _ops.ObjectsAsync(30, 60, name)).FirstOrDefault(t => t.Name.Contains(name, StringComparison.OrdinalIgnoreCase));
+        var near = (await _ops.ObjectsAsync(30, 60, name)).Where(t => t.Name.Contains(name, StringComparison.OrdinalIgnoreCase)).ToList();
+        var worn = (await WornAsync()).Where(t => t.Name.Contains(name, StringComparison.OrdinalIgnoreCase)).ToList();
+        bool Exact(PersonOps.Thing t) => t.Name.Equals(name.Trim(), StringComparison.OrdinalIgnoreCase);
+        var hit = near.FirstOrDefault(Exact) ?? worn.FirstOrDefault(Exact) ?? near.FirstOrDefault() ?? worn.FirstOrDefault();
         if (hit != null) { EditThing(hit.Id); return; }
         if (PartNamed(name, exact: false) is { } part) { EditPart(part); return; }
-        Answer($"Nothing called {name} within 30 metres.");
+        Answer($"Nothing called {name} within 30 metres, or among what you wear.");
     }
 
     Primitive? PartNamed(string name, bool exact)
@@ -1390,7 +1519,12 @@ public sealed partial class MainForm
 
     void DescribeBuild(PrimLook l) => _ = DescribeAsync(BuildSubject(l));
 
-    Subject BuildSubject(PrimLook l) => new(_buildId.ToString(), "view", l.Whole ? l.RootName : l.Name, l.Whole
+    Subject BuildSubject(PrimLook l) =>
+        // a HUD as it shows on her screen, as Control+D on it in Objects; something on her body as it is on her
+        l.OnHud ? HudSubject(BuildLinkset().FirstOrDefault()?.ID ?? _buildId, l.RootName)
+        : l.Worn ? new(_buildId.ToString(), "view", l.Whole ? l.RootName : l.Name,
+            $"Describe {(l.Whole ? l.RootName : l.Name)}, which I'm wearing on my {l.WornOn}, as it is now: its shape, size and colours")
+        : new(_buildId.ToString(), "view", l.Whole ? l.RootName : l.Name, l.Whole
         ? $"Describe {l.RootName}, the linked object I'm building, all of it as it is now: its parts, their shapes, sizes and colours, how they join, and how it sits with what's around it"
         : $"Describe {l.Name}, the prim I'm building, as it is now: its shape, size and colours, and how it sits with what's around it");
 
@@ -1489,6 +1623,15 @@ public sealed partial class MainForm
             what = what.Where(CopyToAll.Contains).ToList();
         }
         if (from.ID == _buildId && !l.Whole) { Answer($"That's the one you're editing, {l.Name}."); return; }
+        // a rotation from where something's worn and one in the region aren't from the same place: held back, and said
+        var heldBack = "";
+        if (what.Contains("rotation") && Host?.Session is { Region: { } rw } rs && (WornPoint(rs.Objects.RootOf(rw, from)) != null) != l.Worn)
+        {
+            const string why = "one is worn and the other isn't, so their rotations aren't from the same place";
+            if (named && what.Count == 1) { Answer($"Not copied: {why}."); return; }
+            what = what.Where(x => x != "rotation").ToList();
+            heldBack = $" Not its rotation: {why}.";
+        }
         var targets = l.Whole ? BuildLinkset() : new List<Primitive> { l.P };
         string Reading() => string.Join("|", targets.Select(x => $"{ShapeKey(x)}{x.Rotation}{x.PrimData.Material}{Convert.ToBase64String(x.Textures?.GetBytes() ?? Array.Empty<byte>())}{x.Light?.Intensity}{x.Flexible?.Softness}"));
         var was = Reading();
@@ -1523,9 +1666,9 @@ public sealed partial class MainForm
         if (copied.Contains("colour")) said.Add(BuildRows.Row(look, "colour", _buildFace)!.Words);
         if (copied.Contains("texture")) said.Add(BuildRows.Row(look, "texture", _buildFace)!.Words);
         var left = (r["left"] as JsonArray)?.OfType<JsonObject>().Select(x => $" Not its {x.Str("what")}: {x.Str("why")}.").ToList() ?? new();
-        var where = !look.Whole && (copied.Contains("shape") || copied.Contains("size") || copied.Contains("rotation")) && _buildWhere is { } wh ? $" {Cap(wh)}." : "";
+        var where = !look.Whole && (copied.Contains("shape") || copied.Contains("size") || copied.Contains("rotation")) ? WhereAfter(look) : "";
         var unseen = seen == was ? " Second Life hasn't shown a change: it may have been so already." : "";
-        Answer($"Copied {AndList(copied)} from {fromName} to {look.Name}.{unseen}{(said.Count > 0 ? $" {string.Join("; ", said)}." : "")}{where}{string.Concat(left)}{also}");
+        Answer($"Copied {AndList(copied)} from {fromName} to {look.Name}.{unseen}{(said.Count > 0 ? $" {string.Join("; ", said)}." : "")}{where}{string.Concat(left)}{heldBack}{also}");
     }
 
     // --- content: what's inside the prim ------------------------------------------------------------------------------

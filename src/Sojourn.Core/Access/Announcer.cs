@@ -23,8 +23,11 @@ public static class LineSources
 
     /// <summary>Whose words a notice's line carries, by its notification name: objects' (script menus, their gifts,
     /// pages, places and questions), the app's or the grid's own (friends online, payments, radar, teleport trouble,
-    /// joining a group found by search), or else a person's: an offer's or notice's message, a group's invitation, an
-    /// estate's message box, and any name not listed here.</summary>
+    /// joining a group found by search, the connection's trouble, RLV's lines, the region's named alerts), or else a
+    /// person's: an offer's or notice's message, a group's invitation, an estate's message box, a region alert with no
+    /// name (an operator can type one), and any name not listed here. Our own notices missing from here were left out of
+    /// sent logs as someone's words, and every log line repeating them with them: the blind tester's failed crossing of
+    /// 2026-11-16 went out without its warning.</summary>
     public static LineFrom OfNotice(string? name) => name switch
     {
         "ScriptDialog" or "ScriptDialogGroup" or "ObjectGiveItem" or "OwnObjectGiveItem" or "LoadWebPage" or "ScriptQuestion" or "ScriptQuestionAutoGranted"
@@ -34,7 +37,11 @@ public static class LineSources
             or "PaymentFailure" or "DisplayNameUpdate" or "IMNotShownNotFriend" or "RadarReport" or "WayOut" or "TeleportStalled"
             or "CouldNotTeleportReason" or "CollisionAlert" or "AntiSpamBlocked" or "DoNotDisturbHeld" or "LookAround" or "PoseLeft"
             or "SetDisplayNameSuccess" or "VoiceCallAutoRejected" or "TeleportViaSLAPP" or "GroupLeaveConfirmMember"
-            or "JoinGroupCanAfford" or "JoinGroupNoCost" or "JoinGroupCannotAfford" => LineFrom.App,
+            or "JoinGroupCanAfford" or "JoinGroupNoCost" or "JoinGroupCannotAfford"
+            or "CrossingFailed" or "Disconnected" or "RegionLost" or "RegionRestartMinutes" or "RegionRestartSeconds"
+            or "RlvBlocked" or "RlvNextLogin" or "RlvStatus"
+            // the region's alerts by their names in the viewer's notifications.xml: its own sentences
+            or "AutopilotCanceled" or "CantSitNoRoom" or "CantSitNoSuitableSurface" or "TeleportedByAttachment" => LineFrom.App,
         _ => LineFrom.People,
     };
 }

@@ -1742,14 +1742,15 @@ around you, and unnamed "Object" is the commonest thing a resident meets).
   "You may copy it.", "You may not change or copy it."); and scripted, takes touches, takes payment, temporary, physical, phantom.
   A part's are the part's own name and description, the object's owner. Radegast keeps these in a pane; here they're asked for.
 - **What people nearby wear** (Show's third choice): "Pet, worn by Kestrel on Left Shoulder, 4 metres, two o'clock, touchable".
-  Touch, Pay where it takes payment, Describe, Details, Where and its parts, as a thing of her own worn has; nothing that moves it.
+  Touch, Pay where it takes payment, Describe, Details, Where and its parts; nothing that moves, opens or edits it, which only
+  its wearer can.
   Never HUDs, which only their wearer has. What's listed is in view of the region only; Alt+7 goes back to things nearby.
 - **Touch** lands where `//touch` does. On the object when it takes touches; on the one part that does when only a part does (a
   treasure chest's lid, the reason parts exist: "Touched part 2 of Treasure Chest."); with several, it says which and leaves it
   to her, a Tab away ("Sofa itself takes no touches. 2 of its parts do: Left Cushion and Right Cushion. Tab reaches its parts.");
   with none, it sends the touch as a click would and says "Nothing in it says it takes touches."
-- **Contents** (the object's menu, for its root; a part's menu, for that part): the build editor's Content tab with the focus in
-  its list, Escape coming back here; rows and keys in Building, below. Someone else's that shows nothing says so: "Nothing it
+- **Contents** (the object's menu, for its root; a part's menu, for that part; on what she wears too): the build editor's Content
+  tab with the focus in its list, Escape coming back here; rows and keys in Building, below. Someone else's that shows nothing says so: "Nothing it
   shows you: what's inside a thing shows to those who may change it, or when it sells its contents."
 - **Take, Delete, Return**, by the viewer's own rules: Take where it's hers, or she may change it and pass it on
   (`enable_take`); Delete where it's hers or she may change it (`getFirstDeleteableObject`); Return on someone else's where she
@@ -1807,7 +1808,8 @@ from guided testing of Radegast, and no list changes while you're in it):
   menu, "Pet, on Left Shoulder, 3 parts"; the blind tester couldn't reach her worn things, 2026-11-01). Their
   buttons are parts like any other: their parts listed (a body attachment's without where-words: its offsets are in
   its attachment point's frame), Enter presses one where it shows (a HUD's), or on the part without a surface (a body
-  attachment's). Delete or Take off there takes it off.
+  attachment's). Delete or Take off there takes it off; Edit (build), Contents and Control+B, on it or its parts, edit it where
+  it's worn (Building > Something she wears).
 - **A HUD's buttons read off its picture** (Claude Opus 5.5, 2026-11-01; `MainForm.Huds.cs`). Most HUDs she meets (a
   train's driver panel, games, 7Seas) are one textured prim with buttons painted on it, its script telling them apart
   by where it's touched (llDetectedTouchST), so they have no parts to name. A HUD's parts list ends with "Read its
@@ -2278,8 +2280,32 @@ words are the local grid's until she's tried them.
     they say how to pick a part. Faces too: the faces list holds one line saying so.
   - where it is and what it rests on and touches is all of it's: what's under its lowest part, what's against any part, its own
     parts aside.
-  On one part, a change ends "This part only.". `parts` lists them by number and name, in a window past 8. Worn things aren't
-  edited at all yet.
+  On one part, a change ends "This part only.". `parts` lists them by number and name, in a window past 8.
+- **Something she wears** (2026-11-17; the blind tester's ask the day before: her partner edits what's in his worn HUD as in
+  something rezzed, where she had to rez hers): body attachments and HUDs edit as the official viewer edits an attachment.
+  Reached from what you wear (Alt+Shift+7): Objects' menu Edit (build) and Contents, Control+B on it, on one of its parts or on
+  a HUD part's face, the parts menu's Edit this part and Contents; `edit NAME` finds what she wears after things nearby (each by
+  that very name first). Someone else's worn things say only they can. Arriving: "Editing all 2 parts of Chat HUD, worn on HUD
+  Bottom Left: 0.05 by 0.2 by 0.29 metres overall." (a part: "Editing Knob, part 2 of Chat HUD, this part only, worn on ..."),
+  the first time also "Its position and rotation are from where it's worn, HUD Bottom Left."; the Content list is named "...,
+  worn on HUD Bottom Left". Content whole, General, Texture, Features, size, shape and locked as for anything.
+  - Position and rotation are from where it's worn, as the official editor shows an attachment's (getPositionEdit: a root's
+    own offset from its attachment point, a part's through its root): "Position Z, up, from HUD Bottom Left: 0.12 metres", a
+    HUD's axes named as the screen's (X into it, Y left, Z up), a body point's bare (its frame is the point's own, which says
+    nothing to her); "Rotation X, from Chest"; `position 0 0 0.1`, `position z 0.12`; Right and Left by a centimetre; the
+    root within 3.5 m of the point (the viewer's MAX_ATTACHMENT_DIST), said otherwise; `turn 90 around z`, an axis needed
+    (nothing is left or right from above there). Said back as "Position from Chest: 0, 0, 0.1 metres."; undo puts it back.
+  - Where is "worn on Chest", nothing resting or touching. Faces: a HUD's as they face on the screen ("The front, face 4";
+    `face front`, `face left`), a body attachment's by number (`face 2`, or `face plusx` by its own axes), since there they
+    turn with her joints; a worn mesh's by number.
+  - Left out, or said plainly: physical, temporary and phantom (not listed, as the viewer greys them; typed, "don't apply to
+    something worn"), `move` by words, `take` and `delete` (Take off, in what you wear), `duplicate`, `link` and `unlink` (and
+    Objects' Link to what I'm editing), a rotation copied between something worn and something in the world (held back, said).
+  - How it's sent: the editor works in the attachment point's frame and gives Core's modify `local_pos` and `local_rot`, which
+    on a worn root are its offset from the point (on a part, from its root); modify's `pos` and `rot` on a worn root are the
+    region's frame turned through the wearer, as TesselObjects reports them (they used to go raw, which the region reads as
+    the offset); `get` has a worn root's `attach_offset` and `attach_rot`; undo keeps a worn root's place as its offset.
+    Only the local grid has run it (`building what she wears`).
 - **Copying settings** (2026-11-07, the official editor's Copy and Paste buttons as a typed line; `TesselBuild copyFrom`):
   `copy from Wall` takes everything but the name, place and permissions: shape (with the flexible path), size, rotation,
   material, colour, texture, features. `copy colour from part 2`, `copy shape and size from Wall`: any of those. Colour is
@@ -2358,7 +2384,7 @@ words are the local grid's until she's tried them.
 - **Not yet**: the newer reflection probe and PBR materials (`TesselBuild modify` keys the assistant uses, so rows only, but a
   probe's state isn't read without the renderer), align media; moving the root alone with its parts left where they are (the
   official editor's Edit linked on does; here the root always takes them); stretching all of a linked object along one axis;
-  several separate objects at once; a face as the source of a copy; editing something worn. On Second Life, only single prims and
+  several separate objects at once; a face as the source of a copy. On Second Life, only single prims and
   `link` have been tried (2026-11-06): scale on all parts, locked, copying, flip and repeats per metre are the local grid's, and
   every word is the blind tester's and her partner's to judge.
 
@@ -2783,7 +2809,9 @@ What's sent never holds other people's words (ToS 6.2(i), `docs/tpv-policy.md` >
 whose words each line carries rather than leaving it to be guessed from text. Its file starts `~log {"v":2}`, and
 words are records, `HH:mm:ss ~tag {json}`, never plain lines: `~words` each feed entry with `from` me, people, objects
 or app (a notice by its kind, `LineSources.OfNotice`: a person's offer, group notice, invitation or an estate's message
-box is people's, as is any kind not listed), `~heard` each line the screen reader was given (`Announcer.Heard`, with
+box is people's, as is a region alert with no name and any kind not listed; our own notices and the region's named alerts
+are the app's, and one missing there costs more than its own line, since every log line repeating it goes too: her failed
+crossing's warning, 2026-11-16), `~heard` each line the screen reader was given (`Announcer.Heard`, with
 `LineFrom`: an answer that quotes someone, such as a search result's About, a group's charter, `//parcelinfo` with
 descriptions or a route's notes, says People), `~name` each name learned (legacy, display, pseudonym; the person's own
 marked `me`). The console shows chat as before, but it's no longer in the file as plain lines. `LogShare.cs` filters (and `LogSend.cs` packs and posts, both shared with the VR client's problem and crash reports):

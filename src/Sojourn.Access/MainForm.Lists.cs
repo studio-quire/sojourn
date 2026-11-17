@@ -154,7 +154,9 @@ public sealed partial class MainForm
             standItem.Visible = seated;
             sortItem.Text = _objectsAToZ ? "Sort nearest first, &Z" : "Sort A to &Z";
             sortItem.Visible = true;
-            contentsItem.Visible = moveItem.Visible = editItem.Visible = world;
+            moveItem.Visible = world;
+            // what she wears is edited where it's worn, as the official viewer edits an attachment or a HUD
+            contentsItem.Visible = editItem.Visible = world || mine;
             blockItem.Visible = world && sel is { Mine: false };
             takeItem.Visible = world && MayTake(sel!);
             deleteItem.Visible = world && MayDelete(sel!);
@@ -163,6 +165,7 @@ public sealed partial class MainForm
             buyItem.Visible = world && sel is { Mine: false, Sale: not null };
             copyItem.Visible = world && sel is { MayCopy: true };
             linkItem.Visible = copySettings.Visible = world && sel is { Mine: true } && LinkableNow(sel);
+            if (EditingWorn) linkItem.Visible = false;   // (something worn isn't linked)
             exportItem.Visible = world && sel is { Mine: true };
             autoSitItem.Visible = world;
             pointItem.Visible = world;

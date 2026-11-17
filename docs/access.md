@@ -1115,7 +1115,41 @@ whether objects can be edited in the inventory, as she'd heard the regular viewe
 - **A person's ID from their profile** (#303-304, that night): in a profile, as she's heard, a button gives the person's
   agent ID; Access had none. Radegast's profile shows it in a read-only Key box, the viewer has Copy Agent ID: built
   the next morning as Copy their key on a person's actions (wherever they are) and a Key line at the end of the
-  profile's text, before her answer.
+  profile's text, before her answer; sent in 0.1.0.1153 (#307).
+
+### A script inside her train, a failed crossing, and editing what she wears (0.1.0.1153, the blind tester, 2026-11-16 evening)
+
+Two logs of one session (17:29 to 21:54) with her notes (our words): `tester-20261117T015720-0412dc` (20:57: a script inside
+her rezzed train opened but she couldn't read it) and `tester-20261117T025732-f61561` (21:57: on another train she crossed,
+or tried to, into another region and "crashed", she thinks not by the viewer's fault). Earlier on the builders' line (#309):
+her partner edits the contents of what he wears, on his body or HUD, as of something rezzed; she can see a worn thing, its
+details and parts, but not edit it, so she rezzes it (which went wrong the night before); she asked that the user be told.
+- **Hours on the rails going well**: Zephyr round four regions from 20:17, crossings held every few minutes ("Now in Unttan,
+  still on Zephyr."), switches said and thrown, by `//switch` from Say too ("I did it without having to go into walk
+  mode"). Once (20:41) "I can't stop the train" and "it is refusing to let me stop", though by the track line it had been
+  at 0 m/s since 20:40:40, after a throw the train answered with an error; she stood, deleted it and rezzed it again.
+  Unexplained, not asked.
+- **The script she couldn't read** (20:51-20:56): she found the speed notifier inside one of Zephyr's parts and opened it
+  from the build editor's Content: "I can get in, but I can't read it". Nothing was logged of the read: a thing's contents
+  were read by ScriptEditor's own transfer, with the asset id as the region listed it and without 1145's guard for a zero
+  id, so most likely the same cause as her inventory scripts (Her teleporter's landmark, above). Now every notecard,
+  script and landmark read goes through `TextAssets` (the guard, one such read at a time, and the log line, "contents:
+  script X in Y read: asset id kept from us, 2521 bytes"), and a script or card opened from a thing's contents with no text
+  says so.
+- **The failed crossing** (21:52): VRC Hobo Train crossed from Dubia into Webworm at 21:52:11; she braked 12 s on; Webworm
+  never answered, and at 21:52:41 the guard's 30 s ran out. LibreMetaverse went back to Dubia, where she was at -4, -1
+  under the water with the train at 213, 3 ("Dubia hasn't sent my avatar"); going home had no answer after 15 s; she closed
+  the app at 21:54:42. Second Life's failure, as she thought. Two parts were ours:
+  - The guard's warning and its notice were left out of her sent log as someone's words: `LineSources.OfNotice` didn't
+    list our own notices (CrossingFailed, Disconnected, RegionLost, the restart warnings, RLV's), so they counted as a
+    person's, and every log line repeating them went too; nor the region's named alerts (AutopilotCanceled eleven times in
+    her logs since 11-15, CantSitNoRoom, CantSitNoSuitableSurface, TeleportedByAttachment). Now listed; a region alert with
+    no name stays a person's, since an operator can type one.
+  - Closing held the hidden window 10 s and more while WinForms disconnected each control's UI Automation provider with
+    NVDA listening (the cost 1132 took off clearing lists, here at the end). Once logged out the app now just exits.
+- **Editing what she wears** (#309): Objects' menu hid Contents and Edit (build) on her worn things and the editor skipped
+  them. Built the next morning: the editor on her worn things, HUDs and body attachments, where they're worn, Content
+  whole, position and rotation from where it's worn (`docs/access-app.md` > Building, Something she wears).
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
@@ -1139,6 +1173,9 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 - From the reviews of 2026-11-13: positions from parcel, event and classified links are taken modulo 256, wrong on
   OpenSim's larger regions (Second Life's are all 256 m). (A tab's earlier lines read on the window's thread and link
   words cleared at 1000 were closed the same day.)
+- After a failed crossing whose region then answers nothing (her 2026-11-16 ride: a home teleport unanswered), the session
+  waits on a region that holds her circuit but not her; the watchdog wants only a handshaken region, so nothing logs in
+  again until she does. Saying so at the failed teleport, or logging in again by itself where she was, is undecided.
 
 - The renderer out of sight could start only when needed: on the processor, unseen, it's ~700 MB of committed memory
   (~0.25-0.3 GB of working set), against the first picture, face list or touch waiting for it to start and, on her
@@ -1165,6 +1202,12 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   are the real check.
 
 ### Questions for a blind tester
+
+- For the build with editing what she wears (after 1153): does her HUD's script open, save and keep working from what you
+  wear (Alt+Shift+7) > Contents, the HUD staying on? Are words like "Position Z, up, from HUD Bottom Left" clear? Would she
+  want a body attachment's faces named rather than numbered? And when a crossing fails as on 2026-11-16 and the region then
+  answers nothing, would she rather Sojourn Access logged her in again by itself after a while, or told her and let her
+  choose?
 
 - Sent with 0.1.0.1142 (#292, 2026-11-15 evening): what got in the way reading a script (NVDA not speaking its
   symbols, moving through the text, or the script's sense; told NVDA+P and Control+L); whether she'd rather her own

@@ -8,12 +8,19 @@ namespace Sojourn.Access;
 
 /// <summary>What the build editor knows of one prim when it's shown, read from the world model: the prim, its flags,
 /// where it is in the region (a child's too), how many faces it has and what to call each, and how to name people and
-/// textures. Where: where it is from the person and what it rests on and touches, worked out apart (MainForm.Build.cs).</summary>
+/// textures. Where: where it is from the person and what it rests on and touches, worked out apart (MainForm.Build.cs).
+/// Something worn has Pos and Rot from where it's worn instead (its attachment point's frame, as the official editor
+/// shows an attachment; a part's through its root).</summary>
 public sealed record PrimLook(Primitive P, PrimFlags Flags, bool IsRoot, int Number, int Count, string Name, string RootName,
     Vector3 Pos, Quaternion Rot, int Faces, Func<int, string> FaceName, Func<UUID, string> NameOf, Func<UUID, string> GroupOf,
     Func<UUID, string?> TextureName)
 {
     public string? Where { get; init; }
+    /// <summary>The attachment point it's worn on ("Left Shoulder", "HUD Center"); null when it's out in the world.</summary>
+    public string? WornOn { get; init; }
+    public bool Worn => WornOn != null;
+    /// <summary>Worn on a HUD point: its frame is the screen's (x into it, y left, z up).</summary>
+    public bool OnHud { get; init; }
     /// <summary>A whole linked object being edited (the official editor's Edit linked off): each part as read, root
     /// first; null when it's one prim.</summary>
     public IReadOnlyList<PrimLook>? Parts { get; init; }
@@ -111,9 +118,10 @@ public static class BuildRows
         new("where", "Object", "Where", RowKind.Info, new[] { "where" }, All),
         new("overall", "Object", "Overall size", RowKind.Text, new[] { "overall size", "overall" }, l => l.Whole),
         new("locked", "Object", "Locked", RowKind.Switch, new[] { "locked", "lock" }, All),
-        new("physical", "Object", "Physical", RowKind.Switch, new[] { "physical" }, All),
-        new("temp", "Object", "Temporary", RowKind.Switch, new[] { "temporary on rez", "temporary", "temp" }, All),
-        new("phantom", "Object", "Phantom", RowKind.Switch, new[] { "phantom" }, All),
+        // (the official editor greys these for something worn)
+        new("physical", "Object", "Physical", RowKind.Switch, new[] { "physical" }, l => !l.Worn),
+        new("temp", "Object", "Temporary", RowKind.Switch, new[] { "temporary on rez", "temporary", "temp" }, l => !l.Worn),
+        new("phantom", "Object", "Phantom", RowKind.Switch, new[] { "phantom" }, l => !l.Worn),
         new("pos.x", "Object", "Position X, east", RowKind.Number, new[] { "position x", "x position", "pos x" }, All),
         new("pos.y", "Object", "Position Y, north", RowKind.Number, new[] { "position y", "y position", "pos y" }, All),
         new("pos.z", "Object", "Position Z, height", RowKind.Number, new[] { "position z", "z position", "pos z", "height above sea" }, All),
@@ -233,14 +241,32 @@ public static class BuildRows
     /// <summary>One setting's row, shown or not (a command can read any).</summary>
     public static BuildRow? Row(PrimLook l, string key, int? face) => Defs.FirstOrDefault(d => d.Key == key) is { } d ? Row(l, d, face) : null;
 
+    /// <summary>How far something worn may sit from where it's worn (the viewer's MAX_ATTACHMENT_DIST).</summary>
+    public const double MaxWornOffset = 3.5;
+
+    /// <summary>Why a setting doesn't apply to something worn (the official editor greys these), or null.</summary>
+    public static string? NotWorn(PrimLook l, string key) => l.Worn && key is "physical" or "temp" or "phantom"
+        ? "Physical, temporary and phantom don't apply to something worn: they're for things out in the world." : null;
+
+    /// <summary>A setting's name as listed: something worn has its position and rotation from where it's worn, as the
+    /// official editor shows an attachment's ("Position Z, up, from HUD Center"; a HUD's axes are the screen's).</summary>
+    static string LabelOf(PrimLook l, Def d)
+    {
+        if (l.WornOn is not { } at || !(d.Key.StartsWith("pos.") || d.Key.StartsWith("rot."))) return d.Label;
+        char axis = char.ToUpperInvariant(d.Key[^1]);
+        var way = d.Key[0] == 'p' && l.OnHud ? axis switch { 'X' => ", into the screen", 'Y' => ", to the left", _ => ", up" } : "";
+        return $"{(d.Key[0] == 'p' ? "Position" : "Rotation")} {axis}{way}, from {at}";
+    }
+
     static BuildRow Row(PrimLook l, Def d, int? face)
     {
         if (l.Parts is { } all && EveryPart(d)) return EveryPartRow(all, d);
         var p = l.P;
         var props = l.Props;
         var pd = p.PrimData;
+        var label = LabelOf(l, d);
         BuildRow R(string value, string now = "", string ask = "") =>
-            new(d.Key, $"{d.Label}: {value}", d.Kind) { Label = d.Label, Now = now.Length > 0 ? now : value, Ask = ask.Length > 0 ? ask : d.Label };
+            new(d.Key, $"{label}: {value}", d.Kind) { Label = label, Now = now.Length > 0 ? now : value, Ask = ask.Length > 0 ? ask : label };
         BuildRow Sw(bool on, string? gate = null) => R(on ? "on" : "off") with { Value = on ? 1 : 0, Gate = gate };
         BuildRow Num(double v, string unit, double step, int dp = 3, string ask = "") =>
             R(N(v, dp) + One(N(v, dp), unit), N(v, dp), ask) with { Value = v, Step = step };
@@ -275,21 +301,23 @@ public static class BuildRows
             case "where": return R(l.Where ?? "not worked out yet");
             case "edit_linked": return Sw(!l.Whole);
             case "overall":
-                return R($"{N(l.Overall.X)} by {N(l.Overall.Y)} by {N(l.Overall.Z)} metres (east to west, south to north, height)", "2", "Scale all of it by (2 doubles it, 0.5 halves it)");
+                return R($"{N(l.Overall.X)} by {N(l.Overall.Y)} by {N(l.Overall.Z)} metres ({(l.Worn ? $"along X, Y and Z from {l.WornOn}" : "east to west, south to north, height")})",
+                    "2", "Scale all of it by (2 doubles it, 0.5 halves it)");
             case "parts_own": return R("each part has its own features: part 2, next or root picks one");
             case "locked": return Sw(l.Locked);
             case "physical": return Sw((l.Flags & PrimFlags.Physics) != 0);
             case "temp": return Sw((l.Flags & PrimFlags.TemporaryOnRez) != 0, "delete");
             case "phantom": return Sw((l.Flags & PrimFlags.Phantom) != 0);
-            case "pos.x": return Num(l.Pos.X, " metres", 0.1, ask: "Position X, east, in metres in the region");
-            case "pos.y": return Num(l.Pos.Y, " metres", 0.1, ask: "Position Y, north, in metres in the region");
-            case "pos.z": return Num(l.Pos.Z, " metres", 0.1, ask: "Position Z, height, in metres");
+            // (something worn: from where it's worn, in centimetres' steps)
+            case "pos.x": return Num(l.Pos.X, " metres", l.Worn ? 0.01 : 0.1, ask: l.Worn ? $"{label}, in metres" : "Position X, east, in metres in the region");
+            case "pos.y": return Num(l.Pos.Y, " metres", l.Worn ? 0.01 : 0.1, ask: l.Worn ? $"{label}, in metres" : "Position Y, north, in metres in the region");
+            case "pos.z": return Num(l.Pos.Z, " metres", l.Worn ? 0.01 : 0.1, ask: l.Worn ? $"{label}, in metres" : "Position Z, height, in metres");
             case "size.x": return Num(p.Scale.X, " metres", 0.05, ask: "Size X in metres");
             case "size.y": return Num(p.Scale.Y, " metres", 0.05, ask: "Size Y in metres");
             case "size.z": return Num(p.Scale.Z, " metres", 0.05, ask: "Size Z in metres");
-            case "rot.x": return Num(Euler(l.Rot).X, " degrees", 15, 1, "Rotation X in degrees");
-            case "rot.y": return Num(Euler(l.Rot).Y, " degrees", 15, 1, "Rotation Y in degrees");
-            case "rot.z": return Num(Euler(l.Rot).Z, " degrees", 15, 1, "Rotation Z in degrees");
+            case "rot.x": return Num(Euler(l.Rot).X, " degrees", 15, 1, $"{label}, in degrees");
+            case "rot.y": return Num(Euler(l.Rot).Y, " degrees", 15, 1, $"{label}, in degrees");
+            case "rot.z": return Num(Euler(l.Rot).Z, " degrees", 15, 1, $"{label}, in degrees");
             case "material": return Pick(Materials, (int)pd.Material is >= 0 and <= 6 ? (int)pd.Material : -1);
             case "type": return Pick(Types, Array.IndexOf(Types, l.Shape switch { "half-circle" => "sphere", var s => s }));
             case "made": return R(l.Shape == "mesh" ? "mesh (its shape comes from a model; only size, place and faces change here)" : "sculpted (its shape comes from a sculpt map)");
@@ -382,7 +410,7 @@ public static class BuildRows
         var rows = parts.Select(x => Row(x, d, null)).ToList();
         string Value(BuildRow r)
         {
-            var v = r.Words[(d.Label.Length + 2)..];
+            var v = r.Words[(r.Label.Length + 2)..];
             return v.EndsWith(", all sides", StringComparison.Ordinal) ? v[..^11] : v;
         }
         var groups = rows.GroupBy(Value).OrderByDescending(g => g.Count()).ToList();
@@ -405,6 +433,7 @@ public static class BuildRows
     /// a part of a pair they don't share), or why not, in words. texture: a texture's words to what modify takes.</summary>
     public static (List<JsonObject>? Args, string? Error) Change(PrimLook l, string key, string value, int? face, Func<string, (string? Id, string? Error)> texture)
     {
+        if (NotWorn(l, key) is { } notWorn) return (null, notWorn);
         if (l.Parts is { } all)
         {
             if (OnesOwn(key)) return (null, OwnWords(l, key));
@@ -513,6 +542,12 @@ public static class BuildRows
                 if (!Number(out var n, metres: true)) return No($"{label}: a number of metres.");
                 var at = new[] { (double)l.Pos.X, l.Pos.Y, l.Pos.Z };
                 int axis = key[^1] - 'x';
+                if (l.Worn)
+                {
+                    // (from where it's worn: the editor's frame for it, which the build window turns into modify's)
+                    at[axis] = n;
+                    return l.IsRoot && Math.Sqrt(at.Sum(x => x * x)) > MaxWornOffset ? No(WornTooFar(l)) : Ok(new JsonObject { ["pos"] = Arr(at) });
+                }
                 if (axis < 2 && (n < 0 || n > 256)) return No($"{label}: 0 to 256 metres, inside the region.");
                 if (axis == 2 && (n < 0 || n > 4096)) return No($"{label}: 0 to 4096 metres.");
                 at[axis] = n;
@@ -672,6 +707,10 @@ public static class BuildRows
         }
         return No($"{label} can't be changed here yet.");
     }
+
+    /// <summary>What's said for a place too far from where something is worn.</summary>
+    public static string WornTooFar(PrimLook l) =>
+        $"Something worn stays within {N(MaxWornOffset)} metres of where it's worn, {l.WornOn}, as Second Life keeps it.";
 
     static JsonObject Flexi(Primitive p, string? key, double value)
     {

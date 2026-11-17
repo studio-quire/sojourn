@@ -228,21 +228,28 @@ public sealed class BuildOps
         var isRoot = root.LocalID == p.LocalID;
         if (record) _s.Undo.Edit(p, PartsOf(a), $"changed {string.Join(", ", a.Select(kv => kv.Key).Where(k => PartOf(k) is not null).Take(6))} on {p.Properties?.Name ?? "an object"}");
 
-        // placement: one MultipleObjectUpdate with position and/or rotation
+        // placement: one MultipleObjectUpdate with position and/or rotation. A worn object's root is placed from its
+        // attachment point (the region reads its position and rotation so, as the viewer's editor shows them): local_pos
+        // and local_rot are that offset; pos and rot the region's frame as RegionPosition reckons it, through the wearer.
+        Avatar? wearer = null;
+        bool worn = isRoot && _s.Objects.IsAttachment(w, p, out wearer, out _);
+        Avatar Wearer() => wearer ?? throw new LeapError("where it's worn isn't known yet: give local_pos or local_rot, its offset from the attachment point");
         Vector3? pos = null;
         Quaternion? rot = null;
+        // (the wearer's region frame, through a seat it sits on, as RegionPosition reckons the worn thing's)
         if (a.Vec3("pos") is { } rp)
-            pos = isRoot ? rp : (rp - w.RegionPosition(root)) * Quaternion.Conjugate(w.RegionRotation(root));
+            pos = !isRoot ? (rp - w.RegionPosition(root)) * Quaternion.Conjugate(w.RegionRotation(root))
+                : worn ? (rp - w.RegionPosition(Wearer())) * Quaternion.Conjugate(w.RegionRotation(Wearer())) : rp;
         if (a.Vec3("local_pos") is { } lp)
         {
-            if (isRoot) throw new LeapError("local_pos is for child prims");
+            if (isRoot && !worn) throw new LeapError("local_pos is for child prims and worn objects");
             pos = lp;
         }
         if (RotFrom(a, "rot", "rot_euler") is { } rr)
-            rot = isRoot ? rr : rr * Quaternion.Conjugate(w.RegionRotation(root));
+            rot = !isRoot ? rr * Quaternion.Conjugate(w.RegionRotation(root)) : worn ? rr * Quaternion.Conjugate(w.RegionRotation(Wearer())) : rr;
         if (RotFrom(a, "local_rot", "local_rot_euler") is { } lr)
         {
-            if (isRoot) throw new LeapError("local_rot is for child prims");
+            if (isRoot && !worn) throw new LeapError("local_rot is for child prims and worn objects");
             rot = lr;
         }
         if (pos is not null || rot is not null)

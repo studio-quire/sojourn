@@ -390,7 +390,10 @@ public sealed partial class MainForm : Form
         e.Cancel = true;
         Hide();
         await EndSessionAsync();
-        Close();
+        // Taking the window apart disconnects each control's UI Automation provider, waiting on every reader listening: the
+        // blind tester's close after a failed crossing held 10 s and more (her log of 2026-11-16, 21:54). Logged out and
+        // the session's parts stopped, nothing is left to keep; the process goes, and Windows takes its windows with it.
+        Environment.Exit(0);
     }
 
     /// <summary>Logs out and stops the session's parts (at most ~12 s: the grid may not answer the logout).</summary>

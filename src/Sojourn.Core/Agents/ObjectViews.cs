@@ -294,6 +294,8 @@ public sealed class ObjectViews
             o["attached_to"] = wearer.ID.ToString();
             o["attach_point"] = AttachPointName(point);
             if (point is >= 31 and <= 38) o["hud"] = true;
+            // where it sits from its attachment point, as the viewer's editor shows it (modify's local_pos and local_rot)
+            if (isRoot) { o["attach_offset"] = Json.Arr(p.Position); o["attach_rot"] = Json.Arr(p.Rotation); }
         }
         if (p.Properties is { } props && props.ObjectID == p.ID)
         {

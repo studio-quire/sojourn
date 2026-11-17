@@ -79,9 +79,10 @@ public sealed partial class MainForm
         PartItem("W&here", p => Answer(p.Hud ? $"{PartName(p)} is {(OnHud(p.Root) ? "on your HUD" : WornByMe(p.Root) ? "part of something you're wearing" : "part of something someone's wearing")}." : $"{PartName(p)} is {_ops.Where(L(p.Pos), full: true)}."));
         PartItem("&Describe", p => _ = DescribeAsync(Of(p)));
         PartItem("Deta&ils", p => _ = ThingDetailsAsync(p.Id, PartName(p)));
-        PartItem("Co&ntents", p => { if (p.Hud) Answer("What's inside worn things shows once they're out in the world."); else _ = ContentsOfAsync(p.Id, onePart: true); });
+        // (hers, worn or not, as the official viewer edits an attachment; someone else's worn things only they can open)
+        PartItem("Co&ntents", p => { if (!p.Hud || WornByMe(p.Root)) _ = ContentsOfAsync(p.Id, onePart: true); else Answer("What's inside something worn shows only to whoever wears it."); });
         PartItem("&Faces", p => { _faces.Focus(); });
-        PartItem("&Edit this part (build)", p => { if (!p.Hud) EditThing(p.Id, null, onePart: true); else Answer("Worn things are edited once they're out in the world."); });
+        PartItem("&Edit this part (build)", p => { if (!p.Hud || WornByMe(p.Root)) EditThing(p.Id, null, onePart: true); else Answer("Only whoever wears it can edit it."); });
         PartItem("Cop&y its settings to what I'm editing", p => _ = GuardedAsync(() => CopyToEditingAsync(p.Id), PartName(p)));
         var copySettingsPart = _partMenu.Items[^1];
         _partMenu.Opening += (_, _) => copySettingsPart.Visible = _parts.FocusedItem?.Tag is Linkset.Part { Hud: false } q && q.Id != _buildId && BuildPrim() != null;

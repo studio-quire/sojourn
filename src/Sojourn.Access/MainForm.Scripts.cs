@@ -54,9 +54,12 @@ public sealed partial class MainForm
         if (read["result"] is not JsonObject got)
         {
             var why = RpcError(read);
-            Answer($"Couldn't open {c.Name}: {(why.Contains("Insufficient permissions") ? "that takes copy and modify rights on it." : why)}");
+            Answer($"Couldn't open {c.Name}: {(why.Contains("Insufficient permissions") ? "that takes copy and modify rights on it."
+                : why.StartsWith("Timeout", StringComparison.Ordinal) ? "Second Life didn't send its text." : why)}");
             return;
         }
+        // (a blank window says nothing to a screen reader: the blind tester's train script opened so, 2026-11-16)
+        bool empty = string.IsNullOrWhiteSpace(got.Str("content")) && got["embedded"] is not JsonArray { Count: > 0 };
         // a Lua script stays Lua; otherwise Mono unless the grid says it's LSL2 (Mono is Second Life's default)
         var vm = got.Str("vm");
         var card = script ? null : new CardHeld(this, _pane, c.Name, c.Id, prim, got);
@@ -79,6 +82,7 @@ public sealed partial class MainForm
                 setRunning: want => SetRunningAsync(prim, c, want), reset: () => ResetScriptAsync(prim, c));
         card?.Opened(editor);
         if (card?.Said is { } heldSaid) editor.Shown += (_, _) => Reader?.Answer(heldSaid, keep: false);
+        else if (empty) editor.Shown += (_, _) => Reader?.Answer($"{c.Name} came with no text: it's empty there, or Second Life sent none.", keep: false);
         editor.OpenFirstLink = OpenFirstLink;
         editor.FormClosed += (_, _) =>
         {

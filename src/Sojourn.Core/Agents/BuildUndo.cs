@@ -178,13 +178,15 @@ public sealed class BuildUndo
     {
         var root = _s.Objects.RootOf(w, p);
         bool isRoot = root.LocalID == p.LocalID;
+        // a worn root's place is its offset from its attachment point, as the region reads it back
+        bool local = !isRoot || _s.Objects.IsAttachment(w, p, out _, out _);
         var props = p.Properties;
         Dictionary<int, string>? ov = null;
         if (_s.Client?.Network.Simulators.FirstOrDefault(x => x.Handle == w.Handle) is { } sim
             && sim.GLTFMaterialOverrides.TryGetValue(p.LocalID, out var entry))
             ov = entry.FaceOverrides.ToDictionary(kv => kv.Key, kv => kv.Value.ToJson());
         return new State(
-            isRoot, isRoot ? w.RegionPosition(p) : p.Position, isRoot ? w.RegionRotation(p) : p.Rotation, p.Scale,
+            isRoot, local ? p.Position : w.RegionPosition(p), local ? p.Rotation : w.RegionRotation(p), p.Scale,
             new Primitive.ConstructionData(p.PrimData), p.Textures?.GetBytes(), p.MediaURL ?? "",
             props?.Name, props?.Description, p.PrimData.Material, _s.State.PrimFlagsOf(p), p.PhysicsProps?.PhysicsShapeType,
             p.Light is { } l ? Clone(l) : null, p.LightMap is { LightTexture: var lt } lm && lt != UUID.Zero ? new Primitive.LightImage { LightTexture = lt, Params = lm.Params } : null,
@@ -359,7 +361,9 @@ public sealed class BuildUndo
             // a root's place takes its linked set with it; its size is its own (with the linked flag, the region would
             // scale every part by it)
             if (Has("place")) Update(UpdateType.Position | UpdateType.Rotation | UpdateType.Linked, was.Pos.GetBytes().Concat(was.Rot.GetBytes()));
-            if (Has("scale")) Update(UpdateType.Position | UpdateType.Scale, (Has("place") ? was.Pos : w.RegionPosition(p)).GetBytes().Concat(was.Scale.GetBytes()));
+            if (Has("scale"))
+                Update(UpdateType.Position | UpdateType.Scale, (Has("place") ? was.Pos : _s.Objects.IsAttachment(w, p, out _, out _) ? p.Position : w.RegionPosition(p))
+                    .GetBytes().Concat(was.Scale.GetBytes()));
         }
         else
         {

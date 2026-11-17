@@ -653,41 +653,16 @@ public sealed partial class InventoryOps
     async Task<NotecardFile> ReadFileAsync(InventoryItem item, CancellationToken ct) =>
         NotecardFile.Parse(await TextAssetAsync(item, AssetType.Notecard, "notecard", ct));
 
-    /// <summary>A notecard's or script's bytes from the region (the viewer's getInvItemAsset: a transfer by the item), what
-    /// came logged. Where Second Life keeps the asset's id from her (it sends a zero id for an item she can't see the asset
-    /// of), LibreMetaverse would answer from, and store into, its cache under the zero id, whoever's item it was (the viewer
-    /// skips its cache for a zero id): that entry is dropped before and after. The blind tester's scripts opened blank on
-    /// Second Life (2026-11-15) with no error; which way they went wrong was unknown, hence the log line.</summary>
+    /// <summary>A notecard's or script's bytes from the region, through TextAssets (its zero-id guard and log line).</summary>
     async Task<byte[]> TextAssetAsync(InventoryItem item, AssetType type, string kind, CancellationToken ct)
     {
-        var c = C;
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(20));
         var owner = InLibrary(item.UUID) ? LibraryOwner : item.OwnerID;
-        bool hidden = item.AssetUUID == UUID.Zero;
-        bool cached = !hidden && c.Assets.Cache.HasAsset(item.AssetUUID);
-        if (hidden) ForgetZeroAsset(c);
-        Asset? asset;
-        try { asset = await c.Assets.RequestInventoryAssetAsync(item.AssetUUID, item.UUID, UUID.Zero, owner, type, true, UUID.Random(), cts.Token); }
-        finally { if (hidden) ForgetZeroAsset(c); }
-        var data = asset?.AssetData ?? Array.Empty<byte>();
-        int len = data.Length;
-        while (len > 0 && data[len - 1] == 0) len--;
-        int nul = Array.IndexOf(data, (byte)0, 0, len);
-        _s.Log.LogInformation("inventory: {Kind} {Name} read: asset {Asset}, {Bytes} bytes{Nul}{Cached}", kind, item.Name,
-            hidden ? "id kept from us" : "id known", asset == null ? "none" : data.Length.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            nul >= 0 ? $", a NUL at {nul}" : "", cached ? ", from the cache" : "");
-        if (asset == null) throw new LeapError($"the {kind}'s text didn't arrive");
-        // (text has no NUL but at its end; one inside is something else's bytes, which an edit box shows as nothing)
-        if (nul >= 0) throw new LeapError($"Second Life sent something that isn't the {kind}'s text");
-        return data;
-    }
-
-    static void ForgetZeroAsset(GridClient c)
-    {
-        try { if (c.Assets.Cache.AssetFileName(UUID.Zero) is { } f) File.Delete(f); }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+        var read = await TextAssets.FetchAsync(_s, item, item.AssetUUID, UUID.Zero, owner, type, kind, "", cts.Token);
+        if (!read.Arrived) throw new LeapError($"the {kind}'s text didn't arrive");
+        if (read.NotText) throw new LeapError($"Second Life sent something that isn't the {kind}'s text");
+        return read.Data!;
     }
 
     // ---------- scripts in my inventory ----------
@@ -794,9 +769,9 @@ public sealed partial class InventoryOps
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(20));
         var owner = InLibrary(item.UUID) ? LibraryOwner : item.OwnerID;
-        var asset = await c.Assets.RequestInventoryAssetAsync(item.AssetUUID, item.UUID, UUID.Zero, owner, AssetType.Landmark, true, UUID.Random(), cts.Token)
-                    ?? throw new LeapError("the landmark didn't arrive");
-        var (regionId, pos, handle) = ParseLandmark(Encoding.UTF8.GetString(asset.AssetData ?? Array.Empty<byte>()))
+        var read = await TextAssets.FetchAsync(_s, item, item.AssetUUID, UUID.Zero, owner, AssetType.Landmark, "landmark", "", cts.Token);
+        if (!read.Arrived) throw new LeapError("the landmark didn't arrive");
+        var (regionId, pos, handle) = ParseLandmark(Encoding.UTF8.GetString(read.Data!))
                                       ?? throw new LeapError("the landmark couldn't be read");
         var o = new JsonObject
         {

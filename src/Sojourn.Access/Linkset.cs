@@ -183,6 +183,39 @@ public static class Linkset
             .OrderBy(x => x.f.Inner).ThenByDescending(x => x.f.Area).Select(x => (FaceShape?)x.f).FirstOrDefault();
     }
 
+    /// <summary>A HUD part's face by the way it faces on the screen (f in the HUD's frame: x into the screen, y left, z
+    /// up): "The front" (toward you), "The back", "The top", "The bottom", "The left side", "The right side"; then its
+    /// number.</summary>
+    public static string HudFaceWords(FaceShape f)
+    {
+        var n = f.Flat >= 0.6f ? f.Mean : f.Normal;
+        string dir = f.Flat < 0.6f ? "the curved side"
+            : n.X < -0.7f ? "the front" : n.X > 0.7f ? "the back" : n.Z > 0.7f ? "the top" : n.Z < -0.7f ? "the bottom"
+            : n.Y > 0.7f ? "the left side" : n.Y < -0.7f ? "the right side" : "a side";
+        if (f.Inner) dir = "the inside, " + dir.Replace("the ", "");
+        return char.ToUpperInvariant(dir[0]) + dir[1..] + string.Create(CultureInfo.InvariantCulture, $", face {f.Face}");
+    }
+
+    /// <summary>A HUD part's face named by the way it faces on the screen ("front", "top", "left"...); null when none fits.</summary>
+    public static FaceShape? FindHudFace(IReadOnlyList<FaceShape> faces, string words)
+    {
+        string? want = words.Trim().ToLowerInvariant() switch
+        {
+            "front" or "the front" or "facing me" or "facing you" or "near" => "The front",
+            "back" or "the back" or "far" or "behind" => "The back",
+            "top" or "the top" or "up" => "The top",
+            "bottom" or "the bottom" or "down" => "The bottom",
+            "left" or "left side" => "The left side",
+            "right" or "right side" => "The right side",
+            "side" or "curved" or "curved side" => "The curved side",
+            "inside" or "inner" => "The inside",
+            _ => null,
+        };
+        if (want == null) return null;
+        return faces.Select(f => (f, words: HudFaceWords(f))).Where(x => x.words.StartsWith(want, StringComparison.Ordinal))
+            .OrderBy(x => x.f.Inner).ThenByDescending(x => x.f.Area).Select(x => (FaceShape?)x.f).FirstOrDefault();
+    }
+
     static System.Numerics.Vector3 V(Vector3 v) => new(v.X, v.Y, v.Z);
     static System.Numerics.Quaternion Q(Quaternion q) => new(q.X, q.Y, q.Z, q.W);
 }
