@@ -3,7 +3,7 @@ Rider) sits in the visitor's physical kart at Atelier's east edge and drives it 
 agent API; then checks the session is in Atelier East, still seated (the kart's own script says "kart empty" when its
 driver goes, as a train's "Driver missing!"), and connected. No GPU, no window.
 
-  python tools/crossing.py [--sound] [--noack MS] [--corner [--slow MS]] [--guard-off] [--keep]
+  python tools/crossing.py [--sound] [--noack MS] [--corner [--slow MS]] [--lost] [--guard-off] [--keep]
       --sound      the kart loops a sound while driven (tools/audio.py's fixture noise; `python tools/audio.py fixtures`
                    once), the session hears the world (to a file, never the speakers), and the loop must be heard from
                    the kart's new region after the crossing, close by, not from where it crossed
@@ -17,6 +17,10 @@ driver goes, as a train's "Driver missing!"), and connected. No GPU, no window.
                    SOJOURN_ARRIVAL_DELAY_MS, as a slow region's) so the first crossing is still waiting when the
                    second comes. Checks the second was staged (it came while the first was under way), and that the
                    session ends in Atelier North, seated and connected, after both replies have come in
+      --lost       a crossing that fails and leaves the rider in no region (the blind tester's train, 2026-11-16):
+                   every arrival reply held 40 s, so LibreMetaverse gives up at 30 s and "recovers" into Atelier, which
+                   doesn't send the avatar back; checks the CrossingFailed notice, then about 20 s on the "lost between
+                   regions" one (CrossingGuard.Lost), and a fresh login
       --guard-off  SOJOURN_CROSSING_GUARD=0 (CrossingGuard's 3 and 4 off), for seeing the failure the guard prevents
       --keep       leave the probe and the visitor running at the end (they log out on their own after 15 minutes)
 
@@ -131,7 +135,8 @@ def main():
     args = sys.argv[1:]
     noack = int(args[args.index("--noack") + 1]) if "--noack" in args else 0
     corner = "--corner" in args
-    slow = int(args[args.index("--slow") + 1]) if "--slow" in args else 6000 if corner else 0
+    lost = "--lost" in args
+    slow = int(args[args.index("--slow") + 1]) if "--slow" in args else 6000 if corner else 40000 if lost else 0
     sound = "--sound" in args
     if not grid.ready():
         sys.exit("the local grid isn't up: python tools/grid.py start")
@@ -222,6 +227,18 @@ def main():
             check("drives into Atelier Northeast", first, f"{time.time() - t0:.1f} s; {status().get('status_message')}")
         crossed = wait(lambda: status().get("status_message") == f"in {end}", 25, 0.2)
         check(f"drives into {end}", crossed, f"{time.time() - t0:.1f} s; {status().get('status_message')}")
+        if lost:
+            def notice(name, words):
+                evs, _ = events(since)
+                return next((e for e in evs if e.get("data", {}).get("name") == name and words in e["data"].get("message", "")), None)
+            failed = wait(lambda: notice("CrossingFailed", "didn't go through"), 45)
+            check("the crossing fails, said", failed, failed and failed["data"]["message"])
+            gone = wait(lambda: notice("RegionLost", "lost between regions"), 40)
+            check("about 20 s on, lost between regions, said", gone and failed,
+                  gone and f"{gone['t'] - failed['t']:.1f} s after: {gone['data']['message']}")
+            back = gone and wait(lambda: (st := status()).get("connected") and st.get("connected_at", 0) > gone["t"] and st, 90)
+            check("logs in again", back, (back or status()).get("status_message"))
+            return 0 if all(results) else 1
         if corner:
             # each reply is held `slow` ms; the crossing machine gives up after 30 s and the session's watchdog logs in
             # again after 30 s without a region: past those, the outcome stands

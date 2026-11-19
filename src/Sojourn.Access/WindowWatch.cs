@@ -146,6 +146,19 @@ sealed class WindowWatch
             var dac = Path.Combine(AppContext.BaseDirectory, "mscordaccore.dll");
             bool single = string.IsNullOrEmpty(typeof(WindowWatch).Assembly.Location);
             if (single && !File.Exists(dac)) { _log($"window: held {Secs(held)} s; no mscordaccore.dll beside the app to read its stack"); return; }
+            // the snapshot is a copy of the process that Windows charges as if all of it could be written: on a PC near
+            // its commit limit it fails (the blind tester's, 2026-11-18: "Error 1455", the app at 2.1 GB), and where it
+            // just fits it takes what other programs, NVDA among them, would need meanwhile. Skipped unless there's room
+            var m = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
+            long mine;
+            try { using var p = Process.GetCurrentProcess(); mine = p.PrivateMemorySize64; }
+            catch (Exception) { mine = Environment.WorkingSet; }
+            if (GlobalMemoryStatusEx(ref m) && (long)m.AvailPageFile < mine + (1L << 30))
+            {
+                _log($"window: held {Secs(held)} s; its stack not read: a copy of the app ({mine / 1e9:0.0} GB) would take most of the "
+                    + $"{m.AvailPageFile / 1e9:0.0} GB Windows has left to give");
+                return;
+            }
             using var target = DataTarget.CreateSnapshotAndAttach(Environment.ProcessId);
             using var runtime = File.Exists(dac) ? target.ClrVersions[0].CreateRuntime(dac) : target.ClrVersions[0].CreateRuntime();
             if (runtime.Threads.FirstOrDefault(t => t.ManagedThreadId == _windowThread) is not { } thread)

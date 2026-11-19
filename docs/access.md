@@ -1128,7 +1128,10 @@ details and parts, but not edit it, so she rezzes it (which went wrong the night
   still on Zephyr."), switches said and thrown, by `//switch` from Say too ("I did it without having to go into walk
   mode"). Once (20:41) "I can't stop the train" and "it is refusing to let me stop", though by the track line it had been
   at 0 m/s since 20:40:40, after a throw the train answered with an error; she stood, deleted it and rezzed it again.
-  Unexplained, not asked.
+  It was still: no track line after 20:40:40 (one comes every 15 s while moving), no Space (that says "Stopped."), and
+  after standing she walked from beside it into Saminekim within 5 s, so it hadn't gone on west. Between 20:39:42 and
+  20:40:40 the seat went 9 m sideways onto the parallel branch at about the same x, as if the train put itself on the
+  other line when the switch was thrown under it. What she heard as moving (its sounds, its text) is unknown. Not asked.
 - **The script she couldn't read** (20:51-20:56): she found the speed notifier inside one of Zephyr's parts and opened it
   from the build editor's Content: "I can get in, but I can't read it". Nothing was logged of the read: a thing's contents
   were read by ScriptEditor's own transfer, with the asset id as the region listed it and without 1145's guard for a zero
@@ -1147,9 +1150,62 @@ details and parts, but not edit it, so she rezzes it (which went wrong the night
     no name stays a person's, since an operator can type one.
   - Closing held the hidden window 10 s and more while WinForms disconnected each control's UI Automation provider with
     NVDA listening (the cost 1132 took off clearing lists, here at the end). Once logged out the app now just exits.
+  - The two minutes between: Dubia held her circuit but never sent her avatar, so the watchdog (wanting only a
+    handshaken region) never logged in again, though the crossing's notice said it would if the region stopped
+    answering. Since 2026-11-18 (Claude Opus 5.5) a region that hasn't sent her avatar 20 s after a failed crossing
+    counts as lost: "You're lost between regions since the crossing failed: Dubia hasn't taken you back. Logging in
+    again by itself" (`docs/client.md` > Region crossings; staged on the local grid with every reply held 40 s: the
+    crossing failed, Atelier never sent the rider's avatar either, and 21 s on it logged in again in Atelier). Built ahead of her answer to #311's question (logging in by
+    itself, or telling her and letting her choose), as the notice had already promised it; her answer may change it.
 - **Editing what she wears** (#309): Objects' menu hid Contents and Edit (build) on her worn things and the editor skipped
   them. Built the next morning: the editor on her worn things, HUDs and body attachments, where they're worn, Content
   whole, position and rotation from where it's worn (`docs/access-app.md` > Building, Something she wears).
+
+### Walks that found no way, to where her partner stood (0.1.0.1162, the blind tester, 2026-11-18 evening)
+
+One log, `tester-20261118T224129-f36ae8` (17:31 to 17:41), with her note (our words): she tried to record a route there and
+the app got confused, and `//go xyz` to the point he gave didn't work either. Read 2026-11-19 (Claude Opus 5.5).
+- **Where**: a place she landed at by a landmark (the parcel there sends teleports to its landing point), her ear at 55.3 m
+  over the water, so a floor some 34 m up; her partner about 13 m off and about 1.5 m higher, later at a point he gave her
+  in words. She started a route three times, each time walking to him by `//go`, and threw two away.
+- **The walks**: every walk to him or to that point but one went the same way: planned round something and his floor taken as
+  out of reach ("as near as the way goes, 6 to 10 metres short"), a stretch that stopped getting anywhere after 2 to 4 s,
+  planned again ("Something's in the way; going round: 8 stretches"), stopped again, and then "No way to walk to him
+  found, and a teleport wouldn't land there". Once (17:37:04) the straight line to him was clear and she got there. Why
+  the planner took his floor for out of reach, and what stopped her, isn't in her log: the planner's reasons went only
+  to the walk log, a test switch. Unknown so far: something the collision model lacks (a physics shape not yet in, a
+  parcel's ban line, which the model knows nothing of), or the planner misjudging a floor 1.5 m up.
+  Her 17:36 walk stuck once and then had no way with nothing between: a stuck spot was marked over where she stood, so
+  the plan from there shut her in (found by the scripted test the next day and fixed, 2e430ee); that may have been it,
+  and may have ended the others' second tries too. Since 2026-11-19 the session log carries the planner's verdicts and
+  reasons, and at a stretch that sticks what the model has ahead of her, shapes it lacks, the parcels and any parcel the
+  region says she may not enter (`docs/access-app.md` > Walk mode > Why a walk went as it did, in her log), so the next one will
+  say. She walked on the ground there (the land is high, about 54 m) and on wood; what leads up the 1.5 m to his floor
+  is unknown.
+- **`//go X,Y,Z`** (17:38:59), coordinates without the word xyz, was taken for an object's name ("No object called
+  X,Y,Z nearby"). Two or three numbers alone now are coordinates.
+- **"Autopilot canceled"** was read to her after nearly every walk (eleven times in her logs since 11-15, six here):
+  Second Life's answer to our own walk letting go of the region's autopilot as it arrives or goes round. OpenSim's form
+  was already kept quiet; Second Life's, a named alert in her language, wasn't. Now it isn't read, and the log says
+  "the region's autopilot stopped".
+- **Memory**: two minutes in, while the view out of sight first drew what's around (its textures 0.4 GB, on the
+  processor so in the app's own memory), the app was at 2.1 GB private and her PC had 0.4 GB of its 6.3 free; the window
+  watch's stack snapshot failed with Windows' commit limit (Error 1455). Nothing went wrong after. A snapshot copies the
+  whole process's commit, so it's now skipped unless there's a gigabyte to spare beyond the app's size. Bears on the
+  open thread about starting the renderer out of sight only when needed (Open threads, below).
+
+### A group notice that wouldn't open (0.1.0.1162, the blind tester, 2026-11-19 evening)
+
+One log, `tester-20261119T223104-61551a` (17:02 to 17:31), with her note (our words): reading group notices from the
+Groups tab didn't work. Read the same evening (Claude Opus 5.5).
+- **The notice**: a notice came at 17:25 and was read as it arrived; later, from the Groups tab, the archive's list
+  came but opening one twice said "Couldn't read that notice: the notice: no answer from the grid", 10 s each. Ours
+  took only an answer carrying the notice's id as its session, as OpenSim sends it; Radegast and its Veles take the next
+  answer of that kind by the group it names, so Second Life most likely sends something else there. Now matched as they
+  do, one asked at a time, and an answer under another session logged with what it carried (1c2176a); a grid that never
+  answers is said as "the grid didn't answer". Only Second Life shows whether that's all of it.
+- **Held at login**: her PC had 0.4 GB of 6.3 free from the start, and an IM she sent a minute in held the window 16 s,
+  10 of them writing it to the IM history on the window's thread (the stack read 12 s late). Now written off it.
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
@@ -1173,13 +1229,14 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 - From the reviews of 2026-11-13: positions from parcel, event and classified links are taken modulo 256, wrong on
   OpenSim's larger regions (Second Life's are all 256 m). (A tab's earlier lines read on the window's thread and link
   words cleared at 1000 were closed the same day.)
-- After a failed crossing whose region then answers nothing (her 2026-11-16 ride: a home teleport unanswered), the session
-  waits on a region that holds her circuit but not her; the watchdog wants only a handshaken region, so nothing logs in
-  again until she does. Saying so at the failed teleport, or logging in again by itself where she was, is undecided.
 
 - The renderer out of sight could start only when needed: on the processor, unseen, it's ~700 MB of committed memory
   (~0.25-0.3 GB of working set), against the first picture, face list or touch waiting for it to start and, on her
-  2400G, for its shaders (minutes, by her log); `docs/performance.md` > Sojourn Access on a small PC. Undecided.
+  2400G, for its shaders (minutes, by her log); `docs/performance.md` > Sojourn Access on a small PC. Kept starting
+  at login (Claude Opus 5.5, 2026-11-18): her log of 2026-11-16 had 1.0 GB of her 6.3 GB free with the app at 1.4 GB,
+  so 0.3 GB isn't what stands between her and trouble, and minutes before her first description would be. Her log of
+  2026-11-18 had 0.4 GB free with the app at 2.1 GB two minutes in, as the view first drew what's around (Walks that
+  found no way, above): weigh it again if a log shows trouble from memory.
 - Branch `fix/own-voice` (arrivals in Access's own voice) is WIP, not wired in.
 - Her PC's log (2026-10-31) named both chips at Vulkan 1.1.125 (driver 2.0.116, by its look a 2019 OEM driver): the view
   now draws on the processor there. Her logs of 2026-11-01 showed a session's first frame taking 1-3 minutes of
@@ -1203,6 +1260,18 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
+- Sent with 0.1.0.1173 (2026-11-19 evening), after her logs of 11-18 and 11-19 (Walks that found no way; A group notice
+  that wouldn't open): whether a notice opens from the Groups tab now (a log if not); if she goes back to where her
+  partner was, whether walks there still fail (a log then says why); and what lies between where she lands there and where he
+  stood: steps, a ramp, a doorway.
+- On 1162 that evening (`tester-20261117T234133-003f45`, 18:41, "to show you how well this worked"): from what you wear she
+  edited her worn chat-range HUD (Objects' Edit, "Editing Chat-Range 2, worn on HUD Bottom Right"), opened its script
+  ("contents: script Chat-range alert in Chat-Range 2 read: asset id kept from us, 2651 bytes", so the guard's path on
+  Second Life), saved twice with a syntax error said at line 10, fixed it ("Saved and compiled."), then pasted a sound in
+  ("Put Ocean1 inside.") once she noticed the script named one that wasn't there. Each save asked its confirmation (a script
+  replaced), answered in 2-3 s; not raised by her.
+- Her ask that evening (#312): a ride recording that goes on when the vehicle stops, as on a loop with many stations.
+  Built at once (a stop no longer ends one; an hour at most) and sent in 0.1.0.1162 (#313), to take instead of 1158.
 - Sent with 0.1.0.1158 (#311, 2026-11-17 morning; #310 had told her what her two logs showed): does her HUD's script open, save and keep working from what you
   wear (Alt+Shift+7) > Contents, the HUD staying on? Are words like "Position Z, up, from HUD Bottom Left" clear? Would she
   want a body attachment's faces named rather than numbered? And when a crossing fails as on 2026-11-16 and the region then

@@ -181,6 +181,7 @@ public sealed partial class MainForm : Form
         _cmd.CueText = cue => _set.WalkText(cue);
         var planner = _cmd.Planner = new Sojourn.Access.Walk.PathPlanner(host.Session, rays);
         host.Session.Motion.Router = (c, from, to) => RouteAsync(planner, from, to);
+        host.Session.Motion.Stalled = AutopilotStalled;
         _walkPad.Walk = _walk;
         _cmd.WalkMode = _walk;
         _walk.Walking = () => _cmd.Heading;
@@ -922,8 +923,12 @@ public sealed partial class MainForm : Form
         var a = new System.Numerics.Vector2(from.X, from.Y);
         var b = new System.Numerics.Vector2(to.X, to.Y);
         if (System.Numerics.Vector2.Distance(a, b) < 2 && !Commands.OtherFloor(from, to)) return null;
-        var plan = await planner.PlanAsync(a, _walk?.Me()?.Feet ?? from.Z - 0.95f, b, null, default, to.Z);
-        Sojourn.Access.Walk.WalkMode.Log($"route {a} -> {b}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct && !plan.GoalMoved ? "direct" : string.Join(" ", plan.Waypoints) + (plan.GoalMoved ? " (goal moved)" : "") + (plan.Beneath ? " (beneath it: no way)" : ""))}");
+        float feet = _walk?.Me()?.Feet ?? from.Z - 0.95f;
+        var whose = AutopilotWhose();
+        var plan = await planner.PlanAsync(a, feet, b, null, default, to.Z, why: _walk is { } wm ? d => wm.NoteWhy($"{whose}: why: ", d) : null);
+        var line = $"{whose}: {Sojourn.Access.Walk.PathPlanner.Line(a, feet, b, to.Z, plan, planner.CanAsk)}";
+        if (_walk != null) _walk.Note(line);
+        else Sojourn.Access.Walk.WalkMode.Log(line);
         // (a storey or more under the point, its floor meeting hers only far off: no way, as a //go takes it)
         if (plan == null || plan.Beneath)
         {
@@ -938,6 +943,27 @@ public sealed partial class MainForm : Form
         if (!plan.GoalMoved) legs[^1] = to;
         else if (legs.Count == 1) legs.Add(legs[0]);   // (the autopilot takes a route of two or more; one leg is its target)
         return legs;
+    }
+
+    long _stalledLoggedAt;
+
+    /// <summary>Whose walk the session's autopilot is on, for the log: keep in place walking her back (MoveLock), else the
+    /// assistant's.</summary>
+    string AutopilotWhose() => Host?.Session.MoveLock.Returning == true ? "keep in place's walk back" : "assistant's walk";
+
+    /// <summary>The session's autopilot (the assistant's walks, keep in place's walk back) gave up getting no nearer: the
+    /// session log says what the model has there (walk mode's NoteStuck), once in 10 s. A follow steers it too, but moves
+    /// its target on at every look, so this never comes of being stuck there (only of a look held up, a slow plan): the
+    /// follow logs its own (Commands.FollowLoopAsync).</summary>
+    void AutopilotStalled(LibreMetaverse.Vector3 at, LibreMetaverse.Vector3 toward, LibreMetaverse.Vector3 end)
+    {
+        long now = Environment.TickCount64;
+        if (_walk is not { } walk || _cmd.Following || now - Interlocked.Read(ref _stalledLoggedAt) < 10_000) return;
+        Interlocked.Exchange(ref _stalledLoggedAt, now);
+        float feet = walk.Me()?.Feet ?? at.Z - 0.95f;
+        walk.NoteStuck(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"{AutopilotWhose()}: autopilot stuck: at {at.X:0.00},{at.Y:0.00},{at.Z:0.00} (feet {feet:0.00}), heading for {toward.X:0.00},{toward.Y:0.00}, the walk's end {end.X:0.00},{end.Y:0.00},{end.Z:0.00}"),
+            new(at.X, at.Y, at.Z), feet, new(toward.X, toward.Y, toward.Z));
     }
 
     /// <summary>F3: into walk mode (the walk pad takes the keys) and back to where the focus was.</summary>

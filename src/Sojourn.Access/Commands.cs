@@ -168,7 +168,7 @@ public sealed partial class Commands
 
     static readonly (string Name, string Usage, string Desc)[] All =
     {
-        ("go", "//go [tp] N [direction] | //go [tp] xyz X,Y[,Z] | //go [tp] person NAME | //go [tp] object NAME",
+        ("go", "//go [tp] N [direction] | //go [tp] xyz X,Y[,Z] (or just X,Y[,Z]) | //go [tp] person NAME | //go [tp] object NAME",
             "walk (or with tp, teleport) N metres ahead or toward a direction (N, NE, ENE... or left, right, back), to region coordinates, or to someone or something"),
         ("find", "//find person NAME | //find object NAME | //find NAME", "where everyone and everything with that name is, the nearest first"),
         ("describe", "//describe | //describe me | //describe NAME | //describe person NAME | //describe object NAME | //describe more",
@@ -271,6 +271,15 @@ public sealed partial class Commands
         UUID toPerson = default, thing = default;
         double stop = 0.6;   // the autopilot coasts a little after letting go: routes of waypoints want it close
         var kind = a[0].ToLowerInvariant();
+        // coordinates without the word xyz (//go 25,25,56, as she typed it once, 2026-11-18; //go 25 25 56): two or
+        // three numbers and nothing else, which a distance and a direction never are
+        var bare = string.Join(",", a).Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        if ((a.Count > 1 || a[0].Contains(',')) && bare.Length is 2 or 3
+            && bare.All(n => double.TryParse(n, NumberStyles.Float, CultureInfo.InvariantCulture, out _)))
+        {
+            kind = "xyz";
+            a = a.Prepend(kind).ToList();
+        }
         // a name alone: someone nearby, else something (she typed it so at a lift's top, 2026-11-05, and heard the usage twice)
         if (kind is not ("xyz" or "person" or "object") && !double.TryParse(a[0], NumberStyles.Float, CultureInfo.InvariantCulture, out _))
         {
@@ -558,7 +567,9 @@ public sealed partial class Commands
                 // up against someone: it ends here and says who. No spot marked (they'll move), no pushing on at them
                 // again, and never the teleport a way that keeps sticking ends in
                 if (Against(people, stuck.Pos, leg) is { } person) return await EndInWayAsync(person, target, letGo: false);
-                // stuck on the way: something the model hadn't (a thin post, a doorway the region won't fit): marked, planned again
+                // stuck on the way: something the model hadn't (a thin post, a doorway the region won't fit): marked, planned
+                // again; the session log says what the model has there, so her log can tell
+                NoteStuck($"go: stuck on stretch {i + 1} of {legs.Count}, time {replans + 1} of 3 (the third ends the walk)", stuck.Pos, leg, target, origin);
                 var dir = Vector2.Normalize(new Vector2(leg.X - stuck.Pos.X, leg.Y - stuck.Pos.Y));
                 Planner.Block(new System.Numerics.Vector2(stuck.Pos.X + dir.X * 0.7f, stuck.Pos.Y + dir.Y * 0.7f), 0.6f, TimeSpan.FromMinutes(2), stuck.Pos.Z);
                 if (++replans > 2) return await NoWayAsync(target, what, tpHint);
@@ -597,6 +608,25 @@ public sealed partial class Commands
     }
 
     static float Flat(Vector3 a, Vector3 b) => new Vector2(a.X - b.X, a.Y - b.Y).Length();
+
+    /// <summary>A walk that stuck, in the session log: <paramref name="what"/>, where she is (her feet), where she was
+    /// heading and the walk's end, then what the collision model has there (walk mode's StuckAsync: rays ahead, what it
+    /// hasn't got, the parcels, the region's word). <paramref name="at"/> in the frame of the region she's in, the
+    /// other two in <paramref name="origin"/>'s (where the walk began), put in hers when she's crossed since, since the
+    /// model's rays and the parcels are hers.</summary>
+    void NoteStuck(string what, Vector3 at, Vector3 toward, Vector3 end, ulong origin)
+    {
+        if (WalkMode is not { } walk) return;
+        if (_ops.Client?.Network.CurrentSim is { } sim && sim.Handle != origin)
+        {
+            (toward, end) = (InFrame(toward, origin, sim.Handle), InFrame(end, origin, sim.Handle));
+            what += $", in {sim.Name} past the border (its frame)";
+        }
+        float feet = FeetZ?.Invoke() ?? at.Z - 0.95f;
+        walk.NoteStuck(string.Create(CultureInfo.InvariantCulture,
+                $"{what}: at {at.X:0.00},{at.Y:0.00},{at.Z:0.00} (feet {feet:0.00}), heading for {toward.X:0.00},{toward.Y:0.00} ({Flat(at, toward):0.0} m on), the walk's end {end.X:0.00},{end.Y:0.00},{end.Z:0.00}"),
+            new(at.X, at.Y, at.Z), feet, new(toward.X, toward.Y, toward.Z));
+    }
 
     /// <summary>Whether a point (a person's middle, a thing's, one given) is on a floor over or under hers: 2 m or more
     /// above or below her middle.</summary>
@@ -686,8 +716,13 @@ public sealed partial class Commands
         try
         {
             var standing = people != null ? ToGoRound(people, from) : null;
-            var plan = await planner.PlanAsync(a, FeetZ?.Invoke() ?? from.Z - 0.95f, b, null, ct, toZ, standing, thing: foot?.Reach);
-            Walk.WalkMode.Log($"go {a} -> {b}{(standing != null ? $", {standing.Count} standing" : "")}: {(plan == null ? (planner.CanAsk ? "no way" : "no view") : plan.Direct && !plan.GoalMoved && plan.InWay == null ? "direct" : string.Join(" ", plan.Waypoints) + (plan.GoalMoved ? $" (goal moved{(plan.Meets is { } mt ? $", the floors meet {mt:0.0} m from it" : "")})" : "") + (plan.InWay is { } w ? $" (cut short of someone at {standing![w]})" : "") + (plan.Around.Count > 0 ? $" (round {plan.Around.Count})" : "") + (plan.Beneath ? " (beneath it: no way)" : ""))}");
+            float feet = FeetZ?.Invoke() ?? from.Z - 0.95f;
+            // (the plan and the planner's reasons go in the session log she sends: Walk/WalkMode.Stuck.cs)
+            var plan = await planner.PlanAsync(a, feet, b, null, ct, toZ, standing, thing: foot?.Reach,
+                why: WalkMode is { } wm ? d => wm.NoteWhy("go: why: ", d) : null);
+            var line = $"go: {Walk.PathPlanner.Line(a, feet, b, toZ, plan, planner.CanAsk, standing)}";
+            if (WalkMode is { } walk) walk.Note(line);
+            else Walk.WalkMode.Log(line);
             // (a storey or more under it, where its floor meets hers only far off, as in the room under someone upstairs
             // whom a teleporter reaches: no way, as for a room upstairs behind a shut door, so the teleport where it lands)
             if (plan == null || plan.Beneath) return planner.CanAsk ? new Route(new(), false) : null;
@@ -947,8 +982,13 @@ public sealed partial class Commands
                 continue;
             }
             if (!arrived && !stalled && !late) continue;
-            Walk.WalkMode.Log(string.Create(CultureInfo.InvariantCulture,
-                $"walk over after {(now - start) / 1000.0:0.0} s, {(arrived ? "arrived" : held ? $"no nearer for {noNearer / 1000.0:0.0} s" : late ? "a minute" : "stood still")}: {off:0.0} m off, nearest {nearest:0.0}"));
+            var over = string.Create(CultureInfo.InvariantCulture,
+                $"go: walk over after {(now - start) / 1000.0:0.0} s, {(arrived ? "arrived" : held ? $"no nearer for {noNearer / 1000.0:0.0} s" : late ? "a minute" : "stood still")}: {off:0.0} m off {target.X:0.00},{target.Y:0.00},{target.Z:0.00}, nearest {nearest:0.0}; at {me.Pos.X:0.00},{me.Pos.Y:0.00},{me.Pos.Z:0.00}{(FeetZ?.Invoke() is { } ft ? $" (feet {ft:0.00})" : "")}");
+            if (WalkMode is { } wm) wm.Note(over);
+            else Walk.WalkMode.Log(over);
+            // ended short, not up against someone nor at a border: what the model has there, so her log can say why
+            if (!arrived && !crossing && off >= 2.5 && !(people != null && Against(people, me.Pos, target) != null))
+                NoteStuck("go: ended short", InFrame(me.Pos, origin, me.Region), target, target, origin);
             if (!arrived) CancelAutoPilot();
             if (outOfReach is { } o && off < 2.5)
             {
@@ -1006,7 +1046,9 @@ public sealed partial class Commands
     /// is sent.</summary>
     void CancelAutoPilot()
     {
-        if (_ops.Client is { } c && c.Self.SittingOn == 0) c.Self.AutoPilotCancel();
+        if (_ops.Client is not { } c || c.Self.SittingOn != 0) return;
+        c.Self.AutoPilotCancel();
+        WalkMode?.OwnCancel();   // (the region answers it with its word that its autopilot stopped: not news for a stuck line)
     }
 
     /// <summary>//beacon NAME: walk mode's beacon on the nearest person (by name) or thing (by name) to walk to; off; or where.</summary>
@@ -1122,6 +1164,8 @@ public sealed partial class Commands
     // --- follow -----------------------------------------------------------------------------------------------------
 
     string? _following;
+    /// <summary>A follow is going (its loop logs its own stuck line: the session autopilot's giving up isn't one).</summary>
+    public bool Following => _following != null;
     CancellationTokenSource? _followStop;
 
     async Task FollowAsync(List<string> a)
@@ -1192,6 +1236,9 @@ public sealed partial class Commands
         // plans in a row that found no way at all
         bool beyond = false, toldBeyond = false;
         int noWay = 0;
+        // stuck while steering after them, for the session log: where she was when she last made half a metre, and when
+        (Vector3 At, long Since)? stuckFrom = null;
+        long steeredAt = 0, stuckNoted = 0;
         bool Say(string text) { if (CueText("follow")) _say(text); return true; }
         static float Off(System.Numerics.Vector2 w, Vector3 at) => new Vector2(w.X - at.X, w.Y - at.Y).Length();
         while (!ct.IsCancellationRequested)
@@ -1284,6 +1331,19 @@ public sealed partial class Commands
             var goal = corner || standIn ? new Vector3(ways![wayAt].X, ways[wayAt].Y, me.Pos.Z) : aim;
             if (arrived) { if (_s.Motion.Moving) _s.Motion.StopAutoPilot(c, true); }
             else if (_ops.Global(goal) is { } g) Steer(c, g, corner);
+            // stuck: steering after them, for a point over a metre off, through the last 3 s and no half metre made. The
+            // session autopilot's own giving up never comes in a follow (each look moves its target on, its progress
+            // counted afresh), so the follow says what the model has there itself, once in 10 s
+            bool pushing = !arrived && Flat(goal, me.Pos) > 1f;
+            if (!pushing || t - steeredAt > 1000) stuckFrom = null;
+            steeredAt = pushing ? t : 0;
+            if (pushing && (stuckFrom is not { } sf || Flat(sf.At, me.Pos) > 0.5f)) stuckFrom = (me.Pos, t);
+            else if (stuckFrom is { } held && t - held.Since > 3000 && t - stuckNoted > 10_000)
+            {
+                stuckNoted = t;
+                NoteStuck(string.Create(CultureInfo.InvariantCulture, $"follow: stuck, no half metre made in {(t - held.Since) / 1000.0:0.0} s, {d:0.0} m from where they'll be"),
+                    me.Pos, goal, there, _ops.Client?.Network.CurrentSim?.Handle ?? 0);
+            }
             if (now.Dist > 20 && now.Dist > farDist + 2 && t - toldFarAt > 10_000)
             {
                 toldFarAt = t;

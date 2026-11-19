@@ -81,7 +81,26 @@ public sealed class PathPlanner
         /// upstairs whom only a teleporter or a balcony at the far end reaches. A walk to them takes it for no way (the
         /// teleport, as for a room upstairs behind a shut door); following walks on and says they're above.</summary>
         public bool Beneath { get; init; }
+        /// <summary>Stuck spots of ours (Block) that counted as walls in this plan, where each was marked.</summary>
+        public IReadOnlyList<Vector2> Spots { get; init; } = Array.Empty<Vector2>();
     }
+
+    /// <summary>A surface the model has over a cell: flat enough to stand on or not, its heights there, and its prim (a
+    /// local id in the region with handle <paramref name="Region"/>: near a border a neighbour's prims reach in).</summary>
+    public readonly record struct Surface(bool Flat, float Lo, float Hi, uint Prim, ulong Region);
+
+    /// <summary>Why a plan has no way, or ends short of a goal out of reach, for a walk's log (Commands' and the
+    /// assistant's walks put it in the session log, where a tester's log says why a walk on Second Life went as it did):
+    /// what was found, from where to where, the feet given and the floor taken under them, the ground and what the model
+    /// has over the start's cell; how far her floor was followed (floor nodes over cells, those she can get to); over
+    /// the goal's cell the floors her walk reached and how each stood, the floor under the goal's height and what the
+    /// model has there; where the goal's floor meets hers, how far from the goal, how far the goal's floor is over hers
+    /// (Rise) and the highest step up on the way from where they meet (Climb: the goal's floor followed out comes down
+    /// drops, and through cells too tight for her, before it meets one of hers she can get to, so its height where they
+    /// meet is often hers already); and the stuck spots of ours that counted as walls (Plan.Spots).</summary>
+    public sealed record Diagnosis(string What, Vector2 From, Vector2 To, float Feet, float StartFloor, float? Ground, IReadOnlyList<Surface> AtStart,
+        int Nodes, int Cells, int AllCells, int Open, IReadOnlyList<string> GoalNodes, float? Under, IReadOnlyList<Surface> AtGoal,
+        float? Meets, float? Rise, float? Climb, IReadOnlyList<Vector2> Spots);
 
     /// <summary>Whether a plan can be asked for now (the view is up): a null plan then means there's no way.</summary>
     public bool CanAsk => _rays.Ready;
@@ -103,9 +122,10 @@ public sealed class PathPlanner
     /// (no way) from one up on a stage beside this floor (the nearest spot below it). <paramref name="people"/>: where
     /// people stand (their middles), for the way to go round them. <paramref name="thing"/>: the goal is a thing's,
     /// reaching this many metres across from the point given (its linked set's boxes), whose inside, closed all round as
-    /// a room with no door is, is never a space of its own: the bit of its foot nearest her.</summary>
+    /// a room with no door is, is never a space of its own: the bit of its foot nearest her. <paramref name="why"/>: the
+    /// reasons when there's no way or the goal is out of reach (the walk log has them either way).</summary>
     public async Task<Plan?> PlanAsync(Vector2 from, float feet, Vector2 to, IReadOnlySet<uint>? passable = null, CancellationToken ct = default,
-        float? toZ = null, IReadOnlyList<Vector3>? people = null, float? thing = null)
+        float? toZ = null, IReadOnlyList<Vector3>? people = null, float? thing = null, Action<Diagnosis>? why = null)
     {
         if (!_rays.Ready) return null;
         var lo = Vector2.Min(from, to) - new Vector2(Margin);
@@ -114,7 +134,7 @@ public sealed class PathPlanner
         {
             // too far to plan in one go: the first stretch toward it
             var dir = Vector2.Normalize(to - from);
-            return await PlanAsync(from, feet, from + dir * (MaxSpan / 2 - Margin), passable, ct, null, people);
+            return await PlanAsync(from, feet, from + dir * (MaxSpan / 2 - Margin), passable, ct, null, people, why: why);
         }
         var w = _s.Region;
         float? Ground(float x, float y) => w?.TerrainHeight(x, y);
@@ -128,7 +148,64 @@ public sealed class PathPlanner
                     if (Ground(Math.Min(x, hi.X), Math.Min(y, hi.Y)) is { } g) { zMin = MathF.Min(zMin, g - 2); zMax = MathF.Max(zMax, g + 12); }
         var got = await _rays.SolidsAsync(new Vector3(lo, zMin), new Vector3(hi, zMax), passable, ct);
         if (got is not { } solids) return null;
-        return await Task.Run(() => Solve(solids.Triangles, from, feet, to, toZ, lo, hi, nearGround ? Ground : null, people, thing), ct);
+        Diagnosis? found = null;
+        var plan = await Task.Run(() => Solve(solids, from, feet, to, toZ, lo, hi, nearGround ? Ground : null, people, thing,
+            d => found = d), ct);
+        if (found is { } diagnosis)
+        {
+            if (WalkMode.Logging) WalkMode.Log(Say(diagnosis, (_, id) => $"#{id}"));
+            why?.Invoke(diagnosis);
+        }
+        return plan;
+    }
+
+    /// <summary>A plan in a line, for a walk's log: from where (her feet) to where (the goal's height), and what came of
+    /// it: no way, straight, or its stretches' corners, a goal out of reach and how far short the way ends, where it was
+    /// cut short of someone (where they stand), and the floors at its two ends.</summary>
+    public static string Line(Vector2 from, float feet, Vector2 to, float? toZ, Plan? plan, bool canAsk, IReadOnlyList<Vector3>? people = null)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        static string P(Vector2 p) => FormattableString.Invariant($"{p.X:0.00},{p.Y:0.00}");
+        var line = string.Create(inv, $"plan from {P(from)} (feet {feet:0.00}) to {P(to)}{(toZ is { } z ? string.Create(inv, $" (height {z:0.00})") : "")}")
+                   + (people is { Count: > 0 } ? $", {people.Count} standing" : "") + ": ";
+        if (plan == null) return line + (canAsk ? "no way" : "not asked (not in a region)");
+        var floors = string.Create(inv, $"her floor {plan.StartFloor:0.00}, the end's {plan.GoalFloor:0.00}")
+                     + (plan.FloorKnown ? "" : " (nothing under her in the model: carried on level)");
+        if (plan.Direct && !plan.GoalMoved && plan.InWay == null) return line + $"straight; {floors}";
+        line += $"{plan.Waypoints.Count} {(plan.Waypoints.Count == 1 ? "stretch" : "stretches")} by {string.Join(" ", plan.Waypoints.Select(P))}";
+        if (plan.GoalMoved && plan.Waypoints.Count > 0)
+            line += string.Create(inv, $"; the goal out of reach, the way ending {Vector2.Distance(plan.Waypoints[^1], to):0.0} m short of it")
+                    + (plan.Meets is { } mt ? string.Create(inv, $" (the floors meet {mt:0.0} m from it)") : "")
+                    + (plan.OnGoalFloor ? "" : " on another floor");
+        if (plan.InWay is { } w && people != null && w < people.Count)
+            line += string.Create(inv, $"; cut short of someone standing at {people[w].X:0.0},{people[w].Y:0.0},{people[w].Z:0.0}");
+        if (plan.Around.Count > 0) line += $"; round {plan.Around.Count} standing";
+        if (plan.Beneath) line += "; beneath the goal: no way";
+        return line + $"; {floors}{SpotsSaid(plan.Spots)}";
+    }
+
+    /// <summary>Stuck spots of ours that counted as walls in a plan, for its line (none: nothing).</summary>
+    static string SpotsSaid(IReadOnlyList<Vector2> spots) => spots.Count == 0 ? ""
+        : $"; {spots.Count} stuck {(spots.Count == 1 ? "spot" : "spots")} of ours counted as walls, at "
+          + string.Join(" ", spots.Select(p => FormattableString.Invariant($"{p.X:0.0},{p.Y:0.0}")));
+
+    /// <summary>A diagnosis in a line, its things named by <paramref name="thing"/> (a prim's region handle and local id).</summary>
+    public static string Say(Diagnosis d, Func<ulong, uint, string> thing)
+    {
+        static string F(float v) => v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+        static string P(Vector2 p) => FormattableString.Invariant($"{p.X:0.00},{p.Y:0.00}");
+        string Surfaces(IReadOnlyList<Surface> list) => list.Count == 0 ? "nothing"
+            : string.Join(", ", list.Select(s => $"{(s.Flat ? "flat" : "upright")} {F(s.Lo)}-{F(s.Hi)} {thing(s.Region, s.Prim)}"));
+        var line = $"{d.What}, from {P(d.From)} to {P(d.To)}: feet {F(d.Feet)}, her floor {F(d.StartFloor)} (the ground {(d.Ground is { } g ? F(g) : "unknown")}; over her cell "
+                   + $"{Surfaces(d.AtStart)}); {d.Nodes} floor nodes over {d.Cells} of {d.AllCells} cells, {d.Open} she can get to; over the goal's cell "
+                   + (d.GoalNodes.Count > 0 ? $"her walk reaches {string.Join(", ", d.GoalNodes)}" : "no floor of hers")
+                   + (d.Under is { } u ? $", the floor under the goal's height {F(u)}" : ", no floor under the goal's height")
+                   + $" (the model has {Surfaces(d.AtGoal)})";
+        if (d.Meets is { } m)
+            line += m <= 0 ? "; where the goal's floor meets hers can't be told"
+                : $"; the goal's floor meets hers {F(m)} m from it" + (d.Rise is { } r ? $", {F(MathF.Abs(r))} m {(r >= 0 ? "over" : "under")} hers" : "")
+                  + (d.Climb is { } c && c > 0.05f && (d.Rise is not { } r2 || MathF.Abs(c - r2) > 0.05f) ? $", by steps up of at most {F(c)} m" : "");
+        return line + SpotsSaid(d.Spots);
     }
 
     /// <summary>A step up the floor may take from one cell to the next (stairs, a kerb, a stage's steps), and how far
@@ -170,9 +247,10 @@ public sealed class PathPlanner
     /// (give or take: someone on that floor, not on one over or under it).</summary>
     static bool StandsOn(float z, float floor) => z >= floor - 0.3f && z <= floor + 2.6f;
 
-    Plan? Solve(List<Vector3> tris, Vector2 from, float feet, Vector2 to, float? toZ, Vector2 lo, Vector2 hi, Func<float, float, float?>? ground,
-        IReadOnlyList<Vector3>? people = null, float? thing = null)
+    Plan? Solve(Solids solids, Vector2 from, float feet, Vector2 to, float? toZ, Vector2 lo, Vector2 hi, Func<float, float, float?>? ground,
+        IReadOnlyList<Vector3>? people, float? thing, Action<Diagnosis> why)
     {
+        var tris = solids.Triangles;
         int nx = (int)MathF.Ceiling((hi.X - lo.X) / Cell), ny = (int)MathF.Ceiling((hi.Y - lo.Y) / Cell);
         int cells = nx * ny;
         // what stands over each cell, a list per cell: each triangle's heights over it, whether it's flat enough to
@@ -184,6 +262,7 @@ public sealed class PathPlanner
         var his = new List<float>();
         var flats = new List<bool>();
         var ups = new List<bool>();
+        var owners = new List<int>();   // (each span's triangle, whose prim and region the walk's log of why names)
         for (int t = 0; t + 2 < tris.Count; t += 3)
         {
             Vector3 a = tris[t], b = tris[t + 1], c = tris[t + 2];
@@ -223,6 +302,7 @@ public sealed class PathPlanner
                     his.Add(zh);
                     flats.Add(up >= 0.7f);
                     ups.Add(n.Z > 0);
+                    owners.Add(t / 3);
                 }
         }
         // (as arrays: every step of the floor-following reads them)
@@ -341,17 +421,27 @@ public sealed class PathPlanner
         start = renumbered[start];
         float startFloor = floor[start];
         long now = Environment.TickCount64;
+        var spotted = new bool[nodes];   // (solid by a stuck spot alone, for the walk's log of why)
+        var stuckSpots = new List<Vector2>();
+        // a stuck spot: the cells whose middles are within its radius, but never where she stands now (her body's width and
+        // a cell). Counted in whole cells from the spot's own cell, a spot 0.7 m ahead reached about 0.9 m back, over
+        // where she stood when it was marked and the cells either side: planned again from there, she was shut in, one
+        // node she could get to, and the walk's first stick was "no way" (2026-11-19, the scripted test's wall put across
+        // a walk; the blind tester's walk at 17:36 on 2026-11-18 went the same way, stuck once and then no way, which
+        // this may have been)
         lock (_blocked)
         {
             _blocked.RemoveAll(x => x.Until < now);
             foreach (var (spot, r, z, _) in _blocked)
             {
-                int ci = (int)((spot.X - lo.X) / Cell), cj = (int)((spot.Y - lo.Y) / Cell), cr = (int)MathF.Ceiling(r / Cell);
+                int ci = (int)((spot.X - lo.X) / Cell), cj = (int)((spot.Y - lo.Y) / Cell), cr = (int)MathF.Ceiling(r / Cell) + 1;
+                bool counted = false;
                 for (int j = cj - cr; j <= cj + cr; j++)
                     for (int i = ci - cr; i <= ci + cr; i++)
-                        if (i >= 0 && j >= 0 && i < nx && j < ny && (i - ci) * (i - ci) + (j - cj) * (j - cj) <= cr * cr)
+                        if (i >= 0 && j >= 0 && i < nx && j < ny && Vector2.Distance(Centre(i, j), spot) <= r && Vector2.Distance(Centre(i, j), from) > Body + Cell)
                             for (int m = fl.First[j * nx + i]; m < fl.First[j * nx + i + 1]; m++)
-                                if (z is not { } zz || StandsOn(zz, floor[m])) solid[m] = true;
+                                if (!solid[m] && (z is not { } zz || StandsOn(zz, floor[m]))) solid[m] = spotted[m] = counted = true;
+                if (counted) stuckSpots.Add(spot);
             }
         }
 
@@ -484,12 +574,15 @@ public sealed class PathPlanner
         // ground or her feet, or hers is one; a skybox higher up isn't in the plan at all, and the way goes to the ground
         // under it). As far as the grid goes: until 2026-11-11 only 4 m round the goal, and a goal in the middle of a
         // wide stage was taken for one in a closed room
+        // (for the log: how far the goal's floor is over hers where they meet, and the highest step up on the way)
+        float? meets = null, meetRise = null, meetClimb = null;
         float? Meets(int g, float z)
         {
             if (SurfaceUnder(g, z) is not { } gf) return 0;
             bool inside = Obstructed(g, gf);
             var seen = new float[cells];   // the goal's floor over each cell it's followed to (NaN: not)
             Array.Fill(seen, float.NaN);
+            var climb = new float[cells];   // the highest drop on the way out there: a step up, coming back
             seen[g] = gf;
             int got = 1, gi0 = g % nx, gj0 = g / nx;
             var q = new Queue<int>();
@@ -512,32 +605,59 @@ public sealed class PathPlanner
                     // stepping across or down into this space: they meet at an edge (a floor the walk reaches here, and not
                     // one under this space's own, as the ground floor is under a room upstairs)
                     for (int m = fl.First[kk]; m < fl.First[kk + 1]; m++)
-                        if (open[m] && floor[m] <= f + Step && floor[m] >= best - Same) return MathF.Sqrt((ii - gi0) * (ii - gi0) + (jj - gj0) * (jj - gj0));
+                        if (open[m] && floor[m] <= f + Step && floor[m] >= best - Same)
+                        {
+                            (meetRise, meetClimb) = (gf - floor[m], MathF.Max(climb[k], f - floor[m]));
+                            return MathF.Sqrt((ii - gi0) * (ii - gi0) + (jj - gj0) * (jj - gj0));
+                        }
                     if (best == float.NegativeInfinity || f - best > 10 || !through && Obstructed(kk, best)) continue;
                     seen[kk] = best;
+                    climb[kk] = MathF.Max(climb[k], f - best);
                     got++;
                     q.Enqueue(kk);
                 }
             }
             return got >= 16 ? null : 0;   // (smaller: the inside of something, not a place to stand)
         }
-        IEnumerable<string> Spans(int k)
+        // what the model has over a cell between two heights, the nearest the middle first, the first few: each surface
+        // once a prim (its lowest and highest over the cell), as a mesh floor is many triangles
+        // (a triangle's prim, and the region whose local id that is)
+        (uint Prim, ulong Region) Owner(int tri)
         {
-            for (int e = head[k]; e >= 0; e = link[e]) yield return $"{(flat[e] ? "flat" : "upright")} {spanLo[e]:0.00}-{spanHi[e]:0.00}";
+            ulong region = solids.Region;
+            foreach (var (fromTri, r) in solids.Holders) if (tri >= fromTri) region = r;
+            return (tri < solids.Prims.Count ? solids.Prims[tri] : 0, region);
         }
-        IEnumerable<string> Nodes(int k)
+        List<Surface> Spans(int k, float zLo, float zHi)
         {
+            var by = new Dictionary<((uint, ulong), bool), Surface>();
+            for (int e = head[k]; e >= 0; e = link[e])
+            {
+                if (spanHi[e] < zLo || spanLo[e] > zHi) continue;
+                var owner = Owner(owners[e]);
+                var key = (owner, flat[e]);
+                by[key] = by.TryGetValue(key, out var s) ? s with { Lo = MathF.Min(s.Lo, spanLo[e]), Hi = MathF.Max(s.Hi, spanHi[e]) }
+                    : new Surface(flat[e], spanLo[e], spanHi[e], owner.Prim, owner.Region);
+            }
+            float mid = (zLo + zHi) / 2;
+            return by.Values.OrderBy(s => MathF.Min(MathF.Abs(s.Hi - mid), MathF.Abs(s.Lo - mid))).Take(5).ToList();
+        }
+        List<string> Nodes(int k)
+        {
+            var list = new List<string>();
             for (int m = fl.First[k]; m < fl.First[k + 1]; m++)
-                yield return $"{floor[m]:0.00}{(solid[m] ? " in the way" : open[m] ? "" : " not got to")}";
+                list.Add(FormattableString.Invariant($"{floor[m]:0.00}") + (spotted[m] ? " (a stuck spot of ours)" : solid[m] ? " (something in the way over it)"
+                    : !open[m] ? (hard[m] ? " (too tight)" : " (cut off)") : " (open)"));
+            return list;
         }
-        // (why there's no way, for the walk log)
-        string Why(string what) =>
-            $"{what}: feet {feet:0.00}, start floor {startFloor:0.00} (ground {GroundAt(sc)?.ToString("0.00") ?? "unknown"}, surfaces "
-            + $"{string.Join(" ", Spans(sc))}), {nodes} floor nodes over {fl.Cells} of {cells} cells, {open.Count(x => x)} open; the goal cell "
-            + (fl.First[gCell] < fl.First[gCell + 1] ? $"reached at {string.Join(", ", Nodes(gCell))}" : "unreached")
-            + (under is { } uu ? $", the floor under the goal {uu:0.00}" : "");
+        // (why there's no way, or the goal is out of reach, for the walk's log)
+        Diagnosis Why(string what)
+        {
+            float gz = toZ ?? startFloor + 1;
+            return new Diagnosis(what, from, to, feet, startFloor, GroundAt(sc), Spans(sc, feet - 1.5f, feet + 2f), nodes, fl.Cells, cells, open.Count(x => x),
+                Nodes(gCell), under, Spans(gCell, gz - 3f, gz + 1f), meets * Cell, meetRise, meetClimb, stuckSpots);
+        }
         bool goalMoved = false, beneath = false;
-        float? meets = null;
         if (goal < 0 || !open[goal])
         {
             // how far out its stand-in may be, in cells: GoalReach past where the goal's floor meets hers (a stage's
@@ -548,7 +668,7 @@ public sealed class PathPlanner
             if (toZ is { } tz)
             {
                 meets = Meets(gCell, tz);
-                if (meets == null && thing == null) { WalkMode.Log(Why("the goal is in a space of its own")); return null; }
+                if (meets == null && thing == null) { why(Why("no way: the goal is in a space of its own")); return null; }
                 past = meets ?? 0;
             }
             if (thing is { } across) past = MathF.Max(past, across / Cell);
@@ -635,7 +755,7 @@ public sealed class PathPlanner
                         if ((di != 0 || dj != 0) && fl.Neighbour(m, di, dj, hard) is var k && k >= 0 && !float.IsNaN(dOf[k]) && plain[k] < plain[m] - 1e-3f) low = false;
                 if (low) spots.Add(m);
             }
-            if (spots.Count == 0) { WalkMode.Log(Why($"nothing open within {rings * Cell:0.#} m of the goal")); return null; }
+            if (spots.Count == 0) { why(Why(FormattableString.Invariant($"no way: nothing she can get to within {rings * Cell:0.#} m of the goal"))); return null; }
             // how far she'd walk to each (as A* moves, people aside): out from where she stands, until no spot left can
             // be worth more than the best so far
             var walked = new float[nodes];
@@ -692,6 +812,7 @@ public sealed class PathPlanner
             (gi, gj) = (CellNode(best) % nx, CellNode(best) / nx);
             goalMoved = true;
             beneath = !level && under is { } ug && ug - floor[best] >= Storey && (meets is not { } mt || mt * Cell >= Far);
+            why(Why(beneath ? "no way: the goal out of reach, the nearest the way goes a storey under it" : "the goal out of reach"));
         }
         var goalAt = goalMoved ? Centre(gi, gj) : to;
         int? inWay = null;
@@ -701,7 +822,7 @@ public sealed class PathPlanner
             {
                 StartFloor = startFloor, GoalFloor = floor[goal], FloorKnown = !level, Around = around, InWay = inWay,
                 OnGoalFloor = level || (under is { } uf ? MathF.Abs(floor[goal] - uf) < Same : toZ is not { } tzf || StandsOn(tzf, floor[goal])),
-                Meets = meets * Cell, Beneath = beneath,
+                Meets = meets * Cell, Beneath = beneath, Spots = stuckSpots,
             };
         bool Roomy(int m, float need) => !blocked[m] && (clear[m] >= need || NearEnd(m));
         bool NearEnd(int m)
@@ -719,7 +840,7 @@ public sealed class PathPlanner
         // (so many cells searched with no end to it, people among them: the way as if nobody were there, cut at the first)
         var path = fl.AStar(hard, solid, byPeople, clear, start, goal)
             ?? (stood != null ? fl.AStar(hard, solid, null, clearOfThings, start, goal) : null);
-        if (path == null) return null;
+        if (path == null) { why(Why("no way: the search found no path to the goal's floor")); return null; }
         // through someone: the only way, or the way round is much longer. Cut StandOff short of them
         int first = byPeople != null ? path.FindIndex(1, m => byPeople[m]) : -1;
         if (first > 0 && people != null)

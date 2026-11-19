@@ -313,7 +313,11 @@ public sealed partial class AgentSession : IAsyncDisposable
     static bool InRegion(GridClient c) =>
         c.Network.Connected && c.Network.CurrentSim is { } sim && sim.Connected && sim.HandshakeComplete && !string.IsNullOrEmpty(sim.Name);
 
-    /// <summary>Completes if the session stays out of a region for 30 s (a dead circuit LibreMetaverse didn't notice).</summary>
+    /// <summary>How long after a failed crossing the region left current may take to send the agent's avatar back.</summary>
+    const long LostAfterFailedCrossingMs = 20_000;
+
+    /// <summary>Completes if the session stays out of a region for 30 s (a dead circuit LibreMetaverse didn't notice),
+    /// or a failed crossing left it in a region that never took the agent back.</summary>
     async Task WatchdogAsync(GridClient c)
     {
         var badSince = (DateTime?)null;
@@ -328,6 +332,18 @@ public sealed partial class AgentSession : IAsyncDisposable
                 StatusMessage = $"the teleport to {where} never arrived";
                 Notify.Add("TeleportStalled", "notify",
                     $"The teleport to {where} didn't get through: the region there didn't answer. Logging in again.", Notifications.None);
+                return;
+            }
+            // a crossing failed and the region left current never took the agent back: in a region's circuit but in no
+            // region, where nothing moves it and a teleport goes unanswered
+            if (CrossingGuard.Lost(c, LostAfterFailedCrossingMs) is var (here, into))
+            {
+                Log.LogWarning("after the failed crossing into {Into}, {Here} hasn't sent my avatar in {S} s: in no region; logging in again",
+                    into, here, LostAfterFailedCrossingMs / 1000);
+                StatusMessage = $"lost between {here} and {into}";
+                Notify.Add("RegionLost", "notify",
+                    $"You're lost between regions since the crossing failed: {here} hasn't taken you back. Logging in again by itself; this can take a minute or two.",
+                    Notifications.None);
                 return;
             }
             if (InRegion(c)) { badSince = null; continue; }

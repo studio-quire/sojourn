@@ -172,6 +172,11 @@ public sealed class CollisionShapes
         return null;
     }
 
+    /// <summary>Whether a shape counts (ready), was given up on (a map that won't decode, an asset not found), or neither
+    /// yet (still to come, or never asked for); not counting it as used.</summary>
+    public (bool Ready, bool Failed) State(ShapeKey key) =>
+        _shapes.TryGetValue(key, out var shape) ? (shape.Ready, shape.Failed) : (false, false);
+
     /// <summary>Whether a shape is had (ready, or given up on), counting it as used now; false when it's still to come.</summary>
     public bool Settled(ShapeKey key)
     {

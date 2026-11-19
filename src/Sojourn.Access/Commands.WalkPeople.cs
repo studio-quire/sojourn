@@ -206,7 +206,10 @@ public sealed partial class Commands
         await Task.Delay(700, CancellationToken.None);   // (coming to a stop: the distance said is where she stands)
         if (_ops.Me() is not { } me) return false;
         double off = Flat(me.Pos, target);
-        Walk.WalkMode.Log(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"walk over, someone in the way: {off:0.0} m off"));
+        var over = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"go: walk over, someone in the way: {off:0.0} m off {target.X:0.00},{target.Y:0.00}; at {me.Pos.X:0.00},{me.Pos.Y:0.00},{me.Pos.Z:0.00}");
+        if (WalkMode is { } wm) wm.Note(over);
+        else Walk.WalkMode.Log(over);
         _say($"Finished walking, {OffWords(off)} from the destination: {await InWayAsync(who, target)}.");
         return off < 2.5;
     }

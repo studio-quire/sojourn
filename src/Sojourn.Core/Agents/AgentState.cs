@@ -69,9 +69,19 @@ public sealed class AgentState : IDisposable
             ["from"] = line.From, ["from_id"] = line.FromId.ToString(), ["message"] = line.Message, ["timestamp"] = line.Timestamp,
         };
         if (line.Private) return;
-        try { lock (_imFileLock) File.AppendAllText(ImFile, o.ToJsonString(Json.Compact) + "\n"); }
-        catch { /* history is a convenience; never fail an IM over it */ }
+        // written off the caller's thread, in order: an IM she sent is recorded on the window's, and on her PC at login,
+        // short of memory, one append held it 10 s (2026-11-19, tester-20261119T223104-61551a). Read back only at start
+        var text = o.ToJsonString(Json.Compact) + "\n";
+        var file = ImFile;
+        lock (_imFileLock)
+            _imWrites = _imWrites.ContinueWith(_ =>
+            {
+                try { File.AppendAllText(file, text); }
+                catch { /* history is a convenience; never fail an IM over it */ }
+            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
     }
+
+    Task _imWrites = Task.CompletedTask;
 
     void LoadIms()
     {

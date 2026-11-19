@@ -155,6 +155,14 @@ at the app's own window can't meet it (there the app is the foreground process).
 (the card from a card, the group windows, the profile's) setting a control's focus as well would take the test out of
 its reach; not done.
 
+A system dialog in front does the same (Claude Opus 5.5, 2026-11-19: `Shell_SystemDialog of PickerHost.exe`, up with
+the person away), and UI Automation's SetFocus (`setfocus`) then moves nothing either, in 11-15's build as in 11-19's.
+The group steps' first keys went to People nearby (they reach My groups by Alt+2 and Tab now, `to_my_groups`), and
+with that fixed the group windows' returns after a confirmation in Notices left the focus in the main window. The
+app keeps a focus there, so `focus_lost` doesn't fire: a step with failures prints what's in front on the PC, and a
+flyout, menu or system dialog there means closing it and running again. A step that needs the focus somewhere gets
+there by keys, or by `focus_on`, which falls back to Tab.
+
 Posted keys aren't the PC's input, which is what tells the app someone is there: from five minutes into a session the tester is away by itself, for
 the rest of the run, and set away again within a second of being taken off it. A step that sets Away itself turns
 `away_after` off meanwhile (the menu bar's, which reaches it at about the five-minute mark of a full run and failed
@@ -533,7 +541,11 @@ docstring with its checks in full):
   Escape, `//voice mute all` and `unmute all` said and in `SojournVoice status`, `//voice reconnect` said with its
   outcome.
 - **walking**, **a teleport**, **the assistant's walk**: a `//go`, Ctrl+Shift+H and a `//tp` checked against the
-  region's positions; the session's autopilot stopping about its stop distance short.
+  region's positions; the session's autopilot stopping about its stop distance short. Walking also has a `//go` onto a
+  plinth with no steps and a wall put across the way once she's walking, and checks the session log's lines for it
+  (`docs/access-app.md` > Walk mode > Why a walk went as it did, in her log): the plan, the planner's reasons, the stuck
+  line (the wall named from her shin up, the floor ahead, what's either side, the parcel by name and id), the plan made
+  again from there counting the stuck spot, and the walk's end.
 - **always running** (about a minute, no renderer needed): between TP_TO and PILOT_TO, a `//go` walked, then `//run` (said, the
   setting on) and a `//go` back seen running (the region's run animation on her) and faster than the walk; walk mode's held Up
   running without Shift; `//run` again walking, said, and held Up walking. OpenSim's autopilot turns running off as it starts,
@@ -898,7 +910,7 @@ theirs to type: before that step, NVDA's log at its default level (no input logg
 Not run yet (written 2026-11-09 by Claude Fable 5.2, with the change). Everything in `docs/access-app.md` at `//go` >
 People on the way was built and checked on OpenSim, whose avatars slide when touched; nobody here knows what Second
 Life's do, so this is the first real evidence either way. It needs the user's account in Sojourn Access from the repo
-(its agent API on, and `SOJOURN_WALK_LOG=path` set: each plan is a `go A -> B, N standing: ...` line there), a session
+(its agent API on; each plan is a `go: plan from A (feet F) to B (height H), N standing: ...` line in the session log, and with `SOJOURN_WALK_LOG=path` in that file too), a session
 driving it, and a second avatar whose person has agreed to be stood in the way and, for step 1, walked into (one of
 ours if they're willing, or a friend's), on open ground where building is allowed or a doorway is at hand. Where the
 other avatar is before and after comes from the agent API (`TesselAgent people`, their `pos`), the tester's own from

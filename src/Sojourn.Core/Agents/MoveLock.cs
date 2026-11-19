@@ -36,6 +36,10 @@ public sealed class MoveLock
 
     public MoveLock(AgentSession s) => _s = s;
 
+    /// <summary>Walking the avatar back to the place (by the session's autopilot, so through an app's router): an app's
+    /// log names that walk as this one's, not the assistant's.</summary>
+    public bool Returning => _returning;
+
     /// <summary>The headset's rig brings the avatar back to the view itself (the client sets it in the headset).</summary>
     public bool RigReturns { get; set; }
 

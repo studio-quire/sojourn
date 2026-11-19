@@ -85,7 +85,7 @@ public sealed class CollisionWorld : IDisposable
                     var off = Offset(region, r.World.Handle);
                     var o = origin + off;
                     if (!r.Near(o, best)) continue;
-                    if (r.Ray(_shapes, o, dir, ref best, r.World.Handle == region ? self : 0, solid) is { } h) hit = h;
+                    if (r.Ray(_shapes, o, dir, ref best, r.World.Handle == region ? self : 0, solid) is { } h) hit = h with { Region = r.World.Handle };
                 }
                 hits[i] = hit;
             }
@@ -94,8 +94,10 @@ public sealed class CollisionWorld : IDisposable
     }
 
     /// <summary>The solid triangles (as rays count them; avatars left out, they move) of every prim reaching into the box,
-    /// in the frame of the region <paramref name="region"/>, three corners each, with the prim's local id once a triangle.</summary>
-    public void SolidTriangles(ulong region, Vector3 min, Vector3 max, Func<Primitive, CollideAs> solid, List<Vector3> into, List<uint> ids)
+    /// in the frame of the region <paramref name="region"/>, three corners each, with the prim's local id once a triangle.
+    /// <paramref name="holders"/>: from which triangle on the local ids are which region's (one entry a region met).</summary>
+    public void SolidTriangles(ulong region, Vector3 min, Vector3 max, Func<Primitive, CollideAs> solid, List<Vector3> into, List<uint> ids,
+        List<(int From, ulong Region)>? holders = null)
     {
         lock (_gate)
         {
@@ -105,6 +107,7 @@ public sealed class CollisionWorld : IDisposable
                 if (!r.Overlaps(min + off, max + off)) continue;
                 r.Update();
                 int from = into.Count;
+                holders?.Add((ids.Count, r.World.Handle));
                 r.Solids(_shapes, min + off, max + off, solid, into, ids);
                 if (off != Vector3.Zero) for (int i = from; i < into.Count; i++) into[i] -= off;
             }
@@ -140,6 +143,27 @@ public sealed class CollisionWorld : IDisposable
     }
 
     readonly List<(float D, ShapeKey Key, Primitive Prim, IAssetSource Assets)> _wanted = new();
+
+    /// <summary>What within <paramref name="reach"/> of a point (region frame; how far from its box, 0 inside it) doesn't
+    /// count because its shape isn't had: a sculpt or mesh still downloading, or given up on (Failed), with the handle of
+    /// the region it's in (its local id is that region's). Nearest first. For a walk's log when it sticks (Sojourn
+    /// Access): the region may count what the model can't yet.</summary>
+    public List<(float D, Primitive Prim, ShapeKind Kind, bool Failed, ulong Region)> Missing(ulong region, Vector3 at, float reach)
+    {
+        var missing = new List<(float D, Primitive Prim, ShapeKind Kind, bool Failed, ulong Region)>();
+        lock (_gate)
+        {
+            foreach (var r in _regions.Values)
+            {
+                var off = Offset(region, r.World.Handle);
+                if (!r.Near(at + off, reach)) continue;
+                r.Update();
+                r.Unready(_shapes, at + off, reach, missing);
+            }
+        }
+        missing.Sort((a, b) => a.D.CompareTo(b.D));
+        return missing;
+    }
 
     /// <summary>For the status op: regions, prims indexed and placed, shapes (ready, waiting, downloading, failed) and
     /// roughly what they hold.</summary>
@@ -575,6 +599,26 @@ public sealed class CollisionWorld : IDisposable
                 {
                     float d = MathF.Max(0, Vector3.Distance(e.Pos, at) - e.Radius);
                     if (d <= reach && !shapes.Settled(e.Key!.Value)) into.Add((d, e.Key!.Value, e.Prim, Assets));
+                }
+            }
+        }
+
+        /// <summary>The sculpts and meshes within reach of a point whose shapes don't count (not ready: to come, or given up
+        /// on), with their distance from their box (a building she's inside is 0, where its bounding sphere had every
+        /// big one at 0); nothing asked for. (A prim's shape is built the moment a query meets it.)</summary>
+        public void Unready(CollisionShapes shapes, Vector3 at, float reach, List<(float D, Primitive Prim, ShapeKind Kind, bool Failed, ulong Region)> into)
+        {
+            foreach (var cell in Cells())
+            {
+                if (cell.Items.Count == 0) continue;
+                if (cell.Stale) cell.Refit();
+                if (cell.Max.X < at.X - reach || cell.Min.X > at.X + reach || cell.Max.Y < at.Y - reach || cell.Min.Y > at.Y + reach) continue;
+                foreach (var e in cell.Items)
+                {
+                    if (Vector3.Distance(e.Pos, at) - e.Radius > reach || e.Key!.Value.Kind == ShapeKind.Prim || shapes.State(e.Key.Value) is not { Ready: false } st) continue;
+                    var inBox = Vector3.Transform(at - e.Pos, Quaternion.Conjugate(e.Rot));
+                    float d = Vector3.Max(Vector3.Abs(inBox) - e.Scale / 2, Vector3.Zero).Length();
+                    if (d <= reach) into.Add((d, e.Prim, e.Key.Value.Kind, st.Failed, World.Handle));
                 }
             }
         }

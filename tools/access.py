@@ -1720,6 +1720,10 @@ def session(run, procs):
         # rights; and nothing focused for a second and a half, not the moment between one window closing and the
         # next taking over)
         try:
+            if run.failed_in.get(name):
+                # (a flyout, menu or system dialog there holds the PC's foreground, and the app's windows on the hidden
+                # desktop aren't activated, nor moved by UIA's SetFocus: its steps fail as if the app had, 2026-11-19)
+                print(f"     (in front on the PC's own desktop: {pc_foreground()})", flush=True)
             if run.failed_in.get(name) and focused() is None and wait_focus(lambda d: True, 1.5) is None and alive(APP_PID):
                 focus_lost()
         except Exception:
@@ -7459,12 +7463,20 @@ def own_group(run):
     return made["group_id"]
 
 
+def to_my_groups():
+    """The focus in My groups by keys, as she goes there: Alt+2 (Friends), then Tab. Not UI Automation's SetFocus, which
+    from the hidden desktop moves nothing while something of the PC's own holds its foreground: with a system dialog in
+    front (PickerHost's, 2026-11-19, the person away) every group step failed from its first key, which went to People
+    nearby, in today's build and 11-15's alike. Whether it got there."""
+    key("alt+2")
+    wait_focus(lambda d: d["id"] == "friends", 4)
+    key("tab")
+    return wait_focus(lambda d: d["id"] == "groups", 4)
+
+
 def group_menu(letter, group=GROUP_NAME):
     """A group's menu in Alt+3's My groups, then a letter."""
-    key("alt+3")
-    wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
-    u("setfocus id=groups")
-    wait_focus(lambda d: d["id"] == "groups" or d["type"] == "ListItem", 4)
+    to_my_groups()
     if not select_in("id=groups", group):
         return False
     key("apps")
@@ -7490,10 +7502,7 @@ def groups_menu(run, nonce, tester_id):
         # ---- No group tag first in the list (the official viewer's None row), Enter on it wearing none
         api("TesselAgent", "activateGroup", group_id=gid)
         time.sleep(1.5)
-        key("alt+3")
-        wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
-        u("setfocus id=groups")
-        wait_focus(lambda d: d["id"] == "groups" or d["type"] == "ListItem", 4)
+        to_my_groups()
         key("f5")
         time.sleep(1)
         key("home")
@@ -7790,10 +7799,7 @@ def groups_running(run, nonce, tester_id):
                     run.expect("a role past Everyone waits for her confirmation, naming it", ["Greeters"], m, 4)
                     run.expect("Escape cancels it", ["Cancelled"], m, 8)
         back_to_chat()
-        key("alt+3")
-        wait_focus(lambda d: d["id"] == "people" or d["type"] == "ListItem", 4)
-        u("setfocus id=groups")
-        wait_focus(lambda d: d["id"] == "groups" or d["type"] == "ListItem", 4)
+        to_my_groups()
         key("apps")
         if run.check("New group is on the groups' menu", menu_open("New group..."), focus_label()):
             key("u")
@@ -12005,6 +12011,69 @@ def walk(run):
     x, y, z, _ = tester_where()
     off = math.dist((x, y), WALK_TO)
     run.check("3 s later the tester is within 1 m of it", off < 1, f"at {x:.1f}, {y:.1f}: {off:.1f} m from {WALK_TO}")
+    walk_stuck(run)
+
+
+def walk_stuck(run):
+    """A walk that sticks, and the session log saying why (Walk/WalkMode.Stuck.cs; the blind tester's walks at a place on
+    Second Life kept sticking and ending in "no way", 2026-11-18, and her log couldn't say why). From WALK_TO, //go to a
+    point on a plinth 1 m high with no steps, 15 m north: planned as near as the way goes; a wall put across the way once
+    she's walking stops her; the stretch is planned again round it (the spot marked where she stuck once shut her in, so
+    a first stick was "no way") and she ends at the plinth's foot. The session log has the plan with her feet and the
+    floors, the planner's reasons (the goal's floor out of reach, from where to where, where it meets hers and how far
+    over hers it is at that edge), the stuck line naming the wall from her shin up with the floor ahead, what's either
+    side and the parcel she's on, the plan after it counting the stuck spot it left as a wall, and the walk's end."""
+    x0, y0, z0, _ = tester_where()
+    px, py = WALK_TO[0], WALK_TO[1] + 15
+    g = (api("TesselAgent", "ground", points=[[px, py]]).get("heights") or [None])[0]
+    if not run.check("(the ground at the plinth)", g is not None, str(g)):
+        return
+    clear = api("SojournCollision", "collide", **{"from": [x0, y0, z0], "dir": [0, 1, 0], "max": 16})
+    print(f"     (north of the tester before building: {clear.get('distance', 'nothing') if clear.get('hit') else 'nothing'} within 16 m)")
+    plinth = api("TesselBuild", "create", 20, shape="box", name="Access Walk Plinth", pos=[px, py, g + 0.5], scale=[3, 3, 1]).get("id")
+    if not run.check("(the plinth built)", plinth, str(plinth)):
+        return
+    wall = None
+    try:
+        time.sleep(1.5)
+        m = mark()
+        say_in_app(f"//go xyz {px},{py},{g + 2:.1f}")
+        going = run.expect("//go onto the plinth: out of reach, as near as the way goes", ["out of reach", "as near as the way goes"], m, 10)
+        if not going:
+            return
+        # across the way 9 m on, once she's walking (the model has it at once, the walk's stretch doesn't)
+        wall = api("TesselBuild", "create", 20, shape="box", name="Access Walk Wall", pos=[px, WALK_TO[1] + 9, g + 1.25], scale=[6, 0.3, 2.5]).get("id")
+        run.expect("the wall stops her: something's in the way, going round", ["Something's in the way; going round"], m, 20)
+        done = run.expect("and she ends at the plinth's foot, as near as the way goes", ["Finished walking, as near to"], m, 40)
+        time.sleep(2.5)   # (the stuck line waits up to 2 s for names)
+        x, y, z, _ = tester_where()
+        print(f"     (ended at {x:.1f}, {y:.1f}: {math.dist((x, y), (px, py)):.1f} m from the plinth's middle; {(done or {}).get('text', 'not finished')})")
+        log = latest_app_log()
+        log = log[max(0, log.rfind("\n", 0, max(0, log.find(f" to {px}.00,{py}.00 (height ")))):]   # (from this walk's first plan on)
+        plan = re.search(rf"go: plan from [^\n]* to {px}\.00,{py}\.00 \(height [^\n]*", log)
+        run.check("the session log has the plan: her feet, the goal's height, out of reach, the floors",
+                  plan and all(w in plan.group(0) for w in ("(feet ", "the goal out of reach", "her floor ")), plan.group(0)[:300] if plan else "none")
+        why = re.search(rf"go: why: the goal out of reach, from [^\n]* to {px}\.00,{py}\.00: [^\n]*", log)
+        rise = re.search(r"meets hers [\d.]+ m from it, (\d+\.\d\d) m over hers", why.group(0)) if why else None
+        run.check("and the planner's reasons: the plinth over the goal's cell, where its top meets her floor, more than a step over it",
+                  why and "Access Walk Plinth" in why.group(0) and rise and 0.4 < float(rise.group(1)) < 1.2, why.group(0)[:400] if why else "none")
+        stuck = re.search(r"go: stuck on stretch [^\n]*", log)
+        run.check("the stuck line: where she is, the wall from her shin by name, the floor ahead, either side, the parcel here",
+                  stuck and all(w in stuck.group(0) for w in ("(feet ", "at the shin Access Walk Wall", "the floor 0.6 m on", "across at the waist here, "))
+                  and re.search(r"the parcel here [^;]*\(\d+\): ", stuck.group(0)), stuck.group(0)[:900] if stuck else "none")
+        # (the plan made again from where she stuck: written before the stuck line, which waits for names)
+        again = re.search(rf"go: plan from [^\n]* to {px}\.00,{py}\.00 [^\n]*; 1 stuck spot of ours counted as walls, at [^\n]*", log)
+        run.check("and the plan made again from there counts the stuck spot it left as a wall", again,
+                  again.group(0)[:400] if again else "none")
+        run.check("and the walk's end", re.search(r"go: walk over after [^\n]*\(feet ", log), "")
+        if stuck:
+            print(f"     ({stuck.group(0)[:1200]})")
+    finally:
+        ids = [i for i in (plinth, wall) if i]
+        try:
+            api("TesselBuild", "take", 30, ids=ids, folder_id=api("LLInventory", "getBasicFolderID", ft_name="object")["id"])
+        except Exception as e:
+            print(f"     (taking the plinth and wall back: {e})")
 
 
 def always_run(run):

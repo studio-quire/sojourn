@@ -53,6 +53,7 @@ public sealed partial class WalkMode
         if (host.Audio is { } audio) audio.Roof = RoofOver;   // dry under a roof under the sea (WalkMode.Roof.cs)
         ApplyFootsteps();
         HookChat();
+        HookWalkNews();
     }
 
     /// <summary>The own footsteps are ours (by surface) unless the steps cue is off or text only.</summary>
@@ -130,6 +131,8 @@ public sealed partial class WalkMode
     }
 
     public static void Log(string line) { if (WalkLog != null) lock (WalkLog) WalkLog.WriteLine($"{Environment.TickCount64} {line}"); }
+    /// <summary>The walk log is on (SOJOURN_WALK_LOG): a line only it would get is worth making.</summary>
+    public static bool Logging => WalkLog != null;
 
     /// <summary>The velocity from the positions the region sends (each tick on the window's thread): a fallback for when
     /// its reported velocity says still while the avatar moves.</summary>

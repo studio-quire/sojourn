@@ -36,8 +36,8 @@ public sealed class TesselGroups : SessionApi
         Op("membership", "{group_id, notices?, list_in_profile?} -> {notices, list_in_profile}: whether I get its notices, whether my profile lists it", a => g.Membership(a));
         Op("notice", "{group_id, subject, message, item_id?} -> {sent, archived}: to every member (an attachment needs copy+transfer); archived: its archive shows it (the grid drops one it can't take without a word)", (a, ct) => J(g.NoticeAsync(a, ct)));
         Op("notices", "{group_id} -> {notices: [{notice_id, time, from, subject, attachment}]}", (a, ct) => J(g.NoticesAsync(a, ct)));
-        Op("noticeRead", "{notice_id} -> {subject, message, from, attachment?: {name, type}}: one from the archive, whole", (a, ct) => J(g.NoticeReadAsync(a, ct)));
-        Op("noticeTake", "{notice_id} -> {taken, type, folder}: its attachment, into the folder for its kind", (a, ct) => J(g.NoticeTakeAsync(a, ct)));
+        Op("noticeRead", "{notice_id, group_id?} -> {subject, message, from, attachment?: {name, type}}: one from the archive, whole", (a, ct) => J(g.NoticeReadAsync(a, ct)));
+        Op("noticeTake", "{notice_id, group_id?} -> {taken, type, folder}: its attachment, into the folder for its kind", (a, ct) => J(g.NoticeTakeAsync(a, ct)));
         Op("powers", "-> {powers}: the power names roles can have", _ => new JsonObject { ["powers"] = Json.Strings(GroupOps.PowerList) });
     }
 

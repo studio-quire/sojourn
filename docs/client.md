@@ -540,7 +540,14 @@ lab 8300-8899; Tessel 9063, 9070, 9020, 9080.
   ignores a crossing that comes while the last is unfinished (a vehicle over two borders in seconds).
   `Agents/CrossingGuard.cs` finishes the crossing, restores the flag, lets the acknowledgement wait go at once for a
   circuit already up (crossings, and teleports into a connected neighbour), ends a stale crossing for a newer one, and
-  says a crossing that fails (notice `CrossingFailed`). Ending a stale crossing wasn't enough by itself: the stale
+  says a crossing that fails (notice `CrossingFailed`). After a failure LibreMetaverse "recovers" into the old region;
+  on Second Life that region may never take the agent back (the blind tester's train, 2026-11-16: it held the circuit,
+  never sent her avatar, and her home teleport got no answer; the watchdog, wanting only a handshaken region, waited),
+  so if 20 s on the region left current hasn't sent a full update of the agent's own avatar, the watchdog logs in
+  again with a `RegionLost` notice (`CrossingGuard.Lost`); the old region's copy from before the crossing doesn't count.
+  `python tools/crossing.py --lost` stages it: every reply held 40 s, the crossing fails at 30 s, Atelier doesn't send
+  the avatar back either (OpenSim too, 2026-11-18), and about 20 s on the session logs in again.
+  Ending a stale crossing wasn't enough by itself: the stale
   region's late reply then made LibreMetaverse "recover" into that region and drop the new one's circuit (the session
   lost its region 30 s on), so the guard drops a superseded crossing's reply (for 30 s, or until the agent crosses or
   teleports there again; TeleportWatch's handler asks it). It never asks a region again for a reply that's merely slow

@@ -774,7 +774,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | Command | Does |
 |---|---|
 | `//go [tp] N [dir]` | walk (tp: teleport) N metres ahead, or toward N, NNE ... NNW (16 points, or words), or left, right, back |
-| `//go [tp] xyz X,Y[,Z]` | to region coordinates (Z defaults to your height) |
+| `//go [tp] xyz X,Y[,Z]` | to region coordinates (Z defaults to your height); two or three numbers alone (`//go 25,25,56`, `//go 25 25`) are coordinates too |
 | `//go [tp] person NAME` / `object NAME` / `NAME` | to the nearest person whose name starts with NAME / object whose name has it; a name alone is a person, else an object; a teleport to a person lands beside them, facing them (below) |
 | `//find person NAME` / `object NAME` (or just `//find NAME`) | "Kestrel is 4 m away, two o'clock, to the northeast, at your level.": everyone and everything that matches, the nearest first, the first eight and how many more |
 | `//face DEG` / `DIR` / `left`/`right`/`around` / `person NAME` / `object NAME` | turn; degrees are SL's (0 east, counter-clockwise), as Radegast's |
@@ -1599,7 +1599,78 @@ follow's 6 m 1.2 against 1.0, 30 m of open ground 3.8 against 2.3, 150 m through
 through 57,600 triangles of clutter 13 against 11).
 
 A mesh or sculpt still downloading isn't known yet, so a walk that gets stuck
-marks the spot for two minutes and plans again (twice), then counts as no way. People, where the caller gives them
+marks the spot for two minutes and plans again (twice), then counts as no way. The spot is the cells whose middles are
+within 0.6 m of a point 0.7 m on toward where she was heading, on her floor, never where she stands: until 2026-11-19
+it was counted in whole cells and reached back over her and the cells beside her, so planned again from there she was
+shut in (one node she could get to) and a walk's first stick was "no way" (the scripted test's wall across a walk; the
+blind tester's walk at 17:36 on 2026-11-18 went the same way, stuck once and then no way, which this may have been).
+
+**Why a walk went as it did, in her log** (`Walk/WalkMode.Stuck.cs`; Claude Opus 5.5, 2026-11-19). Until then the
+plans and the planner's reasons went only to `SOJOURN_WALK_LOG`, a test switch, so the blind tester's walks to her
+partner at a place on Second Life (her log of 2026-11-18: "around something in the way ... 7 metres short", then
+"Something's in the way; going round", then "No way to walk to ... found", every time but once) couldn't say whether
+what stopped her was in the collision model at all. The session log she sends now has, for `//go`, Walk to and routes
+(`go: ...`), follows (`follow: ...`), the assistant's walks (`assistant's walk: ...`) and keep in place's walk back
+(`keep in place's walk back: ...`), positions and object names only, never people's:
+- **Each plan**: from where to where, her feet and the goal's height, and what came of it: no way, straight, or its
+  stretches' corners; a goal out of reach with how far short the way ends and where the floors meet; cut short of
+  someone (where they stand, not who); the floor under her and at the way's end; and the stuck spots of ours that
+  counted as walls in it, where each was marked (`PathPlanner.Line`, `Plan.Spots`). A spot lasts two minutes across
+  walks, so a walk to the same person soon after plans round the last one's.
+- **The planner's reasons** (`why:`), where there's no way or the goal is out of reach (`PathPlanner.Diagnosis`): from
+  where to where (it comes up to 2 s after its plan line, names being asked for); her feet and the floor taken under
+  them, the ground and what the model has over her cell; how far her floor was followed (floor nodes over cells, how
+  many she can get to); over the goal's cell, each floor her walk reaches there and how it stands (open, too tight,
+  cut off, something in the way over it, or a stuck spot of ours), the floor under the goal's height and what the model
+  has there; where the goal's floor meets hers, how far over hers it is, and, where that isn't one step, the highest
+  step up on the way ("by steps up of at most"): the goal's floor is followed out down drops and through cells too tight
+  for her to the first of hers she can get to, so its height there is often hers already (measured there, the test's
+  plinth, a metre high, read 0.00); and the stuck spots counted. Each surface by its
+  object's name, its kind (prim, sculpt, mesh) and the physics shape type it counts by. So her log tells a goal whose
+  floor the model hasn't got (nothing under its height) from one it has but can't reach from hers (a step up of more
+  than 0.4 m on the way, or cut off).
+- **Where a walk sticks**: a stretch (`stuck on stretch N of M`), a straight walk that ends short (`ended short`; past a
+  border, said so, in the frame of the region she's in), a follow steering after someone that makes no half metre in
+  3 s (`follow: stuck`, once in 10 s; the session autopilot's own giving up never comes in a follow, as each look moves
+  its target on), and the session's autopilot giving up (`autopilot stuck`, the assistant's walks and keep in place's,
+  once in 10 s). Where she is and where she was heading, then, all from one batch of rays:
+  - toward it, from her shin (0.2 m: a kerb or a step under the planner's 0.4 m that the knee's ray passes over) and her
+    knee, waist, chest and the top of her head (an avatar over the planner's 1.8 m meets a lintel it doesn't), what
+    each met with its distance, kind and physics, or nothing within 3 m;
+  - underfoot, and the floor 0.6 m on toward it, each against her feet ("0.32 m over her feet"), the model's surface or
+    the ground, whichever is higher (the model has no ground); "past what's ahead" where the knee's or waist's ray met
+    something nearer, as rays meet faces from outside only and one cast down from inside a wall finds the floor under
+    it;
+  - across at her waist, where she stands and 0.4 m on (unless the waist's ray met something nearer), what each side
+    has within 1.5 m and the gap between: a doorway the rays ahead look straight down the middle of (the planner passes
+    0.6 m; the region's avatar may need more);
+  - sculpts and meshes within 3 m whose shapes the model hasn't got, still to come or given up on (her log has sculpt
+    maps that won't decode), with how far from each one's box ("her middle in its box" for a building she's in);
+  - the parcel she's on and the one 2 m ahead, with who may enter (its group, hers or not; an allowed list; passes; a
+    ban list in use: the lists themselves are the owner's to see), and a parcel's line the region sent her in the last
+    minute;
+  - and, only when it came, the region's word that its autopilot stopped with no cancel of ours in the 3 s before it.
+    The region answers every cancel of ours with it (1f50470), our walks cancel at each stick, end and stand-off, and
+    until this was filtered those answers were most of what the line reported (`WalkMode.OwnCancel`).
+  The names are asked for, up to 2 s, and the line written then, the walk going on meanwhile. Each thing is named by
+  the region whose local id it has, as near a border the rays and the planner meet a neighbour's prims.
+- **A parcel's line** (`parcel line: ...`), as the region sends it (ParcelProperties with a collision sequence id, from
+  which the viewer draws ban lines; it comes as she nears a parcel she may not enter, not only when she's pushed back):
+  which parcel and why (banned, not on its allowed list, not in its group), where she was; once in 30 s a parcel.
+- **Each walk's end** (`walk over after ...`): why it ended, how far off, the nearest it came, where she stood.
+
+Reading a failed walk from these: what the collision model lacks shows as a stick with nothing ahead at any height,
+nothing narrow across and the floor on level, and a sculpt or mesh listed as not in the model; with nothing listed
+either, it's a prim the region never sent us (those can't be listed) or the region's physics differing from the
+model's. A parcel shows as a parcel line sent her, or the parcel ahead closed to her. The planner misjudging shows with
+the model having it: a step on the floor 0.6 m on that the planner takes (up to 0.4 m) but she didn't, something at the
+shin, a gap across of 0.6 m or so, or a `why:` line whose floors and steps don't match the place as it is. Our own
+spots steering later plans show as the spots counted in plan lines and nodes marked a stuck spot of ours.
+
+The scripted test's "walking" step has a walk stuck on a wall put across its way and checks these lines, the plan made
+again from there counting the spot it left.
+
+People, where the caller gives them
 (`//go` and Walk to: People on the way, above; follow and the assistant's walks give none), are discs of 0.45 m on the
 floor they stand on, kept off like walls but never walls: stepping in among the cells within 0.3 m of one costs the
 search 38 cells, once, instead of their being closed (so a way round is taken up to 10 to 12 m longer, no further;
@@ -3279,7 +3350,8 @@ it).
   collision model in one batch (`LocalCollision.CollideManyAsync`, the seat's own linkset left out) and come back to
   the window. Positions are dead-reckoned (the region sends a walking avatar's position only now and then); when the
   region's word on the velocity says still while the position moves (a seat moved by llSetPos), the velocity comes
-  from the positions. `SOJOURN_WALK_LOG=path` logs every probe and plan.
+  from the positions. `SOJOURN_WALK_LOG=path` logs every probe and plan; the plans, the planner's reasons and stuck
+  walks go to the session log too (Walk mode > Why a walk went as it did, in her log).
 - **The listener**: Access has no camera, and world audio places nothing until something sets its listener
   (WorldSounds waits for one: objects' sounds, footsteps, even the new-IM sound). Walk mode's tick puts it at the
   avatar's head facing where it faces, for world audio and voice.

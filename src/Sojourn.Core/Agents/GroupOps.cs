@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using LibreMetaverse;
 using LibreMetaverse.Packets;
 using LibreMetaverse.StructuredData;
+using Microsoft.Extensions.Logging;
 using Sojourn.Core.Leap;
 
 namespace Sojourn.Core.Agents;
@@ -533,7 +534,7 @@ public sealed class GroupOps
     /// a bar, as a new notice's are, with what's attached named in its bucket.</summary>
     public async Task<JsonObject> NoticeReadAsync(JsonObject a, CancellationToken ct)
     {
-        var im = await RequestNoticeAsync(C, a.Uuid("notice_id") ?? throw new LeapError("need notice_id"), ct);
+        var im = await RequestNoticeAsync(C, a.Uuid("notice_id") ?? throw new LeapError("need notice_id"), a.Uuid("group_id"), ct);
         var parts = (im.Message ?? "").Split('|', 2);
         var o = new JsonObject { ["subject"] = parts[0], ["message"] = parts.Length > 1 ? parts[1] : "", ["from"] = im.FromAgentName };
         if (NoticeAttachment(im.BinaryBucket) is { } att)
@@ -546,7 +547,7 @@ public sealed class GroupOps
     public async Task<JsonObject> NoticeTakeAsync(JsonObject a, CancellationToken ct)
     {
         var c = C;
-        var im = await RequestNoticeAsync(c, a.Uuid("notice_id") ?? throw new LeapError("need notice_id"), ct);
+        var im = await RequestNoticeAsync(c, a.Uuid("notice_id") ?? throw new LeapError("need notice_id"), a.Uuid("group_id"), ct);
         if (NoticeAttachment(im.BinaryBucket) is not { } att) throw new LeapError("that notice has nothing attached");
         AgentInventory.AnswerOffer(c, im, att.Type, UUID.Zero, keep: true);
         var folder = c.Inventory.FindFolderForType(att.Type);
@@ -557,10 +558,34 @@ public sealed class GroupOps
         };
     }
 
-    static Task<InstantMessage> RequestNoticeAsync(GridClient c, UUID id, CancellationToken ct) =>
-        AskAsync<InstantMessageEventArgs, InstantMessage>(h => c.Self.IM += h, h => c.Self.IM -= h,
-            e => (e.IM.Dialog == InstantMessageDialog.GroupNoticeRequested && (e.IM.IMSessionID == id || e.IM.IMSessionID == UUID.Zero), e.IM),
-            () => c.Groups.RequestGroupNotice(id), "the notice", ct);
+    /// <summary>One notice asked for at a time, so the next answer is this one's.</summary>
+    static readonly SemaphoreSlim NoticeGate = new(1, 1);
+
+    /// <summary>A notice from the archive: the grid answers GroupNoticeRequest with an IM of its own dialog. OpenSim gives
+    /// it the notice's id as its session; Second Life doesn't (the blind tester's two reads on 2026-11-19 waited out the
+    /// 10 s, tester-20261119T223104-61551a), and Radegast and its Veles take the next such IM, by the group in its bucket.
+    /// So: the notice's id where it's there, else the group's, else the next one (asked one at a time).</summary>
+    async Task<InstantMessage> RequestNoticeAsync(GridClient c, UUID id, UUID? group, CancellationToken ct)
+    {
+        await NoticeGate.WaitAsync(ct);
+        try
+        {
+            var im = await AskAsync<InstantMessageEventArgs, InstantMessage>(h => c.Self.IM += h, h => c.Self.IM -= h,
+                e => (e.IM.Dialog == InstantMessageDialog.GroupNoticeRequested
+                    && (e.IM.IMSessionID == id || e.IM.IMSessionID == UUID.Zero || group is not { } g || GroupOf(e.IM) is not { } of || of == g), e.IM),
+                () => c.Groups.RequestGroupNotice(id), "the notice", ct);
+            if (im.IMSessionID != id)
+                _s.Log.LogInformation("group notice: the answer's session {Session}, its group {Group}, for notice {Notice} of {Asked}",
+                    im.IMSessionID, GroupOf(im)?.ToString() ?? "not given", id, group?.ToString() ?? "a group not given");
+            return im;
+        }
+        finally { NoticeGate.Release(); }
+    }
+
+    /// <summary>The group a notice's IM names in its bucket (after whether it has an attachment and its type), or its
+    /// sender where the bucket is too short, as Radegast reads it.</summary>
+    static UUID? GroupOf(InstantMessage im) =>
+        im.BinaryBucket is { Length: >= 18 } b ? new UUID(b, 2) : im.FromAgentID != UUID.Zero ? im.FromAgentID : null;
 
     /// <summary>What a notice's IM says is attached (its bucket: whether, the asset type, the group, the item's name), or null.</summary>
     public static (AssetType Type, string Name)? NoticeAttachment(byte[]? b)

@@ -4,8 +4,9 @@ using Sojourn.Render.Geometry;
 namespace Sojourn.Render.World;
 
 /// <summary>What a collision ray met first: a solid surface's distance, its outward normal (region frame), and the prim's
-/// local id (0 for an avatar).</summary>
-public readonly record struct CollideHit(float Distance, Vector3 Normal, uint LocalId, bool Avatar);
+/// local id (0 for an avatar). Region: the handle of the region whose local id it is, where the caster sets it
+/// (CollisionWorld's rays cross borders; 0: not said, the region cast in).</summary>
+public readonly record struct CollideHit(float Distance, Vector3 Normal, uint LocalId, bool Avatar, ulong Region = 0);
 
 public sealed partial class RegionScene
 {

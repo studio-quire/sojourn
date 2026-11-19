@@ -45,7 +45,8 @@ namespace Sojourn.Core.Agents;
 ///    tools/crossing.py --corner). So for 30 s, or until the agent crosses or teleports into it again, a reply from a
 ///    superseded crossing's region is dropped before LibreMetaverse sees it (<see cref="LateReply"/>, called by
 ///    TeleportWatch's handler for the reply).
-/// A crossing that fails anyway (no answer for 30 s) is logged and told to the person, with what usually follows.
+/// A crossing that fails anyway (no answer for 30 s) is logged and told to the person, with what usually follows; if the
+/// region left current doesn't take the agent back, the session's watchdog logs in again (<see cref="Lost"/>).
 /// For testing: SOJOURN_CROSSING_GUARD=0 turns 3 and 4 off; with it off, SOJOURN_CROSSING_NOACK=MS holds each crossing MS
 /// ms before it connects, as the unacknowledged wait did, so what that does to a seated crossing shows on a local grid.
 /// SOJOURN_ARRIVAL_DELAY_MS (TeleportWatch) holds every reply, heard late here too, so a second crossing can come while
@@ -64,7 +65,10 @@ public sealed class CrossingGuard
     readonly ConcurrentDictionary<IPEndPoint, long> _superseded = new();   // regions whose crossing a newer one ended, when
     static readonly ConditionalWeakTable<GridClient, CrossingGuard> Guards = new();
 
-    sealed record Target(IPEndPoint Ep, ulong Handle);
+    sealed record Target(IPEndPoint Ep, ulong Handle)
+    {
+        public volatile string? Name;   // once its circuit is known: a failed crossing has dropped it by the time it's said
+    }
 
     static readonly bool On = Environment.GetEnvironmentVariable("SOJOURN_CROSSING_GUARD") != "0";
     static readonly int NoAckMs = int.TryParse(Environment.GetEnvironmentVariable("SOJOURN_CROSSING_NOACK"), out var ms) ? ms : 0;
@@ -99,6 +103,7 @@ public sealed class CrossingGuard
         });
         c.Network.SimConnected += (_, e) => { if (e.Simulator != null) g._up[e.Simulator] = true; };
         c.Self.RegionCrossed += (_, e) => { if (e.NewSimulator == null) g.Failed(); };
+        c.Objects.AvatarUpdate += (_, e) => g.AvatarSent(e.Simulator, e.Avatar.ID);
         c.Network.RegisterCallback(PacketType.AgentMovementComplete, (_, e) =>
         {
             if (e.Simulator is not { } sim) return;
@@ -114,13 +119,16 @@ public sealed class CrossingGuard
         c.Network.SimChanged += (_, _) =>
         {
             // SimChanged fires inside Network.Connect: a crossing is still Connecting then (a login or teleport isn't)
-            if (c.Network.CurrentSim is { } sim && c.Self.IsCrossing()) _ = g.WatchAsync(sim, Environment.TickCount64);
+            if (c.Network.CurrentSim is not { } sim || !c.Self.IsCrossing()) return;
+            if (g._target is { } t && t.Ep.Equals(sim.IPEndPoint) && sim.Name is { Length: > 0 } n) t.Name = n;
+            _ = g.WatchAsync(sim, Environment.TickCount64);
         };
         c.Network.SimDisconnected += (_, e) =>
         {
             g._completeAt.TryRemove(e.Simulator, out long _);
             g._handshaken.TryRemove(e.Simulator, out bool _);
             g._up.TryRemove(e.Simulator, out bool _);
+            g._avatarAt.TryRemove(e.Simulator.Handle, out long _);
         };
     }
 
@@ -146,7 +154,7 @@ public sealed class CrossingGuard
                 if (msg is CrossedRegionMessage m)
                 {
                     var ep = new IPEndPoint(m.IP, m.Port);
-                    _target = new Target(ep, m.RegionHandle);
+                    _target = new Target(ep, m.RegionHandle) { Name = _c.Network.FindSimulator(ep)?.Name is { Length: > 0 } n ? n : null };
                     _superseded.TryRemove(ep, out long _);   // back into it: its reply is wanted again
                     if (On) Supersede(ep);
                     Release(ep, "crossing");
@@ -234,10 +242,56 @@ public sealed class CrossingGuard
     /// follow.</summary>
     void Failed()
     {
-        string where = _target is { } t && _c.Network.FindSimulator(t.Ep) is { Name.Length: > 0 } s ? s.Name : "the next region";
+        string where = _target is not { } t ? "the next region"
+            : _c.Network.FindSimulator(t.Ep) is { Name.Length: > 0 } s ? s.Name : t.Name ?? "the next region";
         _log.LogWarning("the crossing into {Region} failed: {Details}", where, Details());
+        lock (_lostLock) (_failedAt, _failedInto, _failedIn) = (Environment.TickCount64, where, 0);
         _tell?.Invoke($"The crossing into {where} didn't go through: the region there didn't take you in. If you were riding " +
-                      "something, it may have gone on without you. If this region stops answering too, Sojourn logs in again by itself.");
+                      "something, it may have gone on without you. If the region you're in doesn't take you back either, you'll be logged in again.");
+    }
+
+    // ---------- after a failed crossing: taken back, or lost between regions ----------
+
+    readonly object _lostLock = new();
+    long _failedAt;               // the last failure (TickCount64), 0 once something took the agent in or moved it on
+    string _failedInto = "";
+    ulong _failedIn;              // the region current at the first look after it
+    readonly ConcurrentDictionary<ulong, long> _avatarAt = new();   // a full update of the agent's own avatar, by region
+
+    void AvatarSent(Simulator? sim, UUID id)
+    {
+        if (sim != null && id == _c.Self.AgentID) _avatarAt[sim.Handle] = Environment.TickCount64;
+    }
+
+    /// <summary>A crossing failed over <paramref name="afterMs"/> ago and the region the agent was left in (LibreMetaverse
+    /// "recovers" into the old one) hasn't sent the agent's own avatar since: it holds the circuit but not the agent, so
+    /// nothing moves, a teleport gets no answer, and the watchdog, which wants only a handshaken region, waits for ever
+    /// (the blind tester's train, 2026-11-16: Webworm never took her in and Dubia never took her back; her home
+    /// teleport went unanswered and she closed the app). The region's name and the crossing's, once; else null. A full
+    /// update of the avatar from the region it's in (the region taking it back) or another region becoming current (a
+    /// teleport or crossing, which have their own watches) ends the wait. Not a copy of the avatar already held: the old
+    /// region's from before the crossing stays when the new one never sent its own (WorldHub.SelfIn).</summary>
+    public static (string Here, string Into)? Lost(GridClient c, long afterMs) =>
+        Guards.TryGetValue(c, out var g) ? g.LostNow(afterMs) : null;
+
+    (string Here, string Into)? LostNow(long afterMs)
+    {
+        lock (_lostLock)
+        {
+            if (_failedAt == 0 || _c.Network.CurrentSim is not { } sim) return null;
+            if (_c.Self.IsCrossing()) return null;
+            if (_avatarAt.TryGetValue(sim.Handle, out long sent) && sent >= _failedAt)
+            {
+                _log.LogInformation("after the failed crossing into {Into}, {Here} sent my avatar: taken back", _failedInto, sim.Name);
+                _failedAt = 0;
+                return null;
+            }
+            if (_failedIn == 0) _failedIn = sim.Handle;
+            else if (_failedIn != sim.Handle) { _failedAt = 0; return null; }
+            if (Environment.TickCount64 - _failedAt < afterMs) return null;
+            _failedAt = 0;
+            return (string.IsNullOrEmpty(sim.Name) ? "this region" : sim.Name, _failedInto);
+        }
     }
 
     string Details()

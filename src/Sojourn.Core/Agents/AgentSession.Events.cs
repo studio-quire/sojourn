@@ -844,7 +844,14 @@ public sealed partial class AgentSession
                 Notifications.Ok, substitutions: new JsonObject { ["NAME"] = region, [minutes ? "MINUTES" : "SECONDS"] = n });
             return;
         }
-        if (msg == "AUTOPILOT_CANCELED") return;
+        // the region's word that its autopilot stopped: our own walks cancel it as they arrive or go round (a press of
+        // forward), and Second Life answers each with this, named, in the person's language (the blind tester heard
+        // "Autopilot canceled" after nearly every walk, 2026-11-18); OpenSim's comes as the bare key
+        if (msg == "AUTOPILOT_CANCELED" || e.NotificationId == "AutopilotCanceled")
+        {
+            Log.LogInformation("the region's autopilot stopped (its notice not shown)");
+            return;
+        }
         if (msg.StartsWith('/')) msg = msg[1..];  // the viewer shows these without the slash
         LastAlert?.TrySetResult(msg);
         foreach (var claim in _alertClaims)

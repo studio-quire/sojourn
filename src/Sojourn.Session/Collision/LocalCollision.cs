@@ -11,8 +11,9 @@ namespace Sojourn.Session.Collision;
 /// they were cast in.</summary>
 public readonly record struct RayBatch(CollideHit?[] Hits, ulong Region);
 
-/// <summary>Solid triangles (three points each) and each one's prim, in the frame of the region asked about.</summary>
-public readonly record struct Solids(List<Vector3> Triangles, List<uint> Prims, ulong Region);
+/// <summary>Solid triangles (three points each) and each one's prim, in the frame of the region asked about; Holders: from
+/// which triangle on the prims' local ids are which region's (near a border, a neighbour's prims reach in).</summary>
+public readonly record struct Solids(List<Vector3> Triangles, List<uint> Prims, ulong Region, List<(int From, ulong Region)> Holders);
 
 /// <summary>
 /// The local collision model for an app that may have no usable GPU (Sojourn Access: walk mode's rays, paths, placing
@@ -97,11 +98,17 @@ public sealed class LocalCollision : IDisposable
             if (_s.Client is not { Network.CurrentSim: { } sim }) return (Solids?)null;
             var tris = new List<Vector3>();
             var ids = new List<uint>();
-            _world.SolidTriangles(sim.Handle, min, max, Solid(passable), tris, ids);
-            return new Solids(tris, ids, sim.Handle);
+            var holders = new List<(int From, ulong Region)>();
+            _world.SolidTriangles(sim.Handle, min, max, Solid(passable), tris, ids, holders);
+            return new Solids(tris, ids, sim.Handle, holders);
         }, ct);
 
     public (int Regions, int Prims, int Placed, int Shapes, int Ready, int Waiting, int Fetching, int Failed, long Bytes) Status() => _world.Status();
+
+    /// <summary>What near a point (the agent's region frame) doesn't count yet or ever: sculpts and meshes whose shapes
+    /// are still downloading or were given up on (CollisionWorld.Missing), with the region each is in. Empty when not in a region.</summary>
+    public List<(float D, Primitive Prim, ShapeKind Kind, bool Failed, ulong Region)> Missing(Vector3 at, float reach) =>
+        _s.Client is { Network.CurrentSim: { } sim } ? _world.Missing(sim.Handle, at, reach) : new();
 
     async Task Loop()
     {

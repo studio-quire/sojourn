@@ -58,22 +58,22 @@ public sealed partial class MainForm
         {
             at = pick;
             var id = notices[pick].Str("notice_id");
-            var read = await _ops.ReadAsync("TesselGroups", "noticeRead", new JsonObject { ["notice_id"] = id });
+            var read = await _ops.ReadAsync("TesselGroups", "noticeRead", new JsonObject { ["notice_id"] = id, ["group_id"] = g.Id.ToString() });
             if (PersonOps.Error(read) is { } re) { Answer($"Couldn't read that notice: {re}"); return; }
             var text = $"{words[pick]}\n\n{read.Str("message")}";
             if (read["attachment"] is JsonObject att)
             {
                 var name = att.Str("name") is { Length: > 0 } n ? n : "something";
                 ShowText(read.Str("subject") is { Length: > 0 } s1 ? s1 : "A notice", $"{text}\n\nAttached: {name}, {att.Str("type")}. Take the attachment puts it in your inventory.",
-                    ("&Take the attachment", () => _ = TakeNoticeAttachmentAsync(id, name)));
+                    ("&Take the attachment", () => _ = TakeNoticeAttachmentAsync(id, g.Id, name)));
             }
             else ShowText(read.Str("subject") is { Length: > 0 } subject ? subject : "A notice", text);
         }
     }
 
-    async Task TakeNoticeAttachmentAsync(string? noticeId, string name)
+    async Task TakeNoticeAttachmentAsync(string? noticeId, UUID group, string name)
     {
-        var r = await _ops.DoAsync("TesselGroups", "noticeTake", new JsonObject { ["notice_id"] = noticeId });
+        var r = await _ops.DoAsync("TesselGroups", "noticeTake", new JsonObject { ["notice_id"] = noticeId, ["group_id"] = group.ToString() });
         Answer(PersonOps.Error(r) is { } e ? $"Couldn't take {name}: {e}"
             : r.Str("folder") is { Length: > 0 } folder ? $"Taking {name} into your {folder} folder." : $"Taking {name} into your inventory.");
     }

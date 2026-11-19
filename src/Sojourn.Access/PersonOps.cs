@@ -106,6 +106,8 @@ public sealed class PersonOps(AgentSession s)
         w = Regex.Replace(w, $@"^{Arg}: (?!.*{Arg})", "");
         w = Regex.Replace(w, @"\s*\(HTTP \d+\)", "");
         w = Regex.Replace(w, @"^object not found( in this region)?$", "it isn't here any more");
+        // a request the grid never answered ("the notice: no answer from the grid")
+        w = Regex.Replace(w, @"^[^:]+: no answer from the grid$", "the grid didn't answer");
         // a clause or bracket naming an API or another op ("(TesselInventory copy)", ": find their id with TesselAgent
         // findAvatar") goes; one only about arguments ("; give group_id") too
         w = Regex.Replace(w, $@"\s*\([^()]*{Api}[^()]*\)", "");

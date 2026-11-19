@@ -81,6 +81,10 @@ public sealed class Motion
     /// </summary>
     public Func<GridClient, Vector3, Vector3, Task<IReadOnlyList<Vector3>?>>? Router { get; set; }
 
+    /// <summary>The autopilot gave up getting no nearer: where the avatar was, the point it was walking to (a route's
+    /// waypoint) and the walk's end, all in its region's frame. For an app's log of why (Sojourn Access).</summary>
+    public Action<Vector3, Vector3, Vector3>? Stalled { get; set; }
+
     Move? _move;
     Pilot? _pilot;
     int _nextId;
@@ -354,7 +358,13 @@ public sealed class Motion
         if (dist <= p.Stop + lead) { StopAutoPilot(c, true); return; }
         if (dist < p.BestDist - 0.1) { p.BestDist = dist; p.LastProgress = DateTime.UtcNow; }
         var patience = p.Flying ? 2.5 : 1.5;
-        if ((DateTime.UtcNow - p.LastProgress).TotalSeconds > patience + 1.0) { StopAutoPilot(c, false); return; }
+        if ((DateTime.UtcNow - p.LastProgress).TotalSeconds > patience + 1.0)
+        {
+            StopAutoPilot(c, false);
+            try { Stalled?.Invoke(here, p.Target, p.Legs is { Count: > 0 } rest ? rest.Last() : p.Target); }
+            catch (Exception) { /* a log line's: never the walk's */ }
+            return;
+        }
         var mv = c.Self.Movement;
         var yaw = (float)Math.Atan2(to.Y, to.X);
         mv.BodyRotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, yaw);
