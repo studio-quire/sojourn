@@ -29,6 +29,14 @@ public sealed class CollisionApi : LeapApi
             + "(the last batch of rays and how long it took), slowest_ms (in the last minute or so)}", _ => Status());
         Op("collide", RayArgs + ": the first solid surface along the ray (prims by their physics shapes, phantom ones passable, "
             + "sculpts and meshes once downloaded)", CollideAsync);
+        // a test's: steps the region has and the model lacks, staged on the local grid (tools/access.py)
+        if (Environment.GetEnvironmentVariable("SOJOURN_TEST_UNSEEN") == "1")
+            Op("unseen", "{ids: [object id...]} -> {unseen}: the model leaves these objects out from now on, the region keeping them (a test's)", a =>
+            {
+                foreach (var id in a["ids"] as JsonArray ?? new())
+                    if (LibreMetaverse.UUID.TryParse(id?.GetValue<string>(), out var u)) _model.Physics.Unseen[u] = 0;
+                return new JsonObject { ["unseen"] = _model.Physics.Unseen.Count };
+            });
     }
 
     JsonNode Status()

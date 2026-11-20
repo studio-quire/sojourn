@@ -1597,6 +1597,7 @@ def session(run, procs):
                SOJOURN_TEST_HOLD_WINDOW="1",   # //holdwindow SECONDS holds the window's thread (the window watch's step)
                SOJOURN_TEST_CONVOY_BLIND="1",   # //blindconvoy AFTER SECONDS: the one driven after goes unseen (driving after someone lost)
                SOJOURN_TEST_AWAY_BY_ITSELF="1",   # //awaybyitself: away as five minutes without her sets it (the menu bar's step)
+               SOJOURN_TEST_UNSEEN="1",   # SojournCollision unseen: things the model leaves out, the region keeping them (steps it hasn't got)
                SOJOURN_VOICE_OUT_FILE=str(HEARD), SOJOURN_WALK_LOG=str(OUT / "walk.log"),   # world audio to a file (local grid only), never the speakers
                SOJOURN_TEST_GROUPS_PAGE="1",   # a page of groups so short that any search has a further one
                SOJOURN_LOGINS=str(OUT / "logins"),   # remembered passwords in the run's own folder, not the repo's saved logins
@@ -1858,6 +1859,7 @@ def step_list(run, nonce, tester_id, procs):
         ("walk mode", lambda: walk_mode(run)),
         ("walk mode's warning, its name not in", lambda: walk_unnamed(run)),
         ("walking between floors", lambda: walk_floors(run)),
+        ("walking and following up steps the model hasn't got", lambda: walk_unseen_steps(run)),
         ("distance walked", lambda: distance_walked(run)),
         ("rail switches", lambda: rail_switches(run)),
         ("stopping a vehicle", lambda: vehicle_stop(run)),
@@ -12035,7 +12037,11 @@ def walk_stuck(run):
         return
     wall = None
     try:
-        time.sleep(1.5)
+        # its name as the app holds it (the region's properties from the creation can come before the rename, and are
+        # kept as fresh: the planner's reasons then called it unnamed, one run in a few on 2026-11-19)
+        named = wait(lambda: (api("TesselObjects", "get", ids=[plinth], fresh=True, timeout=2).get("objects") or [{}])[0].get("name") == "Access Walk Plinth", 8)
+        run.check("(the plinth's name known to the app)", named, "")
+        time.sleep(0.5)
         m = mark()
         say_in_app(f"//go xyz {px},{py},{g + 2:.1f}")
         going = run.expect("//go onto the plinth: out of reach, as near as the way goes", ["out of reach", "as near as the way goes"], m, 10)
@@ -12061,6 +12067,14 @@ def walk_stuck(run):
         run.check("the stuck line: where she is, the wall from her shin by name, the floor ahead, either side, the parcel here",
                   stuck and all(w in stuck.group(0) for w in ("(feet ", "at the shin Access Walk Wall", "the floor 0.6 m on", "across at the waist here, "))
                   and re.search(r"the parcel here [^;]*\(\d+\): ", stuck.group(0)), stuck.group(0)[:900] if stuck else "none")
+        # beside it, what's at her feet as the model holds it (with the walk log on it comes at every stick; for her, where
+        # the model has nothing under her, her feet well over its floor, or nothing ahead at any height)
+        feet = re.search(r"go: at her feet when stuck \([^\n]*", log)
+        wall_near = re.search(r"Access Walk Wall \(prim; the region's physics [^\n]*?(\d+) triangles by its drawn shape, the nearest (\d+\.\d\d) m from her feet; "
+                              r"(?:her feet in its box|its box (\d+\.\d\d) m off): middle [^\n]*?size 6\.00x0\.30x2\.50", feet.group(0)) if feet else None
+        run.check("and beside it, what's at her feet: the wall by name, how the model counts it, its triangles' nearest, its box, the parts it can't place",
+                  wall_near and float(wall_near.group(2)) < 1.0 and "the model can't place" in feet.group(0),
+                  feet.group(0)[:900] if feet else "none")
         # (the plan made again from where she stuck: written before the stuck line, which waits for names)
         again = re.search(rf"go: plan from [^\n]* to {px}\.00,{py}\.00 [^\n]*; 1 stuck spot of ours counted as walls, at [^\n]*", log)
         run.check("and the plan made again from there counts the stuck spot it left as a wall", again,
@@ -12068,6 +12082,8 @@ def walk_stuck(run):
         run.check("and the walk's end", re.search(r"go: walk over after [^\n]*\(feet ", log), "")
         if stuck:
             print(f"     ({stuck.group(0)[:1200]})")
+        if feet:
+            print(f"     ({feet.group(0)[:1200]})")
     finally:
         ids = [i for i in (plinth, wall) if i]
         try:
@@ -13088,6 +13104,244 @@ def walk_floors(run):
                   f"at {x:.1f}, {y:.1f}, its middle {z - high:+.1f} m over the deck, {math.dist((x, y), visitor_where()[:2]):.1f} m from the visitor")
     finally:
         say_in_app("//follow stop")
+        clear_course(tester_id)
+        visitor_tp(*VISITOR_START, region=REGION)
+
+
+def walk_unseen_steps(run):
+    """Steps the region has and the collision model hasn't (the blind tester's partner at a place on Second Life,
+    2026-11-19: up steps from a wooden deck the model didn't have, every //go to him stuck, was marked and gone round
+    till "no way", and every //follow said "no way up from here" and stood). Where the house stands in walk_floors, on a
+    slab over the ground: a deck 2 m up (in the model) and up to its south edge nine steps 1.6 m wide between two walls,
+    all three of them left out of the model (SojournCollision unseen, a test's: SOJOURN_TEST_UNSEEN). Then:
+    - the visitor walks up them onto the deck (its way kept by the app's Trails as it goes), and the tester's //follow
+      from the slab goes up the way it went ("Going the way ...", the session log's "follow: by their trail"), ending
+      with it on the deck, never "no way up from here"; then with it at the foot of the steps as it walks up them (her
+      log's own case), following goes up after it;
+    - from the slab again, //go person to the visitor, which has walked on along the deck: "the way they went", walked up
+      the steps by the region's autopilot, finished beside it on the deck, no teleport ("go: by their trail");
+    - following it back down them from the deck (onto its trail by the plan, from the deck to the steps' top), with it
+      on the slab, never "no way down";
+    - it takes off on the slab and hovers 5 m up, 3 m on from where it left the ground: //follow hears it's above her
+      with no way up, never "Going the way" (its way ends where it took off, where the follow had held her);
+    - stood on the fourth step in a pocket the model hasn't got (the walls either side and one more across the steps
+      behind her: without it the region slid her along the east wall and round its end), //go xyz to a point east past
+      the wall, with a post (in the model) on the way: the plan, carried on level from her feet with nothing under her
+      in the model, goes round the post and sticks on the walls; she's 0.9 m over the model's floor with nothing of its
+      ahead, so the region is trusted ("go: trusting the region"): no stuck spot and no way round, on toward the
+      stretch's end by its autopilot, and the walk goes on from there or, getting no nearer, ends as one with no way
+      does, by the teleport there.
+      A walk the region's trust surely takes all the way there isn't staged: from on what the model hasn't got, its
+      plans have a way only on her level.
+    Needs no renderer."""
+    hx, hy = HOUSE
+    tester_id = api("LLAgent", "getID")["id"]
+    back_to_chat()
+    m = mark()
+    say_in_app(f"//tp {COURSE_REGION}/{hx - 3}/{hy - 6}/30")
+    if not run.expect("(to Atelier East for the steps)", ["Arrived", COURSE_REGION], m, 40):
+        return
+    time.sleep(1.5)
+    xs, ys = [hx + i for i in range(0, 11, 2)], [hy + j for j in range(-4, 11, 2)]
+    hs = api("TesselAgent", "ground", points=[[x, y] for y in ys for x in xs])["heights"]
+    if not run.check("(ground under the steps)", hs and all(h is not None for h in hs), json.dumps(hs)):
+        return
+    F = max(hs) + 0.3
+    D = F + 2   # the deck's top
+    if n := clear_course(tester_id):
+        print(f"     (cleared {n} object(s) a run before left in {COURSE_REGION})")
+
+    def box(x0, y0, z0, x1, y1, z1, **kw):
+        return dict(pos=[hx + (x0 + x1) / 2, hy + (y0 + y1) / 2, (z0 + z1) / 2], scale=[x1 - x0, y1 - y0, z1 - z0], **kw)
+    tread, rise, foot = 0.33, (D - F) / 9, 5 - 9 * 0.33
+    seen = [box(0, -4, min(hs) - 0.3, 10, 10, F, name="Lower Deck", material="wood"),
+            box(2, 5, F, 8, 10, D, name="Upper Deck", material="wood")]
+    unseen = [*[box(4.2, foot + i * tread, F, 5.8, foot + (i + 1) * tread, F + (i + 1) * rise, name="Unseen Step", material="wood") for i in range(9)],
+              box(4.0, foot, F, 4.2, 5, F + 3.2, name="Unseen Wall"), box(5.8, foot, F, 6.0, 5, F + 3.2, name="Unseen Wall")]
+    log_at = len(latest_app_log())
+
+    def place(x, y, z, what):
+        say_in_app(f"//tp {COURSE_REGION}/{hx + x:.1f}/{hy + y:.1f}/{z:.1f}")
+        ok = wait(lambda: math.dist(tester_where()[:2], (hx + x, hy + y)) < 1.5, 25, 0.5)
+        time.sleep(2.5)
+        at = walk_pos()
+        run.check(f"(the tester {what})", ok, f"at {at[0] - hx:.1f}, {at[1] - hy:.1f} from the corner, its middle {at[2] - F:+.1f} m over the slab")
+
+    def said_in(m, *starts):
+        return [e.get("text") or "" for e in said_since(m) if (e.get("text") or "").startswith(starts)]
+
+    def done(m, secs):
+        return wait(lambda: said_in(m, "Finished walking", "No way", "Not walking"), secs, 0.4)
+
+    try:
+        made = [api("TesselBuild", "create", timeout=20, shape="box", **p).get("id") for p in seen + unseen]
+        if not run.check("the slab, the deck, and the steps and walls the model won't have, built", all(made), f"{sum(map(bool, made))} of {len(made)}"):
+            return
+        api("SojournCollision", "unseen", ids=made[len(seen):])
+        ray = lambda frm, d, mx: api("SojournCollision", "collide", **{"from": frm, "dir": d, "max": mx})
+        # the model has the deck and the slab under the steps, not the steps nor the walls
+        mid = [hx + 5, hy + foot + 4.5 * tread]
+        ok = wait(lambda: ray([hx + 5, hy + 7, D + 1], [0, 0, -1], 2).get("hit")
+                  and abs(ray(mid + [D + 1], [0, 0, -1], 4).get("distance", 0) - (D + 1 - F)) < 0.05
+                  and not ray([hx + 3, mid[1], F + 0.5], [1, 0, 0], 4).get("hit"), 20, 1)
+        run.check("(the model has the deck and the slab, not the steps nor the walls)", ok,
+                  json.dumps(ray(mid + [D + 1], [0, 0, -1], 4)))
+
+        # the visitor walks up them onto the deck, the tester watching from the slab
+        got = visitor_tp(hx + 5, hy + 0, F + 1)
+        place(3.5, -1.5, F + 1, "on the slab south of the steps")
+        v(f"goto {hx + 5} {hy + 9} {F + 1:.1f}")
+        up = wait(lambda: (lambda w: w[2] > D + 0.5 and w[1] > hy + 6)(visitor_where()), 25, 0.5)
+        vx, vy, vz = visitor_where()
+        if not run.check("(the visitor walks up the steps onto the deck)", got.startswith("arrived") and up,
+                         f"{got}; at {vx - hx:.1f}, {vy - hy:.1f}, its middle {vz - D:+.1f} m over the deck"):
+            return
+        time.sleep(1.5)
+        m = mark()
+        say_in_app(f"//follow {VISITOR[0]}")
+        run.expect("//follow the visitor up there", ["Following", VNAME], m, 8)
+        run.expect("it goes the way the visitor went, up 2 metres", ["Going the way", VNAME, "up 2 metres"], m, 8)
+        with_it = run.expect("and is with it on the deck", ["With", VNAME], m, 40)
+        time.sleep(1)
+        x, y, z = walk_pos()
+        noway = said_in(m, f"{VNAME} is ", "No way to")
+        run.check("following it up the steps the model hasn't got, never 'no way up'", with_it and z > D + 0.5 and not noway,
+                  f"at {x - hx:.1f}, {y - hy:.1f}, its middle {z - D:+.1f} m over the deck; " + " | ".join(said_in(m, "")))
+        say_in_app("//follow stop")
+        time.sleep(1)
+
+        # with it at the foot of the steps as it walks up them (her log at 20:11 on 2026-11-19: "With ..., 2 metres",
+        # then "... is 2 metres above you, ...; no way up from here."): following goes on up after it
+        visitor_tp(hx + 5, hy + 0.5, F + 1)
+        place(4, -1.5, F + 1, "beside the visitor at the foot of the steps")
+        m = mark()
+        say_in_app(f"//follow {VISITOR[0]}")
+        run.expect("//follow the visitor at the foot of the steps", ["Following", VNAME], m, 8)
+        time.sleep(3)   # (with it there, said or not)
+        m2 = mark()
+        v(f"goto {hx + 5} {hy + 9} {F + 1:.1f}")
+        with_it = run.expect("it walks up them; she goes up after it and is with it on the deck", ["With", VNAME], m2, 40)
+        time.sleep(1)
+        x, y, z = walk_pos()
+        noway = said_in(m, f"{VNAME} is ", "No way to")
+        run.check("following it up as it goes, never 'no way up'", with_it and z > D + 0.5 and not noway,
+                  f"at {x - hx:.1f}, {y - hy:.1f}, its middle {z - D:+.1f} m over the deck; " + " | ".join(said_in(m, "")))
+        say_in_app("//follow stop")
+        time.sleep(1)
+
+        # //go to the visitor, gone on along the deck, from the slab: by its trail
+        place(3, -2.5, F + 1, "back on the slab")
+        v(f"goto {hx + 3} {hy + 8} {F + 1:.1f}")
+        wait(lambda: math.dist(visitor_where()[:2], (hx + 3, hy + 8)) < 1, 10, 0.5)
+        time.sleep(1)
+        m = mark()
+        say_in_app(f"//go person {VISITOR[0]}")
+        run.expect("//go to the visitor up on the deck: the way it went", ["Walking", VNAME, "the way they went", "up 2 metres"], m, 10)
+        done(m, 40)
+        time.sleep(1.5)
+        x, y, z = walk_pos()
+        vx, vy, _ = visitor_where()
+        said = said_in(m, "")
+        run.check("walked up the steps by its trail, finished beside it on the deck, no teleport",
+                  any(s.startswith("Finished walking") for s in said) and z > D + 0.5 and math.dist((x, y), (vx, vy)) < 2.6 and not any("eleport" in s for s in said),
+                  f"at {x - hx:.1f}, {y - hy:.1f}, its middle {z - D:+.1f} m over the deck, {math.dist((x, y), (vx, vy)):.1f} m from the visitor; " + " | ".join(said))
+
+        # following it back down them from the deck: onto its trail by the plan (from the deck the model has, to the
+        # top of the steps it hasn't), down the steps, with it on the slab, never "no way down"
+        m = mark()
+        say_in_app(f"//follow {VISITOR[0]}")
+        run.expect("//follow the visitor from the deck", ["Following", VNAME], m, 8)
+        time.sleep(2)
+        m2 = mark()
+        # (to a point under the deck's height: one over it a body and a half above the ground OpenSim's autopilot flies
+        # to, and the app rightly takes no trail of someone flying)
+        v(f"goto {hx + 5} {hy + 5.6} {F + 1:.1f}")
+        wait(lambda: math.dist(visitor_where()[:2], (hx + 5, hy + 5.6)) < 1, 10, 0.4)
+        v(f"goto {hx + 5} {hy - 1} {F + 1:.1f}")
+        run.expect("it walks down them; she goes the way it went", ["Going the way", VNAME], m2, 15)
+        with_it = run.expect("and is with it on the slab", ["With", VNAME], m2, 40)
+        time.sleep(1)
+        x, y, z = walk_pos()
+        noway = said_in(m, f"{VNAME} is ", "No way to")
+        run.check("following it down the steps the model hasn't got, never 'no way down'", with_it and z < F + 1.6 and not noway,
+                  f"at {x - hx:.1f}, {y - hy:.1f}, its middle {z - F:+.1f} m over the slab; " + " | ".join(said_in(m, "")))
+        say_in_app("//follow stop")
+        time.sleep(1)
+
+        # it takes off beside her and hovers 5 m up, a few metres from where it left the ground: no trail of its while
+        # it's flying (its way ends where it took off, and the follow had held her there, up to three minutes), so the
+        # follow goes under it as near as the way goes and says so, once
+        v(f"goto {hx + 8} {hy - 2} {F + 1:.1f}")
+        wait(lambda: math.dist(visitor_where()[:2], (hx + 8, hy - 2)) < 1, 10, 0.4)
+        v("fly")
+        v(f"goto {hx + 8} {hy + 1} {F + 6:.1f}")
+        up = wait(lambda: (lambda w: w[2] > F + 5 and math.dist(w[:2], (hx + 8, hy + 1)) < 1.5)(visitor_where()), 20, 0.5)
+        vx, vy, vz = visitor_where()
+        run.check("(the visitor flies up and hovers 5 m over the slab)", up, f"at {vx - hx:.1f}, {vy - hy:.1f}, its middle {vz - F:+.1f} m over the slab")
+        time.sleep(1)
+        m = mark()
+        say_in_app(f"//follow {VISITOR[0]}")
+        run.expect("//follow the visitor hovering", ["Following", VNAME], m, 8)
+        told = run.expect("it's above her and there's no way up, said", [f"{VNAME} is ", "above you", "no way up"], m, 20)
+        time.sleep(2)
+        x, y, _ = walk_pos()
+        went = said_in(m, "Going the way")
+        run.check("not its way to where it took off, and not held there",
+                  told and not went and math.dist((x, y), (hx + 8, hy - 2)) > 1.5,
+                  f"at {x - hx:.1f}, {y - hy:.1f}, {math.dist((x, y), (hx + 8, hy - 2)):.1f} m from where it took off; " + " | ".join(said_in(m, "")))
+        say_in_app("//follow stop")
+        v("fly off")
+        landed = wait(lambda: visitor_where()[2] < F + 1.6 or v("fly off") and False, 10, 0.5)
+        run.check("(the visitor down on the slab again, not flying)", landed, f"its middle {visitor_where()[2] - F:+.1f} m over the slab")
+
+        # stood on the fourth step, in a pocket the model hasn't got (the walls either side, one more across the steps
+        # behind her: the region slid her along the east wall and round its end the first time), //go to a point east
+        # past the wall, a post (in the model) on the way: its plan, carried on level from her feet, goes round the post
+        # and sticks on the walls; lifted, nothing of the model's ahead, so the region is trusted, no stuck spot, no way
+        # round: on toward the stretch's end by its autopilot, and on from there or, no nearer, it ends as a walk with no
+        # way does, by the teleport (at the third stick, as before)
+        post = api("TesselBuild", "create", timeout=20, shape="box", **box(6.8, 2.7, F, 7.2, 3.1, F + 3, name="Visible Post"))
+        across = api("TesselBuild", "create", timeout=20, shape="box", **box(4.2, foot + 2 * tread - 0.1, F, 5.8, foot + 2 * tread + 0.1, F + 3.2, name="Unseen Wall"))
+        api("SojournCollision", "unseen", ids=[across.get("id")])
+        run.check("(a post on the way, in the model, and a wall across the steps, not)", post.get("id") and across.get("id")
+                  and wait(lambda: ray([hx + 6, hy + 2.9, F + 1], [1, 0, 0], 2).get("hit") and not ray([hx + 5, hy + foot + 1.2, F + 1.5], [0, -1, 0], 1).get("hit"), 10, 0.5),
+                  json.dumps(post)[:120])
+        place(5, foot + 3.5 * tread, F + 1.8, "on the fourth step, in the pocket")
+        goal = (hx + 8.5, hy + foot + 0.9)
+        m = mark()
+        say_in_app(f"//go xyz {goal[0]},{goal[1]},{F + 2.6:.1f}")
+        run.expect("//go from the steps to a point past the wall: round the post", ["Walking", "around something in the way"], m, 10)
+        done(m, 40)
+        time.sleep(1.5)
+        said = said_in(m, "")
+        x, y, z = walk_pos()
+        ended = any(s.startswith("Finished walking") for s in said) or any(s.startswith("No way to walk to") and "teleporting there" in s for s in said)
+        run.check("stuck in the pocket, the region trusted: no way round tried; at the point, walked or by the no-way end's teleport",
+                  ended and math.dist((x, y), goal) < 1.6 and not any(s.startswith("Something's in the way") for s in said),
+                  f"at {x - hx:.1f}, {y - hy:.1f}, {math.dist((x, y), goal):.1f} m from the point; " + " | ".join(said))
+
+        time.sleep(2.5)   # (a stuck line waits up to 2 s for names)
+        log = latest_app_log()[log_at:]
+        lines = [l for l in log.splitlines() if re.search(r"\b(go|follow): ", l)]
+        follow = next((l for l in lines if "follow: by their trail" in l), None)
+        run.check("the session log: the follow by their trail, why, where each was, the trail from the slab up onto the deck",
+                  follow and "their floor out of reach" in follow and re.search(r"their trail from [^;]* points over [\d.]+ m", follow), (follow or "none")[:400])
+        by = next((l for l in lines if "go: by their trail" in l), None)
+        run.check("the session log: the walk by their trail, why, from where", by and "their floor out of reach" in by and "(feet " in by, (by or "none")[:400])
+        flew = next((l for l in lines if "follow: " in l and "no trail of theirs to take (flying since" in l), None)
+        run.check("the session log: no trail of the visitor's while it hovers, as it's flying", flew, (flew or "none")[:400])
+        trust = next((l for l in lines if "go: trusting the region, her feet" in l), None)
+        end = next((l for l in lines if "go: trusting the region, no nearer" in l or "go: trusting the region, there" in l), None)
+        stuck = next((l for l in lines if "lifted, so trusting the region" in l), None)
+        run.check("the session log: stuck lifted, the region trusted (how far over the model's floor, no stuck spot), and how it ended",
+                  trust and stuck and end and "over the model's floor under them" in trust and "no stuck spot" in trust
+                  and not any("stuck spot of ours" in l for l in lines),
+                  " | ".join(x[:300] for x in (stuck, trust, end) if x) or "none")
+        for l in lines[-14:]:
+            print(f"     ({l[l.find(' info: ') + 7 if ' info: ' in l else 0:][:700]})")
+    finally:
+        say_in_app("//follow stop")
+        v("fly off")
         clear_course(tester_id)
         visitor_tp(*VISITOR_START, region=REGION)
 

@@ -781,7 +781,7 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//sit NAME` / `//sit ground`, `//stand` (`//unsit`) | sit on the nearest thing with that name, on the ground; stand |
 | `//profile` / `//profile NAME`, `//notes NAME` | your own profile to change (Your profile and notes, below), or anyone's, by name; your notes on someone |
 | `//block NAME` / `//unblock NAME` / `//blocks` | block someone or something nearby, take one off, the list (Control+Shift+Y, Enter or Delete unblocks; Block is also on a person's and an object's Applications key, and on B in a notice) |
-| `//follow NAME` / `//follow NAME METRES` / `//follow stop` / `//follow` | follow as they move (2.5 m behind where they'll be in a moment, around what's in the way and up or down the stairs; at the wheel, Driving after someone, below), stop, or say who; said: when you're with them and they've stopped, when they sit, when they're getting away, when their floor is out of reach from where you can get to, when they're gone |
+| `//follow NAME` / `//follow NAME METRES` / `//follow stop` / `//follow` | follow as they move (2.5 m behind where they'll be in a moment, around what's in the way and up or down the stairs, or the way they walked where the collision model has none to their floor: Walk mode > Their trail; at the wheel, Driving after someone, below), stop, or say who; said: when you're with them and they've stopped, when they sit, when they're getting away, when it goes their way, when their floor is out of reach from where you can get to, when they're gone |
 | `//tp list` / `N` / `NAME` / `Region/X/Y/Z` / an SLurl | landmarks in "Radegast Landmarks" (else Landmarks), by number or name; or a place |
 | `//status [doing|region|parcel|location|health|money|time|music]` | any or all of them; music: what the parcel's stream is playing ("Playing: ...", in the whole status only when the parcel has music); health: "Health 80%." (in the whole status only while it's below full; the region sends it only once something hurts you where damage is on, so before that it says so); doing says "always running" while that's on |
 | `//route NOTECARD` / `//route` / `//route stop` / `//route resume` | play a route: a notecard's `//` lines one at a time (with no name, the lines on the clipboard, as copied from a blog), each walk or teleport finished before the next ("Step 2 of 7."), other lines read as notes; a step that doesn't get there pauses it, `//route resume` tries that step again. In the inventory, a notecard's Applications key has Play as a route |
@@ -1064,7 +1064,7 @@ in your left ear.
 | turns (`walk_turns`, text) | after a step turn, or a held turn let go | a tick | "north-northwest." / "east, 0 degrees." |
 | sonar (`walk_sonar`, both) | S | twelve pings, one from each hour of the clock, starting ahead and going round to the right: higher the nearer (under 2.5 m, under 7, further), a breath where it's open (nothing within 15 m); then a three-note chime from each opening | "Walls: ahead 11 m, right 1 m, left 1 m. Open: behind. Opening at twelve o'clock, 6 m away, 1.4 m wide. Opening at six o'clock, under a metre away, 2.8 m wide." and doors by name |
 | distance (`walk_distance`, text) | a stretch walked by the arrows has ended: no walking key for 0.7 s, no key at all for 0.7 s, the avatar stopped (or 3 s on), and walk mode's line before it heard out; taps in quick succession (a turn between them too) are one stretch; straight from where it began; under 0.3 m nothing; not a `//go`, a follow or a vehicle | none | "0.9 metres." / "4 metres." (tenths under 3 m: a tap is about 0.9 on Second Life) / "1.8 metres backward." / "1 metre to the left." (by the keys that walked it) |
-| follow (`walk_follow`, text) | following someone | none | "With Kestrel, 3 m, twelve o'clock." / "Kestrel sat down, ..." / "Kestrel is getting away: 24 m, ..." |
+| follow (`walk_follow`, text) | following someone | none | "With Kestrel, 3 m, twelve o'clock." / "Kestrel sat down, ..." / "Kestrel is getting away: 24 m, ..." / "Going the way Kestrel went, up 2 metres." (Their trail, below; once in 30 s at most) |
 | vehicle (`walk_vehicle`, both) | driving: what's ahead (as the warning, further at speed), only what the vehicle is closing on (met for 0.4 s or more and come nearer by at least half what it travelled meanwhile; each thing once in 4 s): on a train a ray from the seat meets the track's own sections and guides ahead on every curve, which stay about as far ahead as the track bends away (the blind tester's ride of 2026-11-02 had 157 such warnings); a seated border crossing, judged once the new region has sent the avatar and the seat it's on (up to 15 s, else said as not known yet: judged at 2.5 s whatever had come, it told her "the crossing left you standing" seven times while she sat on; said as not known, what the region then says, within 2 minutes, follows as "Bay City has you standing now, off Walk Kart." or "Bay City has you on Walk Kart now.", and the session log says what the region had of her avatar and where the seat was, at 15 s and if still unknown at 2 minutes: a tour car's crossing on 2026-11-11 left her with "it hasn't said yet" and nothing after); the speed has its own switch, `walk_speed` (on): the distance travelled over 2 s, said once it has held within 15% for 2 s and differs from the last said by 3 m/s and a third (a train's reported velocity swung 19, 6, 13, 8 three seconds apart, 2026-11-01); stood up off the seat within 5 s of its moving, not at a crossing (the region left her behind as her train crossed out, 2026-11-02, and only the train's own chat said so) | as the warning | "12 metres a second." / "Now in Bay City, still on Walk Kart." / "Now in Bay City; the crossing left you standing." / "Bay City has you standing now, off Walk Kart." / "You're off Walk Kart: it went on without you." |
 | switch (`walk_switch`, both) | seated and moving: a rail switch coming into the way ahead (along the track where its rails are known) within about 7 s of travel (60-100 m), said once (one a line, the nearest first, 2.5 s apart; again only after a minute out of the way ahead; not once it's under 5 m; under 1.5 s away, "just ahead"); the next one ahead said again if its setting changes; a throw done (W, Shift+W, `//switch`). Whatever's said of a switch is written in the nearby chat history too, to copy (the blind tester, 2026-11-04, to show her partner). A switch's line is heard out (about 30 ms a character): the lines walk mode says by itself meanwhile (the seated crossing, the speed, the next switch, a route's point) wait for it and then follow in turn, as an answer cuts off what's being said (0.1.0.835 cut 25 of 146, both before her wrong turn); warnings, the answers to her keys and "Track ends" still cut in | a points' clack, then one note forking into two that part; a throw: a heavy clack and a lighter answer | "Switch in 40 metres, set to the main line, North Station." / along the track: "Switch in 40 metres, set to the main line, Hill Line: it takes you left; the branch, East Yard, goes right." / "Switch in 60 metres where a line joins from the right: set for the other line." / "The switch ahead is now set to the main line." / "Switch set to the branch, East Yard." |
 | beacon (`walk_beacon`, both; volume quiet) | a walk under way (`//go`, walk to, a follow, the assistant's walk), else one put on someone or something | a soft pip from the target's direction, every 1.4 s far off down to 0.6 s near, with a fifth above it while it's within 20 degrees ahead (front and back are hard to tell by ear); a small bell flourish on reaching a hand beacon | "Reached Bench." / "Beacon lost: Kestrel isn't here now."; B says where it is |
@@ -1582,9 +1582,10 @@ metres to Kestrel, up 3 metres: 5 stretches."); a point 2 m or more over or unde
 across. Following plans to where they'll be, at their height, and goes by the stairs, the way's corners in turn without
 stopping at each (looked at ten times a second, the autopilot never counting a corner as reached); she's "With" them
 only on their floor, and where their floor is out of reach (hovering, up on a stage with no steps, a balcony a
-teleporter goes to) she goes as near as the way does, and once there hears it, once until they're in reach again:
-"Kestrel is 3 metres above you; no way up from here." (with how far and which way when they aren't overhead; "No way to
-Kestrel from here: ..." when they're at her level). Walking off Second Life, the region's autopilot gets each
+teleporter goes to) she goes the way they walked there where they did (Their trail, below), else as near as the way
+does, and once there hears it, once until they're in reach again: "Kestrel is 3 metres above you; no way up from
+here." (with how far and which way when they aren't overhead; "No way to Kestrel from here: ..." when they're at her
+level), said only with neither a way nor their trail. Walking off Second Life, the region's autopilot gets each
 stretch's point no higher than 2 m over the ground under it (`Commands.AutoPilotTo`): OpenSim's flies the avatar to
 any point higher than one and a half avatar heights over the ground there (its `ScenePresence.MoveToTarget`, read in
 the grid's decompiled code), so a walk to someone upstairs would have been a flight; on the local grid the walks
@@ -1604,6 +1605,79 @@ within 0.6 m of a point 0.7 m on toward where she was heading, on her floor, nev
 it was counted in whole cells and reached back over her and the cells beside her, so planned again from there she was
 shut in (one node she could get to) and a walk's first stick was "no way" (the scripted test's wall across a walk; the
 blind tester's walk at 17:36 on 2026-11-18 went the same way, stuck once and then no way, which this may have been).
+
+**When the region has what the model lacks** (Claude Opus 5.5, 2026-11-19, after the blind tester's log of that evening:
+steps from a wooden deck up 2 m to her partner weren't in the collision model, why not still unknown; every `//go` to him
+planned to a spot 7 m short, stuck with nothing in the model ahead while the region carried her 3.4 m up them, was
+marked and gone round till "no way", and every follow said "no way up from here" and stood; until 2026-11-11 the
+follow had steered straight at him where the plan found no way, and the region's physics had carried her up). Where
+the region plainly has a way the model lacks, the region's word wins: walking off a deck's edge on Second Life is a
+fall of a metre or two she hears ("On ground."), while not reaching him is the failure she reported.
+- **Their trail** (`Walk/Trails.cs`): where each person within 96 m has walked, as the region sent their positions
+  (looked at five times a second; a sample each quarter metre they move, their feet's height with it), kept three
+  minutes, but for the run they're on now, kept whatever its age: someone who walked up the steps and has stood on the
+  deck since still has the way there (until 2026-11-20 it went after three minutes with the rest). Two samples in a row
+  are joined, a way they walked, when they're within 2 m or the first one's velocity carried on for the time between
+  lands within half a metre (and 15% of the way) of the second: a steady straight walk between OpenSim's sparse
+  updates, while a corner whose updates were lost isn't cut across an edge they walked round. Not joined across a seat
+  (or sitting on the ground), flying, a jump, a teleport (faster than 9 m/s between two), a rise of over 0.6 m more
+  than was crossed between two looks, a fall (a drop of over 1.5 m between two, or coming down faster than 7 m/s: a
+  fall of 2.5 m or so), or a climb or drop steeper than stairs over the run so far: more than 1.5 m up or down from any
+  of its samples over less ground across, along its samples, than that. That catches a lift ridden standing, a slow
+  descent flying and a fall off an edge from 2 m or so at a walk, where each look's step, a quarter metre, says
+  nothing by itself; until 2026-11-20 only the rise and the fall between two looks were checked, so a rise was caught
+  only above about 3 m/s and a fall above 7.5. Flying and jumping are known only by the default animations, and an
+  animation overrider plays its own (Second Life's server-side ones and Firestorm's, likely), so a flight is often
+  not seen as one: the steepness and the cap on going down (below) stand in. Each sample notes whether the region
+  sent a foot plane (the surface it has them standing on) with it, for the log: whether Second Life's tells standing
+  from in the air isn't known.
+  Their way is the run of joined samples ending where they are; none while they're flying or mid-jump, nor where they
+  are isn't where its last step was (2 m across, a metre up or down: off the ground since), as it ends where they left
+  the ground: following someone who took off was taken to that spot and held there, each look sending her back, for
+  up to three minutes (until 2026-11-20). It's taken from where they last left her floor (feet within 0.4 m of hers)
+  within 30 m, so she goes to the foot of their climb rather than round all they walked before it; else from where it
+  passes nearest her on her level (feet within a metre of hers; of samples about as near, the later). Never a way
+  going more than 5 m down from her feet: stairs the model lacks that far down are rare, and a flight the animations
+  hid would be a fall of that much. She gets onto it by the plan, a wall or a gap between counting as for any walk
+  (until 2026-11-20 straight within 3 m, unchecked, into a wall or across a gap between two balconies): on its floor,
+  or where her floor as the model has it ends within a metre of it (the deck's edge at the top of steps it lacks), to
+  there and on; within half a metre she's on it already; where the first can't be got onto, the second. Then its
+  points, kept to the corners (0.15 m).
+  Following takes it where the plan has no way to their floor (out of reach, beneath them, no way at all), or, while
+  she's on it, has one only reckoned from her feet with nothing under her in the model; it's left when she's with
+  them, when the plan has a way to their floor, when they sit, or when she makes no half metre on it in 3 s: not taken
+  again for 20 s or till they've gone 3 m on, then after each further stick in a row twice as long (40, 80, 160 s) and
+  by time alone, as a way she couldn't walk stays one; with them, or the plan reaching them, starts afresh. Then the
+  follow goes on as before, "no way up from here" included, said once until they're in reach: taking their trail
+  again doesn't make it said again (until 2026-11-20 it did, and the two took turns every 20 to 30 s at a trail she
+  couldn't walk). Its points are passed within 0.7 m, its last too, then the spot behind them. A `//go` or Walk to a
+  person takes it in the same cases, from the first plan only: "Walking 14 metres to Kestrel the way they went, up 2
+  metres.", its points walked by the region's autopilot unsaid and not planned afresh round people stepping in; a
+  stretch of it that sticks goes on as any (below), planned afresh without their trail.
+- **Trusting the region**: a stretch of a `//go`, Walk to or a route's walk that sticks with her feet half a metre or
+  more over what the model has under her (its floor or the ground, the highest under her middle or at her body's edge
+  0.3 m out either way, as at a deck's edge her middle can be past it while she stands on it; the planner too then
+  carries her floor on level from her feet), no more than 12 m over it (a fall that lands near: a skybox over open
+  ground isn't trusted), nothing of the model's within 1.5 m toward where she'd be sent from her shin to her head, no
+  drop the model has on the straight way there (under a point each metre, 16 at most, its floor or the ground no
+  more than 1.5 m under what's under her: the 12 m was measured under her alone), and she standing (not flying, not
+  falling or jumping): no stuck spot and no way round planned on a model that hasn't got what she's on, but on by the
+  region's autopilot, watched for getting a tenth of a metre nearer (across and up or down alike, so climbing steps
+  counts) every 3 s. Where the model has the walk's goal out of reach (her walks to her partner were planned to a spot
+  7 m short), to the goal itself, once a walk: there (within the walk's reach, on its floor) it ends as a walk does;
+  no nearer, within 2.5 m on its floor it ends there, else the walk goes on as near as the way goes, planned again
+  from where she is (a stick of its three), as it did before the region was trusted, so a walk to someone on a stage
+  with no steps still ends beside it. Otherwise, and after that, to the end of the stretch that stuck, and there on
+  with the rest of the walk's stretches (until 2026-11-20 it went straight for the walk's end, dropping them, and from
+  a trail's point for the person); no nearer, within 2.5 m of the walk's own end it ends there, else as a walk with
+  no way does (the teleport where one can land, which the third stick had). Lifted and not trusted (something of the
+  model's ahead, a drop on the way), the stuck line says why, and it's a stick as any. Not for a walk that set out from
+  on what the model hasn't got and found no way: there the plans have a way only on her level (her floor carried on
+  level never steps down), and nothing has stopped her yet.
+- **Past a border mid-walk**: its stretches and the region's trusted autopilot are sent in the frame of the region
+  where it set out, and a walk with no way after a crossing teleports to its goal in the frame of the region she's in,
+  or not at all while that's still over the border, with no hint by coordinates (until 2026-11-20 all went by the
+  region she was in, 256 m off past a border).
 
 **Why a walk went as it did, in her log** (`Walk/WalkMode.Stuck.cs`; Claude Opus 5.5, 2026-11-19). Until then the
 plans and the planner's reasons went only to `SOJOURN_WALK_LOG`, a test switch, so the blind tester's walks to her
@@ -1654,21 +1728,57 @@ what stopped her was in the collision model at all. The session log she sends no
     until this was filtered those answers were most of what the line reported (`WalkMode.OwnCancel`).
   The names are asked for, up to 2 s, and the line written then, the walk going on meanwhile. Each thing is named by
   the region whose local id it has, as near a border the rays and the planner meet a neighbour's prims.
+- **What's at her feet** (`at her feet when stuck: ...`, under the stuck line's own name; Claude Opus 5.5, 2026-11-19),
+  beside a stuck line where the model has nothing under her, her feet are more than 0.3 m over its floor (the ground
+  counting), or it has nothing ahead at any height: the region had something solid there the model hasn't at its place.
+  Her log of 2026-11-19 at 20:08 had all three, rising 3.4 m up steps to her partner while the model had nothing ahead,
+  nothing under her and "every shape within 3 m", which speaks only for sculpts and meshes it has placed. Every part
+  whose box comes within a metre of her feet (`CollisionWorld.Near`), nearest box first, six in full and six more by
+  name: its name (part of object), kind, the region's physics shape type, how the model counts it (or why not:
+  phantom or flexible, none), the flags that bear on it (phantom, its own or its object's root's, volume detect,
+  temporary, physical, flexible), its shape (ready with how many triangles and which: its drawn shape, hull,
+  decomposition, physics model or the hull of its drawn shape; still to come; given up on) and the nearest of those
+  triangles to her feet, and its box (how far off, middle, size, turn, lowest and highest point); then how many of the
+  region's parts the model can't place at all, their object's root never had. So a part listed with its triangles far
+  from her feet is had elsewhere (a shape decoded wrong), one with none is had empty, one not counted says why, and a
+  thing not listed at all isn't in the session's world (never sent, or dropped on the way), or is among the parts
+  that can't be placed. With the walk log on (a test switch) it comes at every stick.
 - **A parcel's line** (`parcel line: ...`), as the region sends it (ParcelProperties with a collision sequence id, from
   which the viewer draws ban lines; it comes as she nears a parcel she may not enter, not only when she's pushed back):
   which parcel and why (banned, not on its allowed list, not in its group), where she was; once in 30 s a parcel.
 - **Each walk's end** (`walk over after ...`): why it ended, how far off, the nearest it came, where she stood.
+- **Which way it took** (When the region has what the model lacks, above): a follow's turns onto and off their trail,
+  not each look's plan (`follow: by their trail, their floor out of reach (the floors meeting 1.5 m from them): she at
+  235.50,158.50,22.25 (feet 21.40), they at 237.00,169.00,24.25; their trail from 237.0,160.0,22.3 to
+  237.0,169.0,24.3, 5 points over 9.5 m (12 samples, a foot plane at 12), 2.1 m from her where she joins it, the plan's 1
+  stretch onto it`; `follow: off their trail,
+  with them: she at ...`, or the plan has a way to their floor, they sat down, their trail gone, no half metre made on
+  it), and, once until the plan reaches them again, `follow: ..., and no trail of theirs to take (...)` with why
+  (none of their steps seen lately; flying or a jump now, from where their steps end; their steps ending so far from
+  where they are; none on her level since a seat, flying, a jump, a teleport, a rise, a fall, a climb or a drop
+  steeper than stairs or a gap in what the region sent, and where; the nearest on her level too far; their way going
+  more than 5 m down; no way planned onto it, where); a walk's the same
+  (`go: by their trail, ...`, `go: ..., and no trail of theirs to take (...)`), after its plan line; and trusting the
+  region, the stuck line ending `; lifted, so trusting the region`, then `go: trusting the region, her feet 1.65 m over
+  the model's floor under them (21.30) and nothing of the model's ahead: no stuck spot, on to 240.50,162.93,23.90 by
+  its autopilot` and `go: trusting the region, there: ...` or `..., no nearer for 3 s: at 237.50,163.09,23.21 (feet
+  22.35), 3.0 m off across and -0.7 up, after 3.3 s; no way, so it ends as one` (or `near enough: it ends there`, or,
+  making for the goal itself, `so on as near as the way goes, planned again from here`); lifted and not trusted, the
+  stuck line's `her feet 0.89 m over the model's floor under them (20.30), not trusting the region: a drop the model
+  has on the way, at 131.0,44.0, its floor 17.20` (or `something of the model's ahead`). A look at where people are
+  that fails is logged once a session (`trails: a look failed, ...`).
 
 Reading a failed walk from these: what the collision model lacks shows as a stick with nothing ahead at any height,
 nothing narrow across and the floor on level, and a sculpt or mesh listed as not in the model; with nothing listed
-either, it's a prim the region never sent us (those can't be listed) or the region's physics differing from the
-model's. A parcel shows as a parcel line sent her, or the parcel ahead closed to her. The planner misjudging shows with
+either, the line at her feet says which: a part listed there as not counted, empty or had elsewhere, parts that can't
+be placed, or nothing at all (a prim the region never sent us, or the region's physics differing from the model's). A parcel shows as a parcel line sent her, or the parcel ahead closed to her. The planner misjudging shows with
 the model having it: a step on the floor 0.6 m on that the planner takes (up to 0.4 m) but she didn't, something at the
 shin, a gap across of 0.6 m or so, or a `why:` line whose floors and steps don't match the place as it is. Our own
 spots steering later plans show as the spots counted in plan lines and nodes marked a stuck spot of ours.
 
 The scripted test's "walking" step has a walk stuck on a wall put across its way and checks these lines, the plan made
-again from there counting the spot it left.
+again from there counting the spot it left; "walking and following up steps the model hasn't got" checks the trail's
+and trusting the region's.
 
 People, where the caller gives them
 (`//go` and Walk to: People on the way, above; follow and the assistant's walks give none), are discs of 0.45 m on the

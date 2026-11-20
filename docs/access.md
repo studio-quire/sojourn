@@ -1207,6 +1207,18 @@ Groups tab didn't work. Read the same evening (Claude Opus 5.5).
 - **Held at login**: her PC had 0.4 GB of 6.3 free from the start, and an IM she sent a minute in held the window 16 s,
   10 of them writing it to the IM history on the window's thread (the stack read 12 s late). Now written off it.
 
+### Hit by the boat she rode in (0.1.0.1173, the blind tester, 2026-11-19 night)
+
+One log, `tester-20261120T023042-437b99` (20:08 to 21:30), with her note (our words): sailing with her partner, along
+for the ride, she kept getting hit with scripted objects, she guessed at region crossings. Read the same night (Claude
+Opus 5.5).
+- **The hits**: "hit you with a scripted object", her partner named each time, nineteen times from 20:47 to 21:28 while
+  she sat in his boat as a passenger (once a half minute at most, as the notices are held to); the first ones 2 to 3 s
+  after a crossing. The region names a vehicle's owner whenever its physics meets a rider's, so these were the boat
+  itself. Now a hit (not a bump or a push) from whoever owns her seat, or sits on the same thing, is kept in the bumps
+  list and logged, not said (`Safety.OwnRide`). OpenSim sends none, so only Second Life shows it.
+- **The rest**: a train ride over twenty crossings before it, held throughout.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -1224,6 +1236,10 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Open threads (ours, not hers to answer)
 
+- A follow with neither a planned way nor a trail still steers straight at the one followed, as it always has: in a
+  staged run with the visitor flying down, that walked her off a 2 m deck after it, and from a high floor it would be a
+  high fall (seen by the agent fixing 66da1c0, 2026-11-19). Not changed: before the floors work it was the only way a
+  follow went, and she hasn't met it; worth a guard on the drop if a log ever shows one.
 - Cancel during Send a log's sending stops it since 2026-11-13 (before it's on its way; once it is, it says it can't be
   stopped), not run against a slow send.
 - From the reviews of 2026-11-13: positions from parcel, event and classified links are taken modulo 256, wrong on
@@ -1260,10 +1276,32 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- Sent with 0.1.0.1173 (2026-11-19 evening), after her logs of 11-18 and 11-19 (Walks that found no way; A group notice
+- Sent with 0.1.0.1182 (2026-11-19 night), after her logs at her partner's steps and on his boat: whether following him up
+  the steps works now (his trail), and a log after any walk there that still fails, which now names what's under her.
+- Sent with 0.1.0.1173 (#322, 2026-11-19 evening), after her logs of 11-18 and 11-19 (Walks that found no way; A group notice
   that wouldn't open): whether a notice opens from the Groups tab now (a log if not); if she goes back to where her
   partner was, whether walks there still fail (a log then says why); and what lies between where she lands there and where he
-  stood: steps, a ramp, a doorway.
+  stood: steps, a ramp, a doorway. She answered at once (#323): steps she had to go up confused it, which fits his
+  floor being judged out of reach. Asked (#324) for a log after walking up them with 1173, working or not: its why and
+  stuck lines say how those steps are built and why they were judged so (a riser past the planner's 0.4 m step, a
+  physics shape that isn't the steps, or a slope).
+  Her log on 1173 an hour later (`tester-20261120T010915-a6aa07`, "I failed to walk to" him) has the new lines: from a
+  wooden deck (floor 52.41, over ground at 50.10) to him over a floor near 54.45, judged out of reach; each stretch then
+  stuck with nothing in the model ahead at any height while she rose, feet 52.5, 53.7 and 55.9 with nothing under her in
+  the model and every shape within 3 m said to be in it, drifting east from where she was sent. So it isn't the planner
+  misjudging steps: Second Life has something solid there she walks up, most likely the steps, and our collision model
+  has nothing there. Told her so (#325). Minutes later (`tester-20261120T011248-3f85cc`): following him from the
+  landing point stuck at the bottom of the stairs, "no way up from here", which she says worked in an earlier build.
+  Looked into the same evening (Claude Opus 5.5 with agents): the model has a floor near his height reaching 8 m out from
+  him but not the steps up to it. Physics types, phantom flags, placing parts and decoding mesh physics all checked
+  against the viewer and ruled out; most likely the steps never reached our world at their place (an update missed or a
+  part whose root never came), or a mesh's flat physics hull left out (whether Second Life collides with flat hulls
+  isn't known). 9e328a4 logs, at a stick with nothing under or ahead of her in the model, every part whose box comes
+  within a metre of her feet, so her next log there names it. Why following worked before: until 2026-11-11 a follow
+  steered at a spot short of him whatever his height, through steps the model lacked, and the region carried her up;
+  since the floors work it finds his floor out of reach and stops. Decided: where the region plainly has a way the
+  model lacks, the region's word wins (a follow takes his trail; a walk the region is lifting keeps on), as a fall off a
+  deck in Second Life is harmless and said, while not reaching him is the failure she reported.
 - On 1162 that evening (`tester-20261117T234133-003f45`, 18:41, "to show you how well this worked"): from what you wear she
   edited her worn chat-range HUD (Objects' Edit, "Editing Chat-Range 2, worn on HUD Bottom Right"), opened its script
   ("contents: script Chat-range alert in Chat-Range 2 read: asset id kept from us, 2651 bytes", so the guard's path on

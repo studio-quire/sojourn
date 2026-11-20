@@ -44,7 +44,13 @@ public sealed partial class WalkMode
     /// (StuckAsync), written once the names are in; the walk goes on meanwhile. Positions in her region's frame.</summary>
     public void NoteStuck(string head, Vector3 at, float feet, Vector3 toward) => _ = Task.Run(async () =>
     {
-        try { Note($"{head}; {await StuckAsync(at, feet, toward)}"); }
+        try
+        {
+            var (line, atFeet) = await StuckAsync(at, feet, toward);
+            Note($"{head}; {line}");
+            // (beside it, under the same name: "go", "follow", "assistant's walk", "keep in place's walk back")
+            if (atFeet != null) Note($"{head[..Math.Max(0, head.IndexOf(':'))]}: {atFeet}");
+        }
         catch (Exception x) { Note($"{head}; ({x.GetType().Name} looking at what's there: {x.Message})"); }
     });
 
@@ -66,8 +72,12 @@ public sealed partial class WalkMode
     /// - and the region's word that its autopilot stopped, only where none of our cancels came just before it (the
     ///   region answers each of ours with it: 1f50470).
     /// Names and unknown parcels are asked for, up to 2 s. Things are named by the region whose local id they have, as
-    /// near a border the model's rays meet a neighbour's prims.</summary>
-    public async Task<string> StuckAsync(Vector3 at, float feet, Vector3 toward)
+    /// near a border the model's rays meet a neighbour's prims.
+    /// AtFeet: where the model has nothing under her, her feet are well over its floor, or it has nothing ahead at any
+    /// height (the region had something solid there that the model hasn't, at its place: her log of 2026-11-19 at
+    /// 20:08, rising 3.4 m up steps the model lacked while it said it had every shape), a second line naming the parts
+    /// whose boxes come within a metre of her feet (AtFeet); every time with the walk log on (a test switch).</summary>
+    public async Task<(string Line, string? AtFeet)> StuckAsync(Vector3 at, float feet, Vector3 toward)
     {
         long now = Environment.TickCount64;
         var flat = new Vector2(toward.X - at.X, toward.Y - at.Y);
@@ -104,8 +114,21 @@ public sealed partial class WalkMode
                     try { c.Parcels.RequestParcelProperties(sim, p.Y + 1, p.X + 1, p.Y - 1, p.X - 1, 0, false); } catch (Exception) { }
 
         var hits = got?.Hits ?? new CollideHit?[rays.Count];
+        // the model's side of what the region had there: nothing under her, her feet well over its floor (the ground
+        // counting), or nothing ahead at any height
+        float? modelUnder = hits[underfoot] is { } uh ? at.Z - uh.Distance : null;
+        float? groundUnder = GroundAt(at.X, at.Y) is { } gu && gu <= at.Z ? gu : null;
+        bool blindAhead = Enumerable.Range(0, heights.Length).All(i => hits[i] == null);
+        string? lacking = modelUnder is { } mu && mu >= (groundUnder ?? float.NegativeInfinity)
+                ? (feet - mu > AtFeetOver ? Inv($"the model's floor {feet - mu:0.00} m under them") : null)
+            : groundUnder is { } g0 ? (feet - g0 > AtFeetOver ? Inv($"nothing of the model's under them, the ground {feet - g0:0.00} m under them") : null)
+            : "nothing under them in the model, nor the ground";
+        lacking ??= blindAhead ? "nothing ahead in the model at any height" : Logging ? "the walk log on" : null;
+        var near = lacking != null ? _rays.Near(new Vector3(at.X, at.Y, feet), AtFeetReach) : default;
+        var listed = near.Parts?.Take(AtFeetListed + AtFeetNamed).ToList() ?? [];
         await NamesAsync(hits.Where(h => h is { Avatar: false }).Select(h => (h!.Value.Region, h.Value.LocalId))
-            .Concat(missing.Take(4).Select(m => (m.Region, m.Prim.LocalID))));
+            .Concat(missing.Take(4).Select(m => (m.Region, m.Prim.LocalID)))
+            .Concat(listed.Select(p => (p.Region, p.Prim.LocalID))));
 
         // each thing named in full once a line, by its name alone after that
         var named = new HashSet<(ulong, uint)>();
@@ -163,7 +186,154 @@ public sealed partial class WalkMode
             : "no parcel's line sent her in the last minute");
         if (stoppedAgo is >= 0 and < 15_000)
             parts.Add(Inv($"the region said its autopilot stopped {stoppedAgo / 1000.0:0.0} s before, with no cancel of ours just before it"));
-        return string.Join("; ", parts);
+        return (string.Join("; ", parts), lacking != null ? AtFeet(new Vector3(at.X, at.Y, feet), lacking, near, listed) : null);
+    }
+
+    /// <summary>Whether a walk stuck where the region holds her on something the collision model hasn't got (the blind
+    /// tester's walks to her partner, 2026-11-19: carried 3.4 m up steps the model lacked while each stuck stretch was
+    /// marked and gone round, till "no way"): her feet at least Lifted over what the model has under her (its floor or
+    /// the ground, whichever is higher; the planner too carries her floor on level from her feet then), no further over
+    /// it than a fall that lands near (LiftedFall: a skybox over open ground isn't trusted), and nothing of the model's
+    /// within LiftedAhead toward where she'd be sent at any height from her shin to her head (people aside: a walk up
+    /// against someone ends as before), and no drop the model has on the straight way there: under a point each metre
+    /// or so on it, the model's floor or the ground no more than LiftedDrop under what's under her now (the 12 m was
+    /// measured only under her). What's under her is the highest the model has under her middle and four points at her
+    /// body's edge, as at a deck's edge her middle can be past it while she stands on it. Lifted: the words for the log
+    /// (how far over what), or null; Not: lifted, but why the region isn't trusted (for the stuck line).</summary>
+    public async Task<(string? Lifted, string? Not)> LiftedAsync(Vector3 at, float feet, Vector3 toward)
+    {
+        var flat = new Vector2(toward.X - at.X, toward.Y - at.Y);
+        float dist = flat.Length();
+        var dir = dist > 0.1f ? Vector3.Normalize(new Vector3(flat, 0))
+            : Dir(S.Client is { } me ? YawOf(me.Self.Movement.BodyRotation) : 0);
+        float tall = Math.Clamp(2 * (at.Z - feet), 1.2f, 3f);
+        var rays = new[] { 0.2f, 0.5f, 0.9f, 1.3f, tall - 0.1f }.Select(h => (new Vector3(at.X, at.Y, feet + h), dir, LiftedAhead)).ToList();
+        var side = new Vector3(-dir.Y, dir.X, 0);
+        foreach (var o in new[] { Vector3.Zero, dir, -dir, side, -side })
+            rays.Add((new Vector3(at.X + o.X * LiftedEdge, at.Y + o.Y * LiftedEdge, feet + 0.3f), -Vector3.UnitZ, LiftedFall + 0.3f));
+        int n = Math.Min((int)MathF.Ceiling(dist / LiftedStep), LiftedPoints);
+        var line = Enumerable.Range(1, n).Select(i => at + dir * (dist * i / n)).ToList();
+        foreach (var p in line) rays.Add((new Vector3(p.X, p.Y, feet + 0.3f), -Vector3.UnitZ, LiftedFall + LiftedDrop + 0.3f));
+        if (await _rays.CollideManyAsync(rays) is not { } got) return (null, null);
+        float? model = null;
+        for (int k = 5; k < 10; k++)
+            if (got.Hits[k] is { Avatar: false } d && (model is not { } was || feet + 0.3f - d.Distance > was)) model = feet + 0.3f - d.Distance;
+        float? ground = GroundAt(at.X, at.Y) is { } g && g <= feet + 0.3f ? g : null;
+        if (model == null && ground == null) return (null, null);
+        bool byModel = model is { } m && (ground is not { } g2 || m >= g2);
+        float under = byModel ? model!.Value : ground!.Value, over = feet - under;
+        if (over < Lifted || over > LiftedFall) return (null, null);
+        var said = byModel ? Inv($"her feet {over:0.00} m over the model's floor under them ({model:0.00})")
+            : Inv($"her feet {over:0.00} m over the ground ({ground:0.00}), nothing of the model's under them");
+        if (got.Hits.Take(5).Any(h => h is { Avatar: false })) return (null, $"{said}, not trusting the region: something of the model's ahead");
+        for (int i = 0; i < n; i++)
+        {
+            var p = line[i];
+            float? below = got.Hits[10 + i] is { Avatar: false } h ? feet + 0.3f - h.Distance : null;
+            if (GroundAt(p.X, p.Y) is { } gp && gp <= feet + 0.3f && (below is not { } b0 || gp > b0)) below = gp;
+            if (below is not { } b || b < under - LiftedDrop)
+                return (null, Inv($"{said}, not trusting the region: a drop the model has on the way, at {p.X:0.0},{p.Y:0.0}, ") + (below is { } b1 ? Inv($"its floor {b1:0.00}") : "nothing under it within reach"));
+        }
+        return (said, null);
+    }
+
+    /// <summary>LiftedAsync: how far over the model's floor is on something it hasn't got (the planner's own: a floor under
+    /// her feet any further down isn't hers); how far down a fall may be; how far ahead the model must have nothing; how
+    /// far out her body's edge is; a down ray each LiftedStep on the way there, at most LiftedPoints; how far under what's
+    /// under her the floor on the way may be (a drop the planner wouldn't take, and some).</summary>
+    const float Lifted = 0.5f, LiftedFall = 12f, LiftedAhead = 1.5f, LiftedEdge = 0.3f, LiftedStep = 1f, LiftedDrop = 1.5f;
+    const int LiftedPoints = 16;
+
+    /// <summary>How far over the model's floor her feet may be before a stuck line looks at what's at them; how far from
+    /// her feet a part's box may be to be listed; how many are told in full, how many more by name.</summary>
+    const float AtFeetOver = 0.3f, AtFeetReach = 1f;
+    const int AtFeetListed = 6, AtFeetNamed = 6;
+
+    /// <summary>The parts whose boxes come within a metre of her feet, as the model holds them, for the line beside a
+    /// stuck one: each one's name (part of object), kind, the region's physics shape type, how the model counts it and
+    /// why not where it doesn't (phantom, flexible, none), the flags that bear on it (phantom, volume detect, temporary,
+    /// physical), its shape (ready with how many triangles and which, still to come, given up on) and how near its
+    /// triangles come to her feet (a part the model has elsewhere, or empty, against one at her feet), and its box; then
+    /// how many of the region's parts the model can't place at all (their object's root not had). What isn't listed
+    /// the model hasn't got: the region never sent it, or it was dropped on the way.</summary>
+    string AtFeet(Vector3 feet, string lacking, (List<PartNear> Parts, int Unplaced, int UnplacedObjects) near, List<PartNear> listed)
+    {
+        var all = near.Parts ?? [];
+        var head = Inv($"at her feet when stuck ({feet.X:0.00},{feet.Y:0.00},{feet.Z:0.00}; {lacking}): ");
+        var said = new List<string>();
+        foreach (var p in listed.Take(AtFeetListed)) said.Add(PartSaid(p));
+        var body = all.Count == 0 ? Inv($"no part's box within {AtFeetReach:0} m of them")
+            : (all.Count == 1 ? Inv($"1 part whose box comes within {AtFeetReach:0} m of them: ") : Inv($"{all.Count} parts whose boxes come within {AtFeetReach:0} m of them: ")) + string.Join("; ", said)
+              + (all.Count > AtFeetListed
+                  ? $"; and {all.Count - AtFeetListed} more: " + string.Join(", ", listed.Skip(AtFeetListed).Select(p => Name(p.Region, p.Prim.LocalID)))
+                    + (all.Count > AtFeetListed + AtFeetNamed ? ", ..." : "")
+                  : "");
+        var unplaced = near.Unplaced == 0 ? "none of the region's parts the model can't place"
+            : Inv($"{near.Unplaced} of the region's parts, of {near.UnplacedObjects} object{(near.UnplacedObjects == 1 ? "" : "s")}, the model can't place (their object's root not had)");
+        return $"{head}{body}; {unplaced}";
+    }
+
+    /// <summary>One part for the line at her feet.</summary>
+    string PartSaid(PartNear p)
+    {
+        var prim = p.Prim;
+        var kind = p.Kind switch
+        {
+            ShapeKind.Mesh => "mesh", ShapeKind.Sculpt => "sculpt", ShapeKind.Prim => "prim",
+            _ => prim.PrimData.PCode switch { PCode.Tree or PCode.NewTree => "a Linden tree", PCode.Grass => "Linden grass", var c => $"not a volume ({c})" },
+        };
+        var type = _rays.Physics.Of(prim) switch
+        {
+            PhysicsShapeType.Prim => "prim", PhysicsShapeType.ConvexHull => "convex hull", PhysicsShapeType.None => "none", { } t => t.ToString(), null => "not known yet",
+        };
+        var flags = S.State.PrimFlagsOf(prim);
+        var rootFlags = prim.ParentID != 0 && S.World.Region(S.GridKey, p.Region) is { } w && w.Prims.TryGetValue(prim.ParentID, out var root)
+            ? S.State.PrimFlagsOf(root) : PrimFlags.None;
+        var marks = new List<string>();
+        if ((flags & PrimFlags.Phantom) != 0) marks.Add("phantom");
+        else if ((rootFlags & PrimFlags.Phantom) != 0) marks.Add("phantom by its object's root");
+        if (((flags | rootFlags) & VolumeDetect) != 0) marks.Add("volume detect");
+        if (((flags | rootFlags) & (PrimFlags.TemporaryOnRez | PrimFlags.Temporary)) != 0) marks.Add("temporary");
+        if (((flags | rootFlags) & PrimFlags.Physics) != 0) marks.Add("physical");
+        if (((byte)prim.PrimData.PathCurve & 0x80) != 0) marks.Add("flexible");
+        var counts = p.How switch
+        {
+            CollideAs.Prim => "counted as prim", CollideAs.ConvexHull => "counted as a convex hull", CollideAs.Unknown => "counted as solid",
+            CollideAs.None => "not counted (physics none)", _ => "not counted (phantom or flexible)",
+        };
+        var shape = p.Shape switch
+        {
+            ShapeState.None => "no shape: never counted",
+            ShapeState.ToCome => "its shape still to come",
+            ShapeState.GivenUp => "its shape given up on",
+            _ when p.Triangles == 0 => "its shape ready but holding no triangles",
+            _ => Inv($"{p.Triangles} triangles by {p.By}, the nearest {p.Nearest:0.00} m from her feet"),
+        };
+        // (a mesh's flat hulls have no triangles here; the region may count them as thin plates)
+        if (p.Hulls is { } h && (h.Hulls > 0 || h.FlatBase))
+            shape += (h.Hulls > 0 ? Inv($", {h.Hulls} hulls in its decomposition, {h.Flat} of them flat and left out") : "")
+                     + (h.FlatBase ? ", its own hull flat and left out" : "");
+        var box = p.BoxOff < 0.005f ? "her feet in its box" : Inv($"its box {p.BoxOff:0.00} m off");
+        return Inv($"{Name(p.Region, prim.LocalID)} ({kind}; the region's physics {type}, {counts}")
+               + (marks.Count > 0 ? $"; {string.Join(", ", marks)}" : "")
+               + Inv($"; {shape}; {box}: middle {p.Middle.X:0.00},{p.Middle.Y:0.00},{p.Middle.Z:0.00}, size {p.Size.X:0.00}x{p.Size.Y:0.00}x{p.Size.Z:0.00}, ")
+               + Turned(p.Rot) + Inv($", from {p.Low:0.00} to {p.High:0.00} high)");
+    }
+
+    /// <summary>Second Life's volume detect flag (FLAGS_VOLUME_DETECT, 1 &lt;&lt; 14; LibreMetaverse names that bit for a
+    /// joint).</summary>
+    const PrimFlags VolumeDetect = (PrimFlags)0x4000;
+
+    /// <summary>A part's turn as the build floater gives it (degrees about X, Y, Z), or "not turned".</summary>
+    static string Turned(System.Numerics.Quaternion q)
+    {
+        float x = q.X, y = q.Y, z = q.Z, w = q.W;
+        float rx = MathF.Atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y));
+        float ry = MathF.Asin(Math.Clamp(2 * (w * y - z * x), -1f, 1f));
+        float rz = MathF.Atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+        static float D(float r) { float d = MathF.Round(r * 180 / MathF.PI); return d == 0 ? 0 : d; }
+        float dx = D(rx), dy = D(ry), dz = D(rz);
+        return dx == 0 && dy == 0 && dz == 0 ? "not turned" : Inv($"turned {dx:0},{dy:0},{dz:0}");
     }
 
     static string Inv(FormattableString s) => s.ToString(CultureInfo.InvariantCulture);

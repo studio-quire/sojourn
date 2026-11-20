@@ -50,6 +50,12 @@ public sealed class MeshPhysics
     /// <summary>Uploaded with a physics model (decomposed or not): the uploader made it a prim shape
     /// (LLMeshUploadThread::wholeModelToLLSD), else a convex hull.</summary>
     public bool UploadedAsPrim { get { Decode(); return _decomposition != null || _triangles != null; } }
+    /// <summary>The decomposition's hulls, and how many of them were flat (all their points in one plane: a plane in
+    /// the physics model) and so have no triangles here; and whether the base hull was flat. For a walk's log: the
+    /// region may count a flat piece as a thin plate.</summary>
+    public (int Hulls, int Flat, bool FlatBase) HullCounts { get { Decode(); return (_hulls, _flatHulls, _flatBase); } }
+    int _hulls, _flatHulls;
+    bool _flatBase;
 
     void Decode()
     {
@@ -74,6 +80,7 @@ public sealed class MeshPhysics
             var pts = Points(block["BoundingVerts"].AsBinary(), 0, int.MaxValue, min, max);
             var tris = ConvexHull.Triangles(pts);
             if (tris.Length > 0) _hull = tris;
+            else _flatBase = pts.Count > 0;
         }
         if (block.ContainsKey("HullList") && block.ContainsKey("Positions"))
         {
@@ -84,7 +91,10 @@ public sealed class MeshPhysics
             foreach (byte n in list)
             {
                 int count = n == 0 ? 256 : n;
-                all.AddRange(ConvexHull.Triangles(Points(pos, at, count, min, max)));
+                var hull = ConvexHull.Triangles(Points(pos, at, count, min, max));
+                all.AddRange(hull);
+                _hulls++;
+                if (hull.Length == 0) _flatHulls++;
                 at += count;
             }
             if (all.Count > 0) _decomposition = all.ToArray();

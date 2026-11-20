@@ -8,6 +8,20 @@ using LVector3 = LibreMetaverse.Vector3;
 
 namespace Sojourn.Render.Collision;
 
+/// <summary>A shape's state in the model: ready (it counts), still to come, given up on, or none (not a volume prim: a
+/// Linden tree or grass).</summary>
+public enum ShapeState : byte { None, Ready, ToCome, GivenUp }
+
+/// <summary>A part near a point as the model holds it (CollisionWorld.Near): how it counts (the caller's rule), its shape's
+/// state, which of its triangles count (By: its drawn shape, hull, decomposition, physics model, or the hull of its drawn
+/// shape; for one that doesn't count, which would) and how many, the nearest of them to the point (null: none), how far
+/// the point is from its box (0 inside), and its box: middle (the asker's region frame), size, turn, lowest and highest
+/// point; a mesh's hulls (its decomposition's, how many flat ones have no triangles here, whether its base hull is
+/// flat).</summary>
+public readonly record struct PartNear(Primitive Prim, ulong Region, ShapeKind? Kind, CollideAs How, ShapeState Shape, string? By,
+    int Triangles, float? Nearest, float BoxOff, Vector3 Middle, Vector3 Size, Quaternion Rot, float Low, float High,
+    (int Hulls, int Flat, bool FlatBase)? Hulls = null);
+
 /// <summary>
 /// The local collision model without a GPU (docs/access-app.md > Walk mode > The collision model): what's solid around
 /// the person, from the session's world model and the same prim volumes, sculpt maps and mesh physics the renderer's
@@ -163,6 +177,30 @@ public sealed class CollisionWorld : IDisposable
         }
         missing.Sort((a, b) => a.D.CompareTo(b.D));
         return missing;
+    }
+
+    /// <summary>Every part whose box comes within <paramref name="reach"/> of a point (region frame), as the model holds it:
+    /// counted or not and why, its shape's state, which of its triangles count and how near they come to the point, its
+    /// box; nearest box first. And how many of the region's parts can't be placed at all (their object's root not had,
+    /// so where they are isn't known). For a walk's log when it sticks with the model's floor gone from under her (Sojourn
+    /// Access): to tell a part the model has elsewhere or with nothing in it from one it hasn't got.</summary>
+    public (List<PartNear> Parts, int Unplaced, int UnplacedObjects) Near(ulong region, Vector3 at, float reach, Func<Primitive, CollideAs> solid)
+    {
+        var parts = new List<PartNear>();
+        int unplaced = 0, objects = 0;
+        lock (_gate)
+        {
+            foreach (var r in _regions.Values)
+            {
+                var off = Offset(region, r.World.Handle);
+                if (!r.Near(at + off, reach)) continue;
+                r.Update();
+                r.PartsNear(_shapes, at + off, reach, solid, off, parts);
+                if (r.World.Handle == region) (unplaced, objects) = r.UnplacedCounts();
+            }
+        }
+        parts.Sort((a, b) => a.BoxOff != b.BoxOff ? a.BoxOff.CompareTo(b.BoxOff) : (a.Nearest ?? float.MaxValue).CompareTo(b.Nearest ?? float.MaxValue));
+        return (parts, unplaced, objects);
     }
 
     /// <summary>For the status op: regions, prims indexed and placed, shapes (ready, waiting, downloading, failed) and
@@ -441,15 +479,15 @@ public sealed class CollisionWorld : IDisposable
             }
             e.Placed = placed;
             if (placed != wasPlaced) PlacedCount += placed ? 1 : -1;
-            if (placed && e.Key != null)
+            if (placed)
             {
                 e.Pos = pos;
                 e.Rot = rot;
                 e.Scale = V(p.Scale);
                 // the prim's volume fits its scaled unit box; a mesh's hull may reach a little past it
                 e.Radius = 0.5f * e.Scale.Length() * 1.05f + 0.02f;
-                Reindex(e);
             }
+            if (placed && e.Key != null) Reindex(e);
             else Unindex(e);
             if (_children.TryGetValue(e.Id, out var children))
                 foreach (var c in children.ToArray()) Place(c);
@@ -621,6 +659,86 @@ public sealed class CollisionWorld : IDisposable
                     if (d <= reach) into.Add((d, e.Prim, e.Key.Value.Kind, st.Failed, World.Handle));
                 }
             }
+        }
+
+        /// <summary>Every placed part (worn ones left out) whose box comes within reach of a point, as the model holds it,
+        /// into <paramref name="into"/> with its middle moved back by <paramref name="off"/> (the asker's region frame).
+        /// Shapes aren't fetched here; a prim's is built if it isn't.</summary>
+        public void PartsNear(CollisionShapes shapes, Vector3 at, float reach, Func<Primitive, CollideAs> solid, Vector3 off, List<PartNear> into)
+        {
+            foreach (var e in _all)
+            {
+                if (!e.Placed || e.Attached) continue;
+                if (Vector3.Distance(e.Pos, at) - e.Radius > reach) continue;
+                var half = e.Scale / 2;
+                var inBox = Vector3.Transform(at - e.Pos, Quaternion.Conjugate(e.Rot));
+                float boxOff = Vector3.Max(Vector3.Abs(inBox) - half, Vector3.Zero).Length();
+                if (boxOff > reach) continue;
+                // its box's heights: the half extents of its turned axes, upward
+                float up = MathF.Abs(Vector3.Transform(new Vector3(half.X, 0, 0), e.Rot).Z) + MathF.Abs(Vector3.Transform(new Vector3(0, half.Y, 0), e.Rot).Z)
+                           + MathF.Abs(Vector3.Transform(new Vector3(0, 0, half.Z), e.Rot).Z);
+                var how = solid(e.Prim);
+                var part = new PartNear(e.Prim, World.Handle, e.Key?.Kind, how, ShapeState.None, null, 0, null, boxOff, e.Pos - off, e.Scale, e.Rot,
+                    e.Pos.Z - up, e.Pos.Z + up);
+                if (e.Key is { } key)
+                {
+                    var shape = key.Kind == ShapeKind.Prim ? shapes.Get(key, e.Prim, Assets, 0, buildNow: true) : shapes.Peek(key);
+                    var (ready, failed) = shapes.State(key);
+                    part = part with { Shape = ready ? ShapeState.Ready : failed ? ShapeState.GivenUp : ShapeState.ToCome };
+                    if (ready && shape != null && e.Scale.X > 0 && e.Scale.Y > 0 && e.Scale.Z > 0)
+                    {
+                        // which triangles would count, as the region's type has it (or as uploaded, where it doesn't count
+                        // at all), and the nearest of them to the point
+                        var rule = Triangles(e, shape, how is CollideAs.None or CollideAs.Passable ? CollideAs.Unknown : how, out _);
+                        var phys = shape.Physics;
+                        string by = rule == null ? "its drawn shape" : ReferenceEquals(rule, phys?.Decomposition) ? "its decomposition"
+                            : ReferenceEquals(rule, phys?.Triangles) ? "its physics model" : ReferenceEquals(rule, phys?.Hull) ? "its hull" : "the hull of its drawn shape";
+                        int n = rule?.Length ?? shape.Drawn?.Count ?? 0;
+                        float best = float.MaxValue;
+                        for (int i = 0; i + 2 < n; i += 3)
+                        {
+                            Vector3 W(Vector3 v) => e.Pos + Vector3.Transform(v * e.Scale, e.Rot);
+                            var (a, b, c) = rule != null ? (rule[i], rule[i + 1], rule[i + 2]) : (shape.Drawn![i], shape.Drawn[i + 1], shape.Drawn[i + 2]);
+                            best = MathF.Min(best, PointTriangle(at, W(a), W(b), W(c)));
+                        }
+                        part = part with { By = by, Triangles = n / 3, Nearest = n >= 3 ? best : null, Hulls = phys?.HullCounts };
+                    }
+                }
+                into.Add(part);
+            }
+        }
+
+        /// <summary>The region's parts that can't be placed (their object's root not had: where they are isn't known), and
+        /// how many objects those are.</summary>
+        public (int Parts, int Objects) UnplacedCounts()
+        {
+            var roots = new HashSet<uint>();
+            foreach (var e in _unplaced) roots.Add(e.Prim.ParentID);
+            return (_unplaced.Count, roots.Count);
+        }
+
+        /// <summary>The distance from a point to a triangle (Ericson's closest point on a triangle).</summary>
+        static float PointTriangle(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+        {
+            Vector3 ab = b - a, ac = c - a, ap = p - a;
+            float d1 = Vector3.Dot(ab, ap), d2 = Vector3.Dot(ac, ap);
+            if (d1 <= 0 && d2 <= 0) return ap.Length();
+            var bp = p - b;
+            float d3 = Vector3.Dot(ab, bp), d4 = Vector3.Dot(ac, bp);
+            if (d3 >= 0 && d4 <= d3) return bp.Length();
+            float vc = d1 * d4 - d3 * d2;
+            if (vc <= 0 && d1 >= 0 && d3 <= 0) return Vector3.Distance(p, a + ab * (d1 / (d1 - d3)));
+            var cp = p - c;
+            float d5 = Vector3.Dot(ab, cp), d6 = Vector3.Dot(ac, cp);
+            if (d6 >= 0 && d5 <= d6) return cp.Length();
+            float vb = d5 * d2 - d1 * d6;
+            if (vb <= 0 && d2 >= 0 && d6 <= 0) return Vector3.Distance(p, a + ac * (d2 / (d2 - d6)));
+            float va = d3 * d6 - d5 * d4;
+            if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return Vector3.Distance(p, b + (c - b) * ((d4 - d3) / (d4 - d3 + (d5 - d6))));
+            float denom = va + vb + vc;
+            if (MathF.Abs(denom) < 1e-20f) return MathF.Min(ap.Length(), MathF.Min(bp.Length(), cp.Length()));
+            float v = vb / denom, w = vc / denom;
+            return Vector3.Distance(p, a + ab * v + ac * w);
         }
 
         static Vector3 V(LVector3 v) => new(v.X, v.Y, v.Z);

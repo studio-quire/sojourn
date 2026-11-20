@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using LibreMetaverse;
+using Microsoft.Extensions.Logging;
 
 namespace Sojourn.Core.Agents;
 
@@ -49,6 +50,14 @@ public sealed partial class Safety
         });
         if (Notices == BumpNotices.Off || (Notices == BumpNotices.Pushes && e.Type == MeanCollisionType.Bump)) return;
         if (_s.Mutes.IsMuted(e.Aggressor)) return;
+        // the ride she's on: the region names a vehicle's owner whenever its physics meets hers, a passenger's most of
+        // all just after a region crossing (the blind tester in her partner's boat, 2026-11-19: "hit you with a
+        // scripted object" nineteen times in forty minutes, tester-20261120T023042-437b99). Kept in the list, not said
+        if (e.Type is not (MeanCollisionType.Bump or MeanCollisionType.LLPushObject) && OwnRide(c, e.Aggressor))
+        {
+            _s.Log.LogInformation("bump: {Type} from the one whose ride she's on, not said", e.Type);
+            return;
+        }
         int more;
         lock (_bumpShown)
         {
@@ -61,6 +70,19 @@ public sealed partial class Safety
         _s.Notify.Add("CollisionAlert", "notifytip", text, Notifications.None,
             payload: new JsonObject { ["from_id"] = e.Aggressor.ToString(), ["type"] = e.Type.ToString() },
             substitutions: new JsonObject { ["NAME"] = name });
+    }
+
+    /// <summary>Whether a hit from this person is the ride she's sitting on: theirs, or one they sit on too (the driver of
+    /// a boat she's a passenger in).</summary>
+    bool OwnRide(GridClient c, UUID who)
+    {
+        if (c.Self.SittingOn == 0 || _s.Region is not { } w || !w.Prims.TryGetValue(c.Self.SittingOn, out var seat)) return false;
+        var root = _s.Objects.RootOf(w, seat);
+        if ((root.Properties?.OwnerID ?? root.OwnerID) == who) return true;
+        foreach (var av in w.Avatars.Values)
+            if (av.ID == who && av.ParentID != 0 && w.Prims.TryGetValue(av.ParentID, out var on) && _s.Objects.RootOf(w, on).LocalID == root.LocalID)
+                return true;
+        return false;
     }
 
     /// <summary>This session's bumps, pushes and hits, newest last (those callers may be shown).</summary>

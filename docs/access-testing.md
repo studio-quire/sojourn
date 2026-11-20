@@ -544,8 +544,9 @@ docstring with its checks in full):
   region's positions; the session's autopilot stopping about its stop distance short. Walking also has a `//go` onto a
   plinth with no steps and a wall put across the way once she's walking, and checks the session log's lines for it
   (`docs/access-app.md` > Walk mode > Why a walk went as it did, in her log): the plan, the planner's reasons, the stuck
-  line (the wall named from her shin up, the floor ahead, what's either side, the parcel by name and id), the plan made
-  again from there counting the stuck spot, and the walk's end.
+  line (the wall named from her shin up, the floor ahead, what's either side, the parcel by name and id), the line at
+  her feet beside it (the walk log being on, at every stick: the wall by name, its triangles' nearest and its box), the
+  plan made again from there counting the stuck spot, and the walk's end.
 - **always running** (about a minute, no renderer needed): between TP_TO and PILOT_TO, a `//go` walked, then `//run` (said, the
   setting on) and a `//go` back seen running (the region's run animation on her) and faster than the walk; walk mode's held Up
   running without Shift; `//run` again walking, said, and held Up walking. OpenSim's autopilot turns running off as it starts,
@@ -616,6 +617,23 @@ docstring with its checks in full):
   ends on the right floor, said, with no teleport and no flying animation on her (OpenSim's autopilot flies to a point
   high over the ground: `Commands.AutoPilotTo`). Last, in the stage's place a deck 3 m up with no steps: `//go person`
   to the visitor in its middle is no way and teleports her up beside it (walking would leave her a storey under it).
+- **walking and following up steps the model hasn't got** (`ACCESS_STEPS=follow`; about 2 minutes, no renderer
+  needed): where the house stands in the step before, on a slab over the ground, a deck 2 m up and nine steps up to it
+  between two walls, the steps and walls left out of the collision model by `SojournCollision unseen` (a test's op,
+  there with `SOJOURN_TEST_UNSEEN=1`, which the run sets: the region has them, the model doesn't, as the blind
+  tester's partner's steps on 2026-11-19). The visitor walks up onto the deck (`goto`); `//follow` from the slab goes
+  its way ("Going the way ... went, up 2 metres.", then "With" it on the deck, never "no way up"), and goes up after it
+  too when she's with it at the foot as it walks up (her log's own case); from the slab again,
+  `//go person` to it, gone on along the deck: "Walking ... the way they went, up 2 metres.", finished beside it, no
+  teleport. `//follow` it back down them from the deck: onto its trail by the plan (the deck's edge to the steps'
+  top), "Going the way ...", "With" it on the slab, never "no way down". It takes off on the slab and hovers 5 m up,
+  3 m on from where it left the ground: `//follow` says it's above her with no way up, never "Going the way", and
+  doesn't hold her where it took off (until 2026-11-20 its trail ended there). Then, on the fourth step in a pocket
+  the model hasn't got (a third wall across the steps behind her), `//go xyz` to a point east past the wall, a post in
+  the model on the way: stuck with nothing of the model's ahead, 0.9 m over its floor, so the region is trusted toward
+  the stretch's end, no stuck spot and no way round, and she ends at the point, walked or by the no-way end's
+  teleport. The session log's lines for each (`follow: by their trail`, `go: by their trail`, no trail while it's
+  flying, `lifted, so trusting the region`, `go: trusting the region, ...`) are checked.
 - **distance walked**: three taps of Up said once as one stretch, close to how far the avatar went (the run prints the
   metres a tap), Down said "backward", M and Shift+M, nothing with `walk_distance` off.
 - **rail switches** (about 2 minutes, no renderer needed): on a flat stretch of Atelier East found first (and a ray along

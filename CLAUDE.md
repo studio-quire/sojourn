@@ -17,10 +17,11 @@ Our own Second Life client, built for VR first, with a personal AI that operates
   social, land, building, inventory and the AO, the map, voice and media extras, the menus, the login screen, the
   launcher), and RLV/RLVa (2026-11-01, off by default: `docs/rlv.md`). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
 - **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01), a first build editor (2026-11-02) and About Land (2026-11-03); test builds (the assistant bundled) published as releases
-  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1173 (2026-11-19 evening, from her two logs that day and the day before: why a walk found no way
-  now in the log she sends, a walk that stuck once no longer shutting itself in, `//go` to bare coordinates, no "Autopilot
-  canceled" after walks, group notices opened from the archive as Radegast reads Second Life's answer, an IM no longer
-  holding the window; package check 43 of 43), waiting for her word on it; a blind
+  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1182 (2026-11-19 night, from her logs at her partner's steps and on his boat: a follow or a walk
+  to someone the model can't reach goes the way they walked, a walk the region is lifting keeps on, what's under her
+  feet named in her log when the model has nothing there, a hit from the ride she's on not said; on top of 1173 that
+  evening: why a walk found no way in her log, //go to bare coordinates, group notices from the archive; package
+  check 43 of 43), waiting for her word on it; a blind
   tester's first session on Second Life was 2026-10-30. `docs/access.md` (plan, milestones, what testers said), `docs/access-app.md` (as built, packaging).
 - **Public source** since 2026-10-29 (`docs/publishing.md`). **First release, 0.1.0.867, published 2026-11-02**: a
   pre-release on studio-quire/sojourn (Velopack: install, updates at the person's press, uninstall; `tools/package.py`,

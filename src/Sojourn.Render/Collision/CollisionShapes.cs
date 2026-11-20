@@ -177,6 +177,9 @@ public sealed class CollisionShapes
     public (bool Ready, bool Failed) State(ShapeKey key) =>
         _shapes.TryGetValue(key, out var shape) ? (shape.Ready, shape.Failed) : (false, false);
 
+    /// <summary>The shape if it's ready; nothing asked for, not counting it as used.</summary>
+    public CollisionShape? Peek(ShapeKey key) => _shapes.TryGetValue(key, out var s) && s.Ready ? s : null;
+
     /// <summary>Whether a shape is had (ready, or given up on), counting it as used now; false when it's still to come.</summary>
     public bool Settled(ShapeKey key)
     {

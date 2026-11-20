@@ -60,12 +60,18 @@ public sealed class PhysicsShapes
     /// gave it, or not known yet (asked for now).</summary>
     public CollideAs Collide(Primitive p)
     {
+        if (!Unseen.IsEmpty && (Unseen.ContainsKey(p.ID) || p.ParentID != 0 && _session.Region is { } wu && wu.Prims.TryGetValue(p.ParentID, out var ru) && Unseen.ContainsKey(ru.ID)))
+            return CollideAs.Passable;
         if (((byte)p.PrimData.PathCurve & 0x80) != 0) return CollideAs.Passable;   // flexible prims are phantom
         var flags = _session.State.PrimFlagsOf(p);
         if (p.ParentID != 0 && _session.Region is { } w && w.Prims.TryGetValue(p.ParentID, out var root)) flags |= _session.State.PrimFlagsOf(root);
         if ((flags & PrimFlags.Phantom) != 0) return CollideAs.Passable;
         return Of(p) is { } t ? (CollideAs)(byte)t : CollideAs.Unknown;
     }
+
+    /// <summary>Objects (and their parts) the local models leave out while the region keeps them, a test's
+    /// (SojournCollision unseen, with SOJOURN_TEST_UNSEEN=1): what a region has and the model lacks, staged.</summary>
+    public ConcurrentDictionary<UUID, byte> Unseen { get; } = new();
 
     /// <summary>Answers and asks long past let go: they were kept for the session, every prim of every region passed
     /// (75,000 on a three-hour train ride). An answer is asked again after <see cref="Stale"/> anyway.</summary>

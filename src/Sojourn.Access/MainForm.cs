@@ -180,6 +180,7 @@ public sealed partial class MainForm : Form
         _cmd.RoundPeople = () => _set.WalkRoundPeople;
         _cmd.CueText = cue => _set.WalkText(cue);
         var planner = _cmd.Planner = new Sojourn.Access.Walk.PathPlanner(host.Session, rays);
+        _cmd.Trails = new Sojourn.Access.Walk.Trails(host.Session);   // (where people around walk: following, a walk to someone)
         host.Session.Motion.Router = (c, from, to) => RouteAsync(planner, from, to);
         host.Session.Motion.Stalled = AutopilotStalled;
         _walkPad.Walk = _walk;

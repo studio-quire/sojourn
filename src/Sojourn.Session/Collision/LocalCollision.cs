@@ -110,6 +110,12 @@ public sealed class LocalCollision : IDisposable
     public List<(float D, Primitive Prim, ShapeKind Kind, bool Failed, ulong Region)> Missing(Vector3 at, float reach) =>
         _s.Client is { Network.CurrentSim: { } sim } ? _world.Missing(sim.Handle, at, reach) : new();
 
+    /// <summary>Every part whose box comes within <paramref name="reach"/> of a point (the agent's region frame) as the
+    /// model holds it, and how many of her region's parts it can't place (CollisionWorld.Near). Empty when not in a
+    /// region. Any thread but the window's: a mesh's triangles are each measured.</summary>
+    public (List<PartNear> Parts, int Unplaced, int UnplacedObjects) Near(Vector3 at, float reach) =>
+        _s.Client is { Network.CurrentSim: { } sim } ? _world.Near(sim.Handle, at, reach, Physics.Collide) : (new(), 0, 0);
+
     async Task Loop()
     {
         long nextAround = 0, nextReport = Environment.TickCount64 + 60_000;

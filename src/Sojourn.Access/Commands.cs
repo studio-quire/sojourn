@@ -424,7 +424,9 @@ public sealed partial class Commands
     /// the avatar really is; a host with no renderer hears its own position only now and then), saying how far, then
     /// how close it got once it has stopped. With the collision model, around what's in the way: a path of waypoints
     /// (PathPlanner), each walked by the region's autopilot in turn, each new stretch said; a stretch that sticks is
-    /// marked and the rest planned again (twice). A goal out of reach where this floor meets it (on a stage, inside a
+    /// marked and the rest planned again (twice), unless the region holds her on something the model hasn't got
+    /// (TrustRegionAsync); to someone whose floor the plan can't reach, the way they walked there where they did lately
+    /// (TrailRouteAsync). A goal out of reach where this floor meets it (on a stage, inside a
     /// bar) is walked as near as the way goes, said, unless that's a storey or more under it with its floor meeting hers
     /// only far off (PathPlanner.Plan.Beneath: no way). Seated, it stands first. With no way at all it says so, and
     /// teleports there once where that can work (walk_teleport_fallback; NoWayAsync), else names the command that
@@ -490,7 +492,20 @@ public sealed partial class Commands
             route = await PlanAsync(me.Pos, target, ct, people, foot);
             if (ct.IsCancellationRequested) return false;
         }
-        if (route is { Legs.Count: 0, InWay: null }) return await NoWayAsync(target, what, tpHint);
+        // to someone whose floor the plan can't reach, or with no way at all: the way they walked there, where they did
+        // lately (Trails: her partner up steps the model lacked, 2026-11-19)
+        if (toPerson != UUID.Zero && route is { InWay: null } planned && (planned.Legs.Count == 0 || planned.Beyond)
+            && await TrailRouteAsync(toPerson, me.Pos, planned) is { } byTrail)
+            route = byTrail;
+        // no way: past a border since it set out, the target put in this region's frame, and no teleport while it's
+        // still over the border (the teleport is within the region she's in) nor a hint by coordinates of the other's
+        Task<bool> NoWay()
+        {
+            if (_ops.Client?.Network.CurrentSim is not { } now || now.Handle == origin) return NoWayAsync(target, what, tpHint);
+            var here = InFrame(target, origin, now.Handle);
+            return NoWayAsync(here, what, tpHint.StartsWith("//go tp xyz", StringComparison.Ordinal) ? null : tpHint, teleport: !Beyond(here));
+        }
+        if (route is { Legs.Count: 0, InWay: null }) return await NoWay();
         if (route is { Legs.Count: 0, InWay: { } hemmed })
         {
             _say(await NotWalkingAsync(hemmed, target, what));
@@ -504,8 +519,10 @@ public sealed partial class Commands
         Vector3 End() => r.Moved || r.InWay != null ? new Vector3(legs[^1].X, legs[^1].Y, target.Z) : target;
         string Short() => r.Moved ? $"; {what} is out of reach, so as near as the way goes, {Bearings.Metres(Flat(End(), target))} short" : "";
         // a step aside for someone (Aside): the same walk to her, so the plain line, and its stretches walked unsaid
-        bool quiet = SameWalk(r, Length(me.Pos, legs) - flat);
+        // (their trail: its points unsaid, as a person following them says none)
+        bool quiet = r.Trail || SameWalk(r, Length(me.Pos, legs) - flat);
         if (r.Straight) _say(string.Create(CultureInfo.InvariantCulture, $"Walking {Bearings.Metres(flat)} to {what}."));
+        else if (r.Trail) _say($"Walking {Bearings.Metres(Length(me.Pos, legs))} to {what} the way they went{(Math.Abs(r.Rise) >= 1 ? $", {(r.Rise > 0 ? "up" : "down")} {Bearings.Metres(Math.Abs(r.Rise))}" : "")}.");
         else if (quiet) _say($"Walking {Bearings.Metres(Length(me.Pos, legs))} to {what}.");
         else
         {
@@ -516,6 +533,7 @@ public sealed partial class Commands
             _say(r.InWay is { } cutAt ? $"{line} {await OnlyAsFarAsync(cutAt, target)}" : line);
         }
         int replans = 0, dodges = 0;
+        bool trustedGoal = false;   // (the region trusted with the goal itself: once a walk)
         for (int i = 0; i < legs.Count; i++)
         {
             if (ct.IsCancellationRequested || _ops.Me() is not { } here) return false;
@@ -526,10 +544,11 @@ public sealed partial class Commands
                 var d = new Vector2(leg.X - here.Pos.X, leg.Y - here.Pos.Y);
                 _say($"{i + 1} of {legs.Count}: {Bearings.Metres(d.Length())} to the {Bearings.Point(Bearings.Compass(0, 0, d.X, d.Y))}.");
             }
-            if (_ops.Global(leg) is not { } g) return false;
+            var g = GlobalIn(leg, origin);
             AutoPilotTo(c, g.X, g.Y, g.Z);
             // someone stepping into the way has it planned afresh round them, a few times a walk, where there's a model to plan by
-            bool dodging = HeedPeople && dodges < Dodges && Planner is { CanAsk: true } && !Beyond(target);
+            // (not on someone's trail: planned afresh round people, it would leave it)
+            bool dodging = HeedPeople && dodges < Dodges && Planner is { CanAsk: true } && !Beyond(target) && !r.Trail;
             Leg got;
             if (r.Straight)
             {
@@ -567,18 +586,55 @@ public sealed partial class Commands
                 // up against someone: it ends here and says who. No spot marked (they'll move), no pushing on at them
                 // again, and never the teleport a way that keeps sticking ends in
                 if (Against(people, stuck.Pos, leg) is { } person) return await EndInWayAsync(person, target, letGo: false);
-                // stuck on the way: something the model hadn't (a thin post, a doorway the region won't fit): marked, planned
-                // again; the session log says what the model has there, so her log can tell
-                NoteStuck($"go: stuck on stretch {i + 1} of {legs.Count}, time {replans + 1} of 3 (the third ends the walk)", stuck.Pos, leg, target, origin);
-                var dir = Vector2.Normalize(new Vector2(leg.X - stuck.Pos.X, leg.Y - stuck.Pos.Y));
-                Planner.Block(new System.Numerics.Vector2(stuck.Pos.X + dir.X * 0.7f, stuck.Pos.Y + dir.Y * 0.7f), 0.6f, TimeSpan.FromMinutes(2), stuck.Pos.Z);
-                if (++replans > 2) return await NoWayAsync(target, what, tpHint);
+                var head = $"go: stuck on stretch {i + 1} of {legs.Count}{(r.Trail ? " of their trail" : "")}, time {replans + 1} of 3 (the third ends the walk)";
+                // the region holding her on something the model hasn't got, with nothing of the model's ahead and no drop
+                // it has on the way: its word wins, so no stuck spot, on by its autopilot (her walks of 2026-11-19, carried
+                // up steps the model lacked while each stretch stuck, was marked and gone round, and the third ended in "no
+                // way"): to the goal itself, once a walk, where the model has its floor out of reach (her walks were planned
+                // to a spot 7 m short of her partner); else to this stretch's end, then on with the rest
+                bool toGoal = r.Beyond && !trustedGoal;
+                var aim = toGoal ? new Vector3(target.X, target.Y, foot?.Z ?? target.Z) : leg;
+                var (lifted, untrusted) = await LiftedAsync(stuck.Pos, aim, origin);
+                if (lifted != null)
+                {
+                    NoteStuck($"{head}; lifted, so trusting the region", stuck.Pos, aim, target, origin);
+                    trustedGoal |= toGoal;
+                    // (the walk's own end, where she has to be on its floor; a corner or a stand-in, there across)
+                    bool end = toGoal || last, itsFloor = toGoal || last && !r.Moved;
+                    var trust = await TrustRegionAsync(aim, lifted, toGoal ? near : last ? (r.Moved ? 0.6 : near) : 0.5, itsFloor, end,
+                        toGoal ? "so on as near as the way goes, planned again from here" : "no way, so it ends as one", ct, origin);
+                    switch (trust.Got)
+                    {
+                        case Trust.Cancelled: return false;
+                        case Trust.There when toGoal: return await WatchWalkAsync(aim, near, ct, origin, null, people);
+                        case Trust.There when !last: continue;
+                        case Trust.There:
+                            return r.Moved ? await WatchWalkAsync(leg, 0.8, ct, origin, (target, what), people) : await WatchWalkAsync(target, near, ct, origin, null, people);
+                        case Trust.Close:
+                            if (!toGoal && r.Moved) _say($"Finished walking, as near to {what} as the way goes: {what} is {_ops.Where(target) ?? Bearings.Metres(Flat(trust.At, target))}.");
+                            else _say($"Finished walking, {OffWords(Flat(trust.At, aim))} from the destination.");
+                            return true;
+                    }
+                    // no nearer: making for the goal itself, the walk goes on as near as the way goes, as it did before
+                    // the region was trusted (a stage with no steps); else it ends as one with no way does (the
+                    // teleport where one can land, which the third stick had)
+                    if (!toGoal || ++replans > 2) return await NoWay();
+                }
+                else
+                {
+                    // stuck on the way: something the model hadn't (a thin post, a doorway the region won't fit): marked,
+                    // planned again; the session log says what the model has there, so her log can tell
+                    NoteStuck(untrusted != null ? $"{head}; {untrusted}" : head, stuck.Pos, leg, target, origin);
+                    var dir = Vector2.Normalize(new Vector2(leg.X - stuck.Pos.X, leg.Y - stuck.Pos.Y));
+                    Planner.Block(new System.Numerics.Vector2(stuck.Pos.X + dir.X * 0.7f, stuck.Pos.Y + dir.Y * 0.7f), 0.6f, TimeSpan.FromMinutes(2), stuck.Pos.Z);
+                    if (++replans > 2) return await NoWay();
+                }
             }
             if (_ops.Me() is not { } from) return false;
             Vector3? cutStood = cutEnd && who is { } blocker && people.Stood.TryGetValue(blocker, out var stoodAt) ? stoodAt : null;
             var again = await PlanAsync(from.Pos, target, ct, people, foot);
             if (ct.IsCancellationRequested) return false;
-            if (again is { Legs.Count: 0, InWay: null }) return await NoWayAsync(target, what, tpHint);
+            if (again is { Legs.Count: 0, InWay: null }) return await NoWay();
             // still there, or no step further to take toward them
             // (let go already unless it was walking on when someone stepped in: letting go is a press of forward, a step more each time)
             bool walkingOn = got == Leg.Met;
@@ -626,6 +682,91 @@ public sealed partial class Commands
         walk.NoteStuck(string.Create(CultureInfo.InvariantCulture,
                 $"{what}: at {at.X:0.00},{at.Y:0.00},{at.Z:0.00} (feet {feet:0.00}), heading for {toward.X:0.00},{toward.Y:0.00} ({Flat(at, toward):0.0} m on), the walk's end {end.X:0.00},{end.Y:0.00},{end.Z:0.00}"),
             new(at.X, at.Y, at.Z), feet, new(toward.X, toward.Y, toward.Z));
+    }
+
+    /// <summary>Stuck where the region holds her on something the model hasn't got, with nothing of the model's ahead and
+    /// no drop it has on the way to <paramref name="toward"/> (WalkMode.LiftedAsync), standing (not flying, not falling
+    /// or jumping): the words for the log, or null; and, lifted but not trusted, why not. <paramref name="toward"/> in
+    /// <paramref name="origin"/>'s frame, <paramref name="at"/> in hers.</summary>
+    async Task<(string? Lifted, string? Not)> LiftedAsync(Vector3 at, Vector3 toward, ulong origin)
+    {
+        if (WalkMode is not { } walk || _ops.Client is not { Network.CurrentSim: { } sim } c || c.Self.Movement.Fly || Math.Abs(c.Self.Velocity.Z) > 1) return (null, null);
+        var ahead = InFrame(toward, origin, sim.Handle);
+        float feet = FeetZ?.Invoke() ?? at.Z - 0.95f;
+        return await walk.LiftedAsync(new(at.X, at.Y, at.Z), feet, new(ahead.X, ahead.Y, ahead.Z));
+    }
+
+    enum Trust { There, Close, NoNearer, Cancelled }
+
+    /// <summary>A walk that stuck where the region holds her on something the model hasn't got (<paramref name="lifted"/>
+    /// says how): no stuck spot marked, no way round planned on a model that lacks what she's on, but on toward
+    /// <paramref name="goal"/> by the region's autopilot, watched for getting nearer (across and up or down alike, so
+    /// climbing steps counts) by a tenth of a metre in 3 s. There: within <paramref name="within"/> across, and on its
+    /// floor where <paramref name="itsFloor"/> (the walk's own goal: under or over it isn't there). No nearer: Close
+    /// where it's the walk's <paramref name="end"/> and she's within 2.5 m of it (on its floor, as before), else
+    /// NoNearer, the log saying what comes of that (<paramref name="otherwise"/>). At: where she was last, in
+    /// <paramref name="origin"/>'s frame.</summary>
+    async Task<(Trust Got, Vector3 At)> TrustRegionAsync(Vector3 goal, string lifted, double within, bool itsFloor, bool end, string otherwise,
+        CancellationToken ct, ulong origin)
+    {
+        if (_ops.Client is not { } c) return (Trust.Cancelled, goal);
+        WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: trusting the region, {lifted} and nothing of the model's ahead: no stuck spot, on to {goal.X:0.00},{goal.Y:0.00},{goal.Z:0.00} by its autopilot"));
+        var g = GlobalIn(goal, origin);
+        AutoPilotTo(c, g.X, g.Y, g.Z);
+        long start = Environment.TickCount64, progressAt = start;
+        double best = double.MaxValue;
+        Vector3 at = MeIn(origin) ?? goal;
+        while (!ct.IsCancellationRequested)
+        {
+            await Task.Delay(150, CancellationToken.None);
+            if (ct.IsCancellationRequested) return (Trust.Cancelled, at);
+            if (MeIn(origin) is not { } pos) continue;
+            at = pos;
+            double off = Flat(pos, goal), up = pos.Z - goal.Z;
+            if (off <= within && !(itsFloor && OtherFloor(pos, goal)))
+            {
+                WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: trusting the region, there: at {pos.X:0.00},{pos.Y:0.00},{pos.Z:0.00}, {off:0.0} m off, after {(Environment.TickCount64 - start) / 1000.0:0.0} s"));
+                return (Trust.There, pos);
+            }
+            double d = Math.Sqrt(off * off + up * up);
+            long now = Environment.TickCount64;
+            if (d < best - 0.1) (best, progressAt) = (d, now);
+            if (now - progressAt > 3000 || now - start > 60_000) break;
+        }
+        if (ct.IsCancellationRequested) return (Trust.Cancelled, at);
+        CancelAutoPilot();
+        double left = Flat(at, goal);
+        bool close = end && left < 2.5 && !(itsFloor && OtherFloor(at, goal));
+        float? feet = FeetZ?.Invoke();
+        WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: trusting the region, no nearer for 3 s: at {at.X:0.00},{at.Y:0.00},{at.Z:0.00}{(feet is { } ft ? $" (feet {ft:0.00})" : "")}, {left:0.0} m off across and {at.Z - goal.Z:+0.0;-0.0} up, after {(Environment.TickCount64 - start) / 1000.0:0.0} s; {(close ? "near enough: it ends there" : otherwise)}"));
+        return (close ? Trust.Close : Trust.NoNearer, at);
+    }
+
+    /// <summary>A point in the frame of the region with handle <paramref name="origin"/> (where a walk began) as a
+    /// global position, wherever she is now: PersonOps.Global puts it in the region she's in, 256 m off past a border.</summary>
+    static Vector3d GlobalIn(Vector3 p, ulong origin)
+    {
+        Utils.LongToUInts(origin, out var ox, out var oy);
+        return new Vector3d(ox + p.X, oy + p.Y, p.Z);
+    }
+
+    /// <summary>A walk to someone the plan can't take her to (<paramref name="planned"/>: their floor out of reach, or no
+    /// way at all) by the way they walked there (TrailWaysAsync), said in the session log either way; null where
+    /// there's none.</summary>
+    async Task<Route?> TrailRouteAsync(UUID who, Vector3 from, Route planned)
+    {
+        if (Planner is not { CanAsk: true } planner) return null;
+        float feet = FeetZ?.Invoke() ?? from.Z - 0.95f;
+        var got = await TrailWaysAsync(who, planner, from, feet);
+        var why = PlanSaid(planned.Of);
+        var her = string.Create(CultureInfo.InvariantCulture, $"from {from.X:0.00},{from.Y:0.00},{from.Z:0.00} (feet {feet:0.00})");
+        if (got.Ways is not { } ways || got.Way is not { } way)
+        {
+            WalkNote($"go: {why}, and no trail of theirs to take ({got.Said}), {her}");
+            return null;
+        }
+        WalkNote($"go: by their trail, {why}, {her}: their trail {got.Said}");
+        return new Route(ways, false) { Trail = true, Rise = way.Points[^1].Z - from.Z, Of = planned.Of };
     }
 
     /// <summary>Whether a point (a person's middle, a thing's, one given) is on a floor over or under hers: 2 m or more
@@ -690,6 +831,13 @@ public sealed partial class Commands
         /// <summary>How far the floor at its end is above the floor where it starts (below: less than 0), where the model
         /// has what she stands on: a walk upstairs says so.</summary>
         public float Rise { get; init; }
+        /// <summary>The goal's floor out of reach from hers as the model has them, or as it guesses from her feet with
+        /// nothing under her in it (its way ends as near as it goes on another floor).</summary>
+        public bool Beyond { get; init; }
+        /// <summary>The way the person walked to is the way they went there (Trails), not a plan.</summary>
+        public bool Trail { get; init; }
+        /// <summary>The plan it came from (null: none asked, or no way at all), for the log.</summary>
+        public Walk.PathPlanner.Plan? Of { get; init; }
     }
 
     static float Length(Vector3 from, List<System.Numerics.Vector2> legs)
@@ -725,11 +873,15 @@ public sealed partial class Commands
             else Walk.WalkMode.Log(line);
             // (a storey or more under it, where its floor meets hers only far off, as in the room under someone upstairs
             // whom a teleporter reaches: no way, as for a room upstairs behind a shut door, so the teleport where it lands)
-            if (plan == null || plan.Beneath) return planner.CanAsk ? new Route(new(), false) : null;
+            if (plan == null || plan.Beneath) return planner.CanAsk ? new Route(new(), false) { Of = plan } : null;
             float rise = plan.FloorKnown ? plan.GoalFloor - plan.StartFloor : 0;
-            if (plan.InWay is { } inWay) return new Route(plan.Waypoints, false) { InWay = people!.Given[inWay], Rise = rise };
+            if (plan.InWay is { } inWay) return new Route(plan.Waypoints, false) { InWay = people!.Given[inWay], Rise = rise, Of = plan };
             return plan.Direct && !plan.GoalMoved ? null
-                : new Route(plan.Waypoints, plan.GoalMoved) { Around = plan.Around.Select(p => people!.Given[p]).ToList(), Rise = rise };
+                : new Route(plan.Waypoints, plan.GoalMoved)
+                {
+                    Around = plan.Around.Select(p => people!.Given[p]).ToList(), Rise = rise, Of = plan,
+                    Beyond = !plan.OnGoalFloor,
+                };
         }
         catch (OperationCanceledException) { return null; }
     }
@@ -768,12 +920,14 @@ public sealed partial class Commands
     /// only where that can land beside it (not where the region or the parcel sends teleports to a hub or landing point,
     /// which in Second Life is most clubs and shops), and only once: a teleport that landed elsewhere (or failed) isn't
     /// tried again for the same spot for a few minutes. Otherwise the line names the command that would try
-    /// (<paramref name="tpHint"/>). Public: the assistant's walks (MainForm.RouteAsync) come here too.</summary>
-    public async Task<bool> NoWayAsync(Vector3 target, string what, string? tpHint)
+    /// (<paramref name="tpHint"/>). Public: the assistant's walks (MainForm.RouteAsync) come here too.
+    /// <paramref name="teleport"/>: false where a teleport within her region can't land there (a walk's target still
+    /// over the border it crossed).</summary>
+    public async Task<bool> NoWayAsync(Vector3 target, string what, string? tpHint, bool teleport = true)
     {
         CancelAutoPilot();
         var offer = tpHint != null ? $" {tpHint} would teleport you there." : "";
-        if (!TeleportFallback() || _ops.Me() is null)
+        if (!teleport || !TeleportFallback() || _ops.Me() is null)
         {
             _say($"No way to walk to {what} found.{offer}");
             return false;
@@ -1201,7 +1355,8 @@ public sealed partial class Commands
     /// <summary>Follows someone as they move (M3): the session's own autopilot steered ten times a second toward a spot
     /// 2.5 m short of where they'll be in a moment (their pace measured as they go), around what's in the way when the
     /// straight line is blocked (PathPlanner, every 1.5 s: its corners in turn, and up or down the stairs to someone on
-    /// another floor), standing still once close on their floor. Said as it goes (the "follow"
+    /// another floor; the way they walked where the plan has none to their floor: FollowLoopAsync), standing still once
+    /// close on their floor. Said as it goes (the "follow"
     /// cue's text): when they stop and you're with them, when they sit, when they're getting away, when their floor is
     /// out of reach from where she can get to (hovering, up on a stage with no steps, a balcony a teleporter goes to),
     /// and when they're gone (a teleport or logging off) or out of range.</summary>
@@ -1221,9 +1376,20 @@ public sealed partial class Commands
         });
     }
 
+    /// <summary>Following them: see <see cref="Follow"/>. Where the plan has no way to their floor (out of reach,
+    /// beneath them, no way at all), or only a guess from what the model hasn't got under her (carried on level from her
+    /// feet) while she's on their trail, she goes the way they walked there (Trails; TrailWaysAsync), as a person
+    /// walking behind them would: the blind tester's partner went up steps the collision model lacks (2026-11-19) and
+    /// every follow said "no way up from here" and stood. Until 2026-11-11 the follow aimed 2.5 m short of them whatever
+    /// their height and steered straight at them where the plan found no way, and the region's own physics carried her
+    /// up; planned to their height since, it stopped where the model had no way. Their trail is left when she's with
+    /// them, when the plan has a way to their floor, or when she makes no half metre on it in 3 s (then not taken
+    /// again for 20 s, or till they've gone 3 m on; again after that, twice as long each time, up to 160 s), and "no way
+    /// up from here" is said only with neither, and once until they're in reach.</summary>
     async Task FollowLoopAsync(PersonOps.Person p, CancellationToken ct)
     {
-        const float Behind = 2.5f, Restart = 3.6f, Corner = 1f;
+        const float Behind = 2.5f, Restart = 3.6f, Corner = 1f, TrailCorner = 0.7f;
+        const long TrailRetry = 20_000;
         int lost = 0;
         Vector3? lastPos = null;
         long lastAt = 0, toldFarAt = 0, planAt = 0;
@@ -1236,24 +1402,39 @@ public sealed partial class Commands
         // plans in a row that found no way at all
         bool beyond = false, toldBeyond = false;
         int noWay = 0;
+        // on their trail (ways its points); when it last stuck, and where they were; the log told there's none to take
+        bool onTrail = false, toldNoTrail = false;
+        (long At, Vector3 Them)? trailStuck = null;
+        // (how many times in a row it has: each waits twice as long before it's taken again, 20 s to 160 s, and only the
+        // first is taken again once they've gone 3 m on, as a way she can't walk stays one; with them, or the plan
+        // reaching them, starts afresh)
+        int trailSticks = 0;
+        long TrailWait() => TrailRetry << Math.Clamp(trailSticks - 1, 0, 3);
+        long toldTrailAt = -60_000;   // (said once in a while: a plan and the trail can take turns on stairs both have)
         // stuck while steering after them, for the session log: where she was when she last made half a metre, and when
         (Vector3 At, long Since)? stuckFrom = null;
         long steeredAt = 0, stuckNoted = 0;
         bool Say(string text) { if (CueText("follow")) _say(text); return true; }
         static float Off(System.Numerics.Vector2 w, Vector3 at) => new Vector2(w.X - at.X, w.Y - at.Y).Length();
+        void OffTrail(string why, Vector3 at)
+        {
+            if (!onTrail) return;
+            onTrail = false;
+            WalkNote(string.Create(CultureInfo.InvariantCulture, $"follow: off their trail, {why}: she at {at.X:0.00},{at.Y:0.00},{at.Z:0.00}"));
+        }
         while (!ct.IsCancellationRequested)
         {
             // a look at them every 400 ms; meanwhile, ten times a second, a corner of the way she has come within a metre
             // of is left for the next (looked at only every 400 ms, the autopilot had stopped her at each, a stutter at
-            // every turn and every flight of stairs)
+            // every turn and every flight of stairs); on their trail its last point too, then the spot behind them
             for (int k = 0; k < 4 && !ct.IsCancellationRequested; k++)
             {
                 await Task.Delay(100, CancellationToken.None);
-                if (ways == null || wayAt >= ways.Count - 1 || _ops.Client is not { } cc || _ops.Me() is not { } at || Off(ways[wayAt], at.Pos) >= Corner) continue;
+                if (ways == null || wayAt >= ways.Count - 1 || _ops.Client is not { } cc || _ops.Me() is not { } at || Off(ways[wayAt], at.Pos) >= (onTrail ? TrailCorner : Corner)) continue;
                 wayAt++;
                 bool more = wayAt < ways.Count - 1;
-                if (!more && !beyond) break;   // (the last stretch: to the spot behind them, worked out below)
-                if (_ops.Global(new Vector3(ways[wayAt].X, ways[wayAt].Y, at.Pos.Z)) is { } gc) Steer(cc, gc, more);
+                if (!more && !beyond && !onTrail) break;   // (the last stretch: to the spot behind them, worked out below)
+                if (_ops.Global(new Vector3(ways[wayAt].X, ways[wayAt].Y, at.Pos.Z)) is { } gc) Steer(cc, gc, more || onTrail);
             }
             if (ct.IsCancellationRequested) break;
             if (_ops.Client is not { } c || _ops.Me() is not { } me) continue;
@@ -1292,6 +1473,7 @@ public sealed partial class Commands
             {
                 if (!toldSat) toldSat = Say($"{p.Name} sat down, {_ops.Where(now.Pos) ?? "nearby"}.");
                 if (_s.Motion.Moving) _s.Motion.StopAutoPilot(c, true);
+                OffTrail("they sat down", me.Pos);
                 (ways, planAt) = (null, 0);   // (no corner for the looks between to walk her on to; planned afresh once she goes on)
                 continue;
             }
@@ -1304,7 +1486,8 @@ public sealed partial class Commands
             {
                 if (_s.Motion.Moving) _s.Motion.StopAutoPilot(c, true);
                 if (speed < 0.3f && !toldWith) toldWith = Say($"With {p.Name}, {_ops.Where(there) ?? "here"}.");
-                (ways, planAt) = (null, 0);
+                OffTrail("with them", me.Pos);
+                (ways, planAt, trailStuck, trailSticks) = (null, 0, null, 0);
                 continue;
             }
             if (speed > 0.5f) toldWith = false;
@@ -1315,34 +1498,83 @@ public sealed partial class Commands
             if (Planner is { } planner && t - planAt > 1500)
             {
                 planAt = t;
-                var plan = await planner.PlanAsync(new(me.Pos.X, me.Pos.Y), FeetZ?.Invoke() ?? me.Pos.Z - 0.95f, new(ahead.X, ahead.Y), null, CancellationToken.None, ahead.Z);
+                float feet = FeetZ?.Invoke() ?? me.Pos.Z - 0.95f;
+                var plan = await planner.PlanAsync(new(me.Pos.X, me.Pos.Y), feet, new(ahead.X, ahead.Y), null, CancellationToken.None, ahead.Z);
                 noWay = plan == null && planner.CanAsk ? noWay + 1 : 0;
                 beyond = plan is { FloorKnown: true, OnGoalFloor: false };
-                if (plan != null && !beyond) toldBeyond = false;
-                (ways, wayAt) = (plan is { Waypoints.Count: > 0 } && (beyond || plan is { Direct: false, Waypoints.Count: > 1 }) ? plan.Waypoints : null, 0);
+                // a way to their floor; from what the model hasn't got under her it's a guess, which their trail beats
+                bool planned = plan is { OnGoalFloor: true } && !(onTrail && !plan.FloorKnown);
+                bool trailed = false;
+                if (planned) (trailStuck, trailSticks) = (null, 0);
+                if (!planned && planner.CanAsk && (trailStuck is not { } ts || t - ts.At > TrailWait() || trailSticks == 1 && Flat(ts.Them, there) > 3))
+                {
+                    var got = await TrailWaysAsync(p.Id, planner, me.Pos, feet);
+                    if (got.Ways is { } tw)
+                    {
+                        if (!onTrail)
+                        {
+                            WalkNote(string.Create(CultureInfo.InvariantCulture, $"follow: by their trail, {PlanSaid(plan)}: she at {me.Pos.X:0.00},{me.Pos.Y:0.00},{me.Pos.Z:0.00} (feet {feet:0.00}), they at {there.X:0.00},{there.Y:0.00},{there.Z:0.00}; their trail {got.Said}"));
+                            float up = there.Z - me.Pos.Z;
+                            if (t - toldTrailAt > 30_000)
+                            {
+                                toldTrailAt = t;
+                                Say($"Going the way {p.Name} went{(Math.Abs(up) >= 1 ? $", {(up > 0 ? "up" : "down")} {Bearings.Metres(Math.Abs(up))}" : "")}.");
+                            }
+                        }
+                        // ("no way up" said already stays said: it and the trail took turns, every 20 to 30 s, at a
+                        // trail she couldn't walk)
+                        (onTrail, trailed, toldNoTrail) = (true, true, false);
+                        (ways, wayAt) = (tw, 0);
+                    }
+                    else if (!toldNoTrail)
+                    {
+                        toldNoTrail = true;
+                        WalkNote(string.Create(CultureInfo.InvariantCulture, $"follow: {PlanSaid(plan)}, and no trail of theirs to take ({got.Said}): she at {me.Pos.X:0.00},{me.Pos.Y:0.00},{me.Pos.Z:0.00} (feet {feet:0.00}), they at {there.X:0.00},{there.Y:0.00},{there.Z:0.00}"));
+                    }
+                }
+                if (!trailed)
+                {
+                    OffTrail(planned ? "the plan has a way to their floor" : "their trail gone", me.Pos);
+                    if (plan != null && !beyond) (toldBeyond, toldNoTrail) = (false, false);
+                    (ways, wayAt) = (plan is { Waypoints.Count: > 0 } && (beyond || plan is { Direct: false, Waypoints.Count: > 1 }) ? plan.Waypoints : null, 0);
+                }
             }
             // its corners in turn (up a stair's flight, round a corner), then the spot behind them; or, their floor out of
-            // reach, as near as the way goes, said once she's there (or when there's no way at all)
-            while (ways != null && wayAt < ways.Count - 1 && Off(ways[wayAt], me.Pos) < Corner) wayAt++;
-            bool corner = ways != null && wayAt < ways.Count - 1, standIn = beyond && ways != null && !corner;
+            // reach, as near as the way goes, said once she's there (or when there's no way at all); on their trail, its
+            // points in turn, the last too, then the spot behind them
+            float pass = onTrail ? TrailCorner : Corner;
+            while (ways != null && wayAt < ways.Count - 1 && Off(ways[wayAt], me.Pos) < pass) wayAt++;
+            bool corner = ways != null && (wayAt < ways.Count - 1 || onTrail && Off(ways[^1], me.Pos) >= pass);
+            bool standIn = beyond && !onTrail && ways != null && !corner;
             // (there: stopped within reach of the stand-in, which the autopilot lets go of up to a metre short at a walk)
             bool arrived = standIn && Off(ways![^1], me.Pos) is var left && (left < 0.6f || left < 1.5f && !_s.Motion.Moving);
-            if (!toldBeyond && (arrived || noWay >= 2)) toldBeyond = Say(OutOfReach(p.Name, there, me.Pos, me.Heading));
+            if (!toldBeyond && !onTrail && (arrived || noWay >= 2)) toldBeyond = Say(OutOfReach(p.Name, there, me.Pos, me.Heading));
             var goal = corner || standIn ? new Vector3(ways![wayAt].X, ways[wayAt].Y, me.Pos.Z) : aim;
             if (arrived) { if (_s.Motion.Moving) _s.Motion.StopAutoPilot(c, true); }
             else if (_ops.Global(goal) is { } g) Steer(c, g, corner);
             // stuck: steering after them, for a point over a metre off, through the last 3 s and no half metre made. The
             // session autopilot's own giving up never comes in a follow (each look moves its target on, its progress
-            // counted afresh), so the follow says what the model has there itself, once in 10 s
+            // counted afresh), so the follow says what the model has there itself, once in 10 s; on their trail, it's
+            // left (the plan's way, or as near as it goes, again)
             bool pushing = !arrived && Flat(goal, me.Pos) > 1f;
             if (!pushing || t - steeredAt > 1000) stuckFrom = null;
             steeredAt = pushing ? t : 0;
             if (pushing && (stuckFrom is not { } sf || Flat(sf.At, me.Pos) > 0.5f)) stuckFrom = (me.Pos, t);
-            else if (stuckFrom is { } held && t - held.Since > 3000 && t - stuckNoted > 10_000)
+            else if (stuckFrom is { } held && t - held.Since > 3000)
             {
-                stuckNoted = t;
-                NoteStuck(string.Create(CultureInfo.InvariantCulture, $"follow: stuck, no half metre made in {(t - held.Since) / 1000.0:0.0} s, {d:0.0} m from where they'll be"),
-                    me.Pos, goal, there, _ops.Client?.Network.CurrentSim?.Handle ?? 0);
+                if (t - stuckNoted > 10_000)
+                {
+                    stuckNoted = t;
+                    NoteStuck(string.Create(CultureInfo.InvariantCulture, $"follow: stuck{(onTrail ? " on their trail" : "")}, no half metre made in {(t - held.Since) / 1000.0:0.0} s, {d:0.0} m from where they'll be"),
+                        me.Pos, goal, there, _ops.Client?.Network.CurrentSim?.Handle ?? 0);
+                }
+                if (onTrail)
+                {
+                    trailSticks++;
+                    OffTrail($"no half metre made on it in 3 s (not taken again for {TrailWait() / 1000} s{(trailSticks == 1 ? ", or till they've gone 3 m on" : "")})", me.Pos);
+                    trailStuck = (t, there);
+                    (ways, planAt, stuckFrom) = (null, 0, null);
+                }
             }
             if (now.Dist > 20 && now.Dist > farDist + 2 && t - toldFarAt > 10_000)
             {
@@ -1353,6 +1585,51 @@ public sealed partial class Commands
             else if (now.Dist < 15) farDist = 0;
         }
     }
+
+    /// <summary>A walk's line in the session log she sends and the walk log.</summary>
+    void WalkNote(string line)
+    {
+        if (WalkMode is { } wm) wm.Note(line);
+        else Walk.WalkMode.Log(line);
+    }
+
+    /// <summary>Why a plan to someone (a follow's, a walk's) took their trail, for the log: no way, beneath them, their
+    /// floor out of reach and how far short the way ends, or a guess from nothing under her in the model.</summary>
+    static string PlanSaid(Walk.PathPlanner.Plan? plan) => plan == null ? "no way planned"
+        : plan.Beneath ? "the plan's way ending a storey or more under them"
+        : !plan.OnGoalFloor ? "their floor out of reach" + (plan.Meets is { } mt and > 0 ? string.Create(CultureInfo.InvariantCulture, $" (the floors meeting {mt:0.0} m from them)") : "")
+            + (plan.FloorKnown ? "" : ", reckoned on level from her feet with nothing under her in the model")
+        : "the plan's way a guess, reckoned on level from her feet with nothing under her in the model";
+
+    /// <summary>Someone's trail (Trails.Find: from where they last left her floor within TrailJoin, else where it passes
+    /// nearest her on her level), the way through its points from there to where they are, got onto by the plan (a wall
+    /// the model has between, or a gap: until 2026-11-20 straight within 3 m, unchecked): on its floor, or, where the
+    /// model's floor of hers ends within TrailEdge of it (the top of steps it lacks), to there and on. Within TrailBeside
+    /// she's on it already. Null and why not (for the log) where they haven't one here, or it can't be got onto.</summary>
+    async Task<(List<System.Numerics.Vector2>? Ways, Walk.Trails.Way? Way, string Said)> TrailWaysAsync(UUID who, Walk.PathPlanner planner, Vector3 her, float feet)
+    {
+        const float TrailJoin = 30f, TrailBeside = 0.5f, TrailEdge = 1f;
+        if (Trails is not { } trails) return (null, null, "no trails kept");
+        var (found, why) = trails.Find(who, new(her.X, her.Y, her.Z), feet, TrailJoin);
+        var missed = new List<string>();
+        foreach (var way in found)
+        {
+            var pts = way.Points.Select(v => new System.Numerics.Vector2(v.X, v.Y)).ToList();
+            if (way.Off <= TrailBeside) return (pts, way, Walk.Trails.Said(way));
+            var plan = await planner.PlanAsync(new(her.X, her.Y), feet, pts[0], null, CancellationToken.None, way.Join.Z);
+            if (plan is { InWay: null, Waypoints.Count: > 0 }
+                && (plan is { OnGoalFloor: true, GoalMoved: false } || System.Numerics.Vector2.Distance(plan.Waypoints[^1], pts[0]) <= TrailEdge))
+                return ((plan.GoalMoved ? plan.Waypoints.Concat(pts) : plan.Waypoints.Concat(pts.Skip(1))).ToList(), way,
+                    $"{Walk.Trails.Said(way)}, the plan's {plan.Waypoints.Count} {(plan.Waypoints.Count == 1 ? "stretch" : "stretches")} onto it{(plan.GoalMoved ? " to its floor's edge" : "")}");
+            missed.Add(string.Create(CultureInfo.InvariantCulture, $"no way planned onto it at {way.Join.X:0.0},{way.Join.Y:0.0},{way.Join.Z:0.0}, {way.Off:0.0} m off"));
+        }
+        if (why.Length > 0) missed.Add(why);
+        return (null, found.FirstOrDefault(), string.Join("; ", missed));
+    }
+
+    /// <summary>Where people around have walked lately (MainForm starts it): following and a walk to someone take it
+    /// where the plan has no way to their floor.</summary>
+    public Walk.Trails? Trails { get; set; }
 
     /// <summary>The session's autopilot, following, toward a point. Toward a corner of the way it never counts as there
     /// (TickPilot stops within its stop distance and her speed's lead): the follow moves it on to the next corner as she
