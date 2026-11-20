@@ -199,7 +199,10 @@ public sealed class CollisionWorld : IDisposable
                 if (r.World.Handle == region) (unplaced, objects) = r.UnplacedCounts();
             }
         }
-        parts.Sort((a, b) => a.BoxOff != b.BoxOff ? a.BoxOff.CompareTo(b.BoxOff) : (a.Nearest ?? float.MaxValue).CompareTo(b.Nearest ?? float.MaxValue));
+        // nearest first by its triangles where they're had (a box can hold the point and its triangles be far: a region's
+        // surround), else by its box (a shape still to come could be right there)
+        parts.Sort((a, b) => (a.Nearest ?? a.BoxOff) != (b.Nearest ?? b.BoxOff) ? (a.Nearest ?? a.BoxOff).CompareTo(b.Nearest ?? b.BoxOff)
+            : a.BoxOff.CompareTo(b.BoxOff));
         return (parts, unplaced, objects);
     }
 
@@ -699,9 +702,10 @@ public sealed class CollisionWorld : IDisposable
                         {
                             Vector3 W(Vector3 v) => e.Pos + Vector3.Transform(v * e.Scale, e.Rot);
                             var (a, b, c) = rule != null ? (rule[i], rule[i + 1], rule[i + 2]) : (shape.Drawn![i], shape.Drawn[i + 1], shape.Drawn[i + 2]);
-                            best = MathF.Min(best, PointTriangle(at, W(a), W(b), W(c)));
+                            float d = PointTriangle(at, W(a), W(b), W(c));
+                            if (d < best) best = d;
                         }
-                        part = part with { By = by, Triangles = n / 3, Nearest = n >= 3 ? best : null, Hulls = phys?.HullCounts };
+                        part = part with { By = by, Triangles = n / 3, Nearest = best < float.MaxValue ? best : null, Hulls = phys?.HullCounts };
                     }
                 }
                 into.Add(part);
@@ -717,8 +721,16 @@ public sealed class CollisionWorld : IDisposable
             return (_unplaced.Count, roots.Count);
         }
 
-        /// <summary>The distance from a point to a triangle (Ericson's closest point on a triangle).</summary>
+        /// <summary>The distance from a point to a triangle (Ericson's closest point on a triangle); a degenerate one (two
+        /// corners on one point, as at a sculpt's poles, where an edge's division is 0 by 0) by its nearest corner. Its
+        /// NaN had made every sculpt's nearest NaN in the blind tester's log of 2026-11-20, and sorted them first.</summary>
         static float PointTriangle(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
+        {
+            float d = ClosestOnTriangle(p, a, b, c);
+            return float.IsFinite(d) ? d : MathF.Min(Vector3.Distance(p, a), MathF.Min(Vector3.Distance(p, b), Vector3.Distance(p, c)));
+        }
+
+        static float ClosestOnTriangle(Vector3 p, Vector3 a, Vector3 b, Vector3 c)
         {
             Vector3 ab = b - a, ac = c - a, ap = p - a;
             float d1 = Vector3.Dot(ab, ap), d2 = Vector3.Dot(ac, ap);

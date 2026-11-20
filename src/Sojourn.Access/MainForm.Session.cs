@@ -25,11 +25,18 @@ public sealed partial class MainForm
     // --- a session's log -------------------------------------------------------------------------------------------------
 
     /// <summary>The sessions' logs, this one first, then earlier ones by day and time (the one before a crash is there);
-    /// Enter reads one. Only one: read at once.</summary>
-    void ShowSessionLogs()
+    /// Enter reads one. Only one: read at once. (Listed off the window's thread, as Send a log's.)</summary>
+    async void ShowSessionLogs()
     {
-        var all = LogShare.Sessions(Path.Combine(_opt.BaseDir, "logs")).Where(s => s.Sendable).ToList();
+        var dir = Path.Combine(_opt.BaseDir, "logs");
+        var all = await Task.Run(() => LogShare.Sessions(dir).Where(s => s.Sendable).ToList());
+        if (IsDisposed) return;
         if (all.Count == 0) { Answer("There's no session log this version can show yet."); return; }
+        RealInput.Ours(() => ShowSessionLogs(all));
+    }
+
+    void ShowSessionLogs(List<LogShare.Session> all)
+    {
         var current = Host?.SessionLogPath is { } p ? Path.GetFullPath(p) : null;
         if (all.Count == 1) { _ = OpenSessionLogAsync(all[0], current); return; }
         using var form = new Form

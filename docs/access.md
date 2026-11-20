@@ -1219,6 +1219,26 @@ Opus 5.5).
   list and logged, not said (`Safety.OwnRide`). OpenSim sends none, so only Second Life shows it.
 - **The rest**: a train ride over twenty crossings before it, held throughout.
 
+### Following her partner up his steps, and walking to him (0.1.0.1182, the blind tester, 2026-11-20 evening)
+
+Two logs of one session at his place, `tester-20261120T222432-1d22fc` (17:22 to 17:24, "tried to walk to" him) and
+`tester-20261120T222717-79c6c4` (on to 17:27, following him "up to where we dance"). Read the same evening (Claude Opus
+5.5).
+- **Following worked**: he came down off his floor to her (2 m below her by then, "no way down from here"), then walked
+  back up; the follow took his trail ("Going the way ... went"), twice, and she was with him on his floor, where he sat
+  and she took a dance ball. The first log on Second Life of 99fadaa's trail doing what it was for.
+- **Walking to him still fails while he stays put**: four //go tries from the deck, each "no trail of theirs to take"
+  (none of his steps seen since she arrived; later, 30 since he left a seat, none on her level), then the old way:
+  his floor out of reach, stretches stuck with nothing of the model's ahead, "No way to walk to him found". Once the
+  region lifted her 1.4 m and the walk still didn't trust it, as the straight way back had "a drop the model has": the
+  ground under the steps the model lacks. Left as it is until the steps' cause is known.
+- **What's at her feet** at each stick listed about 100 parts and said nothing useful: the six told in full were the
+  region's surround sculpts (1024 m boxes, physics none) and a sky sphere, each "the nearest NaN m". A degenerate
+  triangle (a sculpt's poles) gave NaN, which sorted first; fixed for 1187 (53559b7), nearest first by triangles, so
+  the next log there should name what she stands on on those steps and why the model doesn't count it.
+- **The window** held 1.9 s at login building the session log's first line (.NET loading the calendar's data through
+  ICU on the window's thread): once a session, left.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -1276,7 +1296,7 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- Sent with 0.1.0.1182 (2026-11-19 night), after her logs at her partner's steps and on his boat: whether following him up
+- Sent with 0.1.0.1182 (#328, 2026-11-19 night), after her logs at her partner's steps and on his boat: whether following him up
   the steps works now (his trail), and a log after any walk there that still fails, which now names what's under her.
 - Sent with 0.1.0.1173 (#322, 2026-11-19 evening), after her logs of 11-18 and 11-19 (Walks that found no way; A group notice
   that wouldn't open): whether a notice opens from the Groups tab now (a log if not); if she goes back to where her
@@ -1290,7 +1310,11 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   stuck with nothing in the model ahead at any height while she rose, feet 52.5, 53.7 and 55.9 with nothing under her in
   the model and every shape within 3 m said to be in it, drifting east from where she was sent. So it isn't the planner
   misjudging steps: Second Life has something solid there she walks up, most likely the steps, and our collision model
-  has nothing there. Told her so (#325). Minutes later (`tester-20261120T011248-3f85cc`): following him from the
+  has nothing there. Told her so (#325). Between them (`tester-20261120T011123-0ed95d`, read 2026-11-20, Claude Opus
+  5.5): `//go 24,24,56`, the point he gave, went the same way from the deck, except that its first stick (nothing in the
+  model ahead, not lifted) ended with her 2.3 m down on the ground and 3 m east ("On ground."), and from there no way at
+  all; then a follow from the ground stuck at the foot of the steps, as below. On 1182 a lifted stick is trusted, but one
+  on her own floor still goes round as before. Minutes later (`tester-20261120T011248-3f85cc`): following him from the
   landing point stuck at the bottom of the stairs, "no way up from here", which she says worked in an earlier build.
   Looked into the same evening (Claude Opus 5.5 with agents): the model has a floor near his height reaching 8 m out from
   him but not the steps up to it. Physics types, phantom flags, placing parts and decoding mesh physics all checked

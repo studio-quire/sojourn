@@ -55,6 +55,8 @@ URL = f"http://127.0.0.1:{_port()}"
 # The REST console answers on every interface (OpenSim can't bind it to one), and the house network carries an RV
 # park's guests, so its password is a random one kept only in the grid's own OpenSim.ini, never in the repo
 # (2026-11-13). A grid copied fresh from Multitude still has its "localdev" until set_console_password().
+# Since 2026-11-20 the house network can't reach the grid at all: two Windows Firewall rules the user added block
+# dotnet.exe (both installs) inbound on the Public profile, which the house network is; this PC and Tailscale still can.
 CONSOLE_USER, CONSOLE_PASS = _ini("ConsoleUser", "admin"), _ini("ConsolePass", "localdev")
 DOTNET = Path(os.environ["LOCALAPPDATA"]) / "Microsoft" / "dotnet" / "dotnet.exe"
 DETACHED = 0x08000000 | 0x00000200 | 0x01000000   # no window, new process group, breakaway from job

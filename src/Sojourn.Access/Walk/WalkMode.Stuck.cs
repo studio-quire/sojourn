@@ -268,9 +268,11 @@ public sealed partial class WalkMode
                   ? $"; and {all.Count - AtFeetListed} more: " + string.Join(", ", listed.Skip(AtFeetListed).Select(p => Name(p.Region, p.Prim.LocalID)))
                     + (all.Count > AtFeetListed + AtFeetNamed ? ", ..." : "")
                   : "");
+        int uncounted = all.Count(p => p.How is CollideAs.None or CollideAs.Passable);
+        var counted = all.Count > AtFeetListed ? Inv($"; of the {all.Count}, {all.Count - uncounted} counted and {uncounted} not (physics none, phantom or flexible)") : "";
         var unplaced = near.Unplaced == 0 ? "none of the region's parts the model can't place"
             : Inv($"{near.Unplaced} of the region's parts, of {near.UnplacedObjects} object{(near.UnplacedObjects == 1 ? "" : "s")}, the model can't place (their object's root not had)");
-        return $"{head}{body}; {unplaced}";
+        return $"{head}{body}{counted}; {unplaced}";
     }
 
     /// <summary>One part for the line at her feet.</summary>
@@ -307,6 +309,7 @@ public sealed partial class WalkMode
             ShapeState.ToCome => "its shape still to come",
             ShapeState.GivenUp => "its shape given up on",
             _ when p.Triangles == 0 => "its shape ready but holding no triangles",
+            _ when p.Nearest is null => Inv($"{p.Triangles} triangles by {p.By}, their corners not numbers, so never met"),
             _ => Inv($"{p.Triangles} triangles by {p.By}, the nearest {p.Nearest:0.00} m from her feet"),
         };
         // (a mesh's flat hulls have no triangles here; the region may count them as thin plates)

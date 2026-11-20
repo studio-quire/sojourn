@@ -12073,7 +12073,7 @@ def walk_stuck(run):
         wall_near = re.search(r"Access Walk Wall \(prim; the region's physics [^\n]*?(\d+) triangles by its drawn shape, the nearest (\d+\.\d\d) m from her feet; "
                               r"(?:her feet in its box|its box (\d+\.\d\d) m off): middle [^\n]*?size 6\.00x0\.30x2\.50", feet.group(0)) if feet else None
         run.check("and beside it, what's at her feet: the wall by name, how the model counts it, its triangles' nearest, its box, the parts it can't place",
-                  wall_near and float(wall_near.group(2)) < 1.0 and "the model can't place" in feet.group(0),
+                  wall_near and float(wall_near.group(2)) < 1.0 and "the model can't place" in feet.group(0) and "NaN" not in feet.group(0),
                   feet.group(0)[:900] if feet else "none")
         # (the plan made again from where she stuck: written before the stuck line, which waits for names)
         again = re.search(rf"go: plan from [^\n]* to {px}\.00,{py}\.00 [^\n]*; 1 stuck spot of ours counted as walls, at [^\n]*", log)

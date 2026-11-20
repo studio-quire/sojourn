@@ -16,7 +16,9 @@ public sealed partial class MainForm
 {
     const string IssuesPage = "github.com/studio-quire/sojourn-access/issues";
 
-    void SendLog()
+    /// <summary>(The logs are listed off the window's thread: each file is opened for its first line, and on the
+    /// blind tester's PC, short of memory, that held the window a second and more, 2026-11-19.)</summary>
+    async void SendLog()
     {
         if (ProviderKeys.RelayToken() is null)
         {
@@ -24,13 +26,17 @@ public sealed partial class MainForm
                 + $"Without one, problems can be reported on the issues page, {IssuesPage}.");
             return;
         }
-        var all = LogShare.Sessions(Path.Combine(_opt.BaseDir, "logs"));
+        var all = await Task.Run(() => LogShare.Sessions(Path.Combine(_opt.BaseDir, "logs")));
+        if (IsDisposed) return;
         var logs = all.Where(s => s.Sendable).ToList();
         if (logs.Count == 0) { Answer("There's no log this version can send yet."); return; }
         var current = Host?.SessionLogPath is { } p ? Path.GetFullPath(p) : null;
-        using var f = new SendLogForm(logs, current, all.Count - logs.Count, Host?.Log);
-        f.ShowDialog(this);
-        if (f.Said is { } said) Answer(said);
+        RealInput.Ours(() =>
+        {
+            using var f = new SendLogForm(logs, current, all.Count - logs.Count, Host?.Log);
+            f.ShowDialog(this);
+            if (f.Said is { } said) Answer(said);
+        });
     }
 }
 
