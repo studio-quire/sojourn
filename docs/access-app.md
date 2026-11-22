@@ -260,7 +260,7 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   a read-only line saying so; an IM arriving while the focus is there leaves it there, the line now naming the
   conversation and Control+Tab, until the focus leaves it.
 - Ctrl+N: the newest notice (the Notices area, it selected). On the notices list: 1-9, 0, minus and equals press its
-  keys in order (a script menu's twelve: "... 0 Ten, minus Next, equals Back"), Enter goes to its keys (or the reply
+  keys in order, a script menu's in the order it's seen (below; its twelve: "... 0 One, minus Two, equals Three"), Enter goes to its keys (or the reply
   box for llTextBox), Delete ignores it (the official viewer's Ignore: it goes unanswered, a script hears nothing),
   said with what's left ("Ignored Dance Ball's menu. 1 waiting."), the focus on the notice that took its place; on a
   confirmation, Enter confirms and Escape cancels; one whose words name only the first few ("and 40 more") says
@@ -275,6 +275,18 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
   confirmation's Confirm and Cancel. Escape anywhere in the notices but on a confirmation (or in the reply box): back
   to the area and control Control+N came from, else to Say. Tab from the list reaches the notice's text, its reply box
   and its buttons ("1: Red", "Delete: Ignore").
+- A script menu's buttons go as sighted people see them, the top row first, left to right, in its words, numbers, Tab
+  stops and Applications menu alike (Claude Opus 5.5, 2026-11-22, the blind tester's partner's ask: docs/access.md >
+  Script menus in the order they're seen). Viewers lay llDialog's list out three to a row from the bottom up, so its
+  first three are the bottom row and the last few, a short row when the count isn't a multiple of three, are the top
+  one, from the left (the official viewer's `LLToastNotifyPanel::updateButtonsLayout`, read in its source; Radegast
+  draws them the same, Core's `ScriptMenus` has the rule). Twelve listed One to Ten, Next, Back are heard "1 Ten, 2
+  Next, 3 Back, 4 Seven ... 0 One, minus Two, equals Three"; five listed Back, Main, More, Tea, Cake are "1 Tea, 2 Cake,
+  3 Back, 4 Main, 5 More". Builds up to 1187 read them in the script's order, as Radegast does (its Tab order is the
+  list's): Alt+0's General has `access_menu_order` (Script menu buttons' order: as seen, or as listed), the old order
+  kept for hands that know it, and a paged menu whose script lists Back and Next first keeps them on the same keys from
+  page to page that way, where as seen they move with the page's length. The assistant's `dialogs` lists them in the
+  same order (its `rows` from the notification's payload), and says so when she keeps the script's.
 - **A person's actions are one list** (`MainForm.PersonActions.cs`), the same items with the same letters wherever their name is: People nearby (Enter opens them), Friends and Search (Enter: an IM), an IM's message box or history, and their profile (Applications key or its Actions button; there the window closes first). Send IM, Walk to, Face, Where, Describe, Follow, Beacon, Hear what they point at (or Stop hearing; What a friend points at, below), What they wear, Their animations (One person's things, below), Profile, Notes on them, Chat log, Copy their key (their UUID onto the clipboard, as the viewer's Copy Agent ID; the profile's text ends with it too, as Radegast's Key box), Pay..., Give what you copied, Offer teleport, Request teleport, Offer friendship (a friend: Start a conference..., End friendship, confirmed), Invite to a group... (Groups, below), Mute in voice or Unmute in voice, How loud in voice... (0 to 2, 1 as they come; both for you alone and kept), Always incognito with them, Block or Unblock, then, only where she owns or manages the estate, Eject from estate and Ban from estate (About Land > The estate, below), IM sound for NAME.... What needs them near says so when they aren't ("Kestrel isn't nearby, though online."), rather than the menu changing shape; Where on a friend elsewhere on the grid who lets you see them on the map says the region and spot ("Kestrel is in Bay City, at 128, 64."; `SojournPeople whereFriend`, as the viewers' Show on map). A friend's What they may do has See when you're online, Find you on the map and Edit your objects, checked as they stand, each through her confirmation; edit rights are how a sighted helper helps without logging in as her. `//block NAME`, `//profile NAME` and `//friend NAME` find anyone by name: open conversations, friends, people nearby, then the grid. A new action goes in `PersonActions`, never a list's own menu. On a group (Enter: its chat, a conversation tab): Group chat, About the group, Wear its tag, No group
   tag, Choose your title..., Members..., Who's in its chat..., Notices..., New notice..., Invite someone..., Banned residents..., Settings and roles..., Chat log, Receive its notices, List it in your profile (Groups, below), Group sound for NAME..., Leave (the grid asks in Notices), and New group... (on "In no groups." too, alone). On a friend, Start a conference...: friends online in a list of check boxes, the one you were on marked, Space marking more, Enter starting it with two or more and going to its tab. In a group's message box or history: its sound and Who's in the chat...; in anyone's, Cut, Copy, Paste, Select all after what's above, in place of Windows' edit menu (`LineBox.AppsMenu`). A profile opens in
   its own window: a read-only text read line by line (name, born, partner, about, interests, picks, groups with their titles, first life, web), their picks and your notes on them a Tab on,
@@ -453,7 +465,11 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
     - Only the local grid has shown changing what a card holds and copying out of one in an object; whether Second Life
       takes a card saved with a thing we put in is still to be seen (it takes the viewer's, written the same way).
   - Unbox rezzes the box 2 m ahead, copies what's inside into a new folder named after it at the top of the inventory,
-    then puts the box away (deleted when the inventory still has it, taken back when it was no-copy). Rez on the ground
+    then puts the box away (deleted when the inventory still has it, taken back when it was no-copy). The copy is
+    `copyAllFromContents` with `move` (Taking what's inside into her inventory, below): the folder waited for until the
+    inventory service lists it, as what's moved into one it doesn't have yet is lost on Second Life (until 2026-11-22
+    each item went one at a time, straight after making the folder), then everything at once, a no-copy item moved out;
+    what didn't come is named ("Didn't copy X: it hadn't come into the folder after 10 seconds."). Rez on the ground
     sets an object down 2 m ahead with its bottom on the terrain (or the floor you stand on, when that's well above
     it); Rez where you say... (S) asks where in words (Placing by words, below).
 - **The second pane** (the blind tester's second inventory window): Alt+Shift+4 opens a second pane beside the first
@@ -784,9 +800,9 @@ Radegast's syntax, so blind residents' notecard routes run as they are; typed in
 | `//follow NAME` / `//follow NAME METRES` / `//follow stop` / `//follow` | follow as they move (2.5 m behind where they'll be in a moment, around what's in the way and up or down the stairs, or the way they walked where the collision model has none to their floor: Walk mode > Their trail; at the wheel, Driving after someone, below), stop, or say who; said: when you're with them and they've stopped, when they sit, when they're getting away, when it goes their way, when their floor is out of reach from where you can get to, when they're gone |
 | `//tp list` / `N` / `NAME` / `Region/X/Y/Z` / an SLurl | landmarks in "Radegast Landmarks" (else Landmarks), by number or name; or a place |
 | `//status [doing|region|parcel|location|health|money|time|music]` | any or all of them; music: what the parcel's stream is playing ("Playing: ...", in the whole status only when the parcel has music); health: "Health 80%." (in the whole status only while it's below full; the region sends it only once something hurts you where damage is on, so before that it says so); doing says "always running" while that's on |
-| `//route NOTECARD` / `//route` / `//route stop` / `//route resume` | play a route: a notecard's `//` lines one at a time (with no name, the lines on the clipboard, as copied from a blog), each walk or teleport finished before the next ("Step 2 of 7."), other lines read as notes; a step that doesn't get there pauses it, `//route resume` tries that step again. In the inventory, a notecard's Applications key has Play as a route |
-| `//record` / `note [WORDS]` / `undo` / `pause` (`resume`) / `save [NAME]` / `discard` | record a route by walking it: start, or while recording how it's going; a note here (no words: just a point); take back the last point or note; pause or go on; save it as a notecard in Routes (with no name, asked); throw it away (Walk mode > Recording a route) |
-| `//pause [SECONDS]` | wait (in a route, before its next line; a second unless said) |
+| `//route NOTECARD` / `//route` / `//route stop` / `//route resume` / `//route skip` | play a route: a notecard's `//` lines one at a time (with no name, the lines on the clipboard, as copied from a blog), each walk or teleport finished before the next ("Step 2 of 7."), a wait said where it starts ("Step 17 of 78: waiting 19 seconds."; a run of `//pause` lines, as a long wait is written, once as their total; under a second not said), other lines read as notes; a step that doesn't get there pauses it, and so does a step to a point (`//go xyz`) that the walk called done 2.5 m or more across from it, or, given with its height, on another floor 2 m over or under ("as near as the way goes", trusted to the region, on straight: "Route paused at step 4 of 9: it ended 6 metres short of its point. //route resume tries it again; //route skip goes on without it; //route stop ends it."); `//route resume` tries that step again, `//route skip` goes on without it (Skipping a step, below), and `//route stop` on a paused route forgets it ("Route ended: NAME."). In the inventory, a notecard's Applications key has Play as a route |
+| `//record` / `note [WORDS]` / `wait SECONDS` / `undo` / `pause` / `resume` / `save [NAME]` / `discard` | record a route by walking it: start, or while recording how it's going; a note here (no words: just a point); a wait in the route here (`20`, `2 minutes`, `1:30`; an hour at most), whether recording or paused; take back the last point, note or wait; pause recording, and go on (`resume`; within 2 m of where it paused, the route waits there as long as the pause, said, and `undo` takes that back); save it as a notecard in Routes (with no name, asked; `stop`, `end`, `finish`, `done` the same); throw it away (Walk mode > Recording a route) |
+| `//pause [SECONDS]` | wait (in a route, before its next line, said as its step starts; a second unless said; ten minutes at most a line); while recording a route, `//record wait SECONDS` puts one in it |
 | `//thread COMMAND` | run a command without waiting for it: in a route, the next line goes on at once (typed, a command never holds the next anyway) |
 | `//threads` / `//kill` | what's running (a route and its step, a walk, following, a pause, what `//thread` started); stop all of it. A teleport under way can't be stopped, and is said so |
 | `//siminfo` | the region: type, maturity, people (of the limit), active scripts, objects, time dilation, frame rates; its server where the grid says (CPU class, regions per CPU, data centre) |
@@ -829,6 +845,44 @@ On the local grid (2026-11-08) `//siminfo` says CPU class 9 and a CPU of its own
 without figures from OpenSim's LandResources ("The region sent nothing on this parcel's scripts."): Second Life's
 figures are unseen. `//thread`, `//threads` and `//kill` are checked with a pause.
 
+**Skipping a step** (`Commands.SkipAsync`; Claude Opus 5.5, 2026-11-22, for routes the blind tester publishes for
+other blind residents, where one step that keeps failing would stop a reader's whole route): `//route skip` (or
+`//route next`) on a route paused or stopped goes on without the step it stands at, from where she is: "Skipped step
+4 of 9. Going on with step 5 from where you are.", then the step as usual. Typed while a route plays, it leaves out
+the step under way: a walk stops, a wait is cut short, a teleport under way can't be stopped and is left out once
+it's over; the route stops quietly and goes on as from a pause. Every pause and stop offers it beside resume ("Route
+paused at step 4 of 9: ... //route resume tries it again; //route skip goes on without it; //route stop ends it.",
+"Route stopped at step 4 of 9. //route resume does it again; //route skip goes on without it.", walking by hand's
+"Route stopped: you're walking by hand. //route resume goes on; //route skip goes on without the step it was on."),
+and so does `//help route`. `//route resume` while a route plays says so rather than starting anything ("Still
+playing the route Lobby to bar, at step 4 of 9. //route skip leaves out the step it's on; //route stop stops it.";
+a walk's trouble or its teleport fallback can sound like the route stopping, and one came so in the blind tester's
+log of 2026-11-22, answered "No route to resume."). What leaving a step out means for the next is in its words:
+- a wait goes whole, however many `//pause` lines it is ("Skipped the wait at steps 17 to 19 of 78. Going on with
+  step 20.");
+- a teleport elsewhere (`//tp`, the region read from its SLurl or its landmark): where she's already there (she got
+  there another way), only the teleport ("Skipped step 3 of 9, the teleport to Bay City: you're there already.
+  Going on with step 4 from where you are."); where she isn't, the steps after it are there, so they go with it, up
+  to the route's next teleport ("Skipped steps 3 to 8 of 12, the teleport to Bay City and the steps there: you're
+  in Atelier. Going on with step 9."); with no teleport after them nothing is left out, and it says how to go on
+  ("Step 3 of 9 is the teleport to Bay City, and the rest of the route is there; you're in Atelier. //route resume
+  tries the teleport again; once you're in Bay City another way, //route skip goes on with step 4."). A landmark
+  she hasn't got: only the teleport, saying the steps after it were written for where it goes;
+- a teleport within the region (`//go tp`): "Skipped step 3 of 9, a teleport within the region.", the next walk
+  from where she is;
+- sitting down (`//sit`) while she's standing: the ride after it (the notes and waits before `//stand`) and standing
+  up go with it ("Skipped steps 12 to 15 of 40, sitting on Gondola and the ride after it."); seated already, only
+  the sit;
+- a walk to a point across a border (`//go xyz` past 256 or below 0) she's still short of: "Skipped step 7 of 12,
+  the walk across into Atelier East: you're still in Atelier.", and the next line, in Atelier East's coordinates as
+  the recording wrote it, is taken across into hers, so it walks on over the border to its point.
+
+A played route keeps the region each line's coordinates are in (the one the step before left her in, as Recording a
+route writes them): a pause or stop keeps it with the step, so `//route resume` after she has walked across a
+border, or after a walk crossed and stuck on the far side, takes the step's point across into the region she's in
+now. Only for a region in view: gone further, by a teleport since, the line is read in hers, as before. The session
+log has `route: skipped step 4 of 9 (LINE), on from line N of M`.
+
 `//go xyz` takes coordinates past the region's edge (over 256, below 0: a recorded route's crossing, Recording a route,
 below) and walks there straight by the autopilot, judged arrived by where the avatar is in the region it set out from,
 and only once it's across, as the route's next line is in the next region's frame. The region's autopilot stops the
@@ -842,7 +896,10 @@ stretch ("2 of 3: 2 m to the west-northwest."). It
 ends, once the avatar has stopped or is getting no nearer (below), with "Finished walking, under a metre from the
 destination." (or how far, and "something was in the way" when it stalled), the cue such routes wait for. To a person or a thing it stops 1.5 m
 short: the region's autopilot, heading for their middle, is let go once within that (it pushed on into the visitor's
-body for 42 s, never still enough to finish, 2026-11-08).
+body for 42 s, never still enough to finish, 2026-11-08). On Second Life each stretch is sent at her own height, not
+the point's (Paths, below: given a point above her, its autopilot leaves her east of it). A person or a point on a
+floor out of reach is walked as near as the way goes, then "Trying straight on to ..." by the region (When the region
+has what the model lacks, below).
 
 **People on the way** are gone round, as things are (`Commands.WalkPeople.cs`, Paths below; Claude Fable 5.2,
 2026-11-09). Until then a walk was planned round objects only and went straight into anyone standing on its line. Put
@@ -1025,7 +1082,7 @@ window and every viewer send them); the local collision model only tells you wha
 | O | the marks: doors, seats and touchable things within 12 m, said and sounded from where they are (below) |
 | B / Shift+B | where the beacon is ("Beacon on Bench, 4 metres, twelve o'clock." / "Heading to 54, 41, ..."); Shift+B takes one you put on off |
 | R / Shift+R | record a route (Recording a route, below): R starts, and while recording says how it's going ("Recording: 6 steps, 48 metres walked; the last point is 3 metres, seven o'clock."); Shift+R ends it, asks its name and saves it |
-| N / Backspace / P | while recording: a note here (a box for its words; left empty, just a point); take back the last point or note; pause, or go on |
+| N / Shift+P / Backspace / P | while recording: a note here (a box for its words; left empty, just a point); a wait in the route here (a box for its seconds, 10 offered); take back the last point, note or wait; pause recording, or go on (going on where it paused, the route waits there as long) |
 | C / Shift+C | record a ride (Recording a ride, below): C starts or stops it; Shift+C has the assistant tell it, again for more |
 | M / Shift+M | how far: "Last walk: 0.9 metres. In all: 4.2 metres. Where the count began: 3.1 metres, six o'clock." (while walking, "... so far"); Shift+M: "Counting from here." (the count also starts again at a teleport) |
 | F1 | these keys |
@@ -1514,8 +1571,16 @@ couldn't): every ray here (warnings, openings, drops, the surface underfoot, the
 words) comes from a model that needs no GPU, so walk mode answers the same on any PC, `--no-render` included. It's
 built from the session's world: every prim in the regions around (not only what a renderer has drawn), prims by the
 viewer's volume code (the viewer's LOD 2), sculpts from their maps, meshes by their assets' physics (hull,
-decomposition, physics model), each counting by the physics shape type the region gives it, phantom and flexible ones
-passable; standing avatars as boxes; trees, grass and attachments not at all (the renderer's model's rule, shared code,
+decomposition, physics model; a mesh's hull whose points all lie in one plane, mostly three of them, counts as a plate
+of both sides, `ConvexHull.Plate`, and a physics model's triangles count from both sides: in a Second Life cache of
+4765 meshes 1277 of the 2689 decomposition hulls were flat and had been left out, and 107 of the 950 physics models
+faced mostly down, so rays from above had passed through them (2026-11-20); and a flat base hull, the one a convex
+hull shape uses, is a plate too (2026-11-22): 1322 meshes there had one, 948 of them uploaded as convex hulls (574
+with a low LOD of a triangle or two), and the model had filled them whole with the hull of the drawn shape, which the
+region's shape doesn't come from; their plates are mostly a fraction of the box's face, 580 of the 948 under a
+twentieth. A mesh under 0.2 m in two sizes is its box, whatever its type, as the viewer's
+`LLPhysicsShapeBuilderUtil::determinePhysicsShape` has it), each counting by the physics shape type the region gives
+it, phantom and flexible ones passable; standing avatars as boxes; trees, grass and attachments not at all (the renderer's model's rule, shared code,
 so the two answer alike: the test compares them). Prims count at once; sculpts and meshes once downloaded (the grid's
 disk cache, shared with the renderer), nearest first within the draw distance (64-256 m). The ground is the region's
 heightmap. How it's built: How it fits, below.
@@ -1589,9 +1654,20 @@ level), said only with neither a way nor their trail. Walking off Second Life, t
 stretch's point no higher than 2 m over the ground under it (`Commands.AutoPilotTo`): OpenSim's flies the avatar to
 any point higher than one and a half avatar heights over the ground there (its `ScenePresence.MoveToTarget`, read in
 the grid's decompiled code), so a walk to someone upstairs would have been a flight; on the local grid the walks
-upstairs are walked, no flying animation on her. Second Life's gets the height as given, as it always has and as the
-official viewer's Go here sends it (a skybox's floor is thousands of metres over the ground): what it makes of a
-point upstairs isn't known, and a flying animation on her during a walk is logged once, in the session's log ("go: a
+upstairs are walked, no flying animation on her. On Second Life, walking, its autopilot gets her own height, not the
+point's, and gets the point again at her height whenever she has climbed or come down 0.4 m since (at most twice a
+second: `Commands.Level`, `KeepLevel`; Claude Opus 5.5, 2026-11-22). Given a point above her, Second Life's settles
+her level with it north to south and east of it by about as far as it's above her: every one of the 13 stretches in
+the blind tester's logs at her partner's place (three sessions, 2026-11-19 to 21) that stuck or ended short with the
+point 1 to 5 m over her middle (his height, or a point on his floor) was 1.0 to 3.3 m east of it, 0.7 to 1.2 times
+that height, and within 0.07 m of it north to south, whichever way it went and wherever it set out (a stretch of
+0.7 m west ended a metre east), while the eight walks of the last session sent a point at her height all arrived.
+Why, inside Second Life, isn't known, nor whether it's east everywhere (one place). Until then each stretch went at the walk's goal's height, in the belief
+that the official viewer's Go here sends it; that steers on the viewer's own side by X and Y (`LLAgent::autoPilot`), as
+our own autopilot does for following, and Radegast's `//go xyz X,Y`, in which she and her partner write their routes,
+sends her own height. The first time a walk's point is half a metre or more over or under her, the session log says
+so ("go: the region's autopilot sent her own height (53.46), not the point's (55.48), as on Second Life"). Flying, the
+height goes as given, and a flying animation on her during a walk is logged once, in the session's log ("go: a
 flying animation (fly) on the walk to ...", with where she was and what the autopilot was last sent), so her logs say
 whether it ever flies her. The way to a floor is only found within the walk's area plus 12 m: stairs further out than
 that leave the goal out of reach. Planning costs a fifth to two thirds more than one floor a cell did (one core, the same
@@ -1673,7 +1749,31 @@ fall of a metre or two she hears ("On ground."), while not reaching him is the f
   no way does (the teleport where one can land, which the third stick had). Lifted and not trusted (something of the
   model's ahead, a drop on the way), the stuck line says why, and it's a stick as any. Not for a walk that set out from
   on what the model hasn't got and found no way: there the plans have a way only on her level (her floor carried on
-  level never steps down), and nothing has stopped her yet.
+  level never steps down), and nothing has stopped her yet. Making for the goal itself, she's on its floor when level
+  with it (her middle within 0.6 m of its height, or her feet within 0.4 m, for a point given at a floor's height),
+  not merely within 2 m of it; once she has climbed or come down half a metre and is on it, the model, which has that
+  floor, plans the rest from there, unsaid (rather than straight on by the region into whatever stands on it).
+- **On from as near as the way goes** (Claude Opus 5.5, 2026-11-22, after the blind tester's logs of 2026-11-20 and 21:
+  with no trail of her partner's to take, as he'd gone up his steps before she came, every walk to him ended at the
+  deck's edge "as near as the way goes"; until 2026-11-11 a walk had aimed straight at him and the region had carried
+  her up): a `//go`, Walk to or a route's walk to a person or a point (not a thing: any side of a thing is at it) whose
+  floor the model has out of reach, once there, goes on straight to the goal itself by the region's autopilot, trusted
+  as above ("Trying straight on to Kestrel, up 2 metres."; the rise said from a metre), and on its floor is planned
+  again from there; no nearer in 3 s, it ends there as before ("Finished walking, as near to Kestrel as the way goes:
+  ..."). Unless the model has a drop of more than 4 m under her feet on the straight way there (under a point each
+  metre, looked down from over the goal's floor where that's above her, its floor or the ground: her partner's deck
+  stands 2.3 m over the ground and the ground under his floor is 2.7 m under hers), or someone else stands within
+  0.8 m of the straight way (the region's autopilot goes round nobody), which the session log says ("go: as near as
+  the way goes, and not on to the goal by the region: a drop the model has on the way, at ...", or "someone standing
+  on the straight way"). Short of its floor she isn't there however near across (at a plinth's foot). Something
+  the model hasn't got is the likeliest reason a floor someone stands on is out of reach from hers; a stage with no
+  steps or a wall stops her in 3 s where she'd have stopped anyway, and the worst is a fall of a few metres, which
+  Second Life doesn't hurt and walk mode says ("On ground."). A trail of theirs is taken first, as before; this is
+  for when there's none. In a route, a point's step that ends so, 2.5 m or more across from it or a floor off it,
+  pauses the route rather than going on from the wrong place (`//route`; her route up his steps went on from east of
+  their top, and its next point, written without a height, was taken at the deck's, in mid-air); `//route skip` goes on
+  without it. The session log has
+  `route: a step to X,Y walked as done, but ended at ...: the route paused`.
 - **Past a border mid-walk**: its stretches and the region's trusted autopilot are sent in the frame of the region
   where it set out, and a walk with no way after a crossing teleports to its goal in the frame of the region she's in,
   or not at all while that's still over the border, with no hint by coordinates (until 2026-11-20 all went by the
@@ -1726,19 +1826,24 @@ what stopped her was in the collision model at all. The session log she sends no
   - and, only when it came, the region's word that its autopilot stopped with no cancel of ours in the 3 s before it.
     The region answers every cancel of ours with it (1f50470), our walks cancel at each stick, end and stand-off, and
     until this was filtered those answers were most of what the line reported (`WalkMode.OwnCancel`).
-  The names are asked for, up to 2 s, and the line written then, the walk going on meanwhile. Each thing is named by
+  The names are asked for, up to 2 s, and the line written then, the walk going on meanwhile, so it can land after
+  what the stick led to (a third stick's teleport, the route's next step); half a second or more late, it says how
+  long before it the walk stuck (`(stuck 2.1 s before this line)`, after the position). Each thing is named by
   the region whose local id it has, as near a border the rays and the planner meet a neighbour's prims.
 - **What's at her feet** (`at her feet when stuck: ...`, under the stuck line's own name; Claude Opus 5.5, 2026-11-19),
   beside a stuck line where the model has nothing under her, her feet are more than 0.3 m over its floor (the ground
   counting), or it has nothing ahead at any height: the region had something solid there the model hasn't at its place.
   Her log of 2026-11-19 at 20:08 had all three, rising 3.4 m up steps to her partner while the model had nothing ahead,
   nothing under her and "every shape within 3 m", which speaks only for sculpts and meshes it has placed. Every part
-  whose box comes within a metre of her feet (`CollisionWorld.Near`), nearest box first, six in full and six more by
-  name: its name (part of object), kind, the region's physics shape type, how the model counts it (or why not:
+  whose box comes within a metre of her feet (`CollisionWorld.Near`), nearest first by its triangles where they're had,
+  else by its box (2026-11-20: a degenerate triangle had made every sculpt's nearest NaN, which sorted first, so her
+  logs that evening led with the region's 1024 m surround sculpts), six in full and six more by
+  name, and how many of all are counted: its name (part of object), kind, the region's physics shape type, how the model counts it (or why not:
   phantom or flexible, none), the flags that bear on it (phantom, its own or its object's root's, volume detect,
-  temporary, physical, flexible), its shape (ready with how many triangles and which: its drawn shape, hull,
-  decomposition, physics model or the hull of its drawn shape; still to come; given up on) and the nearest of those
-  triangles to her feet, and its box (how far off, middle, size, turn, lowest and highest point); then how many of the
+  temporary, physical, flexible), its shape (ready with how many triangles and which: its drawn shape, its box (a mesh
+  under 0.2 m in two sizes), hull, decomposition, physics model or the hull of its drawn shape, with a mesh's flat
+  hulls, its own and its decomposition's, counted as plates; still to
+  come; given up on) and the nearest of those triangles to her feet, and its box (how far off, middle, size, turn, lowest and highest point); then how many of the
   region's parts the model can't place at all, their object's root never had. So a part listed with its triangles far
   from her feet is had elsewhere (a shape decoded wrong), one with none is had empty, one not counted says why, and a
   thing not listed at all isn't in the session's world (never sent, or dropped on the way), or is among the parts
@@ -1763,10 +1868,16 @@ what stopped her was in the collision model at all. The session log she sends no
   the model's floor under them (21.30) and nothing of the model's ahead: no stuck spot, on to 240.50,162.93,23.90 by
   its autopilot` and `go: trusting the region, there: ...` or `..., no nearer for 3 s: at 237.50,163.09,23.21 (feet
   22.35), 3.0 m off across and -0.7 up, after 3.3 s; no way, so it ends as one` (or `near enough: it ends there`, or,
-  making for the goal itself, `so on as near as the way goes, planned again from here`); lifted and not trusted, the
+  making for the goal itself, `so on as near as the way goes, planned again from here`), or, making for the goal
+  itself, `go: trusting the region, on its floor: at ..., +2.0 m from where it set out, 6.1 m off across, after 1.2 s;
+  planned again from here`; lifted and not trusted, the
   stuck line's `her feet 0.89 m over the model's floor under them (20.30), not trusting the region: a drop the model
-  has on the way, at 131.0,44.0, its floor 17.20` (or `something of the model's ahead`). A look at where people are
-  that fails is logged once a session (`trails: a look failed, ...`).
+  has on the way, at 131.0,44.0, its floor 17.20` (or `something of the model's ahead`). On from as near as the way
+  goes: `go: trusting the region, as near as the way goes to a goal on a floor out of reach, and no drop of over 4 m
+  the model has on the straight way, on to 24.74,24.18,55.48 by its autopilot`, then as above; not, `go: as near as
+  the way goes, and not on to the goal by the region: a drop the model has on the way, at ..., 5.2 m under her feet`.
+  On Second Life, once a walk, `go: the region's autopilot sent her own height (...), not the point's (...)`. A look
+  at where people are that fails is logged once a session (`trails: a look failed, ...`).
 
 Reading a failed walk from these: what the collision model lacks shows as a stick with nothing ahead at any height,
 nothing narrow across and the floor on level, and a sculpt or mesh listed as not in the model; with nothing listed
@@ -1794,7 +1905,8 @@ plan names them (`Plan.Around`).
 them): the blind tester and her partner write routes as `//go xyz` lines in notecards and on her blog, written once by
 someone who can see; this lets her make one by walking it. R in walk mode (or `//record`, or World > Recording a route)
 starts it where she stands ("Recording a route from here. Walk it however you go: R says how it's going, N adds a
-note, Backspace takes back the last point, P pauses, Shift+R saves."). She then goes however she likes: the arrows,
+note, Shift+P a wait, Backspace takes back the last thing kept, P pauses recording, Shift+R saves."). She then goes
+however she likes: the arrows,
 `//go`, walk to, following someone, a seat that carries her, teleports; recording goes on in or out of walk mode. Shift+R
 (`//record save NAME`) keeps where she stands as the last point, asks the name (offering "REGION route") and saves a
 notecard in a Routes folder at the top of her inventory (made the first time; a name taken there gets a number), said
@@ -1820,6 +1932,17 @@ What's kept, from where the avatar goes rather than the keys pressed, so any way
   its name or her words, then `//pause 2` for a door to swing. Not yet: a part touched from Alt+7's parts list.
 - **Notes**: N (`//record note WORDS`) keeps where she stands as a point, then the words as a line of their own, which
   `//route` reads out on arriving there ("Note: the door to the ballroom"); empty, just the point.
+- **Waits** (Claude Opus 5.5, 2026-11-22, after the blind tester paused six times in a forest to listen and the played
+  route didn't, `docs/access.md` > Pauses in a recorded route): `//pause` lines, ten minutes at most a line, each a
+  step as `//route` counts them, so a played route stands still there, saying so as it starts ("Step 17 of 78:
+  waiting 19 seconds.", a long wait's lines once as their total, so the quiet isn't taken for a stall). Shift+P (`//record wait SECONDS`, World's A wait
+  here) keeps where she stands as a point and waits that long (a box asks, 10 offered; `20`, `2 minutes`, `1:30`; an
+  hour at most; "The route waits 20 seconds here; Backspace takes it back."). Pausing the recording and going on
+  within 2 m of where it paused writes a wait as long as the pause (whole seconds under a minute, else to 5 s), said
+  as it goes on ("Recording again. The route waits 19 seconds here, as long as you paused; Backspace takes it back.");
+  P's own words say so first ("Recording paused, 9 steps. P goes on; going on from here, the route waits here as long
+  as you were paused."). A wait asked for while paused stands for the pause's own. Backspace takes a wait back whole,
+  however many lines it is.
 
 The notecard starts with a line saying where the route starts ("Starts in Atelier East, at 236, 120, 22.", read as a
 note when played), then the steps in order. `//go xyz X,Y` is written with a tenth of a metre where there is one, and
@@ -1829,10 +1952,14 @@ line (so past a border it runs over 256 or below 0); Z only where the level chan
 teleport (Control+G) runs in Radegast line by line.
 
 While recording: each kept point ticks (the `route` cue, sound only by default; with text, "Step 5: a turn."), counted
-as `//route` will count them (its `//` lines); R says the count, the distance walked and where the last point is;
-Backspace says what it took back ("Took back the point at a doorway. 4 steps; the last point is 2 metres, six o'clock.");
-P pauses (where she stands kept) and goes on: from over 30 m away or another region by a teleport (the route can't know
-the way), else a walk from the last point. The recording lives in the app only until saved: logging out loses it.
+as `//route` will count them (its `//` lines); R says the count (with the waits among them: "12 steps (2 of them waits,
+40 seconds in all)"), the distance walked and where the last point is, and while paused for how long; Backspace says
+what it took back ("Took back the point at a doorway. 4 steps; the last point is 2 metres, six o'clock."); P pauses
+recording (where she stands kept) and goes on: within 2 m of where it paused, a wait (above); further, from over 30 m
+away or another region by a teleport (the route can't know the way), else a walk to there, said with no wait ("You're
+5 metres from where you paused, so the route doesn't wait there: it walks on to here."). A `//record` word it doesn't
+take is said back ("//record doesn't take finsh. It takes: ...") and logged. The recording lives in the app only until
+saved: logging out loses it.
 
 **Recording a ride** (`Walk/RideRecorder.cs`, `MainForm.Rides.cs`, `Walk/RideApi.cs`; Claude Opus 5.5, 2026-11-01, after
 the blind tester wished to ride a carnival waterslide, "arrow keys make you go faster, sometimes so fast you fly off",
@@ -2432,7 +2559,8 @@ words are the local grid's until she's tried them.
   `off` (A linked object, below); `lock`, `unlock`; `copy from NAME` (Copying settings, below); `export` (`export as dae`, `as xml`)
   and `import` (Export and import, below);
   `size`, `position`, `rotation` alone say them;
-  in Content `add NAME` (from her inventory), `remove NAME`, `copy NAME`; `undo [N]`, `redo`; `help`; `done`. `help` (and
+  in Content `add NAME` (from her inventory), `remove NAME`, `copy NAME`, `copy all` (also `copy everything`, `copy
+  contents`, with or without "into my inventory"); `undo [N]`, `redo`; `help`; `done`. `help` (and
   Build > Build commands) opens the commands in a window to arrow through, a command a line, as F1's keys (said whole as
   one answer, the blind tester asked for it six times in her first quarter hour of building, 2026-11-03); `shapes` lists
   the shapes; `rename X` is `name X` (as she typed it).
@@ -2505,11 +2633,42 @@ words are the local grid's until she's tried them.
   opens a box with the value as it is. Right and Left (Space and Shift+Space too) step it: a number by its step
   (position 0.1 m, size 0.05 m, rotations 15 degrees, hollow 5%, transparency 10%, glow 0.05...), a choice to the next
   or previous, a switch turned. F5 reads them again. A row that's still the same row keeps its place as its words
-  change, so a change never moves her. Content's rows are what's inside ("Door, script, running"): Enter on a script
+  change, so a change never moves her. Content's rows are what's inside ("Door, script, running"; ", no-copy" on one
+  that would leave the object if taken out, ", not yours to copy" on one the region won't give her): Enter on a script
   or notecard opens it (Scripts, above), Space runs or stops a script, Delete removes an item (confirmed), and the
-  Applications key has them as a menu (Open, Start or Stop running, Copy into your inventory, Paste what you copied,
-  Delete), as Objects and the inventory do; Enter on anything else says so (the blind tester found Delete there only by
-  pressing Enter on her teleporter's old landmark, 2026-11-15). Control+V in Content (empty or not), the menu's Paste or
+  Applications key has them as a menu (Open, Start or Stop running, Copy into your inventory, Copy all into your
+  inventory, Paste what you copied, Delete), as Objects and the inventory do; Enter on anything else says so (the blind
+  tester found Delete there only by pressing Enter on her teleporter's old landmark, 2026-11-15).
+- **Taking what's inside into her inventory** (2026-11-22, after the blind tester copied thirteen sounds out of a box one
+  by one and wasn't sure they'd come: they had, into her Sounds folder, each said only as "into your inventory"):
+  - One thing: Copy into your inventory puts it in the folder for its type and says which ("Copied holly into your
+    Sounds folder."). On a no-copy one in an object of hers the menu reads Move into your inventory (it's no-copy), as the
+    viewer warns before moving one, and it's said as moved ("... it's no-copy, so it's no longer inside Easy Street.").
+    One the region won't give her is refused at once, with why, rather than waited for.
+  - Everything: Copy all into your inventory (A on the menu) or `copy all` in the build box, as the viewer's Copy to
+    Inventory in its Open window (`LLFloaterOpenObject::moveToInventory`, `move_inv_category_world_to_agent`): a new
+    folder named for the thing at the top of her inventory, every item sent at once (the viewer's MoveTaskInventory each,
+    into that folder) once the inventory service lists the folder (moved into one it doesn't have yet, they're lost:
+    Radegast waits 500 ms for it), the replies waited for together, and said: "Copied all 14 items into a new folder,
+    Easy Street, at the top of your inventory.", or "Copied 12 of the 14 ...", then what stayed inside and why, another
+    folder there of the same name, and anything that hadn't come 10 s after the last that did (read from the folder on
+    the grid before it's called missing). `TesselBuild copyAllFromContents`.
+  - Which item goes how, by the viewer's rule on its permissions: copied when she may copy it and have it given to her
+    (her own items by their owner rights; another's by everyone's or her active group's copy, and its transfer); else,
+    in an object of hers, a no-copy one would move out. Departures from the viewer: a no-copy item stays inside and is
+    named, with Move into your inventory on it as the way out (the viewer moves them after a warning, which takes them
+    out of the object, a scripted one's parts too); one she may not take isn't sent but named with why (the viewer
+    sends the whole list once its first item passes, and refuses all of it when the first fails); with nothing to copy
+    no folder is made (the viewer makes it, then says nothing could be copied). Scripts are copied like anything else
+    and don't run in the inventory; the object keeps its own running.
+  - The grid's answer: an UpdateCreateInventoryItem for each item that came, into the folder; nothing for one it
+    refuses (OpenSim sends an alert only when an item lacks transfer). OpenSim's rule is narrower than Second Life's:
+    only the object's owner, or for a group-deeded object a member with the power to manipulate it or an item everyone
+    may copy, takes anything out; Second Life goes by the item's permissions. Only the owner's case is in the scripted
+    test (the local grid), with a no-copy card from the visitor inside.
+  - Radegast has the same as Open (copy all to inventory) on its contents list, only for things she may modify: a folder
+    at the top named for it, every item sent 500 ms later, and "copied" said without looking.
+- **Putting things inside**: Control+V in Content (empty or not), the menu's Paste or
   `paste` in the command box puts what she copied or cut in the inventory inside, as dragging onto the viewer's Content
   tab does: each item through the op's gate, a script asking first as a new script does, a link putting in what it links
   to, folders left out and said ("Put Door Bell and Bell Script inside."); her ask the same evening, for objects, sounds
@@ -3219,7 +3378,12 @@ it).
   what moved off the thread: chat log writes, Send a log's filter, and the session host's steps at login
   (`SessionHost.StartAllAsync`, run by `Task.Run` as the console probe runs it: 3.1-3.4 s held on her PC, in the agent
   API's services made by reflection and voice listing sound devices; "Logging in as" waited behind them too), and
-  Send a log's packing, a tab's earlier lines from the chat log, and every other read of the chat logs (2026-11-13). Closing a window releasing its UI Automation provider (UiaDisconnectProvider) at quit is left.
+  Send a log's packing, a tab's earlier lines from the chat log, and every other read of the chat logs (2026-11-13);
+  incognito's two threads, whose starts held it 1.0-1.3 s at login on her PC (`Triggers`, started from the pool since
+  2026-11-22). Closing a window releasing its UI Automation provider (UiaDisconnectProvider) at quit is left. The
+  watch's lines from before the session's log begins (a hold at Log in, while the main window builds, and its stack)
+  went only to the console; since 2026-11-22 they go into the session's log once it's there, each "(at 19:10:10, before
+  this log began)".
   `SOJOURN_WINDOW_WATCH=LOG_MS,STACK_MS` watches finely, for finding on this PC what holds the window seconds on a slower
   one: holds logged from LOG_MS and a stack at STACK_MS, looked at every 50 ms, up to 400 stacks, the lines in hundredths.
   `python tools/windowholds.py LOGS...` groups the holds in session logs (a tester's or the test's) by the frames of
@@ -3274,8 +3438,8 @@ it).
 - **Read-out** is A1's `AccessWiring` in the session, with two seams added for this app: its own UIA voice and
   greeting (`SessionHost.StartAllAsync(args, hwnd, voice, greeting)`), and `AccessWiring.Shape`, the app's say over
   each line (mutes, the source named or not, "new IM").
-- **Settings**: `access_mute_all`, `access_timestamps`, `access_muted_sources`, `access_answers_without_key` (above),
-  `access_view_rate` and `access_view_size` (the renderer out of sight's idle frames a second and their size),
+- **Settings**: `access_mute_all`, `access_timestamps`, `access_muted_sources`, `access_answers_without_key`,
+  `access_menu_order` (above), `access_view_rate` and `access_view_size` (the renderer out of sight's idle frames a second and their size),
   `SessionDefaults` (which of Access's own defaults for the session's settings are in place: the quieter music and
   world sounds), walk mode's `walk_*` (each cue's channels and level, the turn step and rate, the teleport fallback)
   on SojournSettings (section "access", so the assistant can change them when asked), kept in access-settings.json

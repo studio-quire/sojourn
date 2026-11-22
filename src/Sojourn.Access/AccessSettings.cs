@@ -57,6 +57,7 @@ public sealed class AccessSettings
     public bool Builders { get; set; } = true;
     public event Action? BuildersChanged;
     public event Action? InventorySortChanged;
+    public event Action? MenuOrderChanged;
     /// <summary>How confirmations, notices' keys, the ToS and typed answers take an answer that doesn't come from a key on
     /// a physical keyboard (a braille keyboard, Dragon, Voice Access, an on-screen keyboard, switch access): "refuse", or
     /// "hello", asking Windows Hello (face, fingerprint or PIN) and then taking it (Hello.cs). Physical keys answer either way.</summary>
@@ -84,6 +85,14 @@ public sealed class AccessSettings
     /// world, removing from inside an object, and anything the assistant deletes always ask.</summary>
     public bool ConfirmTrash { get; set; }
     public bool InventoryByDate => InventorySort == "newest first";
+
+    /// <summary>The order a script menu's buttons are read, numbered and tabbed through in Notices (MainForm.Notices.cs):
+    /// "as seen", as sighted people see them in any viewer, the top row first, left to right (the blind tester's partner's
+    /// ask, 2026-11-19, so they speak of a menu in the same order); or "as listed", the script's own order, which starts
+    /// with the bottom row: Radegast's, and Access's until then, kept for whoever's hands know it.</summary>
+    public string MenuOrder { get; set; } = "as seen";
+    public static readonly string[] MenuOrders = { "as seen", "as listed" };
+    public bool MenuAsSeen => MenuOrder != "as listed";
 
     public void SetInventorySort(bool byDate)
     {
@@ -361,6 +370,13 @@ public sealed class AccessSettings
         api.Add("access_inventory_sort", new SettingsApi.Setting("access", "Sojourn Access: the order of things in each inventory "
             + "folder, and in searches: by name, or newest first (folders stay first, by name)", string.Join(", ", InventorySorts), () => InventorySort,
             SettingsApi.Choice("access_inventory_sort", InventorySorts, i => { InventorySort = InventorySorts[i]; Save(); changed(); InventorySortChanged?.Invoke(); })));
+        api.Add("access_menu_order", new SettingsApi.Setting("access", "Sojourn Access: the order a script menu's buttons are read, "
+            + "numbered (1 to 9, 0, minus, equals) and reached by Tab in, in Notices: as seen, the order sighted people see them "
+            + "in any viewer, the top row first, left to right (the default); as listed, the order the script lists them, which "
+            + "starts with the bottom row, as Radegast reads them (a paged menu whose script lists Back and Next first then "
+            + "keeps them on the same keys on every page). The dialogs tool lists them in the same order",
+            string.Join(", ", MenuOrders), () => MenuOrder,
+            SettingsApi.Choice("access_menu_order", MenuOrders, i => { MenuOrder = MenuOrders[i]; Save(); changed(); MenuOrderChanged?.Invoke(); })));
         api.Add("walk_speed", new SettingsApi.Setting("access", "Sojourn Access: while seated on a moving vehicle, its speed said "
             + "when it settles at a new one (V says it any time)", "on, off", () => WalkSpeed,
             SettingsApi.Switch("walk_speed", on => { Walk["speed"] = on ? "on" : "off"; Save(); changed(); })));

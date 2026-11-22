@@ -31,6 +31,8 @@
 //                                                         end), full rights, in the viewer's own format, offered to UUID
 //   conferenceline UUID TEXT                              TEXT to UUID as a conference's line, as Second Life sends one
 //   fmenu12 UUID                                          a script menu of twelve (One ... Ten, Next, Back)
+//   fmenu5 UUID                                           a script menu of five (Back, Main, More, Tea, Cake: a paged
+//                                                         menu's last page, its top row short)
 //   fmenuchat UUID                                        a script menu ("Access Job: ...", OK) whose words the fixture
 //                                                         also says to that avatar in chat, as a freight HUD does
 //   fdance UUID                                           a dance machine's menu (Waltz, Tango): each pick says
@@ -289,6 +291,7 @@ static class Program
                     return "offered " + item.Name;
                 }
             case "embedcard": return await EmbedCard(rest);
+            case "nocopycard": return await NoCopyCard(rest);
             // a line of a conference as SL's event queue sends one: dialog 0, the session not the pair's. The session is the
             // visitor's own id, so a reply into it (a session's message, addressed to the session's id) reaches the visitor;
             // the packet by hand, as LibreMetaverse's InstantMessage turns that session into the pair's
@@ -354,6 +357,7 @@ static class Program
             case "stand": return await Stand(rest);
             case "fmenu": return Tell("menu", rest);
             case "fmenu12": return Tell("menu12", rest);
+            case "fmenu5": return Tell("menu5", rest);
             case "fmenuchat": return Tell("menuchat", rest);
             case "fdance": return Tell("dance", rest);
             case "ftext": return Tell("text", rest);
@@ -959,6 +963,7 @@ static class Program
                 // a freight HUD's way: its menu's words said in chat to the person too, at once
                 else if (cmd == "menuchat") { llDialog(who, "Access Job: delivered to the depot, all done.", ["OK"], chMenu); llRegionSayTo(who, 0, "Access Job: delivered to the depot, all done."); }
                 else if (cmd == "menu12") llDialog(who, "Access Long Menu: pick one.", ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Next", "Back"], chMenu);
+                else if (cmd == "menu5") llDialog(who, "Access Short Menu: pick one.", ["Back", "Main", "More", "Tea", "Cake"], chMenu);
                 else if (cmd == "dance") llDialog(who, "Access Dance: pick a dance.", ["Waltz", "Tango"], chDance);
                 else if (cmd == "text") llTextBox(who, "Access Box: type a word.", chText);
                 else if (cmd == "perm") llRequestPermissions(who, PERMISSION_TRIGGER_ANIMATION);
@@ -1301,6 +1306,21 @@ static class Program
         await UploadCard(item, asset);
         card = item;
         return item;
+    }
+
+    // nocopycard NAME TO: a notecard offered whose next owner may modify and transfer it but not copy it, so the one who
+    // keeps it holds a no-copy item (what a test can't make of its own: an owner can't take copy off their own item)
+    static async Task<string> NoCopyCard(string rest)
+    {
+        var parts = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var name = string.Join(' ', parts[..^1]);
+        var to = UUID.Parse(parts[^1]);
+        var item = await client.Inventory.CreateItemAsync(client.Inventory.FindFolderForType(FolderType.Notecard), name, "no copy for the next owner",
+            AssetType.Notecard, UUID.Zero, InventoryType.Notecard, PermissionMask.Modify | PermissionMask.Transfer | PermissionMask.Move)
+            ?? throw new Exception("couldn't create the notecard");
+        await UploadCard(item, Encoding.UTF8.GetBytes("Linden text version 2\n{\nLLEmbeddedItems version 1\n{\ncount 0\n}\nText length 8\nno copy\n}\n"));
+        client.Inventory.GiveItem(item.UUID, item.Name, AssetType.Notecard, to, false);
+        return "offered " + name;
     }
 
     // A notecard holding two items as the official viewer writes them (LLInventoryItem::exportLegacyStream, by hand:

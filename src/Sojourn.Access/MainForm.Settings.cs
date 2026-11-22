@@ -197,7 +197,7 @@ public sealed partial class MainForm
             ("auto_grant_animation", null),
             ("rlv", "RLV, scripts controlling what you wear and do"),
         }),
-        new("General", "region ratings, how far the people and objects nearby lists reach, the inventory's order and deleting, messages with the builders, and answers without a keyboard", new (string, string?)[]
+        new("General", "region ratings, how far the people and objects nearby lists reach, the inventory's order and deleting, script menus' order, messages with the builders, and answers without a keyboard", new (string, string?)[]
         {
             ("maturity", "Highest rating of region you go into"),
             ("access_objects_range", "How far Objects nearby lists, metres"),
@@ -205,6 +205,8 @@ public sealed partial class MainForm
             // (Radegast's Sort by date)
             ("access_inventory_sort", "Inventory order in each folder: by name or newest first"),
             ("access_confirm_trash", "Ask before my Delete moves things to the Trash"),
+            // (the blind tester's partner's ask, 2026-11-19: as sighted people see them; Radegast's order kept as the other)
+            ("access_menu_order", "Script menu buttons' order"),
             ("access_builders", "Messages with the builders (Control+Shift+B)"),
             // (the blind tester asked what "answers without a physical key: refused" meant, 2026-10-31: the row says it plainly)
             ("access_answers_without_key", "Answers from a braille display, dictation or on-screen keyboard"),
@@ -542,6 +544,8 @@ public sealed partial class MainForm
         ("access_names", "both") => "display name and username",
         ("access_names", "written") => "display name as written",
         ("access_names", "username") => "username",
+        ("access_menu_order", "as seen") => "as seen, top row first, left to right",
+        ("access_menu_order", "as listed") => "as the script lists them, bottom row first, as Radegast reads them",
         _ => value.Replace('_', ' '),
     };
 

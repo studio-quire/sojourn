@@ -41,8 +41,9 @@ public sealed partial class Commands
     public static bool IsCommand(string text) => text.TrimStart().StartsWith("//", StringComparison.Ordinal);
 
     /// <summary>A `//` line; true when it did what it says (a walk got there, a teleport arrived), which a route waits
-    /// for before its next line.</summary>
-    public async Task<bool> RunAsync(string line)
+    /// for before its next line. <paramref name="frame"/>: a route's line, the region whose coordinates its `//go xyz`
+    /// is in, when that isn't the one she's in (a step left out by `//route skip` that would have crossed a border).</summary>
+    public async Task<bool> RunAsync(string line, ulong frame = 0)
     {
         var words = Split(line.TrimStart()[2..].TrimStart('/'));   // ////unsit as //unsit (a typed extra pair, 0.1.0.877)
         if (words.Count == 0) { Help(""); return false; }
@@ -92,7 +93,7 @@ public sealed partial class Commands
                     return true;
                 case "about" or "version": _say(About?.Invoke() ?? "Sojourn Access."); return true;
                 case "describe": if (Describe != null) await Describe(string.Join(" ", rest)); return true;
-                case "go": return await GoAsync(rest);
+                case "go": return await GoAsync(rest, frame);
                 case "find": await FindAsync(rest); return true;
                 case "face": await FaceAsync(rest); return true;
                 case "sit": await SitAsync(rest); return true;
@@ -179,11 +180,11 @@ public sealed partial class Commands
         ("follow", "//follow NAME | //follow NAME METRES | //follow stop | //follow", "follow someone (ask first), stop, or say who; at the wheel of something steered by the arrows, drive after them, METRES behind if given (10 if not)"),
         ("tp", "//tp list | //tp N | //tp NAME | //tp Region/X/Y/Z | //tp SLURL", "teleport by landmark (Radegast Landmarks folder, else Landmarks), or to a place"),
         ("status", "//status [doing|region|parcel|location|health|money|time|music]", "what you're doing, where you are, your health where damage is on, your L$, the time in Second Life, the music playing"),
-        ("route", "//route NOTECARD | //route (the lines on the clipboard) | //route stop | //route resume",
-            "play a route: a notecard's (or the clipboard's) // lines one at a time, each walk finished before the next, other lines read as notes"),
-        ("record", "//record | //record note WORDS | //record undo | //record pause | //record save [NAME] | //record discard",
-            "record a route by walking it (R in walk mode): start, or while recording how it's going; a note here; take back the last point; pause or go on; save it as a notecard in Routes; or throw it away"),
-        ("pause", "//pause [SECONDS]", "wait (in a route: before its next line; 1 second unless said)"),
+        ("route", "//route NOTECARD | //route (the lines on the clipboard) | //route stop | //route resume | //route skip",
+            "play a route: a notecard's (or the clipboard's) // lines one at a time, each walk finished before the next, other lines read as notes; where a step doesn't get there the route pauses, resume tries that step again and skip goes on without it (skip while it plays leaves out the step it's on)"),
+        ("record", "//record | //record note WORDS | //record wait SECONDS | //record undo | //record pause | //record resume | //record save [NAME] | //record discard",
+            "record a route by walking it (R in walk mode): start, or while recording how it's going; a note here; a wait here, where the played route stands still that long; take back the last point, note or wait; pause recording, and go on (going on where you paused, the route waits there as long as you were paused); save it as a notecard in Routes; or throw it away"),
+        ("pause", "//pause [SECONDS]", "wait (in a route: before its next line; 1 second unless said); while recording a route, //record wait SECONDS puts one in it"),
         ("thread", "//thread COMMAND", "run a command without waiting for it: in a route, the next line goes on at once"),
         ("threads", "//threads", "what's running: a route, a walk, following, a pause, commands started by //thread"),
         ("kill", "//kill", "stop everything running: a route, a walk, following, pauses, commands started by //thread"),
@@ -260,7 +261,7 @@ public sealed partial class Commands
     // --- go -------------------------------------------------------------------------------------------------------
 
 
-    async Task<bool> GoAsync(List<string> a)
+    async Task<bool> GoAsync(List<string> a, ulong frame = 0)
     {
         bool tp = a.Count > 0 && a[0].Equals("tp", StringComparison.OrdinalIgnoreCase);
         if (tp) a = a.Skip(1).ToList();
@@ -270,6 +271,7 @@ public sealed partial class Commands
         string what;
         UUID toPerson = default, thing = default;
         double stop = 0.6;   // the autopilot coasts a little after letting go: routes of waypoints want it close
+        bool level = false;   // (a point given with its height)
         var kind = a[0].ToLowerInvariant();
         // coordinates without the word xyz (//go 25,25,56, as she typed it once, 2026-11-18; //go 25 25 56): two or
         // three numbers and nothing else, which a distance and a direction never are
@@ -293,6 +295,9 @@ public sealed partial class Commands
             if (nums.Count < 2 || nums.Any(double.IsNaN)) { _say("//go xyz takes X,Y or X,Y,Z: //go xyz 128,128,22"); return false; }
             target = new Vector3((float)nums[0], (float)nums[1], nums.Count > 2 ? (float)nums[2] : me.Pos.Z);
             what = string.Create(CultureInfo.InvariantCulture, $"{nums[0]:0.#}, {nums[1]:0.#}");
+            level = nums.Count > 2;
+            // (a route's line in a neighbouring region's frame, said as written)
+            if (frame != 0 && _ops.Client?.Network.CurrentSim is { } sim && sim.Handle != frame) target = InFrame(target, frame, sim.Handle);
         }
         else if (kind == "person")
         {
@@ -344,7 +349,37 @@ public sealed partial class Commands
         }
         var hint = kind is "person" or "object" ? $"//go tp {kind} {string.Join(" ", a.Skip(1))}"
             : string.Create(CultureInfo.InvariantCulture, $"//go tp xyz {target.X:0},{target.Y:0}");
-        return await WalkAsync(target, what, stop, hint, toPerson, thing);
+        ulong origin = _ops.Client?.Network.CurrentSim?.Handle ?? 0;
+        bool walked = await WalkAsync(target, what, stop, hint, toPerson, thing);
+        if (kind == "xyz") _pointEnd = (MeIn(origin), target, level);
+        return walked;
+    }
+
+    /// <summary>Where the last walk to a point ended, the point, and whether it was given with its height: for a route,
+    /// whose step to a point is done only near it (PointMissed).</summary>
+    (Vector3? At, Vector3 Point, bool Level)? _pointEnd;
+
+    /// <summary>How far across from a route's point its step may end and be done: as any walk to a point is (WatchWalkAsync's
+    /// 2.5 m), however it ended. A walk's own finish is under a metre, often 1.1 to 1.2 m on Second Life.</summary>
+    const float RoutePointOff = 2.5f;
+
+    /// <summary>A route's step to a point that ended off it, though the walk called it done ("as near as the way goes", trusted
+    /// to the region, on straight): 2.5 m or more across, or with the point's height given, on another floor (2 m over or
+    /// under). Her routes' points are where she walked to recording them, so one ended well off means something went wrong,
+    /// and the route going on from there starts its next step from the wrong place (her route up her partner's steps on
+    /// 1187, 2026-11-21: the steps' top, out of reach in the model, ended east of it, and the next point, written without a
+    /// height, was taken at the deck's, in mid-air). The words, or null.</summary>
+    string? PointMissed()
+    {
+        if (_pointEnd is not { At: { } at } e) return null;
+        float off = Flat(at, e.Point), up = at.Z - e.Point.Z;
+        var missed = off >= RoutePointOff ? $"it ended {Bearings.Metres(off)} short of its point"
+            : e.Level && OtherFloor(at, e.Point) ? $"it ended {Bearings.Metres(Math.Abs(up))} {(up < 0 ? "under" : "over")} its point"
+            : null;
+        if (missed != null)
+            WalkNote(string.Create(CultureInfo.InvariantCulture,
+                $"route: a step to {e.Point.X:0.00},{e.Point.Y:0.00}{(e.Level ? $",{e.Point.Z:0.00}" : "")} walked as done, but ended at {at.X:0.00},{at.Y:0.00},{at.Z:0.00}, {off:0.0} m off across and {up:+0.0;-0.0} up: the route paused"));
+        return missed;
     }
 
     CancellationTokenSource? _walk;
@@ -364,23 +399,57 @@ public sealed partial class Commands
     /// Walking off Second Life, a point more than 2 m over the ground under it (upstairs, a balcony) goes at 2 m:
     /// OpenSim's autopilot flies the avatar to any point over one and a half avatar heights above the ground there
     /// (MoveToTarget), and a walk on the ground or a floor steers by X and Y alone, the floor carrying the avatar up the
-    /// stairs (2026-11-11). Second Life's gets the height as given, as it always has and as the official viewer's Go
-    /// here sends it (a skybox's floor is thousands of metres over the ground); a flying animation during a walk there
-    /// is logged (WatchFlying), which says whether it ever flies her upstairs.</summary>
+    /// stairs (2026-11-11). On Second Life, walking, it gets her own height (Level), and again as she climbs or comes
+    /// down (KeepLevel): given a point above her it settles her east of it by about as far as it's above her. Flying, the
+    /// height as given; a flying animation during a walk there is logged (WatchFlying).</summary>
     void AutoPilotTo(GridClient c, double x, double y, double z)
     {
+        _aim = new Aim(x, y, z);
         if (!c.Self.Movement.Fly && !OnSecondLife && c.Network.CurrentSim is { } sim && _s.Region is { } w)
         {
             Utils.LongToUInts(sim.Handle, out var rx, out var ry);
             float lx = (float)(x - rx), ly = (float)(y - ry);
             if (lx >= 0 && ly >= 0 && lx < w.SizeX && ly < w.SizeY && w.TerrainHeight(lx, ly) is { } ground) z = Math.Min(z, ground + 2);
         }
+        else if (!c.Self.Movement.Fly && OnSecondLife && _ops.Me() is { } me) z = Level(me.Pos.Z, z);
         _sent = (x, y, z);
+        _sentAt = Environment.TickCount64;
         c.Self.AutoPilot(x, y, z);
         if (!AlwaysRun()) return;
         c.Self.Movement.AlwaysRun = true;
         _ = Task.Delay(500).ContinueWith(_ => { if (ReferenceEquals(_ops.Client, c) && c.Self.Movement.AlwaysRun) c.Self.Movement.AlwaysRun = true; }, TaskScheduler.Default);
     }
+
+    /// <summary>The height Second Life's autopilot is sent for a walk: hers (her middle), not the point's. Each of the 13
+    /// stretches in the blind tester's logs at her partner's place (three sessions, 2026-11-19 to 21) that stuck or ended
+    /// short with the point 1 to 5 m over her middle (his height, a point on his floor) left her within 0.07 m of it north
+    /// to south and east of it by 0.7 to 1.2 times that height, wherever she'd set out from and whichever way the stretch
+    /// went: she walked a metre the wrong way, stuck with nothing ahead, and drifted east off the foot of his steps; the
+    /// walks sent a point at her height arrived. The official viewer's Go here steers on its own side by X and Y
+    /// (LLAgent::autoPilot), and Radegast's `//go xyz X,Y`, which she and her partner write their routes in, sends her
+    /// height. Logged once a walk where the point was half a metre or more over or under her.</summary>
+    double Level(double mine, double given)
+    {
+        if (Math.Abs(given - mine) >= 0.5 && Interlocked.Exchange(ref _levelSaid, 1) == 0)
+            WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: the region's autopilot sent her own height ({mine:0.00}), not the point's ({given:0.00}), as on Second Life"));
+        return mine;
+    }
+
+    /// <summary>On Second Life, walking: the region's autopilot sent the point again at her height when she's climbed or
+    /// come down 0.4 m or more since it was last sent (at most twice a second), so a point a stretch is walked to never
+    /// stands much over or under her (Level). Called from the loops watching a walk.</summary>
+    void KeepLevel()
+    {
+        if (_aim is not { } a || _ops.Me() is not { } me || Math.Abs(me.Pos.Z - _sent.Z) < 0.4 || Environment.TickCount64 - _sentAt < 500) return;
+        if (_ops.Client is not { } c || c.Self.Movement.Fly || !OnSecondLife) return;
+        AutoPilotTo(c, a.X, a.Y, a.Z);
+    }
+
+    /// <summary>Where the region's autopilot is walking her now, as given (global), till it's let go.</summary>
+    sealed record Aim(double X, double Y, double Z);
+    volatile Aim? _aim;
+    long _sentAt;
+    int _levelSaid;
     /// <summary>The session is on Second Life's own grid (or its beta grid), not OpenSim's.</summary>
     bool OnSecondLife => Sojourn.Session.Login.Grids.IsSecondLife(Sojourn.Session.Login.Grids.Normalise(_s.Host.LoginUriFor(_s.Config)) ?? "");
 
@@ -428,7 +497,8 @@ public sealed partial class Commands
     /// (TrustRegionAsync); to someone whose floor the plan can't reach, the way they walked there where they did lately
     /// (TrailRouteAsync). A goal out of reach where this floor meets it (on a stage, inside a
     /// bar) is walked as near as the way goes, said, unless that's a storey or more under it with its floor meeting hers
-    /// only far off (PathPlanner.Plan.Beneath: no way). Seated, it stands first. With no way at all it says so, and
+    /// only far off (PathPlanner.Plan.Beneath: no way); a person or a point on another floor, then on straight by the
+    /// region (OnFromAsync). Seated, it stands first. With no way at all it says so, and
     /// teleports there once where that can work (walk_teleport_fallback; NoWayAsync), else names the command that
     /// would (<paramref name="tpHint"/>). Completes when the walk ends: true when it got there (or within 2.5 m, or as
     /// near as the way goes). People on their feet are gone round like things, those there as it sets out and those
@@ -447,10 +517,12 @@ public sealed partial class Commands
         return Task.Run(async () =>
         {
             var flying = WatchFlying(what);
+            Interlocked.Exchange(ref _levelSaid, 0);
             try { return await RouteAsync(target, what, stop, tpHint, walk.Token, toPerson, foot); }
             finally
             {
                 flying?.Invoke();
+                if (_walk == walk || _walk == null) _aim = null;   // (nothing for KeepLevel to send again)
                 if (_heading == heading) _heading = null;
                 // (ended: nothing for walk mode's next key to cancel)
                 Interlocked.CompareExchange(ref _walk, null, walk);
@@ -560,18 +632,28 @@ public sealed partial class Commands
                 last && r.InWay != null ? 1.2 : 0);
             if (got == Leg.Cancelled) return false;
             UUID? who = null;   // whoever the way is planned again for
-            bool cutEnd = false;
+            bool cutEnd = false, onItsFloor = false;
             if (got == Leg.Reached)
             {
                 if (!last) continue;
-                if (r.InWay is not { } cut)
-                    return r.Moved ? await WatchWalkAsync(leg, 0.8, ct, origin, (target, what), people) : await WatchWalkAsync(target, near, ct, origin, null, people);
-                // as far as the way went, short of someone standing in it: let go at once, 1.3 m before its end (she
-                // goes on 1 to 1.5 m at a walk: let go a metre before it she ended 1.1 to 1.6 m from the visitor, for
-                // the 1.5 meant) and sooner at a run (LegAsync's lead: a metre before it at 5 m/s she ran on into the
-                // visitor), and planned once more from here, as they may have moved on while she walked up
-                CancelAutoPilot();
-                (who, cutEnd) = (cut, true);
+                if (r.InWay is { } cut)
+                {
+                    // as far as the way went, short of someone standing in it: let go at once, 1.3 m before its end (she
+                    // goes on 1 to 1.5 m at a walk: let go a metre before it she ended 1.1 to 1.6 m from the visitor, for
+                    // the 1.5 meant) and sooner at a run (LegAsync's lead: a metre before it at 5 m/s she ran on into the
+                    // visitor), and planned once more from here, as they may have moved on while she walked up
+                    CancelAutoPilot();
+                    (who, cutEnd) = (cut, true);
+                }
+                else if (r.Moved && r.Beyond && foot == null && !trustedGoal)
+                {
+                    // as near as the way goes to a person or a point on a floor the model can't reach from hers: on to it
+                    // straight by the region, trusted, where that can't be a fall of more than a few metres (OnFromAsync)
+                    trustedGoal = true;
+                    if (await OnFromAsync(leg, target, what, near, ct, origin, people) is { } ended) return ended;
+                    onItsFloor = true;
+                }
+                else return r.Moved ? await WatchWalkAsync(leg, 0.8, ct, origin, (target, what), people) : await WatchWalkAsync(target, near, ct, origin, null, people);
             }
             else if (got == Leg.Met)
             {
@@ -601,8 +683,8 @@ public sealed partial class Commands
                     trustedGoal |= toGoal;
                     // (the walk's own end, where she has to be on its floor; a corner or a stand-in, there across)
                     bool end = toGoal || last, itsFloor = toGoal || last && !r.Moved;
-                    var trust = await TrustRegionAsync(aim, lifted, toGoal ? near : last ? (r.Moved ? 0.6 : near) : 0.5, itsFloor, end,
-                        toGoal ? "so on as near as the way goes, planned again from here" : "no way, so it ends as one", ct, origin);
+                    var trust = await TrustRegionAsync(aim, $"{lifted} and nothing of the model's ahead: no stuck spot", toGoal ? near : last ? (r.Moved ? 0.6 : near) : 0.5, itsFloor, end,
+                        toGoal ? "so on as near as the way goes, planned again from here" : "no way, so it ends as one", ct, origin, ontoItsFloor: toGoal);
                     switch (trust.Got)
                     {
                         case Trust.Cancelled: return false;
@@ -614,11 +696,14 @@ public sealed partial class Commands
                             if (!toGoal && r.Moved) _say($"Finished walking, as near to {what} as the way goes: {what} is {_ops.Where(target) ?? Bearings.Metres(Flat(trust.At, target))}.");
                             else _say($"Finished walking, {OffWords(Flat(trust.At, aim))} from the destination.");
                             return true;
+                        case Trust.OnItsFloor:
+                            onItsFloor = true;
+                            break;
                     }
                     // no nearer: making for the goal itself, the walk goes on as near as the way goes, as it did before
                     // the region was trusted (a stage with no steps); else it ends as one with no way does (the
                     // teleport where one can land, which the third stick had)
-                    if (!toGoal || ++replans > 2) return await NoWay();
+                    if (!onItsFloor && (!toGoal || ++replans > 2)) return await NoWay();
                 }
                 else
                 {
@@ -650,10 +735,12 @@ public sealed partial class Commands
             r = again ?? new Route(new List<System.Numerics.Vector2> { new(target.X, target.Y) }, false);
             legs = r.Legs;
             float now = Length(from.Pos, legs), more = now - left;
-            quiet = again != null && !cutEnd && who != null && SameWalk(r, more);
+            // (up or down on its floor by the region's way: the rest walked unsaid, its end said as any walk's)
+            quiet = onItsFloor || again != null && !cutEnd && who != null && SameWalk(r, more);
             var stretches = $"{legs.Count} {(legs.Count == 1 ? "stretch" : "stretches")}";
             var far = more >= Further ? $", {Bearings.Metres(now)} from here" : "";
             if (r.InWay is { } only) _say(await OnlyAsFarAsync(only, target));
+            else if (onItsFloor) { }
             else if (cutEnd) _say($"The way is clear now; going on{far}: {stretches}.");
             else if (who is not { } stepped) _say($"Something's in the way; going round{far}: {stretches}.");
             else if (quiet) _say($"{Cap(await NameOfAsync(stepped))} is in the way; going round.");
@@ -696,37 +783,51 @@ public sealed partial class Commands
         return await walk.LiftedAsync(new(at.X, at.Y, at.Z), feet, new(ahead.X, ahead.Y, ahead.Z));
     }
 
-    enum Trust { There, Close, NoNearer, Cancelled }
+    enum Trust { There, Close, NoNearer, Cancelled, OnItsFloor }
 
-    /// <summary>A walk that stuck where the region holds her on something the model hasn't got (<paramref name="lifted"/>
-    /// says how): no stuck spot marked, no way round planned on a model that lacks what she's on, but on toward
+    /// <summary>A walk where the region has a way the model hasn't got (<paramref name="why"/> says how it's known, for
+    /// the log): no stuck spot marked, no way round planned on a model that lacks what she's on, but on toward
     /// <paramref name="goal"/> by the region's autopilot, watched for getting nearer (across and up or down alike, so
     /// climbing steps counts) by a tenth of a metre in 3 s. There: within <paramref name="within"/> across, and on its
     /// floor where <paramref name="itsFloor"/> (the walk's own goal: under or over it isn't there). No nearer: Close
     /// where it's the walk's <paramref name="end"/> and she's within 2.5 m of it (on its floor, as before), else
-    /// NoNearer, the log saying what comes of that (<paramref name="otherwise"/>). At: where she was last, in
+    /// NoNearer, the log saying what comes of that (<paramref name="otherwise"/>). With <paramref name="ontoItsFloor"/>
+    /// (making for the walk's goal on another floor), on its floor is level with it (her middle within 0.6 m of its
+    /// height, or her feet within 0.4 m: a point given at a floor's height), not within 2 m (OtherFloor); and OnItsFloor
+    /// once she's climbed or come down half a metre or more and is on it, so the model, which has that floor, plans the
+    /// rest. At: where she was last, in
     /// <paramref name="origin"/>'s frame.</summary>
-    async Task<(Trust Got, Vector3 At)> TrustRegionAsync(Vector3 goal, string lifted, double within, bool itsFloor, bool end, string otherwise,
-        CancellationToken ct, ulong origin)
+    async Task<(Trust Got, Vector3 At)> TrustRegionAsync(Vector3 goal, string why, double within, bool itsFloor, bool end, string otherwise,
+        CancellationToken ct, ulong origin, bool ontoItsFloor = false)
     {
         if (_ops.Client is not { } c) return (Trust.Cancelled, goal);
-        WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: trusting the region, {lifted} and nothing of the model's ahead: no stuck spot, on to {goal.X:0.00},{goal.Y:0.00},{goal.Z:0.00} by its autopilot"));
+        WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: trusting the region, {why}, on to {goal.X:0.00},{goal.Y:0.00},{goal.Z:0.00} by its autopilot"));
         var g = GlobalIn(goal, origin);
         AutoPilotTo(c, g.X, g.Y, g.Z);
         long start = Environment.TickCount64, progressAt = start;
         double best = double.MaxValue;
         Vector3 at = MeIn(origin) ?? goal;
+        float fromZ = at.Z;
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(150, CancellationToken.None);
             if (ct.IsCancellationRequested) return (Trust.Cancelled, at);
             if (MeIn(origin) is not { } pos) continue;
+            KeepLevel();
             at = pos;
             double off = Flat(pos, goal), up = pos.Z - goal.Z;
-            if (off <= within && !(itsFloor && OtherFloor(pos, goal)))
+            // (making for a goal on another floor, on its floor is level with it, her middle with its height or her feet
+            // with a floor's: two metres either way, OtherFloor, had her "there" at the foot of a plinth a metre high)
+            bool onIts = ontoItsFloor ? Math.Abs(up) < 0.6 || FeetZ?.Invoke() is { } herFeet && Math.Abs(herFeet - goal.Z) < 0.4 : !OtherFloor(pos, goal);
+            if (off <= within && (!itsFloor || onIts))
             {
                 WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: trusting the region, there: at {pos.X:0.00},{pos.Y:0.00},{pos.Z:0.00}, {off:0.0} m off, after {(Environment.TickCount64 - start) / 1000.0:0.0} s"));
                 return (Trust.There, pos);
+            }
+            if (ontoItsFloor && Math.Abs(pos.Z - fromZ) >= 0.5 && onIts)
+            {
+                WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: trusting the region, on its floor: at {pos.X:0.00},{pos.Y:0.00},{pos.Z:0.00}, {pos.Z - fromZ:+0.0;-0.0} m from where it set out, {off:0.0} m off across, after {(Environment.TickCount64 - start) / 1000.0:0.0} s; planned again from here"));
+                return (Trust.OnItsFloor, pos);
             }
             double d = Math.Sqrt(off * off + up * up);
             long now = Environment.TickCount64;
@@ -740,6 +841,63 @@ public sealed partial class Commands
         float? feet = FeetZ?.Invoke();
         WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: trusting the region, no nearer for 3 s: at {at.X:0.00},{at.Y:0.00},{at.Z:0.00}{(feet is { } ft ? $" (feet {ft:0.00})" : "")}, {left:0.0} m off across and {at.Z - goal.Z:+0.0;-0.0} up, after {(Environment.TickCount64 - start) / 1000.0:0.0} s; {(close ? "near enough: it ends there" : otherwise)}"));
         return (close ? Trust.Close : Trust.NoNearer, at);
+    }
+
+    /// <summary>How far a walk on from as near as the way goes to a goal out of reach may fall (OnFromAsync): off a deck
+    /// or a storey (her partner's deck stands 2.3 m over the ground, the ground under his floor 2.7 m under hers).</summary>
+    const float OnFromDrop = 4f;
+
+    /// <summary>As near as the way goes (<paramref name="standIn"/>, where she's got to) to a person or a point on a floor
+    /// the model can't reach from hers: on to it straight by the region's autopilot, trusted (TrustRegionAsync), unless
+    /// the model has a drop of more than OnFromDrop under her feet on the straight way there, or someone else stands on
+    /// it. Short of its floor she isn't there, however near across (a plinth's foot). Her partner up steps from
+    /// a wooden deck that the model lacked (her logs of 2026-11-19 to 21): with no trail of his to take (he'd gone up
+    /// before she came), every walk ended at the deck's edge "as near as the way goes", while until 2026-11-11 a walk
+    /// had aimed straight at him and the region had carried her up. Something the model hasn't got is the likeliest
+    /// reason a floor someone stands on is out of reach from hers; a stage with no steps or a wall stops her in 3 s,
+    /// where she'd have stopped anyway, and the worst is a fall of a few metres, which Second Life doesn't hurt and walk
+    /// mode says. "Trying straight on to ..." once; on its floor (OnItsFloor) the model plans the rest: null. Else how
+    /// the walk ended, said.</summary>
+    async Task<bool?> OnFromAsync(Vector3 standIn, Vector3 target, string what, double near, CancellationToken ct, ulong origin, Bystanders people)
+    {
+        Task<bool> AsBefore() => WatchWalkAsync(standIn, 0.8, ct, origin, (target, what), people);
+        if (WalkMode is not { } walk || _ops.Client?.Network.CurrentSim?.Handle != origin || MeIn(origin) is not { } at) return await AsBefore();
+        float feet = FeetZ?.Invoke() ?? at.Z - 0.95f;
+        // (looked down from over the goal's floor where that's above her: its edge is where she'd fall from)
+        if (await walk.DropOnWayAsync(new(at.X, at.Y, at.Z), feet, new(target.X, target.Y, target.Z), OnFromDrop, feet + (target.Z - at.Z) + 0.3f) is { } drop)
+        {
+            WalkNote($"go: as near as the way goes, and not on to the goal by the region: {drop}");
+            return await AsBefore();
+        }
+        // (nor through someone standing on the straight way: the region's autopilot goes round nobody)
+        if (HeedPeople && OnFoot(people.To).Any(p => ToLine(at, target, p.Pos) < 0.8f && p.Pos.Z > Math.Min(at.Z, target.Z) - 1
+                && p.Pos.Z < Math.Max(at.Z, target.Z) + 1))
+        {
+            WalkNote($"go: as near as the way goes, and not on to the goal by the region: someone standing on the straight way");
+            return await AsBefore();
+        }
+        float rise = target.Z - at.Z;
+        _say($"Trying straight on to {what}{(Math.Abs(rise) >= 1 ? $", {(rise > 0 ? "up" : "down")} {Bearings.Metres(Math.Abs(rise))}" : "")}.");
+        // (no nearer, never "close": short of its floor, she isn't there however near across, as at a plinth's foot)
+        var trust = await TrustRegionAsync(target, $"as near as the way goes to a goal on a floor out of reach, and no drop of over {OnFromDrop:0} m the model has on the straight way",
+            near, itsFloor: true, end: false, "so it ends as near as the way goes", ct, origin, ontoItsFloor: true);
+        return trust.Got switch
+        {
+            Trust.Cancelled => false,
+            Trust.OnItsFloor => null,
+            Trust.There => await WatchWalkAsync(target, near, ct, origin, null, people),
+            // (where she stopped, its end logged and said as any walk's)
+            _ => await WatchWalkAsync(trust.At, 0.8, ct, origin, (target, what), people),
+        };
+    }
+
+    /// <summary>How far <paramref name="p"/> is across from the stretch <paramref name="a"/> to <paramref name="b"/>.</summary>
+    static float ToLine(Vector3 a, Vector3 b, Vector3 p)
+    {
+        var ab = new Vector2(b.X - a.X, b.Y - a.Y);
+        var ap = new Vector2(p.X - a.X, p.Y - a.Y);
+        float t = ab.LengthSquared() > 1e-6f ? Math.Clamp(Vector2.Dot(ap, ab) / ab.LengthSquared(), 0, 1) : 0;
+        return (ap - ab * t).Length();
     }
 
     /// <summary>A point in the frame of the region with handle <paramref name="origin"/> (where a walk began) as a
@@ -901,6 +1059,7 @@ public sealed partial class Commands
         {
             await Task.Delay(150, CancellationToken.None);
             if (ct.IsCancellationRequested || MeIn(origin) is not { } pos) return Leg.Cancelled;
+            KeepLevel();
             double off = new Vector2(to.X - pos.X, to.Y - pos.Y).Length();
             if (lead > 0 && _ops.Client?.Self.Velocity is { } v) off -= lead * Math.Max(0, new Vector2(v.X, v.Y).Length() - 3.2);
             if (off <= within) return Leg.Reached;
@@ -1078,6 +1237,7 @@ public sealed partial class Commands
             await Task.Delay(250, CancellationToken.None);
             if (ct.IsCancellationRequested || _ops.Client is not { } c) return false;
             if (MeIn(origin) is not { } pos) continue;   // (between regions a moment)
+            KeepLevel();
             var me = (Pos: pos, Region: c.Network.CurrentSim?.Handle ?? origin);
             long now = Environment.TickCount64;
             bool going = c.Self.Velocity.Length() > 0.15f || Vector3.Distance(me.Pos, last) > 0.05f;
@@ -1182,7 +1342,7 @@ public sealed partial class Commands
         _route?.Cancel();
         StopWalking();
         StopFollowing(quiet: true);
-        if (route) _say("Route stopped: you're walking by hand. //route resume goes on.");
+        if (route) _say("Route stopped: you're walking by hand. //route resume goes on; //route skip goes on without the step it was on.");
     }
 
     void StopWalking()
@@ -1200,6 +1360,7 @@ public sealed partial class Commands
     /// is sent.</summary>
     void CancelAutoPilot()
     {
+        _aim = null;
         if (_ops.Client is not { } c || c.Self.SittingOn != 0) return;
         c.Self.AutoPilotCancel();
         WalkMode?.OwnCancel();   // (the region answers it with its word that its autopilot stopped: not news for a stuck line)
@@ -1678,10 +1839,24 @@ public sealed partial class Commands
                 : string.Join(" ", marks.Select((m, i) => $"{i + 1}, {m.Name}.")));
             return true;
         }
-        int at = int.TryParse(arg, out var n) && n >= 1 && n <= marks.Count ? n - 1
-            : marks.FindIndex(m => m.Name.StartsWith(arg, StringComparison.OrdinalIgnoreCase));
+        int at = FindLandmark(marks, arg);
         if (at < 0) { _say($"No landmark {arg}. //tp list lists them; //tp Region/X/Y/Z goes to a place."); return false; }
         return await TeleportLandmarkAsync(marks[at].Id, marks[at].Name);
+    }
+
+    /// <summary>`//tp N` or `//tp NAME`'s landmark: by its number in the list, else the first whose name starts so; -1 for none.</summary>
+    static int FindLandmark(List<(UUID Id, string Name)> marks, string arg) =>
+        int.TryParse(arg, out var n) && n >= 1 && n <= marks.Count ? n - 1
+            : marks.FindIndex(m => m.Name.StartsWith(arg, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The region a `//tp` goes to: a place's, or its landmark's; null when that can't be told.</summary>
+    async Task<string?> TeleportRegionAsync(string arg)
+    {
+        if (Places.Parse(arg) is { } place) return place.Region;
+        var marks = await LandmarksAsync();
+        if (FindLandmark(marks, arg) is not (>= 0 and var at)) return null;
+        var where = await _ops.ReadAsync("TesselInventory", "landmark", new JsonObject { ["item_id"] = marks[at].Id.ToString() });
+        return where.Str("region") is { Length: > 0 } region ? region : null;
     }
 
     /// <summary>Teleport by a landmark: said as it goes, and the arrival with where.</summary>
@@ -1875,24 +2050,43 @@ public sealed partial class Commands
     public Func<string?>? Music { get; set; }
 
     CancellationTokenSource? _route;
-    (string Name, List<string> Lines, int Next)? _routeAt;
+    /// <summary>A route paused or stopped: its lines, the line it goes on from, and the region whose coordinates that
+    /// line is in (where its step began: a `//go xyz` is in the frame of the region the step before it ended in).</summary>
+    (string Name, List<string> Lines, int Next, ulong Frame)? _routeAt;
     /// <summary>The route playing now and the step it's on (//threads).</summary>
     volatile string? _playing;
+    /// <summary>The route playing (PlayLinesAsync), for `//route skip` to wait out.</summary>
+    Task _played = Task.CompletedTask;
+    /// <summary>`//route skip` while a route plays: it stops quietly where it is, and the skip goes on from there.</summary>
+    volatile bool _skipping;
 
     async Task RouteAsync(List<string> a)
     {
         var arg = string.Join(" ", a).Trim();
         if (arg.Equals("stop", StringComparison.OrdinalIgnoreCase))
         {
-            if (_route == null) { _say("No route playing."); return; }
+            if (_route == null)
+            {
+                // (a paused route is forgotten, as its words say)
+                if (_routeAt is { } paused) { _routeAt = null; _say($"Route ended: {paused.Name}."); }
+                else _say("No route playing.");
+                return;
+            }
             _route.Cancel();
             StopWalking();
             return;
         }
         if (arg.Equals("resume", StringComparison.OrdinalIgnoreCase) || arg.Equals("again", StringComparison.OrdinalIgnoreCase))
         {
+            // (playing, it isn't stopped: said so, as a walk's trouble can sound like the route's end)
+            if (_route != null) { _say($"Still playing {_playing ?? "a route"}. //route skip leaves out the step it's on; //route stop stops it."); return; }
             if (_routeAt is not { } at) { _say("No route to resume."); return; }
-            await PlayAsync(at.Name, at.Lines, at.Next);
+            await PlayAsync(at.Name, at.Lines, at.Next, at.Frame);
+            return;
+        }
+        if (arg.Equals("skip", StringComparison.OrdinalIgnoreCase) || arg.Equals("next", StringComparison.OrdinalIgnoreCase))
+        {
+            await SkipAsync();
             return;
         }
         if (arg.Length == 0)
@@ -1911,7 +2105,7 @@ public sealed partial class Commands
 
     /// <summary>A notecard's (or any text's) route played: its `//` lines run one at a time, each walk or teleport
     /// finished before the next; other lines are read as notes. Stops where a step didn't get there, said, and
-    /// `//route resume` goes on from that step.</summary>
+    /// `//route resume` goes on from that step, `//route skip` from the one after (SkipAsync).</summary>
     public async Task PlayRouteAsync(string name, string text)
     {
         var lines = RouteLines(text);
@@ -1922,34 +2116,183 @@ public sealed partial class Commands
     static List<string> RouteLines(string text) => text.Replace("\r\n", "\n").Split('\n')
         .Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
 
-    async Task PlayAsync(string name, List<string> lines, int from)
+    Task PlayAsync(string name, List<string> lines, int from, ulong frame = 0, string? opening = null) =>
+        _played = PlayLinesAsync(name, lines, from, frame, opening);
+
+    /// <param name="frame">The region whose coordinates the line at <paramref name="from"/> is in; 0, hers.</param>
+    /// <param name="opening">Said first, instead of that it's playing or resuming.</param>
+    async Task PlayLinesAsync(string name, List<string> lines, int from, ulong frame, string? opening)
     {
         _route?.Cancel();
         var stop = _route = new CancellationTokenSource();
+        _routeAt = null;   // (playing, nothing's paused)
         int steps = lines.Count(IsCommand);
         int step = lines.Take(from).Count(IsCommand);
-        _say(from == 0 ? $"Playing {name}: {steps} {(steps == 1 ? "step" : "steps")}. //route stop stops." : $"Resuming {name} at step {step + 1} of {steps}.");
+        _playing = $"the route {name}";
+        _say(opening ?? (from == 0 ? $"Playing {name}: {steps} {(steps == 1 ? "step" : "steps")}. //route stop stops." : $"Resuming {name} at step {step + 1} of {steps}."));
+        if (frame == 0) frame = Here();
+        // stopped (by //route stop, walking by hand, //kill) or by //route skip, which says what comes next itself
+        void Stopped(int i, ulong at, string said)
+        {
+            _routeAt = (name, lines, i, at);
+            if (!_skipping) _say(said);
+        }
         try
         {
             for (int i = from; i < lines.Count; i++)
             {
-                if (stop.IsCancellationRequested) { _routeAt = (name, lines, i); _say($"Route stopped before step {step + 1} of {steps}. //route resume goes on."); return; }
+                if (stop.IsCancellationRequested) { Stopped(i, frame, $"Route stopped before step {step + 1} of {steps}. //route resume goes on; //route skip goes on without it."); return; }
                 var line = lines[i];
                 if (!IsCommand(line)) { Quoted($"Note: {line}"); continue; }
                 step++;
                 var verb = line.TrimStart()[2..].TrimStart();
                 if (verb.StartsWith("route", StringComparison.OrdinalIgnoreCase) || verb.StartsWith("record", StringComparison.OrdinalIgnoreCase)) continue;
                 _playing = $"the route {name}, at step {step} of {steps}";
-                _say($"Step {step} of {steps}.");
-                bool ok = await RunAsync(line);
-                if (stop.IsCancellationRequested) { _routeAt = (name, lines, i); _say($"Route stopped at step {step} of {steps}. //route resume does it again."); return; }
-                if (!ok) { _routeAt = (name, lines, i); _say($"Route paused at step {step} of {steps}. //route resume tries it again; //route stop ends it."); return; }
+                // a wait says so where it starts, or a listener takes the quiet for a stall; a run of //pause lines (a
+                // long wait, ten minutes a line) is said once as its total, and a wait under a second isn't said
+                bool waitGoingOn = PauseOf(line) != null && i > from && PauseOf(lines[i - 1]) != null;
+                if (!waitGoingOn)
+                {
+                    double wait = lines.Skip(i).Select(PauseOf).TakeWhile(s => s != null).Sum(s => s!.Value);
+                    _say(wait >= 1 ? $"Step {step} of {steps}: waiting {Walk.RouteRecorder.WaitWords((int)Math.Round(wait))}." : $"Step {step} of {steps}.");
+                }
+                _pointEnd = null;
+                ulong at = frame, began = Here();
+                bool ok = await RunAsync(line, LineFrame(at));
+                if (stop.IsCancellationRequested) { Stopped(i, at, $"Route stopped at step {step} of {steps}. //route resume does it again; //route skip goes on without it."); return; }
+                // (a step to a point that the walk called done well off it: as one that didn't get there)
+                var missed = ok ? PointMissed() : null;
+                if (!ok || missed != null)
+                {
+                    _routeAt = (name, lines, i, at);
+                    _say($"Route paused at step {step} of {steps}{(missed != null ? $": {missed}" : "")}. //route resume tries it again; //route skip goes on without it; //route stop ends it.");
+                    return;
+                }
+                // the next line is in the coordinates of the region this step left her in, as Radegast reads it in the
+                // one she's in (a wait while seated on a ride counts, carried across a border)
+                if (Moves(line) || Here() != began) frame = Here();
                 await Task.Delay(300);
             }
             _routeAt = null;
             _say($"Route finished: {name}.");
         }
         finally { if (_route == stop) { _route = null; _playing = null; } }
+    }
+
+    /// <summary>`//route skip`: the route goes on without the step it's paused or stopped at, from where she is; playing,
+    /// without the step it's on (a walk stopped, a wait cut short, a teleport under way left out once it's over). Said
+    /// with the step it goes on with and what leaving this one out means: a wait goes whole (a long one is several
+    /// lines); a teleport elsewhere takes the steps there with it, up to the route's next teleport, unless she's there
+    /// already (with no teleport after them, nothing's left out, and it says how to go on from there); sitting down,
+    /// standing, takes the ride after it and standing up; a walk across a border leaves the next line in the coordinates
+    /// of the region it went into.</summary>
+    async Task SkipAsync()
+    {
+        if (_route is { } playing)
+        {
+            _skipping = true;
+            try { playing.Cancel(); StopWalking(); await _played; }
+            finally { _skipping = false; }
+        }
+        if (_routeAt is not { } paused) { _say("No route playing or paused, so no step to skip."); return; }
+        var (name, lines, i, frame) = paused;
+        // (stopped between steps: the notes before the next are read, as resuming would)
+        for (; i < lines.Count && !IsCommand(lines[i]); i++) Quoted($"Note: {lines[i]}");
+        if (i >= lines.Count) { _routeAt = null; _say($"Route finished: {name}."); return; }
+        var line = lines[i];
+        var words = Split(line.TrimStart()[2..].TrimStart('/'));
+        var rest = words.Skip(1).ToList();
+        var sim = _ops.Client?.Network.CurrentSim;
+        int steps = lines.Count(IsCommand), first = lines.Take(i + 1).Count(IsCommand), next = i + 1;
+        string what = "", after = "";
+        bool moved = Moves(line);   // (the next step starts from where she is, not where this one would have left her)
+        switch (LineVerb(line))
+        {
+            case "pause":
+                while (next < lines.Count && PauseOf(lines[next]) != null) next++;
+                break;
+            case "tp" when rest.Count > 0 && lines.Skip(next).Any(IsCommand):
+                var region = await TeleportRegionAsync(string.Join(" ", rest));
+                if (region == null) { what = ", a teleport"; after = $": the steps after it were written for where it goes, and you're still in {sim?.Name}"; break; }
+                what = $", the teleport to {region}";
+                if (sim != null && sim.Name.Equals(region, StringComparison.OrdinalIgnoreCase)) { after = ": you're there already"; frame = sim.Handle; break; }
+                // not there: what the route does there can't be done from here
+                int to = next;
+                while (to < lines.Count && LineVerb(lines[to]) != "tp") to++;
+                if (to >= lines.Count)
+                {
+                    _say($"Step {first} of {steps} is the teleport to {region}, and the rest of the route is there; you're in {sim?.Name}. "
+                         + $"//route resume tries the teleport again; once you're in {region} another way, //route skip goes on with step {first + 1}.");
+                    return;
+                }
+                if (lines.Skip(next).Take(to - next).Any(IsCommand)) what += " and the steps there";
+                next = to;
+                after = $": you're in {sim?.Name}";
+                moved = false;
+                break;
+            case "go" when rest.FirstOrDefault()?.Equals("tp", StringComparison.OrdinalIgnoreCase) == true:
+                what = ", a teleport within the region";
+                break;
+            case "go" when GoPoint(rest) is { } p && sim != null:
+                // a walk across a border: the lines after it are in the coordinates of the region it went into
+                var g = InFrame(p, frame, 0);
+                var into = _s.VisibleRegions().FirstOrDefault(w =>
+                {
+                    Utils.LongToUInts(w.Handle, out var wx, out var wy);
+                    return g.X >= wx && g.X < wx + w.SizeX && g.Y >= wy && g.Y < wy + w.SizeY;
+                });
+                if (into == null || into.Handle == frame) break;
+                frame = into.Handle;
+                if (into.Handle != sim.Handle) { what = $", the walk across into {into.Name}"; after = $": you're still in {sim.Name}"; }
+                break;
+            case "sit":
+                var seat = string.Join(" ", rest);
+                what = seat.Equals("ground", StringComparison.OrdinalIgnoreCase) ? ", sitting on the ground" : $", sitting on {seat}";
+                if (_ops.Client?.Self.SittingOn is not 0) break;   // (seated already: what follows goes on as written)
+                // standing: a ride after it (waits and notes before standing up) and the standing up go with it
+                int up = next;
+                while (up < lines.Count && (!IsCommand(lines[up]) || PauseOf(lines[up]) != null)) up++;
+                if (up >= lines.Count || LineVerb(lines[up]) is not ("stand" or "unsit")) break;
+                what += lines.Skip(next).Take(up - next).Any(l => PauseOf(l) != null) ? " and the ride after it" : " and standing up";
+                next = up + 1;
+                break;
+        }
+        int last = lines.Take(next).Count(IsCommand);
+        var which = first == last ? $"step {first} of {steps}" : last == first + 1 ? $"steps {first} and {last} of {steps}" : $"steps {first} to {last} of {steps}";
+        var said = (LineVerb(line) == "pause" ? $"Skipped the wait at {which}." : $"Skipped {which}{what}{after}.")
+                   + (lines.Skip(next).Any(IsCommand) ? $" Going on with step {last + 1}{(moved ? " from where you are" : "")}." : "");
+        WalkNote($"route: skipped {which} ({line}), on from line {next + 1} of {lines.Count}");
+        await PlayAsync(name, lines, next, frame, said);
+    }
+
+    ulong Here() => _ops.Client?.Network.CurrentSim?.Handle ?? 0;
+
+    /// <summary>The frame a route's line is run in (RunAsync): the region whose coordinates it's in, when she's in another
+    /// and that one is in view (a neighbour); 0 otherwise, the line taken in hers, as before (gone far, by a teleport
+    /// since it paused, a point there would be far off).</summary>
+    ulong LineFrame(ulong frame) => frame != 0 && frame != Here() && _s.VisibleRegions().Any(w => w.Handle == frame) ? frame : 0;
+
+    /// <summary>A `//` line's command word, as RunAsync reads it.</summary>
+    static string LineVerb(string line)
+    {
+        var words = Split(line.TrimStart()[2..].TrimStart('/'));
+        return words.Count == 0 ? "" : words[0].ToLowerInvariant().TrimEnd(':');
+    }
+
+    /// <summary>A step that takes her somewhere (as RouteRecorder keeps the frame: a walk, a teleport, sitting, standing).</summary>
+    static bool Moves(string line) => LineVerb(line) is "go" or "tp" or "sit" or "stand" or "unsit";
+
+    /// <summary>A `//go xyz X,Y[,Z]` line's point (or bare `//go X,Y[,Z]`, as GoAsync reads them), from the words after go;
+    /// null for any other.</summary>
+    static Vector3? GoPoint(List<string> a)
+    {
+        if (a.Count == 0) return null;
+        bool xyz = a[0].Equals("xyz", StringComparison.OrdinalIgnoreCase);
+        if (!xyz && a.Count == 1 && !a[0].Contains(',')) return null;
+        var nums = string.Join(",", xyz ? a.Skip(1) : a).Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(n => double.TryParse(n, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : double.NaN).ToList();
+        if (nums.Count < 2 || (!xyz && nums.Count > 3) || nums.Any(double.IsNaN)) return null;
+        return new Vector3((float)nums[0], (float)nums[1], 0);
     }
 
     /// <summary>A notecard by name: the exact name, else the first starting with it, else containing it.</summary>
@@ -1969,9 +2312,20 @@ public sealed partial class Commands
 
     // --- pause, siminfo, parcelinfo, scriptinfo -----------------------------------------------------------------------
 
+    static double PauseSecs(List<string> a) =>
+        a.Count > 0 && double.TryParse(a[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? Math.Clamp(v, 0, 600) : 1;
+
+    /// <summary>How long a `//pause` line waits; null for any other line.</summary>
+    static double? PauseOf(string line)
+    {
+        if (!IsCommand(line)) return null;
+        var words = Split(line.TrimStart()[2..].TrimStart('/'));
+        return words.Count > 0 && words[0].ToLowerInvariant().TrimEnd(':') == "pause" ? PauseSecs(words.Skip(1).ToList()) : null;
+    }
+
     async Task<bool> PauseAsync(List<string> a)
     {
-        double secs = a.Count > 0 && double.TryParse(a[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? Math.Clamp(v, 0, 600) : 1;
+        double secs = PauseSecs(a);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(_route?.Token ?? CancellationToken.None, _kill.Token);
         var until = DateTime.UtcNow.AddSeconds(secs);
         lock (_pauses) _pauses.Add(until);

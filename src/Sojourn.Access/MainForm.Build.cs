@@ -45,7 +45,9 @@ public sealed partial class MainForm
     long _textureNamesAt;
     readonly Dictionary<UUID, (string Key, int Count)> _partFaceCounts = new();
 
-    sealed record ContentItem(UUID Id, string Name, string Type, bool? Running);
+    /// <param name="Out">What taking it into her inventory does: "copy", "move" (no-copy, in an object of hers: it leaves
+    /// the object) or "no" (the region won't give it to her).</param>
+    sealed record ContentItem(UUID Id, string Name, string Type, bool? Running, string Out = "copy");
 
     ContextMenuStrip _contentMenu = null!;
     ContentItem? _contentMenuItem;
@@ -65,7 +67,9 @@ public sealed partial class MainForm
         var open = Item("&Open", OpenContentAsync);
         var run = Item("&Run", ContentRunAsync);
         run.ShortcutKeyDisplayString = "Space";
-        Item("&Copy into your inventory", CopyContentAsync);
+        var copyOne = Item("&Copy into your inventory", CopyContentAsync);
+        // (the viewer's Copy to Inventory, in its Open window: the blind tester copied thirteen sounds one by one, 2026-11-22)
+        Item("Copy &all into your inventory", _ => CopyAllContentAsync());
         var paste = Item("&Paste what you copied", _ => PasteIntoContentAsync());
         paste.ShortcutKeyDisplayString = "Control+V";
         Item("De&lete", RemoveContentAsync);
@@ -75,6 +79,8 @@ public sealed partial class MainForm
             open.Visible = c.Running != null || c.Type == "notecard";
             run.Visible = c.Running != null;
             run.Text = c.Running == true ? "Stop &running" : "Start &running";
+            // a no-copy item leaves the object: said before she picks it, as the viewer warns before moving one
+            copyOne.Text = c.Out == "move" ? "&Move into your inventory (it's no-copy)" : "&Copy into your inventory";
             paste.Visible = _invClip.Count > 0;
         };
         KeysOn(_contentMenu, ("&Open", "Enter"), ("De&lete", "Delete"));
@@ -907,7 +913,7 @@ public sealed partial class MainForm
         Always all of it: duplicate, delete, take, locked, physical, temporary, phantom
         Locked: lock, or locked on, keeps it from being moved or changed by a slip. unlock, or locked off, frees it
         Copying settings: copy from wall takes everything but its name and place, from an object or part of yours. copy colour from part 2. Any of shape, size, rotation, material, colour, texture, features
-        In content: add NAME, remove NAME, copy NAME
+        In content: add NAME, remove NAME, copy NAME into your inventory. copy all: everything inside, into a new folder named for it at the top of your inventory
         Something you wear (Control+B on it in what you wear, Alt+Shift+7): position 0 0 0.1 and rotation are from where it's worn; turn 90 around z turns it there
         export: save what you're editing, all of it, to a file (export as dae, or xml): only what you made yourself. import: rebuild one from a file, 2 metres ahead
         undo, redo. done, or Escape, goes back
@@ -1034,6 +1040,7 @@ public sealed partial class MainForm
             case "add": await AddContentAsync(rest); return;
             case "paste": await PasteIntoContentAsync(); return;
             case "remove" when rest.Length > 0: await RemoveContentNamedAsync(rest); return;
+            case "copy" when CopyAllWords.IsMatch(rest): await CopyAllContentAsync(); return;
             case "copy" when rest.Length > 0:
                 if (System.Text.RegularExpressions.Regex.Match(rest, @"^(?:(?<what>.*?)\s+)?from\s+(?<source>.+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase) is { Success: true } cm
                     && CopyWhat(cm.Groups["what"].Value) is { } what)
@@ -1680,17 +1687,20 @@ public sealed partial class MainForm
         if (PersonOps.Error(r) != null) return null;
         return (r["items"] as JsonArray ?? new()).OfType<JsonObject>()
             .Select(o => new ContentItem(UUID.TryParse(o.Str("item_id"), out var id) ? id : UUID.Zero, o.Str("name") ?? "item", o.Str("type") ?? "item",
-                o["running"] is JsonValue rv && rv.TryGetValue<bool>(out var run) ? run : null))
+                o["running"] is JsonValue rv && rv.TryGetValue<bool>(out var run) ? run : null, o.Str("out") ?? "copy"))
             .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    static string ContentWords(ContentItem c) => $"{c.Name}, {c.Type}{(c.Running is { } r ? r ? ", running" : ", not running" : "")}";
+    static string ContentWords(ContentItem c) => $"{c.Name}, {c.Type}{(c.Running is { } r ? r ? ", running" : ", not running" : "")}"
+        + c.Out switch { "move" => ", no-copy", "no" => ", not yours to copy", _ => "" };
 
     /// <summary>Enter on what's inside: a script or notecard opened to read and change, anything else said.</summary>
     async Task ContentEnterAsync(ContentItem c)
     {
         if (c.Running != null || c.Type == "notecard") { await OpenContentAsync(c); return; }
-        Answer($"{ContentWords(c)}. The Applications key has what you can do with it: Delete removes it, Copy into your inventory puts a copy there.");
+        var take = c.Out == "move" ? "Move into your inventory takes it out of the object, as it's no-copy"
+            : c.Out == "no" ? "Copy into your inventory says why it can't come" : "Copy into your inventory puts a copy there";
+        Answer($"{ContentWords(c)}. The Applications key has what you can do with it: {take}, Copy all copies everything inside, Delete removes it.");
     }
 
     /// <summary>A script's running switch (Space).</summary>
@@ -1720,14 +1730,82 @@ public sealed partial class MainForm
     async Task CopyContentAsync(string name)
     {
         var c = (await ContentsAsync())?.FirstOrDefault(x => x.Name.Contains(name, StringComparison.OrdinalIgnoreCase));
-        if (c == null) { Answer($"Nothing called {name} inside it. To copy a prim's settings: copy from NAME, or copy colour from NAME."); return; }
+        if (c == null) { Answer($"Nothing called {name} inside it. copy all copies everything inside; to copy a prim's settings: copy from NAME, or copy colour from NAME."); return; }
         await CopyContentAsync(c);
     }
 
+    /// <summary>One thing inside copied into her inventory, saying which folder it's in (the blind tester's thirteen sounds
+    /// went into her Sounds folder, each said only as "into your inventory", and she wasn't sure they'd come, 2026-11-22);
+    /// a no-copy one is said as moved out.</summary>
     async Task CopyContentAsync(ContentItem c)
     {
         var r = await _ops.DoAsync("TesselBuild", "copyFromContents", new JsonObject { ["id"] = _buildId.ToString(), ["item_id"] = c.Id.ToString() });
-        Answer(PersonOps.Error(r) is { } e ? $"Not copied: {Theirs(e)}" : $"Copied {c.Name} into your inventory.");
+        if (PersonOps.Error(r) is { } e) { Answer($"Not copied: {Theirs(e)}"); return; }
+        var into = r.Str("folder") is { Length: > 0 } f ? $"into your {f} folder" : "into your inventory";
+        bool moved = r["moved"] is JsonValue mv && mv.TryGetValue<bool>(out var m) && m;
+        Answer(moved ? $"Moved {c.Name} {into}: it's no-copy, so it's no longer inside {ContentHolder()}." : $"Copied {c.Name} {into}.");
+        if (UUID.TryParse(r.Str("folder_id"), out var fid)) RefreshInventory(fid);
+        if (moved && BuildTabName == "Content") await ShowBuildRowsAsync();
+    }
+
+    /// <summary>The prim whose contents the list shows, by name.</summary>
+    string ContentHolder() => Host?.Session.Region?.PrimById(_buildId)?.Properties?.Name is { Length: > 0 } n ? n : "the object";
+
+    static readonly System.Text.RegularExpressions.Regex CopyAllWords = new(
+        @"^(all|everything|it all|all of it|all contents|(the )?contents|everything inside)( (in)?to (my |your |the )?inventory)?$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Everything inside copied into her inventory at once (the Content list's Copy all, `copy all` in the build box), as
+    /// the viewer's Copy to Inventory in its Open window: a new folder named for the thing at the top of her inventory,
+    /// said with how many came, its name and where, and what stayed inside and why (the blind tester copied thirteen
+    /// sounds out of a box one by one and asked for this, 2026-11-22). A no-copy item stays inside, where the viewer moves
+    /// it out after a warning: its own Move into your inventory does that.
+    /// </summary>
+    async Task CopyAllContentAsync()
+    {
+        if (_buildId == UUID.Zero) { Answer("Nothing is being edited: Contents on a thing in Objects, or Control+B, first."); return; }
+        var holder = ContentHolder();
+        Answer($"Copying what's inside {holder} into your inventory.");
+        var r = await _ops.DoAsync("TesselBuild", "copyAllFromContents", new JsonObject { ["id"] = _buildId.ToString() });
+        if (PersonOps.Error(r) is { } e) { Answer($"Not copied: {Theirs(e)}"); return; }
+        Answer(CopiedAllWords(r, holder));
+        if (Store?.RootFolder is { } root) RefreshInventory(root.UUID);
+    }
+
+    static string CopiedAllWords(JsonObject r, string holder)
+    {
+        static List<string> Names(JsonNode? n) => (n as JsonArray)?.OfType<JsonObject>().Select(o => o.Str("name") ?? "item").ToList() ?? new();
+        static string Few(List<string> n) => n.Count <= 6 ? AndList(n) : $"{string.Join(", ", n.Take(5))} and {n.Count - 5} more";
+        int count = r["count"] is JsonValue cv && cv.TryGetValue<int>(out var cn) ? cn : 0;
+        var came = Names(r["copied"]).Count + Names(r["moved"]).Count;
+        var left = Names(r["left"]);
+        var missing = Names(r["missing"]);
+        var words = new List<string>();
+        if (count == 0) return $"Nothing inside {holder} to copy.";
+        if (came > 0 || missing.Count > 0)
+        {
+            var folder = r.Str("folder") ?? holder;
+            var where = r["made"] is JsonValue mv && mv.TryGetValue<bool>(out var made) && !made ? $"the folder {folder}" : $"a new folder, {folder}, at the top of your inventory";
+            words.Add(came == count ? (count == 1 ? $"Copied the one item inside into {where}." : $"Copied all {count} items into {where}.")
+                : came == 0 ? $"Nothing came into {where} yet."
+                : $"Copied {came} of the {count} items into {where}.");
+            if (r["others_called_that"] is JsonValue ov && ov.TryGetValue<int>(out var others) && others > 0)
+                words.Add(others == 1 ? "Another folder there has that name too; this one is the newest." : $"{others} other folders there have that name too; this one is the newest.");
+        }
+        else words.Add("Nothing copied.");
+        if (left.Count > 0)
+            words.Add($"Left inside, as {(left.Count == 1 ? "it's" : "they're")} no-copy and would move out of {holder}: {Few(left)}. "
+                + "Move into your inventory, on one in this list, takes it out.");
+        foreach (var g in (r["refused"] as JsonArray ?? new()).OfType<JsonObject>().GroupBy(o => o.Str("why") ?? "you may not"))
+        {
+            var n = g.Select(o => o.Str("name") ?? "item").ToList();
+            words.Add($"Not copied, {Few(n)}: {g.Key}.");
+        }
+        if (missing.Count > 0)
+            words.Add($"{Few(missing)} hadn't come {(came > 0 ? "10 seconds after the rest" : "after 10 seconds")}; {(missing.Count == 1 ? "it" : "they")} may still, "
+                + "so look in the folder before copying again.");
+        return string.Join(" ", words);
     }
 
     /// <summary>What she copied or cut in the inventory (Control+C or Control+X there) put inside what she's editing:

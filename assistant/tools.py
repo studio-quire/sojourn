@@ -733,14 +733,39 @@ def build(kit: Toolkit, with_escalate: bool, with_help: bool = True, only=None):
             return error(str(e))
 
     @tool("dialogs", "Pending dialogs and offers (script menus, inventory offers, teleport offers, friendship, "
-          "permission requests), with their ids and buttons.", S())
+          "permission requests), with their ids and buttons. A script menu's buttons come in the order the person sees "
+          "them, top row first, left to right, with its rows as shown (a script lists them from the bottom row up); in "
+          "Sojourn Access that's the order they hear and number them in, unless order says they keep the script's.", S())
     async def dialogs(args):
         r = await kit.call("LLNotifications", "listChannelNotifications", channel="Visible")
         out = []
+        listed = None
         for n in r.get("notifications", []):
-            out.append({"id": n.get("id"), "name": n.get("name"), "message": n.get("message"),
-                        "buttons": [b.get("text") or b.get("name") for b in n.get("form", []) if b.get("type") == "button"]})
+            form = [b for b in n.get("form", []) if b.get("type") == "button"]
+            item = {"id": n.get("id"), "name": n.get("name"), "message": n.get("message"),
+                    "buttons": [b.get("text") or b.get("name") for b in form]}
+            rows = (n.get("payload") or {}).get("rows")
+            if n.get("name") in ("ScriptDialog", "ScriptDialogGroup") and rows:
+                if listed is None:
+                    listed = await menu_order_listed()
+                own = [b.get("text") or b.get("name") for b in form if (b.get("index") or 0) >= 0]
+                item["buttons"] = (own if listed else [label for row in rows for label in row]) \
+                    + [b.get("text") or b.get("name") for b in form if (b.get("index") or 0) < 0]
+                item["rows"] = rows
+                if listed:
+                    item["order"] = "as the script lists them, bottom row first (their access_menu_order)"
+            out.append(item)
         return text(out or "no dialogs waiting")
+
+    async def menu_order_listed():
+        """Sojourn Access's person keeps a script menu's own order (access_menu_order: as listed)."""
+        if getattr(kit, "app", None) != "access":
+            return False
+        try:
+            got = await kit.call("SojournSettings", "get", name="access_menu_order")
+            return ((got.get("settings") or {}).get("access_menu_order") or {}).get("value") == "as listed"
+        except ApiError:
+            return False
 
     @tool("answer_dialog", "Answer a pending dialog by id with a button's label (or text for a text box). Granting "
           "a script permissions or joining a group with a fee waits for the person's confirmation.",

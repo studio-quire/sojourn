@@ -44,10 +44,13 @@ public sealed partial class WalkMode
     /// (StuckAsync), written once the names are in; the walk goes on meanwhile. Positions in her region's frame.</summary>
     public void NoteStuck(string head, Vector3 at, float feet, Vector3 toward) => _ = Task.Run(async () =>
     {
+        long stuck = Environment.TickCount64;
         try
         {
             var (line, atFeet) = await StuckAsync(at, feet, toward);
-            Note($"{head}; {line}");
+            // (said when it lands after what followed: a walk's third stick, its teleport and the next step all before it)
+            double late = (Environment.TickCount64 - stuck) / 1000.0;
+            Note($"{head}{(late >= 0.5 ? Inv($" (stuck {late:0.0} s before this line)") : "")}; {line}");
             // (beside it, under the same name: "go", "follow", "assistant's walk", "keep in place's walk back")
             if (atFeet != null) Note($"{head[..Math.Max(0, head.IndexOf(':'))]}: {atFeet}");
         }
@@ -237,6 +240,34 @@ public sealed partial class WalkMode
         return (said, null);
     }
 
+    /// <summary>The first drop the model has on the straight way from <paramref name="at"/> to <paramref name="toward"/>
+    /// deeper than <paramref name="most"/> under her feet: the words for the log, else null. Under a point each metre or
+    /// so on it (LiftedPoints at most), looked down from <paramref name="top"/> (over her feet: the floor of a goal above
+    /// her counts, its edge being where she'd fall from), the model's floor or the ground, whichever is higher; nothing
+    /// within reach counts as too deep. For going on from as near as the way goes to a goal on a floor the model can't
+    /// reach from hers (Commands.OnFromAsync): the worst that walking there straight can do is a fall of that much.</summary>
+    public async Task<string?> DropOnWayAsync(Vector3 at, float feet, Vector3 toward, float most, float top)
+    {
+        var flat = new Vector2(toward.X - at.X, toward.Y - at.Y);
+        float dist = flat.Length(), span = dist - 0.5f;   // (short of the goal: a person standing there isn't a floor)
+        if (span < 0.1f) return null;
+        var dir = new Vector3(flat / dist, 0);
+        top = MathF.Max(top, feet + 0.3f);
+        int n = Math.Min((int)MathF.Ceiling(span / LiftedStep), LiftedPoints);
+        var line = Enumerable.Range(1, n).Select(i => at + dir * (span * i / n)).ToList();
+        var rays = line.Select(p => (new Vector3(p.X, p.Y, top), -Vector3.UnitZ, top - feet + most + 0.3f)).ToList();
+        if (await _rays.CollideManyAsync(rays) is not { } got) return "the model couldn't be asked";
+        for (int i = 0; i < n; i++)
+        {
+            var p = line[i];
+            float? below = got.Hits[i] is { Avatar: false } h ? top - h.Distance : null;
+            if (GroundAt(p.X, p.Y) is { } gp && gp <= top && (below is not { } b0 || gp > b0)) below = gp;
+            if (below is not { } b || b < feet - most)
+                return Inv($"a drop the model has on the way, at {p.X:0.0},{p.Y:0.0}, ") + (below is { } b1 ? Inv($"{feet - b1:0.0} m under her feet") : "nothing under it within reach");
+        }
+        return null;
+    }
+
     /// <summary>LiftedAsync: how far over the model's floor is on something it hasn't got (the planner's own: a floor under
     /// her feet any further down isn't hers); how far down a fall may be; how far ahead the model must have nothing; how
     /// far out her body's edge is; a down ray each LiftedStep on the way there, at most LiftedPoints; how far under what's
@@ -312,10 +343,11 @@ public sealed partial class WalkMode
             _ when p.Nearest is null => Inv($"{p.Triangles} triangles by {p.By}, their corners not numbers, so never met"),
             _ => Inv($"{p.Triangles} triangles by {p.By}, the nearest {p.Nearest:0.00} m from her feet"),
         };
-        // (a mesh's flat hulls have no triangles here; the region may count them as thin plates)
+        // (a mesh's flat hulls count as plates, its decomposition's and its own; its own matters only where it's what's
+        // used: a convex hull shape, or a thin one)
         if (p.Hulls is { } h && (h.Hulls > 0 || h.FlatBase))
-            shape += (h.Hulls > 0 ? Inv($", {h.Hulls} hulls in its decomposition, {h.Flat} of them flat and left out") : "")
-                     + (h.FlatBase ? ", its own hull flat and left out" : "");
+            shape += (h.Hulls > 0 ? Inv($", {h.Hulls} hulls in its decomposition, {h.Flat} of them flat, counted as plates") : "")
+                     + (h.FlatBase ? ", its own hull flat, a plate" : "");
         var box = p.BoxOff < 0.005f ? "her feet in its box" : Inv($"its box {p.BoxOff:0.00} m off");
         return Inv($"{Name(p.Region, prim.LocalID)} ({kind}; the region's physics {type}, {counts}")
                + (marks.Count > 0 ? $"; {string.Join(", ", marks)}" : "")

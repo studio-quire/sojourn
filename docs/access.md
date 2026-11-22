@@ -1219,6 +1219,18 @@ Opus 5.5).
   list and logged, not said (`Safety.OwnRide`). OpenSim sends none, so only Second Life shows it.
 - **The rest**: a train ride over twenty crossings before it, held throughout.
 
+### Script menus in the order they're seen (the blind tester's partner, through Tessel, 2026-11-19)
+
+His notecard and a demo script (our words; not a showstopper, he said): llDialog lays its list out three to a row from
+the bottom up, so a menu's Back, Main and More, usually listed first, are the bottom row a sighted person reads last,
+and Access read the list as given, as Radegast does: her train's Start, listed tenth, was key 0 for her and the top-left
+button for him. He asked for the order sighted people see, so they speak of the same menu the same way. Built
+2026-11-22 (Claude Opus 5.5; `docs/access-app.md` > Keys): the top row first, left to right, numbers, Tab and the
+Applications menu alike, so that Start is 1 now. The layout checked in the official viewer's source: a short row (four
+or five buttons) is the top one, from the left. Her old order stays a setting (Alt+0, General: Script menu buttons'
+order, as listed), as her hands have known it in Radegast for years, and with it a paged menu's Back and Next keep
+their keys from page to page, which as seen they don't when a page is short.
+
 ### Following her partner up his steps, and walking to him (0.1.0.1182, the blind tester, 2026-11-20 evening)
 
 Two logs of one session at his place, `tester-20261120T222432-1d22fc` (17:22 to 17:24, "tried to walk to" him) and
@@ -1236,8 +1248,134 @@ Two logs of one session at his place, `tester-20261120T222432-1d22fc` (17:22 to 
   region's surround sculpts (1024 m boxes, physics none) and a sky sphere, each "the nearest NaN m". A degenerate
   triangle (a sculpt's poles) gave NaN, which sorted first; fixed for 1187 (53559b7), nearest first by triangles, so
   the next log there should name what she stands on on those steps and why the model doesn't count it.
+- **The likeliest causes, fixed and held** (ad4d0e8, reviewed): a mesh's flat decomposition hulls were left out and
+  physics models were met from the front only (Open threads has what's left). In no build yet: her 1187 log at
+  the steps (asked in #329; she said she'd test both ways, #331) shows which, a part under her "by its physics model"
+  or with flat hulls; then build it at once. If it shows something else, that's the lead instead.
 - **The window** held 1.9 s at login building the session log's first line (.NET loading the calendar's data through
   ICU on the window's thread): once a session, left.
+
+### Walks sent above her, a route to her partner, and following that worked (0.1.0.1187, the blind tester, 2026-11-21)
+
+Four logs, snapshots of one session (12:52 to 14:38), with her notes (our words): `tester-20261121T192016-8cb13a` (a
+route recorded while following him at a roller rink, played from a forced landing point to a skating area: it worked),
+`-193350-4126e9` (a walk to him at his place didn't work), `-193521-719186` (following him there worked) and
+`-193826-457ac2` (a route recorded and saved while following him there, played, stopped at step 4 of 6). Read
+2026-11-22 (Claude Opus 5.5 with the lead session's first look).
+- **The walk to him** (14:33:23): from the deck where she lands, his trail taken this time (27 samples, joined 0.7 m
+  west of her), but in 2 s she went a metre east, away from it, and each stretch stuck with nothing in the model
+  ahead at any height. Each ended level with its point north to south and 1.6 to 1.7 m east of it. The cause was ours:
+  every stretch went to the region's autopilot at his height, 2 m over her middle, and Second Life's autopilot leaves
+  her east of a point above her by about that height. All 13 stretches in her logs there since 2026-11-19 that stuck
+  or ended short had it (the point 1 to 5 m over her, 1.0 to 3.3 m east of it, 0.7 to 1.2 times the height, within
+  0.07 m north to south, whichever way they went), the "drifting east" of her log on 1173 among them; the eight walks
+  of this session sent a point at her height all arrived. Sure of the pattern; why Second Life does it, and whether
+  it's east everywhere, isn't known. Fixed: on Second Life a walk sends its autopilot her own height and sends it
+  again as she climbs (`docs/access-app.md` > Walk mode > Paths). So "nothing in the model ahead" was right, and
+  this log says nothing about the steps' shape: she never stood on them in a walk.
+- **Following worked** (14:34:31 and 14:35:52): a follow steers by our own autopilot, by X and Y as the official
+  viewer's does, so the height never reached the region: by his trail up the steps and on his floor in 2 to 4 s.
+- **The route**, "Tessa", recorded while following him up (six steps), played from the landing: step 2 to the
+  steps' foot arrived; step 3, a point at their top 1.7 m over her, out of reach in the model with its way ending
+  where she stood, was sent at that height and she drifted 1.5 m east in 4 s ("as near as the way goes ... 5
+  metres"). Step 4, written without a height (a route keeps her height where the level changed by under a metre since
+  the step before, as Radegast's routes do), so at the deck's, put the point in mid-air between the ground and his
+  floor, and the planner found no spot near enough (no way, three times resumed). It stopped at step 4 because step 3
+  hadn't taken her up. Since 2026-11-22 a route's step to a point that the walk calls done 2.5 m or more across from
+  it, or a floor off it, pauses the route there, said with how far short (`docs/access-app.md` > `//route`): step 3
+  would have stopped it.
+- **A walk to someone who stays put**: with the height fixed, the walk by his trail most likely goes up, as following
+  did. Without a trail (he went up before she came, her four walks on 1182), the walk still ended at the deck's edge.
+  Weighed against her case and decided (Claude Opus 5.5, 2026-11-22): a walk to a person or a point on a floor the
+  model can't reach goes on from as near as the way goes straight to them by the region, trusted, and on their floor
+  is planned again; not where the model has a drop of more than 4 m on the way (`docs/access-app.md` > When the
+  region has what the model lacks > On from as near as the way goes). At his place the straight way from the deck's
+  edge to him runs up the steps, which is why walks aimed at him worked before 2026-11-11. Her route's step 3 goes the
+  same way.
+- **ad4d0e8** (a mesh's flat decomposition hulls as plates, physics models from both sides) goes into the next build:
+  this log neither shows nor rules out its causes, and the at-her-feet line still names what she stands on.
+
+### Sound on the monitor, and a box's sounds copied out one by one (0.1.0.1187, the blind tester, 2026-11-21 evening and 11-22 morning)
+
+Two logs, read 2026-11-22 (Claude Opus 5.5). `tester-20261122T001423-03efe0` (19:10 to 19:14), her note (our words): she
+finally got sounds to play on her monitor with the screen reader in her ears, which she loves. `tester-20261122T150657-90d27d`
+(09:55 to 10:06 the next morning): copying a box's sounds into her inventory, she had to do it one by one and wasn't sure
+it worked; is there a way to copy all of it?
+- **Sound on the monitor**: chosen at 19:13:45 ("Sound on computer monitor ..., 3 of 3"), and the next session opened on
+  it, the screen reader staying on her headset. Nothing to change.
+- **The thirteen sounds**: she got a free box at 09:58 (L$0), had it out at home by 10:03 (it said "Playing..."), opened
+  its Contents and copied thirteen sounds by the item's menu, 10:03:46 to 10:04:58, each said "Copied NAME into your
+  inventory.". All thirteen came: the inventory's own count went from 14759 to 14772 by her next search, and reading it
+  again from the grid dropped nothing. They went into her Sounds folder (a single copy goes to its type's folder), which
+  nothing said; she searched (58 found) and had the inventory read again, still unsure. Now one copied says its folder
+  ("into your Sounds folder"), a no-copy one says it moves, and Copy all into your inventory on the same menu (or `copy
+  all` in the build box) takes everything at once into a new folder named for the thing at the top of her inventory,
+  saying how many came, the folder, and what stayed inside and why (`docs/access-app.md` > Taking what's inside into her
+  inventory: the viewer's semantics, where ours depart, OpenSim's narrower rule). Checked on the local grid only;
+  Second Life's own answer to a whole box at once is hers to show.
+- **At login** (the first log): the window held 5.4 s at Log in (its own processor time 0.4 s, 1.9 GB of her 6.3 free),
+  her slow start as before (4.4 s building the tabs on 11-16, 1.9 s on the session log's first line on 11-20). Its stack
+  was read, but before the session's log began, so only the console had it; those lines now go into the log, so the
+  next one says what it waits on. And 1.0-1.3 s at 19:10:20 in starting incognito's two threads (Thread.StartCore from
+  `Triggers`, by the stack): now started from the pool.
+- Also: a sound at her home the grid hasn't got is asked for again every two minutes, a line each ("not playable (not
+  found)"): a deliberate retry, left.
+
+### Pauses in a recorded route that didn't wait (0.1.0.1187, the blind tester, 2026-11-22)
+
+One log, `tester-20261122T163005-089a5c` (09:54 to 11:28), with her note (our words): she recorded a route and walked
+it, then recorded another trying to add pauses, and the pauses didn't seem to take. She's writing a blog post about a
+forest region with a recorded route its readers can walk. Read the same day (Claude Opus 5.5).
+- **The pauses**: following her partner, she recorded a second route (76 steps), and six times paused the recording,
+  stood 13 to 22 s listening to the place, and went on from the same spot, expecting the played route to wait there.
+  The recorder's pause kept the spot as a point and wrote no wait, and its help's "pause or go on" read as a pause in
+  the route. A route of Tessel's for her, with `//pause` lines, waited as she wanted. Built the same day (Claude Opus
+  5.5; `docs/access-app.md` > Recording a route, > Waits), as told her first (#337): going on within 2 m of where it
+  paused writes a wait as long as the pause, said with how to take it back; Shift+P (`//record wait SECONDS`) writes one
+  without pausing; the help and the pause's own words tell pausing the recording from a wait in the route. Played,
+  a wait says so as its step starts ("Step 17 of 78: waiting 19 seconds.", a long wait's lines once as their total),
+  where it said only its number and went quiet, which a reader of her post could take for a stall.
+- **The first route** (71 steps, recorded the same way): played, it stopped once at step 39 on a forest road, stuck
+  three times with nothing of the model's ahead and the region's autopilot stopping, and went through on `//route
+  resume` from a metre on. The second walked short at steps 67 to 69, each point she had walked to "out of reach ... on
+  another floor" among snowdrift meshes. Both the walk's, not the recording's. Read for the walk (Claude Opus 5.5,
+  2026-11-22): neither is the height sent to Second Life's autopilot (Walks sent above her, above), as each point was
+  at hers. At step 39 her feet were in the box of a snowdrift mesh the model counts by its physics model (its
+  triangles 0.5 m off) and the region held her with nothing of the model's ahead: a physics model met from the front
+  only, which ad4d0e8 ends, is a likely cause, not a sure one. At steps 67 to 69 the points lay on meshes of convex
+  hull physics, two "GR 90 corner"s among them whose own hull is flat, which the model filled with the hull of its
+  drawn shape, 0.5 m over the road, where she had walked recording (at a height the route doesn't keep, so on that
+  hull or not: Open threads); since the same day it counts that flat hull as a plate. Since 2026-11-22 such a step
+  also goes on from as near as the way goes by the region ("Trying straight on to ...").
+- **Two `//record` words it didn't take** before she saved the first one; commands aren't logged, so which is unknown.
+  The answer now names her word ("//record doesn't take ...") and the log keeps it; `end`, `finish` and `done` save,
+  as `stop` did.
+- **A walk recorded as a ride** (`//ride` on foot after her partner, ten minutes, then told): she wants that telling
+  matched to the route for the blog, which nothing does yet.
+
+### A teleport partway down a ski route (0.1.0.1187, the blind tester, 2026-11-22)
+
+One log, `tester-20261122T173905-941fc3` (the same session on to 12:39), with her note (our words): she recorded a
+route and tested it herself, and was teleported at one point without knowing why. Read the same day (Claude Opus 5.5).
+- **Another forest route** (11:20 to 11:28, a card she renamed "Enchanted Forest Slow 2", 78 steps, most likely the one
+  Tessel made her from her description) played through; a teleport home 18 s into its last step, before "Route
+  finished": a line of that card or her own key, which the log doesn't say.
+- **The teleport**: her route "ski" (27 steps, recorded following her partner down a slope at a ski resort, 12:31),
+  played from the resort's landmark at 12:34. Step 4 went 11 m on and 5 m down in 12 stretches; she ended 1.6 m east
+  past the first stretch's point and lower, stuck twice heading back to it with nothing of the model's ahead, and the
+  third stick was the walk's no-way end: "No way to walk to 158.9, 48.5 found: teleporting there." On 1187 the region's
+  autopilot was sent each point's own height, here under her on the slope, and she went east past the point as at her
+  partner's steps, where the points were over her (Walks sent above her, above): most likely the same fault with the
+  point below (one walk, so not sure), which 60478e0's
+  own height ends. The rest of the route walked, at times stuck once and going round.
+- **Two loose ends** after the teleport, looked into (Claude Opus 5.5, 2026-11-22): "No route to resume." a second
+  later was `//route resume` (or "again") arriving while the route still played; nothing of ours sends those words, so
+  most likely hers, typed or recalled (she had used it at 10:54), the walk's going round and no-way end having sounded
+  like a stop. A resume while a route plays now says it's still playing, at which step, with skip and stop, and never
+  restarts anything (with an older pause point kept, it would have cancelled the playing route and gone back there).
+  The stuck line after step 5 began was only late: a stuck line is written once its names come, up to 2 s on, and
+  says so now ("stuck N s before this line"). With it `//route skip` (bba9b8d), so one step that keeps failing no
+  longer blocks a route a reader of her blog plays.
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
@@ -1255,6 +1393,33 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   paragraph keys (a recalled line may be read twice).
 
 ### Open threads (ours, not hers to answer)
+
+- Why the model lacks her partner's steps is still unknown: none of her logs has had her stuck standing on them (her
+  log of 2026-11-21 had her stuck east of them, the autopilot's height, above). A stick on them now lists what's at
+  her feet there.
+- A person or a point whose nearest spot she can get to is 6 to 12 m off (a height between floors counting as
+  distance) is no way unless someone stands at a spot (`PathPlanner.Solve`: the rings go to twice `GoalReach` since
+  837b9ef, but `within` stayed capped at once): her route's step 4, where no way was right, as she wasn't up. Most
+  likely an oversight; left, as a teleport beside a person can serve better than a walk that far short.
+- The collision model's mesh physics (ad4d0e8, 2026-11-20: flat decomposition hulls as plates, physics models from
+  both sides; 2026-11-22: a flat base hull as a plate too, and a mesh under 0.2 m in two sizes as its box, as the
+  viewer's `determinePhysicsShape` has it; both in the build after 1187). Whether the region meets a flat hull as a
+  thin plate or not at all hasn't been seen: the plate is the likelier (its shapes are convex sets with a small
+  radius, which a flat set makes a thin plate, and the drawn shape's hull, which stood in before, comes from nothing
+  the region reads). Either way the model has far less there than before: in a Second Life cache 1322 meshes have a
+  flat base hull, 948 of them uploaded as convex hulls; as a convex hull shape 1236 had been filled whole by the drawn
+  shape's hull (86 more, flat themselves, by their drawn triangles), and the 948's plates are mostly a fraction of the
+  box's face (580 under a twentieth of it); the survey and the plate and box checks are kept in
+  `local/collision-survey` (not in the repo). Her log of 2026-11-22 (Pauses in a recorded route,
+  above) can't tell which, read again (Claude Opus 5.5, 2026-11-22): her route's points at the two "GR 90 corner"s
+  carry no height of their own (a route writes one only for a change of over a metre, and step 64's, a metre up, was
+  one), so she may have walked on the drawn hull's 0.5 m there; and her stick between them, with nothing of the
+  model's ahead, was 0.8 m outside both their boxes (her body's axis 0.77 m from the nearer), so nothing of theirs,
+  plate or hull, held her there. Their assets aren't in our cache, so the plates' places there
+  aren't known. A log of hers with a stick beside such a plate (the at-her-feet line now says "its own hull flat, a
+  plate") would be the first sight of it. Left of the viewer's rules, under 0.2 m either way: a big thin shape's thin
+  side raised to 0.1 m, and a prim or sculpt under 0.2 m boxed. The VR client stops counting a floor the region lets
+  the avatar through; Access has nothing like it, so a wrong floor there stays.
 
 - A follow with neither a planned way nor a trail still steers straight at the one followed, as it always has: in a
   staged run with the visitor flying down, that walked her off a 2 m deck after it, and from a high floor it would be a
@@ -1295,6 +1460,14 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   are the real check.
 
 ### Questions for a blind tester
+
+- Sent with 0.1.0.1206 (2026-11-22), after her logs on 1187 (Walks sent above her; A teleport partway down a ski
+  route): a //go to her partner from where she lands while he stays on his floor, and her route up his steps
+  ("Tessa") again, a log either way; whether the script menus' new order suits her (the old one is a setting).
+
+- Sent with 0.1.0.1187 (#329, 2026-11-20 evening), after her first logs on 1182 (Following her partner up his steps,
+  above): a //go to him from where she lands while he stays put, and a log when it sticks, which now names what's at
+  her feet nearest first.
 
 - Sent with 0.1.0.1182 (#328, 2026-11-19 night), after her logs at her partner's steps and on his boat: whether following him up
   the steps works now (his trail), and a log after any walk there that still fails, which now names what's under her.

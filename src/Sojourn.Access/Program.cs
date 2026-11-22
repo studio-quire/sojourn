@@ -89,8 +89,32 @@ sealed class AccessApp : ApplicationContext
 
     void LogWhileHeld(string line)
     {
-        if (_main?.Host is { } host) host.Log.LogInformation("{Line}", line);
-        else Console.Error.WriteLine($"access: {line}");
+        if (_main?.Host is { } host)
+        {
+            LogEarly(host);
+            host.Log.LogInformation("{Line}", line);
+            return;
+        }
+        Console.Error.WriteLine($"access: {line}");
+        lock (_early) if (_early.Count < 20) _early.Add((DateTime.Now, line));
+    }
+
+    /// <summary>The watch's lines from before the session's log began (a hold at Log in, as the main window builds, and the
+    /// stack read in it), which went only to the console: the blind tester's log of 2026-11-21 opened on a hold of 5.4 s
+    /// whose stack wasn't in it. Put into the session's log once it's there, each with its own time.</summary>
+    readonly List<(DateTime At, string Line)> _early = new();
+
+    void LogEarly(Sojourn.Session.SessionHost host)
+    {
+        (DateTime At, string Line)[] lines;
+        lock (_early)
+        {
+            if (_early.Count == 0) return;
+            lines = _early.ToArray();
+            _early.Clear();
+        }
+        foreach (var (at, line) in lines)
+            host.Log.LogInformation("{Line}", $"(at {at.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)}, before this log began) {line}");
     }
 
     void RestartWhileHeld()
@@ -159,6 +183,7 @@ sealed class AccessApp : ApplicationContext
 
     void Watch()
     {
+        if (_main?.Host is { } host) LogEarly(host);
         if (_main?.Host?.Session is not { } s) return;
         switch (s.Status)
         {

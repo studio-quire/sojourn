@@ -1181,7 +1181,7 @@ def visitor_command(args):
     if not args:
         return 0
     verb, rest = args[0], args[1:]
-    if verb in ("fmenu", "fmenu12", "fmenuchat", "fdance", "ftext", "fperm", "fgive", "offer", "friend") and not rest:
+    if verb in ("fmenu", "fmenu12", "fmenu5", "fmenuchat", "fdance", "ftext", "fperm", "fgive", "offer", "friend") and not rest:
         rest = [tester_id_lookup()]
     elif verb in ("im", "tplure") and not (rest and UUID_RE.match(rest[0])):
         rest = [tester_id_lookup()] + rest
@@ -1800,7 +1800,7 @@ def step_list(run, nonce, tester_id, procs):
         ("a confirmation left waiting", lambda: confirm_left_waiting(run, nonce)),
         ("her own deletes, quick and twice", lambda: own_deletes(run, nonce)),
         ("an item's properties", lambda: item_properties(run, nonce)),
-        ("pasting into what's inside an object", lambda: paste_into_contents(run, nonce)),
+        ("pasting into what's inside an object, and copying all of it out", lambda: paste_into_contents(run, nonce, tester_id)),
         ("inventory", lambda: inventory(run, nonce)),
         ("notecards with things in them", lambda: notecards_embedded(run, nonce, tester_id)),
         ("every part", lambda: parts(run)),
@@ -2276,11 +2276,18 @@ def own_deletes(run, nonce):
             gated(run, "the step's things deleted", "TesselInventory", "delete", 30, ids=left, purge=True)
 
 
-def paste_into_contents(run, nonce):
+def paste_into_contents(run, nonce, tester_id):
     """What she copied in the inventory pasted into an object's Contents (the blind tester's ask, 2026-11-15: objects,
     sounds and scripts by copying and pasting): Control+C on a notecard there, Contents on her box, Control+V: put inside,
-    said; then a script the same way, which asks first as a new script does, and is inside once confirmed."""
+    said; then a script the same way, which asks first as a new script does, and is inside once confirmed. Then all of it
+    copied out at once (her ask, 2026-11-22, after copying thirteen sounds out of a box one by one, each said only as
+    "into your inventory"): with a no-copy card from the visitor inside too, Copy all on the Applications key makes a
+    folder named for the box at the top of her inventory with the card and the script in it, said with the count, the
+    folder and where, and the no-copy card left inside, said with why and what moves it; `copy all` typed does it again,
+    saying another folder has that name; one by one, the folder each went to is said, and the no-copy card's menu says it
+    moves, which it does, said so."""
     notes = api("LLInventory", "getBasicFolderID", ft_name="notecard")["id"]
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
     card, scr, boxname = f"Paste Card {nonce}", f"Paste Script {nonce}", f"Paste Box {nonce}"
     api("TesselInventory", "createNotecard", name=card, text="put me inside", folder_id=notes)
     script = api("TesselInventory", "createScript", 60, name=scr, text='default { state_entry() { llSay(0, "inside"); } }\n')
@@ -2289,6 +2296,15 @@ def paste_into_contents(run, nonce):
 
     def inside():
         return [i.get("name") for i in api("TesselBuild", "contents", 20, id=box, running=False).get("items", [])]
+
+    def called(folder, prefix):
+        """Every item or folder in it whose name starts so, by id (inv_items keeps one of a name)."""
+        r = api("LLInventory", "getDirectDescendants", folder_id=folder)
+        return [k for kind in ("items", "categories") for k, val in (r.get(kind) or {}).items() if (val.get("name") or "").startswith(prefix)]
+
+    def folders_called(name):
+        cats = api("LLInventory", "getDirectDescendants", folder_id=root).get("categories") or {}
+        return [k for k, val in cats.items() if val.get("name") == name]
 
     def contents_of_box():
         key("alt+7")
@@ -2327,13 +2343,71 @@ def paste_into_contents(run, nonce):
             key("esc")
         run.check("(both inside, the notecard kept in the inventory too)", card in inside() and scr in inside() and card in inv_items(notes),
                   "; ".join(inside()))
+
+        # ---- all of it copied out, with a no-copy card from the visitor inside too
+        nc = f"Paste No Copy {nonce}"
+        m = mark()
+        v(f"nocopycard {nc} {tester_id}")
+        if not run.expect("(the visitor offers a no-copy card)", [nc], m, NOTICE_SECS) or not open_newest_notice(run, [nc]):
+            return
+        key("1")
+        nc_id = wait(lambda: inv_items(notes).get(nc), 10)
+        if not run.check("(kept, in Notecards)", nc_id, ", ".join(inv_items(notes))):
+            return
+        api("TesselBuild", "addToContents", 20, id=box, item_id=nc_id)
+        listed = wait(lambda: next((i for i in api("TesselBuild", "contents", 20, id=box, running=False).get("items", []) if i.get("name") == nc), None), 8) or {}
+        if not run.check("(the no-copy card inside, one that would move out)", listed.get("out") == "move", json.dumps(listed)[:300]):
+            return
+        if not run.check("(the box's Contents open, to copy it all out)", contents_of_box(), focus_label()):
+            return
+        select_in("id=buildRows", f"{card}, notecard")
+        key("apps")
+        names = menu_names()
+        if not run.check("its Applications key has Copy all into your inventory", "Copy all into your inventory" in names, "; ".join(names)):
+            key("esc")
+            return
+        m = mark()
+        key("a")
+        run.expect("Copy all says it's copying", [f"Copying what's inside {boxname}"], m, 4)
+        run.expect("then how many came, into a folder named for the box at the top, and the no-copy card left inside, why and what moves it",
+                   ["Copied 2 of the 3 items into a new folder", boxname, "at the top of your inventory", "Left inside", "no-copy", nc,
+                    "Move into your inventory"], m, 30)
+        made = wait(lambda: folders_called(boxname), 8) or []
+        got = inv_items(made[0]) if made else {}
+        run.check("the folder at the top of the inventory holds the card and the script, not the no-copy card",
+                  card in got and scr in got and nc not in got, ", ".join(got) or "no folder")
+        run.check("and the no-copy card is still inside", nc in inside(), "; ".join(inside()))
+        m = mark()
+        build_cmd("copy all")
+        run.expect("copy all typed does it too, saying another folder has that name", ["Copied 2 of the 3", "Another folder there has that name too"], m, 30)
+        run.check("(two folders of that name now)", wait(lambda: len(folders_called(boxname)) == 2, 8), str(folders_called(boxname)))
+
+        # one by one: the folder each went to said; the no-copy card's menu says it moves, and it does
+        if not run.check("(the box's Contents open again)", contents_of_box(), focus_label()):
+            return
+        select_in("id=buildRows", f"{card}, notecard")
+        key("apps")
+        wait(lambda: find("type=MenuItem;name~=Copy into"), 4)
+        m = mark()
+        key("c")
+        run.expect("Copy into your inventory names the folder it went to", [f"Copied {card} into your Notecards folder"], m, 25)
+        select_in("id=buildRows", f"{nc}, notecard, no-copy")
+        key("apps")
+        names = menu_names()
+        if run.check("on the no-copy card the menu says it moves", "Move into your inventory (it's no-copy)" in names, "; ".join(names)):
+            m = mark()
+            key("m")
+            run.expect("and it's said as moved, where to, and that it's out of the box", [f"Moved {nc} into your Notecards folder", "no longer inside", boxname], m, 25)
+            run.check("it's gone from the box and in Notecards", wait(lambda: nc not in inside(), 8) and nc in inv_items(notes), "; ".join(inside()))
+        else:
+            key("esc")
     finally:
         inv_search_off()
         back_to_chat()
         api("TesselBuild", "take", 30, ids=[box], folder_id=notes)
         time.sleep(1)
         scripts = api("LLInventory", "getBasicFolderID", ft_name="lsltext")["id"]
-        left = [i for f in (notes, scripts) for n, i in inv_items(f).items() if n and n.startswith("Paste ")]
+        left = [i for f in (notes, scripts) for i in called(f, "Paste ")] + folders_called(boxname)
         if left:
             gated(run, "the step's things deleted", "TesselInventory", "delete", 30, ids=left, purge=True)
 
@@ -3884,18 +3958,58 @@ def notice_menu(run, tester_id):
         n = visitor_n()
         key("2")
         run.heard_by_visitor("2 on the list answers Green", lambda d: d["msg"] == "picked Green", n, 10, "picked Green")
-    # a menu of twelve (a script's most): after 1 to 9 and 0, minus and equals press the 11th and 12th
-    for k, pick in (("minus", "Next"), ("equals", "Back")):
+    # a menu of twelve (a script's most), keys as it's seen, top row first (the script lists the bottom row first): after 1
+    # to 9 and 0, minus and equals press the 11th and 12th, the bottom row's last two
+    for k, pick in (("minus", "Two"), ("equals", "Three")):
         back_to_chat()
         time.sleep(1)
         m = mark()
         v(f"fmenu12 {tester_id}")
         if run.expect(f"(a menu of twelve announced, for {k})", ["Access Long Menu"], m, NOTICE_SECS) and open_newest_notice(run, ["Access Long Menu"]):
             sel = selection("id=notices")
-            run.check("its keys read to the last: 0 Ten, minus Next, equals Back", "0 Ten, minus Next, equals Back" in sel, sel)
+            run.check("its keys read top row first, to the last: 1 Ten, 2 Next, 3 Back, 4 Seven ... 0 One, minus Two, equals Three",
+                      "Keys: 1 Ten, 2 Next, 3 Back, 4 Seven," in sel and "0 One, minus Two, equals Three" in sel, sel)
             n = visitor_n()
             key(k)
             run.heard_by_visitor(f"{k} answers {pick}", lambda d, p=pick: d["msg"] == f"picked {p}", n, 10, f"picked {pick}")
+    # a menu of five (a paged menu's last page, Back, Main and More listed first): the official viewer's short row is the
+    # top one, from the left, so its keys go Tea, Cake, then the bottom row; its buttons, its Applications menu and the
+    # agent API's rows the same; with access_menu_order as listed, the script's own order (Radegast's)
+    for order, keys, k in (("as seen", "1 Tea, 2 Cake, 3 Back, 4 Main, 5 More", "1"), ("as listed", "1 Back, 2 Main, 3 More, 4 Tea, 5 Cake", "4")):
+        if order == "as listed":
+            setting("access_menu_order", order)
+        try:
+            back_to_chat()
+            time.sleep(1)
+            m = mark()
+            v(f"fmenu5 {tester_id}")
+            if not (run.expect(f"(a menu of five announced, {order})", ["Access Short Menu"], m, NOTICE_SECS)
+                    and open_newest_notice(run, ["Access Short Menu"])):
+                continue
+            sel = selection("id=notices")
+            run.check(f"{order}: its keys {keys}", f"Keys: {keys}, B Block" in sel, sel)
+            if order == "as seen":
+                buttons = sorted((d for d in find("type=Button") if re.fullmatch(r"noticeButton\d+", d["id"])), key=lambda d: int(d["id"][12:]))
+                names = [d["name"] for d in buttons]
+                run.check("its buttons (Tab) the same: 1: Tea, 2: Cake, 3: Back, 4: Main, 5: More",
+                          names[:5] == ["1: Tea", "2: Cake", "3: Back", "4: Main", "5: More"], "; ".join(names))
+                note = next((n for n in api("LLNotifications", "listChannelNotifications", channel="Visible").get("notifications") or []
+                             if "Access Short Menu" in (n.get("message") or "")), {})
+                rows = (note.get("payload") or {}).get("rows")
+                run.check("the agent API's payload has its rows as seen, the short one on top", rows == [["Tea", "Cake"], ["Back", "Main", "More"]], str(rows))
+                key("apps")
+                if run.check("(its Applications menu)", menu_open("Tea"), focus_label()):
+                    run.check("its Applications menu the same: Tea on 1, Back on 3",
+                              menu_keys("type=MenuItem;name=Tea").endswith("1") and menu_keys("type=MenuItem;name=Back").endswith("3"),
+                              f'{menu_keys("type=MenuItem;name=Tea")}; {menu_keys("type=MenuItem;name=Back")}')
+                    key("esc")
+                    time.sleep(0.5)
+            n = visitor_n()
+            key(k)
+            run.heard_by_visitor(f"{k} answers Tea", lambda d: d["msg"] == "picked Tea", n, 10, "picked Tea")
+        finally:
+            if order == "as listed":
+                setting("access_menu_order", "as seen")
     # Control alone is the screen reader's own key to stop speech: a notice silenced that way was meant to be, and
     # isn't said again (as one cut off by another key is)
     back_to_chat()
@@ -6376,7 +6490,7 @@ def reader_follows(run, folder_name):
 
 def inventory(run, nonce):
     # fixtures through the agent API, as any program would make them: a folder for this run with two notecards and a
-    # folder in it, and a crate (a box with a notecard inside) taken into it
+    # folder in it, and a crate (a box with two notecards inside) taken into it
     root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
     test_name, moved_name, crate_name = f"Access Test {nonce}", f"Access Moved {nonce}", f"Access Crate {nonce}"
     note1, note2 = f"Access Note {nonce} one", f"Access Note {nonce} two"
@@ -6386,7 +6500,9 @@ def inventory(run, nonce):
     api("TesselInventory", "createNotecard", name=note2, text="second note", folder_id=folder)
     x, y, z, _ = tester_where()
     crate = api("TesselBuild", "create", 20, shape="box", pos=[x - 2, y + 2, z], scale=[0.4, 0.4, 0.4], name=crate_name)["id"]
-    api("TesselBuild", "addToContents", 20, id=crate, item_id=n1)
+    crate_note = f"Access Inside {nonce}"
+    n3 = api("TesselInventory", "createNotecard", name=crate_note, text="inside the crate", folder_id=folder)["item_id"]
+    api("TesselBuild", "addToContents", 20, id=crate, item_ids=[n1, n3])
     api("TesselBuild", "take", 30, ids=[crate], folder_id=folder)
     have = wait(lambda: (lambda i: i if crate_name in i else None)(inv_items(folder)), 10)
     if not run.check("(fixtures: a folder, notecards, a crate in it)", have, ", ".join(have or {}) or "the crate never arrived"):
@@ -6517,9 +6633,10 @@ def inventory(run, nonce):
     key("apps")
     time.sleep(0.6)
     key("u")
-    run.expect("Applications key, U: unboxed into a folder", [f"Unboxed {crate_name}", "1 of 1"], m, 30)
+    # (copyAllFromContents: the folder waited for until the inventory service lists it, then both sent at once)
+    run.expect("Applications key, U: unboxed into a folder", [f"Unboxed {crate_name}", "2 of 2"], m, 30)
     box_folder = wait(lambda: inv_items(root).get(crate_name), 4)
-    run.check("the folder has what was inside", box_folder and wait(lambda: note1 in inv_items(box_folder), 4),
+    run.check("the folder has both things that were inside", box_folder and wait(lambda: {note1, crate_note} <= set(inv_items(box_folder)), 4),
               ", ".join(inv_items(box_folder)) if box_folder else "no folder named for the crate at the top")
     left = wait(lambda: not api("TesselObjects", "nearby", dist=10, query=crate_name).get("objects"), 5)
     run.check("and the box is put away", left, "gone" if left else "still out")
@@ -13124,6 +13241,9 @@ def walk_unseen_steps(run):
       on the slab, never "no way down";
     - it takes off on the slab and hovers 5 m up, 3 m on from where it left the ground: //follow hears it's above her
       with no way up, never "Going the way" (its way ends where it took off, where the follow had held her);
+    - it's teleported up onto the deck and stands there, so with no way of its own to take: //go person from the slab
+      walks as near as the way goes, then "Trying straight on to ...", up the steps by the region's autopilot, and
+      finishes beside it on the deck, no teleport ("go: trusting the region, as near as the way goes ...");
     - stood on the fourth step in a pocket the model hasn't got (the walls either side and one more across the steps
       behind her: without it the region slid her along the east wall and round its end), //go xyz to a point east past
       the wall, with a post (in the model) on the way: the plan, carried on level from her feet with nothing under her
@@ -13294,6 +13414,26 @@ def walk_unseen_steps(run):
         landed = wait(lambda: visitor_where()[2] < F + 1.6 or v("fly off") and False, 10, 0.5)
         run.check("(the visitor down on the slab again, not flying)", landed, f"its middle {visitor_where()[2] - F:+.1f} m over the slab")
 
+        # the visitor standing still up on the deck, put there by a teleport, so with no way of its own to take (her
+        # partner up his steps before she came: her logs of 2026-11-20 and 21, "no trail of theirs to take"): //go person
+        # from the slab south of the steps walks as near as the way goes, then straight on by the region ("Trying
+        # straight on to ..."), up the steps the model hasn't got, and finishes beside it on the deck, no teleport
+        visitor_tp(hx + 5, hy + 8.5, D + 1)
+        place(5, -1.5, F + 1, "on the slab south of the steps, the visitor teleported up onto the deck")
+        m = mark()
+        say_in_app(f"//go person {VISITOR[0]}")
+        run.expect("//go to the visitor standing on the deck with no way of its to take: out of reach, as near as the way goes",
+                   ["Walking", VNAME, "out of reach"], m, 10)
+        run.expect("then straight on to it by the region", ["Trying straight on to", VNAME], m, 30)
+        done(m, 40)
+        time.sleep(1.5)
+        x, y, z = walk_pos()
+        vx, vy, _ = visitor_where()
+        said = said_in(m, "")
+        run.check("up the steps the model hasn't got, finished beside it on the deck, no teleport",
+                  any(s.startswith("Finished walking") for s in said) and z > D + 0.5 and math.dist((x, y), (vx, vy)) < 2.6 and not any("eleport" in s for s in said),
+                  f"at {x - hx:.1f}, {y - hy:.1f}, its middle {z - D:+.1f} m over the deck, {math.dist((x, y), (vx, vy)):.1f} m from the visitor; " + " | ".join(said))
+
         # stood on the fourth step, in a pocket the model hasn't got (the walls either side, one more across the steps
         # behind her: the region slid her along the east wall and round its end the first time), //go to a point east
         # past the wall, a post (in the model) on the way: its plan, carried on level from her feet, goes round the post
@@ -13330,6 +13470,10 @@ def walk_unseen_steps(run):
         run.check("the session log: the walk by their trail, why, from where", by and "their floor out of reach" in by and "(feet " in by, (by or "none")[:400])
         flew = next((l for l in lines if "follow: " in l and "no trail of theirs to take (flying since" in l), None)
         run.check("the session log: no trail of the visitor's while it hovers, as it's flying", flew, (flew or "none")[:400])
+        none = next((l for l in lines if "go: " in l and "no trail of theirs to take" in l), None)
+        onfrom = next((l for l in lines if "go: trusting the region, as near as the way goes" in l), None)
+        run.check("the session log: the walk to it on the deck had no trail of its to take, and went on from as near as the way goes by the region",
+                  none and onfrom, " | ".join(x[:300] for x in (none, onfrom) if x) or "none")
         trust = next((l for l in lines if "go: trusting the region, her feet" in l), None)
         end = next((l for l in lines if "go: trusting the region, no nearer" in l or "go: trusting the region, there" in l), None)
         stuck = next((l for l in lines if "lifted, so trusting the region" in l), None)
@@ -14893,10 +15037,19 @@ def route_recording(run):
     """Recording a route by walking it (Walk/RouteRecorder.cs, MainForm.Routes.cs; docs/access-app.md > Walk mode >
     Recording a route): in walk mode R starts recording; held Up walks north through the doorway, four taps of Right turn
     east, held Up walks on; a teleport into another region by //tp; R says how it's going; N adds a note (Backspace takes
-    it back, N again); Shift+R asks a name and saves it in Routes. The notecard: a line saying where it starts, few
-    //go xyz lines (one in the doorway, one at the turn), the teleport as an SLurl, the note. Then from the start again,
-    //route plays it, arriving where the walk ended. The points' ticks are counted (and their lines heard, walk_route
-    both for the step). Needs no renderer."""
+    it back, N again); Shift+R asks a name and saves it in Routes. Waits (the blind tester's forest route, 2026-11-22): P
+    pauses and P again on the spot is a wait as long, said, Backspace taking it back; again, kept, R counting it; a pause
+    gone on 4 m off a walk with no wait; Shift+P asking for 2 seconds; `//record wait 12 minutes` two steps, one
+    `//record undo` taking both. The notecard: a line saying where it starts, few //go xyz lines (one in the doorway, one
+    at the turn), the kept wait right after the point where it paused and Shift+P's after it, the teleport as an SLurl,
+    the note. Then from the start again, //route plays it, as many steps as saved, its wait said as one ("Step 6 of 9:
+    waiting 4 seconds.") and standing still as long, arriving where the walk ended. Then a notecard route of waits and
+    points: two //pause lines said once as their total, a note, a wait of its own, and a point on a wide plinth with no
+    steps, ended at its foot as near as the way goes, where the route pauses saying how far short and that //route skip
+    goes on without it, its next step not played; //route skip goes on with that step, a wait of 30 s, where //route
+    resume says it's still playing and //route skip cuts it short, the last step walked to its point; with no route
+    left, //route skip says so. The points' ticks are counted (and their lines heard, walk_route both for the step).
+    Needs no renderer."""
     bx, by = ROUTE_COURSE
     tester_id = api("LLAgent", "getID")["id"]
     back_to_chat()
@@ -14956,9 +15109,72 @@ def route_recording(run):
         run.check("a point kept in the doorway, said so", any("doorway" in h for h in heard), "; ".join(heard) or "none")
         run.check("and one at the turn", any("turn" in h for h in heard), "; ".join(heard) or "none")
 
+        # waits (her forest route, 2026-11-22: she paused to listen and the played route didn't): a pause gone on where
+        # it began is a wait as long, said with how to take it back; one gone on from further off is a walk, no wait;
+        # Shift+P asks for one
+        def paused(what):
+            m = mark()
+            key("p")
+            return run.expect(what, ["Recording paused", "the route waits here as long as you were paused"], m, 5)
+
+        def waited(what, secs):
+            m = mark()
+            key("p")
+            got = run.expect(what, ["Recording again. The route waits", "seconds here", "Backspace takes it back"], m, 5)
+            n = int(re.search(r"waits (\d+) seconds", got["text"])[1]) if got else 0
+            run.check(f"(as long as it was paused: {secs} s and the keys)", secs <= n <= secs + 3, f"{n} s")
+            return n
+
+        pause_at = tester_where()[:2]
+        paused("P pauses, saying going on here makes a wait")
+        time.sleep(3)
+        w1 = waited("P again on the spot: a wait as long, said with Backspace", 3)
+        m = mark()
+        key("back")
+        run.expect("Backspace takes the wait back", [f"Took back the wait of {w1} seconds"], m, 5)
+        paused("(paused again)")
+        time.sleep(4)
+        w2 = waited("(on again: the wait kept)", 4)
+        m = mark()
+        key("r")
+        run.expect("R counts it", ["Recording:", f"one a wait of {w2} seconds"], m, 5)
+        paused("(paused, to go on from further off)")
+        hold(38, lambda: walk_pos()[0] > east + 4, 8)
+        m = mark()
+        key("p")
+        run.expect("going on 4 m from the pause: no wait, a walk to here", ["Recording again.", "so the route doesn't wait there", "walks on to here"], m, 5)
+        east = tester_where()[0]
+        m = mark()
+        key("shift+p")
+        if run.check("Shift+P asks for a wait's seconds", wait_focus(lambda d: d["id"] == "answer", 5), focus_label()):
+            u("set id=answer |")
+            type_text("2", "id=answer")
+            wait(lambda: value_of("id=answer") == "2", 3, 0.2)
+            key("enter", target="id=answer")
+            run.expect("a wait of 2 seconds here, said", ["The route waits 2 seconds here", "Backspace takes it back"], m, 5)
+            wait_focus(lambda d: d["id"] == "walkPad", 5)
+
         # a teleport into another region, typed in Say (recording goes on outside walk mode)
         key("esc")
         wait_focus(lambda d: d["id"] == "chatInput", 5)
+
+        # //record wait, a long one over two //pause lines: two steps, and one take-back
+        def steps_now():
+            m = mark()
+            say_in_app("//record")
+            got = run.expect("(//record: how it's going)", ["Recording:", "steps"], m, 5)
+            return int(re.search(r"(\d+) steps", got["text"])[1]) if got else -1
+
+        before = steps_now()
+        m = mark()
+        say_in_app("//record wait 12 minutes")
+        run.expect("//record wait 12 minutes, said", ["The route waits 12 minutes here", "//record undo takes it back"], m, 5)
+        run.check("over ten minutes: two //pause lines, two steps", steps_now() == before + 2, f"from {before}")
+        m = mark()
+        say_in_app("//record undo")
+        run.expect("//record undo takes it back whole", ["Took back the wait of 12 minutes"], m, 5)
+        run.check("(two steps fewer)", steps_now() == before, f"{before} before")
+
         m = mark()
         say_in_app("//tp %s/%d/%d/%d" % ROUTE_TP)
         run.expect("(a teleport into another region while recording)", ["Arrived", ROUTE_TP[0]], m, 40)
@@ -15000,6 +15216,7 @@ def route_recording(run):
         saved = run.expect("saved in Routes, said with how to play it", [f"Saved {name}", "Routes", f"//route {name} plays it"], m, 20)
         if not saved:
             return
+        saved_steps = int(re.search(r"(\d+) steps", saved["text"])[1])
         key("esc")
         wait_focus(lambda d: d["id"] == "chatInput", 5)
 
@@ -15012,7 +15229,18 @@ def route_recording(run):
         gos = [tuple(float(n) for n in mm[1].split(",")) for l in lines if (mm := re.match(r"//go xyz (-?[\d.]+,-?[\d.]+(?:,-?[\d.]+)?)$", l))]
         run.check("the notecard is in Routes", card, f"Routes {routes}; {name} {card}")
         run.check("it starts by saying where", lines and lines[0].startswith(f"Starts in {COURSE_REGION}"), lines[0] if lines else "empty")
-        run.check("few //go xyz lines, not every step: the start, the doorway, the turn, the end", len(gos) == 4, f"{len(gos)}: {gos}")
+        run.check("few //go xyz lines, not every step: the start, the doorway, the turn, the pause, where it went on",
+                  len(gos) == 5, f"{len(gos)}: {gos}")
+        at = {l: i for i, l in enumerate(lines)}
+        i1, i2 = at.get(f"//pause {w2}", -1), at.get("//pause 2", -1)
+        gos_at = None
+        if i1 > 0 and (mm := re.match(r"//go xyz (-?[\d.]+),(-?[\d.]+)", lines[i1 - 1])):
+            gos_at = math.dist((float(mm[1]), float(mm[2])), pause_at)
+        run.check(f"the kept wait as //pause {w2}, right after the point where it paused",
+                  gos_at is not None and gos_at < 1.2, f"line {i1}, after {lines[i1 - 1] if i1 > 0 else '-'}; paused at {pause_at[0]:.1f}, {pause_at[1]:.1f}")
+        run.check("Shift+P's //pause 2 after it, before the teleport, and nothing else waits",
+                  i1 < i2 < next((i for i, l in enumerate(lines) if l.startswith("//tp ")), -1)
+                  and sum(l.startswith("//pause") for l in lines) == 2, " | ".join(l for l in lines if l.startswith("//pause")))
         run.check("none where the walk never went (past where it stopped)", all(p[1] < north + 0.6 and p[0] < east + 0.6 for p in gos),
                   f"stopped at y {north:.1f} going north, x {east:.1f} going east: {gos}")
         run.check("one in the doorway", any(abs(p[0] - bx) < 0.8 and abs(p[1] - (by + 5)) < 1.0 for p in gos), str(gos))
@@ -15028,10 +15256,16 @@ def route_recording(run):
         time.sleep(2)
         m = mark()
         say_in_app(f"//route {name}")
-        run.expect("//route plays it at once", [f"Playing {name}"], m, 15)
+        run.expect("//route plays it at once, as many steps as saved", [f"Playing {name}: {saved_steps} steps"], m, 15)
         run.expect("its start read as a note", ["Note: Starts in"], m, 10)
         done = run.expect("and finishes", [f"Route finished: {name}"], m, 120)
         run.expect("the note read on arriving", ["Note: the end of the walk"], m, 5)
+        # the kept wait played: its step says it's a wait, and stands still that long before the next
+        k = sum(1 for l in lines[:i1 + 1] if l.startswith("//")) if i1 > 0 else 0
+        t = {e["text"]: e["t"] for e in said_since(m) if (e.get("text") or "").startswith("Step ")}
+        a, b = t.get(f"Step {k} of {saved_steps}: waiting {w2} seconds."), t.get(f"Step {k + 1} of {saved_steps}.")
+        run.check(f"the played route says its wait, and waits there {w2} s (step {k})", a and b and b - a >= w2 * 1000 - 300,
+                  f"{(b - a) / 1000:.1f} s" if a and b else f"steps {k}, {k + 1} not both said so: " + " | ".join(t))
         time.sleep(1.5)
         here = api("LLAgent", "getPosition")["global"][:2]
         off = math.dist(here, end)
@@ -15040,6 +15274,67 @@ def route_recording(run):
         if not done:
             print("     (said: " + " | ".join(e.get("text") or "" for e in said_since(m))[-1500:] + ")")
         delete_by_search(run, name)
+
+        # a route's waits said where they start, and a step to a point that the walk calls done well off it pausing the
+        # route (the blind tester's routes on 1187: a //pause step said only "Step 17 of 78." and went quiet; her route
+        # up her partner's steps went on from east of the steps' top): two //pause lines, one wait said once as its total;
+        # a note; a wait of its own; a point on a wide plinth with no steps, walked as near as the way goes to its foot,
+        # where the route pauses, saying how far short, its next step not played
+        m = mark()
+        say_in_app(f"//tp {COURSE_REGION}/{bx}/{by}/{g + 1.5:.0f}")
+        run.expect("(back to the start)", ["Arrived", COURSE_REGION], m, 40)
+        px, py = bx, by - 12
+        ids.append(api("TesselBuild", "create", 20, shape="box", name="Route Plinth", pos=[px, py, g + 0.5], scale=[6, 6, 1])["id"])
+        wait(lambda: api("SojournCollision", "collide", **{"from": [px, by - 2, g + 0.5], "dir": [0, -1, 0], "max": 12}).get("hit"), 30, 1)
+        waits = f"Waits {uuid.uuid4().hex[:6]}"
+        card2 = api("TesselInventory", "createNotecard", name=waits, folder_id=routes,
+                    text=f"//pause 2\n//pause 1\na note between\n//pause 1\n//go xyz {px},{py},{g + 2:.1f}\n//pause 30\n//go xyz {bx},{by}").get("item_id")
+        m = mark()
+        say_in_app(f"//route {waits}")
+        run.expect("(//route plays it: 6 steps)", [f"Playing {waits}: 6 steps"], m, 15)
+        first = run.expect("a run of //pause lines said once where it starts, as its total", ["Step 1 of 6: waiting 3 seconds."], m, 10)
+        third = run.expect("after the note, a wait of its own", ["Step 3 of 6: waiting 1 second."], m, 10)
+        run.check("(played as long: 3 s before it)", first and third and third["t"] - first["t"] >= 2700,
+                  f"{(third['t'] - first['t']) / 1000:.1f} s" if first and third else "")
+        missed = run.expect("a step walked as near as the way goes, well short of its point: the route pauses, saying how far and what goes on",
+                            ["Route paused at step 4 of 6: it ended", "short of its point", "//route resume tries it again",
+                             "//route skip goes on without it"], m, 60)
+        steps_said = [e.get("text") or "" for e in said_since(m) if (e.get("text") or "").startswith("Step ")]
+        run.check("the wait's second line and the step after the miss not said", not any(s.startswith(("Step 2 of 6", "Step 5 of 6")) for s in steps_said),
+                  " | ".join(steps_said))
+        if not missed:
+            print("     (said: " + " | ".join(e.get("text") or "" for e in said_since(m))[-1500:] + ")")
+        else:
+            # //route skip on the paused route: on with the next step from where she stands; and again while that step,
+            # a wait of 30 s, plays: the wait cut short, and the last step walked back to the start
+            m = mark()
+            say_in_app("//route skip")
+            run.expect("//route skip: the step left out, said, and the next one named", ["Skipped step 4 of 6.", "Going on with step 5 from where you are."], m, 10)
+            started = run.expect("(the next step plays: the wait)", ["Step 5 of 6: waiting 30 seconds."], m, 10)
+            # (a resume while it plays, as one came in her ski route on 1187 while a walk teleported by its fallback:
+            # said to be playing, nothing restarted)
+            m = mark()
+            say_in_app("//route resume")
+            run.expect("//route resume while it plays: still playing, said with skip and stop",
+                       [f"Still playing the route {waits}, at step 5 of 6.", "//route skip leaves out the step it's on"], m, 8)
+            m = mark()
+            say_in_app("//route skip")
+            run.expect("//route skip while a wait plays: the wait left out", ["Skipped the wait at step 5 of 6.", "Going on with step 6."], m, 10)
+            last = run.expect("(the last step starts at once)", ["Step 6 of 6."], m, 10)
+            run.check("the wait cut short, not waited out", started and last and last["t"] - started["t"] < 8000,
+                      f"{(last['t'] - started['t']) / 1000:.1f} s after it started" if started and last else "")
+            done = run.expect("and the route finishes", [f"Route finished: {waits}"], m, 60)
+            time.sleep(1)
+            here = api("LLAgent", "getPosition")["region"][:2]
+            run.check("at the last step's point, walked from the plinth's foot", done and math.dist(here, (bx, by)) < 2.5,
+                      f"{math.dist(here, (bx, by)):.1f} m from it")
+            stray = [e.get("text") or "" for e in said_since(m) if (e.get("text") or "").startswith("Route stopped")]
+            run.check("(the skip said no stop of its own)", not stray, " | ".join(stray))
+            m = mark()
+            say_in_app("//route skip")
+            run.expect("//route skip with no route paused, said", ["No route playing or paused"], m, 8)
+        if card2:
+            gated(run, "the waits route deleted", "TesselInventory", "delete", 30, ids=[card2], purge=True)
     finally:
         setting("walk_route", old_mode)
         back_to_chat()

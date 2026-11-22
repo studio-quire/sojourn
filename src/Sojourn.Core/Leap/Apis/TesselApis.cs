@@ -483,7 +483,13 @@ public sealed class TesselBuild : SessionApi
             + "waits until the region shows each went in (gone_again: it went in and left, as a script that removes itself does); again: true to drop "
             + "the same item in again within 5 minutes of a drop whose outcome wasn't seen",
             (a, ct) => Wrap(S.Contents.AddAsync(a, ct)));
-        Op("copyFromContents", "sojourn: {id, item_id | name, folder_id?} -> item: copy an item from a prim into my inventory", (a, ct) => Wrap(S.Contents.CopyOutAsync(a, ct)));
+        Op("copyFromContents", "sojourn: {id, item_id | name, folder_id?} -> item, with folder (its name) and moved: true when it was no-copy and left the prim: "
+            + "copy an item from a prim into my inventory, into the folder for its type unless folder_id says", (a, ct) => Wrap(S.Contents.CopyOutAsync(a, ct)));
+        Op("copyAllFromContents", "sojourn: {id, name?, folder_id?, move?: false, timeout?: 10} -> {folder_id, folder, count, copied, moved, left, refused, missing?, "
+            + "others_called_that?}: everything in a prim copied into my inventory at once, as the viewer's Copy to Inventory: a new folder at the top "
+            + "named for the prim (or name, or into folder_id). left: no-copy items, which stay inside unless move: true moves them out; refused: what "
+            + "I may not take, with why; missing: sent but not in the folder once nothing more came for timeout seconds. Nothing to copy: no folder",
+            (a, ct) => Wrap(S.Contents.CopyAllOutAsync(a, ct)));
         Op("removeFromContents", "sojourn: {id, item_id | name}", (a, ct) => Wrap(S.Contents.RemoveAsync(a, ct)));
         Op("script", "sojourn: {id, item_id | name, running?, reset?} -> {running}: a script's running state; set or reset it", (a, ct) => Wrap(S.Contents.ScriptAsync(a, ct)));
     }

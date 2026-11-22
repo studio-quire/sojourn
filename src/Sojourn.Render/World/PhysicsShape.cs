@@ -41,18 +41,19 @@ public sealed class MeshPhysics
         return p._convex == null && p._mesh == null ? null : p;
     }
 
-    /// <summary>The hull the region uses for a convex hull shape (and for thin meshes with no decomposition).</summary>
+    /// <summary>The hull the region uses for a convex hull shape (and for thin meshes with no decomposition); a plate of
+    /// both sides where its points lie in one plane.</summary>
     public Vector3[]? Hull { get { Decode(); return _hull; } }
     /// <summary>The decomposition's hulls, together.</summary>
     public Vector3[]? Decomposition { get { Decode(); return _decomposition; } }
-    /// <summary>The physics model's triangles.</summary>
+    /// <summary>The physics model's triangles, each twice, once each way round.</summary>
     public Vector3[]? Triangles { get { Decode(); return _triangles; } }
     /// <summary>Uploaded with a physics model (decomposed or not): the uploader made it a prim shape
     /// (LLMeshUploadThread::wholeModelToLLSD), else a convex hull.</summary>
     public bool UploadedAsPrim { get { Decode(); return _decomposition != null || _triangles != null; } }
     /// <summary>The decomposition's hulls, and how many of them were flat (all their points in one plane: a plane in
-    /// the physics model) and so have no triangles here; and whether the base hull was flat. For a walk's log: the
-    /// region may count a flat piece as a thin plate.</summary>
+    /// the physics model, mostly three points), counted as plates of both sides (ConvexHull.Plate); and whether the
+    /// base hull was flat (a plate too, <see cref="Hull"/>). For a walk's log.</summary>
     public (int Hulls, int Flat, bool FlatBase) HullCounts { get { Decode(); return (_hulls, _flatHulls, _flatBase); } }
     int _hulls, _flatHulls;
     bool _flatBase;
@@ -78,9 +79,17 @@ public sealed class MeshPhysics
         if (block.ContainsKey("BoundingVerts"))
         {
             var pts = Points(block["BoundingVerts"].AsBinary(), 0, int.MaxValue, min, max);
+            // a flat base hull (mostly a mesh uploaded as a convex hull whose low LOD is a triangle or two) is a plate as
+            // a decomposition's flat hull is: the region's shape comes from these points, not from the drawn shape,
+            // whose hull stood in for it before (2026-11-22). In a Second Life cache such a plate was mostly a fraction
+            // of the box's face (of 948, 580 under a twentieth of it, 62 over 0.7), so this mostly takes a solid away.
             var tris = ConvexHull.Triangles(pts);
+            if (tris.Length == 0 && pts.Count > 0)
+            {
+                _flatBase = true;
+                tris = ConvexHull.Plate(pts);
+            }
             if (tris.Length > 0) _hull = tris;
-            else _flatBase = pts.Count > 0;
         }
         if (block.ContainsKey("HullList") && block.ContainsKey("Positions"))
         {
@@ -91,10 +100,11 @@ public sealed class MeshPhysics
             foreach (byte n in list)
             {
                 int count = n == 0 ? 256 : n;
-                var hull = ConvexHull.Triangles(Points(pos, at, count, min, max));
+                var pts = Points(pos, at, count, min, max);
+                var hull = ConvexHull.Triangles(pts);
+                if (hull.Length == 0) { _flatHulls++; hull = ConvexHull.Plate(pts); }
                 all.AddRange(hull);
                 _hulls++;
-                if (hull.Length == 0) _flatHulls++;
                 at += count;
             }
             if (all.Count > 0) _decomposition = all.ToArray();
@@ -117,7 +127,11 @@ public sealed class MeshPhysics
             {
                 int a = idx[i] | idx[i + 1] << 8, b = idx[i + 2] | idx[i + 3] << 8, c = idx[i + 4] | idx[i + 5] << 8;
                 if (a >= pts.Count || b >= pts.Count || c >= pts.Count) continue;
+                // both sides: rays meet front faces only, and a physics model's plane (a stair's ramp) is often wound
+                // facing down in the mesh's own frame (65 of 641 small ones in a Second Life cache, 2026-11-20); the
+                // region's mesh shapes are most likely met from either side
                 tris.Add(pts[a]); tris.Add(pts[b]); tris.Add(pts[c]);
+                tris.Add(pts[a]); tris.Add(pts[c]); tris.Add(pts[b]);
             }
         }
         if (tris.Count > 0) _triangles = tris.ToArray();
@@ -148,19 +162,25 @@ public static class CollisionRule
     /// <summary>
     /// What the region collides with for a prim, where that isn't its drawn triangles (null: they are), after the
     /// viewer's LLPhysicsShapeBuilderUtil::determinePhysicsShape and renderPhysicsShape, in the shape's unit space:
-    /// - A mesh with a convex hull shape: the asset's hull (or the drawn mesh's, without one).
+    /// - A mesh under 0.2 m in two dimensions or all three, whatever its type: its box (a mesh's path is a line and its
+    ///   path and profile are whole, so determinePhysicsShape boxes it before it looks at the physics).
+    /// - A mesh with a convex hull shape: the asset's hull, a plate where its points are flat (or the drawn mesh's
+    ///   hull, without one).
     /// - A mesh with a prim shape: its decomposition's hulls if it has them; else its physics model, unless it's under
     ///   0.5 m in some dimension (the region's thin-triangle rule makes that the hull); else its hull. While its type
     ///   isn't known, as uploaded: a prim shape if the asset has a physics model, a hull if not.
     /// - A prim or sculpt with a convex hull shape: the hull of its drawn shape. With a prim shape, its drawn triangles
     ///   (the region's own simplifications, boxes, spheres and cylinders, are the same surfaces).
     /// Before the mesh's data has arrived (<paramref name="physics"/> null), its drawn triangles.
+    /// Left out, under 0.2 m either way: a prim or sculpt that small boxed too, and a big thin shape (one side under
+    /// 0.2 m, the three's mean over 3 m) with that side raised to 0.1 m.
     /// </summary>
     /// <param name="hullOfDrawn">the convex hull of the drawn shape, asked for only when it's the answer</param>
     public static Vector3[]? Triangles(bool mesh, MeshPhysics? physics, CollideAs how, Vector3 scale, Func<Vector3[]> hullOfDrawn)
     {
         if (mesh)
         {
+            if ((scale.X < SmallSide ? 1 : 0) + (scale.Y < SmallSide ? 1 : 0) + (scale.Z < SmallSide ? 1 : 0) >= 2) return UnitBox;
             if (physics is not { } phys) return how == CollideAs.ConvexHull ? NonEmpty(hullOfDrawn()) : null;
             bool prim = how == CollideAs.Prim || how == CollideAs.Unknown && phys.UploadedAsPrim;
             if (prim)
@@ -175,6 +195,16 @@ public static class CollisionRule
     }
 
     static Vector3[]? NonEmpty(Vector3[] tris) => tris.Length > 0 ? tris : null;
+
+    /// <summary>SHAPE_BUILDER_CONVEXIFICATION_SIZE: twice COLLISION_TOLERANCE.</summary>
+    const float SmallSide = 0.2f;
+
+    /// <summary>The unit box, wound counter-clockwise seen from outside, as a hull is.</summary>
+    public static readonly Vector3[] UnitBox = ConvexHull.Triangles(new Vector3[]
+    {
+        new(-0.5f, -0.5f, -0.5f), new(0.5f, -0.5f, -0.5f), new(-0.5f, 0.5f, -0.5f), new(0.5f, 0.5f, -0.5f),
+        new(-0.5f, -0.5f, 0.5f), new(0.5f, -0.5f, 0.5f), new(-0.5f, 0.5f, 0.5f), new(0.5f, 0.5f, 0.5f),
+    });
 }
 
 /// <summary>Ray tests both local collision models share.</summary>
@@ -286,6 +316,59 @@ public static class ConvexHull
     }
 
     const int MaxPoints = 256;
+
+    /// <summary>A flat set's outline as a plate, both sides (each triangle twice, once each way round, as rays meet front
+    /// faces only): a mesh's hull with all its points in one plane (in its decomposition, or its own base hull), which
+    /// ConvexHull.Triangles leaves with no triangles. Most likely a thin plate in the region's physics (its convex
+    /// shapes have a small radius; the viewer's own writer takes hulls of three points, which can only be flat), though
+    /// not seen there directly; empty for fewer than three points or all on one line. Claude Opus 5.5, 2026-11-20.</summary>
+    public static Vector3[] Plate(IReadOnlyList<Vector3> input)
+    {
+        var pts = input.Distinct().ToList();
+        if (pts.Count < 3) return Array.Empty<Vector3>();
+        var lo = pts[0]; var hi = pts[0];
+        foreach (var p in pts) { lo = Vector3.Min(lo, p); hi = Vector3.Max(hi, p); }
+        float eps = MathF.Max(1e-6f, Vector3.Distance(lo, hi) * 1e-5f);
+        int i0 = 0;
+        for (int i = 1; i < pts.Count; i++) if (pts[i].X < pts[i0].X) i0 = i;
+        int i1 = Farthest(pts, i => Vector3.DistanceSquared(pts[i], pts[i0]));
+        var axis = pts[i1] - pts[i0];
+        if (axis.Length() < eps) return Array.Empty<Vector3>();
+        int i2 = Farthest(pts, i => Vector3.Cross(pts[i] - pts[i0], axis).LengthSquared());
+        var n = Vector3.Cross(axis, pts[i2] - pts[i0]);
+        if (n.Length() < eps * axis.Length()) return Array.Empty<Vector3>();
+        var u = Vector3.Normalize(axis);
+        var v = Vector3.Normalize(Vector3.Cross(Vector3.Normalize(n), u));
+        // the outline in the plane: Andrew's monotone chain
+        var flat = pts.Select(p => (X: Vector3.Dot(p - pts[i0], u), Y: Vector3.Dot(p - pts[i0], v), P: p))
+            .OrderBy(q => q.X).ThenBy(q => q.Y).ToList();
+        // how far b lies left of the line o-a, as a distance (a turn within eps of straight is none)
+        static float Left((float X, float Y, Vector3 P) o, (float X, float Y, Vector3 P) a, (float X, float Y, Vector3 P) b)
+        {
+            float dx = a.X - o.X, dy = a.Y - o.Y, len = MathF.Sqrt(dx * dx + dy * dy);
+            return len > 0 ? (dx * (b.Y - o.Y) - dy * (b.X - o.X)) / len : 0;
+        }
+        var ring = new List<(float X, float Y, Vector3 P)>();
+        foreach (var pass in new[] { flat, Enumerable.Reverse(flat).ToList() })
+        {
+            int start = ring.Count;
+            foreach (var q in pass)
+            {
+                while (ring.Count >= start + 2 && Left(ring[^2], ring[^1], q) <= eps) ring.RemoveAt(ring.Count - 1);
+                ring.Add(q);
+            }
+            ring.RemoveAt(ring.Count - 1);
+        }
+        if (ring.Count < 3) return Array.Empty<Vector3>();
+        var tris = new Vector3[(ring.Count - 2) * 6];
+        for (int k = 1, t = 0; k + 1 < ring.Count; k++)
+        {
+            Vector3 a = ring[0].P, b = ring[k].P, c = ring[k + 1].P;
+            tris[t++] = a; tris[t++] = b; tris[t++] = c;
+            tris[t++] = a; tris[t++] = c; tris[t++] = b;
+        }
+        return tris;
+    }
 
     // 258 directions: a Fibonacci sphere plus the six axes (boxes' faces stay exact)
     static readonly Vector3[] _directions = MakeDirections(252);

@@ -40,6 +40,6 @@ Sizes as in viewer-gaps: S a day or less, M a few days, L a week or more, for on
 - **Checking an outfit:** by names without the assistant, by picture with it. A box worn by mistake shows only by its name.
 - **Rezzing and placing:** done, without `//place`, so not in a route.
 - **Land settings:** parcels and the estate's tools and lists done (the estate's own switches are read, not changed).
-- **Unboxing:** only from the inventory, and only where she can rez; the failure doesn't suggest a sandbox. A box already out: Contents, then `copy NAME` for each thing.
+- **Unboxing:** only from the inventory, and only where she can rez; the failure doesn't suggest a sandbox. A box already out: Contents, then Copy all into your inventory (or `copy all`).
 - **HUD games:** a HUD that's one picture of buttons is read by the assistant, so with no token only numbered faces remain. Nothing to do
   short of a local reader; the plan's stance (`docs/access.md` > Stance) says where "without an account" stops.

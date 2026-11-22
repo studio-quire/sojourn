@@ -72,8 +72,13 @@ public sealed class Triggers
             // ended by the person (or anyone but this): what holds now rests until it stops holding
             lock (_lock) _resting = Active().Select(a => a.Key).ToHashSet();
         };
-        new Thread(Watch) { IsBackground = true, Name = "private triggers", Priority = ThreadPriority.BelowNormal }.Start();
-        new Thread(ReadIms) { IsBackground = true, Name = "private triggers' IMs", Priority = ThreadPriority.BelowNormal }.Start();
+        // started from the pool: a thread's start waits for it to begin, which at login held Access's window 1.0-1.3 s on
+        // the blind tester's PC (her log tester-20261122T001423-03efe0, the stack in Thread.StartCore from here)
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            new Thread(Watch) { IsBackground = true, Name = "private triggers", Priority = ThreadPriority.BelowNormal }.Start();
+            new Thread(ReadIms) { IsBackground = true, Name = "private triggers' IMs", Priority = ThreadPriority.BelowNormal }.Start();
+        });
     }
 
     // --- the lists ------------------------------------------------------------------------------------------------

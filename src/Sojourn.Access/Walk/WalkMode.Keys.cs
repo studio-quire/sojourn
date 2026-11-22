@@ -72,8 +72,9 @@ public sealed partial class WalkMode
         Recording a route
         R: start recording; while recording, how it's going
         N: a note here, read out where the route is played (left empty, just a point)
-        Backspace: take back the last point or note
-        P: pause, or go on
+        Shift+P: a wait in the route here, as many seconds as you say (the played route stands still that long)
+        Backspace: take back the last point, note or wait
+        P: pause recording, or go on; going on where you paused, the route waits there as long as you were paused
         Shift+R: stop, name it and save it as a notecard in Routes
 
         Recording a ride
@@ -171,6 +172,7 @@ public sealed partial class WalkMode
             case Keys.R when shift: RecordKey?.Invoke("save"); return true;
             case Keys.R: RecordKey?.Invoke(""); return true;
             case Keys.N: RecordKey?.Invoke("note"); return true;
+            case Keys.P when shift: RecordKey?.Invoke("wait"); return true;
             case Keys.P: RecordKey?.Invoke("pause"); return true;
             case Keys.Back: RecordKey?.Invoke("undo"); return true;
             case Keys.C when shift: RideKey?.Invoke("describe"); return true;

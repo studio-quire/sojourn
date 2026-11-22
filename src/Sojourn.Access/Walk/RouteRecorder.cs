@@ -21,7 +21,9 @@ namespace Sojourn.Access.Walk;
 /// - sitting (`//sit NAME`, when the seat has a name) and standing; a seat that moved her more than 5 m (a ride) leaves
 ///   a note and a `//pause` as long as the ride took before `//stand`;
 /// - things touched on the way (`//touch NAME` and a `//pause 2` for a door to swing), and notes she adds (plain lines,
-///   which `//route` reads out).
+///   which `//route` reads out);
+/// - waits (`//pause` lines, ten minutes at most a line): one she asks for, or a pause gone on from where it began, as
+///   long as it lasted (the blind tester stood listening in a forest at six pauses and expected the route to, 2026-11-22).
 /// Each `//go xyz` is in the coordinates of the region the step before it ended in, as a played route will be in that
 /// region when it starts the line (so across a border they run past 256 or below 0); Z is written only where the level
 /// changed by more than a metre (otherwise `//go xyz` keeps her height, as her routes do). Runs on the window's thread
@@ -29,11 +31,12 @@ namespace Sojourn.Access.Walk;
 /// </summary>
 public sealed class RouteRecorder
 {
-    public enum Kind { Go, Teleport, Sit, Stand, Touch, Note }
+    public enum Kind { Go, Teleport, Sit, Stand, Touch, Note, Wait }
 
     /// <summary>One thing in the route. Region and Pos: where she was (the region it happened in, its frame); Text: the
-    /// seat, the thing touched or the note; RideSecs: for a stand after a ride, how long it took; Why: what kept a point.</summary>
-    public sealed record Step(Kind Kind, ulong Region, string RegionName, Vector3 Pos, string? Text = null, int RideSecs = 0, string? Why = null);
+    /// seat, the thing touched or the note; Secs: for a stand after a ride, how long it took, for a wait how long it is;
+    /// Why: what kept a point.</summary>
+    public sealed record Step(Kind Kind, ulong Region, string RegionName, Vector3 Pos, string? Text = null, int Secs = 0, string? Why = null);
 
     const float Tolerance = 0.8f;      // a stretch may stray this far from the walk before a point is kept
     const float HeightWeight = 1.5f;   // heights count half again: stairs and ramps keep their ends
@@ -42,6 +45,8 @@ public sealed class RouteRecorder
     const float SideReach = 1.1f;      // a doorway: something on both sides within this of the way
     const float Jump = 12f;            // further than this between two ticks: a teleport or a region's change, not a step
     const float Crossed = 15f;         // a region changed and it settled within this of where she was: walked across
+    const float SameSpot = 2f;         // went on within this of where she paused: the same spot, and the route waits there
+    public const int MaxWait = 3600;   // a wait is an hour at most
 
     readonly WalkMode _walk;
     readonly LocalCollision _rays;
@@ -57,6 +62,7 @@ public sealed class RouteRecorder
     float _walked;
     Vector3? _doorFrom;
     bool _doorBusy;
+    (ulong Region, Vector3 Pos, long At)? _pausedAt;   // where and when the pause began (none: a wait stands for it, or no pause)
 
     public RouteRecorder(WalkMode walk, LocalCollision rays)
     {
@@ -81,6 +87,7 @@ public sealed class RouteRecorder
         _steps.Clear();
         On = true;
         Paused = false;
+        _pausedAt = null;
         _walked = 0;
         _jump = null;
         _steps.Add(new Step(Kind.Go, b.Region, b.RegionName, b.Pos, Why: "the start"));
@@ -93,41 +100,91 @@ public sealed class RouteRecorder
     public void Discard()
     {
         On = Paused = false;
+        _pausedAt = null;
         _steps.Clear();
         _track.Clear();
     }
 
-    /// <summary>Stops sampling, keeping where she is as a point (pause, and before saving).</summary>
+    /// <summary>Stops sampling, keeping where she is as a point, and where and when for a wait if she goes on here.</summary>
     public void Pause()
     {
         if (!On || Paused) return;
-        if (Here() is { } b && !b.Sitting) KeepHere(b, "where you paused");
+        if (Here() is { } b)
+        {
+            if (!b.Sitting) KeepHere(b, "where you paused");
+            _pausedAt = (b.Region, b.Pos, Environment.TickCount64);
+        }
         Paused = true;
     }
 
-    /// <summary>Goes on after a pause: from a far place (another region, or over 30 m), by a teleport, since the route
-    /// can't know the way; otherwise a walk from the last point to here. The words for what it did.</summary>
-    public string Resume()
+    /// <summary>How long the recording has been paused, in seconds (0 when it isn't, or a wait stands for the pause).</summary>
+    public int PausedSecs => Paused && _pausedAt is { } p ? (int)((Environment.TickCount64 - p.At) / 1000) : 0;
+
+    /// <summary>Goes on after a pause. Where it began (within 2 m): a wait there as long as the pause, rounded (Wait, the
+    /// seconds; 0 if it was under half a second). From a far place (another region, or over 30 m), by a teleport, since
+    /// the route can't know the way; otherwise a walk from the last point to here. Said: the words for a walk or a
+    /// teleport.</summary>
+    public (int Wait, string Said) Resume()
     {
-        if (!On || !Paused) return "";
+        if (!On || !Paused) return (0, "");
         Paused = false;
-        if (Here() is not { } b) return "";
+        var paused = _pausedAt;
+        _pausedAt = null;
+        if (Here() is not { } b) return (0, "");
+        long now = Environment.TickCount64;
+        if (paused is { } p && p.Region == b.Region && Vector2.Distance(Flat(p.Pos), Flat(b.Pos)) <= SameSpot)
+        {
+            int secs = Rounded((now - p.At) / 1000.0);
+            if (secs > 0)
+            {
+                _steps.Add(new Step(Kind.Wait, p.Region, b.RegionName, p.Pos, Secs: secs));
+                if (_seated) _satAt += now - p.At;   // (a ride's length, should the seat carry her after, leaves the wait out)
+            }
+            Restart(b);
+            // the stretch goes on from the last point (a metre or two from here: no point of its own, so the wait is the
+            // last thing in the route and the first a take-back takes)
+            if (LastPlace() is { } l && l.Region == b.Region) { _track.Clear(); _track.Add(l.Pos); _track.Add(b.Pos); }
+            return (secs, "");
+        }
         var last = LastPlace();
         string said = "";
         if (b.Sitting) { }
         else if (last is { } l && (l.Region != b.Region || Vector2.Distance(Global(l.Region, l.Pos), Global(b)) > 30))
         {
             _steps.Add(new Step(Kind.Teleport, b.Region, b.RegionName, b.Pos, Why: $"a teleport to {b.RegionName}"));
-            said = " The route goes on from here by a teleport, as you're far from its last point.";
+            said = paused != null
+                ? " You're far from where you paused, so the route doesn't wait there: it goes on from here by a teleport."
+                : " The route goes on from here by a teleport, as you're far from its last point.";
         }
         else if (last is { } l2 && Vector2.Distance(Global(l2.Region, l2.Pos), Global(b)) >= MinGap)
         {
             _steps.Add(new Step(Kind.Go, b.Region, b.RegionName, b.Pos, Why: "where you went on"));
-            said = $" The route walks from its last point to here, {Bearings.Metres(Vector2.Distance(Global(l2.Region, l2.Pos), Global(b)))}.";
+            var far = Bearings.Metres(Vector2.Distance(paused is { } p2 ? Global(p2.Region, p2.Pos) : Global(l2.Region, l2.Pos), Global(b)));
+            said = paused != null
+                ? $" You're {far} from where you paused, so the route doesn't wait there: it walks on to here."
+                : $" The route walks from its last point to here, {far}.";
         }
         Restart(b);
-        return said;
+        return (0, said);
     }
+
+    /// <summary>A wait in the route where she is (`//pause` lines), the place kept as a point first: the seconds it
+    /// waits (whole, an hour at most), or 0 when it can't be. Asked for while paused, it stands for the pause's own wait.</summary>
+    public int Wait(double secs)
+    {
+        if (!On || Here() is not { } b) return 0;
+        int s = (int)Math.Clamp(Math.Round(secs), 1, MaxWait);
+        if (!b.Sitting) KeepHere(b, "where the route waits");
+        _steps.Add(new Step(Kind.Wait, b.Region, b.RegionName, b.Pos, Secs: s));
+        _pausedAt = null;
+        return s;
+    }
+
+    /// <summary>The waits in the route: how many, and their seconds in all.</summary>
+    public (int Count, int Secs) Waits() => (_steps.Count(s => s.Kind == Kind.Wait), _steps.Where(s => s.Kind == Kind.Wait).Sum(s => s.Secs));
+
+    /// <summary>A pause's length as a wait: whole seconds under a minute, else to 5 s; an hour at most.</summary>
+    static int Rounded(double secs) => Math.Min(MaxWait, secs < 60 ? (int)Math.Round(secs) : (int)Math.Round(secs / 5) * 5);
 
     /// <summary>The last thing in the route taken back (never the start): the words for what it was, or null.</summary>
     public string? Undo()
@@ -395,13 +452,15 @@ public sealed class RouteRecorder
                     lines.Add($"//sit {s.Text}");
                     break;
                 case Kind.Stand:
-                    if (s.RideSecs > 0)
+                    if (s.Secs > 0)
                     {
-                        lines.Add($"Riding {s.Text ?? "a seat"} for about {Duration(s.RideSecs)}; the route waits as long, then stands up.");
-                        // (//pause takes up to ten minutes a line)
-                        for (int left = s.RideSecs; left > 0; left -= 600) lines.Add($"//pause {Math.Min(left, 600)}");
+                        lines.Add($"Riding {s.Text ?? "a seat"} for about {Duration(s.Secs)}; the route waits as long, then stands up.");
+                        Pauses(lines, s.Secs);
                     }
                     lines.Add("//stand");
+                    break;
+                case Kind.Wait:
+                    Pauses(lines, s.Secs);
                     break;
                 case Kind.Touch:
                     lines.Add($"//touch {s.Text}");
@@ -425,10 +484,26 @@ public sealed class RouteRecorder
         Kind.Sit => $"sitting on {s.Text}",
         Kind.Stand => "standing up",
         Kind.Touch => $"touching {s.Text}",
+        Kind.Wait => $"the wait of {WaitWords(s.Secs)}",
         _ => $"the note: {s.Text}",
     };
 
+    /// <summary>`//pause` lines as long as a wait: ten minutes at most a line, as `//pause` takes.</summary>
+    static void Pauses(List<string> lines, int secs)
+    {
+        for (int left = secs; left > 0; left -= 600) lines.Add($"//pause {Math.Min(left, 600)}");
+    }
+
     static string Duration(int secs) => secs < 90 ? $"{secs} seconds" : $"{Math.Round(secs / 60.0):0} minutes";
+
+    /// <summary>A wait's length as said: "25 seconds", "1 minute 15 seconds", "1 hour".</summary>
+    public static string WaitWords(int secs)
+    {
+        if (secs >= 3600 && secs % 3600 == 0) return secs == 3600 ? "1 hour" : $"{secs / 3600} hours";
+        if (secs < 60) return secs == 1 ? "1 second" : $"{secs} seconds";
+        int m = secs / 60, s = secs % 60;
+        return (m == 1 ? "1 minute" : $"{m} minutes") + (s == 0 ? "" : s == 1 ? " 1 second" : $" {s} seconds");
+    }
 
     /// <summary>An SLurl (maps.secondlife.com, as SLurls are shared), which `//tp` takes and Radegast's Control+G does.</summary>
     static string Slurl(string region, Vector3 p) =>

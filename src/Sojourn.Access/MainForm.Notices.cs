@@ -8,7 +8,8 @@ namespace Sojourn.Access;
 /// <summary>
 /// Notices: offers, script menus, permission requests, invitations and llTextBox questions waiting for the person,
 /// newest first, and a confirmation the assistant needs at the top. Each is a list item in words; its keys are real
-/// buttons ("1: Red") and, on the list, the number keys press them (as A1's keys in the VR client) and Delete ignores
+/// buttons ("1: Red", a script menu's top row first, as it's seen: Core's ScriptMenus) and, on the list, the number keys
+/// press them (as A1's keys in the VR client) and Delete ignores
 /// it (the official viewer's Ignore: gone unanswered). Nothing is answered without the person's own key (RealInput: a
 /// hardware press made after the selected notice last changed by anything but them; with `access_answers_without_key` on hello, Windows Hello instead), and an
 /// llTextBox reply sends only text the person's own keys typed, to the notice it was typed for. None of it takes the
@@ -99,6 +100,8 @@ public sealed partial class MainForm
             if (Selected() is { } n) Reply(n, _noticeReply.Text);
         };
         Fill(_notices, new(), "No notices waiting.");
+        // the menus waiting are read in the new order at once (the same notices, so the poll alone would keep the old)
+        _set.MenuOrderChanged += () => { if (IsHandleCreated) BeginInvoke(() => { _noticesVersion = -1; _shownKeys = null; if (Host != null) PollNotices(); }); };
     }
 
     Notice? Selected() => _notices.SelectedItems.Count > 0 ? _notices.SelectedItems[0].Tag as Notice : null;
@@ -131,8 +134,12 @@ public sealed partial class MainForm
                 .Select(b => (Name: b.Str("name") ?? "", Text: b.Str("text") ?? "", Index: b["index"] is JsonValue v && v.TryGetValue<int>(out var i) ? i : 0))
                 .Where(b => b.Name.Length > 0).ToList();
             bool textBox = form.Any(b => b.Name == "!!llTextBox!!");
-            var buttons = form.Where(b => b.Index >= 0 && b.Name != "!!llTextBox!!" && !(n.Str("name") == "JoinGroup" && b.Name == "Info"))
-                .Concat(form.Where(b => b.Name == "Client_Side_Mute"))
+            var own = form.Where(b => b.Index >= 0 && b.Name != "!!llTextBox!!" && !(n.Str("name") == "JoinGroup" && b.Name == "Info")).ToList();
+            // a script menu's in the order it's seen, top row first (its list starts with the bottom row), unless she
+            // keeps the script's own order (access_menu_order: Radegast's); Block after them, on B
+            if (n.Str("name") is "ScriptDialog" or "ScriptDialogGroup" && _set.MenuAsSeen)
+                own = Sojourn.Core.Agents.ScriptMenus.AsSeen(own.Count).Select(i => own[i]).ToList();
+            var buttons = own.Concat(form.Where(b => b.Name == "Client_Side_Mute"))
                 .Select(b => (b.Name, b.Text.Length > 0 ? b.Text : b.Name)).ToList();
             var detail = FriendlyLinks(Speakable(n.Str("message") ?? ""));
             list.Add(new Notice(id, null, words, detail, buttons, textBox, (n["payload"] as JsonObject)?.Str("object_id"), n.Str("name") ?? ""));

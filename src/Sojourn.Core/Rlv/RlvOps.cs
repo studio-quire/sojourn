@@ -16,7 +16,7 @@ public static class RlvOps
     static readonly HashSet<string> Edit = new()
     {
         "modify", "modifyEach", "copyFrom", "link", "unlink", "take", "delete", "returnObjects", "contents", "addToContents", "copyFromContents",
-        "removeFromContents", "script", "select",
+        "copyAllFromContents", "removeFromContents", "script", "select",
     };
 
     /// <summary>Ops that only read (people around, the inventory, where the person is): refused without a notice on the

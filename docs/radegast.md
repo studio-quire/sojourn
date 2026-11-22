@@ -116,7 +116,9 @@ order, nothing more (see accessibility.md part 1 on announcements).
   Kinds: script dialogs (buttons, llTextBox input, Ignore), permission requests (Yes / No / Mute), inventory offers
   (Accept / Discard / Ignore), teleport offers and requests, friendship and group invitations, group notices (with
   attachment), llLoadURL, region restarts (with countdown), generic alerts and system messages. Muted residents and
-  objects are filtered first (`TabsConsole.cs` ~250-560).
+  objects are filtered first (`TabsConsole.cs` ~250-560). A script dialog's buttons are drawn as the viewer lays them
+  out, three to a row from the bottom up, but added to their panel in the script's list order (`ScriptDialog.cs`), so
+  Tab and a screen reader meet them bottom row first: a sighted person's top-left button can be a blind user's tenth.
 
 ### Login (`GUI/Consoles/LoginConsole.cs`, `GUI/Dialogs/MfaPrompt.cs`)
 

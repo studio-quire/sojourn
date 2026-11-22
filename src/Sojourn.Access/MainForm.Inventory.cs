@@ -1158,7 +1158,9 @@ public sealed partial class MainForm
     }
 
     /// <summary>Unboxing: the box rezzed in front, its contents copied into a new folder named after it at the top of the
-    /// inventory, then the box put away (deleted when the inventory still has it, taken back when it was no-copy).</summary>
+    /// inventory, then the box put away (deleted when the inventory still has it, taken back when it was no-copy). The
+    /// copy is copyAllFromContents: the folder waited for until the inventory service lists it (what's moved into a folder
+    /// it doesn't have yet is lost), then everything sent at once, a no-copy item moved out as one at a time did.</summary>
     async Task UnboxAsync(InventoryItem box)
     {
         Answer($"Unboxing {box.Name}.");
@@ -1170,23 +1172,22 @@ public sealed partial class MainForm
             var r = await _ops.DoAsync("TesselBuild", "contents", new JsonObject { ["id"] = id.ToString(), ["running"] = false });
             items = r["items"] as JsonArray ?? new();
         }
-        int copied = 0;
-        string? folderName = null;
-        if (items.Count > 0 && Store?.RootFolder is { } root)
+        int copied = 0, count = items.Count;
+        string? folderName = null, failed = null;
+        if (items.Count > 0)
         {
-            folderName = box.Name;
-            var made = await _ops.DoAsync("TesselInventory", "createFolder", new JsonObject { ["name"] = folderName, ["parent_id"] = root.UUID.ToString() });
-            if (PersonOps.Error(made) is { } fe) { Answer($"Couldn't make a folder for it: {fe}"); folderName = null; }
+            var r = await _ops.DoAsync("TesselBuild", "copyAllFromContents", new JsonObject { ["id"] = id.ToString(), ["name"] = box.Name, ["move"] = true });
+            if (PersonOps.Error(r) is { } e) failed = e;
             else
-                foreach (var it in items.OfType<JsonObject>())
-                {
-                    var c = await _ops.DoAsync("TesselBuild", "copyFromContents", new JsonObject
-                    {
-                        ["id"] = id.ToString(), ["item_id"] = it.Str("item_id"), ["folder_id"] = made.Str("folder_id"),
-                    });
-                    if (PersonOps.Error(c) is { } ce) Answer($"Didn't copy {it.Str("name")}: {ce}");
-                    else copied++;
-                }
+            {
+                folderName = r.Str("folder") ?? box.Name;
+                if (r["count"] is JsonValue cv && cv.TryGetValue<int>(out var n)) count = n;
+                copied = ((r["copied"] as JsonArray)?.Count ?? 0) + ((r["moved"] as JsonArray)?.Count ?? 0);
+                foreach (var it in (r["refused"] as JsonArray ?? new()).OfType<JsonObject>())
+                    Answer($"Didn't copy {it.Str("name")}: {it.Str("why")}.");
+                foreach (var it in (r["missing"] as JsonArray ?? new()).OfType<JsonObject>())
+                    Answer($"Didn't copy {it.Str("name")}: it hadn't come into the folder after 10 seconds.");
+            }
         }
         // the box away again: the rezzed copy deleted (the inventory keeps the box), or a no-copy box taken back
         bool copyable = (box.Permissions.OwnerMask & PermissionMask.Copy) != 0;
@@ -1195,7 +1196,8 @@ public sealed partial class MainForm
             : await _ops.DoAsync("TesselBuild", "take", new JsonObject { ["ids"] = new JsonArray(id.ToString()), ["folder_id"] = box.ParentUUID.ToString() });
         var left = PersonOps.Error(away) is { } ae ? $" The box is still out, 2 metres ahead ({ae})." : "";
         Answer(items.Count == 0 ? $"Nothing inside {box.Name}.{left}"
-            : $"Unboxed {box.Name}: {copied} of {items.Count} {(items.Count == 1 ? "item" : "items")} into the folder {folderName}, at the top of your inventory.{left}");
+            : failed != null ? $"Couldn't unbox {box.Name}: {failed}.{left}"
+            : $"Unboxed {box.Name}: {copied} of {count} {(count == 1 ? "item" : "items")} into the folder {folderName}, at the top of your inventory.{left}");
         await Task.Delay(1000);
         RefreshInventory(Store?.RootFolder?.UUID ?? UUID.Zero, box.ParentUUID);
     }

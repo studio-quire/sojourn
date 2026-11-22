@@ -305,15 +305,18 @@ docstring with its checks in full):
   checks no row says only the assistant can change it.
 - **the quit question**: Alt+F4 asks, Escape stays.
 - **a script menu**, **a text box**, **a permission question**: answered by keys; a menu's announcement said again
-  when a key cuts it off (not when silenced by Control alone, nor once answered in Notices); a menu of twelve, minus and equals pressing Next and
-  Back; the fixture's `fmenuchat` menu, whose words it also says to her in chat (a freight HUD's way), both cut by
+  when a key cuts it off (not when silenced by Control alone, nor once answered in Notices); a menu of twelve read top row first, minus and
+  equals pressing the bottom row's Two and Three; a menu of five (`fmenu5`: Back, Main, More, Tea, Cake), its short top row first ("1 Tea, 2
+  Cake, 3 Back"), its buttons, Applications menu and the agent API's `rows` the same, 1 pressing Tea, then with `access_menu_order` as
+  listed "1 Back ... 4 Tea", 4 pressing Tea; the fixture's `fmenuchat` menu, whose words it also says to her in chat (a freight HUD's way), both cut by
   typing: its words said three times in all (the menu, the chat line, said again once), not four.
 - **a dance machine's menu, ignored**: the fixture's `fdance` menu, sent again after each pick: answered by 1, the
   new one picked by itself; Delete Ignore in its keys, Ignore (Delete) on its Applications menu; Delete ignores it
   (the object hears nothing), said with what's left, the focus on the offer under it, then none.
 - **inventory**: fixtures made through the agent API, then by keys only: the tree as an MSAA reader is told it (as
   first shown, after F5, inside a folder), search, a notecard edited and saved, marks, cut, copy and paste, wear and
-  take off, Show: Worn (a worn body part's Delete refused at once), rez on the ground, unbox, give through the picker
+  take off, Show: Worn (a worn body part's Delete refused at once), rez on the ground, unbox (a crate of two
+  notecards, both in the new folder: "2 of 2", by `copyAllFromContents`), give through the picker
   and the confirmation, and the run's folders deleted through the confirmation (cancelled once first: only
   "Cancelled.", the focus back in the tree; a worn item in the folder taken off first, as its confirmation says).
 - **notecards with things in them** (`ACCESS_STEPS=notecards`; about a minute, no renderer needed): the visitor's
@@ -628,12 +631,17 @@ docstring with its checks in full):
   teleport. `//follow` it back down them from the deck: onto its trail by the plan (the deck's edge to the steps'
   top), "Going the way ...", "With" it on the slab, never "no way down". It takes off on the slab and hovers 5 m up,
   3 m on from where it left the ground: `//follow` says it's above her with no way up, never "Going the way", and
-  doesn't hold her where it took off (until 2026-11-20 its trail ended there). Then, on the fourth step in a pocket
+  doesn't hold her where it took off (until 2026-11-20 its trail ended there). Teleported up onto the deck, so with
+  no way of its own to take, it stands there: `//go person` from the slab south of the steps is out of reach, as near
+  as the way goes, then "Trying straight on to ...", up the steps by the region's autopilot, finished beside it on the
+  deck, no teleport (her partner up his steps before she came). Then, on the fourth step in a pocket
   the model hasn't got (a third wall across the steps behind her), `//go xyz` to a point east past the wall, a post in
   the model on the way: stuck with nothing of the model's ahead, 0.9 m over its floor, so the region is trusted toward
   the stretch's end, no stuck spot and no way round, and she ends at the point, walked or by the no-way end's
   teleport. The session log's lines for each (`follow: by their trail`, `go: by their trail`, no trail while it's
-  flying, `lifted, so trusting the region`, `go: trusting the region, ...`) are checked.
+  flying, no trail of its to take on the deck and `go: trusting the region, as near as the way goes ...`, `lifted, so
+  trusting the region`, `go: trusting the region, ...`) are checked. What's Second Life's alone (the autopilot sent
+  her own height, `Commands.Level`) isn't run here: OpenSim's is sent no higher than 2 m over the ground.
 - **distance walked**: three taps of Up said once as one stretch, close to how far the avatar went (the run prints the
   metres a tap), Down said "backward", M and Shift+M, nothing with `walk_distance` off.
 - **rail switches** (about 2 minutes, no renderer needed): on a flat stretch of Atelier East found first (and a ray along
@@ -735,11 +743,21 @@ docstring with its checks in full):
   `docs/access-app.md` at `//go` > People on the way.
 - **recording a route** (about 2 minutes, no renderer needed): in Atelier East, north of the walk course, a wall with a
   doorway; in walk mode R starts recording, held Up walks through the doorway, taps of Right turn east, held Up walks on,
-  then a `//tp` into Atelier Northeast; R's state, N's note (Backspace taking it back, N again), Shift+R's name and the
-  save said; the ticks counted (with `walk_route` both, their lines name the doorway and the turn); the notecard read:
-  its start line, a few `//go xyz` lines, one in the doorway and one at the turn, the teleport's SLurl, the note last;
-  then from the start `//route` plays it, reading its notes, and ends within 3 m of where the recording did. The
-  notecard is deleted after; the Routes folder stays.
+  then waits: P and P again on the spot a wait as long, said, Backspace taking it back, again and kept, R counting it,
+  a pause gone on 4 m off a walk with no wait, Shift+P's box for 2 seconds, `//record wait 12 minutes` two steps and
+  one `//record undo` taking both; then a `//tp` into Atelier Northeast; R's state, N's note (Backspace taking it
+  back, N again), Shift+R's name and the save said; the ticks counted (with `walk_route` both, their lines name the
+  doorway and the turn); the notecard read: its start line, a few `//go xyz` lines, one in the doorway and one at the
+  turn, the kept wait right after the point where it paused and Shift+P's after it, the teleport's SLurl, the note
+  last; then from the start `//route` plays it, as many steps as saved, reading its notes, saying the wait as its step
+  starts ("Step 6 of 9: waiting 4 seconds.") and standing still as long, and ends within 3 m of where the recording
+  did. Then a notecard route from the start: two `//pause` lines said once as their total, a note, a wait of its own,
+  and a point on a 6 m plinth with no steps, which the walk ends at the plinth's foot as near as the way goes: the
+  route pauses there, saying how far short and that `//route skip` goes on without it, and its next step isn't
+  played; `//route skip` then says the step it left out and the one it goes on with, a wait of 30 s, during which
+  `//route resume` says it's still playing and `//route skip` cuts the wait short (the next step under 8 s after it
+  began, no stop said), and the last step walks back to the start from the plinth's foot, within 2.5 m; with the
+  route done, `//route skip` says there's none. The notecards are deleted after; the Routes folder stays.
 - **recording a ride** (about 2 minutes; pictures and the telling need `ACCESS_RELAY` and the renderer: the app takes
   pictures only for an assistant to tell, so without the relay the step checks it says so and takes none): on a flat stretch of
   Atelier East, three named markers 4 m north of the way east and the visitor's throttle train (`kart ... throttle 10

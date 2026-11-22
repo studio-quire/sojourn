@@ -654,12 +654,18 @@ public sealed partial class AgentSession
         var message = group
             ? $"<nolink>{owner}</nolink>'s '<nolink>{e.ObjectName}</nolink>'\n{e.Message}"
             : $"{owner}'s '<nolink>{e.ObjectName}</nolink>'\n{e.Message}";
+        var payload = new JsonObject
+        {
+            ["sender"] = e.ObjectID.ToString(), ["object_id"] = e.ObjectID.ToString(),
+            ["chat_channel"] = e.Channel, ["object_name"] = e.ObjectName, ["owner_id"] = e.OwnerID.ToString(),
+        };
+        // ours, beside the viewer's payload: the buttons as viewers show them (the form keeps the script's order, whose
+        // first three are the bottom row), so a caller can speak of the menu as the person sees or hears it
+        if (labels is not ["!!llTextBox!!"])
+            payload["rows"] = new JsonArray(ScriptMenus.Rows(labels.Count)
+                .Select(r => (JsonNode)new JsonArray(r.Select(i => (JsonNode)labels[i]).ToArray())).ToArray());
         Notify.Add(group ? "ScriptDialogGroup" : "ScriptDialog", "notify", message, buttons,
-            payload: new JsonObject
-            {
-                ["sender"] = e.ObjectID.ToString(), ["object_id"] = e.ObjectID.ToString(),
-                ["chat_channel"] = e.Channel, ["object_name"] = e.ObjectName, ["owner_id"] = e.OwnerID.ToString(),
-            },
+            payload: payload,
             substitutions: new JsonObject
             {
                 ["TITLE"] = e.ObjectName, ["MESSAGE"] = e.Message, [group ? "GROUPNAME" : "NAME"] = owner,

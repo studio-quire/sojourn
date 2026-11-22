@@ -694,7 +694,8 @@ public sealed class CollisionWorld : IDisposable
                         // at all), and the nearest of them to the point
                         var rule = Triangles(e, shape, how is CollideAs.None or CollideAs.Passable ? CollideAs.Unknown : how, out _);
                         var phys = shape.Physics;
-                        string by = rule == null ? "its drawn shape" : ReferenceEquals(rule, phys?.Decomposition) ? "its decomposition"
+                        string by = rule == null ? "its drawn shape" : ReferenceEquals(rule, CollisionRule.UnitBox) ? "its box (under 0.2 m in two sizes)"
+                            : ReferenceEquals(rule, phys?.Decomposition) ? "its decomposition"
                             : ReferenceEquals(rule, phys?.Triangles) ? "its physics model" : ReferenceEquals(rule, phys?.Hull) ? "its hull" : "the hull of its drawn shape";
                         int n = rule?.Length ?? shape.Drawn?.Count ?? 0;
                         float best = float.MaxValue;

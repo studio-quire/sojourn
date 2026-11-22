@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Logging;
 using LibreMetaverse;
 using Sojourn.Core;
 using Sojourn.Access.Walk;
@@ -7,8 +8,10 @@ namespace Sojourn.Access;
 
 /// <summary>
 /// Recording a route by walking it (M3; docs/access-app.md > Walk mode > Recording a route): R in walk mode or
-/// `//record` starts it, and the same words run it from walk mode's keys, the command and World's menu alike (a note, take
-/// back the last, pause, save, discard). The route itself is Walk/RouteRecorder's; here it's asked a name for, saved as a
+/// `//record` starts it, and the same words run it from walk mode's keys, the command and World's menu alike (a note, a
+/// wait, take back the last, pause, save, discard). Pausing the recording and a wait in the route are told apart in
+/// what's said: a pause gone on from where it began becomes a wait as long, said so with how to take it back (the blind
+/// tester paused to listen and expected the route to wait, 2026-11-22). The route itself is Walk/RouteRecorder's; here it's asked a name for, saved as a
 /// notecard in the inventory's Routes folder (made at the top when there's none) and said, so `//route NAME` plays it at
 /// once.
 /// </summary>
@@ -32,16 +35,18 @@ public sealed partial class MainForm
         {
             Item("&Start, or how it's going", "R in walk mode", () => _ = RecordWordsAsync("", key: true)),
             Item("A &note here", "N in walk mode", () => _ = RecordWordsAsync("note", key: true)),
-            Item("&Take back the last point", "Backspace in walk mode", () => _ = RecordWordsAsync("undo", key: true)),
-            Item("&Pause, or go on", "P in walk mode", () => _ = RecordWordsAsync("pause", key: true)),
+            Item("A &wait here", "Shift+P in walk mode", () => _ = RecordWordsAsync("wait", key: true)),
+            Item("Take &back the last point, note or wait", "Backspace in walk mode", () => _ = RecordWordsAsync("undo", key: true)),
+            Item("&Pause recording, or go on", "P in walk mode", () => _ = RecordWordsAsync("pause", key: true)),
             Item("Sa&ve it", "Shift+R in walk mode", () => _ = RecordWordsAsync("save", key: true)),
             Item("&Throw it away", "//record discard", () => _ = RecordWordsAsync("discard", key: false)),
         });
         return m;
     }
 
-    /// <summary>`//record`'s words (and the keys', as words): start, or how it's going; note [WORDS]; undo; pause (or
-    /// resume); save [NAME]; discard. <paramref name="key"/>: said with walk mode's keys rather than the commands.</summary>
+    /// <summary>`//record`'s words (and the keys', as words): start, or how it's going; note [WORDS]; wait [SECONDS];
+    /// undo; pause (or resume); save [NAME]; discard. <paramref name="key"/>: said with walk mode's keys rather than the
+    /// commands.</summary>
     async Task RecordWordsAsync(string words, bool key)
     {
         if (_route is not { } rec) { Answer("Not in a region yet."); return; }
@@ -50,14 +55,15 @@ public sealed partial class MainForm
         var verb = (sp < 0 ? w : w[..sp]).ToLowerInvariant();
         var rest = sp < 0 ? "" : w[(sp + 1)..].Trim();
         string K(string keyWords, string command) => key ? keyWords : command;
+        var undo = K("Backspace", "//record undo");
 
         if (verb is "" or "start" or "status")
         {
             if (rec.On) { Answer(RouteState(rec, key)); return; }
             if (!rec.Start()) { Answer("Not in a region yet."); return; }
             Answer("Recording a route from here. Walk it however you go: " + K(
-                "R says how it's going, N adds a note, Backspace takes back the last point, P pauses, Shift+R saves.",
-                "//record says how it's going, //record note WORDS adds a note, //record undo takes back the last point, //record pause pauses, //record save NAME saves."));
+                "R says how it's going, N adds a note, Shift+P a wait, Backspace takes back the last thing kept, P pauses recording, Shift+R saves.",
+                "//record says how it's going, //record note WORDS adds a note, //record wait SECONDS a wait, //record undo takes back the last thing kept, //record pause pauses recording, //record save NAME saves."));
             return;
         }
         if (verb is "help") { await _cmd.RunAsync("//help record"); return; }
@@ -85,17 +91,37 @@ public sealed partial class MainForm
                 Answer($"Took back {gone}. {Steps(rec.CountSteps())}{LastPointWords(rec)}.");
                 return;
             }
+            case "wait":
+            {
+                var given = key && rest.Length == 0
+                    ? Dialogs.Ask(this, "A wait in the route", "Seconds the route waits here when it's played", "10")
+                    : rest;
+                if (given == null) { Answer("No wait."); return; }
+                if (WaitSeconds(given) is not { } secs)
+                {
+                    Answer(given.Length == 0
+                        ? "//record wait SECONDS puts a wait in the route here: //record wait 20 waits 20 seconds."
+                        : $"How long to wait wasn't clear: {given}. A number of seconds, as 20, or of minutes, as 2 minutes.");
+                    return;
+                }
+                bool paused = rec.Paused;
+                int s = rec.Wait(secs);
+                if (s == 0) { Answer("Not in a region yet."); return; }
+                Answer($"The route waits {RouteRecorder.WaitWords(s)} here{(secs > RouteRecorder.MaxWait ? " (an hour at most)" : "")}"
+                    + (paused ? ", and going on from the pause adds no other wait" : "") + $"; {undo} takes it back.");
+                return;
+            }
             case "pause" or "resume" or "continue":
             {
                 if (rec.Paused)
                 {
-                    var more = rec.Resume();
-                    Answer($"Recording again.{more}");
+                    var (wait, more) = rec.Resume();
+                    Answer(wait > 0 ? $"Recording again. The route waits {RouteRecorder.WaitWords(wait)} here, as long as you paused; {undo} takes it back." : $"Recording again.{more}");
                 }
                 else if (verb == "pause")
                 {
                     rec.Pause();
-                    Answer($"Recording paused, {Steps(rec.CountSteps())}. {K("P", "//record resume")} goes on, {K("Shift+R", "//record save")} saves.");
+                    Answer($"Recording paused, {Steps(rec.CountSteps())}. {K("P", "//record resume")} goes on; going on from here, the route waits here as long as you were paused.");
                 }
                 else Answer("Recording already.");
                 return;
@@ -107,7 +133,7 @@ public sealed partial class MainForm
                 Answer($"Route thrown away ({Steps(n)}); not recording.");
                 return;
             }
-            case "save" or "stop":
+            case "save" or "stop" or "end" or "finish" or "done":
             {
                 bool wasPaused = rec.Paused;
                 rec.Finish();
@@ -128,16 +154,34 @@ public sealed partial class MainForm
                 return;
             }
             default:
-                Answer("//record: start or how it's going; note WORDS; undo; pause; save NAME; discard.");
+                // (her own word, for a log: twice on 2026-11-22 she typed one it didn't take, and the log couldn't say which)
+                Host?.Log.LogInformation("record: no verb {Verb}", verb);
+                Answer($"//record doesn't take {verb}. It takes: note WORDS, wait SECONDS, undo, pause, resume, save NAME, discard; alone, how it's going.");
                 return;
         }
     }
 
     static string Steps(int n) => n == 1 ? "1 step" : $"{n} steps";
 
-    string RouteState(RouteRecorder rec, bool key) =>
-        $"Recording{(rec.Paused ? ", paused" : "")}: {Steps(rec.CountSteps())}, {Bearings.Metres(rec.Walked)} walked{LastPointWords(rec)}. "
-        + (key ? "Shift+R saves." : "//record save NAME saves.");
+    /// <summary>A wait's length as typed: seconds ("20", "20 seconds", "1.5 minutes", "2 min", "1:30"), or null.</summary>
+    static double? WaitSeconds(string text)
+    {
+        var t = text.Trim().ToLowerInvariant().Replace(',', '.');
+        var mmss = System.Text.RegularExpressions.Regex.Match(t, @"^(\d+):([0-5]?\d)$");
+        if (mmss.Success) return int.Parse(mmss.Groups[1].Value) * 60 + int.Parse(mmss.Groups[2].Value);
+        var m = System.Text.RegularExpressions.Regex.Match(t, @"^(\d+(?:\.\d+)?)\s*(s|secs?|seconds?|m|mins?|minutes?)?$");
+        if (!m.Success || !double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n) || n <= 0) return null;
+        return m.Groups[2].Value.StartsWith('m') ? n * 60 : n;
+    }
+
+    string RouteState(RouteRecorder rec, bool key)
+    {
+        var (waits, secs) = rec.Waits();
+        var waited = waits == 0 ? "" : waits == 1 ? $" (one a wait of {RouteRecorder.WaitWords(secs)})" : $" ({waits} of them waits, {RouteRecorder.WaitWords(secs)} in all)";
+        var paused = !rec.Paused ? "" : rec.PausedSecs > 0 ? $", paused for {RouteRecorder.WaitWords(rec.PausedSecs)}" : ", paused";
+        return $"Recording{paused}: {Steps(rec.CountSteps())}{waited}, {Bearings.Metres(rec.Walked)} walked{LastPointWords(rec)}. "
+            + (key ? "Shift+R saves." : "//record save NAME saves.");
+    }
 
     /// <summary>"; the last point is 3 metres, seven o'clock" (or in which region).</summary>
     string LastPointWords(RouteRecorder rec)

@@ -50,6 +50,9 @@ public sealed class ContentsOps
         foreach (var it in items.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase))
         {
             var j = ItemJson(it);
+            var (how, why) = Out(prim, it);
+            j["out"] = how switch { CopyOut.Copy => "copy", CopyOut.Move => "move", _ => "no" };
+            if (why != null) j["out_why"] = why;
             if (it.AssetType == AssetType.LSLText && a.Bool("running", true)) j["running"] = await _s.Scripts.RunningAsync(prim.ID, it.UUID, ct);
             arr.Add(j);
         }
@@ -213,12 +216,38 @@ public sealed class ContentsOps
 
     PrimFlags S(Primitive p) => _s.State.PrimFlagsOf(p);
 
-    /// <summary>Copies an item out of the prim into my inventory ("Copy to inventory"; a no-copy item moves).</summary>
+    enum CopyOut { Copy, Move, No }
+
+    /// <summary>What taking an item out into my inventory does, by the viewer's rule (move_inv_category_world_to_agent and
+    /// LLFolderBridge's drop from an object, both on LLPermissions): it's copied when I may copy it and have it given to
+    /// me; failing that, from an object of mine it moves (a no-copy item leaves the object); otherwise the region won't
+    /// give it, and why is said. Copying goes by my rights on the item: the owner's when it's mine, else the group's (my
+    /// active group, if it's the item's) or everyone's.</summary>
+    (CopyOut How, string? Why) Out(Primitive prim, InventoryItem it)
+    {
+        var c = C;
+        var me = c.Self.AgentID;
+        var p = it.Permissions;
+        bool objectMine = (S(prim) & PrimFlags.ObjectYouOwner) != 0;
+        bool mine = it.OwnerID == me || it.OwnerID == UUID.Zero && objectMine;
+        bool copy = mine ? (p.OwnerMask & PermissionMask.Copy) != 0
+            : (p.EveryoneMask & PermissionMask.Copy) != 0
+              || it.GroupID != UUID.Zero && it.GroupID == c.Self.ActiveGroup && (p.GroupMask & PermissionMask.Copy) != 0;
+        bool transfer = mine || (p.OwnerMask & PermissionMask.Transfer) != 0;
+        if (copy && transfer) return (CopyOut.Copy, null);
+        if (objectMine) return (CopyOut.Move, null);
+        return (CopyOut.No, !copy ? "its owner hasn't let you copy it" : "it's no-transfer, so its owner can't give it to you");
+    }
+
+    /// <summary>Copies an item out of the prim into my inventory ("Copy to inventory"; a no-copy item in an object of mine
+    /// moves, said as moved), into the folder for its type unless folder_id says; the reply names the folder.</summary>
     public async Task<JsonObject> CopyOutAsync(JsonObject a, CancellationToken ct)
     {
         var c = C;
         var prim = Prim(a);
         var item = await TaskItemAsync(prim, a, ct);
+        var (how, why) = Out(prim, item);
+        if (how == CopyOut.No) throw new LeapError($"{why}, so {item.Name} can't come out");
         var folder = a.Uuid("folder_id") ?? _s.Inventory.FolderFor(InventoryOps.FolderForAsset(item.AssetType));
         await _s.Inventory.EnsureLoadedAsync(folder, ct);
         var before = c.Inventory.Store!.GetContents(folder).Select(n => n.UUID).ToHashSet();
@@ -249,12 +278,154 @@ public sealed class ContentsOps
             var o = mine is null ? new JsonObject { ["id"] = got.ToString() } : _s.Inventory.ItemJson(mine);
             o["item_id"] = got.ToString();
             o["from"] = item.UUID.ToString();
+            o["folder_id"] = folder.ToString();
+            if (_s.Inventory.Node(folder) is InventoryFolder f) o["folder"] = f.Name;
+            if (how == CopyOut.Move) o["moved"] = true;
             return o;
         }
         finally
         {
             c.Inventory.ItemReceived -= OnItem;
             c.Inventory.TaskItemReceived -= OnTask;
+        }
+    }
+
+    /// <summary>
+    /// Everything inside a prim into my inventory at once, as the viewer's Copy to Inventory (its Open window:
+    /// LLFloaterOpenObject::moveToInventory, then move_inv_category_world_to_agent): a new folder named for the prim at
+    /// the top of the inventory (or folder_id), every item sent together and the replies waited for together. Departures
+    /// from the viewer's: a no-copy item in an object of mine stays inside unless move: true (the viewer moves those after
+    /// a warning, taking them out of the object); an item its rule refuses isn't sent but listed with why (the viewer
+    /// sends the whole list once any item passes, and refuses all of it when the first fails); with nothing to copy no
+    /// folder is made (the viewer makes it first and says none could be). The region answers each item that came with an
+    /// UpdateCreateInventoryItem into the folder and says nothing of one it refused, so what hasn't come once none has
+    /// for `timeout` seconds (10) is read from the folder on the grid and the rest listed as missing.
+    /// </summary>
+    public async Task<JsonObject> CopyAllOutAsync(JsonObject a, CancellationToken ct)
+    {
+        var c = C;
+        var prim = Prim(a);
+        var items = await ListAsync(prim, ct);
+        var name = a.Str("name") is { Length: > 0 } n ? n.Trim() : prim.Properties?.Name is { Length: > 0 } pn ? pn : "Object";
+        bool move = a.Bool("move", false);
+        var send = new List<(InventoryItem It, CopyOut How)>();
+        var left = new JsonArray();
+        var refused = new JsonArray();
+        foreach (var it in items.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var (how, why) = Out(prim, it);
+            if (how == CopyOut.Copy || how == CopyOut.Move && move) send.Add((it, how));
+            else if (how == CopyOut.Move) left.Add(Brief(it, "no-copy: copying it would move it out of the object"));
+            else refused.Add(Brief(it, why!));
+        }
+        var o = new JsonObject
+        {
+            ["id"] = prim.ID.ToString(), ["name"] = prim.Properties?.Name ?? "", ["count"] = items.Count,
+            ["left"] = left, ["refused"] = refused,
+        };
+        if (send.Count == 0)
+        {
+            o["copied"] = new JsonArray();
+            o["moved"] = new JsonArray();
+            return o;
+        }
+
+        UUID folder;
+        HashSet<UUID> before;
+        if (a.Uuid("folder_id") is { } given)
+        {
+            if (_s.Inventory.Node(given) is not InventoryFolder) throw new LeapError("folder_id isn't a folder of mine");
+            folder = given;
+            await _s.Inventory.EnsureLoadedAsync(folder, ct);
+            before = c.Inventory.Store!.GetContents(folder).Select(x => x.UUID).ToHashSet();
+        }
+        else
+        {
+            var root = _s.Inventory.FolderFor(FolderType.Root);
+            var sameName = c.Inventory.Store!.GetContents(root).OfType<InventoryFolder>().Count(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (sameName > 0) o["others_called_that"] = sameName;
+            folder = c.Inventory.CreateFolder(root, name);
+            before = new HashSet<UUID>();
+            // what's moved into a folder before the inventory service has it is lost (Radegast's Open waits 500 ms for it)
+            if (!await FolderReadyAsync(folder, ct))
+                throw new LeapError($"the inventory didn't make the folder {name} for them in time, so nothing was copied: try again");
+        }
+
+        var arrived = new System.Collections.Concurrent.ConcurrentDictionary<UUID, byte>();
+        var came = new SemaphoreSlim(0);
+        void Got(UUID id, UUID into)
+        {
+            if (into == folder && !before.Contains(id) && arrived.TryAdd(id, 0)) came.Release();
+        }
+        void OnItem(object? _, ItemReceivedEventArgs e) => Got(e.Item.UUID, e.Item.ParentUUID);
+        void OnTask(object? _, TaskItemReceivedEventArgs e) => Got(e.ItemID, e.FolderID);
+        c.Inventory.ItemReceived += OnItem;
+        c.Inventory.TaskItemReceived += OnTask;
+        try
+        {
+            var sim = c.Network.CurrentSim!;
+            foreach (var (it, _) in send) c.Inventory.MoveTaskInventory(prim.LocalID, it.UUID, folder, sim);
+            var quiet = TimeSpan.FromSeconds(a.Num("timeout", 10));
+            var end = DateTime.UtcNow + TimeSpan.FromSeconds(60) + TimeSpan.FromMilliseconds(100 * send.Count);
+            while (arrived.Count < send.Count && DateTime.UtcNow < end)
+                if (!await came.WaitAsync(quiet, ct)) break;
+        }
+        finally
+        {
+            c.Inventory.ItemReceived -= OnItem;
+            c.Inventory.TaskItemReceived -= OnTask;
+        }
+        // replies that slipped past the events: the folder as the grid has it
+        if (arrived.Count < send.Count)
+            foreach (var got in (await c.Inventory.FolderContentsAsync(folder, c.Self.AgentID, false, true, InventorySortOrder.ByDate, ct)).OfType<InventoryItem>())
+                if (!before.Contains(got.UUID)) arrived.TryAdd(got.UUID, 0);
+
+        // which came, by type and name (the copy keeps both)
+        var waiting = send.ToList();
+        var copied = new JsonArray();
+        var moved = new JsonArray();
+        foreach (var id in arrived.Keys)
+        {
+            if (_s.Inventory.Node(id) is not InventoryItem got) continue;
+            int at = waiting.FindIndex(w => w.It.AssetType == got.AssetType && w.It.Name == got.Name);
+            if (at < 0) at = waiting.FindIndex(w => w.It.AssetType == got.AssetType);
+            if (at < 0) continue;
+            var (from, how) = waiting[at];
+            waiting.RemoveAt(at);
+            var j = Brief(from);
+            j["item_id"] = id.ToString();
+            j["from"] = from.UUID.ToString();
+            (how == CopyOut.Move ? moved : copied).Add(j);
+        }
+        o["folder_id"] = folder.ToString();
+        o["folder"] = (_s.Inventory.Node(folder) as InventoryFolder)?.Name ?? name;
+        o["made"] = a.Uuid("folder_id") is null;
+        o["copied"] = copied;
+        o["moved"] = moved;
+        if (waiting.Count > 0)
+            o["missing"] = new JsonArray(waiting.Select(w => (JsonNode)Brief(w.It)).ToArray());
+        return o;
+    }
+
+    static JsonObject Brief(InventoryItem it, string? why = null)
+    {
+        var j = new JsonObject { ["name"] = it.Name, ["type"] = AgentInventory.AssetTypeLabel(it.AssetType) };
+        if (why != null) j["why"] = why;
+        return j;
+    }
+
+    /// <summary>Waits until the inventory service lists a folder just made (FetchInventoryDescendents2 answers it rather than
+    /// among its bad folders), up to 8 s; without that capability, Radegast's 500 ms.</summary>
+    async Task<bool> FolderReadyAsync(UUID folder, CancellationToken ct)
+    {
+        var end = DateTime.UtcNow + TimeSpan.FromSeconds(8);
+        while (true)
+        {
+            var known = await _s.Inventory.FolderOnGridAsync(folder, ct);
+            if (known is null) { await Task.Delay(500, ct); return true; }
+            if (known == true) return true;
+            if (DateTime.UtcNow > end) return false;
+            await Task.Delay(250, ct);
         }
     }
 

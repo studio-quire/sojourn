@@ -110,7 +110,10 @@ C, F, R recentres, Tab the panel, F8 the assistant's model; F3, F6, F12 as on th
   2026-10-31, after pressing a free gift and finding nothing happened: the viewer's right click). What can be done
   with that thing, only what applies: buy (with the price, "free" at L$0; a copy or its contents as it's sold), pay
   (its pay buttons, else the viewer's 1/5/10/20), touch (where a tap wouldn't already), sit here or stand up, take a
-  copy, take (yours), open (contents, yours or modifiable: listed, copied into a folder named after it), about this
+  copy, take (yours), open (contents, yours or modifiable: listed, what may be copied by the viewer's rule copied into
+  a folder named after it, at the top of the inventory, by `copyAllFromContents`: the folder waited for until the
+  inventory service lists it, since what's moved into one it doesn't have yet is lost, then every item at once;
+  no-copy ones stay inside), about this
   (owner, creator, description, land impact, next owner's permissions, the sale; opens in place), ask the assistant.
   Its own click action leads. Buy and pay go through the dispatcher's gate, so the confirmation waits for the
   person's press as everywhere (the card steps aside while it's up); the rest is the person's own hand, as the
@@ -436,11 +439,13 @@ The user's decisions:
   request (a region over its rate answers with a line of text) goes again first after a pause growing from 0.5 to 8 s;
   kept for the session, asked again after 10 minutes. While any wait or failed, the console says every 30 s how many
   are known (`physics shapes: ...`).
-  - As the viewer's LLPhysicsShapeBuilderUtil: a child with physics shape none doesn't count. A mesh with a convex hull
-    shape is its hull (physics_convex's BoundingVerts); with a prim shape, its decomposition's hulls if it has them,
-    else its physics model (physics_mesh), unless it's under 0.5 m in some dimension (the region's thin-triangle rule:
-    the hull). Until its type comes, as uploaded (a physics model means prim, none means hull), so a mesh plant whose
-    real type is none is a solid hull meanwhile. A prim or sculpt is the hull of its drawn shape (convex hull type) or
+  - As the viewer's LLPhysicsShapeBuilderUtil: a child with physics shape none doesn't count. A mesh under 0.2 m in
+    two dimensions is its box, whatever its type. A mesh with a convex hull shape is its hull (physics_convex's
+    BoundingVerts); with a prim shape, its decomposition's hulls if it has them, else its physics model (physics_mesh,
+    met from both sides), unless it's under 0.5 m in some dimension (the region's thin-triangle rule: the hull). A hull
+    whose points lie in one plane, its own or in its decomposition, is a plate of both sides (`ConvexHull.Plate`;
+    `docs/access-app.md` > The collision model has the numbers). Until its type comes, as uploaded (a physics model
+    means prim, none means hull), so a mesh plant whose real type is none is a solid hull meanwhile. A prim or sculpt is the hull of its drawn shape (convex hull type) or
     its drawn triangles (prim type). Hulls are worked out once per asset or shape, in its unit space, front faces only.
   - `SOJOURN_PHYSICS_SHAPES=0` turns it off. Checked on the local grid (OpenSim answers GetObjectPhysicsData: a mesh
     arch stopped the view at its hull's face, a child prim with shape none was walked through); not against the main

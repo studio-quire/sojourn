@@ -104,7 +104,15 @@ def console(command, wait=None, answers=()):
             post("/SessionCommand/", ID=sid, COMMAND=c)
             if wait is not None:
                 time.sleep(wait)
-                lines += [(l.text or "") for l in ET.fromstring(post(f"/ReadResponses/{sid}/", ID=sid)).iter("Line")]
+                # (a read the grid held and never answered, as below, asked again: most likely what stopped a test
+                # step's clear_course 30 s in with "timed out", 2026-11-22)
+                for tries in range(3):
+                    try:
+                        lines += [(l.text or "") for l in ET.fromstring(post(f"/ReadResponses/{sid}/", ID=sid)).iter("Line")]
+                        break
+                    except TimeoutError:
+                        if tries == 2:
+                            raise
                 continue
             # Never read at once: the grid holds a read that arrives before the output until there is some, and now and
             # then this OpenSim never answers one it held (9 of 1,500 with the processor busy, each a 30 s timeout here;

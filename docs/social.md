@@ -102,6 +102,9 @@ saying what things are.
     object, `dialog:<id>`). The text box isn't a key (the assistant types for them). Offers, invitations, questions,
     page offers: their form's buttons (not the viewer's Info). A notecard given has Read first: it keeps the item, finds
     it in the inventory and opens it in the reader (`docs/assistant-panel.md` > The reader). An alert with only OK has only ×.
+    The form keeps the script's order; its notification's payload has `rows` too, the labels as shown, top row first
+    (Core's `ScriptMenus`, the official viewer's `LLToastNotifyPanel::updateButtonsLayout`: a short row is the top one,
+    from the left), and the assistant's `dialogs` lists them in that order (Sojourn Access: `docs/access-app.md` > Keys).
   - The person's press answers it (`Notifications.RespondAsync`, as their press on the viewer's toast; the
     confirmation gate guards the assistant's answers, not theirs). Keys take no press in the notice's first 0.6 s on
     the feed, and on the desktop only a hand on the mouse (`RealInput`, as a confirmation). × puts it away unanswered

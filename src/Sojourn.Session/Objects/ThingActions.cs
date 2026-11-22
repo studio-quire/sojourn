@@ -220,9 +220,9 @@ public sealed class ThingActions(AgentSession s)
         foreach (var o in (r["items"] as JsonArray ?? new()).OfType<JsonObject>())
         {
             if (!UUID.TryParse(o.Str("item_id"), out var id)) continue;
-            // copied out, not moved: the item's owner may copy it (a no-copy item would leave the object)
-            string letters = (o["perms"] as JsonObject)?.Str("owner") ?? "";
-            list.Add(new Content(id, o.Str("name") ?? "an item", o.Str("type") ?? "", letters.Contains('C')));
+            // copied out, not moved (a no-copy item would leave the object), by the viewer's rule copyAllFromContents
+            // goes by: the contents' own word on it
+            list.Add(new Content(id, o.Str("name") ?? "an item", o.Str("type") ?? "", o.Str("out") == "copy"));
         }
         return list;
     }
@@ -277,25 +277,19 @@ public sealed class ThingActions(AgentSession s)
                 break;
             case ThingDo.Open:
             {
-                // the viewer's Open window's Copy to Inventory: what may be copied, into a folder named after it
+                // the viewer's Open window's Copy to Inventory: what may be copied, into a folder named after it, which
+                // copyAllFromContents waits for until the inventory service lists it (what's moved into a folder it
+                // doesn't have yet is lost) before sending everything at once; no-copy items stay inside
                 var items = (copy ?? await ContentsAsync(f, ct)).Where(i => i.Copy).ToList();
                 if (items.Count == 0) return (false, Lang.T("Nothing in it can be copied."));
-                var folder = await Own("TesselInventory", "createFolder", new JsonObject { ["name"] = f.Name }, ct);
-                if (Error(folder) is { } fe) return (false, Didnt(fe));
-                int done = 0;
-                string? last = null;
-                foreach (var it in items)
-                {
-                    var one = await Own("TesselBuild", "copyFromContents", new JsonObject
-                    {
-                        ["id"] = f.Root.ToString(), ["item_id"] = it.Item.ToString(), ["folder_id"] = folder.Str("folder_id"),
-                    }, ct);
-                    if (Error(one) is { } e) last = e; else done++;
-                }
-                return done == items.Count
+                var all = await Own("TesselBuild", "copyAllFromContents", new JsonObject { ["id"] = f.Root.ToString(), ["name"] = f.Name }, ct);
+                if (Error(all) is { } fe) return (false, Didnt(fe));
+                int done = ((all["copied"] as JsonArray)?.Count ?? 0) + ((all["moved"] as JsonArray)?.Count ?? 0);
+                int sent = done + ((all["missing"] as JsonArray)?.Count ?? 0);
+                if (sent == 0) return (false, Lang.T("Nothing in it can be copied."));
+                return done == sent
                     ? (true, done == 1 ? Lang.F("One item copied into the folder {0}.", f.Name) : Lang.F("{0} items copied into the folder {1}.", done, f.Name))
-                    : (done > 0, last != null ? Lang.F("{0} of {1} copied into the folder {2} ({3}).", done, items.Count, f.Name, last)
-                        : Lang.F("{0} of {1} copied into the folder {2}.", done, items.Count, f.Name));
+                    : (done > 0, Lang.F("{0} of {1} copied into the folder {2}.", done, sent, f.Name));
             }
             default:
                 return (false, null);

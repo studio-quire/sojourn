@@ -246,6 +246,34 @@ public sealed class AgentInventory
         return whole && !ct.IsCancellationRequested;
     }
 
+    /// <summary>Whether the inventory service has this folder of mine yet: FetchInventoryDescendents2 answers it among its
+    /// folders, not its bad ones. A folder made by CreateInventoryFolder has its id at once, before the service has it.
+    /// Null without the capability.</summary>
+    public async Task<bool?> FolderOnGridAsync(UUID folder, CancellationToken ct)
+    {
+        var c = C;
+        var cap = c.Network.CurrentSim?.Caps?.CapabilityURI("FetchInventoryDescendents2");
+        if (cap is null) return null;
+        var asked = new OSDArray
+        {
+            new OSDMap
+            {
+                ["folder_id"] = OSD.FromUUID(folder), ["owner_id"] = OSD.FromUUID(c.Self.AgentID), ["fetch_folders"] = OSD.FromBoolean(false),
+                ["fetch_items"] = OSD.FromBoolean(false), ["sort_order"] = OSD.FromInteger((int)InventorySortOrder.ByDate),
+            },
+        };
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            var (_, data) = await c.HttpCapsClient.PostAsync(cap, OSDFormat.Xml, new OSDMap { ["folders"] = asked }, cts.Token);
+            return data is { Length: > 0 } && OSDParser.Deserialize(data) is OSDMap reply && reply["folders"] is OSDArray folders
+                   && folders.OfType<OSDMap>().Any(f => f["folder_id"].AsUUID() == folder);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return false; }
+        catch (Exception e) when (e is not OperationCanceledException) { return false; }
+    }
+
     /// <summary>One request for a few folders' contents, as FetchFoldersAsync asks, but read here rather than by
     /// LibreMetaverse, so each folder's reply is known as all it holds: its folders and items put in the store where the
     /// reply says they are (a folder the store knew moved if its parent changed), and whatever the store had in it before

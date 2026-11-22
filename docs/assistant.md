@@ -658,7 +658,10 @@ can manage that in other ways and it could get finicky (user, 2026-11-05).
   left again before any listing showed it (a script that removes itself once it has run, an object's script taking a
   delivery) is reported as `gone_again`. A drop whose outcome wasn't seen is remembered for 5 minutes: the same item
   into the same prim again is refused with why unless `again: true` (on SL the assistant once ran a self-removing
-  script three times by retrying).
+  script three times by retrying). `copyFromContents` takes one out into the folder for its type (a no-copy one in an
+  object of mine moves, `moved: true`); `copyAllFromContents` takes everything, as the viewer's Copy to Inventory, into a
+  new folder at the top named for the prim, no-copy items left inside unless `move: true` (`docs/access-app.md` >
+  Taking what's inside into her inventory). Each item's `out` in `contents` says which: copy, move or no.
 - `TesselAgent ground {points}` gives terrain heights for placing things. Textures come from Python in the work folder
   and `TesselAgent upload` (confirmed where it costs L$); scripts through the inventory ops and `addToContents`
   (confirmed, one press each).
