@@ -13231,6 +13231,12 @@ def walk_unseen_steps(run):
     till "no way", and every //follow said "no way up from here" and stood). Where the house stands in walk_floors, on a
     slab over the ground: a deck 2 m up (in the model) and up to its south edge nine steps 1.6 m wide between two walls,
     all three of them left out of the model (SojournCollision unseen, a test's: SOJOURN_TEST_UNSEEN). Then:
+    - first, the steps and walls still in the model, with two rails over steps 2 to 5 only the model has (phantom,
+      counted solid: SojournCollision ghost) leaving a gap too tight for the planner, the visitor teleported up onto the
+      deck: //go person from the slab ends where the floors meet, on the steps below the rails, its why line saying
+      where her walk stops and why (too tight beside the rails), and goes on straight by the region up through them,
+      finishing beside it (her partner's steps on Second Life, 2026-11-22: in the model but cut off, and the walk went
+      to the spot nearest him across, a deck's edge, and fell off it);
     - the visitor walks up them onto the deck (its way kept by the app's Trails as it goes), and the tester's //follow
       from the slab goes up the way it went ("Going the way ...", the session log's "follow: by their trail"), ending
       with it on the deck, never "no way up from here"; then with it at the foot of the steps as it walks up them (her
@@ -13297,8 +13303,51 @@ def walk_unseen_steps(run):
         made = [api("TesselBuild", "create", timeout=20, shape="box", **p).get("id") for p in seen + unseen]
         if not run.check("the slab, the deck, and the steps and walls the model won't have, built", all(made), f"{sum(map(bool, made))} of {len(made)}"):
             return
-        api("SojournCollision", "unseen", ids=made[len(seen):])
         ray = lambda frm, d, mx: api("SojournCollision", "collide", **{"from": frm, "dir": d, "max": mx})
+
+        # first with the steps in the model, but cut off: two rails over steps 2 to 5 that only the model has (phantom,
+        # counted solid: SojournCollision ghost), leaving a gap of half a metre, too tight for the planner, that the
+        # region walks through (the blind tester's partner's steps on Second Life, 2026-11-22: the model had them,
+        # 0.39 to 0.41 m each, "cut off", while the region walked her up). The visitor teleported up onto the deck, so
+        # no trail of its: //go person from the slab ends where the floors meet, on the steps below the rails, not at
+        # the spot nearest it across (her deck's north edge, a fall in front), says why the way stops there, and goes
+        # on straight by the region up the steps to it
+        ghost = [api("TesselBuild", "create", timeout=20, shape="box", phantom=True, **box(x0, foot + 2 * tread, F, x1, foot + 6 * tread, F + 2.6, name="Ghost Rail")).get("id")
+                 for x0, x1 in ((4.2, 4.75), (5.25, 5.8))]
+        api("SojournCollision", "ghost", ids=ghost)
+        rail = [hx + 4.5, hy + foot + 4 * tread]
+        ok = all(ghost) and wait(lambda: abs(ray(rail + [D + 1], [0, 0, -1], 2).get("distance", 0) - (D + 1 - F - 2.6)) < 0.05
+                                 and abs(ray([hx + 5, rail[1], D + 1], [0, 0, -1], 4).get("distance", 0) - (D + 1 - F - 5 * rise)) < 0.05, 20, 1)
+        run.check("(the model has the steps, and the rails over them the region lets her through)", ok, json.dumps(ray(rail + [D + 1], [0, 0, -1], 2)))
+        visitor_tp(hx + 5, hy + 8.5, D + 1)
+        place(5, -1.5, F + 1, "on the slab south of the steps, the visitor teleported up onto the deck")
+        m = mark()
+        say_in_app(f"//go person {VISITOR[0]}")
+        run.expect("//go to the visitor on the deck up steps the model has cut off: out of reach, as near as the way goes",
+                   ["Walking", VNAME, "out of reach"], m, 10)
+        run.expect("then straight on to it by the region from there", ["Trying straight on to", VNAME], m, 30)
+        done(m, 40)
+        time.sleep(2.5)   # (the why line waits up to 2 s for names)
+        x, y, z = walk_pos()
+        vx, vy, _ = visitor_where()
+        said = said_in(m, "")
+        run.check("up the steps through the rails, finished beside it on the deck, no teleport, nothing said of coming down",
+                  any(s.startswith("Finished walking") for s in said) and z > D + 0.5 and math.dist((x, y), (vx, vy)) < 2.6
+                  and not any("eleport" in s or "came down" in s for s in said),
+                  f"at {x - hx:.1f}, {y - hy:.1f}, its middle {z - D:+.1f} m over the deck, {math.dist((x, y), (vx, vy)):.1f} m from the visitor; " + " | ".join(said))
+        log = [l for l in latest_app_log()[log_at:].splitlines() if "go: " in l]
+        plan = next((l for l in log if "go: plan from" in l and "it ends there" in l), None)
+        run.check("the session log: the plan ends where the floors meet, on the steps below the rails",
+                  plan and (mt := re.search(r"([\d.]+),([\d.]+); the goal out of reach", plan)) and foot - 0.4 < float(mt[2]) - hy < foot + 2 * tread + 0.3,
+                  (plan or " | ".join(l[:300] for l in log if "go: plan from" in l) or "none")[:500])
+        why = next((l for l in log if "go: why: the goal out of reach, the way ending where the floors meet" in l), None)
+        run.check("the session log: why, and where her walk stops: too tight beside the rails",
+                  why and "her walk stops there" in why and "too tight" in why and "Ghost Rail" in why, (why or "none")[-500:])
+        for gid in ghost:   # (out of the way of the cases after: the steps the model hasn't got)
+            api("TesselBuild", "modify", id=gid, pos=[hx + 5, hy - 30, F + 40])
+        log_at = len(latest_app_log())
+
+        api("SojournCollision", "unseen", ids=made[len(seen):])
         # the model has the deck and the slab under the steps, not the steps nor the walls
         mid = [hx + 5, hy + foot + 4.5 * tread]
         ok = wait(lambda: ray([hx + 5, hy + 7, D + 1], [0, 0, -1], 2).get("hit")

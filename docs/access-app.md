@@ -1629,7 +1629,15 @@ spots right by it within half a metre as near, the one nearest her, back from th
 walked to her side of a bar or a block; to her side of a stage 14 m across for someone anywhere in its middle, not round
 it (some 28 m) to be a few metres nearer, and round it for someone within about 3 m of its far edge; and following
 someone moving about on it, she stays on her side until then, not going from side to side as they cross its middle
-(the nearest spot alone, as until then, had sent her round for a few centimetres). A spot a storey (2.5 m) or more
+(the nearest spot alone, as until then, had sent her round for a few centimetres). A `//go` or Walk to a person or a
+point, which goes on from its end by the region (On from as near as the way goes, below), ends instead at the
+nearest place the floors meet by steps of at most 0.6 m (the goal's floor followed out by such steps alone, where
+the nearest place they meet at all is an edge it drops off), the goal's floor a metre or more over or under hers
+there (`Plan.AtMeeting`, the planner's `wayOn`; Claude Opus 5.5, 2026-11-22): the foot of steps the model has but the
+planner can't take, too tight or a step over its 0.4 m, rather than the spot nearest across, which was the far side of
+an edge from them (the blind tester's partner's deck: its north edge 5.5 m from him with a 2 m fall in front, where his
+steps' foot is 8.7 m from him; walks to him from there fell off it and ended under him). A seat or a low stage, a
+balcony or a stage with no steps (a drop of more than 0.6 m where they meet), and following, as before. A spot a storey (2.5 m) or more
 under the goal's floor, where that floor meets hers only 4 m or more from the goal (a room upstairs that a teleporter
 or a balcony at its far end reaches, a deck 3 m up with no steps and the person in its middle), would leave her under
 them, not beside them: `//go` and the assistant's walks take it for no way, so the teleport where it lands, as for a
@@ -1681,9 +1689,17 @@ within 0.6 m of a point 0.7 m on toward where she was heading, on her floor, nev
 it was counted in whole cells and reached back over her and the cells beside her, so planned again from there she was
 shut in (one node she could get to) and a walk's first stick was "no way" (the scripted test's wall across a walk; the
 blind tester's walk at 17:36 on 2026-11-18 went the same way, stuck once and then no way, which this may have been).
+A spot that leaves her no way, where the plan without it has one, is on the only way the model has, which the region
+held her on for a moment: it's taken back and the walk goes on straight to its end by the region, trusted, once a
+walk, unless the model has a drop of more than 4 m on the way or someone stands on it (as On from as near as the way
+goes, below); no nearer in 3 s, it ends as a walk with no way does (`Commands.OnThroughAsync`; Claude Opus 5.5,
+2026-11-22: mid-way up her partner's steps the region held her 2 s on the model's way up, the spot shut her into 12
+floor nodes, and every walk from there was "no way" for the spot's two minutes, where the same route went on up from
+half a metre further a few minutes later).
 
 **When the region has what the model lacks** (Claude Opus 5.5, 2026-11-19, after the blind tester's log of that evening:
-steps from a wooden deck up 2 m to her partner weren't in the collision model, why not still unknown; every `//go` to him
+steps from a wooden deck up 2 m to her partner, taken then for missing from the collision model (her logs of 2026-11-22
+showed them in it, cut off at their foot: `docs/access.md` > His steps in the model but cut off); every `//go` to him
 planned to a spot 7 m short, stuck with nothing in the model ahead while the region carried her 3.4 m up them, was
 marked and gone round till "no way", and every follow said "no way up from here" and stood; until 2026-11-11 the
 follow had steered straight at him where the plan found no way, and the region's physics had carried her up). Where
@@ -1760,12 +1776,17 @@ fall of a metre or two she hears ("On ground."), while not reaching him is the f
   floor the model has out of reach, once there, goes on straight to the goal itself by the region's autopilot, trusted
   as above ("Trying straight on to Kestrel, up 2 metres."; the rise said from a metre), and on its floor is planned
   again from there; no nearer in 3 s, it ends there as before ("Finished walking, as near to Kestrel as the way goes:
-  ..."). Unless the model has a drop of more than 4 m under her feet on the straight way there (under a point each
+  ..."). From where the floors meet by steps, when they do (above, `Plan.AtMeeting`), so that straight on sets out up
+  them. Unless the model has a drop of more than 4 m under her feet on the straight way there (under a point each
   metre, looked down from over the goal's floor where that's above her, its floor or the ground: her partner's deck
   stands 2.3 m over the ground and the ground under his floor is 2.7 m under hers), or someone else stands within
   0.8 m of the straight way (the region's autopilot goes round nobody), which the session log says ("go: as near as
   the way goes, and not on to the goal by the region: a drop the model has on the way, at ...", or "someone standing
-  on the straight way"). Short of its floor she isn't there however near across (at a plinth's foot). Something
+  on the straight way"). Short of its floor she isn't there however near across (at a plinth's foot). Making for
+  someone above her, coming down more than a step (her middle 0.6 m under where it set out) is off an edge, not on the
+  way: let go at once, said once she's landed ("Finished walking: you came down 2 metres off an edge on the way; Kestrel
+  is 4 metres, five o'clock, 4 metres above."), and the walk ends there, not there (`Trust.Fell`; until 2026-11-22 it
+  went on to "as near as the way goes" wherever she landed, under him). Something
   the model hasn't got is the likeliest reason a floor someone stands on is out of reach from hers; a stage with no
   steps or a wall stops her in 3 s where she'd have stopped anyway, and the worst is a fall of a few metres, which
   Second Life doesn't hurt and walk mode says ("On ground."). A trail of theirs is taken first, as before; this is
@@ -1799,7 +1820,11 @@ what stopped her was in the collision model at all. The session log she sends no
   has there; where the goal's floor meets hers, how far over hers it is, and, where that isn't one step, the highest
   step up on the way ("by steps up of at most"): the goal's floor is followed out down drops and through cells too tight
   for her to the first of hers she can get to, so its height there is often hers already (measured there, the test's
-  plinth, a metre high, read 0.00); and the stuck spots counted. Each surface by its
+  plinth, a metre high, read 0.00); where they meet, where her walk stops short of the goal's floor and why ("her walk
+  stops there: beside it the goal's floor at X,Y (its height) too tight, beside a step up of 0.45 m (...)"; or a
+  corner from one, beside a drop, beside something in the way, something in the way over it, a stuck spot of ours, or
+  no floor of hers at that height, with what she has there: `PathPlanner.Shut`; said only where they meet by steps;
+  2026-11-22, as her partner's steps were "cut off" with nothing to say why); and the stuck spots counted. Each surface by its
   object's name, its kind (prim, sculpt, mesh) and the physics shape type it counts by. So her log tells a goal whose
   floor the model hasn't got (nothing under its height) from one it has but can't reach from hers (a step up of more
   than 0.4 m on the way, or cut off).
@@ -1875,7 +1900,13 @@ what stopped her was in the collision model at all. The session log she sends no
   has on the way, at 131.0,44.0, its floor 17.20` (or `something of the model's ahead`). On from as near as the way
   goes: `go: trusting the region, as near as the way goes to a goal on a floor out of reach, and no drop of over 4 m
   the model has on the straight way, on to 24.74,24.18,55.48 by its autopilot`, then as above; not, `go: as near as
-  the way goes, and not on to the goal by the region: a drop the model has on the way, at ..., 5.2 m under her feet`.
+  the way goes, and not on to the goal by the region: a drop the model has on the way, at ..., 5.2 m under her feet`;
+  coming down off an edge, `go: trusting the region, came down instead: at ..., -0.7 m from where it set out, ...; off
+  an edge, so it ends there` and `go: walk over, came down 1.6 m off an edge on the way: at ...`. A plan ending where
+  the floors meet says so (`the floors meet 8.7 m from it: it ends there`), and its why line begins `the goal out of
+  reach, the way ending where the floors meet`. A stuck spot taken back: `go: trusting the region, the stuck spot just
+  marked left no way, ...: the spot taken back, on to ... by its autopilot`, or `go: the stuck spot left no way, and
+  not on by the region: ...`.
   On Second Life, once a walk, `go: the region's autopilot sent her own height (...), not the point's (...)`. A look
   at where people are that fails is logged once a session (`trails: a look failed, ...`).
 

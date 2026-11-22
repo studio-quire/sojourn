@@ -624,7 +624,14 @@ docstring with its checks in full):
   needed): where the house stands in the step before, on a slab over the ground, a deck 2 m up and nine steps up to it
   between two walls, the steps and walls left out of the collision model by `SojournCollision unseen` (a test's op,
   there with `SOJOURN_TEST_UNSEEN=1`, which the run sets: the region has them, the model doesn't, as the blind
-  tester's partner's steps on 2026-11-19). The visitor walks up onto the deck (`goto`); `//follow` from the slab goes
+  tester's partner's steps on 2026-11-19). First, with the steps and walls still in the model, two rails over steps 2
+  to 5 that only the model has (phantom, counted solid by `SojournCollision ghost`, the same switch's other op) leave
+  a gap of half a metre, too tight for the planner, and the visitor is teleported onto the deck: `//go person` from the
+  slab plans to where the floors meet, on the steps below the rails (the plan line's "it ends there"), its why line
+  saying her walk stops there "too tight" beside the rails, then "Trying straight on to ...", up through them by the
+  region, finished beside it on the deck, nothing said of coming down (her partner's steps on 2026-11-22: in the model
+  but cut off; without this the walk went to the spot nearest across, beside the steps' east wall, and ended there
+  under the visitor). The visitor walks up onto the deck (`goto`); `//follow` from the slab goes
   its way ("Going the way ... went, up 2 metres.", then "With" it on the deck, never "no way up"), and goes up after it
   too when she's with it at the foot as it walks up (her log's own case); from the slab again,
   `//go person` to it, gone on along the deck: "Walking ... the way they went, up 2 metres.", finished beside it, no

@@ -1377,6 +1377,51 @@ route and tested it herself, and was teleported at one point without knowing why
   says so now ("stuck N s before this line"). With it `//route skip` (bba9b8d), so one step that keeps failing no
   longer blocks a route a reader of her blog plays.
 
+### His steps in the model but cut off, and walks to him that went off the deck's far edge (0.1.0.1206, the blind tester, 2026-11-22 afternoon)
+
+Four logs, snapshots of one session at her partner's place (13:15 to 13:26), with her notes (our words):
+`tester-20261122T181639-12bc12` (her route up his steps, "Tessa", didn't work), `-181758-8d100d` (a walk to him),
+`-182029-de2bcf` and `-182625-f64e1e` (the route twice more, which worked, then walks to him and to a point by his
+coordinates, which didn't). Read the same day (Claude Opus 5.5 with the lead session's first look).
+- **The model has the steps.** Mid-steps the at-her-feet line names a sculpt of his house's linkset (its root named
+  for a palm, sculpts and prims of physics prim, his floor among them), 3.5 by 3.9 m tilted 30 degrees, its box 0.17 m
+  from her feet, and from there (feet 53.66 to 53.94, the model's floor 53.57 to 53.61) the model has a way to his
+  floor (54.39): planned three times (twice straight, from half a metre further up) and walked twice. The earlier reading
+  that the model lacked them came from sticks that weren't on them: on 1173 and 1182 she was stuck 5 to 9 m east of
+  the steps (the autopilot's height fault, Walks sent above her, above), so nothing there spoke for the steps. What the
+  model gets wrong is their foot: from the deck (52.41) the planner has the nodes up the steps but "cut off", the deck
+  at their foot and the first step "too tight", and the why lines put the steps at 0.39 to 0.41 m each (the first, at
+  her route's step 2, 0.41 m over the deck, against the planner's 0.4), the floors meeting 2.3 to 2.5 m from the
+  route's step 3 and 8.7 to 9.5 m from him. Which cells close it and why (a step just over 0.4 m beside the way,
+  counted as a wall at 0.3 m, or a face of a coarse sculpt over the steps) the log can't tell: the why line now says
+  (below). The region walks her up them every time: following, and straight on by its autopilot from the deck's edge
+  (all three plays of her route got her up to mid-steps in 1.2 to 1.4 s).
+- **The route's first play** (13:15:48): step 3's straight on left her at 30.44,21.31 (feet 53.66), "there" a metre
+  off with her middle half a metre under the point; the region then held her for 2 s on step 4's first stretch, 0.8 m
+  up the model's way, without her moving at all (the model had a step's riser at her shin 0.85 m on and nothing
+  higher; under her middle its surface was 0.43 m below her feet and 0.6 m on level with them, a riser's edge, where
+  the region had her standing). Why the region held her isn't in the log. Ours was what came next: the stuck spot marked 0.7 m ahead, on the only way up the model
+  has, shut her into 12 floor nodes, so the plan again was "no way", and so was every walk from there for the spot's
+  two minutes (step 4 twice, step 5 twice after `//route skip`, a //go to him). The two later plays, from half a metre further up
+  and 0.2 to 0.3 m higher, went straight up and on to the route's end. Now a stuck spot that leaves her no
+  way, where the model had one through it, is taken back and the walk goes on straight to its end by the region,
+  once a walk, with the guards of straight on (`docs/access-app.md` > When the region has what the model lacks).
+- **The walks to him** (13:17:09 and 13:21:49) and to his coordinates (13:25:19), from the deck where she lands, no
+  trail of his to take: the plan went north along the deck to the spot nearest him across, its far edge 5.5 to 7.8 m
+  from him, rather than west to the foot of the steps, where the floors meet 8.7 to 9.5 m from him; then "Trying
+  straight on", "On ground." 3 s later, and "Finished walking, as near to him as the way goes" a metre across from him
+  and 2.6 to 4.4 m under him. The drop guard (over 4 m) let a fall off a deck through, as decided; calling where she
+  landed "as near as the way goes" was wrong. Now (Claude Opus 5.5, 2026-11-22): a `//go` or walk to a person or a
+  point out of reach, whose floor meets hers by steps of at most 0.6 m and a metre or more over or under hers, is
+  planned to the nearest place they meet so (here the foot of the steps), not the spot nearest across, and goes
+  straight on from there; a straight on toward someone above
+  her that takes her down more than a step stops at once and says so ("Finished walking: you came down 2 metres off an
+  edge on the way; ..."); and the why line says where her walk stops short of the goal's floor and why ("her walk
+  stops there: beside it the goal's floor at ... too tight, beside a step up of ...", or what's in the way),
+  so her next log there names the cause. The scripted test stages it with rails over the steps that only the model has
+  (`docs/access-testing.md`, the steps the model hasn't got).
+- **A //go from the route's end** to him (13:19:41), both on his floor, went straight and arrived.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -1394,9 +1439,14 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Open threads (ours, not hers to answer)
 
-- Why the model lacks her partner's steps is still unknown: none of her logs has had her stuck standing on them (her
-  log of 2026-11-21 had her stuck east of them, the autopilot's height, above). A stick on them now lists what's at
-  her feet there.
+- Her partner's steps are in the model (her logs of 2026-11-22 afternoon, His steps in the model but cut off, above),
+  but from the deck the planner has them cut off at their foot, the steps 0.39 to 0.41 m each in the model against
+  its 0.4 m step; which cells close them and why isn't known. Walks now go to where the floors meet and on by the
+  region, so this no longer stops her; the why line now says where her walk stops and why, so her next walk to him
+  from the deck names it. If it's the step height: Second Life's avatar climbs more than 0.4 m (how much isn't known
+  here; the VR client learns it from the region, `docs/vr.md` > Walls, steps), and the planner's Step could be raised
+  on Second Life, with Knee, the lowest of what's in the way, above it (a surface between 0.4 and 0.45 m is neither a
+  step nor in the way today). Why the region held her for 2 s mid-steps on the first play isn't known either.
 - A person or a point whose nearest spot she can get to is 6 to 12 m off (a height between floors counting as
   distance) is no way unless someone stands at a spot (`PathPlanner.Solve`: the rings go to twice `GoalReach` since
   837b9ef, but `within` stayed capped at once): her route's step 4, where no way was right, as she wasn't up. Most
@@ -1461,7 +1511,11 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- Sent with 0.1.0.1206 (2026-11-22), after her logs on 1187 (Walks sent above her; A teleport partway down a ski
+- Sent with 0.1.0.1209 (2026-11-22 evening), after her four logs on 1206 at her partner's steps (His steps in the model
+  but cut off): a //go to him from the landing point while he stays on his floor, with a log, which now says where
+  her walk stops short of his floor and why.
+
+- Sent with 0.1.0.1206 (#344, 2026-11-22), after her logs on 1187 (Walks sent above her; A teleport partway down a ski
   route): a //go to her partner from where she lands while he stays on his floor, and her route up his steps
   ("Tessa") again, a log either way; whether the script menus' new order suits her (the old one is a setting).
 

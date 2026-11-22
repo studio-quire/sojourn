@@ -37,6 +37,14 @@ public sealed class CollisionApi : LeapApi
                     if (LibreMetaverse.UUID.TryParse(id?.GetValue<string>(), out var u)) _model.Physics.Unseen[u] = 0;
                 return new JsonObject { ["unseen"] = _model.Physics.Unseen.Count };
             });
+        // and the other way round: something the model has in the way that the region lets her through
+        if (Environment.GetEnvironmentVariable("SOJOURN_TEST_UNSEEN") == "1")
+            Op("ghost", "{ids: [object id...]} -> {ghosts}: the model counts these phantom prims as solid from now on, the region letting avatars through (a test's)", a =>
+            {
+                foreach (var id in a["ids"] as JsonArray ?? new())
+                    if (LibreMetaverse.UUID.TryParse(id?.GetValue<string>() ?? "", out var u)) _model.Physics.Ghosts[u] = 0;
+                return new JsonObject { ["ghosts"] = _model.Physics.Ghosts.Count };
+            });
     }
 
     JsonNode Status()
