@@ -17,13 +17,14 @@ Our own Second Life client, built for VR first, with a personal AI that operates
   social, land, building, inventory and the AO, the map, voice and media extras, the menus, the login screen, the
   launcher), and RLV/RLVa (2026-11-01, off by default: `docs/rlv.md`). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
 - **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01), a first build editor (2026-11-02) and About Land (2026-11-03); test builds (the assistant bundled) published as releases
-  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1209 (2026-11-22). 1206 that
+  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1212 (2026-11-22). 1206 that
   day, from her logs on 1187: walks send Second Life's autopilot her own height (a point over or under her left her
   east of it), straight on by the region where the model has no way, mesh flat hulls as plates, script menus in the
   order they're seen, Copy all, waits in recorded routes, `//route skip`. On 1206 her route up her partner's steps
   worked three times, while walks to him from the landing point went to the deck's far edge and off it: the model has
   his steps but the planner cuts them off at their foot. 1209: such a walk goes to where the floors meet and straight
-  on from there; coming down off an edge on the way stops it (`docs/access.md` > His steps in the model but cut
+  on from there; coming down off an edge on the way stops it; 1212: following someone down steps the model
+  lacks no longer goes round the deck first (`docs/access.md` > His steps in the model but cut
   off; Open threads); a blind tester's first session on Second Life was 2026-10-30. `docs/access.md` (plan, milestones, what testers said), `docs/access-app.md` (as built, packaging).
 - **Public source** since 2026-10-29 (`docs/publishing.md`). **First release, 0.1.0.867, published 2026-11-02**: a
   pre-release on studio-quire/sojourn (Velopack: install, updates at the person's press, uninstall; `tools/package.py`,

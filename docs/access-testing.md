@@ -635,8 +635,18 @@ docstring with its checks in full):
   its way ("Going the way ... went, up 2 metres.", then "With" it on the deck, never "no way up"), and goes up after it
   too when she's with it at the foot as it walks up (her log's own case); from the slab again,
   `//go person` to it, gone on along the deck: "Walking ... the way they went, up 2 metres.", finished beside it, no
-  teleport. `//follow` it back down them from the deck: onto its trail by the plan (the deck's edge to the steps'
-  top), "Going the way ...", "With" it on the slab, never "no way down". It takes off on the slab and hovers 5 m up,
+  teleport. `//follow` it back down them from the deck: onto its trail by the plan from 2 m back from where it went
+  down (that a step or two down them, past the deck's edge in the model), "Going the way ...", "With" it on the slab,
+  never "no way down", and the log's trail from there. Until 2026-11-22 that trail was taken from where the visitor
+  had come up and round the lap it had walked on the deck since, and each look at it joined it afresh by nearness, at
+  times back at the lap's start: this case failed now and then with her still going round ("Going the way", then no
+  "With"). And she was steered at the visitor's own spot at the trail's end, let go of
+  only by a look's "With": once, the app stalled 2.5 s as she came down, she walked into it, and the visitor, flung
+  across the region, failed the next case's set-up (the trail's last stretch now lets go 2.5 m short of it). Where
+  she ends is walk mode's reckoning (`walk_pos`), which for up to 0.8 s after she stops carries her on at her last
+  speed when the region says still (WalkMode.Me's fallback): reads of a metre or less from the visitor at the foot of
+  the steps are likely that (in the one run whose walk log was read for it, the region had her stopped 2 m from it
+  while walk mode carried her on another metre). It takes off on the slab and hovers 5 m up,
   3 m on from where it left the ground: `//follow` says it's above her with no way up, never "Going the way", and
   doesn't hold her where it took off (until 2026-11-20 its trail ended there). Teleported up onto the deck, so with
   no way of its own to take, it stands there: `//go person` from the slab south of the steps is out of reach, as near
@@ -645,7 +655,8 @@ docstring with its checks in full):
   the model hasn't got (a third wall across the steps behind her), `//go xyz` to a point east past the wall, a post in
   the model on the way: stuck with nothing of the model's ahead, 0.9 m over its floor, so the region is trusted toward
   the stretch's end, no stuck spot and no way round, and she ends at the point, walked or by the no-way end's
-  teleport. The session log's lines for each (`follow: by their trail`, `go: by their trail`, no trail while it's
+  teleport. The session log's lines for each (`follow: by their trail`, up and down, the descent's trail starting by
+  the steps' top and no longer than the straight way from there and 3 m, `go: by their trail`, no trail while it's
   flying, no trail of its to take on the deck and `go: trusting the region, as near as the way goes ...`, `lifted, so
   trusting the region`, `go: trusting the region, ...`) are checked. What's Second Life's alone (the autopilot sent
   her own height, `Commands.Level`) isn't run here: OpenSim's is sent no higher than 2 m over the ground.

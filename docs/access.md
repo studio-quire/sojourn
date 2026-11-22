@@ -1471,6 +1471,10 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   side raised to 0.1 m, and a prim or sculpt under 0.2 m boxed. The VR client stops counting a floor the region lets
   the avatar through; Access has nothing like it, so a wrong floor there stays.
 
+- Walk mode's own estimate of where she is carries her on at her last speed for up to 0.8 s after the region says
+  she's stopped, so for that moment it reads about a metre past where she is (seen in a test of following, 87d1d96,
+  2026-11-22: the region had her stopped 2 m from the visitor). Where she's told she is just after a stop may be off
+  by that much; not looked into.
 - A follow with neither a planned way nor a trail still steers straight at the one followed, as it always has: in a
   staged run with the visitor flying down, that walked her off a 2 m deck after it, and from a high floor it would be a
   high fall (seen by the agent fixing 66da1c0, 2026-11-19). Not changed: before the floors work it was the only way a
@@ -1511,7 +1515,7 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- Sent with 0.1.0.1209 (2026-11-22 evening), after her four logs on 1206 at her partner's steps (His steps in the model
+- Sent with 0.1.0.1209 (#354, 2026-11-22 evening), after her four logs on 1206 at her partner's steps (His steps in the model
   but cut off): a //go to him from the landing point while he stays on his floor, with a log, which now says where
   her walk stops short of his floor and why.
 

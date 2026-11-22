@@ -211,9 +211,10 @@ public sealed class Trails
     }
 
     /// <summary>Their way to where they are now, from a sample on her level: its points from there to their last,
-    /// simplified to its corners (Tolerance). Join: that sample; Off: how far it is from her across. Length: along the
-    /// points from there; Samples: how many; Planes: how many had a foot plane.</summary>
-    public sealed record Way(List<Vector3> Points, Vector3 Join, float Off, float Length, int Samples, int Planes);
+    /// simplified to its corners (Tolerance), and when they were there (Times, TickCount64, one a point). Join: that
+    /// sample; Off: how far it is from her across. Length: along the points from there; Samples: how many; Planes: how
+    /// many had a foot plane.</summary>
+    public sealed record Way(List<Vector3> Points, List<long> Times, Vector3 Join, float Off, float Length, int Samples, int Planes);
 
     /// <summary>How far the way's points may stray from the samples between them (corners kept).</summary>
     const float Tolerance = 0.15f;
@@ -225,13 +226,20 @@ public sealed class Trails
     /// flown down slowly where an animation overrider hid the flying (Steep catches only a descent steeper than stairs),
     /// it would be a fall of that much if it was the second.</summary>
     const float MaxDown = 5f;
+    /// <summary>How far back along their way on her floor the second join starts, before where they left it.</summary>
+    const float LeadIn = 2f;
 
     /// <summary>The ways someone walked to where they are from her level, best first: from where they last left her floor
     /// (a step either way) within <paramref name="within"/> metres across, so she goes straight to where they climbed
-    /// rather than round all they walked before it; then from where it passes nearest her on her level (of samples about
-    /// as near, the later). None while they're flying or mid-jump, or where they are isn't where their last steps
-    /// ended, as their way ends where they left the ground; and why not, or why one was left out, for the log.</summary>
-    public (List<Way> Ways, string Why) Find(UUID who, Vector3 her, float feet, float within)
+    /// rather than round all they walked before it; then from LeadIn back along their way on her floor before that, as
+    /// where they left it can be a step or two down steps the model lacks, past where her floor as the model has it
+    /// ends; then from where it passes nearest her on her level (of samples about as near, the later). Only from
+    /// <paramref name="after"/> on (TickCount64; 0, all of it): a follow on their trail looks again every 1.5 s, and
+    /// joined by nearness again it went back to an earlier part of it: following the visitor in the scripted test down
+    /// steps from a deck it had walked a lap of, she was sent round the lap again from its start (2026-11-22). None while
+    /// they're flying or mid-jump, or where they are isn't where their last steps ended, as their way ends where they
+    /// left the ground; and why not, or why one was left out, for the log.</summary>
+    public (List<Way> Ways, string Why) Find(UUID who, Vector3 her, float feet, float within, long after = 0)
     {
         List<Sample> run;
         string? brokenBy;
@@ -254,6 +262,12 @@ public sealed class Trails
         float apart = Vector2.Distance(new(end.X, end.Y), new(now.X, now.Y)), above = now.Z - end.Z;
         if (apart > EndOff || MathF.Abs(above) > 1f)
             return (new(), FormattableString.Invariant($"their steps{Since()} ending {apart:0.0} m across and {above:+0.0;-0.0} m up from where they are"));
+        if (after > 0)
+        {
+            int k = run.FindIndex(x => x.At >= after);
+            if (k < 0) return (new(), "none of their steps past where she's come on it");
+            run = run.GetRange(k, run.Count - k);
+        }
         int left = -1, nearest = -1;
         float best = float.MaxValue;
         for (int i = 0; i < run.Count; i++)
@@ -267,30 +281,62 @@ public sealed class Trails
         }
         if (nearest < 0) return (new(), $"none of their {run.Count} steps{Since()} on her level");
         if (best > within) return (new(), FormattableString.Invariant($"the nearest of their steps{Since()} on her level {best:0.0} m from her"));
+        var joins = new List<List<Sample>>();
+        if (left >= 0)
+        {
+            joins.Add(run.Skip(left).ToList());
+            if (LeadInTo(run, left, feet) is { } lead) joins.Add(lead);
+        }
+        if (nearest != left) joins.Add(run.Skip(nearest).ToList());
         var ways = new List<Way>();
         var why = "";
-        foreach (int join in left >= 0 && left != nearest ? new[] { left, nearest } : new[] { nearest })
+        foreach (var from in joins)
         {
-            var from = run.Skip(join).ToList();
+            var at = from[0].Pos;
             float low = from.Min(x => x.Feet);
             if (feet - low > MaxDown)
             {
-                why = FormattableString.Invariant($"their way from {run[join].Pos.X:0.0},{run[join].Pos.Y:0.0},{run[join].Pos.Z:0.0} going {feet - low:0.0} m down");
+                why = FormattableString.Invariant($"their way from {at.X:0.0},{at.Y:0.0},{at.Z:0.0} going {feet - low:0.0} m down");
                 continue;
             }
-            var pts = Simplify(from.Select(x => x.Pos).ToList());
+            var kept = Simplify(from.Select(x => x.Pos).ToList());
+            var pts = kept.Select(i => from[i].Pos).ToList();
             float len = 0;
             for (int i = 1; i < pts.Count; i++) len += Vector3.Distance(pts[i - 1], pts[i]);
-            float joinOff = Vector2.Distance(new(run[join].Pos.X, run[join].Pos.Y), new(her.X, her.Y));
-            ways.Add(new Way(pts, run[join].Pos, joinOff, len, from.Count, from.Count(x => x.Plane)));
+            float joinOff = Vector2.Distance(new(at.X, at.Y), new(her.X, her.Y));
+            ways.Add(new Way(pts, kept.Select(i => from[i].At).ToList(), at, joinOff, len, from.Count, from.Count(x => x.Plane)));
         }
         return (ways, why);
     }
 
-    /// <summary>Douglas-Peucker: the points whose leaving out would move the line more than Tolerance.</summary>
-    static List<Vector3> Simplify(List<Vector3> pts)
+    /// <summary>Their way from LeadIn back along it before <paramref name="left"/>, on her floor all the way (a point
+    /// between two samples where it's reached there), to their last; null where there's none before it on her floor.</summary>
+    static List<Sample>? LeadInTo(List<Sample> run, int left, float feet)
     {
-        if (pts.Count <= 2) return pts;
+        float back = 0;
+        int j = left;
+        for (; j > 0 && run[j].Joined; j--)
+        {
+            var prev = run[j - 1];
+            if (MathF.Abs(prev.Feet - feet) > OnFloor) break;
+            float seg = Vector2.Distance(new(prev.Pos.X, prev.Pos.Y), new(run[j].Pos.X, run[j].Pos.Y));
+            if (back + seg >= LeadIn)
+            {
+                float t = seg > 0 ? (LeadIn - back) / seg : 0;
+                var b = run[j];
+                var at = new Sample(Vector3.Lerp(b.Pos, prev.Pos, t), b.Feet + (prev.Feet - b.Feet) * t, b.At + (long)((prev.At - b.At) * t), prev.Vel, true, false);
+                return run.Skip(j).Prepend(at).ToList();
+            }
+            back += seg;
+        }
+        // (less than LeadIn of it on her floor before: from the first of it)
+        return j < left ? run.Skip(j).ToList() : null;
+    }
+
+    /// <summary>Douglas-Peucker: the indices of the points whose leaving out would move the line more than Tolerance.</summary>
+    static List<int> Simplify(List<Vector3> pts)
+    {
+        if (pts.Count <= 2) return Enumerable.Range(0, pts.Count).ToList();
         var keep = new bool[pts.Count];
         keep[0] = keep[^1] = true;
         var todo = new Stack<(int A, int B)>();
@@ -309,7 +355,7 @@ public sealed class Trails
             todo.Push((r.A, far));
             todo.Push((far, r.B));
         }
-        return pts.Where((_, i) => keep[i]).ToList();
+        return Enumerable.Range(0, pts.Count).Where(i => keep[i]).ToList();
     }
 
     static float FromSegment(Vector3 p, Vector3 a, Vector3 b)

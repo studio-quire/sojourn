@@ -1727,13 +1727,17 @@ fall of a metre or two she hears ("On ground."), while not reaching him is the f
   are isn't where its last step was (2 m across, a metre up or down: off the ground since), as it ends where they left
   the ground: following someone who took off was taken to that spot and held there, each look sending her back, for
   up to three minutes (until 2026-11-20). It's taken from where they last left her floor (feet within 0.4 m of hers)
-  within 30 m, so she goes to the foot of their climb rather than round all they walked before it; else from where it
-  passes nearest her on her level (feet within a metre of hers; of samples about as near, the later). Never a way
+  within 30 m, so she goes to the foot of their climb rather than round all they walked before it; or from 2 m back
+  along it before that, on her floor, as where they left it going down can be a step or two down steps the model
+  lacks, past where her floor ends in the model, more than the metre the plan's way may end short of it (the scripted
+  test's deck, 2026-11-22: 1.4 to 1.9 m short at the deck's edge, so following the visitor down took its trail from
+  where it had come up, round the lap it had walked on the deck since); else from where it passes nearest her on her
+  level (feet within a metre of hers; of samples about as near, the later). Never a way
   going more than 5 m down from her feet: stairs the model lacks that far down are rare, and a flight the animations
   hid would be a fall of that much. She gets onto it by the plan, a wall or a gap between counting as for any walk
   (until 2026-11-20 straight within 3 m, unchecked, into a wall or across a gap between two balconies): on its floor,
   or where her floor as the model has it ends within a metre of it (the deck's edge at the top of steps it lacks), to
-  there and on; within half a metre she's on it already; where the first can't be got onto, the second. Then its
+  there and on; within half a metre she's on it already; where one can't be got onto, the next. Then its
   points, kept to the corners (0.15 m).
   Following takes it where the plan has no way to their floor (out of reach, beneath them, no way at all), or, while
   she's on it, has one only reckoned from her feet with nothing under her in the model; it's left when she's with
@@ -1742,7 +1746,13 @@ fall of a metre or two she hears ("On ground."), while not reaching him is the f
   by time alone, as a way she couldn't walk stays one; with them, or the plan reaching them, starts afresh. Then the
   follow goes on as before, "no way up from here" included, said once until they're in reach: taking their trail
   again doesn't make it said again (until 2026-11-20 it did, and the two took turns every 20 to 30 s at a trail she
-  couldn't walk). Its points are passed within 0.7 m, its last too, then the spot behind them. A `//go` or Walk to a
+  couldn't walk). Its points are passed within 0.7 m, its last too, then the spot behind them; while they stand at its
+  end, the last stretch goes toward them and the autopilot itself lets go 2.5 m short of them, as off it (steered on
+  through to their end until 2026-11-22, she was let go of only by a look's "with", and once, the app stalled 2.5 s,
+  walked on into them). Each plan's look (every
+  1.5 s) takes it again for where they've gone since, but only from the last of its points she has passed: joined
+  afresh by nearness, as until 2026-11-22, it could go back to an earlier part of it, and following someone down off
+  a deck they'd walked a lap of sent her round the lap again, at times for good. A `//go` or Walk to a
   person takes it in the same cases, from the first plan only: "Walking 14 metres to Kestrel the way they went, up 2
   metres.", its points walked by the region's autopilot unsaid and not planned afresh round people stepping in; a
   stretch of it that sticks goes on as any (below), planned afresh without their trail.
@@ -1881,7 +1891,8 @@ what stopped her was in the collision model at all. The session log she sends no
   not each look's plan (`follow: by their trail, their floor out of reach (the floors meeting 1.5 m from them): she at
   235.50,158.50,22.25 (feet 21.40), they at 237.00,169.00,24.25; their trail from 237.0,160.0,22.3 to
   237.0,169.0,24.3, 5 points over 9.5 m (12 samples, a foot plane at 12), 2.1 m from her where she joins it, the plan's 1
-  stretch onto it`; `follow: off their trail,
+  stretch onto it`, and in parentheses after it the joins tried before it that no way was planned onto, as `(no way
+  planned onto it at 237.0,164.2,24.1, 1.9 m off)` where they went down steps the model lacks; `follow: off their trail,
   with them: she at ...`, or the plan has a way to their floor, they sat down, their trail gone, no half metre made on
   it), and, once until the plan reaches them again, `follow: ..., and no trail of theirs to take (...)` with why
   (none of their steps seen lately; flying or a jump now, from where their steps end; their steps ending so far from

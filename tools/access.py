@@ -13243,8 +13243,10 @@ def walk_unseen_steps(run):
       log's own case), following goes up after it;
     - from the slab again, //go person to the visitor, which has walked on along the deck: "the way they went", walked up
       the steps by the region's autopilot, finished beside it on the deck, no teleport ("go: by their trail");
-    - following it back down them from the deck (onto its trail by the plan, from the deck to the steps' top), with it
-      on the slab, never "no way down";
+    - following it back down them from the deck (onto its trail by the plan, from the deck a little way back from the
+      steps' top: where it left her floor is a step or two down them, past the deck's edge in the model), with it on
+      the slab, never "no way down", and the trail in the log from there, not from where it came up and round the lap
+      it had walked on the deck since;
     - it takes off on the slab and hovers 5 m up, 3 m on from where it left the ground: //follow hears it's above her
       with no way up, never "Going the way" (its way ends where it took off, where the follow had held her);
     - it's teleported up onto the deck and stands there, so with no way of its own to take: //go person from the slab
@@ -13515,6 +13517,16 @@ def walk_unseen_steps(run):
         follow = next((l for l in lines if "follow: by their trail" in l), None)
         run.check("the session log: the follow by their trail, why, where each was, the trail from the slab up onto the deck",
                   follow and "their floor out of reach" in follow and re.search(r"their trail from [^;]* points over [\d.]+ m", follow), (follow or "none")[:400])
+        # following it down, its trail taken from where it went down on the deck, not from where it came up and round all
+        # it walked on the deck since (a lap of some 8 m), which the follow then walked, and with a look at the trail
+        # joined afresh by nearness went round again (failing this step's descent now and then until 2026-11-22)
+        def trail_of(l):
+            mt = re.search(r"she at [\d.]+,[\d.]+,([\d.]+) .*their trail from ([\d.]+),([\d.]+),([\d.]+) to ([\d.]+),([\d.]+),([\d.]+), \d+ points over ([\d.]+) m", l)
+            return mt and [float(x) for x in mt.groups()]
+        down = next((t for l in lines if "follow: by their trail" in l and (t := trail_of(l)) and t[0] > D + 0.5), None)
+        run.check("the session log: following it down, its trail from where it went down on the deck, not round all it walked there",
+                  down and math.dist(down[1:3], (hx + 5, hy + 5)) < 2.5 and down[7] < math.dist(down[1:4], down[4:7]) + 3,
+                  next((l[:400] for l in lines if "follow: by their trail" in l and (t := trail_of(l)) and t[0] > D + 0.5), "none"))
         by = next((l for l in lines if "go: by their trail" in l), None)
         run.check("the session log: the walk by their trail, why, from where", by and "their floor out of reach" in by and "(feet " in by, (by or "none")[:400])
         flew = next((l for l in lines if "follow: " in l and "no trail of theirs to take (flying since" in l), None)
