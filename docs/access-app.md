@@ -1591,8 +1591,14 @@ and head height (0.45-1.8 m over the floor) as obstacles; nearer than 0.3 m to t
 passes), and A* pays more within 0.75 m, so the path keeps to the middle of gaps; then pulled straight where a line
 keeps that room. A face lying on a cell's edge counts only in the cell behind it (2026-11-11: walls on round
 coordinates, with a walk to a round number lining the grid up with them, took the free cells beside them too, and a
-stair a metre wide between two walls had no cell a body fits in). The floor is followed out from where the avatar
-stands (2026-10-31): from each cell to the next, the highest surface (or the ground) no more than 0.4 m up or 1.2 m
+stair a metre wide between two walls had no cell a body fits in). A face too steep to stand on counts over a cell only
+as high and as low as it is over that cell (the face clipped to the cell, `SpanOver`; 2026-11-22): until then an
+upright one stood over every cell it crossed with all its height, so the side of a flight of steps, a long face from
+under its foot to over its top, was a wall 2 m high at the foot as at the top, and the foot of steps a metre wide or
+less was cut off (the blind tester's partner's steps on Second Life: the same "upright 52.12-54.32" of the steps' sculpt
+named beside their foot at the deck's 52.41 and over a cell 1.4 m up them; a synthetic copy, steps 0.8 to 0.9 m wide
+between sides sloping with them, had no way up on 1212's planner and goes straight up on this one). The floor is
+followed out from where the avatar stands (2026-10-31): from each cell to the next, the highest surface (or the ground) no more than 0.4 m up or 1.2 m
 down, so stairs, a stage's steps, ramps and a floor over sloping ground are walked, and what's above that floor in the
 body's band is in the way (a stage with no steps, a table); what the floor can't reach is blocked. With nothing known
 under the avatar (in the air, or on something the model hasn't got) the floor goes on level at its feet.
@@ -1637,7 +1643,11 @@ there (`Plan.AtMeeting`, the planner's `wayOn`; Claude Opus 5.5, 2026-11-22): th
 planner can't take, too tight or a step over its 0.4 m, rather than the spot nearest across, which was the far side of
 an edge from them (the blind tester's partner's deck: its north edge 5.5 m from him with a 2 m fall in front, where his
 steps' foot is 8.7 m from him; walks to him from there fell off it and ended under him). A seat or a low stage, a
-balcony or a stage with no steps (a drop of more than 0.6 m where they meet), and following, as before. A spot a storey (2.5 m) or more
+balcony or a stage with no steps (a drop of more than 0.6 m where they meet), and following, as before. Where the
+floors meet is found following each floor the goal's reaches over a cell (2026-11-22; until then the first to reach a
+cell had it, so the ground under a deck, reached off a platform's far edge, hid the deck, and a platform up steps from
+a deck 2.3 m over the ground was "a space of its own": no way, the teleport).
+A spot a storey (2.5 m) or more
 under the goal's floor, where that floor meets hers only 4 m or more from the goal (a room upstairs that a teleporter
 or a balcony at its far end reaches, a deck 3 m up with no steps and the person in its middle), would leave her under
 them, not beside them: `//go` and the assistant's walks take it for no way, so the teleport where it lands, as for a
@@ -1682,6 +1692,27 @@ that leave the goal out of reach. Planning costs a fifth to two thirds more than
 synthetic scenes through both by reflection, the PC otherwise quiet: a walk in the club 1.3-1.9 ms against 1.0-1.4, a
 follow's 6 m 1.2 against 1.0, 30 m of open ground 3.8 against 2.3, 150 m through a town of blocks 53 against 39, 40 m
 through 57,600 triangles of clutter 13 against 11).
+
+**A narrower body** (Claude Opus 5.5, 2026-11-22, after the blind tester's logs on 1212): where the planner finds no
+way onto the goal's floor (no way at all, the goal's floor out of reach, or for a person or a point, one on its own
+floor), a `//go` or Walk to plans again for a narrower body (`PlanAsync`'s `narrower`, `NarrowBody`), with only a cell
+with something in the way over it blocked, and walks that way where it gets her onto the goal's floor (`Plan.Narrow`;
+the plan line says "planned for a narrower body"; the why line is still the planner's own, saying where its way stops).
+Second Life's avatar is 0.6 m wide and 0.45 deep (`llGetAgentSize`, the viewer's `DEFAULT_AGENT_WIDTH` and `DEPTH`,
+whatever the shape; its physics shape, which residents call a capsule, isn't documented), where the planner's 0.3 m
+with its quarter-metre cells keeps a path's middle 0.375 to 0.625 m from what it passes, a gap of 0.75 to 1.25 m by how
+it lies across the cells: so a gap of 0.6 to 0.75 m that she walks through is as often as not too tight for it, and so
+were steps between rails. The narrower way passes 0.25 to 0.75 m, some of which she won't fit (stuck, the spot is
+marked and gone round as any). Never nearer people than the planner's own (what she'd brush past is someone). Its
+squeezes are stretches of their own, from the last spot with the planner's room before one to the first after, and
+the lines either side keep that room, so a line pulled through a squeeze doesn't graze everything else on the way (a
+stair's edge). Its stretches are watched: her feet more than a metre under the lowest floor the way crosses on a
+stretch (`Plan.Lows`), she's off it, and the walk ends there, said as straight on's coming down is ("Finished walking:
+you came down 2 metres off an edge on the way; ..."); unwatched, a walk off a stair's side went on under it to the
+stretches' corners across. A trail of the person's own, where there is one, goes before it (Their trail, below). Only
+for `//go` and Walk to (and a route's walks); following and the assistant's walks plan as before. On the synthetic copy
+of her partner's steps with rails a metre over each tread 0.64 m apart, the planner's own way ends at their foot and
+the narrower one goes up their middle; a plan costs some 2 ms more where it's tried.
 
 A mesh or sculpt still downloading isn't known yet, so a walk that gets stuck
 marks the spot for two minutes and plans again (twice), then counts as no way. The spot is the cells whose middles are
@@ -1753,7 +1784,7 @@ fall of a metre or two she hears ("On ground."), while not reaching him is the f
   1.5 s) takes it again for where they've gone since, but only from the last of its points she has passed: joined
   afresh by nearness, as until 2026-11-22, it could go back to an earlier part of it, and following someone down off
   a deck they'd walked a lap of sent her round the lap again, at times for good. A `//go` or Walk to a
-  person takes it in the same cases, from the first plan only: "Walking 14 metres to Kestrel the way they went, up 2
+  person takes it in the same cases, and before a way planned for a narrower body (above), from the first plan only: "Walking 14 metres to Kestrel the way they went, up 2
   metres.", its points walked by the region's autopilot unsaid and not planned afresh round people stepping in; a
   stretch of it that sticks goes on as any (below), planned afresh without their trail.
 - **Trusting the region**: a stretch of a `//go`, Walk to or a route's walk that sticks with her feet half a metre or
@@ -1787,7 +1818,10 @@ fall of a metre or two she hears ("On ground."), while not reaching him is the f
   as above ("Trying straight on to Kestrel, up 2 metres."; the rise said from a metre), and on its floor is planned
   again from there; no nearer in 3 s, it ends there as before ("Finished walking, as near to Kestrel as the way goes:
   ..."). From where the floors meet by steps, when they do (above, `Plan.AtMeeting`), so that straight on sets out up
-  them. Unless the model has a drop of more than 4 m under her feet on the straight way there (under a point each
+  them. Where a narrower body has a way onto the goal's floor, that's walked instead (A narrower body, above): on 1212
+  where the floors met was the corner of her partner's steps' foot, and straight at him from there ran along their
+  side, up them once and off them once; so this is left for where even that has none (steps over the planner's 0.4 m,
+  a gap under a cell wide). Unless the model has a drop of more than 4 m under her feet on the straight way there (under a point each
   metre, looked down from over the goal's floor where that's above her, its floor or the ground: her partner's deck
   stands 2.3 m over the ground and the ground under his floor is 2.7 m under hers), or someone else stands within
   0.8 m of the straight way (the region's autopilot goes round nobody), which the session log says ("go: as near as
@@ -1915,7 +1949,12 @@ what stopped her was in the collision model at all. The session log she sends no
   coming down off an edge, `go: trusting the region, came down instead: at ..., -0.7 m from where it set out, ...; off
   an edge, so it ends there` and `go: walk over, came down 1.6 m off an edge on the way: at ...`. A plan ending where
   the floors meet says so (`the floors meet 8.7 m from it: it ends there`), and its why line begins `the goal out of
-  reach, the way ending where the floors meet`. A stuck spot taken back: `go: trusting the region, the stuck spot just
+  reach, the way ending where the floors meet`. A way planned for a narrower body: its plan line's `planned for a
+  narrower body, the planner's own having no way onto the goal's floor (its why line says why)`, with the planner's
+  own why line (`the goal out of reach, ...` or `no way: ...`); off it, `go: off the way on stretch 2 of 3, planned for
+  a narrower body: her feet more than 1.0 m under its lowest floor there (52.41)` and `go: walk over, came down ...`;
+  a trail of theirs taken before it, `go: by their trail, their floor out of reach but for a narrower body than the
+  planner's, ...`. A stuck spot taken back: `go: trusting the region, the stuck spot just
   marked left no way, ...: the spot taken back, on to ... by its autopilot`, or `go: the stuck spot left no way, and
   not on by the region: ...`.
   On Second Life, once a walk, `go: the region's autopilot sent her own height (...), not the point's (...)`. A look

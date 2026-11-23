@@ -42,6 +42,15 @@ public sealed class PathPlanner
     const float Knee = 0.45f, Head = 1.8f;
     /// <summary>The body's half width: nearer than this to anything solid is blocked (a 0.8 m doorway still passes).</summary>
     const float Body = 0.3f;
+    /// <summary>A narrower body, for a second plan where the planner's own finds no way to the goal's floor
+    /// (PlanAsync's narrower): only a cell with something in the way over it is blocked, so a squeeze a cell wide passes.
+    /// With the cells a quarter of a metre, Body keeps a path's middle 0.375 to 0.625 m from what it passes (a gap of
+    /// 0.75 to 1.25 m, by how it lies across the cells), where Second Life's avatar is 0.6 m wide and 0.45 deep
+    /// (llGetAgentSize; the viewer's DEFAULT_AGENT_WIDTH and DEPTH, fixed whatever the shape; its physics shape, which
+    /// residents describe as a capsule, isn't documented): so a 0.6 to 0.75 m gap she walks through is too tight for
+    /// the planner as often as not. This one lets a path's middle come within 0.125 to 0.375 m of something, a gap of
+    /// 0.25 to 0.75 m, some of which she won't fit (the stuck handling marks it and goes round).</summary>
+    const float NarrowBody = 0.1f;
     /// <summary>The room a path keeps from walls where there's that much (a corner closer than this was bumped).</summary>
     const float Room = 0.55f;
     /// <summary>Two floors over a cell nearer than this are one (what a body stands on is the same within a knee's height;
@@ -86,6 +95,13 @@ public sealed class PathPlanner
         /// <summary>The way ends where the goal's floor meets hers by steps she may well climb (asked for by wayOn),
         /// not at the spot nearest the goal: a walk going on by the region from there sets out up those steps.</summary>
         public bool AtMeeting { get; init; }
+        /// <summary>Planned for a narrower body (NarrowBody) than the planner's, where with its own the goal's floor was
+        /// out of reach or there was no way at all: the way passes somewhere its own body doesn't fit, which the region
+        /// may let her through (her partner's steps on Second Life, 2026-11-22, cut off at their foot as too tight).</summary>
+        public bool Narrow { get; init; }
+        /// <summary>For each waypoint, the lowest floor the way crosses getting there from the one before (from the start,
+        /// for the first): a walk more than a metre under it has come off the way (Commands' walk of a narrow way).</summary>
+        public IReadOnlyList<float> Lows { get; init; } = Array.Empty<float>();
     }
 
     /// <summary>A surface the model has over a cell: flat enough to stand on or not, its heights there, and its prim (a
@@ -144,9 +160,13 @@ public sealed class PathPlanner
     /// reasons when there's no way or the goal is out of reach (the walk log has them either way).
     /// <paramref name="wayOn"/>: for a walk that goes on from its end by the region (Commands.OnFromAsync), a person or
     /// a point out of reach whose floor meets hers by steps she may well climb has the way end where they meet, not at
-    /// the spot nearest it (Plan.AtMeeting).</summary>
+    /// the spot nearest it (Plan.AtMeeting). <paramref name="narrower"/>: where that finds no way to the goal's floor
+    /// (none at all, or the goal out of reach on a floor of its own, or for a person or a point on its own), planned
+    /// again for a narrower body (NarrowBody), whose way is taken where it gets her onto the goal's floor (Plan.Narrow);
+    /// the reasons said are the first plan's.</summary>
     public async Task<Plan?> PlanAsync(Vector2 from, float feet, Vector2 to, IReadOnlySet<uint>? passable = null, CancellationToken ct = default,
-        float? toZ = null, IReadOnlyList<Vector3>? people = null, float? thing = null, Action<Diagnosis>? why = null, bool wayOn = false)
+        float? toZ = null, IReadOnlyList<Vector3>? people = null, float? thing = null, Action<Diagnosis>? why = null, bool wayOn = false,
+        bool narrower = false)
     {
         if (!_rays.Ready) return null;
         var lo = Vector2.Min(from, to) - new Vector2(Margin);
@@ -172,6 +192,17 @@ public sealed class PathPlanner
         Diagnosis? found = null;
         var plan = await Task.Run(() => Solve(solids, from, feet, to, toZ, lo, hi, nearGround ? Ground : null, people, thing,
             d => found = d, wayOn), ct);
+        // (the planner's body too wide for the way the region walks her: her partner's steps on Second Life, 2026-11-22,
+        // whose foot the planner found too tight while the region carried her up them every time. Only for a way onto the
+        // goal's floor where the first had none: a way round, a stand-in on her own floor, are as the planner has them)
+        if (narrower && (plan == null || plan.Beneath || plan.GoalMoved && plan.InWay == null && (!plan.OnGoalFloor || thing == null)))
+        {
+            var narrow = await Task.Run(() => Solve(solids, from, feet, to, toZ, lo, hi, nearGround ? Ground : null, people, thing,
+                _ => { }, wayOn, NarrowBody), ct);
+            if (narrow is { FloorKnown: true, Beneath: false, InWay: null, OnGoalFloor: true }
+                && (plan == null || plan.Beneath || !plan.OnGoalFloor || plan.GoalMoved && !narrow.GoalMoved))
+                plan = narrow with { Narrow = true };
+        }
         if (found is { } diagnosis)
         {
             if (WalkMode.Logging) WalkMode.Log(Say(diagnosis, (_, id) => $"#{id}"));
@@ -202,6 +233,7 @@ public sealed class PathPlanner
             line += string.Create(inv, $"; cut short of someone standing at {people[w].X:0.0},{people[w].Y:0.0},{people[w].Z:0.0}");
         if (plan.Around.Count > 0) line += $"; round {plan.Around.Count} standing";
         if (plan.Beneath) line += "; beneath the goal: no way";
+        if (plan.Narrow) line += "; planned for a narrower body, the planner's own having no way onto the goal's floor (its why line says why)";
         return line + $"; {floors}{SpotsSaid(plan.Spots)}";
     }
 
@@ -277,7 +309,7 @@ public sealed class PathPlanner
     static bool StandsOn(float z, float floor) => z >= floor - 0.3f && z <= floor + 2.6f;
 
     Plan? Solve(Solids solids, Vector2 from, float feet, Vector2 to, float? toZ, Vector2 lo, Vector2 hi, Func<float, float, float?>? ground,
-        IReadOnlyList<Vector3>? people, float? thing, Action<Diagnosis> why, bool wayOn = false)
+        IReadOnlyList<Vector3>? people, float? thing, Action<Diagnosis> why, bool wayOn = false, float body = Body)
     {
         var tris = solids.Triangles;
         int nx = (int)MathF.Ceiling((hi.X - lo.X) / Cell), ny = (int)MathF.Ceiling((hi.Y - lo.Y) / Cell);
@@ -314,16 +346,22 @@ public sealed class PathPlanner
                 {
                     var c0 = new Vector2(lo.X + i * Cell, lo.Y + j * Cell);
                     if (!Overlaps(a2, b2, c2, c0 + new Vector2(0.0005f), c0 + new Vector2(Cell - 0.0005f))) continue;
-                    // its heights over this cell: its plane at the cell's corners, within the triangle's own (a long
-                    // sloping roof or ramp spans metres, but little over one cell); an upright one, all of it
+                    // its heights over this cell: a floor's, its plane at the cell's corners, within the triangle's own
+                    // (a long sloping roof or ramp spans metres, but little over one cell); anything steeper, the part
+                    // of it over the cell (SpanOver). Until 2026-11-22 an upright one stood over every cell it crossed
+                    // with all its height: a stair's side, foot to top, was a wall 2.2 m high at its foot as at its top
+                    // (the blind tester's partner's steps on Second Life: "upright 52.12-54.32" beside their foot at
+                    // the deck's 52.41, and the same over a cell 1.4 m up them, where the deck's floor was cut off)
                     float zl = tzLo, zh = tzHi;
-                    if (up > 0.05f)
+                    if (up >= 0.7f)
                     {
                         float Z(float x, float y) => a.Z - (n.X * (x - a.X) + n.Y * (y - a.Y)) / n.Z;
                         float z00 = Z(c0.X, c0.Y), z10 = Z(c0.X + Cell, c0.Y), z01 = Z(c0.X, c0.Y + Cell), z11 = Z(c0.X + Cell, c0.Y + Cell);
                         zl = Math.Clamp(MathF.Min(MathF.Min(z00, z10), MathF.Min(z01, z11)), tzLo, tzHi);
                         zh = Math.Clamp(MathF.Max(MathF.Max(z00, z10), MathF.Max(z01, z11)), tzLo, tzHi);
                     }
+                    else if (SpanOver(new(a2, a.Z), new(b2, b.Z), new(c2, c.Z), c0 + new Vector2(0.0005f), c0 + new Vector2(Cell - 0.0005f)) is { } over)
+                        (zl, zh) = over;
                     int k = j * nx + i;
                     links.Add(head[k]);
                     head[k] = los.Count;
@@ -512,7 +550,8 @@ public sealed class PathPlanner
         }
         var hard = new bool[nodes];
         var blocked = new bool[nodes];
-        for (int m = 0; m < nodes; m++) { hard[m] = clearOfThings[m] < Body; blocked[m] = clear[m] < Body; }
+        // (a narrower body nearer things, never nearer people: what she brushes past there is someone)
+        for (int m = 0; m < nodes; m++) { hard[m] = clearOfThings[m] < body; blocked[m] = clear[m] < body || clear[m] < clearOfThings[m] && clear[m] < Body; }
         // standing against a wall: the floor around the start is free (else nothing could leave it). Standing right by
         // someone, those cells that take her no nearer them than she is: she leaves away from them, not brushing past
         bool TowardSomeone(Vector2 cell)
@@ -606,7 +645,12 @@ public sealed class PathPlanner
         // With maxDrop, followed out only by steps down of at most that and met only so: where it meets hers by steps
         // (her partner's steps, 2026-11-22), which can be further than an edge it drops off onto hers
         // (for the log: how far the goal's floor is over hers where they meet, and the highest step up on the way; and
-        // where: her node there, and the goal's floor in the cell beside it, which her walk doesn't go on onto)
+        // where: her node there, and the goal's floor in the cell beside it, which her walk doesn't go on onto).
+        // Each floor it comes to over a cell is followed on, as the walk's nodes are: until 2026-11-22 a cell was taken
+        // once, at the first floor to reach it, so off a platform's far edge down to the ground and round under a deck
+        // came before down the steps onto it, the deck's cells were taken for the ground under them, and the goal's
+        // floor never met hers ("no way: the goal is in a space of its own" for a platform up steps from a deck 2.3 m
+        // over the ground, with the ground in reach of the search; met at the steps' foot with it 20 m down)
         float? meets = null, meetRise = null, meetClimb = null;
         int meetNode = -1, meetCell = -1;
         float meetFloor = 0;
@@ -614,45 +658,56 @@ public sealed class PathPlanner
         {
             if (SurfaceUnder(g, z) is not { } gf) return 0;
             bool inside = Obstructed(g, gf);
-            var seen = new float[cells];   // the goal's floor over each cell it's followed to (NaN: not)
-            Array.Fill(seen, float.NaN);
-            var climb = new float[cells];   // the highest drop on the way out there: a step up, coming back
-            seen[g] = gf;
-            int got = 1, gi0 = g % nx, gj0 = g / nx;
-            var q = new Queue<int>();
-            q.Enqueue(g);
-            while (q.TryDequeue(out int k))
+            // the goal's floor over each cell it's followed to, a state for each floor over one (within Same: the same
+            // floor), each cell's a list newest first; and the highest drop on the way out there: a step up, coming back
+            var stCell = new List<int>();
+            var stFloor = new List<float>();
+            var stClimb = new List<float>();
+            var stNext = new List<int>();
+            var firstSt = new int[cells];
+            Array.Fill(firstSt, -1);
+            int State(int k, float f, float c)
             {
-                int i = k % nx, j = k / nx;
-                float f = seen[k];
+                stCell.Add(k); stFloor.Add(f); stClimb.Add(c); stNext.Add(firstSt[k]);
+                return firstSt[k] = stCell.Count - 1;
+            }
+            bool Seen(int k, float f)
+            {
+                for (int s = firstSt[k]; s >= 0; s = stNext[s]) if (MathF.Abs(stFloor[s] - f) < Same) return true;
+                return false;
+            }
+            int gi0 = g % nx, gj0 = g / nx;
+            var q = new Queue<int>();
+            q.Enqueue(State(g, gf, 0));
+            while (q.TryDequeue(out int st))
+            {
+                int k = stCell[st], i = k % nx, j = k / nx;
+                float f = stFloor[st], c = stClimb[st];
                 bool through = inside && Obstructed(k, f);   // (still in what the goal is inside)
                 for (int d = 0; d < 4; d++)
                 {
                     int ii = i + (d == 0 ? 1 : d == 1 ? -1 : 0), jj = j + (d == 2 ? 1 : d == 3 ? -1 : 0);
                     if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
                     int kk = jj * nx + ii;
-                    if (!float.IsNaN(seen[kk])) continue;
                     float best = float.NegativeInfinity;
                     if (GroundAt(kk) is { } g2 && g2 <= f + Step) best = g2;
                     for (int e = head[kk]; e >= 0; e = link[e])
                         if (flat[e] && spanHi[e] <= f + Step && spanHi[e] > best) best = spanHi[e];
+                    if (best > float.NegativeInfinity && Seen(kk, best)) continue;
                     // stepping across or down into this space: they meet at an edge (a floor the walk reaches here, and not
                     // one under this space's own, as the ground floor is under a room upstairs)
                     for (int m = fl.First[kk]; m < fl.First[kk + 1]; m++)
                         if (open[m] && floor[m] <= f + Step && floor[m] >= best - Same && f - floor[m] <= maxDrop)
                         {
-                            (meetRise, meetClimb) = (gf - floor[m], MathF.Max(climb[k], f - floor[m]));
+                            (meetRise, meetClimb) = (gf - floor[m], MathF.Max(c, f - floor[m]));
                             (meetNode, meetCell, meetFloor) = (m, k, f);
                             return MathF.Sqrt((ii - gi0) * (ii - gi0) + (jj - gj0) * (jj - gj0));
                         }
                     if (best == float.NegativeInfinity || f - best > MathF.Min(10, maxDrop) || !through && Obstructed(kk, best)) continue;
-                    seen[kk] = best;
-                    climb[kk] = MathF.Max(climb[k], f - best);
-                    got++;
-                    q.Enqueue(kk);
+                    q.Enqueue(State(kk, best, MathF.Max(c, f - best)));
                 }
             }
-            return got >= 16 ? null : 0;   // (smaller: the inside of something, not a place to stand)
+            return stCell.Count >= 16 ? null : 0;   // (smaller: the inside of something, not a place to stand)
         }
         // what the model has over a cell between two heights, the nearest the middle first, the first few: each surface
         // once a prim (its lowest and highest over the cell), as a mesh floor is many triangles
@@ -796,7 +851,7 @@ public sealed class PathPlanner
                             for (int m = fl.First[jj * nx + ii]; m < fl.First[jj * nx + ii + 1]; m++)
                             {
                                 // (not where only standing there already lets her be, against a wall or a stage's side)
-                                if (!open[m] || clearOfThings[m] < Body) continue;
+                                if (!open[m] || clearOfThings[m] < body) continue;
                                 // (a spot with room round it before one against the edge, where the region's walk rides up it)
                                 float rise = want is { } wf ? MathF.Abs(floor[m] - wf) : 0, dz = level || rise <= 1.5f ? 0 : rise / Cell;
                                 float d = di * di + dj * dj + dz * dz + (clear[m] < Room ? 16 : 0);
@@ -925,12 +980,14 @@ public sealed class PathPlanner
         var goalAt = goalMoved ? Centre(gi, gj) : to;
         int? inWay = null;
         IReadOnlyList<int> around = Array.Empty<int>();
-        Plan Made(List<Vector2> pts, bool direct, float length) =>
+        // (a straight way's lowest floor: the lower of its two ends)
+        Plan Made(List<Vector2> pts, bool direct, float length, List<float>? lows = null) =>
             new(pts, direct, length, goalMoved)
             {
                 StartFloor = startFloor, GoalFloor = floor[goal], FloorKnown = !level, Around = around, InWay = inWay,
                 OnGoalFloor = level || (under is { } uf ? MathF.Abs(floor[goal] - uf) < Same : toZ is not { } tzf || StandsOn(tzf, floor[goal])),
                 Meets = meets * Cell, Beneath = beneath, Spots = stuckSpots, AtMeeting = atMeeting,
+                Lows = lows ?? pts.Select(_ => MathF.Min(startFloor, floor[goal])).ToList(),
             };
         bool Roomy(int m, float need) => !blocked[m] && (clear[m] >= need || NearEnd(m));
         bool NearEnd(int m)
@@ -987,27 +1044,42 @@ public sealed class PathPlanner
         // room the path itself had between the two (all of Room where there's that much, else as much as its tightest
         // spot there: a squeeze, or a stage's edge stepped off beside its side, lets only the stretch through it come
         // as close, and not the whole walk), the line followed over the floor as the walk will be, so it ends on that
-        // node and not on a floor over or under it
+        // node and not on a floor over or under it.
+        // For a narrower body, a squeeze its own body doesn't fit is a stretch of its own, from the last spot before it
+        // with the planner's room to the first after it, and the lines either side keep that room: else a line pulled
+        // through the squeeze came as close to everything along it, a stair's edge too
         var pts = new List<Vector2>();
+        var lows = new List<float>();
         var tight = new float[path.Count];
+        bool narrow = body < Body;
+        bool Squeeze(int q) => narrow && !NearEnd(path[q]) && clear[path[q]] < Body;
         int at = 0;
         while (at < path.Count - 1)
         {
             float t = Room;
             for (int q = at; q < path.Count; q++) tight[q] = t = NearEnd(path[q]) ? t : MathF.Min(t, clear[path[q]]);
-            int next = at + 1;
-            for (int k = path.Count - 1; k > at + 1; k--)
+            int next = at + 1, furthest = path.Count - 1;
+            if (narrow)
+            {
+                bool inSqueeze = Squeeze(at + 1);
+                for (int q = at + 2; q < path.Count; q++)
+                    if (Squeeze(q) != inSqueeze) { furthest = inSqueeze ? q : q - 1; break; }
+            }
+            for (int k = furthest; k > at + 1; k--)
             {
                 float need = tight[k] - 0.01f;
                 if (fl.Clear(path[at], path[k], m => Roomy(m, need), Lands)) { next = k; break; }
             }
+            float low = floor[path[at]];
+            for (int q = at + 1; q <= next; q++) low = MathF.Min(low, floor[path[q]]);
+            lows.Add(low);
             at = next;
             pts.Add(at == path.Count - 1 ? goalAt : At(path[at]));
         }
         float length = 0;
         var prev = from;
         foreach (var p in pts) { length += Vector2.Distance(prev, p); prev = p; }
-        return Made(pts, false, length);
+        return Made(pts, false, length, lows);
     }
 
     /// <summary>
@@ -1200,6 +1272,39 @@ public sealed class PathPlanner
                     }
             }
             return null;
+        }
+    }
+
+    /// <summary>The lowest and highest a triangle is over a square (x and y): the triangle clipped to the square's four
+    /// sides (as a column up through it), its corners' heights; null where nothing of it is left, or the clipping
+    /// outgrew its room (a sliver so thin its sides cross back and forth: the caller keeps its whole height).</summary>
+    static (float Lo, float Hi)? SpanOver(Vector3 a, Vector3 b, Vector3 c, Vector2 min, Vector2 max)
+    {
+        Span<Vector3> p = stackalloc Vector3[16], q = stackalloc Vector3[16];
+        p[0] = a; p[1] = b; p[2] = c;
+        int n = Side(p, 3, q, 0, min.X, 1);
+        n = Side(q, n, p, 0, max.X, -1);
+        n = Side(p, n, q, 1, min.Y, 1);
+        n = Side(q, n, p, 1, max.Y, -1);
+        if (n <= 0) return null;
+        float lo = p[0].Z, hi = p[0].Z;
+        for (int i = 1; i < n; i++) { lo = MathF.Min(lo, p[i].Z); hi = MathF.Max(hi, p[i].Z); }
+        return (lo, hi);
+
+        // (the polygon's part on one side of a line x or y = at, the side sign gives; -1: it outgrew the room)
+        static int Side(Span<Vector3> from, int count, Span<Vector3> to, int axis, float at, float sign)
+        {
+            if (count <= 0) return count;
+            int m = 0;
+            for (int i = 0; i < count; i++)
+            {
+                Vector3 s = from[i], e = from[(i + 1) % count];
+                float ds = sign * ((axis == 0 ? s.X : s.Y) - at), de = sign * ((axis == 0 ? e.X : e.Y) - at);
+                if (m + 2 > to.Length) return -1;
+                if (ds >= 0) to[m++] = s;
+                if (ds >= 0 != de >= 0) to[m++] = s + (e - s) * (ds / (ds - de));
+            }
+            return m;
         }
     }
 

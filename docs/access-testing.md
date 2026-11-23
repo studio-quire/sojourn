@@ -626,12 +626,15 @@ docstring with its checks in full):
   there with `SOJOURN_TEST_UNSEEN=1`, which the run sets: the region has them, the model doesn't, as the blind
   tester's partner's steps on 2026-11-19). First, with the steps and walls still in the model, two rails over steps 2
   to 5 that only the model has (phantom, counted solid by `SojournCollision ghost`, the same switch's other op) leave
-  a gap of half a metre, too tight for the planner, and the visitor is teleported onto the deck: `//go person` from the
-  slab plans to where the floors meet, on the steps below the rails (the plan line's "it ends there"), its why line
-  saying her walk stops there "too tight" beside the rails, then "Trying straight on to ...", up through them by the
-  region, finished beside it on the deck, nothing said of coming down (her partner's steps on 2026-11-22: in the model
-  but cut off; without this the walk went to the spot nearest across, beside the steps' east wall, and ended there
-  under the visitor). The visitor walks up onto the deck (`goto`); `//follow` from the slab goes
+  a gap of half a metre, too tight for the planner; the east wall is cut to the steps below the rails, so above them
+  the steps' east side is an edge over the slab; and the visitor is teleported onto the deck east of the steps' line,
+  so straight at it from their foot runs up and off that side. `//go person` from the slab walks up through the rails
+  by a way planned for a narrower body ("Walking ... up 2 metres: N stretches."; the plan line's "planned for a
+  narrower body"), its why line still saying the planner's own way stops "too tight" beside the rails, and finishes
+  beside it on the deck, never "out of reach", "Trying straight on" or coming down (her partner's steps on
+  2026-11-22: in the model but cut off; on 1206 the walk went to the spot nearest across, a deck's edge, and off it; on
+  1209 and 1212 to where the floors meet, the corner of their foot, and straight on from there, which ran along
+  their side, up them once and off them once). The east wall is put back whole after. The visitor walks up onto the deck (`goto`); `//follow` from the slab goes
   its way ("Going the way ... went, up 2 metres.", then "With" it on the deck, never "no way up"), and goes up after it
   too when she's with it at the foot as it walks up (her log's own case); from the slab again,
   `//go person` to it, gone on along the deck: "Walking ... the way they went, up 2 metres.", finished beside it, no

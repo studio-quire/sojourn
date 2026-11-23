@@ -565,8 +565,9 @@ public sealed partial class Commands
             if (ct.IsCancellationRequested) return false;
         }
         // to someone whose floor the plan can't reach, or with no way at all: the way they walked there, where they did
-        // lately (Trails: her partner up steps the model lacked, 2026-11-19)
-        if (toPerson != UUID.Zero && route is { InWay: null } planned && (planned.Legs.Count == 0 || planned.Beyond)
+        // lately (Trails: her partner up steps the model lacked, 2026-11-19); before a way planned for a narrower body
+        // than the planner's, which the region may not walk
+        if (toPerson != UUID.Zero && route is { InWay: null } planned && (planned.Legs.Count == 0 || planned.Beyond || planned.Narrow)
             && await TrailRouteAsync(toPerson, me.Pos, planned) is { } byTrail)
             route = byTrail;
         // no way: past a border since it set out, the target put in this region's frame, and no teleport while it's
@@ -631,8 +632,16 @@ public sealed partial class Commands
                 got = Leg.Met;
             }
             else got = await LegAsync(leg, last ? (r.InWay != null ? 1.3 : r.Moved ? 0.6 : near) : 0.5, ct, origin, dodging ? people : null,
-                last && r.InWay != null ? 1.2 : 0);
+                last && r.InWay != null ? 1.2 : 0, r.Narrow && r.Of is { } of && i < of.Lows.Count ? of.Lows[i] - FellBy : null);
             if (got == Leg.Cancelled) return false;
+            // off a narrow way (the side of steps, beside a squeeze): ended and said, as a straight on off an edge is
+            // (where it went on, the walk went on under the way, round by its corners across, and ended there)
+            if (got == Leg.Fell)
+            {
+                CancelAutoPilot();
+                WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: off the way on stretch {i + 1} of {legs.Count}, planned for a narrower body: her feet more than {FellBy:0.0} m under its lowest floor there ({r.Of!.Lows[i]:0.00})"));
+                return await FellAsync(_legTop, target, what, origin);
+            }
             UUID? who = null;   // whoever the way is planned again for
             bool cutEnd = false, onItsFloor = false;
             if (got == Leg.Reached)
@@ -1082,6 +1091,9 @@ public sealed partial class Commands
         public bool Trail { get; init; }
         /// <summary>The plan it came from (null: none asked, or no way at all), for the log.</summary>
         public Walk.PathPlanner.Plan? Of { get; init; }
+        /// <summary>Planned for a narrower body than the planner's (PathPlanner.Plan.Narrow): each stretch watched for her
+        /// coming off the way (more than FellBy under the lowest floor the model has on it), which ends the walk.</summary>
+        public bool Narrow { get; init; }
     }
 
     static float Length(Vector3 from, List<System.Numerics.Vector2> legs)
@@ -1112,8 +1124,10 @@ public sealed partial class Commands
             // (the plan and the planner's reasons go in the session log she sends: Walk/WalkMode.Stuck.cs)
             // (to a person or a point out of reach, the way may end where the floors meet by steps, and go on by the
             // region from there: OnFromAsync)
+            // (with no way onto the goal's floor for the planner's body, planned again for a narrower one: PathPlanner's
+            // narrower, the stretches then watched for her coming off the way)
             var plan = await planner.PlanAsync(a, feet, b, null, ct, toZ, standing, thing: foot?.Reach,
-                why: WalkMode is { } wm ? d => wm.NoteWhy("go: why: ", d) : null, wayOn: foot == null);
+                why: WalkMode is { } wm ? d => wm.NoteWhy("go: why: ", d) : null, wayOn: foot == null, narrower: true);
             var line = $"go: {Walk.PathPlanner.Line(a, feet, b, toZ, plan, planner.CanAsk, standing)}";
             if (WalkMode is { } walk) walk.Note(line);
             else Walk.WalkMode.Log(line);
@@ -1126,28 +1140,40 @@ public sealed partial class Commands
                 : new Route(plan.Waypoints, plan.GoalMoved)
                 {
                     Around = plan.Around.Select(p => people!.Given[p]).ToList(), Rise = rise, Of = plan,
-                    Beyond = !plan.OnGoalFloor,
+                    Beyond = !plan.OnGoalFloor, Narrow = plan.Narrow,
                 };
         }
         catch (OperationCanceledException) { return null; }
     }
 
-    enum Leg { Reached, Stalled, Cancelled, Met }
+    enum Leg { Reached, Stalled, Cancelled, Met, Fell }
+
+    /// <summary>How far under the lowest floor on a narrow way's stretch her feet may be before she's off it (LegAsync's
+    /// fallUnder): more than the model's floor and her feet differ by on steps (up to 0.4 m in her logs), less than a
+    /// fall off their side.</summary>
+    const float FellBy = 1f;
+    /// <summary>The highest her middle was on the last stretch walked (LegAsync), where a fall off it was from.</summary>
+    float _legTop;
 
     /// <summary>A stretch on the way: until the avatar is within <paramref name="within"/> of its end (0.5 m at a corner:
     /// the next stretch starts without stopping, and a wider berth cut the corner into the wall), or it stops getting
     /// anywhere for two seconds, or (with <paramref name="people"/>) someone has stepped into it (Met, people.Met who).
     /// <paramref name="lead"/>: how much sooner it counts as there for each metre a second she's going over a walk's
-    /// 3.2 (a stretch ending short of someone, where she's let go and has to have stopped before them).</summary>
-    async Task<Leg> LegAsync(Vector3 to, double within, CancellationToken ct, ulong origin, Bystanders? people = null, double lead = 0)
+    /// 3.2 (a stretch ending short of someone, where she's let go and has to have stopped before them).
+    /// <paramref name="fallUnder"/>: her feet under this height, she's come off the way (Fell; a narrow way's).</summary>
+    async Task<Leg> LegAsync(Vector3 to, double within, CancellationToken ct, ulong origin, Bystanders? people = null, double lead = 0,
+        float? fallUnder = null)
     {
         long start = Environment.TickCount64, progressAt = start;
         double best = double.MaxValue;
+        _legTop = MeIn(origin)?.Z ?? to.Z;
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(150, CancellationToken.None);
             if (ct.IsCancellationRequested || MeIn(origin) is not { } pos) return Leg.Cancelled;
             KeepLevel();
+            _legTop = Math.Max(_legTop, pos.Z);
+            if (fallUnder is { } under && FeetZ?.Invoke() is { } feet && feet < under) return Leg.Fell;
             double off = new Vector2(to.X - pos.X, to.Y - pos.Y).Length();
             if (lead > 0 && _ops.Client?.Self.Velocity is { } v) off -= lead * Math.Max(0, new Vector2(v.X, v.Y).Length() - 3.2);
             if (off <= within) return Leg.Reached;
@@ -1863,6 +1889,7 @@ public sealed partial class Commands
     /// floor out of reach and how far short the way ends, or a guess from nothing under her in the model.</summary>
     static string PlanSaid(Walk.PathPlanner.Plan? plan) => plan == null ? "no way planned"
         : plan.Beneath ? "the plan's way ending a storey or more under them"
+        : plan.Narrow ? "their floor out of reach but for a narrower body than the planner's"
         : !plan.OnGoalFloor ? "their floor out of reach" + (plan.Meets is { } mt and > 0 ? string.Create(CultureInfo.InvariantCulture, $" (the floors meeting {mt:0.0} m from them)") : "")
             + (plan.FloorKnown ? "" : ", reckoned on level from her feet with nothing under her in the model")
         : "the plan's way a guess, reckoned on level from her feet with nothing under her in the model";

@@ -1421,6 +1421,46 @@ coordinates, which didn't). Read the same day (Claude Opus 5.5 with the lead ses
   so her next log there names the cause. The scripted test stages it with rails over the steps that only the model has
   (`docs/access-testing.md`, the steps the model hasn't got).
 - **A //go from the route's end** to him (13:19:41), both on his floor, went straight and arrived.
+- **Her partner's own reading** (a notecard and a snapshot, given through Tessel that evening; both kept on Lantern in
+  `projects/second-life/local/for-helpers/`, dated 2026-11-22): the walk
+  chooses the wrong path, the right-hand way down to the sand and round under his platform, where it used to come up
+  the stairs. His snapshot from the platform shows the stairs splitting at the landing deck, the left flight up to
+  him and the right a boardwalk down to the sand, with palms overhanging the stairs' foot: their fronds, if the
+  model counts them solid where the region doesn't, are one candidate for what it calls too tight there (Claude Opus
+  5.5's guess from the picture; the why line on 1209 and after names the part).
+
+### Straight on from the corner of his steps' foot: off their side once, up them once (0.1.0.1212, the blind tester, 2026-11-22 evening)
+
+Her log `tester-20261122T233010-f087b7` (a `//go` to her partner from the landing point at 18:29; her note, our words:
+it failed badly) and, for its walks, `tester-20261122T234744-5e3247` (the same session on: another `//go` to him at
+18:31, her route "Tessa" at 18:33). Read the same day (Claude Opus 5.5, with the lead session's comparison of the two).
+- **Both walks went as 1209 meant**: planned to where the floors meet, 31.35,19.96 to 19.97, 6.2 and 7.1 m from him,
+  then "Trying straight on" at him. At 18:29 she came down 2.3 m off an edge onto the sand within 0.5 s, half a metre
+  south-west of there, and the new guard ended the walk and said so; at 18:31 she was up the steps on that line and on
+  his floor 1.2 s on, planned on from there and arrived. The two lines were 1.5 degrees apart: where the region had
+  her as she set out, or which way she slid off something at the corner, made the difference, which the log doesn't
+  show.
+- **Where the floors met was the corner of the steps' foot**, not its middle: her route, which worked again (its fourth
+  good play), goes up from 32.35,20.46 west-north-west through the foot's middle, and the line from the meeting point
+  runs about 0.75 m south-west of it, along the steps' south-west side by the deck's edge (she landed at 30.82,19.50).
+- **What closed the foot**, from the why lines: the same "upright 52.12-54.32" of the steps' sculpt beside the foot in
+  both walks and the route's step 3, as on 1206 over a cell 1.4 m up the steps. One part's upright faces have the same
+  heights over cells 1.4 m apart along a slope only if the planner stood a face at its whole height over every cell it
+  crossed: the steps' side, from under the deck to over his floor, a wall 2.2 m high at their foot. So most likely
+  their side, not a palm or a rope rail (from the numbers alone; the sculpt isn't in our cache). On the foot's other
+  side the route's step 2 names a post of the deck's, 1.3 m high.
+- **Now** (Claude Opus 5.5, 2026-11-22; `docs/access-app.md` > Paths, A narrower body): a face too steep to stand on
+  counts over a cell only as high as it is there; where the planner still finds no way onto the goal's floor, a `//go`
+  or Walk to plans again for a narrower body and walks that way, up the steps' middle, a stretch of it that takes her
+  more than a metre under the way ending the walk, said; and the search for where the floors meet follows each floor
+  it comes to over a cell, where the ground under a deck could hide the deck ("no way: the goal is in a space of its
+  own", the teleport). On a synthetic copy of the foot (steps 0.8 to 0.9 m wide between sides sloping with them),
+  1212's planner had no way up and this one goes straight up; with rails a metre over the treads 0.64 m apart, its own
+  way ends at the foot and the narrower one goes up their middle. Straight on from where the floors meet is left for
+  where even that has no way. The scripted test stages it with the steps' east side open above the rails and the
+  visitor east of their line (`docs/access-testing.md`).
+- Also there: the route's step 3, from where step 2 had stopped her, a stretch of 0.9 m, held her 2 s without moving,
+  was marked stuck and went on straight by the region, which worked (Open threads).
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
@@ -1439,14 +1479,27 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Open threads (ours, not hers to answer)
 
-- Her partner's steps are in the model (her logs of 2026-11-22 afternoon, His steps in the model but cut off, above),
-  but from the deck the planner has them cut off at their foot, the steps 0.39 to 0.41 m each in the model against
-  its 0.4 m step; which cells close them and why isn't known. Walks now go to where the floors meet and on by the
-  region, so this no longer stops her; the why line now says where her walk stops and why, so her next walk to him
-  from the deck names it. If it's the step height: Second Life's avatar climbs more than 0.4 m (how much isn't known
-  here; the VR client learns it from the region, `docs/vr.md` > Walls, steps), and the planner's Step could be raised
-  on Second Life, with Knee, the lowest of what's in the way, above it (a surface between 0.4 and 0.45 m is neither a
-  step nor in the way today). Why the region held her for 2 s mid-steps on the first play isn't known either.
+- Her partner's steps (her logs of 2026-11-22, His steps in the model but cut off, and Straight on from the corner of
+  his steps' foot, above): their foot most likely closed by the steps' side stood at its whole height, now counted only
+  as high as it is over each cell, and where the planner still finds no way a narrower body's way is walked. Neither is
+  seen on Second Life yet: her next `//go` to him from the landing point says which (its plan line says "planned for
+  a narrower body" where the first wasn't enough; its why line, where the planner's own way stops). If it's the step
+  height (steps 0.39 to 0.41 m in the model against the planner's 0.4): Second Life's avatar climbs more than 0.4 m
+  (how much isn't known here; the VR client learns it from the region, `docs/vr.md` > Walls, steps), and the
+  planner's Step could be raised on Second Life, with Knee, the lowest of what's in the way, above it (a surface
+  between 0.4 and 0.45 m is neither a step nor in the way today); a narrower body doesn't help there.
+- Stretches under a metre from a standstill: the region held her 2 s without moving on two (1206's first play of her
+  route, 0.8 m up the steps; 1212's route step 3, 0.9 m), each then marked stuck. Perhaps the region's autopilot
+  doesn't start for a point that near; not looked into. A narrower body's way has short stretches through its
+  squeezes, though walked on from the stretch before without stopping.
+- A narrower body's way passes gaps of 0.25 to 0.75 m where the planner's own needs 0.75 to 1.25 (Second Life's avatar
+  is 0.6 m wide, 0.45 deep), so some of it she won't fit; how often on Second Life isn't known (stuck, the spot is
+  marked and gone round). Following and the assistant's walks keep the planner's body: following has their trail, and
+  the assistant's walk has no guard for coming off a narrow way.
+- From where the floors meet (`Plan.AtMeeting`), straight on still aims at the person, which from a corner of steps'
+  foot runs along their side (1212). Now only where a narrower body has no way either; if a log shows it again, aiming
+  along the goal's floor's own way up from the meeting (the way it was followed out) is the next step, or picking the
+  meeting with the most room rather than the first found.
 - A person or a point whose nearest spot she can get to is 6 to 12 m off (a height between floors counting as
   distance) is no way unless someone stands at a spot (`PathPlanner.Solve`: the rings go to twice `GoalReach` since
   837b9ef, but `within` stayed capped at once): her route's step 4, where no way was right, as she wasn't up. Most
@@ -1515,7 +1568,11 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- Sent with 0.1.0.1209 (#354, 2026-11-22 evening), after her four logs on 1206 at her partner's steps (His steps in the model
+- Sent with 0.1.0.1217 (2026-11-22 evening), after her log on 1212 at her partner's stairs: a //go to him from the
+  landing point, a log either way, whose plan line says whether it was planned for a narrower body (the planner
+  harness that checked it headlessly is kept in `local/planner-harness`, not in the repo).
+
+- Sent with 0.1.0.1209 (#354, 2026-11-22 evening; 1212 in its place, #355, following down steps fixed), after her four logs on 1206 at her partner's steps (His steps in the model
   but cut off): a //go to him from the landing point while he stays on his floor, with a log, which now says where
   her walk stops short of his floor and why.
 
