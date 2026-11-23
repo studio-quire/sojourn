@@ -479,9 +479,10 @@ public sealed class TesselBuild : SessionApi
         Op("returnObjects", "{ids} -> {count}: once they're gone", (a, ct) => Wrap(S.Build.DeRezAsync(a, DeRezDestination.ReturnToOwner, ct)));
         // sojourn: the Content tab (task inventory), which the viewer did by drag and drop
         Op("contents", "sojourn: {id, running=true} -> {items: [{item_id, name, type, perms, running?}]}: what's inside a prim", (a, ct) => Wrap(S.Contents.ContentsAsync(a, ct)));
-        Op("addToContents", "sojourn: {id, item_id | item_ids, running=true, again?} -> {added}: put items from my inventory into a prim (scripts start running); "
-            + "waits until the region shows each went in (gone_again: it went in and left, as a script that removes itself does); again: true to drop "
-            + "the same item in again within 5 minutes of a drop whose outcome wasn't seen",
+        Op("addToContents", "sojourn: {id, item_id | item_ids, running=true, again?} -> {added, refused?, missing?, unsure?}: put items from my inventory into a prim (scripts start running); "
+            + "waits until the region shows each went in (gone_again: it went in and left, as a script that removes itself does). Into something worn only "
+            + "what's copy, modify and transfer goes, as in the viewer (refused, with why; the rest isn't sent). What the region refused, or left the "
+            + "contents unchanged by, didn't go in; unsure: the outcome wasn't seen, and again: true drops the same item in again within 5 minutes of that",
             (a, ct) => Wrap(S.Contents.AddAsync(a, ct)));
         Op("copyFromContents", "sojourn: {id, item_id | name, folder_id?} -> item, with folder (its name) and moved: true when it was no-copy and left the prim: "
             + "copy an item from a prim into my inventory, into the folder for its type unless folder_id says", (a, ct) => Wrap(S.Contents.CopyOutAsync(a, ct)));

@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using LibreMetaverse;
 using LibreMetaverse.Packets;
+using Microsoft.Extensions.Logging;
 using Sojourn.Core.Leap;
 using Sojourn.Core.Scripts;
 
@@ -18,8 +20,24 @@ public sealed class ContentsOps
     readonly AgentSession _s;
     public ContentsOps(AgentSession s) => _s = s;
     /// <summary>Drops whose outcome wasn't seen (prim, item) and when: another of the same waits for `again`.</summary>
-    readonly System.Collections.Concurrent.ConcurrentDictionary<(UUID, UUID), DateTime> _unsure = new();
+    readonly ConcurrentDictionary<(UUID, UUID), DateTime> _unsure = new();
+    /// <summary>Drops under way (prim, item): another of the same meanwhile is refused, not sent (the blind tester pasted
+    /// a second time while the first still waited, 2026-11-22).</summary>
+    readonly ConcurrentDictionary<(UUID, UUID), byte> _going = new();
+    static readonly TimeSpan UnsureFor = TimeSpan.FromMinutes(5);
     GridClient C => _s.Client ?? throw new NotConnected("viewer not connected");
+
+    /// <summary>When a drop of the item into the prim went unseen (it may have landed), within the five minutes another
+    /// of the same waits for `again`; else null.</summary>
+    public DateTime? UnsureSince(UUID prim, UUID item) =>
+        _unsure.TryGetValue((prim, item), out var at) && DateTime.UtcNow - at < UnsureFor ? at : null;
+
+    /// <summary>A drop of the item into the prim is under way.</summary>
+    public bool Going(UUID prim, UUID item) => _going.ContainsKey((prim, item));
+
+    /// <summary>The region's notice when it won't make the item inside (notifications.xml: "Inventory creation on in-world
+    /// object failed."). Second Life sent it for a sound dropped into a worn HUD, 2026-11-22.</summary>
+    public const string RefusedNotice = "InventoryCreationInWorldObjectFailed";
 
     Primitive Prim(JsonObject a)
     {
@@ -86,7 +104,10 @@ public sealed class ContentsOps
         };
     }
 
-    /// <summary>Drops items from my inventory into the prim and waits until the region lists them.</summary>
+    /// <summary>Drops items from my inventory into the prim and waits until the region lists them. Into something worn,
+    /// only what's copy, modify and transfer as made goes (<see cref="WornRefusal"/>); what the region refuses with its
+    /// notice, or leaves the contents unchanged by, is said as not gone in; only a drop neither seen nor refused is
+    /// unsure, and another of the same item then waits for `again`.</summary>
     public async Task<JsonObject> AddAsync(JsonObject a, CancellationToken ct)
     {
         var c = C;
@@ -96,6 +117,7 @@ public sealed class ContentsOps
         if (ids.Count == 0) throw new LeapError("need item_id or item_ids (from my inventory)");
         var running = a.Bool("running", true);
         var items = new List<InventoryItem>();
+        var refused = new JsonArray();
         foreach (var id in ids)
         {
             var item = await _s.Inventory.ItemAsync(id, ct) ?? throw new LeapError($"no inventory item {id}");
@@ -103,27 +125,58 @@ public sealed class ContentsOps
             if (item.AssetType is AssetType.Link or AssetType.LinkFolder) throw new LeapError($"{item.Name} is a link to something missing");
             if (_s.InventoryOps.InLibrary(item.UUID)) throw new LeapError($"{item.Name} is in the Library: copy it to my inventory first (TesselInventory copy)");
             if (_s.Inventory.IsWorn(item)) throw new LeapError($"{item.Name} is worn; take it off first");
-            items.Add(item);
+            if (WornRefusal(prim, item) is { } why) refused.Add(new JsonObject { ["item_id"] = item.UUID.ToString(), ["name"] = item.Name, ["why"] = why });
+            else items.Add(item);
         }
-        // A drop whose outcome the last call couldn't see may well have landed (on the main grid a self-removing script
-        // came through three times, 2026-10-26): another of the same item into the same prim waits for `again`.
+        if (items.Count == 0) throw new LeapError(string.Join("; ", refused.OfType<JsonObject>().Select(r => r.Str("why"))));
         foreach (var item in items)
-            if (_unsure.TryGetValue((prim.ID, item.UUID), out var at) && DateTime.UtcNow - at < TimeSpan.FromMinutes(5) && a.Bool("again") != true)
-                throw new LeapError($"{item.Name} was dropped into it {(DateTime.UtcNow - at).TotalSeconds:0} s ago and may have landed "
-                    + "(a script that removes itself never shows in the contents): check contents or what it said, and pass again: true "
-                    + "only if another copy is really wanted");
+        {
+            if (Going(prim.ID, item.UUID))
+                throw new LeapError($"{item.Name} is still going in from a moment ago: wait for that to say whether it went in");
+            // A drop whose outcome the last call couldn't see may well have landed (on the main grid a self-removing
+            // script came through three times, 2026-10-26): another of the same item into the same prim waits for `again`.
+            if (UnsureSince(prim.ID, item.UUID) is { } at && a.Bool("again") != true)
+                throw new LeapError($"{item.Name} may already be inside: it was dropped in {(DateTime.UtcNow - at).TotalSeconds:0} s ago and the "
+                    + "region didn't show whether it landed (a script that removes itself never shows in the contents): check contents or what "
+                    + "it said, and pass again: true only if another copy is really wanted");
+        }
+        var mine = items.Where(i => _going.TryAdd((prim.ID, i.UUID), 0)).ToList();
+        try
+        {
+            if (mine.Count < items.Count) throw new LeapError("another drop of the same is under way: wait for that to say whether it went in");
+            var o = await DropAsync(c, prim, items, running, a.Num("timeout", 15), ct);
+            if (refused.Count > 0) o["refused"] = refused;
+            return o;
+        }
+        finally
+        {
+            foreach (var i in mine) _going.TryRemove((prim.ID, i.UUID), out _);
+        }
+    }
 
+    async Task<JsonObject> DropAsync(GridClient c, Primitive prim, List<InventoryItem> items, bool running, double timeout, CancellationToken ct)
+    {
         // Selected, as the Content tab has it: the region then sends its properties, with the contents' serial number,
-        // whenever they change. That says a drop landed even when the item is gone again before any listing shows it.
+        // whenever they change. That says a drop landed even when the item is gone again before any listing shows it,
+        // and, the serial known and never moved, that nothing went in.
         short? serial = null;
-        var serialMoved = new SemaphoreSlim(0);
+        var woken = new SemaphoreSlim(0);
         void OnProps(object? _, ObjectPropertiesEventArgs e)
         {
             if (e.Properties.ObjectID != prim.ID) return;
             serial = e.Properties.InventorySerial;
-            serialMoved.Release();
+            woken.Release();
+        }
+        // the region's word that it refused one (it names no item: one per drop refused, by count)
+        int notices = 0;
+        void OnAlert(object? _, AlertMessageEventArgs e)
+        {
+            if (!Refusal(e)) return;
+            Interlocked.Increment(ref notices);
+            woken.Release();
         }
         c.Objects.ObjectProperties += OnProps;
+        c.Self.AlertMessage += OnAlert;
         var sim = c.Network.CurrentSim!;
         bool wasSelected = _s.State.Selected.ContainsKey(prim.LocalID);
         c.Objects.SelectObject(sim, prim.LocalID, false);
@@ -131,10 +184,11 @@ public sealed class ContentsOps
         var added = new JsonArray();
         short? serial0;
         int landed = 0;
+        var started = DateTime.UtcNow;
         try
         {
             var before = (await ListAsync(prim, ct)).Select(i => i.UUID).ToHashSet();
-            await serialMoved.WaitAsync(TimeSpan.FromSeconds(3), ct);
+            await woken.WaitAsync(TimeSpan.FromSeconds(3), ct);
             serial0 = serial;
             foreach (var item in items)
             {
@@ -143,13 +197,13 @@ public sealed class ContentsOps
                 await Task.Delay(150, ct);
             }
             // the region may rename a clash ("Name 1"); match new items by type, then by name
-            var end = DateTime.UtcNow + TimeSpan.FromSeconds(a.Num("timeout", 15));
+            var end = DateTime.UtcNow + TimeSpan.FromSeconds(timeout);
             var claimed = new HashSet<UUID>();
             while (wanted.Count > 0 && DateTime.UtcNow < end)
             {
-                // list when the serial moves, or every 2 s if the region doesn't send it
-                await serialMoved.WaitAsync(serial0 is null ? TimeSpan.FromMilliseconds(600) : TimeSpan.FromSeconds(2), ct);
-                while (serialMoved.CurrentCount > 0) serialMoved.Wait(0);
+                // list when the serial moves or the region refuses, or every 2 s if the region doesn't send the serial
+                await woken.WaitAsync(serial0 is null ? TimeSpan.FromMilliseconds(600) : TimeSpan.FromSeconds(2), ct);
+                while (woken.CurrentCount > 0) woken.Wait(0);
                 if (serial0 is { } s0 && serial is { } s1) landed = (short)(s1 - s0);
                 var now = (await ListAsync(prim, ct)).Where(i => !before.Contains(i.UUID) && !claimed.Contains(i.UUID)).ToList();
                 foreach (var w in wanted.ToList())
@@ -168,11 +222,14 @@ public sealed class ContentsOps
                 // every drop changed the contents (each moves the serial once, more if a script then removed itself) but
                 // some aren't listed: they came and went
                 if (wanted.Count > 0 && landed >= items.Count) break;
+                // every one not listed was refused
+                if (wanted.Count > 0 && notices >= wanted.Count) break;
             }
         }
         finally
         {
             c.Objects.ObjectProperties -= OnProps;
+            c.Self.AlertMessage -= OnAlert;
             if (!wasSelected && !_s.State.Selected.ContainsKey(prim.LocalID)) c.Objects.DeselectObject(sim, prim.LocalID);
         }
         if (wanted.Count > 0 && landed >= items.Count)
@@ -202,16 +259,50 @@ public sealed class ContentsOps
         var o = new JsonObject { ["id"] = prim.ID.ToString(), ["added"] = added };
         if (wanted.Count > 0)
         {
-            var mine = (S(prim) & PrimFlags.ObjectModify) != 0;
-            var why = mine
-                ? "the region didn't list it in time; it may still have gone in (look at contents, or for what a script in it said, before adding it again)"
-                : "I can't modify that object, and it doesn't take drops from me (scripts never drop into others' objects)";
-            if (mine) foreach (var w in wanted) _unsure[(prim.ID, w.UUID)] = DateTime.UtcNow;
+            var secs = (DateTime.UtcNow - started).TotalSeconds;
+            _s.Log.LogInformation("contents: {Names} into {Prim} not seen inside after {Secs:0} s (contents serial {S0} to {S1}, the region's refusals {N})",
+                string.Join(", ", wanted.Select(w => w.Name)), prim.ID, secs, serial0?.ToString() ?? "unknown", serial?.ToString() ?? "unknown", notices);
+            var modify = (S(prim) & PrimFlags.ObjectModify) != 0;
+            // the region's refusal, or its contents never changed: nothing went in, and another drop needs no `again`
+            bool refusedThem = notices >= wanted.Count;
+            bool unchanged = serial0 is not null && landed == 0;
+            bool unsure = modify && !refusedThem && !unchanged;
+            var why = !modify ? "I can't modify that object, and it doesn't take drops from me (scripts never drop into others' objects)"
+                : refusedThem ? "the region refused it (\"Inventory creation on in-world object failed\")"
+                : unchanged ? $"the region didn't take it (the object's contents didn't change in {secs:0} s)"
+                : $"the region didn't list it in {secs:0} s; it may still have gone in (look at contents, or for what a script in it said, before adding it again)";
+            foreach (var w in wanted)
+                if (unsure) _unsure[(prim.ID, w.UUID)] = DateTime.UtcNow;
+                else _unsure.TryRemove((prim.ID, w.UUID), out _);
             o["missing"] = new JsonArray(wanted.Select(w => (JsonNode)new JsonObject { ["item_id"] = w.UUID.ToString(), ["name"] = w.Name }).ToArray());
+            if (unsure) o["unsure"] = true;
             if (added.Count == 0) throw new LeapError($"nothing was added: {why}");
             o["note"] = why;
         }
         return o;
+    }
+
+    static bool Refusal(AlertMessageEventArgs e) => e.NotificationId == RefusedNotice || (e.Message ?? "") is var m
+        && (m.Contains(RefusedNotice) || m.StartsWith("Inventory creation on in-world object failed", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Why the item can't go into the prim while it's worn, else null. The viewer takes into an attachment only what
+    /// is copy, modify and transfer as made, its base permissions (LLToolDragAndDrop::willObjectAcceptInventory: attachments
+    /// "are in world and in inventory simultaneously, at the moment server doesn't support such a situation"), and Second
+    /// Life refuses the rest with its notice: the blind tester's sound into her worn HUD, three times, 2026-11-22. Rezzed
+    /// on the ground, her own object takes anything of hers.</summary>
+    string? WornRefusal(Primitive prim, InventoryItem item)
+    {
+        if (_s.Region is not { } w || !_s.Objects.IsAttachment(w, prim, out _, out var root)) return null;
+        var b = item.Permissions.BaseMask;
+        var lacks = new List<string>();
+        if ((b & PermissionMask.Copy) == 0) lacks.Add("no-copy");
+        if ((b & PermissionMask.Modify) == 0) lacks.Add("no-modify");
+        if ((b & PermissionMask.Transfer) == 0) lacks.Add("no-transfer");
+        if (lacks.Count == 0) return null;
+        var what = root.Properties?.Name is { Length: > 0 } n ? n : "the object";
+        var its = lacks.Count == 1 ? lacks[0] : string.Join(", ", lacks.Take(lacks.Count - 1)) + " and " + lacks[^1];
+        return $"Second Life puts only things that are copy, modify and transfer inside something worn, and {item.Name} is {its}. "
+            + $"To put it in {what}: take {what} off, rez it on the ground, put it in there, then take {what} into the inventory and wear it again";
     }
 
     PrimFlags S(Primitive p) => _s.State.PrimFlagsOf(p);

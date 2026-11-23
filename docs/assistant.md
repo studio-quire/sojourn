@@ -656,9 +656,12 @@ can manage that in other ways and it could get finicky (user, 2026-11-05).
 - **Contents**: `addToContents` selects the prim while the item goes in (as the Content tab has it), so the region sends
   the contents' serial number whenever they change, and the listing is read when it moves. An item that went in and
   left again before any listing showed it (a script that removes itself once it has run, an object's script taking a
-  delivery) is reported as `gone_again`. A drop whose outcome wasn't seen is remembered for 5 minutes: the same item
-  into the same prim again is refused with why unless `again: true` (on SL the assistant once ran a self-removing
-  script three times by retrying). `copyFromContents` takes one out into the folder for its type (a no-copy one in an
+  delivery) is reported as `gone_again`. Into something worn only what's copy, modify and transfer as made goes, as in
+  the viewer; the rest is `refused` with why and not sent (Second Life refuses it). The region's refusal notice, or the
+  serial known and never moved, means it didn't go in. Only a drop neither seen nor refused is `unsure`, remembered
+  for 5 minutes: the same item into the same prim again is refused with why unless `again: true` (on SL the
+  assistant once ran a self-removing script three times by retrying), and one while the same is still going in is
+  refused. `copyFromContents` takes one out into the folder for its type (a no-copy one in an
   object of mine moves, `moved: true`); `copyAllFromContents` takes everything, as the viewer's Copy to Inventory, into a
   new folder at the top named for the prim, no-copy items left inside unless `move: true` (`docs/access-app.md` >
   Taking what's inside into her inventory). Each item's `out` in `contents` says which: copy, move or no.

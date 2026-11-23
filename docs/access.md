@@ -1462,6 +1462,34 @@ it failed badly) and, for its walks, `tester-20261122T234744-5e3247` (the same s
 - Also there: the route's step 3, from where step 2 had stopped her, a stretch of 0.9 m, held her 2 s without moving,
   was marked stuck and went on straight by the region, which worked (Open threads).
 
+### A sound into her worn HUD, and a Delete after Take off (0.1.0.1212, the blind tester, 2026-11-22 evening)
+
+`tester-20261122T234744-5e3247` (18:28 to 18:47), her note (our words): she tried to add a sound to a HUD she was
+wearing, and it failed several times. Read the same evening (Claude Opus 5.5).
+- **The sound into her Watch** (18:45 to 18:47): she copied munchkin_hee_hee (one of the free box's sounds she copied
+  out that morning) and pasted it into the Contents of her Watch, worn on HUD Bottom Right. Second Life answered the
+  first drop at once with its notice "Inventory creation on in-world object failed." (18:45:57), and 15 s later she
+  heard "Not put in: ... it may still have gone in". The second paste, by the timings pressed while the first still
+  waited, drew no notice and the same words 7 s after. The third met the op's guard against a second copy, whose words
+  for the assistant came to her as "something went wrong inside Sojourn Access": they began with the sound's name, whose
+  underscores `PersonOps.Words` took for an argument's. She looked afterwards: it hadn't gone in. Not a regression of
+  ours: the drop, the wait and the listing are as on 1162 (`ContentsOps.AddAsync` unchanged since 10-26; that day's
+  commits only took things out), when she pasted another sound, Ocean1, into her worn chat-range HUD. Most likely this
+  sound isn't copy, modify and transfer as made: the official viewer drops nothing else into an attachment (the server
+  doesn't support it, its source says), and the region's notice says it refused. Its rights aren't in the log (its
+  Details say them). Now such a thing is refused before it's sent, saying why and the way round (rez it, put it in,
+  take it back, wear it); the region's notice ends the wait as a refusal; a drop the serial shows never landed is said
+  as not gone in; only one neither seen nor refused is said as not known, a second press while one goes in is said so,
+  and the guard says it may already be inside with Control+V again for another copy; every op error starting with a
+  name with an underscore in it now reaches her in words (`docs/access-app.md` > Putting things inside, An op's error
+  in her words).
+- **Delete after Take off** (18:37): on a link's row (by the log in Current Outfit: Take off removes only that link) she
+  took Watch off; the row stayed, as only the Objects folder, Watch's own, was shown again, and Delete on it ten seconds
+  later found no such item: the id was the link's, gone with the Take off. She then found Watch in Objects and wore it.
+  Now Wear and Take off show again Current Outfit and the chosen row's folder, and Delete on a row whose thing has gone
+  says so and reads its folder again.
+- The region's notice went out of her sent log as someone's words (a named alert not in the app's list): kept now.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -1568,7 +1596,7 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- Sent with 0.1.0.1217 (2026-11-22 evening), after her log on 1212 at her partner's stairs: a //go to him from the
+- Sent with 0.1.0.1217 (#367, 2026-11-22 evening; 1220 in its place, with the worn-object paste's words), after her log on 1212 at her partner's stairs: a //go to him from the
   landing point, a log either way, whose plan line says whether it was planned for a narrower body (the planner
   harness that checked it headlessly is kept in `local/planner-harness`, not in the repo).
 

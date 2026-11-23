@@ -1062,6 +1062,7 @@ public sealed partial class MainForm
 
     async Task WearAsync(InvPane p, List<InventoryItem> items, bool replace)
     {
+        var shown = OutfitFolders(p, items);
         var done = new List<string>();
         foreach (var it in items)
         {
@@ -1072,11 +1073,12 @@ public sealed partial class MainForm
         if (done.Count > 0) Answer($"{(replace ? "Wearing" : "Added")} {Join(done)}.");
         Unmark(p);
         await Task.Delay(1500);
-        RefreshInventory(items.Select(i => i.ParentUUID).ToArray());
+        RefreshInventory(shown);
     }
 
     async Task TakeOffAsync(InvPane p, List<InventoryItem> items)
     {
+        var shown = OutfitFolders(p, items);
         var done = new List<string>();
         foreach (var it in items)
         {
@@ -1087,8 +1089,16 @@ public sealed partial class MainForm
         if (done.Count > 0) Answer($"Took off {Join(done)}.");
         Unmark(p);
         await Task.Delay(1500);
-        RefreshInventory(items.Select(i => i.ParentUUID).ToArray());
+        RefreshInventory(shown);
     }
+
+    /// <summary>The folders a wear or take off changes in the tree: the things' own, Current Outfit (a link there comes
+    /// and goes with what's worn) and where the chosen rows are, a link's folder rather than its target's. A link taken off
+    /// from Current Outfit stayed in the tree, gone from the inventory, and Delete on it then found no such item (the
+    /// blind tester's Watch, 2026-11-22).</summary>
+    UUID[] OutfitFolders(InvPane p, List<InventoryItem> items) => items.Select(i => i.ParentUUID)
+        .Concat(Chosen(p).Select(c => c.ParentUUID))
+        .Append(_ops.Session.Inventory.FolderFor(FolderType.CurrentOutfit)).Distinct().ToArray();
 
     async Task OutfitAsync(InventoryFolder f, bool append)
     {
@@ -1510,6 +1520,18 @@ public sealed partial class MainForm
     {
         var chosen = Chosen(p);
         if (chosen.Count == 0) return;
+        // a row whose thing has left the inventory since it was shown (a link in Current Outfit, gone with what it linked
+        // to taken off): said, and its folder read again, rather than "no such item"
+        if (Store is { } store && chosen.Where(c => !store.Contains(c.UUID)).ToList() is { Count: > 0 } gone)
+        {
+            var cof = _ops.Session.Inventory.FolderFor(FolderType.CurrentOutfit);
+            Answer(gone.Count > 1 ? $"{gone.Count} of these aren't in your inventory any more; the list is read again."
+                : gone[0].ParentUUID == cof ? $"{gone[0].Name}'s link in Current Outfit went when it was taken off; the list is read again."
+                : $"{gone[0].Name} isn't in your inventory any more; the list is read again.");
+            Unmark(p);
+            RefreshInventory(gone.Select(c => c.ParentUUID).Distinct().ToArray());
+            return;
+        }
         // what's in the Trash already goes for good, the confirmation saying so
         bool forGood = chosen.All(InTrash);
         // where they were, read now: a move changes the store's own node (the tree's), so after it ParentUUID is the

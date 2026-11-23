@@ -358,6 +358,11 @@ key lost the rest.) Walk mode's F1 does the same with its own keys.
     Trash and renames wait for the inventory service's answer before they're said done, and one it refuses is said
     ("Not deleted: Second Life's inventory service refused the move ..."), nothing changing (`docs/inventory.md` > Moving and tidying); the
     folder something left is shown again as it is now, wherever it was done from.
+  - Wear and Take off show again the folders they change: the things' own, Current Outfit, and the chosen rows' (a
+    link's, not its target's). Taken off from its link in Current Outfit, a row stayed in the tree with its link gone,
+    and Delete on it said "no such item or folder" (the blind tester's Watch, 2026-11-22). A row whose thing has left
+    the inventory since it was shown is said so on Delete ("Watch's link in Current Outfit went when it was taken off;
+    the list is read again.") and its folder read again.
   - **Paste as link** (the official viewer's; the Applications key, L, wherever Paste is): a link to each item cut or
     copied, in the folder the pane points at, named as the item ("Linked Pip in Party outfit."); the item stays where it
     is, so one pet can be in every outfit as links rather than copies. Folders aren't linked, said so; a notecard
@@ -2754,6 +2759,20 @@ words are the local grid's until she's tried them.
   tab does: each item through the op's gate, a script asking first as a new script does, a link putting in what it links
   to, folders left out and said ("Put Door Bell and Bell Script inside."); her ask the same evening, for objects, sounds
   and scripts. `add NAME` does the same for one thing by name.
+  - Into something she wears only what's copy, modify and transfer as made goes, by the viewer's rule
+    (`LLToolDragAndDrop::willObjectAcceptInventory`: an attachment is in the world and in the inventory at once, which
+    the server doesn't support); anything else is refused before it's sent, saying which it isn't and the way round:
+    take it off, rez it on the ground, put it in there, take it into the inventory and wear it again
+    (`ContentsOps.WornRefusal`). Second Life refused the blind tester's sound in her worn HUD three times with
+    "Inventory creation on in-world object failed." (2026-11-22); rezzed, her own object takes anything of hers.
+  - What's sent is watched for up to 15 s with the object selected, as the Content tab has it, so the region sends the
+    contents' serial number as they change: listed, it's put in; the region's refusal notice
+    (`InventoryCreationInWorldObjectFailed`, which ends the wait) or the serial known and never moved, it's not, said
+    with why. Only a drop neither seen nor refused is said as not known ("Not sure X went in: ... F5 here reads what's
+    inside again"); the next paste of it within five minutes says it may already be inside and how long ago it went,
+    and only a paste after that puts in another copy (`again`). A paste of something still going in from the last is
+    said so and not sent (`ContentsOps.Going`): she had pressed again while the first waited, unheard. The op logs a
+    drop not seen inside with the serial before and after and the refusals.
 - **What's on each tab**, the editor's own rows: General: name, description, creator, owner, group, share with group,
   anyone can move and copy, for sale (a price and original, copy or contents, or no), next owner can modify, copy and
   transfer, when left-clicked (0 touch ... 8 nothing). Object: edit linked and overall size on a linked object, where
@@ -3372,6 +3391,14 @@ it).
   (`ConfirmedAsync` gives its caller nothing to say; the op's own refusal is for other callers). Answers to notices go straight to
   `Notifications.RespondAsync`, as A1's keys do; a confirmation answered from Notices answers the one that notice
   showed (`ReaderActions.Confirm(token, ...)`), never one that took its place.
+- **An op's error in her words** (`PersonOps.Words`, the one place): ids and API hints go, the avatar's side becomes
+  hers, and what's left that names an op or is about an argument ("need item_id", "folder_id isn't a folder") is said
+  as ours: "something went wrong inside Sojourn Access (the log has the details)". A word with an underscore leading an
+  error counts as an argument only if an op's description has one of that name (or it ends `_id` or `_ids`): the ops'
+  errors start with her things' names too, and until 2026-11-22 every one naming first a thing with an underscore in
+  its name was said as ours (about 90 of the ops' errors could be, by a pass over them all; the blind tester heard it
+  for her sound munchkin_hee_hee). Where an op's words are for the assistant ("pass again: true"), Access says its own
+  (Building > Putting things inside).
 - **Only the person's own press answers** (confirmations, notices' keys, the ToS's I agree and Continue, the
   llTextBox reply, MFA): the assistant can run programs on this PC, so `RealInput` (the window's message filter) judges
   every input message as it arrives and `InputJudge` (pure logic) says how far it counts:

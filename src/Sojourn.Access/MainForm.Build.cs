@@ -1812,7 +1812,7 @@ public sealed partial class MainForm
     /// Control+V in its Content list, the list's Paste, or `paste` in the build box, as dragging it onto the viewer's Content
     /// tab does (an item she can copy is copied in, one she can't moves in). Each through the op's gate, so a script waits
     /// for her confirmation as a new script does everywhere; a link puts in what it links to; folders aren't put in (the
-    /// blind tester's ask, 2026-11-15: objects, sounds and scripts, by copying and pasting).</summary>
+    /// blind tester's ask, 2026-11-15: objects, sounds and scripts, by copying and pasting). How each went: <see cref="PutInsideAsync"/>.</summary>
     async Task PasteIntoContentAsync()
     {
         if (_buildId == UUID.Zero) { Answer("Nothing is being edited: Contents on a thing in Objects, or Control+B, first."); return; }
@@ -1826,22 +1826,69 @@ public sealed partial class MainForm
         }
         var put = new List<string>();
         var not = new List<string>();
+        var other = new List<string>();
         foreach (var it in items)
         {
-            var r = await ConfirmedAsync("TesselBuild", "addToContents", new JsonObject { ["id"] = _buildId.ToString(), ["item_id"] = it.UUID.ToString() });
-            if (r == null) not.Add($"{it.Name}, not confirmed");
-            else if (PersonOps.Error(r) is { } e) not.Add($"{it.Name}: {Theirs(e)}");
-            else put.Add(it.Name);
+            var (went, words) = await PutInsideAsync(it);
+            if (went == Put.In) put.Add(it.Name);
+            else if (went is Put.Not or Put.Unconfirmed) not.Add(words);
+            else other.Add(words);
         }
         var folders = copied.Count - copied.OfType<InventoryItem>().Count();
-        var words = new List<string>();
-        if (put.Count > 0) words.Add($"Put {Listed(put)} inside.");
-        if (not.Count > 0) words.Add($"Not put in: {string.Join("; ", not)}.");
-        if (folders > 0) words.Add(folders == 1 ? "The folder stays out: folders can't go inside." : $"The {folders} folders stay out: folders can't go inside.");
-        Answer(string.Join(" ", words));
+        var said = new List<string>();
+        if (put.Count > 0) said.Add($"Put {Listed(put)} inside.");
+        if (not.Count > 0) said.Add($"Not put in: {string.Join("; ", not)}.");
+        said.AddRange(other);
+        if (folders > 0) said.Add(folders == 1 ? "The folder stays out: folders can't go inside." : $"The {folders} folders stay out: folders can't go inside.");
+        Answer(string.Join(" ", said));
         if (BuildTabName == "Content") await ShowBuildRowsAsync();
 
         static string Listed(List<string> n) => n.Count <= 1 ? string.Join("", n) : string.Join(", ", n.Take(n.Count - 1)) + " and " + n[^1];
+    }
+
+    enum Put { In, Not, Unconfirmed, Unsure, MaybeIn, Going }
+
+    /// <summary>When she was told a drop may already be inside (what she's editing, the item): a paste of it again within
+    /// two minutes of that puts in another copy.</summary>
+    readonly Dictionary<(UUID, UUID), DateTime> _toldMaybeInside = new();
+
+    /// <summary>One item put inside what she's editing, and what to say of it: put in; not, with why ("NAME: why"); or a
+    /// whole sentence for the rest. A drop whose outcome Second Life didn't show (the op's unsure) is said as not known,
+    /// with F5 to look; the next paste of the same in the five minutes after says it may already be inside, and only a
+    /// paste after that puts in another copy, so a second press never adds one unheard. Another while one is still going
+    /// in is said so, not sent (the blind tester pasted her sound three times into her worn HUD, 2026-11-22, and heard
+    /// "not put in", "not put in", then "something went wrong").</summary>
+    async Task<(Put, string)> PutInsideAsync(InventoryItem it)
+    {
+        var contents = _ops.Session.Contents;
+        var key = (_buildId, it.UUID);
+        if (contents.Going(_buildId, it.UUID)) return (Put.Going, $"{it.Name} is still going in from the last paste.");
+        bool again = false;
+        if (contents.UnsureSince(_buildId, it.UUID) is { } at)
+        {
+            if (_toldMaybeInside.TryGetValue(key, out var told) && told > at && DateTime.UtcNow - told < TimeSpan.FromMinutes(2)) again = true;
+            else
+            {
+                _toldMaybeInside[key] = DateTime.UtcNow;
+                var secs = (DateTime.UtcNow - at).TotalSeconds;
+                var ago = secs < 90 ? $"{secs:0} seconds ago" : $"{secs / 60:0} minutes ago";
+                return (Put.MaybeIn, $"{it.Name} may already be inside: it went in {ago}, and Second Life didn't show whether it landed. "
+                    + "F5 here reads what's inside again; Control+V again puts in another copy anyway.");
+            }
+        }
+        var args = new JsonObject { ["id"] = _buildId.ToString(), ["item_id"] = it.UUID.ToString() };
+        if (again) args["again"] = true;
+        var asked = DateTime.UtcNow;
+        var r = await ConfirmedAsync("TesselBuild", "addToContents", args);
+        if (r == null) return (Put.Unconfirmed, $"{it.Name}, not confirmed");
+        _toldMaybeInside.Remove(key);
+        if (PersonOps.Error(r) is not { } e) return (Put.In, "");
+        if (contents.UnsureSince(_buildId, it.UUID) is { } u && u >= asked)
+            return (Put.Unsure, $"Not sure {it.Name} went in: Second Life hadn't shown it inside after 15 seconds, and it may still land. "
+                + "F5 here reads what's inside again; look before pasting it again.");
+        const string Nothing = "nothing was added: ";
+        var why = Theirs(e);
+        return (Put.Not, $"{it.Name}: {(why.StartsWith(Nothing) ? why[Nothing.Length..] : why)}");
     }
 
     /// <summary>add NAME: an item from the inventory put inside (a script starts running; a new script waits for the
@@ -1860,8 +1907,9 @@ public sealed partial class MainForm
         }));
         var item = found.FirstOrDefault(i => i.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) ?? found.FirstOrDefault();
         if (item == null) { Answer($"No item called {name} in your inventory."); return; }
-        if (await ConfirmedAsync("TesselBuild", "addToContents", new JsonObject { ["id"] = _buildId.ToString(), ["item_id"] = item.UUID.ToString() }) is not { } r) return;
-        Answer(PersonOps.Error(r) is { } e ? $"Not added: {Theirs(e)}" : $"Put {item.Name} inside.");
+        var (went, words) = await PutInsideAsync(item);
+        if (went == Put.Unconfirmed) return;
+        Answer(went switch { Put.In => $"Put {item.Name} inside.", Put.Not => $"Not added: {words}.", _ => words });
         if (BuildTabName == "Content") await ShowBuildRowsAsync();
     }
 }

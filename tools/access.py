@@ -2148,10 +2148,15 @@ def own_deletes(run, nonce):
     """Her own deletes, as the blind tester went through copies of a thing one after another (2026-11-15): what's inside
     an object has its actions on the Applications key, Delete there asking first (with the full 0.8 s: what's removed
     from an object is gone); Delete on the same thing again while a confirmation waits takes her to it, said, its full
-    wait again, and nothing queues behind it; Enter on her own move to the Trash takes from 0.3 s."""
+    wait again, and nothing queues behind it; Enter on her own move to the Trash takes from 0.3 s. A link in Current Outfit
+    (her Watch, 2026-11-22): taken off elsewhere under its row, Delete there says its link went when it was taken off, not
+    "no such item", and the row goes; Take off on the row itself takes the row out of the tree."""
     lm_folder = api("LLInventory", "getBasicFolderID", ft_name="landmark")["id"]
     notes = api("LLInventory", "getBasicFolderID", ft_name="notecard")["id"]
     lm, card, boxname = f"Own Delete Mark {nonce}", f"Own Delete Card {nonce}", f"Own Delete Box {nonce}"
+    worn, worn_item = f"Own Delete Worn {nonce}", None
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+    cof = api("LLInventory", "getBasicFolderID", ft_name="current")["id"]
     lm_id = api("TesselInventory", "createLandmark", 20, name=lm, folder_id=lm_folder)["item_id"]
     card_id = api("TesselInventory", "createNotecard", name=card, text="delete me twice", folder_id=notes)["item_id"]
     x, y, z, _ = tester_where()
@@ -2265,13 +2270,71 @@ def own_deletes(run, nonce):
                 run.check("and it's in the Trash", wait(lambda: card2 in inv_items(api("LLInventory", "getBasicFolderID", ft_name="trash")["id"]), 8), "")
         finally:
             api("SojournSettings", "set", access_confirm_trash=True)
+
+        # a link in Current Outfit, as the blind tester's Watch (2026-11-22): taken off from its row there, the row went on
+        # showing after the link had gone with it, and Delete on it said "no such item or folder"
+        wb = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y + 0.6, z], scale=[0.1, 0.1, 0.1], name=worn)["id"]
+        api("TesselBuild", "take", 30, ids=[wb], folder_id=root)
+        worn_item = wait(lambda: inv_items(root).get(worn), 10)
+        if not run.check("(a box to wear, in the inventory)", worn_item, ""):
+            return
+
+        def link_rows():
+            return [d["name"] for d in find(f"type=TreeItem;name~={worn}") if d["name"].endswith(", link")]
+
+        def wear_and_choose_its_link():
+            """Worn, the tree read again (not a search's list), its link's row in Current Outfit selected."""
+            if not attached(worn_item):
+                api("TesselAgent", "attach", 30, item_id=worn_item, point="HUD Top Right")
+            if not wait(lambda: worn in inv_items(cof), 10):
+                return False
+            inv_search_off()
+            key("f5")
+            time.sleep(2)
+            if not select_top("Current Outfit"):
+                return False
+            key("right")
+            time.sleep(0.5)
+            for _ in range(80):
+                sel = selected_text("id=inventory")
+                if worn in sel and sel.endswith(", link"):
+                    return True
+                key("down")
+                time.sleep(0.12)
+            return False
+
+        if run.check("(worn, its link's row in Current Outfit selected)", wear_and_choose_its_link(), selected_text("id=inventory")):
+            # taken off elsewhere (the agent API, as the tree isn't told): the row stays, its link gone
+            api("TesselAgent", "detach", 30, item_id=worn_item)
+            wait(lambda: worn not in inv_items(cof), 10)
+            time.sleep(1)
+            sel = selected_text("id=inventory")
+            if worn in sel and sel.endswith(", link"):
+                m = mark()
+                key("del")
+                run.expect("Delete on a row whose link went with it taken off says so", [f"{worn}'s link in Current Outfit went when it was taken off"], m, 6)
+                run.check("not \"no such item\"", not any("no such" in (e.get("text") or "") for e in said_since(m)), "; ".join(e.get("text") or "" for e in said_since(m)))
+                run.check("and the row goes from the tree", wait(lambda: not link_rows(), 4), "; ".join(link_rows()))
+            else:   # (never Delete on whatever row is selected instead)
+                print(f"     (the link's row went from the tree by itself: Delete on a row gone stale not tried; selected: {sel})")
+        if run.check("(worn again, its link's row selected)", wear_and_choose_its_link(), selected_text("id=inventory")):
+            key("apps")
+            if run.check("its menu has Take off", "Take off" in menu_names(), "; ".join(menu_names())):
+                m = mark()
+                key("k")
+                run.expect("Take off on the link's row takes it off", [f"Took off {worn}"], m, 10)
+                run.check("and its row in Current Outfit goes from the tree", wait(lambda: not link_rows(), 5), "; ".join(link_rows()))
+            else:
+                key("esc")
     finally:
         inv_search_off()
         back_to_chat()
+        if worn_item and attached(worn_item):
+            api("TesselAgent", "detach", 30, item_id=worn_item)
         api("TesselBuild", "take", 30, ids=[box], folder_id=notes)
         time.sleep(1)
         trash = api("LLInventory", "getBasicFolderID", ft_name="trash")["id"]
-        left = [i for f in (lm_folder, notes, trash) for n, i in inv_items(f).items() if n and n.startswith("Own Delete ")]
+        left = [i for f in (lm_folder, notes, trash, root) for n, i in inv_items(f).items() if n and n.startswith("Own Delete ")]
         if left:
             gated(run, "the step's things deleted", "TesselInventory", "delete", 30, ids=left, purge=True)
 
@@ -2285,10 +2348,13 @@ def paste_into_contents(run, nonce, tester_id):
     folder named for the box at the top of her inventory with the card and the script in it, said with the count, the
     folder and where, and the no-copy card left inside, said with why and what moves it; `copy all` typed does it again,
     saying another folder has that name; one by one, the folder each went to is said, and the no-copy card's menu says it
-    moves, which it does, said so."""
+    moves, which it does, said so. Into a box she wears: the no-copy card refused at once with why and what to do (Second
+    Life refused her sound in her worn HUD, 2026-11-22: the viewer drops into an attachment only what's copy, modify and
+    transfer), nothing sent; the card she may copy goes in."""
     notes = api("LLInventory", "getBasicFolderID", ft_name="notecard")["id"]
     root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
     card, scr, boxname = f"Paste Card {nonce}", f"Paste Script {nonce}", f"Paste Box {nonce}"
+    worn, worn_item = f"Paste Worn {nonce}", None
     api("TesselInventory", "createNotecard", name=card, text="put me inside", folder_id=notes)
     script = api("TesselInventory", "createScript", 60, name=scr, text='default { state_entry() { llSay(0, "inside"); } }\n')
     x, y, z, _ = tester_where()
@@ -2401,13 +2467,68 @@ def paste_into_contents(run, nonce, tester_id):
             run.check("it's gone from the box and in Notecards", wait(lambda: nc not in inside(), 8) and nc in inv_items(notes), "; ".join(inside()))
         else:
             key("esc")
+
+        # ---- into something she wears (her sound into her worn HUD, 2026-11-22, which Second Life refused three times:
+        # the viewer drops into an attachment only what's copy, modify and transfer as made): the no-copy card refused at
+        # once, saying why and what to do, and nothing sent; the card she may copy goes in
+        wbox = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y + 0.6, z], scale=[0.1, 0.1, 0.1], name=worn)["id"]
+        api("TesselBuild", "take", 30, ids=[wbox], folder_id=root)
+        worn_item = wait(lambda: inv_items(root).get(worn), 10)
+        if not run.check("(a box to wear, in the inventory)", worn_item, ""):
+            return
+        api("TesselAgent", "attach", 30, item_id=worn_item, point="HUD Bottom Right")
+        worn_oid = wait(lambda: next((o.get("id") for o in api("LLAgent", "getAttachedObjectsList").get("result", []) if o.get("item_id") == worn_item), None), 10)
+        if not run.check("(and worn on HUD Bottom Right)", worn_oid, ""):
+            return
+
+        def inside_worn():
+            return [i.get("name") for i in api("TesselBuild", "contents", 20, id=worn_oid, running=False).get("items", [])]
+
+        def contents_of_worn():
+            key("alt+shift+7")
+            wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+            object_row(worn)
+            if not select_in("id=objects", worn):
+                return False
+            key("apps")
+            wait(lambda: find("type=MenuItem;name~=Contents"), 4)
+            key("n")
+            return wait_focus(lambda d: d["id"] == "buildRows" or d["type"] == "ListItem", 8)
+
+        for name, may in ((nc, False), (card, True)):
+            if not may and nc not in inv_items(notes):
+                print("     (the no-copy card isn't in Notecards: not tried in what she wears)")
+                continue
+            key("alt+4")
+            wait_focus(lambda d: d["id"] == "inventory", 4)
+            if not run.check(f"({name} found)", inv_search(name, name), selection("id=inventory")):
+                continue
+            key("ctrl+c")
+            time.sleep(0.5)
+            if not run.check(f"(Contents of what she wears open, for {name})", contents_of_worn(), focus_label()):
+                continue
+            m = mark()
+            t0 = time.time()
+            key("ctrl+v")
+            if may:
+                run.expect("a card she may copy, modify and transfer goes inside what she wears", [f"Put {name} inside"], m, 15)
+                run.check("and it's inside", wait(lambda: name in inside_worn(), 8), "; ".join(inside_worn()))
+            else:
+                said = run.expect("a no-copy card into what she wears: refused, saying why and what to do",
+                                  ["Not put in", name, "copy, modify and transfer inside something worn", "no-copy", "rez it on the ground"], m, 6)
+                run.check("at once, nothing waited for", said and time.time() - t0 < 4, f"{time.time() - t0:.1f} s")
+                time.sleep(1)
+                run.check("nothing went inside, and the card is still hers", nc not in inside_worn() and nc in inv_items(notes), "; ".join(inside_worn()))
+            key("esc")
     finally:
         inv_search_off()
         back_to_chat()
+        if worn_item and attached(worn_item):
+            api("TesselAgent", "detach", 30, item_id=worn_item)
         api("TesselBuild", "take", 30, ids=[box], folder_id=notes)
         time.sleep(1)
         scripts = api("LLInventory", "getBasicFolderID", ft_name="lsltext")["id"]
-        left = [i for f in (notes, scripts) for i in called(f, "Paste ")] + folders_called(boxname)
+        left = list(dict.fromkeys([i for f in (notes, scripts, root) for i in called(f, "Paste ")] + folders_called(boxname)))
         if left:
             gated(run, "the step's things deleted", "TesselInventory", "delete", 30, ids=left, purge=True)
 

@@ -41,7 +41,8 @@ public static class LineSources
             or "CrossingFailed" or "Disconnected" or "RegionLost" or "RegionRestartMinutes" or "RegionRestartSeconds"
             or "RlvBlocked" or "RlvNextLogin" or "RlvStatus"
             // the region's alerts by their names in the viewer's notifications.xml: its own sentences
-            or "AutopilotCanceled" or "CantSitNoRoom" or "CantSitNoSuitableSurface" or "TeleportedByAttachment" => LineFrom.App,
+            or "AutopilotCanceled" or "CantSitNoRoom" or "CantSitNoSuitableSurface" or "TeleportedByAttachment"
+            or "InventoryCreationInWorldObjectFailed" => LineFrom.App,
         _ => LineFrom.People,
     };
 }

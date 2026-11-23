@@ -18,8 +18,16 @@ namespace Sojourn.Access;
 /// would. Spending, giving and deleting always go through the gate, so the person's confirmation holds for their own
 /// keys too. Lookups that change nothing go <see cref="ReadAsync"/>. Errors come back as {error}.
 /// </summary>
-public sealed class PersonOps(AgentSession s)
+public sealed class PersonOps
 {
+    readonly AgentSession s;
+
+    public PersonOps(AgentSession session)
+    {
+        s = session;
+        s_api = session.Api;
+    }
+
     public AgentSession Session => s;
 
     /// <summary>An action: the op itself if it began with the person's input, else through the gate.</summary>
@@ -112,7 +120,8 @@ public sealed class PersonOps(AgentSession s)
         // findAvatar") goes; one only about arguments ("; give group_id") too
         w = Regex.Replace(w, $@"\s*\([^()]*{Api}[^()]*\)", "");
         w = Regex.Replace(w, $@"[:;,] [^:;,()]*{Api}[^:;,()]*", "");
-        w = Regex.Replace(w, $@"; give {Arg}( or {Arg})*", "");
+        // ("; give group_id", ": give local_pos or local_rot, its offset from the attachment point")
+        w = Regex.Replace(w, $@"[;:] give {Arg}( or {Arg})*(, [^;]*)?", "");
         // the avatar's side to the person's: only the phrases the ops use, never a bare I, me or my, which would turn
         // the names in the error too ("Read me" isn't a landmark, "I Love SL" isn't worn)
         w = Regex.Replace(w, @"\bI'm (not|in)\b", "you're $1");
@@ -125,9 +134,34 @@ public sealed class PersonOps(AgentSession s)
         w = Regex.Replace(w, @"^that's me$", "that's you");
         w = Regex.Replace(w, @"\s{2,}", " ").Trim();
         // what's left still names an op, or is about an argument ("need item_id", "folder_id isn't a folder"): nothing
-        // the person can act on, so it's said as ours (an object's name with an underscore elsewhere stays)
-        if (w.Length == 0 || Regex.IsMatch(w, Api) || Regex.IsMatch(w, $@"^{Arg}\b|\b(need|give) (the )?(worn )?{Arg}")) return Fault;
+        // the person can act on, so it's said as ours. A leading word is an argument only if an op has one of that name:
+        // the ops' errors start with her things' names too, and every one naming first a thing with an underscore in its
+        // name was said as ours (the blind tester's sound into her HUD, 2026-11-22)
+        if (w.Length == 0 || Regex.IsMatch(w, Api) || Regex.IsMatch(w, $@"\b(need|give) (the )?(worn )?{Arg}")
+            || Regex.Match(w, $@"^({Arg})\b") is { Success: true } lead && IsArg(lead.Groups[1].Value)) return Fault;
         return w;
+    }
+
+    static LeapDispatcher? s_api;
+    sealed record ArgNames(int Apis, HashSet<string> Names);
+    static ArgNames s_args = new(-1, new());
+
+    /// <summary>An argument of the ops' ("folder_id", "local_rot"), by the names their descriptions give, or any word
+    /// ending _id or _ids.</summary>
+    static bool IsArg(string word)
+    {
+        if (word.EndsWith("_id") || word.EndsWith("_ids")) return true;
+        if (s_api is not { } api) return true;   // (no session yet: as before, any such word)
+        var known = s_args;
+        if (known.Apis != api.ApiMap.Count)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var a in api.ApiMap.Values.ToList())
+                foreach (var (desc, _) in a.Ops.Values.ToList())
+                    foreach (Match m in Regex.Matches(desc, Arg)) names.Add(m.Value);
+            s_args = known = new ArgNames(api.ApiMap.Count, names);
+        }
+        return known.Names.Contains(word);
     }
 
     const string Id = @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
