@@ -599,7 +599,11 @@ docstring with its checks in full):
   a course the tester builds in
   Atelier East (a corridor with a stone floor, an opening in its west wall, its end a wall named Blue Door; a platform;
   a closed pen), where both collision models must agree within 2 cm on 33 rays, and then by keys: F3, F1, H, the
-  sonar's words, a held Up past the opening and to Blocked at Blue Door, turns, A, T, Space, L, the drop off the
+  sonar's words, a held Up past the opening and to Blocked at Blue Door, turns, A, T, Space, L, two held Downs back
+  along the corridor and their stops (`walk_stop_told`: from the region's word that she's still, walk mode has her
+  where it does, as fast as the status op answers for a second and a half, no footsteps after it, and V 0.2 s after
+  it says "Standing still."; until 2026-11-24 walk mode carried her on for 0.8 s after it, at a speed taken from the
+  region's last updates: 2.3 m in one run of this stop, nothing in the next, hence two), the drop off the
   platform; driving the visitor's `cart`; `//go` and the assistant's walk going round the wall, `//go` into the pen
   teleporting; a club on one floor slab over the ground there (walls, a door, tables, a bar, a stage up three steps, a
   plinth with none): `//go person` from a sofa stands up and walks up the steps to the visitor on the stage, no
@@ -646,10 +650,9 @@ docstring with its checks in full):
   "With"). And she was steered at the visitor's own spot at the trail's end, let go of
   only by a look's "With": once, the app stalled 2.5 s as she came down, she walked into it, and the visitor, flung
   across the region, failed the next case's set-up (the trail's last stretch now lets go 2.5 m short of it). Where
-  she ends is walk mode's reckoning (`walk_pos`), which for up to 0.8 s after she stops carries her on at her last
-  speed when the region says still (WalkMode.Me's fallback): reads of a metre or less from the visitor at the foot of
-  the steps are likely that (in the one run whose walk log was read for it, the region had her stopped 2 m from it
-  while walk mode carried her on another metre). It takes off on the slab and hovers 5 m up,
+  she ends is walk mode's reckoning (`walk_pos`); until 2026-11-24 that carried her on at her last speed for up to
+  0.8 s after the region said she'd stopped, so reads of a metre or less from the visitor at the foot of the steps
+  were likely that (the walk mode step's stop, above). It takes off on the slab and hovers 5 m up,
   3 m on from where it left the ground: `//follow` says it's above her with no way up, never "Going the way", and
   doesn't hold her where it took off (until 2026-11-20 its trail ended there). Teleported up onto the deck, so with
   no way of its own to take, it stands there: `//go person` from the slab south of the steps is out of reach, as near

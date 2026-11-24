@@ -1381,8 +1381,8 @@ route and tested it herself, and was teleported at one point without knowing why
 
 Four logs, snapshots of one session at her partner's place (13:15 to 13:26), with her notes (our words):
 `tester-20261122T181639-12bc12` (her route up his steps, "Tessa", didn't work), `-181758-8d100d` (a walk to him),
-`-182029-de2bcf` and `-182625-f64e1e` (the route twice more, which worked, then walks to him and to a point by his
-coordinates, which didn't). Read the same day (Claude Opus 5.5 with the lead session's first look).
+`-181854-a8c378` (the route again, which worked: "not sure why the difference"), `-182029-de2bcf` and `-182625-f64e1e`
+(the route again, which worked, then walks to him and to a point by his coordinates, which didn't). Read the same day (Claude Opus 5.5 with the lead session's first look).
 - **The model has the steps.** Mid-steps the at-her-feet line names a sculpt of his house's linkset (its root named
   for a palm, sculpts and prims of physics prim, his floor among them), 3.5 by 3.9 m tilted 30 degrees, its box 0.17 m
   from her feet, and from there (feet 53.66 to 53.94, the model's floor 53.57 to 53.61) the model has a way to his
@@ -1433,7 +1433,8 @@ coordinates, which didn't). Read the same day (Claude Opus 5.5 with the lead ses
 
 Her log `tester-20261122T233010-f087b7` (a `//go` to her partner from the landing point at 18:29; her note, our words:
 it failed badly) and, for its walks, `tester-20261122T234744-5e3247` (the same session on: another `//go` to him at
-18:31, her route "Tessa" at 18:33). Read the same day (Claude Opus 5.5, with the lead session's comparison of the two).
+18:31, her route "Tessa" at 18:33; the 18:31 walk also on its own, `tester-20261122T233150-b21202`, her note: it
+worked, he had moved a little). Read the same day (Claude Opus 5.5, with the lead session's comparison of the two).
 - **Both walks went as 1209 meant**: planned to where the floors meet, 31.35,19.96 to 19.97, 6.2 and 7.1 m from him,
   then "Trying straight on" at him. At 18:29 she came down 2.3 m off an edge onto the sand within 0.5 s, half a metre
   south-west of there, and the new guard ended the walk and said so; at 18:31 she was up the steps on that line and on
@@ -1552,10 +1553,11 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   side raised to 0.1 m, and a prim or sculpt under 0.2 m boxed. The VR client stops counting a floor the region lets
   the avatar through; Access has nothing like it, so a wrong floor there stays.
 
-- Walk mode's own estimate of where she is carries her on at her last speed for up to 0.8 s after the region says
-  she's stopped, so for that moment it reads about a metre past where she is (seen in a test of following, 87d1d96,
-  2026-11-22: the region had her stopped 2 m from the visitor). Where she's told she is just after a stop may be off
-  by that much; not looked into.
+- Seated, walk mode still takes a velocity from the seat's positions for 0.8 s whenever the region says the seat is
+  still (a seat its script moves has none of its own), so a vehicle that has just stopped can read as moving for that
+  moment (its velocity only; where she is stays the region's). The same on foot carried her up to 2.4 m past a
+  stop until 2026-11-24 (`docs/access-app.md` > How it fits > Walk mode). Whether it matters seated hasn't been
+  looked at: a vehicle's stop goes by the seat's track as well as its velocity (`WalkMode.Stop.cs`).
 - A follow with neither a planned way nor a trail still steers straight at the one followed, as it always has: in a
   staged run with the visitor flying down, that walked her off a 2 m deck after it, and from a high floor it would be a
   high fall (seen by the agent fixing 66da1c0, 2026-11-19). Not changed: before the floors work it was the only way a
@@ -1596,7 +1598,7 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- Sent with 0.1.0.1217 (#367, 2026-11-22 evening; 1220 in its place, with the worn-object paste's words), after her log on 1212 at her partner's stairs: a //go to him from the
+- Sent with 0.1.0.1217 (#367, 2026-11-22 evening; 1220 in its place, #369, with the worn-object paste's words; then 1226, walk mode's position at a stop), after her log on 1212 at her partner's stairs: a //go to him from the
   landing point, a log either way, whose plan line says whether it was planned for a narrower body (the planner
   harness that checked it headlessly is kept in `local/planner-harness`, not in the repo).
 

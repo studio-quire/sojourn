@@ -90,16 +90,12 @@ public sealed partial class WalkMode
             if (new Vector2(rv.X, rv.Y).Length() < 0.05f && Environment.TickCount64 - _rawAt < 800) rv = _estVel;
             return new Body(sim.Handle, sim.Name, V(at), at.Z - half, YawOf(rot), rv, false, true, set, name);
         }
+        // standing, the region's word on the velocity is taken as it comes, "still" too, never one from how far its last
+        // update moved her: that was the way she came to a stop, or a teleport, and carried on by it she ran up to 2.4 m
+        // past a stop for 0.8 s (the walk logs of eight test runs: after nearly every stop and short teleport, never on
+        // a walk). Where the region leaves a velocity out is a seat its script moves (above).
         var pos = V(S.Motion.Position(c));
-        var vel = V(c.Self.Velocity);
-        long now = Environment.TickCount64;
-        if (new Vector2(vel.X, vel.Y).Length() < 0.05f && now - _rawAt < 800 && _estVel.LengthSquared() > 0.01f)
-        {
-            // the region's word on the velocity says still while the position it sends moves on: go by the position
-            vel = _estVel;
-            pos = V(c.Self.SimPosition) + new Vector3(vel.X, vel.Y, 0) * Math.Min(1.5f, (now - _rawAt) / 1000f);
-        }
-        return new Body(sim.Handle, sim.Name, pos, pos.Z - half, YawOf(c.Self.Movement.BodyRotation), vel, c.Self.Movement.Fly, false, null, null);
+        return new Body(sim.Handle, sim.Name, pos, pos.Z - half, YawOf(c.Self.Movement.BodyRotation), V(c.Self.Velocity), c.Self.Movement.Fly, false, null, null);
     }
 
     sealed record SeatSet(Sojourn.Core.World.RegionWorld World, uint Root, long At, HashSet<uint> Set);
@@ -134,8 +130,8 @@ public sealed partial class WalkMode
     /// <summary>The walk log is on (SOJOURN_WALK_LOG): a line only it would get is worth making.</summary>
     public static bool Logging => WalkLog != null;
 
-    /// <summary>The velocity from the positions the region sends (each tick on the window's thread): a fallback for when
-    /// its reported velocity says still while the avatar moves.</summary>
+    /// <summary>The velocity from the positions the region sends (each tick on the window's thread): seated, a fallback
+    /// for a seat whose reported velocity says still while it moves.</summary>
     void Track()
     {
         if (S.Client is not { } c) return;
@@ -279,13 +275,14 @@ public sealed partial class WalkMode
     /// <summary>The ride keys (C, Shift+C) as `//ride`'s words, for the window.</summary>
     public Action<string>? RideKey { get; set; }
 
-    /// <summary>The body where the region last said it is, standing (not carried on by its velocity, which runs a second
-    /// or two past a stop and back: a route recorded from it kept turns that were never walked); seated, as it is.</summary>
+    /// <summary>The body where the region last said it is and at the velocity it last said, standing (not carried on
+    /// between its updates: a route keeps only where she's been, and one recorded from an estimate run on past a stop
+    /// kept turns that were never walked); seated, as it is.</summary>
     public Body Reported(Body b)
     {
         if (b.Sitting || S.Client is not { } c) return b;
         var r = V(c.Self.SimPosition);
-        return b with { Pos = r, Feet = b.Feet + (r.Z - b.Pos.Z) };
+        return b with { Pos = r, Feet = b.Feet + (r.Z - b.Pos.Z), Vel = V(c.Self.Velocity) };
     }
 
     /// <summary>A route being recorded (RouteRecorder), fed each tick.</summary>

@@ -3730,9 +3730,15 @@ it).
   edges refined by sub-rays: pure geometry), `CueSounds.cs` (the sounds, made in code), `PathPlanner.cs`,
   `WalkPad.cs`, `WalkApi.cs` (SojournWalk: status, sweep). It runs on the window's 50 ms tick; rays go to the
   collision model in one batch (`LocalCollision.CollideManyAsync`, the seat's own linkset left out) and come back to
-  the window. Positions are dead-reckoned (the region sends a walking avatar's position only now and then); when the
-  region's word on the velocity says still while the position moves (a seat moved by llSetPos), the velocity comes
-  from the positions. `SOJOURN_WALK_LOG=path` logs every probe and plan; the plans, the planner's reasons and stuck
+  the window. Positions are dead-reckoned (the region sends a walking avatar's position only now and then: its last
+  one carried on by the velocity it came with), so on the region's word that she's stopped she's where it says, at
+  once. Seated, when the region's word on the seat's velocity says still while the seat moves (a seat moved by
+  llSetPos), the velocity comes from the positions. Standing went that way too until 2026-11-24, and the stop's own
+  update (the last of the way, with no velocity) read as still while moving: walk mode carried her on at her last
+  stretch's speed for 0.8 s, up to 2.4 m past where she stood, after nearly every stop and short teleport (the walk logs
+  of eight test runs; never on a walk), for its cues and keys (a warning's distance, footsteps, V, L, A, S, the
+  beacon's "Reached", the listener). Walks, follows and the directions said in their lines go by `PersonOps.Me`,
+  which never had it. `SOJOURN_WALK_LOG=path` logs every probe and plan; the plans, the planner's reasons and stuck
   walks go to the session log too (Walk mode > Why a walk went as it did, in her log).
 - **The listener**: Access has no camera, and world audio places nothing until something sets its listener
   (WorldSounds waits for one: objects' sounds, footsteps, even the new-IM sound). Walk mode's tick puts it at the

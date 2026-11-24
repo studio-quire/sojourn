@@ -19,7 +19,7 @@ public sealed class WalkApi : LeapApi
     {
         _walk = walk;
         _onWindow = onWindow;
-        Op("status", "-> {on, held, surface, cues_played, last_line, last_cue, sound}: whether walk mode has the keys, what it last said and played", _ => Status());
+        Op("status", "-> {on, held, surface, pos, vel, reported: {pos, vel}, cues_played, last_line, last_cue, sound}: whether walk mode has the keys, where it has her and where the region last said, what it last said and played", _ => Status());
         Op("sweep", "-> {words, distances}: the sonar sweep (as S in walk mode: walls on four sides, openings by clock face, doors near), said to the person too",
             async (_, ct) =>
             {
@@ -32,13 +32,19 @@ public sealed class WalkApi : LeapApi
             });
     }
 
-    JsonNode Status() => new JsonObject
+    static JsonArray Arr(System.Numerics.Vector3 v) => new(Math.Round(v.X, 2), Math.Round(v.Y, 2), Math.Round(v.Z, 2));
+
+    JsonNode Status() => Status(_walk.Me());
+
+    JsonNode Status(WalkMode.Body? me) => new JsonObject
     {
         ["on"] = _walk.On, ["surface"] = _walk.Surface, ["cues_played"] = _walk.Sounds.Played, ["last_line"] = _walk.LastLine,
         ["last_cue"] = _walk.Sounds.Last is { } l ? l.Cue.ToString() : null,
         ["last_cue_ms_ago"] = _walk.Sounds.Last is { } la ? Environment.TickCount64 - la.At : null,
         ["walked"] = _walk.Walked.Last is { } w ? Math.Round(w, 2) : null, ["walked_all"] = Math.Round(_walk.Walked.All, 2),
-        ["pos"] = _walk.Me() is { } b ? new JsonArray(Math.Round(b.Pos.X, 2), Math.Round(b.Pos.Y, 2), Math.Round(b.Pos.Z, 2)) : null,
+        // where walk mode has her (dead-reckoned between the region's updates) and, beside it, the region's own last word
+        ["pos"] = me is { } b ? Arr(b.Pos) : null, ["vel"] = me is { } bv ? Arr(bv.Vel) : null,
+        ["reported"] = me is { } br && _walk.Reported(br) is var r ? new JsonObject { ["pos"] = Arr(r.Pos), ["vel"] = Arr(r.Vel) } : null,
         ["gaps"] = _walk.LastGaps is { } gs ? new JsonArray(gs.Select(g => (JsonNode?)new JsonObject
         {
             ["bearing"] = Math.Round(g.Bearing * 180 / Math.PI, 1), ["distance"] = Math.Round(g.Distance, 2), ["width"] = Math.Round(g.Width, 2),

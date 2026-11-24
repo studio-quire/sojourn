@@ -12893,6 +12893,47 @@ def walk_said(m, words, secs):
     return wait(look, secs, 0.1)
 
 
+def walk_stop_told(run, vk, secs, what):
+    """Walks by a held arrow (its virtual key) for secs and lets go, and watches the stop: walk mode's position and
+    speed against the region's own last word on them as fast as the status op answers, from the region's word that
+    she's still to a second and a half on; V pressed a fifth of a second after that word (sooner, it can come before
+    walk mode's tick has seen it); and no footsteps after it. Until 2026-11-24 walk mode took the way the region's last
+    update had moved her for a velocity the region's 'still' had left out, and carried her on at it for 0.8 s: a metre
+    or two past where she stood (in the walk logs of eight runs, after nearly every stop and short teleport, and never
+    on a walk), footsteps going on, and V saying she was walking."""
+    u(f"keydown focus | {vk}")
+    time.sleep(secs)
+    u(f"keyup focus | {vk}")
+    t0, stopped, pressed, mv, looks = time.time(), None, None, None, []
+    while time.time() - t0 < 5 and (stopped is None or time.time() - stopped < 1.5):
+        st = api("SojournWalk", "status")
+        rep = st.get("reported")
+        if not st.get("pos") or not rep:
+            continue
+        still = math.hypot(*rep["vel"][:2]) < 0.05
+        if still and stopped is None:
+            stopped = time.time()
+        if still:
+            looks.append((time.time() - stopped, math.dist(st["pos"][:2], rep["pos"][:2]), math.hypot(*st["vel"][:2])))
+        if stopped is not None and pressed is None and time.time() - stopped >= 0.2:
+            mv = mark()
+            key("v")
+            pressed = time.time() - stopped
+    if not run.check(f"({what}: the region says she's stopped)", stopped, f"{stopped - t0:.2f} s after letting go" if stopped
+                     else f"not within 5 s of letting go; {json.dumps(api('SojournWalk', 'status').get('reported'))}"):
+        return
+    steps = [c for c in cues_since(stopped + 0.15) if c["cue"].startswith("Step")]
+    worst = max(looks, key=lambda x: x[1])
+    run.check(f"{what}: from the region's word that she's still, walk mode has her where it does, not moving",
+              worst[1] < 0.15 and all(s < 0.3 for _, _, s in looks),
+              f"{len(looks)} looks over {looks[-1][0]:.1f} s, at most {worst[1]:.2f} m off ({worst[0]:.2f} s after), "
+              f"speeds up to {max(s for _, _, s in looks):.2f} m/s")
+    run.check(f"{what}: no footsteps after it", not steps, f"{len(steps)}: {json.dumps(steps)}" if steps else "none")
+    told = wait(lambda: next((e for e in said_since(mv) if re.match(r"(Standing still|Walking|Running|Flying|Hovering)\b", e.get("text") or "")), None), 3, 0.1)
+    run.check(f"{what}: V {pressed or 0:.2f} s after it says she's standing still", told and told["text"].startswith("Standing still"),
+              told["text"] if told else "nothing said")
+
+
 def go_tp(run, what, x, y, z):
     m = mark()
     say_in_app(f"//go tp xyz {x},{y},{z}")
@@ -15898,7 +15939,8 @@ def walk_mode(run):
     """Walk mode (Walk/WalkMode.cs, docs/access-app.md > Walk mode) on a course of its own in Atelier East: F3 into it,
     F1, the heading, the sonar's words, walking north by a held Up arrow with footsteps on the stone floor, the opening
     passed on the left, the warning before the end wall (named Blue Door) and Blocked at it, a step turn each way,
-    what's ahead, touching it, Space, the drop warning walking off a platform, Escape back to the Say box."""
+    what's ahead, touching it, Space, two walks back by Down and where she is as each stops (walk_stop_told), the drop
+    warning walking off a platform, Escape back to the Say box."""
     bx, by = COURSE
     if NO_GPU and not SOFTWARE:
         st = wait(lambda: (lambda s: s if s["state"] == "stopped" else None)(api("SojournView", "status")), 60, 1)
@@ -16011,6 +16053,11 @@ def walk_mode(run):
         m = mark()
         key("l")
         run.expect("L says where", [COURSE_REGION, "on stone"], m, 5)
+        # a held Down back down the corridor for a second and a half, then for one: right after the region stops her,
+        # where she's told she is is where the region has her (twice: how far walk mode used to carry her on went by the
+        # region's last updates, 2.3 m in one run of the first stop, nothing in the next)
+        walk_stop_told(run, 40, 1.5, "walking back down the corridor")
+        walk_stop_told(run, 40, 1.0, "and on a little")
 
         # the drop: onto the platform, then walk south off it
         key("f3")

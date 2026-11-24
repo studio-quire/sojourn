@@ -709,20 +709,26 @@ def read_in_docs(l):
 
 
 def watch_logs(secret, every):
-    """Testers' logs that weren't on the relay at the start: once some are, each listed with its note, all fetched
-    (cmd_logs fetch), and it exits. Sent with Send a log, they come without a message on the builders' line, so the
-    messages watch doesn't see them. A relay that can't be reached is asked again at the next turn."""
+    """Testers' logs not yet fetched nor named in docs/access.md: once there are some, each listed with its note, all
+    fetched (cmd_logs fetch), and it exits. Ones already waiting at the start count, so a log sent between one watch
+    ending and the next starting isn't missed (two were on 2026-11-22, when 'new' meant sent after the start). Sent
+    with Send a log, they come without a message on the builders' line, so the messages watch doesn't see them. A
+    relay that can't be reached is asked again at the next turn."""
     def tester_logs():
         return [l for l in logs_list(secret) if l.get("token") not in TEST_TOKENS]
-    known = {l["id"] for l in tester_logs()}
-    print(f"watching testers' logs from {when(int(time.time() * 1000))}, every {every} s ({len(known)} there already)", flush=True)
+    def seen(l):
+        return (LOGS_DIR / f"{l.get('token')}-{l['id']}.txt").exists() or read_in_docs(l)
+    first = tester_logs()
+    known = {l["id"] for l in first if seen(l)}
+    print(f"watching testers' logs from {when(int(time.time() * 1000))}, every {every} s ({len(known)} there already"
+          f"{f', {len(first) - len(known)} not yet fetched' if len(first) > len(known) else ''})", flush=True)
     while True:
-        time.sleep(every)
         try:
             new = [l for l in tester_logs() if l["id"] not in known]
         except (OSError, SystemExit, ValueError):
-            continue
+            new = []
         if not new:
+            time.sleep(every)
             continue
         for l in sorted(new, key=lambda l: l["at"]):
             note = (l.get("note") or "(no note)").replace("\n", " ")
@@ -801,22 +807,33 @@ def cmd_messages(args):
     return 2
 
 
+WATCHED_TO = LOCAL / "relay-messages-watched.txt"   # the newest message a watch has printed (ms), where the next starts
+
+
 def watch_messages(secret, keep, every):
-    """Every message newer than the start, printed in full as it's found (our own replies too, marked, so sessions see
-    each other's answers); without keep, exits once it has printed some of the testers'. A relay that can't be reached
-    is asked again at the next turn."""
-    since = int(time.time() * 1000)
+    """Every message newer than the last one a watch printed (WATCHED_TO; with none yet, the start), printed in full as
+    it's found (our own replies too, marked, so sessions see each other's answers); without keep, exits once it has
+    printed some of the testers'. Starting from the last printed rather than the start, a message sent between one
+    watch ending and the next starting isn't missed (two logs were so, 2026-11-22). A relay that can't be reached is
+    asked again at the next turn."""
+    try:
+        since = int(WATCHED_TO.read_text().strip())
+    except (OSError, ValueError):
+        since = int(time.time() * 1000)
     seen = set()
     print(f"watching testers' messages from {when(since)}, every {every} s", flush=True)
+    first = True
     while True:
-        time.sleep(every)
+        if not first:
+            time.sleep(every)
+        first = False
         try:
             s, body, _ = admin_call("GET", f"/relay/admin/messages?after={since}", secret, timeout=30)
         except OSError:
             continue
         if s != 200 or not isinstance(body, dict):
             continue
-        theirs = 0
+        theirs, newest = 0, 0
         for m in body.get("messages", []):
             k = (m["token"], m["id"])
             if k in seen:
@@ -824,6 +841,9 @@ def watch_messages(secret, keep, every):
             seen.add(k)
             show_message(m, m["token"])
             theirs += m["from"] == "tester"
+            newest = max(newest, m.get("at", 0))
+        if newest:
+            WATCHED_TO.write_text(str(newest + 1))   # (the Worker's after= is at >= MS)
         if theirs and not keep:
             print(f"({theirs} new from testers; python tools/relay.py messages read NAME has the whole conversation)", flush=True)
             return 0
