@@ -142,6 +142,20 @@ public sealed class PathPlanner
         lock (_blocked) _blocked.Add((at, radius, z, Environment.TickCount64 + (long)forHowLong.TotalMilliseconds));
     }
 
+    /// <summary>Every stuck spot taken back (a walk's first plan found no way with them counted: Commands.RouteAsync);
+    /// how many there were.</summary>
+    public int UnblockAll()
+    {
+        long now = Environment.TickCount64;
+        lock (_blocked)
+        {
+            _blocked.RemoveAll(x => x.Until < now);
+            int n = _blocked.Count;
+            _blocked.Clear();
+            return n;
+        }
+    }
+
     /// <summary>A stuck spot marked at <paramref name="at"/> no longer counts (it shut her in: Commands' walk).</summary>
     public void Unblock(Vector2 at)
     {

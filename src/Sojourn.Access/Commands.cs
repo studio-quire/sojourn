@@ -402,7 +402,23 @@ public sealed partial class Commands
     /// stairs (2026-11-11). On Second Life, walking, it gets her own height (Level), and again as she climbs or comes
     /// down (KeepLevel): given a point above her it settles her east of it by about as far as it's above her. Flying, the
     /// height as given; a flying animation during a walk there is logged (WatchFlying).</summary>
-    void AutoPilotTo(GridClient c, double x, double y, double z)
+    void AutoPilotTo(GridClient c, double x, double y, double z, CancellationToken ct = default)
+    {
+        lock (_pilotLock)
+        {
+            if (ct.IsCancellationRequested) return;
+            SendAutoPilot(c, x, y, z);
+        }
+    }
+
+    /// <summary>Held while a walk's point goes to the region (AutoPilotTo, checking the walk's token; KeepLevel, its
+    /// aim) and while the autopilot is cancelled (CancelAutoPilot): a send either goes before the cancel, which ends
+    /// it, or sees the walk stopped and doesn't go. A send after the awaits a stretch or a trusted walk starts from,
+    /// landing after a stop's own cancel, left the region's autopilot walking her with nothing to end it (the walking
+    /// review of 2026-11-25).</summary>
+    readonly object _pilotLock = new();
+
+    void SendAutoPilot(GridClient c, double x, double y, double z)
     {
         _aim = new Aim(x, y, z);
         if (!c.Self.Movement.Fly && !OnSecondLife && c.Network.CurrentSim is { } sim && _s.Region is { } w)
@@ -442,7 +458,8 @@ public sealed partial class Commands
     {
         if (_aim is not { } a || _ops.Me() is not { } me || Math.Abs(me.Pos.Z - _sent.Z) < 0.4 || Environment.TickCount64 - _sentAt < 500) return;
         if (_ops.Client is not { } c || c.Self.Movement.Fly || !OnSecondLife) return;
-        AutoPilotTo(c, a.X, a.Y, a.Z);
+        lock (_pilotLock)
+            if (ReferenceEquals(_aim, a)) SendAutoPilot(c, a.X, a.Y, a.Z);
     }
 
     /// <summary>Where the region's autopilot is walking her now, as given (global), till it's let go.</summary>
@@ -564,6 +581,16 @@ public sealed partial class Commands
             route = await PlanAsync(me.Pos, target, ct, people, foot);
             if (ct.IsCancellationRequested) return false;
         }
+        // no way with the stuck spots of her walks in the last two minutes counted as walls: taken back and planned again,
+        // as a walk does with its own spot mid-walk. Kept, they made her next walk, route step or //route resume after a
+        // stick "no way" (a teleport, a paused route) for two minutes where the model had a way through them, as on her
+        // partner's steps on 1206 (the walking review of 2026-11-25)
+        if (route is { Legs.Count: 0, InWay: null } && Planner is { } spotted && spotted.UnblockAll() is > 0 and var spots)
+        {
+            WalkNote($"go: no way with {spots} stuck {(spots == 1 ? "spot" : "spots")} of ours counted as walls: taken back, planned again");
+            route = await PlanAsync(me.Pos, target, ct, people, foot);
+            if (ct.IsCancellationRequested) return false;
+        }
         // to someone whose floor the plan can't reach, or with no way at all: the way they walked there, where they did
         // lately (Trails: her partner up steps the model lacked, 2026-11-19); before a way planned for a narrower body
         // than the planner's, which the region may not walk
@@ -581,6 +608,7 @@ public sealed partial class Commands
         if (route is { Legs.Count: 0, InWay: null }) return await NoWay();
         if (route is { Legs.Count: 0, InWay: { } hemmed })
         {
+            CancelAutoPilot();   // (a walk this one took over from may still have the region's autopilot going)
             _say(await NotWalkingAsync(hemmed, target, what));
             return flat < 2.5;
         }
@@ -619,8 +647,15 @@ public sealed partial class Commands
                 var d = new Vector2(leg.X - here.Pos.X, leg.Y - here.Pos.Y);
                 _say($"{i + 1} of {legs.Count}: {Bearings.Metres(d.Length())} to the {Bearings.Point(Bearings.Compass(0, 0, d.X, d.Y))}.");
             }
-            var g = GlobalIn(leg, origin);
-            AutoPilotTo(c, g.X, g.Y, g.Z);
+            // (within this of the stretch's end it counts as there: 0.5 m at a corner, the walk's own reach at its end;
+            // a stand-in short of a goal on another floor that starts under AimShort from her counts as reached, and
+            // the walk goes on from there as from the stand-in: a stretch that near from a standstill held her 2 s on
+            // Second Life, her route's step 3 on 1212, before straight on worked)
+            double reach = r.Straight ? near : !last ? 0.5 : r.InWay != null ? 1.3 : !r.Moved ? near
+                : r.Beyond && MeIn(origin) is { } fromHere && Flat(fromHere, leg) < AimShort ? AimShort : 0.6;
+            var sentTo = last ? leg : AimFor(leg, origin, reach);
+            var g = GlobalIn(sentTo, origin);
+            AutoPilotTo(c, g.X, g.Y, g.Z, ct);
             // someone stepping into the way has it planned afresh round them, a few times a walk, where there's a model to plan by
             // (not on someone's trail: planned afresh round people, it would leave it)
             bool dodging = HeedPeople && dodges < Dodges && Planner is { CanAsk: true } && !Beyond(target) && !r.Trail;
@@ -631,9 +666,13 @@ public sealed partial class Commands
                 if (people.Met == null) return there;
                 got = Leg.Met;
             }
-            else got = await LegAsync(leg, last ? (r.InWay != null ? 1.3 : r.Moved ? 0.6 : near) : 0.5, ct, origin, dodging ? people : null,
+            else got = await LegAsync(leg, reach, ct, origin, dodging ? people : null,
                 last && r.InWay != null ? 1.2 : 0, r.Narrow && r.Of is { } of && i < of.Lows.Count ? of.Lows[i] - FellBy : null);
-            if (got == Leg.Cancelled) return false;
+            if (got == Leg.Cancelled)
+            {
+                if (!ct.IsCancellationRequested) CancelAutoPilot();   // (her place gone 5 s, not a stop: nothing else ends it)
+                return false;
+            }
             // off a narrow way (the side of steps, beside a squeeze): ended and said, as a straight on off an edge is
             // (where it went on, the walk went on under the way, round by its corners across, and ended there)
             if (got == Leg.Fell)
@@ -760,6 +799,18 @@ public sealed partial class Commands
             if (again == null && who is { } close && Flat(from.Pos, target) < 2
                 && (!cutEnd || cutStood is { } was && OnFoot(people.To).Any(p => p.Id == close && Flat(p.Pos, was) < 0.4f)))
                 return await EndInWayAsync(close, target, walkingOn);
+            // stuck within 2 m of the walk's end on its floor, where no way is planned (PlanAsync): it ends here, as a walk
+            // ending that near does, rather than going straight on into what held her, twice, to the third stick's "no
+            // way" and a teleport or a paused route, after "going round: 1 stretch" said each time (the walking review
+            // of 2026-11-25)
+            if (again == null && got == Leg.Stalled && who == null && !onItsFloor && Planner != null && !Beyond(target)
+                && Flat(from.Pos, target) is var short2 && short2 < 2 && !OtherFloor(from.Pos, new Vector3(target.X, target.Y, foot?.Z ?? target.Z)))
+            {
+                WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: stuck {short2:0.0} m from the walk's end, on its floor: ended there"));
+                _say(r.Moved ? $"Finished walking, as near to {what} as the way goes: {what} is {_ops.Where(target) ?? Bearings.Metres(short2)}."
+                    : $"Finished walking, {OffWords(short2)} from the destination (something was in the way).");
+                return true;
+            }
             // how much further the new way is than what was left of the old: said from Further up, and under Aside,
             // round people alone, it's the same walk still (who stepped in is said, the stretches aren't)
             float left = Length(from.Pos, legs.GetRange(i, legs.Count - i));
@@ -831,12 +882,12 @@ public sealed partial class Commands
     /// north edge she came down off it and "as near as the way goes" was said 4 m under him). At: where she was last, in
     /// <paramref name="origin"/>'s frame.</summary>
     async Task<(Trust Got, Vector3 At)> TrustRegionAsync(Vector3 goal, string why, double within, bool itsFloor, bool end, string otherwise,
-        CancellationToken ct, ulong origin, bool ontoItsFloor = false)
+        CancellationToken ct, ulong origin, bool ontoItsFloor = false, bool watchFall = false)
     {
-        if (_ops.Client is not { } c) return (Trust.Cancelled, goal);
+        if (_ops.Client is not { } c || ct.IsCancellationRequested) return (Trust.Cancelled, goal);
         WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: trusting the region, {why}, on to {goal.X:0.00},{goal.Y:0.00},{goal.Z:0.00} by its autopilot"));
         var g = GlobalIn(goal, origin);
-        AutoPilotTo(c, g.X, g.Y, g.Z);
+        AutoPilotTo(c, g.X, g.Y, g.Z, ct);
         long start = Environment.TickCount64, progressAt = start;
         double best = double.MaxValue;
         Vector3 at = MeIn(origin) ?? goal;
@@ -848,7 +899,7 @@ public sealed partial class Commands
             if (MeIn(origin) is not { } pos) continue;
             KeepLevel();
             at = pos;
-            if (ontoItsFloor && goal.Z > fromZ + 0.5f && pos.Z < fromZ - 0.6f)
+            if ((ontoItsFloor || watchFall) && goal.Z > fromZ + 0.5f && pos.Z < fromZ - 0.6f)
             {
                 CancelAutoPilot();
                 WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: trusting the region, came down instead: at {pos.X:0.00},{pos.Y:0.00},{pos.Z:0.00}, {pos.Z - fromZ:+0.0;-0.0} m from where it set out, {Flat(pos, goal):0.0} m off across, after {(Environment.TickCount64 - start) / 1000.0:0.0} s; off an edge, so it ends there"));
@@ -972,10 +1023,13 @@ public sealed partial class Commands
             return null;
         }
         var trust = await TrustRegionAsync(end, "the stuck spot just marked left no way, the model's only way going on where she stuck: the spot taken back",
-            r.Moved ? 0.6 : near, itsFloor: !r.Moved, end: true, "no way, so it ends as one", ct, origin);
+            r.Moved ? 0.6 : near, itsFloor: !r.Moved, end: true, "no way, so it ends as one", ct, origin, watchFall: true);
         switch (trust.Got)
         {
             case Trust.Cancelled: return false;
+            // (straight on from mid-steps to an end above, off their side: said as a fall, not "as near as the way goes"
+            // 2 m under it, as OnFromAsync's: the walking review of 2026-11-25)
+            case Trust.Fell: return await FellAsync(at.Z, target, what, origin);
             case Trust.There:
                 return r.Moved ? await WatchWalkAsync(end, 0.8, ct, origin, (target, what), people) : await WatchWalkAsync(target, near, ct, origin, null, people);
             case Trust.Close:
@@ -1148,6 +1202,28 @@ public sealed partial class Commands
 
     enum Leg { Reached, Stalled, Cancelled, Met, Fell }
 
+    /// <summary>A stretch ending nearer her than AimShort is sent AimAtLeast out (AimFor).</summary>
+    const float AimShort = 1.2f, AimAtLeast = 1.4f;
+
+    /// <summary>Where the region's autopilot is sent for a stretch ending at a corner <paramref name="end"/> (in the
+    /// walk's frame): a corner nearer her than 1.2 m, and further than <paramref name="reach"/>, goes out to 1.4 m along
+    /// the same line. From a standstill on Second Life the region's autopilot left her where she stood for 2 s, saying
+    /// nothing, on stretches of 0.8 to 1.05 m, and walked her on 1.14 and 1.22 (her logs through 1212, read 2026-11-24:
+    /// access.md > Open threads), so a corner that near stuck and was marked a stuck spot. The next stretch is sent once
+    /// she's within reach of the corner, so the point beyond it isn't walked to. Not for a walk's last stretch: the
+    /// autopilot walks her nearly to the point it's sent (0.0 to 0.3 m off in her logs), and let go of at the end's reach
+    /// she stopped short of a stand-in it would have walked her onto (the scripted test's tall block, 2026-11-25).</summary>
+    Vector3 AimFor(Vector3 end, ulong origin, double reach)
+    {
+        if (MeIn(origin) is not { } me) return end;
+        var d = new Vector2(end.X - me.X, end.Y - me.Y);
+        float len = d.Length();
+        if (len <= reach || len >= AimShort) return end;
+        var far = d * (AimAtLeast / len);
+        WalkNote(string.Create(CultureInfo.InvariantCulture, $"go: a corner {len:0.00} m from her, at {end.X:0.00},{end.Y:0.00}: the region's autopilot sent {AimAtLeast:0.0} m out along the stretch"));
+        return new Vector3(me.X + far.X, me.Y + far.Y, end.Z);
+    }
+
     /// <summary>How far under the lowest floor on a narrow way's stretch her feet may be before she's off it (LegAsync's
     /// fallUnder): more than the model's floor and her feet differ by on steps (up to 0.4 m in her logs), less than a
     /// fall off their side.</summary>
@@ -1170,7 +1246,14 @@ public sealed partial class Commands
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(150, CancellationToken.None);
-            if (ct.IsCancellationRequested || MeIn(origin) is not { } pos) return Leg.Cancelled;
+            if (ct.IsCancellationRequested) return Leg.Cancelled;
+            // (between regions for a moment, crossing a border: waited for, as WatchWalkAsync does, where it had ended
+            // the walk without a word and left the autopilot going; gone 5 s, it's over)
+            if (MeIn(origin) is not { } pos)
+            {
+                if (Environment.TickCount64 - Math.Max(progressAt, start) > 5000) return Leg.Cancelled;
+                continue;
+            }
             KeepLevel();
             _legTop = Math.Max(_legTop, pos.Z);
             if (fallUnder is { } under && FeetZ?.Invoke() is { } feet && feet < under) return Leg.Fell;
@@ -1403,7 +1486,7 @@ public sealed partial class Commands
                 // a crossing on the way: the new region doesn't carry the old one's autopilot on, so asked again once
                 again = true;
                 Utils.LongToUInts(origin, out var ox, out var oy);
-                AutoPilotTo(c, ox + (double)target.X, oy + (double)target.Y, target.Z);
+                AutoPilotTo(c, ox + (double)target.X, oy + (double)target.Y, target.Z, ct);
                 stillSince = nearerAt = now;
                 noNearer = 0;
                 moved = nearer = false;
@@ -1462,9 +1545,9 @@ public sealed partial class Commands
     void StopWalking()
     {
         _heading = null;
-        if (_walk == null) return;
-        _walk.Cancel();
-        _walk = null;
+        // (taken once: the walk's own end clears it too, and read twice it could be gone between the two)
+        if (Interlocked.Exchange(ref _walk, null) is not { } walk) return;
+        walk.Cancel();
         CancelAutoPilot();
     }
 
@@ -1474,9 +1557,12 @@ public sealed partial class Commands
     /// is sent.</summary>
     void CancelAutoPilot()
     {
-        _aim = null;
-        if (_ops.Client is not { } c || c.Self.SittingOn != 0) return;
-        c.Self.AutoPilotCancel();
+        lock (_pilotLock)
+        {
+            _aim = null;
+            if (_ops.Client is not { } c || c.Self.SittingOn != 0) return;
+            c.Self.AutoPilotCancel();
+        }
         WalkMode?.OwnCancel();   // (the region answers it with its word that its autopilot stopped: not news for a stuck line)
     }
 
@@ -1709,7 +1795,7 @@ public sealed partial class Commands
         bool TheirEnd(Vector3 them, Vector3 her) => onTrail && theirSpeed < 0.3f && ways is { Count: > 0 } w && wayAt >= w.Count - 1 && Off(w[^1], them) < 1f && !OtherFloor(her, them);
         void ToThem(GridClient cl, Vector3 them, Vector3 her)
         {
-            if (_ops.Global(new Vector3(them.X, them.Y, her.Z)) is { } g) Steer(cl, g, false, Behind);
+            if (_ops.Global(new Vector3(them.X, them.Y, her.Z)) is { } g) SteerFollowing(cl, g, false, ct, Behind);
         }
         while (!ct.IsCancellationRequested)
         {
@@ -1724,7 +1810,7 @@ public sealed partial class Commands
                 bool more = wayAt < ways.Count - 1;
                 if (!more && !beyond && !onTrail) break;   // (the last stretch: to the spot behind them, worked out below)
                 if (!more && lastPos is { } them && TheirEnd(them, at.Pos)) ToThem(cc, them, at.Pos);
-                else if (_ops.Global(new Vector3(ways[wayAt].X, ways[wayAt].Y, at.Pos.Z)) is { } gc) Steer(cc, gc, more || onTrail);
+                else if (_ops.Global(new Vector3(ways[wayAt].X, ways[wayAt].Y, at.Pos.Z)) is { } gc) SteerFollowing(cc, gc, more || onTrail, ct);
             }
             if (ct.IsCancellationRequested) break;
             if (_ops.Client is not { } c || _ops.Me() is not { } me) continue;
@@ -1843,7 +1929,7 @@ public sealed partial class Commands
             var goal = corner || standIn ? new Vector3(ways![wayAt].X, ways[wayAt].Y, me.Pos.Z) : aim;
             if (arrived) { if (_s.Motion.Moving) _s.Motion.StopAutoPilot(c, true); }
             else if (corner && TheirEnd(now.Pos, me.Pos)) ToThem(c, now.Pos, me.Pos);
-            else if (_ops.Global(goal) is { } g) Steer(c, g, corner);
+            else if (_ops.Global(goal) is { } g) SteerFollowing(c, g, corner, ct);
             // stuck: steering after them, for a point over a metre off, through the last 3 s and no half metre made. The
             // session autopilot's own giving up never comes in a follow (each look moves its target on, its progress
             // counted afresh), so the follow says what the model has there itself, once in 10 s; on their trail, it's
@@ -1936,6 +2022,19 @@ public sealed partial class Commands
     /// (TickPilot stops within its stop distance and her speed's lead): the follow moves it on to the next corner as she
     /// comes within a metre of this one, so she turns there without stopping. <paramref name="stop"/>: let go that far
     /// short of it, not a corner (someone at the end of their trail).</summary>
+    /// <summary>A follow's steer, unless it has been stopped: checked under the lock StopFollowing cancels it under, so
+    /// a steer either lands before that stop's own (which stops it) or not at all. Checked only before each look's
+    /// steer, a stop arriving during the look's awaits (the people, a plan, their trail) or the 100 ms between corners
+    /// was followed by a steer that started the session's autopilot afresh, nothing left to stop it: "Stopped
+    /// following" said, and she walked on to the next corner (the walking review of 2026-11-25).</summary>
+    void SteerFollowing(GridClient c, Vector3d to, bool corner, CancellationToken ct, double stop = 0.5)
+    {
+        lock (_followSteer)
+            if (!ct.IsCancellationRequested) Steer(c, to, corner, stop);
+    }
+
+    readonly object _followSteer = new();
+
     void Steer(GridClient c, Vector3d to, bool corner, double stop = 0.5)
     {
         const double Through = -10;
@@ -1957,7 +2056,7 @@ public sealed partial class Commands
     void StopFollowing(bool quiet)
     {
         if (_following == null) { if (!quiet) _say("Not following anyone."); return; }
-        _followStop?.Cancel();
+        lock (_followSteer) _followStop?.Cancel();
         var who = _following;
         _following = null;
         _heading = null;

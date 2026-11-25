@@ -1519,8 +1519,20 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   between 0.4 and 0.45 m is neither a step nor in the way today); a narrower body doesn't help there.
 - Stretches under a metre from a standstill: the region held her 2 s without moving on two (1206's first play of her
   route, 0.8 m up the steps; 1212's route step 3, 0.9 m), each then marked stuck. Perhaps the region's autopilot
-  doesn't start for a point that near; not looked into. A narrower body's way has short stretches through its
-  squeezes, though walked on from the stretch before without stopping.
+  doesn't start for a point that near. Her logs through 1212, read for it (Claude Opus 5.5, 2026-11-24; first stretches
+  only, as later ones are walked on without stopping): a third that didn't move her at all, 1.05 m on 11-22 at 11:15:58
+  (beside the "GR 90 corner"s); two that did, 1.14 m (10:54:15, after a stick) and 1.22 m (11:13:02, just after an
+  arrival); the rest under 1.6 m were either already within reach or at her partner's steps, where the model's missing
+  steps confound them. No region notice came for any that didn't move, where its own arrivals do send one
+  (AutopilotCanceled with no cancel of ours, as before step 3 at 18:33:40). So a floor somewhere about 1.1 m fits, from
+  three cases. Now (after 1226) a corner under 1.2 m from her is sent 1.4 m out along its stretch, the next stretch
+  taking over once she's within reach of the corner, and a walk's last stretch to a stand-in short of a goal on another
+  floor that starts under 1.2 m from her counts as reached, the walk going straight on from there (1212's step 3 did,
+  after its stick); a last stretch otherwise goes to its own point, as before (`Commands.AimFor`; docs/access-app.md >
+  `//` commands, after the table). Her next route with a short step, or a short corner from a standstill, says whether
+  that was it (`go: a corner 0.88 m from her, ...: the region's autopilot sent 1.4 m out along the stretch`). A
+  narrower body's way has short stretches through its squeezes, now sent the same way; a trusted walk on by the region
+  still sends its point as it is.
 - A narrower body's way passes gaps of 0.25 to 0.75 m where the planner's own needs 0.75 to 1.25 (Second Life's avatar
   is 0.6 m wide, 0.45 deep), so some of it she won't fit; how often on Second Life isn't known (stuck, the spot is
   marked and gone round). Following and the assistant's walks keep the planner's body: following has their trail, and
@@ -1561,7 +1573,11 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 - A follow with neither a planned way nor a trail still steers straight at the one followed, as it always has: in a
   staged run with the visitor flying down, that walked her off a 2 m deck after it, and from a high floor it would be a
   high fall (seen by the agent fixing 66da1c0, 2026-11-19). Not changed: before the floors work it was the only way a
-  follow went, and she hasn't met it; worth a guard on the drop if a log ever shows one.
+  follow went, and she hasn't met it; worth a guard on the drop if a log ever shows one. A guard like `//go`'s
+  (OnFromDrop's 4 m) was built and taken back (Claude Opus 5.5, 2026-11-25): a follow has no way mostly where the model
+  lacks what the region has, and a bridge it lacked would read as a drop and hold her at a crossing straight on walks
+  today; with them below, the fall takes her to them, which Second Life doesn't hurt. Only a drop with them not below
+  is plainly wrong, and the model can't tell that from a bridge it hasn't got.
 - Cancel during Send a log's sending stops it since 2026-11-13 (before it's on its way; once it is, it says it can't be
   stopped), not run against a slow send.
 - From the reviews of 2026-11-13: positions from parcel, event and classified links are taken modulo 256, wrong on
@@ -1598,7 +1614,7 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- Sent with 0.1.0.1217 (#367, 2026-11-22 evening; 1220 in its place, #369, with the worn-object paste's words; then 1226, walk mode's position at a stop), after her log on 1212 at her partner's stairs: a //go to him from the
+- Sent with 0.1.0.1217 (#367, 2026-11-22 evening; 1220 in its place, #369, with the worn-object paste's words; then 1226, #374, walk mode's position at a stop), after her log on 1212 at her partner's stairs: a //go to him from the
   landing point, a log either way, whose plan line says whether it was planned for a narrower body (the planner
   harness that checked it headlessly is kept in `local/planner-harness`, not in the repo).
 

@@ -16,19 +16,14 @@ Our own Second Life client, built for VR first, with a personal AI that operates
   audio, HUDs, media, name tags and the feed, and most of the viewer-gap batches (safety, people, rendering, avatars,
   social, land, building, inventory and the AO, the map, voice and media extras, the menus, the login screen, the
   launcher), and RLV/RLVa (2026-11-01, off by default: `docs/rlv.md`). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
-- **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01), a first build editor (2026-11-02) and About Land (2026-11-03); test builds (the assistant bundled) published as releases
-  on its front door, studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1226 (2026-11-24). 1206 that
-  day, from her logs on 1187: walks send Second Life's autopilot her own height (a point over or under her left her
-  east of it), straight on by the region where the model has no way, mesh flat hulls as plates, script menus in the
-  order they're seen, Copy all, waits in recorded routes, `//route skip`. On 1206 her route up her partner's steps
-  worked three times, while walks to him from the landing point went to the deck's far edge and off it: the model has
-  his steps but the planner cuts them off at their foot. 1209: such a walk goes to where the floors meet and straight
-  on from there; coming down off an edge on the way stops it; 1212: following someone down steps the model
-  lacks no longer goes round the deck first. On 1212 the walk reached the stairs' corner and went straight at him,
-  once up, once off the side; 1217: the planner counted the stairs' steep side as a wall over every cell it crossed
-  (fixed), a narrower body is tried where the plan has no way onto the goal's floor, and where floors meet is found
-  through every floor over a cell; 1220 adds: into something worn only what's copy, modify and transfer goes, said
-  plainly when not; 1226 adds: walk mode no longer carries her on past a stop for 0.8 s (`docs/access.md` > His steps in the model but cut off, and after; Open threads); a blind tester's first session on Second Life was 2026-10-30. `docs/access.md` (plan, milestones, what testers said), `docs/access-app.md` (as built, packaging).
+- **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01), a first build editor (2026-11-02)
+  and About Land (2026-11-03); test builds (the assistant bundled) published as releases on its front door,
+  studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1232 (2026-11-25: walks after a review of the week's
+  walking code, and short corners). A blind tester uses them daily, first on Second Life 2026-10-30, and sends logs
+  from the app; most work now follows them, lately walks to her partner up his steps. What each build changed and what
+  her logs showed: `docs/access.md` > What a blind tester tells us (newest last) and its Open threads; how a session
+  watches for her messages and logs and answers: `docs/access.md` > The builders' line. `docs/access.md` (plan,
+  milestones, what testers said), `docs/access-app.md` (as built, packaging).
 - **Public source** since 2026-10-29 (`docs/publishing.md`). **First release, 0.1.0.867, published 2026-11-02**: a
   pre-release on studio-quire/sojourn (Velopack: install, updates at the person's press, uninstall; `tools/package.py`,
   `docs/launcher.md` > The package), downloaded from studioquire.org/sojourn; the viewer directory applications are

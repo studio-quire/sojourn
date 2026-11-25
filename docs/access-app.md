@@ -902,7 +902,13 @@ ends, once the avatar has stopped or is getting no nearer (below), with "Finishe
 destination." (or how far, and "something was in the way" when it stalled), the cue such routes wait for. To a person or a thing it stops 1.5 m
 short: the region's autopilot, heading for their middle, is let go once within that (it pushed on into the visitor's
 body for 42 s, never still enough to finish, 2026-11-08). On Second Life each stretch is sent at her own height, not
-the point's (Paths, below: given a point above her, its autopilot leaves her east of it). A person or a point on a
+the point's (Paths, below: given a point above her, its autopilot leaves her east of it). A corner under 1.2 m from her
+is sent 1.4 m out along its stretch (`Commands.AimFor`, 2026-11-24): from a standstill Second Life's autopilot left her
+standing, without a word, for stretches of 0.8 to 1.05 m and walked her on 1.14 and 1.22 (`docs/access.md` > Open
+threads); the next stretch is sent once she's within reach of the corner, so the point beyond isn't walked to. A walk's
+last stretch goes to its own point (the autopilot walks her to within 0.0 to 0.3 m of it); one to a stand-in short of a
+goal on another floor that starts under 1.2 m from her counts as reached, and the walk goes on from there as from the
+stand-in. A person or a point on a
 floor out of reach is walked as near as the way goes, then "Trying straight on to ..." by the region (When the region
 has what the model lacks, below).
 
@@ -1731,7 +1737,13 @@ walk, unless the model has a drop of more than 4 m on the way or someone stands 
 goes, below); no nearer in 3 s, it ends as a walk with no way does (`Commands.OnThroughAsync`; Claude Opus 5.5,
 2026-11-22: mid-way up her partner's steps the region held her 2 s on the model's way up, the spot shut her into 12
 floor nodes, and every walk from there was "no way" for the spot's two minutes, where the same route went on up from
-half a metre further a few minutes later).
+half a metre further a few minutes later). Coming off the side of steps on that straight line, making for an end above,
+is said as a fall. A walk whose first plan has no way with spots of earlier walks counted takes them all back and plans
+again (`go: no way with 2 stuck spots of ours counted as walls: taken back, planned again`), so her next walk, route
+step or `//route resume` after a stick isn't "no way" for two minutes. Stuck within 2 m of the walk's end on its floor,
+where no way is planned (a point that near is walked straight), it ends there ("Finished walking, 2 metres from the
+destination (something was in the way).", `go: stuck 1.6 m from the walk's end, on its floor: ended there`) rather than
+straight on into what held her twice more and a teleport (2026-11-25, from a review of the walking code).
 
 **When the region has what the model lacks** (Claude Opus 5.5, 2026-11-19, after the blind tester's log of that evening:
 steps from a wooden deck up 2 m to her partner, taken then for missing from the collision model (her logs of 2026-11-22
