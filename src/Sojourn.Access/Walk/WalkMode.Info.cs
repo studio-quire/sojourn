@@ -19,10 +19,13 @@ public sealed partial class WalkMode
         Line($"Facing {Bearings.Point(compass)}, {Bearings.ToSl(compass)} degrees.");
     }
 
-    /// <summary>V: how fast and which way: "Walking, 3 m a second, to the north." Seated: the vehicle's.</summary>
+    /// <summary>V: how fast and which way: "Walking, 3 m a second, to the north." Seated: the vehicle's. In a seated
+    /// crossing's first seconds, before the new region has sent the seat (SeatInDoubt), said as not known yet: read as
+    /// standing then, it said "Standing still." on her partner's train at 15 m/s (the blind tester's log of 2026-11-25).</summary>
     public void SpeedLine()
     {
         if (Me() is not { } b) { Line("Not in a region yet."); return; }
+        if (SeatInDoubt(b)) { Line(Doubted(b)); return; }
         float speed = Speed(b);
         double heading = Bearings.Compass(0, 0, b.Vel.X, b.Vel.Y);
         string what = b.Sitting ? (b.SeatName ?? "What you're on") : b.Flying ? "Flying" : speed > 4.2f ? "Running" : "Walking";
@@ -37,10 +40,14 @@ public sealed partial class WalkMode
         Line($"{what}{(b.Sitting ? ":" : ",")} {SpeedWords(speed)}, to the {Bearings.Point(heading)}.{shows}");
     }
 
+    /// <summary>A seated crossing's first seconds, for the keys that tell about the seat.</summary>
+    string Doubted(Body b) => $"Crossing into {b.RegionName}: it hasn't said yet whether you're still on {_seatName ?? "your seat"}.";
+
     /// <summary>Shift+V (and `//text` with no name): what the seat shows as floating text, alone.</summary>
     public void SeatTextLine()
     {
         if (Me() is not { } b) { Line("Not in a region yet."); return; }
+        if (SeatInDoubt(b)) { Line(Doubted(b)); return; }
         if (!b.Sitting) { Line("Not seated. //text NAME reads a thing's floating text."); return; }
         var what = b.SeatName ?? "What you're on";
         Line(SeatText(b) is { } t ? $"{what} shows: {t}" : $"{what} shows no floating text.");
@@ -257,7 +264,7 @@ public sealed partial class WalkMode
                 S.Log.LogInformation("seated crossing into {Region}: not known after {Ms} ms: {Where}", x.Region, now - x.At, SeatWhere());
             }
             if (_set.WalkText("vehicle")) { if (seated == true) ByItself(line); else Line(line); }
-            ForHistory?.Invoke(line);
+            History(line);
         }
         else if (_unsure is { } u)
         {
@@ -271,7 +278,7 @@ public sealed partial class WalkMode
                 var line = seated == true ? $"{u.Region} has you on {seat} now." : $"{u.Region} has you standing now, off {seat}.";
                 S.Log.LogInformation("seated crossing into {Region}: {Seated} {Ms} ms after it wasn't known", u.Region, seated == true ? "seated" : "standing", now - u.At);
                 if (_set.WalkText("vehicle")) Line(line);
-                ForHistory?.Invoke(line);
+                History(line);
             }
             else if (now - u.At > 120_000)
             {

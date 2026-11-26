@@ -714,6 +714,11 @@ the window's bottom-left corner and reads its name and its children's, so "Statu
   said ("Arrived in X.", "Now in X."). Every arrival and crossing is a line in the history too, a seated one (a train,
   a car) included ("Now in X, still on Y."), written there whether or not it's read out: the blind tester wore a
   script printing the region in local chat for this (2026-10-31).
+- What walk mode says goes in the nearby chat history too, to read back (Alt+0's "Walk mode's answers in the chat
+  history", `access_walk_history`, on by default): its keys' answers (V, L, H...), a vehicle's speed and stops, all but
+  its warnings while walking (bumps and turns, which repeat as she goes); the same words within 10 s are written once
+  (`WalkMode.History`). Seated crossings and rail switches are written there with it off too. The blind tester's wish,
+  2026-11-25, after a V answer on her partner's train she couldn't find again ("chat is fine", as a switch).
 - The reader's per-kind switches are A1's (`announce_nearby` ... in SojournSettings).
 - Arrivals and departures are Firestorm's radar reports (`radar_chat_range`, `radar_draw_distance`, `radar_region`:
   enter, leave or both; off by default, as Firestorm), read as notices ("Kestrel came into chat range, 12 metres

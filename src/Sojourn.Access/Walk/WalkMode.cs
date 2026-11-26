@@ -171,15 +171,19 @@ public sealed partial class WalkMode
     {
         if (_set.WalkSound(cue)) Sounds.Play(sound, _set.WalkLevel(cue), b is { } body && yaw is { } y ? Around(body, y) : null);
         if (text == null || !_set.WalkText(cue)) return;
-        if (cue == "switch") ForHistory?.Invoke(text);
+        if (cue == "switch") History(text);
         // warnings and turns are said at once whatever is being said; the rest that come by themselves let a switch's line finish
-        if (cue is "vehicle" or "walls" or "turns") Line(text);
+        // (and they repeat as she walks: not in the history)
+        if (cue is "walls" or "turns") Line(text, history: false);
+        else if (cue == "vehicle") Line(text);
         else ByItself(text, heardOut: cue == "switch");
     }
 
-    /// <summary>A line for the screen reader (and the pad's own text, for anyone looking).</summary>
-    void Line(string text)
+    /// <summary>A line for the screen reader (and the pad's own text, for anyone looking); in the nearby chat history
+    /// too with Alt+0's "Walk mode's answers in the chat history" (WalkHistory), unless <paramref name="history"/> is false.</summary>
+    void Line(string text, bool history = true)
     {
+        if (history && _set.WalkHistory) History(text);
         LastLine = text;
         lock (_recent) { _recent.Enqueue(text); while (_recent.Count > 20) _recent.Dequeue(); }
         // an answer to her key while a switch's line is being heard: what comes by itself waits for that answer too
@@ -187,6 +191,23 @@ public sealed partial class WalkMode
         _say(text);
         Lines?.Invoke(text);
     }
+
+    /// <summary>A line written in the nearby chat history (MainForm's ForHistory), once: a seated crossing's and a switch's
+    /// are written whatever WalkHistory says, and then said through Line too, so the same words within 10 s aren't
+    /// written again (a key pressed twice for the same answer, too).</summary>
+    void History(string text)
+    {
+        long now = Environment.TickCount64;
+        lock (_written)
+        {
+            if (_written.TryGetValue(text, out var at) && now - at < 10_000) return;
+            if (_written.Count > 50) foreach (var old in _written.Where(kv => now - kv.Value >= 10_000).Select(kv => kv.Key).ToList()) _written.Remove(old);
+            _written[text] = now;
+        }
+        ForHistory?.Invoke(text);
+    }
+
+    readonly Dictionary<string, long> _written = new();
 
     // A switch's line is heard out before the next line walk mode says by itself (the seated crossing, the speed, the
     // next switch): each is an answer to the reader, and an answer cuts off what's being said. On 0.1.0.835 both switch

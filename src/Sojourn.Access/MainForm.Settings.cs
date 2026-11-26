@@ -102,6 +102,7 @@ public sealed partial class MainForm
             // (Radegast's World > Always Run)
             ("walk_always_run", "Always run: walking, //go and following"),
             ("walk_round_people", "Walk round people standing in the way (//go, Walk to)"),
+            ("access_walk_history", "Walk mode's answers in the chat history"),
         }),
         new("Driving and trains", "your speed, what's ahead, rail switches and the track's end", new (string, string?)[]
         {

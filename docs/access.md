@@ -1491,6 +1491,30 @@ wearing, and it failed several times. Read the same evening (Claude Opus 5.5).
   says so and reads its folder again.
 - The region's notice went out of her sent log as someone's words (a named alert not in the app's list): kept now.
 
+### "Standing still" on her partner's train, mid-crossing (0.1.0.1232, the blind tester, 2026-11-25 evening)
+
+Her log `tester-20261125T234709-b62a3f` (18:16 to 18:47; her note, our words: driving her partner's train, at one point
+it seemed she was standing and the train 5 m away while she sat; lag, she guessed, but she wanted us to see). Read the
+same evening (Claude Opus 5.5).
+- **What she heard** (18:44:48 to :53): walk mode on, then V: "Standing still."; V again 2 s on: "VRC Hobo 3.0
+  Prototype C: 5 metres a second, ... It shows: Speed: 15 m/s"; 3 s on, 15 metres a second. She was crossing from
+  Deltote into Athetis at 15 m/s (the app in Athetis from 18:44:39, the train, her seat, sent there only at 18:44:49):
+  with no seat in the new region, walk mode's `Me()` has her on foot, and V said so. The 5 m/s, a second after the seat
+  came, is the seat's first velocity there (the region's, or reckoned from its moves when it has none), most likely
+  the crossing; not looked into further. Now V and Shift+V in a seated crossing's first seconds say "Crossing into
+  Athetis: it hasn't said yet whether you're still on VRC Hobo 3.0 Prototype C." (`WalkMode.SpeedLine`, `SeatInDoubt`,
+  as the crossing's own line already did). Her next log, two minutes on (`tester-20261125T234943-3a1117`, "the same
+  thing, caught quicker"), has it longer: crossing into Obscure at 18:48:53, the region sent her avatar only 25 s on,
+  and V said "Standing still." four times meanwhile (at 15 s the crossing's line said it hadn't said yet whether she
+  was still seated; "Obscure has you on VRC Hobo 3.0 Prototype C now." at 25 s). The fix covers that too: after the
+  crossing's line, while the region still hasn't sent her, the seat stays in doubt.
+- She looked for it afterwards in the chat history and couldn't find it: walk mode's answers weren't kept anywhere to
+  read back (only seated crossings and rail switches went in the history). Asked (#376), she said the chat history is
+  fine, as something with a switch (#377): now what walk mode says goes there too, but for its warnings while walking,
+  with Alt+0's "Walk mode's answers in the chat history" (on) (`docs/access-app.md` > Read-out).
+- The rest of the drive (26 minutes of crossings, switches said, End of track, Flip and Start) shows nothing else
+  amiss in the log.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -1614,7 +1638,7 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- Sent with 0.1.0.1217 (#367, 2026-11-22 evening; 1220 in its place, #369, with the worn-object paste's words; then 1226, #374, walk mode's position at a stop), after her log on 1212 at her partner's stairs: a //go to him from the
+- Sent with 0.1.0.1217 (#367, 2026-11-22 evening; 1220 in its place, #369, with the worn-object paste's words; then 1226, #374, walk mode's position at a stop; then 1232, #375, 2026-11-25, walks after a review of the walking code), after her log on 1212 at her partner's stairs: a //go to him from the
   landing point, a log either way, whose plan line says whether it was planned for a narrower body (the planner
   harness that checked it headlessly is kept in `local/planner-harness`, not in the repo).
 

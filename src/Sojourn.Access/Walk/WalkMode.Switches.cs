@@ -761,7 +761,7 @@ public sealed partial class WalkMode
         SwitchLog($"asked: \"{line}\" of {PartWords(s)}{JunctionLogWords(s)}");
         Told(s);
         Line(line);
-        ForHistory?.Invoke(line);
+        History(line);
     }
 
     /// <summary>Shift+W, //switch flip, //switch main or branch: throws the switch W is about by touching its stand, as a
@@ -829,7 +829,7 @@ public sealed partial class WalkMode
         finally { _switchBusy = false; }
     }
 
-    void Written(string line) { Line(line); ForHistory?.Invoke(line); }
+    void Written(string line) { History(line); Line(line); }
 
     /// <summary>//switch [flip|main|branch].</summary>
     public Task SwitchWordsAsync(string words)
