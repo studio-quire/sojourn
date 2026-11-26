@@ -9230,6 +9230,36 @@ def parts(run):
             say_in_app("//touch treasure chest face top")
             run.expect("//touch ... face top: the lid's top", [f"Touched part 2 of {CHEST}, the top"], m, 15)
             run.heard_by_visitor("(face 0, says its script)", lambda d: "chest lid touched" in d["msg"] and d["msg"].endswith("face 0"), n, 10, "face 0")
+        # recording a route: a part touched from the parts list goes in it as //touch finds it again (the chest's name, then
+        # the part's; its step's words heard with the route cue's text on, a tick only by default), and one with no name of
+        # its own is said to be left out, whatever the route cue is set to
+        back_to_chat()
+        old_mode = setting("walk_route")
+        m = mark()
+        say_in_app("//record")
+        if run.expect("(recording a route)", ["Recording a route"], m, 5):
+            try:
+                setting("walk_route", "both")
+                key("alt+7")
+                wait_focus(lambda d: d["id"] == "objects" or d["type"] == "ListItem", 4)
+                if select_in("id=objects", CHEST + ","):
+                    key("tab")
+                    wait_focus(lambda d: d["id"] == "parts" or d["type"] == "ListItem", 4)
+                    if select_in("id=parts", "Latch, part "):
+                        m = mark()
+                        key("enter")
+                        run.expect("the latch touched from the parts list while recording is a step by the chest's name and its own",
+                                   [f"touching {CHEST} Latch."], m, 10)
+                    setting("walk_route", "sound")
+                    if select_in("id=parts", "Part 2 of 4"):
+                        m = mark()
+                        key("enter")
+                        run.expect("the unnamed lid is said to be left out of the route, in the touch's own line",
+                                   [f"Touched part 2 of {CHEST}. It has no name of its own, so the route you're recording can't touch it again."], m, 10)
+            finally:
+                setting("walk_route", old_mode)
+                back_to_chat()
+                say_in_app("//record discard")
     finally:
         v(f"derez {CHEST}")
 
@@ -15997,6 +16027,8 @@ def walk_mode(run):
         m = mark()
         key("h")
         run.expect("H says the heading", ["Facing north, 90 degrees"], m, 5)
+        run.check("and it's in the nearby chat history, to read back (access_walk_history)", "Facing north, 90 degrees" in history_tail(),
+                  history_tail()[-200:])
 
         m = mark()
         key("s")
@@ -16029,6 +16061,9 @@ def walk_mode(run):
         run.check("a warning before the bump, naming the wall", warned and at_warning[1] < by + 11.2,
                   f"{warned['text']} at {at_warning[1] - by:.1f} m along (the wall at 12)" if warned else "not said")
         run.check("Blocked at the wall", blocked, blocked["text"] if blocked else "not said")
+        hist = history_tail()
+        leaked = [w["text"] for w in (opening, warned, blocked) if w and w["text"] in hist]
+        run.check("none of the walk's warnings went in the chat history (they repeat as she goes)", not leaked, json.dumps(leaked))
         run.check("footsteps by surface: stone on the course floor", st1.get("surface") == "stone", json.dumps(st1)[:200])
         played = st1.get("cues_played", 0) - st0.get("cues_played", 0)
         run.check("cue sounds sent to world audio while walking", st1.get("sound") and played >= 4,
@@ -16081,6 +16116,7 @@ def walk_mode(run):
         run.check("a drop ahead is said before walking off the platform", drop and at_drop[2] > g + 3.3,
                   f"{drop['text']} at height {at_drop[2] - g:.1f} m over the ground, {at_drop[1] - by - 3:.1f} m from the edge"
                   if drop else f"not said (on the platform at {top[2] - g:.1f} m)")
+        run.check("and isn't in the chat history", not drop or drop["text"] not in history_tail(), history_tail()[-200:])
         time.sleep(1.5)
         m = mark()
         key("esc")

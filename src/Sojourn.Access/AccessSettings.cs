@@ -35,8 +35,8 @@ public sealed class AccessSettings
     public int ObjectsRange { get; set; } = 30;
     /// <summary>Lines cut off by typing said again once the keys rest (MainForm.CutLines.cs).</summary>
     public bool ReadCut { get; set; } = true;
-    /// <summary>What walk mode says written in the nearby chat history too, to read back, but for its warnings while
-    /// walking (bumps, turns): the blind tester's wish, 2026-11-25, after an answer of V's she couldn't find again,
+    /// <summary>What walk mode says written in the nearby chat history too, to read back, but for its warnings as she
+    /// goes (walking or driving) and turns: the blind tester's wish, 2026-11-25, after an answer of V's she couldn't find again,
     /// "chat is fine", as a switch. Seated crossings and rail switches go there either way (WalkMode.History).</summary>
     public bool WalkHistory { get; set; } = true;
 
@@ -435,7 +435,7 @@ public sealed class AccessSettings
             + "emotes, IMs) read back in the same words as others', nearby once the region has echoed them", "on, off", () => ReadMine,
             SettingsApi.Switch("access_read_mine", on => { ReadMine = on; Save(); changed(); })));
         api.Add("access_walk_history", new SettingsApi.Setting("access", "Sojourn Access: what walk mode says (its keys' answers, a vehicle's "
-            + "speed and crossings) written in the nearby chat history too, to read back; its warnings while walking aren't", "on, off", () => WalkHistory,
+            + "speed and crossings) written in the nearby chat history too, to read back; its warnings as you go (walking or driving) and turns aren't", "on, off", () => WalkHistory,
             SettingsApi.Switch("access_walk_history", on => { WalkHistory = on; Save(); changed(); })));
         string[] logs = { "all", "conversations", "off" };
         api.Add("access_chat_logs", new SettingsApi.Setting("access", "Sojourn Access: what's kept in chat logs on this PC, never sent anywhere: all chat, "

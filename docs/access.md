@@ -1511,7 +1511,9 @@ same evening (Claude Opus 5.5).
 - She looked for it afterwards in the chat history and couldn't find it: walk mode's answers weren't kept anywhere to
   read back (only seated crossings and rail switches went in the history). Asked (#376), she said the chat history is
   fine, as something with a switch (#377): now what walk mode says goes there too, but for its warnings while walking,
-  with Alt+0's "Walk mode's answers in the chat history" (on) (`docs/access-app.md` > Read-out).
+  with Alt+0's "Walk mode's answers in the chat history" (on) (`docs/access-app.md` > Read-out). 1237 kept only bumps
+  and turns out, though she was told its warnings would stay out: drops, water, openings and doors passed, and what a
+  vehicle nears went in; the build after keeps them all out (checked the same evening, Claude Opus 5.5).
 - The rest of the drive (26 minutes of crossings, switches said, End of track, Flip and Start) shows nothing else
   amiss in the log.
 
@@ -1589,11 +1591,6 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   side raised to 0.1 m, and a prim or sculpt under 0.2 m boxed. The VR client stops counting a floor the region lets
   the avatar through; Access has nothing like it, so a wrong floor there stays.
 
-- Seated, walk mode still takes a velocity from the seat's positions for 0.8 s whenever the region says the seat is
-  still (a seat its script moves has none of its own), so a vehicle that has just stopped can read as moving for that
-  moment (its velocity only; where she is stays the region's). The same on foot carried her up to 2.4 m past a
-  stop until 2026-11-24 (`docs/access-app.md` > How it fits > Walk mode). Whether it matters seated hasn't been
-  looked at: a vehicle's stop goes by the seat's track as well as its velocity (`WalkMode.Stop.cs`).
 - A follow with neither a planned way nor a trail still steers straight at the one followed, as it always has: in a
   staged run with the visitor flying down, that walked her off a 2 m deck after it, and from a high floor it would be a
   high fall (seen by the agent fixing 66da1c0, 2026-11-19). Not changed: before the floors work it was the only way a
@@ -1638,7 +1635,7 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- Sent with 0.1.0.1217 (#367, 2026-11-22 evening; 1220 in its place, #369, with the worn-object paste's words; then 1226, #374, walk mode's position at a stop; then 1232, #375, 2026-11-25, walks after a review of the walking code), after her log on 1212 at her partner's stairs: a //go to him from the
+- Sent with 0.1.0.1217 (#367, 2026-11-22 evening; 1220 in its place, #369, with the worn-object paste's words; then 1226, #374, walk mode's position at a stop; then 1232, #375, 2026-11-25, walks after a review of the walking code; then 1237, #378, that evening, walk mode's answers in the chat history and V in a crossing), after her log on 1212 at her partner's stairs: a //go to him from the
   landing point, a log either way, whose plan line says whether it was planned for a narrower body (the planner
   harness that checked it headlessly is kept in `local/planner-harness`, not in the repo).
 

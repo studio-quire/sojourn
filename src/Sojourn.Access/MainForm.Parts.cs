@@ -160,7 +160,7 @@ public sealed partial class MainForm
     {
         switch (_parts.FocusedItem?.Tag)
         {
-            case Linkset.Part p: _ = TouchPartAsync(p, null, keyHeld, holdFor); break;
+            case Linkset.Part p: _ = TouchFromListAsync(p, null, keyHeld, holdFor); break;
             case HudButtonItem b: _ = PressButtonAsync(b, keyHeld, holdFor); break;
             case ReadButtonsItem r: ReadButtons(r); break;
         }
@@ -170,9 +170,23 @@ public sealed partial class MainForm
     {
         switch (_faces.FocusedItem?.Tag)
         {
-            case FaceItem f: _ = TouchPartAsync(f.Part, f.Face, keyHeld, holdFor); break;
+            case FaceItem f: _ = TouchFromListAsync(f.Part, f.Face, keyHeld, holdFor); break;
             case HudFaceItem hf: _ = TouchHudFaceAsync(hf, keyHeld, holdFor); break;
         }
+    }
+
+    /// <summary>A part touched from the parts or faces list, kept by a route being recorded in the words //touch finds it
+    /// by again: the object's name, then a named part's, and a face by its number. A part with no name of its own can't
+    /// be found so: the touch's answer says the route leaves it out.</summary>
+    async Task TouchFromListAsync(Linkset.Part p, FaceShape? face, bool keyHeld, double holdFor)
+    {
+        var rec = !p.Hud && _route is { On: true, Paused: false } r ? r : null;
+        bool rootNamed = !Linkset.Unnamed(p.RootName, "") && p.RootName != "the object";
+        bool findable = p.Number == 1 ? rootNamed : p.Named;
+        string? after = rec != null && !findable ? " It has no name of its own, so the route you're recording can't touch it again." : null;
+        if (!await TouchPartAsync(p, face, keyHeld, holdFor, after) || rec == null || !findable) return;
+        var words = p.Number == 1 ? p.RootName : rootNamed ? $"{p.RootName} {p.Name}" : p.Name;
+        rec.Touched(face is { } f ? $"{words} face {f.Face}" : words);
     }
 
     /// <summary>Enter went down on something to touch: false for its repeats while it's held. The touch started now is held
@@ -276,7 +290,8 @@ public sealed partial class MainForm
 
     /// <summary>A part touched as the person's own click on it (the part itself, never its root), on a face when one is
     /// given (where on it the face's middle is, as a script's llDetectedTouchFace and ST read it).</summary>
-    async Task TouchPartAsync(Linkset.Part p, FaceShape? face, bool keyHeld = false, double holdFor = 0)
+    /// <summary>Touches a part (on a face), saying so (with <paramref name="after"/> once touched); true when it was.</summary>
+    async Task<bool> TouchPartAsync(Linkset.Part p, FaceShape? face, bool keyHeld = false, double holdFor = 0, string? after = null)
     {
         var args = new JsonObject { ["obj_uuid"] = p.Id.ToString() };
         if (face is { } f) args["face"] = f.Face;
@@ -284,7 +299,9 @@ public sealed partial class MainForm
         else if (holdFor > 0) args["hold"] = holdFor;
         var r = await _ops.DoAsync("LLAgent", "requestTouch", args);
         var what = face is { } ff ? $"{PartName(p)}, {Linkset.FaceWords(ff, Eye()).Split(", face")[0].ToLowerInvariant()}" : PartName(p);
-        Answer(PersonOps.Error(r) is { } e ? $"Didn't touch {what}: {e}" : Touched(what, r));
+        var error = PersonOps.Error(r);
+        Answer(error is { } e ? $"Didn't touch {what}: {e}" : Touched(what, r) + after);
+        return error is null;
     }
 
     async Task SitPartAsync(Linkset.Part p)

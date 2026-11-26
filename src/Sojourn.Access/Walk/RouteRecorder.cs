@@ -321,7 +321,7 @@ public sealed class RouteRecorder
             _steps.Add(new Step(Kind.Sit, b.Region, b.RegionName, b.Pos, name));
             _walk.PointCue($"Step {CountSteps()}: sitting on {name}.");
         }
-        else _walk.PointCue("Sitting on something with no name: the route can't sit there by name, and goes on from where you stand up.");
+        else _walk.LeftOut("Sitting on something with no name: the route can't sit there by name, and goes on from where you stand up.");
     }
 
     void StoodUp(WalkMode.Body b, long now)

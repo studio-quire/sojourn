@@ -715,8 +715,9 @@ the window's bottom-left corner and reads its name and its children's, so "Statu
   a car) included ("Now in X, still on Y."), written there whether or not it's read out: the blind tester wore a
   script printing the region in local chat for this (2026-10-31).
 - What walk mode says goes in the nearby chat history too, to read back (Alt+0's "Walk mode's answers in the chat
-  history", `access_walk_history`, on by default): its keys' answers (V, L, H...), a vehicle's speed and stops, all but
-  its warnings while walking (bumps and turns, which repeat as she goes); the same words within 10 s are written once
+  history", `access_walk_history`, on by default): its keys' answers (V, L, H...), a vehicle's speed and stops, a
+  recorded route's steps, all but its warnings and turns, which repeat as she goes (what's ahead and Blocked, drops and
+  water, openings and doors passed, what a vehicle nears); the same words within 10 s are written once
   (`WalkMode.History`). Seated crossings and rail switches are written there with it off too. The blind tester's wish,
   2026-11-25, after a V answer on her partner's train she couldn't find again ("chat is fine", as a switch).
 - The reader's per-kind switches are A1's (`announce_nearby` ... in SojournSettings).
@@ -2032,7 +2033,9 @@ What's kept, from where the avatar goes rather than the keys pressed, so any way
   that carried her over 5 m (a ride) writes a note and `//pause` lines as long as the ride took before `//stand`, so a
   scripted ride replays (a vehicle she drove herself isn't driven on replay: the route only waits as long).
 - **Touches**: something touched while recording (T in walk mode, Touch on an object, `//touch WORDS`) as `//touch` with
-  its name or her words, then `//pause 2` for a door to swing. Not yet: a part touched from Alt+7's parts list.
+  its name or her words, then `//pause 2` for a door to swing. A part touched from Alt+7's parts or faces list is
+  written in the words `//touch` finds it by again: the object's name, then the part's, and a face by its number
+  (`//touch Chest Lid face 2`); a part with no name of its own can't be found so, and is said to be left out.
 - **Notes**: N (`//record note WORDS`) keeps where she stands as a point, then the words as a line of their own, which
   `//route` reads out on arriving there ("Note: the door to the ballroom"); empty, just the point.
 - **Waits** (Claude Opus 5.5, 2026-11-22, after the blind tester paused six times in a forest to listen and the played
@@ -3750,7 +3753,10 @@ it).
   the window. Positions are dead-reckoned (the region sends a walking avatar's position only now and then: its last
   one carried on by the velocity it came with), so on the region's word that she's stopped she's where it says, at
   once. Seated, when the region's word on the seat's velocity says still while the seat moves (a seat moved by
-  llSetPos), the velocity comes from the positions. Standing went that way too until 2026-11-24, and the stop's own
+  llSetPos), the velocity comes from the positions; not for a seat that has given a velocity of its own in the last
+  3 s (a physical vehicle), whose "still" is taken as it comes (since 2026-11-25: the stop's last update had read as a
+  velocity for 0.8 s after it stopped, which V said and a car's stop could have pulsed against). Standing went that
+  way too until 2026-11-24, and the stop's own
   update (the last of the way, with no velocity) read as still while moving: walk mode carried her on at her last
   stretch's speed for 0.8 s, up to 2.4 m past where she stood, after nearly every stop and short teleport (the walk logs
   of eight test runs; never on a walk), for its cues and keys (a warning's distance, footsteps, V, L, A, S, the

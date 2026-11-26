@@ -86,8 +86,13 @@ public sealed partial class WalkMode
             var rot = w.RegionRotation(av);
             var name = root.Properties?.Name is { Length: > 0 } n && n != "Object" ? n : null;
             var rv = V(root.Velocity);
-            // a seat moved by its script (llSetPos, keyframes) has no velocity of its own: go by how it moves
-            if (new Vector2(rv.X, rv.Y).Length() < 0.05f && Environment.TickCount64 - _rawAt < 800) rv = _estVel;
+            // a seat moved by its script (llSetPos, keyframes) has no velocity of its own: go by how it moves. One that
+            // gives its own (a physical vehicle) is taken at its word, "still" too: the stop's last update moves it the
+            // last of the way, which read as a velocity for 0.8 s after it stopped, as it had standing until 2026-11-24
+            long now = Environment.TickCount64;
+            var seatKey = (sim.Handle, root.LocalID);
+            if (new Vector2(rv.X, rv.Y).Length() >= 0.05f) (_ownVelSeat, _ownVelAt) = (seatKey, now);
+            else if (now - _rawAt < 800 && !(_ownVelSeat == seatKey && now - _ownVelAt < 3000)) rv = _estVel;
             return new Body(sim.Handle, sim.Name, V(at), at.Z - half, YawOf(rot), rv, false, true, set, name);
         }
         // standing, the region's word on the velocity is taken as it comes, "still" too, never one from how far its last
@@ -116,6 +121,9 @@ public sealed partial class WalkMode
     LVector3 _raw;
     long _rawAt;
     Vector3 _estVel;
+    // the seat that last gave a velocity of its own, and when (Me())
+    (ulong Region, uint Root) _ownVelSeat;
+    long _ownVelAt;
     static readonly StreamWriter? WalkLog = OpenLog();
 
     static StreamWriter? OpenLog()
@@ -172,11 +180,11 @@ public sealed partial class WalkMode
         if (_set.WalkSound(cue)) Sounds.Play(sound, _set.WalkLevel(cue), b is { } body && yaw is { } y ? Around(body, y) : null);
         if (text == null || !_set.WalkText(cue)) return;
         if (cue == "switch") History(text);
-        // warnings and turns are said at once whatever is being said; the rest that come by themselves let a switch's line finish
-        // (and they repeat as she walks: not in the history)
-        if (cue is "walls" or "turns") Line(text, history: false);
-        else if (cue == "vehicle") Line(text);
-        else ByItself(text, heardOut: cue == "switch");
+        // warnings and turns are said at once whatever is being said; the rest that come by themselves let a switch's line finish.
+        // Of these only a route's steps go in the history (a switch's is written above): warnings (what's ahead, drops and
+        // water, openings and doors passed, what a vehicle nears) and turns repeat as she goes.
+        if (cue is "vehicle" or "walls" or "turns") Line(text, history: false);
+        else ByItself(text, heardOut: cue == "switch", history: cue == "route");
     }
 
     /// <summary>A line for the screen reader (and the pad's own text, for anyone looking); in the nearby chat history
@@ -215,12 +223,12 @@ public sealed partial class WalkMode
     // still on Zephyr." (her log of 2026-11-02, 21:37). Her own keys' answers, warnings and "Track ends" still cut in.
     long _quietUntil;
     bool _quietForSwitch;   // what's being heard out is a switch's line (else a waiting line's: a switch's may cut in)
-    readonly Queue<(string Text, bool Switch, long At)> _after = new();
+    readonly Queue<(string Text, bool Switch, bool History, long At)> _after = new();
 
     /// <summary>A line that comes by itself: said now, or once the switch line before it has been heard out (and any
     /// waiting before it, each in turn). heardOut: a switch's line, which nothing by itself cuts off, and which cuts in on
     /// any other waiting line's turn.</summary>
-    void ByItself(string text, bool heardOut = false)
+    void ByItself(string text, bool heardOut = false, bool history = true)
     {
         long now = Environment.TickCount64;
         lock (_after)
@@ -228,27 +236,28 @@ public sealed partial class WalkMode
             bool wait = heardOut ? now < _quietUntil && _quietForSwitch : now < _quietUntil || _after.Count > 0;
             if (wait)
             {
-                if (_after.Count < 6) _after.Enqueue((text, heardOut, now));
+                if (_after.Count < 6) _after.Enqueue((text, heardOut, history, now));
                 return;
             }
             if (heardOut) { _quietUntil = now + Hearing(text); _quietForSwitch = true; }
         }
-        Line(text);
+        Line(text, history);
     }
 
     /// <summary>Each tick: the next waiting line, once the one before has been heard out (each heard out in turn).</summary>
     void AfterTick(long now)
     {
         string text;
+        bool history;
         lock (_after)
         {
             // (one waiting past 8 s is old news: a teleport, or the walk pad gone meanwhile)
             while (_after.Count > 0 && now - _after.Peek().At > 8000) _after.Dequeue();
             if (_after.Count == 0 || now < _quietUntil) return;
-            (text, _quietForSwitch, _) = _after.Dequeue();
+            (text, _quietForSwitch, history, _) = _after.Dequeue();
             _quietUntil = now + Hearing(text);
         }
-        Line(text);
+        Line(text, history);
     }
 
     /// <summary>About how long the reader takes to say a line at a quick voice (30 ms a character, as the lines cut by
@@ -315,6 +324,9 @@ public sealed partial class WalkMode
 
     /// <summary>A route's point kept: its tick, and its line where the route cue's text is on.</summary>
     public void PointCue(string text) => Cue("route", CueSounds.Cue.RoutePoint, text);
+    /// <summary>Something a route being recorded leaves out: said whatever the route cue is set to, with no tick (a tick
+    /// says a point was kept).</summary>
+    public void LeftOut(string text) => ByItself(text);
 
     /// <summary>World audio and voice hear from the avatar's head, facing where it faces (Access has no camera of its
     /// own; without this nothing placed in the world played at all).</summary>
