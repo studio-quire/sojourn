@@ -14599,13 +14599,42 @@ def seat_keys(run):
             texts = [e.get("text") or "" for e in said_since(m)]
             run.check("her own stand isn't said as being stood up, nor as the keys let go",
                       not any("You're off" in t or "your keys" in t for t in texts), " | ".join(texts))
+        # neither is a teleport from the seat to 4 m off (the region stands her up first, then moves her), nor sitting
+        # from it straight onto another seat (stood up first there too): the review of 2026-11-27
+        m = mark()
+        say_in_app("//sit Keys Kart")
+        if run.expect("(on it again)", ["Sitting on Keys Kart"], m, 10):
+            time.sleep(3)
+            x, yy, z = walk_pos()
+            m = mark()
+            say_in_app(f"//tp {REGION}/{x + 4:.0f}/{yy:.0f}/{z + 1:.0f}")
+            arrived = run.expect("(teleported 4 m from the seat)", ["Arrived"], m, 20)
+            at = re.search(r"at (-?\d+), (-?\d+), (-?\d+)\.$", (arrived or {}).get("text") or "")
+            run.check("its arrival says where she was sent, not where she sat added in",
+                      at and abs(int(at[1]) - (x + 4)) <= 3 and abs(int(at[2]) - yy) <= 3, (arrived or {}).get("text", "not said") + f" (sent to {x + 4:.0f}, {yy:.0f})")
+            time.sleep(4)
+            texts = [e.get("text") or "" for e in said_since(m)]
+            run.check("a teleport from the seat isn't said as being stood up", not any("You're off" in t for t in texts), " | ".join(texts))
+            gz = api("TesselAgent", "ground", points=[[x + 3, yy]])["heights"][0] or z - 1
+            two = v(f"kart Spare Kart {x + 3:.1f} {yy:.1f} {gz + 0.4:.2f} facing 0", timeout=60)
+            m = mark()
+            say_in_app("//sit Keys Kart")
+            if run.check("(a second kart beside it)", two.startswith("kart"), two) and run.expect("(on the first)", ["Sitting on Keys Kart"], m, 10):
+                time.sleep(3)
+                m = mark()
+                say_in_app("//sit Spare Kart")
+                run.expect("(straight onto the second)", ["Sitting on Spare Kart"], m, 10)
+                time.sleep(4)
+                texts = [e.get("text") or "" for e in said_since(m)]
+                run.check("sitting from one seat onto another isn't said as being stood up", not any("You're off" in t for t in texts), " | ".join(texts))
     finally:
         say_in_app("//stand")
         time.sleep(1.5)
-        try:
-            v("derez Keys Kart", timeout=15)
-        except Exception:
-            pass
+        for kart in ("Keys Kart", "Spare Kart"):
+            try:
+                v(f"derez {kart}", timeout=15)
+            except Exception:
+                pass
 
 
 def driving_after_lost(run):

@@ -787,8 +787,10 @@ public sealed partial class WalkMode
         if (_switchBusy) { Line("Still reading a switch: a moment."); return; }
         if (Me() is not { } b) { Line("Not in a region yet."); return; }
         if (await TheSwitchAsync(b) is not { } s) { Line($"No switch within {Bearings.Metres(SwitchAsk)} to throw."); return; }
-        // riding on, one not ahead is passed: W says it, a throw would only change it behind her
-        if (b.Sitting && Speed(b) > 1f && !WayAhead(b, Way(b), s, _switchLook, out _)) { Line($"No switch ahead to throw: the nearest is {WhereWords(b, s)}."); return; }
+        // riding on, one behind her is passed: W says it, a throw would only change it behind her. (Only one behind: a
+        // stand ahead that isn't placed on the track, a rail's names not come yet, is thrown as before)
+        if (b.Sitting && Speed(b) > 1f && !WayAhead(b, Way(b), s, _switchLook, out _) && Behind(b, s))
+        { Line($"No switch ahead to throw: the nearest is {WhereWords(b, s)}."); return; }
         if (!s.Stand) { Line("That switch has no switch stand to throw it by."); return; }
         if (S.Region is not { } here || here.Handle != s.Region) { Line($"That switch is across the border, {WhereWords(b, s)}: throw it once you're in its region."); return; }
         _switchBusy = true;
@@ -817,12 +819,13 @@ public sealed partial class WalkMode
             while (Environment.TickCount64 < end)
             {
                 await Task.Delay(150);
-                // (each asked at most every half second: a quick region answers at once)
+                // (each asked at most every half second: a quick region answers at once; the guides only for a stand
+                // without a Status, whose answer they are: theirs, some twenty, queue before the stand's next ask)
                 if (Environment.TickCount64 - askedAt >= 500)
                 {
                     askedAt = Environment.TickCount64;
                     if (standAsk is null or { IsCompleted: true }) standAsk = RenewQuietly(here, s.LocalId, TimeSpan.FromSeconds(2));
-                    if (guidesAsk is null or { IsCompleted: true }) guidesAsk = RenewGuidesAsync(here, guides);
+                    if (was == null && guidesAsk is null or { IsCompleted: true }) guidesAsk = RenewGuidesAsync(here, guides);
                 }
                 now = Cached(s);
                 guidesMoved = GuidesMoved(here, guides);
@@ -841,19 +844,9 @@ public sealed partial class WalkMode
                 var line = $"Switch {SettingWords(now)}.";
                 if (to != null && status != to) line += $" Not the {(to == "Main" ? "main line" : "branch")}, though.";
                 Cue("switch", CueSounds.Cue.SwitchThrown, line, pos, yaw);
-                // the Pawpaw Wye report (SL feedback, 2025-12): a stand that changed while its guides didn't. Said after,
-                // so the setting isn't held back for it with the switch coming up
-                if (guides.Count >= 2 && !guidesMoved)
-                {
-                    for (int i = 0; i < 10 && !guidesMoved; i++)
-                    {
-                        await Task.Delay(300);
-                        if (guidesAsk is null or { IsCompleted: true }) guidesAsk = RenewGuidesAsync(here, guides);
-                        guidesMoved = GuidesMoved(here, guides);
-                    }
-                    SwitchLog($"guide rails {(guidesMoved ? "changed" : "still unchanged")} 3 s after: {GuidesWords(here, guides)}");
-                    if (!guidesMoved) Line("Its guide rails didn't change, though: the stand may be out of order.");
-                }
+                // the Pawpaw Wye report (SL feedback, 2025-12): a stand that changed while its guides didn't. Watched
+                // after the throw is done, so neither the setting nor a throw straight back waits for it
+                if (guides.Count >= 2 && !guidesMoved) _ = GuidesAfterAsync(here, guides);
             }
             else if (was == null && guidesMoved) Cue("switch", CueSounds.Cue.SwitchThrown, "Switch thrown: its guide rails changed, but its stand doesn't say which way.", pos, yaw);
             else Written(was == null ? "Touched the switch stand; no change seen." : $"The switch didn't change: still {SettingWords(now)}.");
@@ -866,10 +859,8 @@ public sealed partial class WalkMode
     {
         if (!s.Stand || RegionOf(s) is not { } w || !w.Prims.TryGetValue(s.LocalId, out var p)) return s;
         var off = S.FrameOffset(w);
-        var fresh = s with { Setting = SwitchStand.Parse(p.Properties?.Description), Pos = new(p.Position.X + off.X, p.Position.Y + off.Y, p.Position.Z) };
-        int i = _switches.FindIndex(x => x.Id == s.Id);
-        if (i >= 0) _switches[i] = fresh;
-        return fresh;
+        // (not written back into _switches: the scan keeps its own, placed on the track as it goes)
+        return s with { Setting = SwitchStand.Parse(p.Properties?.Description), Pos = new(p.Position.X + off.X, p.Position.Y + off.Y, p.Position.Z) };
     }
 
     async Task RenewQuietly(RegionWorld w, uint local, TimeSpan wait)
@@ -880,6 +871,31 @@ public sealed partial class WalkMode
     }
 
     void Written(string line) { History(line); Line(line); }
+
+    /// <summary>Behind her by the way she's going, a couple of metres past at least.</summary>
+    bool Behind(Body b, RailSwitch s)
+    {
+        float yaw = Way(b);
+        return (s.Pos.X - b.Pos.X) * MathF.Cos(yaw) + (s.Pos.Y - b.Pos.Y) * MathF.Sin(yaw) < -2f;
+    }
+
+    /// <summary>A thrown stand's guide rails, watched for 3 s: unchanged, said, as switch lines are (written in the history too).</summary>
+    async Task GuidesAfterAsync(RegionWorld here, Dictionary<uint, (bool Phantom, string Name)> guides)
+    {
+        bool moved = false;
+        Task? ask = null;
+        for (int i = 0; i < 10 && !moved; i++)
+        {
+            await Task.Delay(300);
+            if (ask is null or { IsCompleted: true }) ask = RenewGuidesAsync(here, guides);
+            moved = GuidesMoved(here, guides);
+        }
+        SwitchLog($"guide rails {(moved ? "changed" : "still unchanged")} 3 s after: {GuidesWords(here, guides)}");
+        if (moved || !_set.WalkText("switch")) return;
+        const string line = "Its guide rails didn't change, though: the stand may be out of order.";
+        History(line);
+        Line(line, history: false);
+    }
 
     /// <summary>//switch [flip|main|branch].</summary>
     public Task SwitchWordsAsync(string words)

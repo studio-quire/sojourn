@@ -18,7 +18,7 @@ Our own Second Life client, built for VR first, with a personal AI that operates
   launcher), and RLV/RLVa (2026-11-01, off by default: `docs/rlv.md`). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
 - **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01), a first build editor (2026-11-02)
   and About Land (2026-11-03); test builds (the assistant bundled) published as releases on its front door,
-  studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1248 (2026-11-27: a seat letting go of her keys
+  studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1251 (2026-11-27: a seat letting go of her keys
   or standing her up said, lines cut off by the app's own answers said again, a switch's throw answered at once). A blind tester uses them daily, first on Second Life 2026-10-30, and sends logs
   from the app; most work now follows them, lately walks to her partner up his steps. What each build changed and what
   her logs showed: `docs/access.md` > What a blind tester tells us (newest last) and its Open threads; how a session

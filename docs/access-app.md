@@ -1127,14 +1127,18 @@ A seat's script letting go of the keys while she stays on it is said, with or wi
 "Gryphon Express let go of your keys, so the arrows don't drive it now. Sitting on it again usually gives them back.",
 once they've been gone 2 s (a crossing lets go and takes them again within one), not in a crossing's first 10 s nor
 within 10 s of her own `//stand`, and in driving after someone's own words while that's on (Driving after someone,
-below); "Gryphon Express has your keys again." if it takes them back. An arrow or Page Up or Down pressed seated with
-nothing holding the keys says the same, or "Retreat Chair hasn't taken your keys, so the arrows don't move it." where
-nothing had them on this seat, at most every 20 s and not in the sit's first 3 s. (On 0.1.0.1240 her partner boarding
+below); "Gryphon Express has your keys again." if it takes them back after that was said. The keys counted are those
+taken and not passed on, as a vehicle takes them: a HUD that takes them passed on (a group drive's, an AO's) neither
+stands for the seat nor hides its letting go. An arrow pressed seated with nothing keeping the keys says the same (and
+the tick then doesn't), or "Retreat Chair hasn't taken your keys, so the arrows don't move it." where nothing has them
+at all, at most every 20 s and not in the sit's first 3 s; Page Up and Down aren't asked about (a lift may take only
+those). (On 0.1.0.1240 her partner boarding
 his train had its script let go of hers, a script holding one avatar's permissions at a time, and nothing said so: she
 logged in again to drive, 2026-11-26.) Stood up by anything but her own `//stand` (or a walk's standing up first) is
 said too: "You're off Gryphon Express, while it was moving." as before, and now "You're off Gryphon Express." where it
-stood still and she landed within 8 m of it (farther is a teleport, which says itself); after driving after someone,
-its own "You're off your seat" instead.
+stood still, judged 2 s on: still standing, within 8 m of where she sat, no teleport started since (the region stands
+a seated avatar up before it teleports her, and before a sit onto another seat; `AgentSession.TeleportSeenAt`); while
+driving after someone, its own "You're off your seat" instead.
 
 A HUD or anything else worn that has taken keys gets them in walk mode the same way, seated or not (a tour's HUD that
 teleports on Page Down, 2026-11-14). Page Up and Page Down where she types (Say, a conversation) do nothing there, so
@@ -1313,11 +1317,14 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   again beside it, at most every half second (asked and read in turn, each ask waiting out its timeout on a slow region,
   the answer took 7 s at Clearwing on 2026-11-26, the stand having said Main at 2 s and the train passed the switch at
   3; a second Shift+W meanwhile then threw it back behind her). Pressed again while a throw waits: "Still throwing the
-  switch: a moment.", not a second throw. Seated and moving, a switch not ahead isn't thrown: "No switch ahead to
-  throw: the nearest is 10 metres behind you." (W still says it). A switch being read meanwhile (each is read as it
+  switch: a moment.", not a second throw (from the touch until the setting is said). Seated and moving, a switch behind
+  her isn't thrown: "No switch ahead to throw: the nearest is 10 metres behind you." (W still says it; one ahead but
+  not placed on the track is thrown as before). While a stand with a Status is watched its guide rails aren't asked
+  (theirs, some twenty, would queue before the stand's next ask). A switch being read meanwhile (each is read as it
   comes up, and the next one again every 4 s) is waited for, up to 3 s, rather than refused. The guide rails within
-  60 m of the stand are watched too: if the stand changed and they hadn't 3 s on, it's said after the setting ("Its
-  guide rails didn't change, though: the stand may be out of order"); a stand without a Status, if they changed,
+  60 m of the stand are watched too: if the stand changed and they hadn't 3 s on, it's said after the setting, the throw
+  done by then ("Its guide rails didn't change, though: the stand may be out of order", written in the history as switch
+  lines are); a stand without a Status, if they changed,
   "Switch thrown: its guide rails changed, but its stand doesn't say which way." The channel
   commands aren't used: neighbouring stands may share a channel, and a shout would throw them all. A switch across a
   border is said but can't be thrown from here (touches go to the current region).

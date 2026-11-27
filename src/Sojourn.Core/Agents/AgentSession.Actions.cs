@@ -63,7 +63,14 @@ public sealed partial class AgentSession
         while (DateTime.UtcNow < deadline)
         {
             var sim = c.Network.CurrentSim;
-            if (sim is null || ReferenceEquals(sim, from)) return;   // a local teleport: its reply carried the position
+            if (sim is null || ReferenceEquals(sim, from))
+            {
+                // a local teleport: its reply carried the position, but seated, Self.SimPosition reads it against the seat
+                // until the update standing her comes ("Arrived in Atelier, at 446, 148, 55." for 226, 74, 24 off a kart
+                // in Sojourn Access's test, 2026-11-27)
+                for (int i = 0; i < 40 && c.Self.SittingOn != 0 && DateTime.UtcNow < deadline; i++) await Task.Delay(50);
+                return;
+            }
             if (sim.AgentMovementComplete) return;
             await Task.Delay(50);
         }

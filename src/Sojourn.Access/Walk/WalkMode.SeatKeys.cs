@@ -14,11 +14,17 @@ public sealed partial class WalkMode
     /// <summary>An arrow pressed with nothing holding the keys is said at most this often.</summary>
     const long KeysPressedEvery = 20_000;
 
-    bool _keysHeld, _keysTold;
+    // _keysTold: this letting go is dealt with (said, or driving after someone's to say); _keysSpoke: said here, so their
+    // coming back is said too
+    bool _keysHeld, _keysTold, _keysSpoke;
     long _keysGoneAt, _keysSatAt, _keysCrossedAt = long.MinValue / 2, _keysSaidAt = long.MinValue / 2;
     string? _keysSeat, _keysRegion;
 
-    bool KeysTaken => (S.ControlsTaken & MoveKeys) != 0;
+    /// <summary>The movement keys taken and not passed on, as a vehicle takes them. A HUD that takes them passed on (a
+    /// group drive's, an AO's) neither stands for the seat nor hides its letting go (the review of 2026-11-27).</summary>
+    bool KeysKept => (S.ControlsKept & MoveKeys) != 0;
+    /// <summary>Anything holding them, passed on or not: where the arrows go somewhere, "hasn't taken your keys" isn't said.</summary>
+    bool KeysAny => (S.ControlsTaken & MoveKeys) != 0;
 
     long _standAskedAt = long.MinValue / 2;
 
@@ -33,26 +39,31 @@ public sealed partial class WalkMode
         {
             if (SeatInDoubt(b)) return;   // a crossing's moment, the seat not sent yet: as it was
             _keysSeat = null;
-            _keysHeld = _keysTold = false;
+            _keysHeld = _keysTold = _keysSpoke = false;
             _keysGoneAt = _keysSatAt = 0;
             return;
         }
         string seat = b.SeatName ?? _seatName ?? "Your seat";
-        if (_keysSeat != seat) { _keysSeat = seat; _keysSatAt = now; _keysHeld = _keysTold = false; _keysGoneAt = 0; }
-        if (KeysTaken)
+        if (_keysSeat != seat) { _keysSeat = seat; _keysSatAt = now; _keysHeld = _keysTold = _keysSpoke = false; _keysGoneAt = 0; }
+        if (KeysKept)
         {
-            if (_keysTold) { Log($"{seat} took the keys again, {now - _keysGoneAt} ms after letting go"); Line($"{seat} has your keys again."); }
+            if (_keysSpoke)
+            {
+                Log($"{seat} took the keys again, {now - _keysGoneAt} ms after letting go");
+                if (_set.WalkText("vehicle")) Line($"{seat} has your keys again.");
+            }
             _keysHeld = true;
-            _keysTold = false;
+            _keysTold = _keysSpoke = false;
             _keysGoneAt = 0;
             return;
         }
         if (!_keysHeld) return;
         if (_keysGoneAt == 0) _keysGoneAt = now;
-        // driving after someone says it in its own words as it lets go (WalkMode.Convoy.cs)
-        if (_convoy != null) { _keysTold = true; return; }
+        // driving after someone says it in its own words as it lets go (WalkMode.Convoy.cs), after its own wait at a
+        // crossing; nothing more here, then or just after it ends
+        if (_convoy != null || now - _convoyEndedAt < 3000) { if (_convoy == null) _keysTold = true; return; }
         if (_keysTold || now - _keysGoneAt < KeysGoneFor || now - _keysCrossedAt < KeysAfterCrossing || now - _standAskedAt < 10_000) return;
-        _keysTold = true;
+        _keysTold = _keysSpoke = true;
         _keysSaidAt = now;
         Log($"said {seat} let go of the keys, {now - _keysGoneAt} ms on");
         if (_set.WalkText("vehicle")) Line(KeysGone(seat));
@@ -60,13 +71,25 @@ public sealed partial class WalkMode
 
     static string KeysGone(string seat) => $"{seat} let go of your keys, so the arrows don't drive it now. Sitting on it again usually gives them back.";
 
-    /// <summary>An arrow or Page Up or Down pressed seated (KeyDown): with nothing holding the keys, said why nothing moves.</summary>
+    /// <summary>An arrow pressed seated (KeyDown): with nothing keeping the keys, said why nothing moves. (Page Up and Down
+    /// aren't asked about: a lift may take only those, and these keys say nothing of them.)</summary>
     void KeysPressed(Body b, long now)
     {
-        if (!b.Sitting || KeysTaken || _convoy != null || now - _keysSatAt < KeysAfterSit || now - _keysCrossedAt < KeysAfterCrossing
+        if (!b.Sitting || KeysKept || _convoy != null || now - _keysSatAt < KeysAfterSit || now - _keysCrossedAt < KeysAfterCrossing
             || now - _keysSaidAt < KeysPressedEvery) return;
         string seat = b.SeatName ?? _seatName ?? "Your seat";
-        _keysSaidAt = now;
-        Line(_keysHeld ? KeysGone(seat) : $"{seat} hasn't taken your keys, so the arrows don't move it.");
+        if (_keysHeld)
+        {
+            // said now, not again by the tick
+            _keysTold = _keysSpoke = true;
+            if (_keysGoneAt == 0) _keysGoneAt = now;
+            _keysSaidAt = now;
+            Line(KeysGone(seat));
+        }
+        else if (!KeysAny)
+        {
+            _keysSaidAt = now;
+            Line($"{seat} hasn't taken your keys, so the arrows don't move it.");
+        }
     }
 }

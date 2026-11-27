@@ -868,8 +868,14 @@ public sealed partial class AgentSession
 
     // ---------- teleports, region changes ----------
 
+    /// <summary>When a teleport last started or went on (TeleportStart/Progress), Environment.TickCount64: the region
+    /// stands a seated avatar up before it moves her (Sojourn Access's "You're off ..." waits it out).</summary>
+    public long TeleportSeenAt => Interlocked.Read(ref _teleportSeenAt);
+    long _teleportSeenAt = long.MinValue / 2;
+
     void OnTeleport(TeleportEventArgs e)
     {
+        if (e.Status is TeleportStatus.Start or TeleportStatus.Progress) Interlocked.Exchange(ref _teleportSeenAt, Environment.TickCount64);
         switch (e.Status)
         {
             case TeleportStatus.Finished:

@@ -295,21 +295,20 @@ public sealed partial class WalkMode
             // out of Bhaga without her on 2026-11-02, and only its own chat said so). Not after her own stand, which
             // "Standing." answered (said after it too until 2026-11-27, in each driving step of the scripted test)
             bool asked = now - _standAskedAt <= 10_000;
-            if (_seated && seated == false && !judged && !asked && now - _seatMovingAt < 5000 && _set.WalkText("vehicle"))
+            // (driving after someone says it itself: "You're off your seat, so no longer driving after ...")
+            if (_seated && seated == false && !judged && !asked && _convoy == null && now - _convoyEndedAt > 2000
+                && now - _seatMovingAt < 5000 && _set.WalkText("vehicle"))
             {
                 Log($"off {_seatName ?? "the seat"} while it was moving, in {b.RegionName}");
                 Line($"You're off {_seatName ?? "your seat"}, while it was moving.");
             }
             // stood up by something else while it stood still: a script's unsit, the seat taken away (her partner's
             // train at the end of its track, 2026-11-26 15:37:28, nothing said, and her next arrows would have walked
-            // her). Not her own stand, and not a teleport: it lands her far from the seat, and says itself
-            // (driving after someone says it as it ends: "You're off your seat, so no longer driving after ...")
-            else if (_seated && seated == false && !judged && !asked && now - _convoyEndedAt > 2000 && _set.WalkText("vehicle")
-                && _satAt is var (region, pos) && region == b.Region && Vector3.Distance(pos, b.Pos) < 8f)
-            {
-                Log($"off {_seatName ?? "the seat"}, not asked by her, in {b.RegionName}");
-                Line($"You're off {_seatName ?? "your seat"}.");
-            }
+            // her). Judged 2 s on (OffTick): the region stands her up before a teleport moves her, and before a sit
+            // onto another seat
+            else if (_seated && seated == false && !judged && !asked && _convoy == null && now - _convoyEndedAt > 2000
+                && _set.WalkText("vehicle") && _satAt is var (region, pos) && region == b.Region)
+                _offPending = (_seatName ?? "your seat", region, pos, now);
             _satAt = b.Sitting ? (b.Region, b.Pos) : null;
             _seated = seated.Value;
             if (b.Sitting) _seatName = b.SeatName ?? _seatName;
@@ -318,6 +317,24 @@ public sealed partial class WalkMode
 
     long _seatMovingAt = long.MinValue / 2;
     (ulong Region, Vector3 Pos)? _satAt;   // where she sat as last seen seated (a stand-up lands beside it; a teleport, not)
+    (string Seat, ulong Region, Vector3 Pos, long At)? _offPending;   // stood up, not asked: said 2 s on if it still holds
+
+    /// <summary>A stand-up she didn't ask for, 2 s on: said if she's still standing beside where she sat and no teleport
+    /// has started since (each tick, after Crossing).</summary>
+    void OffTick(Body b, long now)
+    {
+        if (_offPending is not { } o) return;
+        if (b.Sitting || SeatInDoubt(b) || S.TeleportSeenAt >= o.At - 3000 || now - _standAskedAt <= 10_000 || _convoy != null)
+        {
+            _offPending = null;
+            return;
+        }
+        if (now - o.At < 2000) return;
+        _offPending = null;
+        if (b.Region != o.Region || Vector3.Distance(o.Pos, b.Pos) >= 8f) return;   // moved far: a teleport, which says itself
+        Log($"off {o.Seat}, not asked by her, in {b.RegionName}");
+        Line($"You're off {o.Seat}.");
+    }
     (string Region, long At)? _unsure;   // a seated crossing said as not known yet, in that region
     uint _seatLocal;
     UUID _seatRoot;                      // the seat's linkset's root as last seen sat on, for the log
