@@ -15,6 +15,13 @@ namespace Sojourn.Access;
 /// 2026-11-04 came within a second of another line). Her own line read back doesn't count: a line that came as she
 /// finished typing would be lost. Alt+0 turns it all off (access_read_cut). (Taking any key within a slower voice's time as a cut, her own lines included,
 /// and saying them again at 0.7 s pauses, between words, had a busy game's chat say lines she'd heard over again.)
+/// The app's own answers cut in too (the announcer's Answer: what a screen reader does on a key), and one that comes with
+/// no key of hers since a line arrived cuts that line by itself: a sit's "Sitting on ..." once the region has sat her, in
+/// the same second as the vehicle's "Welcome aboard" (the blind tester's log of 2026-11-26, five sits, each welcome
+/// lost), an arrival after a teleport, a slow answer to a key pressed before. Such a line is said again after it, by the
+/// same rules. One her own key's answer cut is left cut: she pressed it, as she would to silence the reader. Walk mode's
+/// lines cut in on purpose and leave what they cut (Answer's restores): said again, a train's throttle lines cut by its
+/// "Stopped." came back after it, stale (the scripted test's track end, the first try, 2026-11-27).
 /// </summary>
 public sealed partial class MainForm
 {
@@ -24,6 +31,8 @@ public sealed partial class MainForm
     readonly List<Spoken> _cut = new();
     readonly object _spokenLock = new();
     long _spokenEnds, _othersAt;
+    long _answerCutAt;     // when one of the app's answers last cut a line by itself (0: none since what was cut was said)
+    bool _typedCut;        // something in _cut was cut by typing
 
     /// <summary>A pause in typing rather than the gap between two words, before what was cut is said again.</summary>
     const long KeysRest = 1000;
@@ -43,6 +52,29 @@ public sealed partial class MainForm
                 || l.Kind is not (AnnounceKind.Nearby or AnnounceKind.Objects or AnnounceKind.Ims or AnnounceKind.Group)) return;
             _othersAt = l.At;
             _spoken.Add(new Spoken(l.Text, l.Kind, l.At, _spokenEnds, l.From));
+        }
+    }
+
+    /// <summary>An answer that cut in, just handed to the reader (the announcer's thread): the lines it cut that no key of
+    /// hers came after (she didn't cut them) are cut by the app, to be said again.</summary>
+    void CutIn(long at, string text)
+    {
+        var reader = Reader;
+        long key = RealInput.LastKeyAt;
+        lock (_spokenLock)
+        {
+            bool cut = false;
+            for (int i = 0; i < _spoken.Count; i++)
+            {
+                var s = _spoken[i];
+                if (s.At >= at || at >= s.Ends || key > s.At || reader?.QuietBetween(s.At + 250, at) == true) continue;
+                _cut.Add(s);
+                _spoken.RemoveAt(i--);
+                cut = true;
+            }
+            if (cut) _answerCutAt = at;
+            // the reader's queue was emptied: the answer is what it says now, and what arrives next waits for it
+            _spokenEnds = at + Speaking(text);
         }
     }
 
@@ -76,18 +108,21 @@ public sealed partial class MainForm
                 else if (heard || key > 0 || now > s.Ends) _spoken.RemoveAt(i--);
             }
             // the reader's queue was emptied by that key
-            if (cut) _spokenEnds = typed;
+            if (cut) { _spokenEnds = typed; _typedCut = true; }
             _cut.RemoveAll(s => RealInput.SilencedAt > s.At);
-            if (_cut.Count == 0 || now - RealInput.LastKeyAt < KeysRest) return;
-            if (_othersAt > typed || !_set.ReadCut) { _cut.Clear(); return; }
+            if (_cut.Count == 0) { _typedCut = false; _answerCutAt = 0; return; }
+            if (now - RealInput.LastKeyAt < KeysRest) return;
+            if (_othersAt > Math.Max(typed, _answerCutAt) || !_set.ReadCut) { _cut.Clear(); _typedCut = false; _answerCutAt = 0; return; }
             // words a notice said again a moment ago (a HUD's dialog and its chat line carry the same) aren't said twice
             _cut.RemoveAll(s => WordsCovered(s.Text, s.At, long.MaxValue) != null);
-            if (_cut.Count == 0) return;
+            if (_cut.Count == 0) { _typedCut = false; _answerCutAt = 0; return; }
             foreach (var s in _cut) NoteWords(s.Text, now, again: true, notice: false);
-            again = Again(_cut);
+            again = Again(_cut, _typedCut);
             kind = _cut[^1].Kind;
             from = _cut.Select(s => s.From).Aggregate(LineSources.Join);
             _cut.Clear();
+            _typedCut = false;
+            _answerCutAt = 0;
         }
         if (!_set.MuteAll) reader?.Say(kind, again, keep: false, from, again: true);
     }
@@ -161,7 +196,7 @@ public sealed partial class MainForm
 
     /// <summary>The words for lines said again: all of them in the order they came, or past three lines or 500
     /// characters the newest that fit, after how many there were (the review keys have them all).</summary>
-    static string Again(List<Spoken> cut)
+    static string Again(List<Spoken> cut, bool typed)
     {
         var said = new List<string>();
         int chars = 0;
@@ -174,7 +209,8 @@ public sealed partial class MainForm
         }
         var words = string.Join(" ", said);
         if (said.Count == cut.Count) return words;
-        return said.Count == 1 ? $"{cut.Count} messages while you typed, the last: {words}"
-            : $"{cut.Count} messages while you typed, the last {said.Count}: {words}";
+        string when = typed ? "while you typed" : "cut off";
+        return said.Count == 1 ? $"{cut.Count} messages {when}, the last: {words}"
+            : $"{cut.Count} messages {when}, the last {said.Count}: {words}";
     }
 }

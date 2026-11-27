@@ -149,7 +149,7 @@ public sealed partial class MainForm : Form
             Links = () => BeginInvoke(ShowLinks),
             Clipboard = () => (string?)Invoke(() => { try { return System.Windows.Forms.Clipboard.ContainsText() ? System.Windows.Forms.Clipboard.GetText() : null; } catch { return null; } }),
         };
-        _walk = new Sojourn.Access.Walk.WalkMode(host, _ops, _set, rays, line => Reader?.Answer(line)) { StopOthers = () => _cmd.StopAll() };
+        _walk = new Sojourn.Access.Walk.WalkMode(host, _ops, _set, rays, line => Reader?.Answer(line, restores: false)) { StopOthers = () => _cmd.StopAll() };
         // a seated crossing (a train, a car) is a line in nearby chat's history, as a walked one is (Announce)
         _walk.ForHistory += line => { if (InvokeRequired) BeginInvoke(() => AppendChat(line)); else AppendChat(line); };
         _cmd.FeetZ = () => _walk.Me()?.Feet;
@@ -214,6 +214,7 @@ public sealed partial class MainForm : Form
         StartSessionTools();
         host.ScreenReader.Shape = Shape;
         host.ScreenReader.Announcer.Spoke = Spoke;
+        host.ScreenReader.Announcer.CutIn = CutIn;
         host.ScreenReader.WholeReplies = true;   // rich descriptions run past the announcer's length
         host.ScreenReader.Announcer.WholeAnswers = true;   // so do F1's keys, //help, a long outfit or parcel list
         host.ScreenReader.MusicMuted = () => _set.MuteAll;

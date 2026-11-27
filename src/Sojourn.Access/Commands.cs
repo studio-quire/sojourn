@@ -552,6 +552,7 @@ public sealed partial class Commands
     {
         if (_ops.Client is not { } c || c.Self.SittingOn == 0) return true;
         _say("Standing up to walk.");
+        WalkMode?.StandAsked();
         await _ops.DoAsync("LLAgent", "requestStand");
         for (int i = 0; i < 30 && c.Self.SittingOn != 0 && !ct.IsCancellationRequested; i++) await Task.Delay(100, CancellationToken.None);
         if (c.Self.SittingOn != 0) { if (!ct.IsCancellationRequested) _say("Couldn't stand up, so not walking."); return false; }
@@ -1672,6 +1673,7 @@ public sealed partial class Commands
     {
         // first, or the vehicle's keys going as she stands are heard as the vehicle letting go of them
         if (WalkMode is { DrivingAfter: { } car } w) w.EndConvoy($"No longer driving after {car}.");
+        WalkMode?.StandAsked();
         await _ops.DoAsync("LLAgent", "requestStand");
         _say("Standing.");
     }

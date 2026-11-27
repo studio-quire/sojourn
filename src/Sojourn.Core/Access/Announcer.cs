@@ -120,7 +120,7 @@ public sealed class Announcer : IDisposable
     long _spoken;
 
     sealed record Item(string Text, bool Holdable, bool Interrupt, bool Urgent, int Spell, long At, LineFrom From, bool Again = false,
-        AnnounceKind? Kind = null);
+        AnnounceKind? Kind = null, bool Restores = true);
 
     /// <summary>An arrival as it went to the reader: its words (as spoken), kind, whose words, when it was handed over,
     /// and whether it was a line said again (<see cref="Say"/>'s again).</summary>
@@ -129,6 +129,10 @@ public sealed class Announcer : IDisposable
     /// <summary>Each arrival just handed to the reader (on the announcer's thread), held lines when they're read, never
     /// one that wasn't spoken: Sojourn Access's watch on lines cut off by typing.</summary>
     public Action<SpokenLine>? Spoke { get; set; }
+
+    /// <summary>Each answer that cut in, just handed to the reader (on the announcer's thread), but those said with
+    /// restores false: when, and its words. Sojourn Access's watch on lines its own answers cut off.</summary>
+    public Action<long, string>? CutIn { get; set; }
 
     /// <summary>A line just spoken (on the announcer's thread): its words, whose words they are, how it came ("arrival",
     /// "answer", "urgent", "again" for one read back) and what spoke it. For the session log; never called for a line
@@ -191,18 +195,20 @@ public sealed class Announcer : IDisposable
     /// <summary>The answer to the person's own key or action: cuts in. keep: joins the review history (not for saying
     /// again what's already there, or the keys' help). With <see cref="WholeAnswers"/>, a long one is read whole, a few
     /// sentences at a time in turn (each its own line in the review history), instead of cut short. from: whose words
-    /// it carries (the app's own unless said); whole: read whole even without WholeAnswers (a confirmation's list asked for).</summary>
-    public void Answer(string text, bool keep = true, LineFrom from = LineFrom.App, bool whole = false)
+    /// it carries (the app's own unless said); whole: read whole even without WholeAnswers (a confirmation's list asked for).
+    /// restores: what it cuts off may be said again after it (<see cref="CutIn"/>); false for lines that cut in on
+    /// purpose and leave what they cut (Sojourn Access's walk mode: a vehicle's own chatter cut by "Stopped.").</summary>
+    public void Answer(string text, bool keep = true, LineFrom from = LineFrom.App, bool whole = false, bool restores = true)
     {
         if (!(WholeAnswers || whole) || text.Length <= MaxLine)
         {
-            Add(text, holdable: false, interrupt: true, urgent: false, keep, from);
+            Add(text, holdable: false, interrupt: true, urgent: false, keep, from, restores: restores);
             return;
         }
         bool first = true;
         foreach (var piece in Pieces(text))
         {
-            Add(piece, holdable: false, interrupt: first, urgent: false, keep, from);
+            Add(piece, holdable: false, interrupt: first, urgent: false, keep, from, restores: restores);
             first = false;
         }
     }
@@ -247,13 +253,13 @@ public sealed class Announcer : IDisposable
     public void Urgent(string text, LineFrom from = LineFrom.App) => Add(text, holdable: false, interrupt: false, urgent: true, from: from);
 
     void Add(string text, bool holdable, bool interrupt, bool urgent, bool keep = true, LineFrom from = LineFrom.App,
-        bool again = false, AnnounceKind? kind = null)
+        bool again = false, AnnounceKind? kind = null, bool restores = true)
     {
         if (!Active || Quiet()) return;
         text = Speakable(text);
         if (text.Length == 0) return;
         var item = new Item(text, holdable, interrupt, urgent, _private is { On: true } p ? Math.Max(1, p.Spell) : 0, Environment.TickCount64,
-            from, again, kind);
+            from, again, kind, restores);
         lock (_lock)
         {
             if (holdable) _queue.Add(item); else _now.Enqueue(item);
@@ -472,6 +478,7 @@ public sealed class Announcer : IDisposable
                             Interlocked.Exchange(ref _arrivedAt, sentAt);
                             Spoke?.Invoke(new SpokenLine(item.Text, kind, item.From, sentAt, item.Again));
                         }
+                        else if (item.Interrupt && !item.Urgent && item.Restores) CutIn?.Invoke(sentAt, item.Text);
                     }
                 }
                 catch (Exception e) { _log($"screen reader: {voice?.Name} failed ({e.GetType().Name})"); }

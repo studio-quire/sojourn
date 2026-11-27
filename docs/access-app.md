@@ -695,6 +695,14 @@ the window's bottom-left corner and reads its name and its children's, so "Statu
   Control+1 to 9 and Control+[ have them all). Before (2026-11-01), any key within a slower voice's time cut a line,
   her own included, and the lines came back at 0.7 s pauses, between words: in a busy trivia game a third of what
   was read was lines said again, many of them heard already, her own over and over.
+  The app's own answers cut in as well (as a reader does on a key), and one that comes with no key of hers since a line
+  was handed over cut that line by itself (`Announcer.CutIn`): a sit's "Sitting on ..." once the region has sat her,
+  in the same second as the vehicle's "Welcome aboard" (the blind tester's log of 2026-11-26: five sits, each welcome
+  lost), an arrival after a teleport, a slow answer to a key pressed earlier. Such a line is said again after the
+  answer by the same rules (with the switch, the talk moving on, the newest three; "N messages cut off, the last:
+  ..."). One her own key's answer cut stays cut: she pressed it. Walk mode's lines (warnings, crossings, switches,
+  "Stopped.", a seat letting go of the keys) cut in on purpose and leave what they cut, as before: said again, a
+  train's throttle lines cut by its "Stopped." came back after it, stale.
 - Her own lines (said, whispered, shouted, emotes, IMs) are read back in the same words as others' (Alt+0 "My own lines
   read back", `access_read_mine`, on by default, her wish): nearby once the region echoes them, so she hears they went
   out; IMs as they're sent (the grid echoes none). Each is read back once; typing on over it doesn't bring it back. A
@@ -1114,6 +1122,16 @@ the left mouse button (CONTROL_LBUTTON; the mouselook one when that's all the sc
 leaving out its own parts. A rail switch coming up is said once with how it's set, W says the next one and Shift+W
 throws it (Rail switches, below). Space (or `//stop`) stops it, and a vehicle saying its track ends is stopped by itself
 (Stopping a vehicle, below).
+
+A seat's script letting go of the keys while she stays on it is said, with or without walk mode (`WalkMode.SeatKeys.cs`):
+"Gryphon Express let go of your keys, so the arrows don't drive it now. Sitting on it again usually gives them back.",
+once they've been gone 2 s (a crossing lets go and takes them again within one), not in a crossing's first 10 s nor
+within 10 s of her own `//stand`, and in driving after someone's own words while that's on (Driving after someone,
+below); "Gryphon Express has your keys again." if it takes them back. An arrow or Page Up or Down pressed seated with
+nothing holding the keys says the same, or "Retreat Chair hasn't taken your keys, so the arrows don't move it." where
+nothing had them on this seat, at most every 20 s and not in the sit's first 3 s. (On 0.1.0.1240 her partner boarding
+his train had its script let go of hers, a script holding one avatar's permissions at a time, and nothing said so: she
+logged in again to drive, 2026-11-26.)
 
 A HUD or anything else worn that has taken keys gets them in walk mode the same way, seated or not (a tour's HUD that
 teleports on Page Down, 2026-11-14). Page Up and Page Down where she types (Say, a conversation) do nothing there, so

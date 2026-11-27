@@ -293,6 +293,7 @@ public sealed partial class WalkMode
         Distance(b, now);
         Probe(b, now);
         Crossing(b, now);
+        SeatKeysTick(b, now);
         BeaconTick(b, now);
         SwitchTick(b, now);
         AfterTick(now);

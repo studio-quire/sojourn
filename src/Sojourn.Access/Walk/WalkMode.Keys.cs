@@ -140,6 +140,7 @@ public sealed partial class WalkMode
             if (key is K.Fwd or K.Back or K.SideL or K.SideR && !HeldMoveBefore(key)) { _moveSince = now; _toldBlocked = false; }
             if (key is K.Fwd or K.Back or K.TurnL or K.TurnR && _convoy is { } convoy) EndConvoy($"The wheel's yours: no longer driving after {convoy.Name}.");
             if (key is K.Fwd or K.Back && Me() is { Sitting: true }) CountThrottle(key);
+            if (Me() is { Sitting: true } seated) KeysPressed(seated, now);
             if (key == K.Fwd) _fwdSince = now;
             return true;
         }

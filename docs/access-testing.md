@@ -36,13 +36,11 @@ focus elsewhere), so a new step hasn't met the others until a full run has had i
 meets: a list's first fill of the session, held back 3 s (auto-sit's walk down Objects started under it and failed 2 of
 2 alone, having passed in every full run; `select_in` now waits for the fill).
 
-Last full run 2026-11-15, 02:04, on main at `3b638bd` (Claude Opus 5.5; build 0.1.0.1139: held touches, a seat's pose
-stopped again after a teleport, the memory work's decodes): all 101 steps in one session, 59 minutes, 2586 of 2587;
-the miss, About Land's "Left turns it back" (heard nothing), passed alone after, 95 of 95, and had missed once before
-in a run of 2026-11-13. The one before, 2026-11-13 at `cf3ef52` with `UiaRelease`: 2582 of 2582; it found, with the
-window watched finely (`SOJOURN_WINDOW_WATCH=120,150`, How it fits > The window's thread held), about ten holds of
-0.12 s or more in an hour, most while starting or the test's own, the rest clearing a list a reader had touched, which
-is how `UiaRelease` came. Older full runs are in git's history of this file.
+Last full run 2026-11-27, 03:36, on main at `73f3147` (Claude Opus 5.5; after 1240: a seat letting go of the keys
+said, lines the app's own late answers cut said again): all 107 steps in one session, 65 minutes, 2866 of 2867; the
+miss, inventory's unboxing ("the folder has both things that were inside": one of the crate's two listed), passed
+alone after, 76 of 76. The one before, 2026-11-15 at `3b638bd` (build 0.1.0.1139): 2586 of 2587, About Land's "Left
+turns it back" missed once, passed alone. Older full runs are in git's history of this file.
 
 **The test client's references.** Every element QuireUia's managed UI Automation client (System.Windows.Automation)
 hands out stays a reference in the app's UIA server for as long as QuireUia is connected: GC and finalizers don't let it

@@ -271,6 +271,9 @@ static class Program
             case "shout": client.Self.Chat(rest, 0, ChatType.Shout); return "ok";
             case "whisper": client.Self.Chat(rest, 0, ChatType.Whisper); return "ok";
             case "emote": client.Self.Chat("/me " + rest, 0, ChatType.Normal); return "ok";
+            // a line on a channel (a script's listen): "sayon 7134 release"
+            case "sayon" when rest.Split(' ', 2) is [var ch, var said] && int.TryParse(ch, out var channel):
+                client.Self.Chat(said, channel, ChatType.Normal); return "ok";
             case "im":
                 {
                     var (to, text) = Split(rest);
@@ -1036,7 +1039,8 @@ static class Program
 
     /// <summary>A physical kart (an LSL car vehicle) for seated border crossings: its script takes the sitter's keys,
     /// turns physical while sat on, drives forward at up to 10 m/s and steers (or, as a train, drives itself once started);
-    /// "kart controls taken" when it has them.</summary>
+    /// "kart controls taken" when it has them. "release" from its owner on channel 7134 lets go of them (said in a long
+    /// line, as a train's script says its own news), "take" takes them again.</summary>
     static async Task<string> Kart(string rest)
     {
         const string usage = "ERR kart [NAME] X Y Z [facing DEG] [train SECS] [sound UUID] [throttle STEP] [endx X] [hover 1] [lose N] [start P] [quiet 1]";
@@ -1086,7 +1090,10 @@ static class Program
             + "llSetVehicleType(VEHICLE_TYPE_CAR); llSetVehicleFloatParam(VEHICLE_LINEAR_MOTOR_TIMESCALE, 0.4); "
             + "llSetVehicleFloatParam(VEHICLE_LINEAR_MOTOR_DECAY_TIMESCALE, 0.6); llSetVehicleFloatParam(VEHICLE_ANGULAR_MOTOR_TIMESCALE, 0.2); "
             + "llSetVehicleFloatParam(VEHICLE_ANGULAR_MOTOR_DECAY_TIMESCALE, 0.3); llSetVehicleVectorParam(VEHICLE_LINEAR_FRICTION_TIMESCALE, <100, 0.5, 100>); "
-            + "llSay(0, llGetObjectName() + \" ready\"); } "
+            + "llListen(7134, \"\", llGetOwner(), \"\"); llSay(0, llGetObjectName() + \" ready\"); } "
+            + "listen(integer ch, string n, key id, string msg) { if (msg == \"release\") { llReleaseControls(); "
+            + "llSay(0, \"kart controls released, as a train's script lets go of its driver when someone else boards and it asks them for permissions instead\"); } "
+            + "else if (msg == \"take\" && llAvatarOnSitTarget() != NULL_KEY) llRequestPermissions(llAvatarOnSitTarget(), PERMISSION_TAKE_CONTROLS); } "
             + "changed(integer c) { if (c & CHANGED_LINK) { key who = llAvatarOnSitTarget(); "
             + "if (who != NULL_KEY) { llSetStatus(STATUS_PHYSICS, TRUE); llRequestPermissions(who, PERMISSION_TAKE_CONTROLS); if (LOOP != \"\") llLoopSound(LOOP, 1.0); "
             + "if (STEP) { thr = START; if (START) llOwnerSay(\"throttle \" + (string)thr); llSetTimerEvent(0.1); } } "

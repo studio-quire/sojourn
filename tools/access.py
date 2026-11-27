@@ -1867,6 +1867,7 @@ def step_list(run, nonce, tester_id, procs):
         ("driving after someone over a border", lambda: driving_after_border(run)),
         ("driving after someone lost at a border", lambda: driving_after_lost(run)),
         ("driving after someone, the seat not sent over a border", lambda: driving_after_doubt(run)),
+        ("a seat letting go of the keys", lambda: seat_keys(run)),
         ("links", lambda: links(run)),
         ("walking round people", lambda: walking_round_people(run)),
         ("recording a route", lambda: route_recording(run)),
@@ -14501,6 +14502,68 @@ def border_kart(run, visitor_x=22, row=0, kart="Border Kart"):
     return y, got
 
 
+def seat_keys(run):
+    """A vehicle's script letting go of her keys while she stays on it (Walk/WalkMode.SeatKeys.cs; on 0.1.0.1240 her
+    partner boarding his train had its script let go of hers, 2026-11-26, and nothing said so): the visitor's kart lets
+    go of them and says so in a long line; about 2 s on walk mode says "Keys Kart let go of your keys ...", cutting in on
+    the kart's line as walk mode's lines do, and leaving it cut. An arrow pressed just after says nothing more; the kart
+    taking them again is said. And the sit's own answer, "Sitting on Keys Kart." once the region has sat her, cutting
+    off the kart's "kart controls taken" handed over just before: that line said again after it (MainForm.CutLines.cs;
+    the blind tester's "Welcome aboard" lost so, 2026-11-26), where the two came in that order. Needs no renderer."""
+    m0 = mark()
+    at = border_kart(run, row=3, kart="Keys Kart")
+    if not at:
+        return
+    y = at[0]
+    released = "kart controls released"
+    try:
+        evs = said_since(m0)
+        sat = next((e for e in evs if "Sitting on Keys Kart" in (e.get("text") or "")), None)
+        taken = [e for e in evs if "kart controls taken" in (e.get("text") or "")]
+        if sat and taken and taken[0]["t"] <= sat["t"] <= taken[0]["t"] + 600:
+            run.check("the sit's answer cut off the kart's line before it: that line said again after it",
+                      len(taken) >= 2 and taken[1]["t"] > sat["t"], " | ".join(e.get("text") or "" for e in evs)[-300:])
+        else:
+            print(f"     (the sit's answer and the kart's line came {'the other way round' if sat and taken else 'not both'}: not checked)")
+        v(f"tp {REGION} 226 {y + 3} 24", timeout=40)   # in chat range of the kart, for its listen
+        time.sleep(2)
+        m = mark()
+        v("sayon 7134 release")
+        line = run.expect("(the kart lets go of the keys, in a long line)", [released], m, 10)
+        gone = walk_said(m, ["Keys Kart let go of your keys"], 8)
+        run.check("the kart letting go of the keys while she's on it is said", gone and gone["text"] ==
+                  "Keys Kart let go of your keys, so the arrows don't drive it now. Sitting on it again usually gives them back.",
+                  (gone or {}).get("text", "not said"))
+        if line and gone:
+            run.check("after a couple of seconds, not at once (a crossing lets go and takes again within one)",
+                      1500 <= gone["t"] - line["t"] <= 5000, f'{gone["t"] - line["t"]:.0f} ms after the line of the kart')
+            time.sleep(3)
+            again = [e for e in said_since(m) if released in (e.get("text") or "") and e["t"] > gone["t"]]
+            run.check("walk mode's line leaves the kart's line it cut in on cut, as its lines do", not again,
+                      " | ".join(e.get("text") or "" for e in said_since(m))[-300:])
+        key("f3")
+        wait_focus(lambda d: d["id"] == "walkPad", 5)
+        m2 = mark()
+        key("up")
+        time.sleep(1.5)
+        run.check("an arrow just after says nothing more of the keys", not walk_said(m2, ["your keys"], 0.1),
+                  " | ".join(e.get("text") or "" for e in said_since(m2)))
+        m = mark()
+        v("sayon 7134 take")
+        # (the kart's own "kart controls taken" may be held back: the same line within 10 s is heard once)
+        back = walk_said(m, ["Keys Kart has your keys again"], 8)
+        run.check("taking them again is said", back, " | ".join(e.get("text") or "" for e in said_since(m)) or "nothing said")
+        key("esc")
+        wait_focus(lambda d: d["id"] == "chatInput", 5)
+    finally:
+        say_in_app("//stand")
+        time.sleep(1.5)
+        try:
+            v("derez Keys Kart", timeout=15)
+        except Exception:
+            pass
+
+
 def driving_after_lost(run):
     """Driving after someone who goes unseen just over a border (Walk/WalkMode.Convoy.cs; the blind tester's scooter trip
     of 2026-11-08, where her partner vanished from her session 5 s after he crossed and it stopped). The visitor walks
@@ -16378,6 +16441,9 @@ def package_check():
     import grid
     global Q_PORT, EVENTS, APP_PID
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if sys.argv[-1] == "--relay" or "--relay" in sys.argv[2:-1] and sys.argv[sys.argv.index("--relay") + 1].startswith("--"):
+        print("--relay takes the token's name (the tests' is access-check): without one the check would run without the relay")
+        return 1
     relay = sys.argv[sys.argv.index("--relay") + 1] if "--relay" in sys.argv[2:-1] else None
     rest = [a for a in sys.argv[2:] if a not in ("--check", "--keep", "--bare", "--no-software", "--relay", relay)]
     keep = "--keep" in sys.argv[2:]

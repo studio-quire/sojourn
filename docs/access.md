@@ -1517,6 +1517,27 @@ same evening (Claude Opus 5.5).
 - The rest of the drive (26 minutes of crossings, switches said, End of track, Flip and Start) shows nothing else
   amiss in the log.
 
+### A welcome cut off, and a train letting go of her keys (0.1.0.1240, the blind tester, 2026-11-26)
+
+Three logs, read 2026-11-27 (Claude Opus 5.5). Her message that morning (#381): the build seems to be working well so far.
+- **"Welcome aboard" skipped** (`tester-20261126T170126-a97cb9`, 09:00 to 12:01; her note, our words: sitting on the
+  vehicle should say Welcome aboard with her name, and it's skipped; her settings?). Not her settings: each of her five
+  sits on VRC Hobo 3.0 Prototype D handed "Welcome aboard, (her name)!" to NVDA, and in the same second "Sitting on VRC
+  Hobo 3.0 Prototype D.", an answer, which cuts in and so cut the welcome off (she found it once by reading back, 12:00:37).
+  Now an answer that comes with no key of hers since a line arrived says that line again after it
+  (`MainForm.CutLines.cs`, `Announcer.CutIn`; docs/access-app.md > Read-out).
+- **Arrows stopped working on her partner's train** (`tester-20261126T203934-dd267b`, 15:10 to 15:39, Gryphon Express
+  from Fishii to Tuliptree and back; her note: lots of errors driving, the arrows stopped, only a relog fixed it, the
+  other errors probably Second Life). At 15:37:50 the region said the train's script let go of her keys, in the same
+  second as the train's "(her partner) has boarded!": a script holds one avatar's permissions at a time, so asking his
+  let hers go, on any viewer. Her arrows then reached nothing ("Arrows broke again", 15:38:34) and nothing said why.
+  After the relog (`tester-20261126T204055-849e2b`, "after a relog the arrows work again") sitting again had the train
+  take them, and she drove it to 10 m/s; standing and sitting again would have done the same. Now the seat letting go
+  of her keys is said, and an arrow pressed with nothing holding them says so (`WalkMode.SeatKeys.cs`). Twice the train
+  stopped by itself as it crossed (15:15:26 into Crumbi, 15:29:01 into Lota), its script taking her keys afresh with its
+  sit message, as if just sat on: most likely her "errors in different places", the train's own. Her earlier "Not
+  working" (15:36:22) came with walk mode off since 15:32:19; what she tried then the log can't say.
+
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
 An independent review (Claude Opus 5.5, reading the code beside Radegast's source and NVDA's, JAWS's and Microsoft's
@@ -1635,7 +1656,7 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
 
 ### Questions for a blind tester
 
-- Sent with 0.1.0.1217 (#367, 2026-11-22 evening; 1220 in its place, #369, with the worn-object paste's words; then 1226, #374, walk mode's position at a stop; then 1232, #375, 2026-11-25, walks after a review of the walking code; then 1237, #378, that evening, walk mode's answers in the chat history and V in a crossing), after her log on 1212 at her partner's stairs: a //go to him from the
+- Sent with 0.1.0.1217 (#367, 2026-11-22 evening; 1220 in its place, #369, with the worn-object paste's words; then 1226, #374, walk mode's position at a stop; then 1232, #375, 2026-11-25, walks after a review of the walking code; then 1237, #378, that evening, walk mode's answers in the chat history and V in a crossing; then 1240, #379, an hour on, its warnings kept out of the history as she'd been told), after her log on 1212 at her partner's stairs: a //go to him from the
   landing point, a log either way, whose plan line says whether it was planned for a narrower body (the planner
   harness that checked it headlessly is kept in `local/planner-harness`, not in the repo).
 
