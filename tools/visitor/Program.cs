@@ -1040,7 +1040,7 @@ static class Program
     /// <summary>A physical kart (an LSL car vehicle) for seated border crossings: its script takes the sitter's keys,
     /// turns physical while sat on, drives forward at up to 10 m/s and steers (or, as a train, drives itself once started);
     /// "kart controls taken" when it has them. "release" from its owner on channel 7134 lets go of them (said in a long
-    /// line, as a train's script says its own news), "take" takes them again.</summary>
+    /// line, as a train's script says its own news), "take" takes them again, "unsit" stands the sitter up.</summary>
     static async Task<string> Kart(string rest)
     {
         const string usage = "ERR kart [NAME] X Y Z [facing DEG] [train SECS] [sound UUID] [throttle STEP] [endx X] [hover 1] [lose N] [start P] [quiet 1]";
@@ -1093,7 +1093,8 @@ static class Program
             + "llListen(7134, \"\", llGetOwner(), \"\"); llSay(0, llGetObjectName() + \" ready\"); } "
             + "listen(integer ch, string n, key id, string msg) { if (msg == \"release\") { llReleaseControls(); "
             + "llSay(0, \"kart controls released, as a train's script lets go of its driver when someone else boards and it asks them for permissions instead\"); } "
-            + "else if (msg == \"take\" && llAvatarOnSitTarget() != NULL_KEY) llRequestPermissions(llAvatarOnSitTarget(), PERMISSION_TAKE_CONTROLS); } "
+            + "else if (msg == \"take\" && llAvatarOnSitTarget() != NULL_KEY) llRequestPermissions(llAvatarOnSitTarget(), PERMISSION_TAKE_CONTROLS); "
+            + "else if (msg == \"unsit\" && llAvatarOnSitTarget() != NULL_KEY) llUnSit(llAvatarOnSitTarget()); } "
             + "changed(integer c) { if (c & CHANGED_LINK) { key who = llAvatarOnSitTarget(); "
             + "if (who != NULL_KEY) { llSetStatus(STATUS_PHYSICS, TRUE); llRequestPermissions(who, PERMISSION_TAKE_CONTROLS); if (LOOP != \"\") llLoopSound(LOOP, 1.0); "
             + "if (STEP) { thr = START; if (START) llOwnerSay(\"throttle \" + (string)thr); llSetTimerEvent(0.1); } } "
@@ -1142,10 +1143,12 @@ static class Program
     {
         var w = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
         bool lengthy = w.Remove("long");
+        // slow: the stand takes 1.5 s to answer a touch, as on a busy region
+        bool slow = w.Remove("slow");
         int channel = 133;
         if (w.Count < 3 || !float.TryParse(w[0], out var x) || !float.TryParse(w[1], out var y) || !float.TryParse(w[2], out var z)
             || (w.Count > 3 && !int.TryParse(w[3], out channel)))
-            return "ERR switch X Y Z [CHANNEL] [long]";
+            return "ERR switch X Y Z [CHANNEL] [long] [slow]";
         var sim = client.Network.CurrentSim;
         var stand = await RezBox(new Vector3(x, y + 1.8f, z + 0.6f), new Vector3(0.3f, 0.3f, 1.2f));
         var touch = await RezBox(new Vector3(x, y + 1.8f, z + 0.8f), new Vector3(0.8f, 0.8f, 1.6f));
@@ -1179,11 +1182,11 @@ static class Program
             "default { touch_start(integer n) { llMessageLinked(LINK_ROOT, 0, \"toggle\", llDetectedKey(0)); } }");
         client.Inventory.CopyScriptToTask(touch.LocalID, toucher, true);
         var script = await UploadScript("Walk switch stand",
-            "string status = \"Main\"; integer CH = " + channel + "; "
+            "string status = \"Main\"; integer CH = " + channel + "; integer SLOW = " + (slow ? 1 : 0) + "; "
             + "set(string s) { status = s; list f = llParseStringKeepNulls(llGetObjectDesc(), [\"~\"], []); "
             + "llSetObjectDesc(llDumpList2String(llListReplaceList(f, [s], 1, 1), \"~\")); llRegionSay(-7133 - CH, s); llSay(0, \"switch \" + s); } "
             + "default { state_entry() { llSetPrimitiveParams([PRIM_PHANTOM, TRUE]); llListen(CH, \"\", NULL_KEY, \"\"); llSay(0, \"switch ready\"); } "
-            + "link_message(integer l, integer n, string m, key id) { if (m == \"toggle\") { if (status == \"Main\") set(\"Branch\"); else set(\"Main\"); } } "
+            + "link_message(integer l, integer n, string m, key id) { if (m == \"toggle\") { if (SLOW) llSleep(1.5); if (status == \"Main\") set(\"Branch\"); else set(\"Main\"); } } "
             + "listen(integer c, string n, key id, string m) { if (llToLower(m) == \"main\") set(\"Main\"); else if (llToLower(m) == \"branch\") set(\"Branch\"); } }");
         int mark = counter;
         client.Inventory.CopyScriptToTask(stand.LocalID, script, true);

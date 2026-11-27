@@ -1537,6 +1537,17 @@ Three logs, read 2026-11-27 (Claude Opus 5.5). Her message that morning (#381): 
   stopped by itself as it crossed (15:15:26 into Crumbi, 15:29:01 into Lota), its script taking her keys afresh with its
   sit message, as if just sat on: most likely her "errors in different places", the train's own. Her earlier "Not
   working" (15:36:22) came with walk mode off since 15:32:19; what she tried then the log can't say.
+- Both in 0.1.0.1244, sent with what her logs showed (#382, 2026-11-27 morning), asking what she heard as errors if it
+  wasn't the train stopping at those crossings. Not raised by her: at 15:37:28 the train stood her up at the end of its
+  track and nothing was said; now "You're off Gryphon Express." (0d47e1d, the build after 1244).
+- **A switch she "failed to flip"** (her IM at 10:49 in the morning log, not raised with us): at Clearwing on Zephyr,
+  Shift+W 45 m before a switch set to the passing track touched its stand at 10:48:01, the stand said Main at :03,
+  and the train took the main line, as she wanted; but "Switch set to the main line, Clearwing Station." came only at
+  :08 (the throw's reads in turn, each waiting out its ask on a slow region), and a second Shift+W, pressed while it
+  waited, then threw the same switch, by then 53 m behind her, back to the branch: "Switch set to the branch,
+  Clearwing passing track.", which read as her throw having failed. Now the answer comes as the stand's word does, a
+  press during a throw says it's under way, and a switch behind a moving train isn't thrown (docs/access-app.md > Rail
+  switches; the build after 1244).
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 

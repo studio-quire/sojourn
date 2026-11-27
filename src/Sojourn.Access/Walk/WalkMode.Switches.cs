@@ -769,12 +769,26 @@ public sealed partial class WalkMode
     /// setting it's already at, only says so.</summary>
     public async Task ThrowSwitchAsync(string? to = null)
     {
+        // pressed again while a throw waits for its answer: not a second throw (on 0.1.0.1240 one waited out the first's
+        // 7 s and threw the switch back, by then 53 m behind her train: her throw at Clearwing, 2026-11-26)
+        if (_throwing) { Line("Still throwing the switch: a moment."); return; }
+        _throwing = true;
+        try { await ThrowAsync(to); }
+        finally { _throwing = false; }
+    }
+
+    bool _throwing;
+
+    async Task ThrowAsync(string? to)
+    {
         // a switch being read as it comes up (every few seconds while one is ahead) is waited for, not a reason to refuse:
         // a throw is pressed with the switch coming up fast
         for (int i = 0; _switchBusy && i < 30; i++) await Task.Delay(100);
         if (_switchBusy) { Line("Still reading a switch: a moment."); return; }
         if (Me() is not { } b) { Line("Not in a region yet."); return; }
         if (await TheSwitchAsync(b) is not { } s) { Line($"No switch within {Bearings.Metres(SwitchAsk)} to throw."); return; }
+        // riding on, one not ahead is passed: W says it, a throw would only change it behind her
+        if (b.Sitting && Speed(b) > 1f && !WayAhead(b, Way(b), s, _switchLook, out _)) { Line($"No switch ahead to throw: the nearest is {WhereWords(b, s)}."); return; }
         if (!s.Stand) { Line("That switch has no switch stand to throw it by."); return; }
         if (S.Region is not { } here || here.Handle != s.Region) { Line($"That switch is across the border, {WhereWords(b, s)}: throw it once you're in its region."); return; }
         _switchBusy = true;
@@ -792,14 +806,26 @@ public sealed partial class WalkMode
                 + $"{part.Scale.X:0.#}x{part.Scale.Y:0.#}x{part.Scale.Z:0.#}; guide rails within 60 m: {guides.Count}{JunctionLogWords(s)}");
             var r = await _ops.DoAsync("LLAgent", "requestTouch", new JsonObject { ["obj_uuid"] = part.ID.ToString() });
             if (PersonOps.Error(r) is { } e) { Line($"Couldn't throw the switch: {e}"); return; }
+            // what's come in read every moment, the stand and its guides asked again beside it: each ask waits out its
+            // own timeout on a slow region, and in turn they took 7 s to see what had come in 2 (her Clearwing throw:
+            // the stand said Main at 2 s, the train passed the switch at 3, the answer came at 7)
             var end = Environment.TickCount64 + 6000;
             RailSwitch now = s;
             bool guidesMoved = false;
+            Task? standAsk = null, guidesAsk = null;
+            long askedAt = 0;
             while (Environment.TickCount64 < end)
             {
-                await Task.Delay(600);
-                now = await ReadSwitchAsync(s);
-                guidesMoved = await GuidesMovedAsync(here, guides);
+                await Task.Delay(150);
+                // (each asked at most every half second: a quick region answers at once)
+                if (Environment.TickCount64 - askedAt >= 500)
+                {
+                    askedAt = Environment.TickCount64;
+                    if (standAsk is null or { IsCompleted: true }) standAsk = RenewQuietly(here, s.LocalId, TimeSpan.FromSeconds(2));
+                    if (guidesAsk is null or { IsCompleted: true }) guidesAsk = RenewGuidesAsync(here, guides);
+                }
+                now = Cached(s);
+                guidesMoved = GuidesMoved(here, guides);
                 if (now.Setting?.Status is { } st && st != was) break;
                 if (was == null && guidesMoved) break;
             }
@@ -812,21 +838,45 @@ public sealed partial class WalkMode
             float yaw = MathF.Atan2(s.Pos.Y - pos.Pos.Y, s.Pos.X - pos.Pos.X);
             if (status != null && status != was)
             {
-                // the Pawpaw Wye report (SL feedback, 2025-12): a stand that changed while its guides didn't
-                if (guides.Count >= 2 && !guidesMoved)
-                {
-                    await Task.Delay(1500);
-                    guidesMoved = await GuidesMovedAsync(here, guides);
-                }
                 var line = $"Switch {SettingWords(now)}.";
                 if (to != null && status != to) line += $" Not the {(to == "Main" ? "main line" : "branch")}, though.";
-                if (guides.Count >= 2 && !guidesMoved) line += " Its guide rails didn't change, though: the stand may be out of order.";
                 Cue("switch", CueSounds.Cue.SwitchThrown, line, pos, yaw);
+                // the Pawpaw Wye report (SL feedback, 2025-12): a stand that changed while its guides didn't. Said after,
+                // so the setting isn't held back for it with the switch coming up
+                if (guides.Count >= 2 && !guidesMoved)
+                {
+                    for (int i = 0; i < 10 && !guidesMoved; i++)
+                    {
+                        await Task.Delay(300);
+                        if (guidesAsk is null or { IsCompleted: true }) guidesAsk = RenewGuidesAsync(here, guides);
+                        guidesMoved = GuidesMoved(here, guides);
+                    }
+                    SwitchLog($"guide rails {(guidesMoved ? "changed" : "still unchanged")} 3 s after: {GuidesWords(here, guides)}");
+                    if (!guidesMoved) Line("Its guide rails didn't change, though: the stand may be out of order.");
+                }
             }
             else if (was == null && guidesMoved) Cue("switch", CueSounds.Cue.SwitchThrown, "Switch thrown: its guide rails changed, but its stand doesn't say which way.", pos, yaw);
             else Written(was == null ? "Touched the switch stand; no change seen." : $"The switch didn't change: still {SettingWords(now)}.");
         }
         finally { _switchBusy = false; }
+    }
+
+    /// <summary>The switch as what's come in has it, nothing asked (ReadSwitchAsync asks first).</summary>
+    RailSwitch Cached(RailSwitch s)
+    {
+        if (!s.Stand || RegionOf(s) is not { } w || !w.Prims.TryGetValue(s.LocalId, out var p)) return s;
+        var off = S.FrameOffset(w);
+        var fresh = s with { Setting = SwitchStand.Parse(p.Properties?.Description), Pos = new(p.Position.X + off.X, p.Position.Y + off.Y, p.Position.Z) };
+        int i = _switches.FindIndex(x => x.Id == s.Id);
+        if (i >= 0) _switches[i] = fresh;
+        return fresh;
+    }
+
+    async Task RenewQuietly(RegionWorld w, uint local, TimeSpan wait)
+    {
+        if (!w.Prims.TryGetValue(local, out var p)) return;
+        try { await S.Objects.RenewAsync(w, new[] { p }, wait, CancellationToken.None, w.Simulator); }
+        catch (Exception) { }
     }
 
     void Written(string line) { History(line); Line(line); }
@@ -875,13 +925,15 @@ public sealed partial class WalkMode
 
     /// <summary>Whether the guide rails changed since: phantom flags come by themselves, names only asked again (the
     /// name is what says which rail is in use, the tester's ride of 2026-11-03 showed: trains run over phantom Guides).</summary>
-    async Task<bool> GuidesMovedAsync(RegionWorld w, Dictionary<uint, (bool Phantom, string Name)> guides)
+    async Task RenewGuidesAsync(RegionWorld w, Dictionary<uint, (bool Phantom, string Name)> guides)
     {
         var prims = guides.Keys.Select(id => w.Prims.TryGetValue(id, out var p) ? p : null).OfType<Primitive>().ToList();
         try { await S.Objects.RenewAsync(w, prims, TimeSpan.FromSeconds(1), CancellationToken.None, w.Simulator); }
         catch (Exception) { }
-        return guides.Any(g => w.Prims.TryGetValue(g.Key, out var gp) && (Phantom(gp) != g.Value.Phantom || gp.Properties?.Name?.Trim() is { } n && n != g.Value.Name));
     }
+
+    bool GuidesMoved(RegionWorld w, Dictionary<uint, (bool Phantom, string Name)> guides) =>
+        guides.Any(g => w.Prims.TryGetValue(g.Key, out var gp) && (Phantom(gp) != g.Value.Phantom || gp.Properties?.Name?.Trim() is { } n && n != g.Value.Name));
 
     string GuidesWords(RegionWorld w, Dictionary<uint, (bool Phantom, string Name)> guides) => string.Join("; ", guides.Take(16).Select(g =>
         w.Prims.TryGetValue(g.Key, out var p)

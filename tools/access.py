@@ -13984,9 +13984,11 @@ def rail_switches(run):
     railroad's do (`switch ... long`; the tester's first run on real track, 2026-11-02, heard "unknown" switches that
     were most likely such rails), and its kart heading east toward them. Seated, in walk mode, a held Up drives: the
     first switch said once with its setting and the switch cue; W says it ahead with both ways' names; Shift+W touches
-    its stand and says the new setting (the visitor hears the stand set); //switch, //switch main and //switch main
+    its stand and says the new setting within a couple of seconds (pressed again meanwhile: "Still throwing", not a
+    second throw); //switch, //switch main and //switch main
     again (already); then driving on past both, the second said once (not its rails as a switch of their own) and the
-    first not again; the session log names each stand found with its description, and the rails as its parts. Needs
+    first not again, and Shift+W then, still moving, says there's none ahead rather than throwing one behind; the
+    session log names each stand found with its description, and the rails as its parts. Needs
     no renderer."""
     back_to_chat()
     m = mark()
@@ -14017,8 +14019,9 @@ def rail_switches(run):
         return
     try:
         made = []
-        for x, ch, more in ((a, 133, ""), (b, 134, " long")):
-            visitor_tp(x + (10 if more else 0), y + 8, g(x) + 1.5)   # in chat range of the stand, its rails in reach
+        # (the first slow to answer a touch, as her region was: a second Shift+W meanwhile finds the throw under way)
+        for x, ch, more in ((a, 133, " slow"), (b, 134, " long")):
+            visitor_tp(x + (10 if "long" in more else 0), y + 8, g(x) + 1.5)   # in chat range of the stand, its rails in reach
             time.sleep(1.5)
             made.append(v(f"switch {x} {y} {g(x)} {ch}{more}", timeout=90))
         # the second's rails in four sections each ("rails 8"): a visitor without `long` makes one and says nothing of it
@@ -14070,11 +14073,20 @@ def rail_switches(run):
         m = mark()
         t0 = time.time()
         key("shift+w")
+        time.sleep(0.3)
+        key("shift+w")   # pressed again before the answer, as she did at Clearwing (2026-11-26)
         got = walk_said(m, ["Switch set to"], 10)
         run.check("Shift+W throws it and says the new setting", got and got["text"] == "Switch set to the branch, East Yard.",
                   (got or {}).get("text") or " | ".join(e.get("text") or "" for e in said_since(m)))
+        if got:
+            # (the stand answers at once here; on her region each ask waited out its timeout, and the answer took 7 s)
+            run.check("said within a couple of seconds of the press", got["t"] / 1000 - t0 <= 2.5, f'{got["t"] / 1000 - t0:.1f} s')
         run.heard_by_visitor("the stand was set by the touch", lambda d: d["msg"] == "switch Branch", n, 8, "switch Branch")
         run.check("(the throw's cue)", cues_since(t0, "SwitchThrown"), json.dumps(cues_since(t0)[-5:]))
+        run.expect("pressed again meanwhile: said to be under way, not thrown again", ["Still throwing the switch"], m, 3)
+        time.sleep(2)
+        sets = [l for l in (v(f"heard 50 since {n}") or "").splitlines() if '"switch Main"' in l or '"switch Branch"' in l]
+        run.check("(the stand set once)", len(sets) == 1, " | ".join(sets) or "none")
 
         key("esc")
         wait_focus(lambda d: d["id"] == "chatInput", 5)
@@ -14096,8 +14108,19 @@ def rail_switches(run):
         m = mark()
         u("keydown focus | 38")
         wait(lambda: walk_pos()[0] > b + 8 or None, 20, 0.3)
+        # both passed, still moving: Shift+W won't throw one behind her (at Clearwing a second throw set the switch
+        # she'd just passed back, 2026-11-26)
+        n = visitor_n()
+        m2 = mark()
+        key("shift+w")
+        passed = walk_said(m2, ["No switch ahead to throw"], 5)
         u("keyup focus | 38")
+        run.check("Shift+W past both, still moving, says there's none ahead and where the nearest is",
+                  passed and re.match(r"No switch ahead to throw: the nearest is \d+ metres behind you\.$", passed["text"]),
+                  (passed or {}).get("text") or " | ".join(e.get("text") or "" for e in said_since(m2)))
         time.sleep(2)
+        sets = [l for l in (v(f"heard 50 since {n}") or "").splitlines() if '"switch Main"' in l or '"switch Branch"' in l]
+        run.check("and throws nothing", not sets, " | ".join(sets))
         lines = [e.get("text") or "" for e in said_since(m) if (e.get("text") or "").startswith("Switch in")]
         print(f"     (passing both, at {walk_pos()[0]:.1f}: {lines})")
         run.check("driving on past both: the next one said once, not its rails beyond it, the one passed not again",
@@ -14507,7 +14530,8 @@ def seat_keys(run):
     partner boarding his train had its script let go of hers, 2026-11-26, and nothing said so): the visitor's kart lets
     go of them and says so in a long line; about 2 s on walk mode says "Keys Kart let go of your keys ...", cutting in on
     the kart's line as walk mode's lines do, and leaving it cut. An arrow pressed just after says nothing more; the kart
-    taking them again is said. And the sit's own answer, "Sitting on Keys Kart." once the region has sat her, cutting
+    taking them again is said; the kart standing her up is said ("You're off Keys Kart."), her own //stand not so. And
+    the sit's own answer, "Sitting on Keys Kart." once the region has sat her, cutting
     off the kart's "kart controls taken" handed over just before: that line said again after it (MainForm.CutLines.cs;
     the blind tester's "Welcome aboard" lost so, 2026-11-26), where the two came in that order. Needs no renderer."""
     m0 = mark()
@@ -14555,6 +14579,26 @@ def seat_keys(run):
         run.check("taking them again is said", back, " | ".join(e.get("text") or "" for e in said_since(m)) or "nothing said")
         key("esc")
         wait_focus(lambda d: d["id"] == "chatInput", 5)
+        # stood up by the kart's script while it stands still: said (her partner's train did, 2026-11-26, and nothing was)
+        m = mark()
+        v("sayon 7134 unsit")
+        off = walk_said(m, ["You're off Keys Kart"], 8)
+        run.check("stood up by the seat's script, not by her: said", off and off["text"] == "You're off Keys Kart.",
+                  (off or {}).get("text") or " | ".join(e.get("text") or "" for e in said_since(m)) or "nothing said")
+        texts = [e.get("text") or "" for e in said_since(m)]
+        run.check("and nothing of the keys with it", not any("your keys" in t for t in texts), " | ".join(texts))
+        # her own //stand: "Standing." only
+        m = mark()
+        say_in_app("//sit Keys Kart")
+        if run.expect("(sitting on it again)", ["Sitting on Keys Kart"], m, 10):
+            time.sleep(3)
+            m = mark()
+            say_in_app("//stand")
+            run.expect("(her own //stand)", ["Standing"], m, 5)
+            time.sleep(3)
+            texts = [e.get("text") or "" for e in said_since(m)]
+            run.check("her own stand isn't said as being stood up, nor as the keys let go",
+                      not any("You're off" in t or "your keys" in t for t in texts), " | ".join(texts))
     finally:
         say_in_app("//stand")
         time.sleep(1.5)

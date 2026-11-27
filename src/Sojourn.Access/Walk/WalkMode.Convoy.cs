@@ -287,10 +287,13 @@ public sealed partial class WalkMode
     }
 
     /// <summary>Lets go of the keys (the next Drive clears them), saying why if there's a why.</summary>
+    long _convoyEndedAt = long.MinValue / 2;
+
     public void EndConvoy(string? line)
     {
         if (_convoy is not { } c) return;
         _convoy = null;
+        _convoyEndedAt = Environment.TickCount64;
         ConvoyLog($"ended driving after {c.Name}: {line ?? "quietly"}");
         if (line != null) Line(line);
     }

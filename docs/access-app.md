@@ -1131,7 +1131,10 @@ below); "Gryphon Express has your keys again." if it takes them back. An arrow o
 nothing holding the keys says the same, or "Retreat Chair hasn't taken your keys, so the arrows don't move it." where
 nothing had them on this seat, at most every 20 s and not in the sit's first 3 s. (On 0.1.0.1240 her partner boarding
 his train had its script let go of hers, a script holding one avatar's permissions at a time, and nothing said so: she
-logged in again to drive, 2026-11-26.)
+logged in again to drive, 2026-11-26.) Stood up by anything but her own `//stand` (or a walk's standing up first) is
+said too: "You're off Gryphon Express, while it was moving." as before, and now "You're off Gryphon Express." where it
+stood still and she landed within 8 m of it (farther is a teleport, which says itself); after driving after someone,
+its own "You're off your seat" instead.
 
 A HUD or anything else worn that has taken keys gets them in walk mode the same way, seated or not (a tour's HUD that
 teleports on Page Down, 2026-11-14). Page Up and Page Down where she types (Say, a conversation) do nothing there, so
@@ -1305,11 +1308,17 @@ Rail Consortium's free tools follow), and first met on real track on 2026-11-02 
   switch it said, which line the seat went on (`passed the facing switch ... now on the line it said it would take`, or
   `on the OTHER line`).
 - Throwing (Shift+W, `//switch flip`, `main`, `branch`) touches the stand's part that takes touches (the largest, if
-  several; the stand itself if none), as a person's click, then reads the description until its Status changes (6 s at
-  most) and says the new setting; a switch being read meanwhile (each is read as it comes up, and the next one
-  again every 4 s) is waited for, up to 3 s, rather than refused. The guide rails within 60 m of the stand are watched
-  too: if the stand changed and they didn't, it's said ("Its guide rails didn't change, though: the stand may be out of order"); a stand without a
-  Status, if they changed, "Switch thrown: its guide rails changed, but its stand doesn't say which way." The channel
+  several; the stand itself if none), as a person's click, then watches the description until its Status changes (6 s
+  at most) and says the new setting: what has come in is read every 150 ms while the stand and its rails are asked
+  again beside it, at most every half second (asked and read in turn, each ask waiting out its timeout on a slow region,
+  the answer took 7 s at Clearwing on 2026-11-26, the stand having said Main at 2 s and the train passed the switch at
+  3; a second Shift+W meanwhile then threw it back behind her). Pressed again while a throw waits: "Still throwing the
+  switch: a moment.", not a second throw. Seated and moving, a switch not ahead isn't thrown: "No switch ahead to
+  throw: the nearest is 10 metres behind you." (W still says it). A switch being read meanwhile (each is read as it
+  comes up, and the next one again every 4 s) is waited for, up to 3 s, rather than refused. The guide rails within
+  60 m of the stand are watched too: if the stand changed and they hadn't 3 s on, it's said after the setting ("Its
+  guide rails didn't change, though: the stand may be out of order"); a stand without a Status, if they changed,
+  "Switch thrown: its guide rails changed, but its stand doesn't say which way." The channel
   commands aren't used: neighbouring stands may share a channel, and a shout would throw them all. A switch across a
   border is said but can't be thrown from here (touches go to the current region).
 - Checked offline against the third log's rails (the same code, `RailTrack.Follow` with a slack for the rounding):

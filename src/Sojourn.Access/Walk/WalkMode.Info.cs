@@ -292,18 +292,32 @@ public sealed partial class WalkMode
         if (_crossed == null && seated != null)
         {
             // stood up off something moving, not at a crossing: the region left her behind (the tester's train crossed
-            // out of Bhaga without her on 2026-11-02, and only its own chat said so), or she stood herself
-            if (_seated && seated == false && !judged && now - _seatMovingAt < 5000 && _set.WalkText("vehicle"))
+            // out of Bhaga without her on 2026-11-02, and only its own chat said so). Not after her own stand, which
+            // "Standing." answered (said after it too until 2026-11-27, in each driving step of the scripted test)
+            bool asked = now - _standAskedAt <= 10_000;
+            if (_seated && seated == false && !judged && !asked && now - _seatMovingAt < 5000 && _set.WalkText("vehicle"))
             {
                 Log($"off {_seatName ?? "the seat"} while it was moving, in {b.RegionName}");
                 Line($"You're off {_seatName ?? "your seat"}, while it was moving.");
             }
+            // stood up by something else while it stood still: a script's unsit, the seat taken away (her partner's
+            // train at the end of its track, 2026-11-26 15:37:28, nothing said, and her next arrows would have walked
+            // her). Not her own stand, and not a teleport: it lands her far from the seat, and says itself
+            // (driving after someone says it as it ends: "You're off your seat, so no longer driving after ...")
+            else if (_seated && seated == false && !judged && !asked && now - _convoyEndedAt > 2000 && _set.WalkText("vehicle")
+                && _satAt is var (region, pos) && region == b.Region && Vector3.Distance(pos, b.Pos) < 8f)
+            {
+                Log($"off {_seatName ?? "the seat"}, not asked by her, in {b.RegionName}");
+                Line($"You're off {_seatName ?? "your seat"}.");
+            }
+            _satAt = b.Sitting ? (b.Region, b.Pos) : null;
             _seated = seated.Value;
             if (b.Sitting) _seatName = b.SeatName ?? _seatName;
         }
     }
 
     long _seatMovingAt = long.MinValue / 2;
+    (ulong Region, Vector3 Pos)? _satAt;   // where she sat as last seen seated (a stand-up lands beside it; a teleport, not)
     (string Region, long At)? _unsure;   // a seated crossing said as not known yet, in that region
     uint _seatLocal;
     UUID _seatRoot;                      // the seat's linkset's root as last seen sat on, for the log
