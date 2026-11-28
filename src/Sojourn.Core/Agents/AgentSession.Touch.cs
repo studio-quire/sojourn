@@ -232,4 +232,11 @@ public sealed partial class AgentSession
     {
         lock (_kept) { Array.Clear(_kept); Array.Clear(_passed); }
     }
+
+    /// <summary>After a teleport, what's still held, in the log (nothing when nothing is).</summary>
+    void LogControlsKept()
+    {
+        if (ControlsTaken == ScriptControlChange.None) return;
+        Log.LogInformation("controls: still held after the teleport: kept {Kept}, passed on {Passed}", ControlsKept, Held(_passed));
+    }
 }

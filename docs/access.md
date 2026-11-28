@@ -1572,8 +1572,16 @@ Read 2026-11-28 (Claude Opus 5.5).
   person off the boat found their floor out of reach ("no way up from here", a climb steeper than stairs in their
   trail), and she teleported to them.
 - The golf HUD's own instructions (20:58:25): its Putter button, the arrows to aim, then click the ground and hold for
-  power. Walk mode's Enter held is the mouse button held, for a script that took it; whether this one did, the log
-  can't say (no controls taken in it after 19:12, Open threads).
+  power. Walk mode's Enter held is the mouse button held, for a script that took it (told her, #385).
+- **Takes forgotten at a teleport**: her tour's Nav HUD took the arrows, Page Up and Down (passed on) at 19:12, a
+  teleport by it followed at 19:16, and at 19:33 the Say box's Page Down hint said it moves her down, not "A script has
+  taken Page Down": Access cleared every take at a teleport's end (`AgentSession.ResetControlsTaken`, a precaution from
+  2026-10-25 against an object left behind), while an attachment's take travels with her and no region sends it again
+  (none after the teleport here, nor after her 2026-11-15 teleport with the same HUD), and the viewer zeroes its counts
+  only in `LLAgent`'s constructor (read in secondlife/viewer's llagent.cpp, 2026-11-28). So after any teleport walk
+  mode's Enter refused a worn weapon's or golf club's click ("Nothing here takes clicks."). Now a teleport keeps the
+  counts and logs what's still held (`controls: still held after the teleport`); the step "a worn script's keys over
+  a teleport" checks the click.
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
@@ -1657,13 +1665,6 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   lacks what the region has, and a bridge it lacked would read as a drop and hold her at a crossing straight on walks
   today; with them below, the fall takes her to them, which Second Life doesn't hurt. Only a drop with them not below
   is plainly wrong, and the model can't tell that from a bridge it hasn't got.
-- Controls scripts hold are forgotten at a teleport's end (`AgentSession.ResetControlsTaken`, for an object left
-  behind whose take would hold the VR client's stick), but an attachment's take travels with her, and her log of
-  2026-11-27 had no region send it again: her tour's Nav HUD took the arrows, Page Up and Down (passed on) at 19:12, a
-  teleport by it followed at 19:16, and at 19:33 the Say box's Page Down hint said it moves her down rather than
-  "A script has taken Page Down". Nothing else there read the takes. Whether the viewer keeps its counts over a
-  teleport (`LLAgent::mControlsTakenCount`) wasn't checked; worth it if a seat's keys or a HUD's ever read wrong just
-  after a teleport.
 - Cancel during Send a log's sending stops it since 2026-11-13 (before it's on its way; once it is, it says it can't be
   stopped), not run against a slow send.
 - From the reviews of 2026-11-13: positions from parcel, event and classified links are taken modulo 256, wrong on

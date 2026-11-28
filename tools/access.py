@@ -1826,6 +1826,7 @@ def step_list(run, nonce, tester_id, procs):
         ("the window's controls again", lambda: tree_check(run, "nearby chat, after use")),
         ("walking", lambda: walk(run)),
         ("a teleport", lambda: teleport(run)),
+        ("a worn script's keys over a teleport", lambda: worn_keys_teleport(run)),
         ("the assistant's walk", lambda: pilot_walk(run)),
         ("always running", lambda: always_run(run)),
         ("auto-sit", lambda: autosit(run, nonce)),
@@ -12471,6 +12472,63 @@ def teleport(run):
     m = mark()
     say_in_app(TP_COMMAND)
     run.expect("(back by //tp for the steps after)", ["Arrived"], m, 40)
+
+
+CLICKER_SCRIPT = """// Access Clicker (tools/access.py, a worn script's keys over a teleport): takes the mouse button when worn, says each press
+default
+{
+    attach(key id) { if (id != NULL_KEY) llRequestPermissions(id, PERMISSION_TAKE_CONTROLS); }
+    run_time_permissions(integer p)
+    {
+        if (p & PERMISSION_TAKE_CONTROLS) { llTakeControls(CONTROL_LBUTTON, TRUE, FALSE); llSay(0, "clicker controls taken"); }
+    }
+    control(key id, integer level, integer edge) { if (level & edge & CONTROL_LBUTTON) llSay(0, "clicker clicked"); }
+}
+"""
+
+
+def worn_keys_teleport(run):
+    """A worn script's keys over a teleport (AgentSession.OnTeleport; the blind tester's tour HUDs, 2026-11-15 and 11-27):
+    a box worn on her right hand whose script takes the mouse button, a teleport, and walk mode's Enter still clicks for
+    it. The controls were forgotten at a teleport's end, and no region sends an attachment's take again, so Enter said
+    "Nothing here takes clicks." after any teleport with a worn weapon or golf club."""
+    name = f"Access Clicker {uuid.uuid4().hex[:4]}"
+    root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
+    x, y, z, _ = tester_where()
+    box = api("TesselBuild", "create", 20, shape="box", pos=[x + 1.5, y, z], scale=[0.1, 0.1, 0.1], name=name)["id"]
+    script = api("TesselInventory", "createScript", 60, name=f"{name} script", text=CLICKER_SCRIPT)
+    if not gated(run, "(its script put in)", "TesselBuild", "addToContents", id=box, item_id=script["item_id"]):
+        return
+    api("TesselBuild", "take", 30, ids=[box], folder_id=root)
+    item = wait(lambda: inv_items(root).get(name), 10)
+    if not run.check("(the clicker in the inventory)", item, ""):
+        return
+    try:
+        back_to_chat()
+        m = mark()
+        api("TesselAgent", "attach", 30, item_id=item, point="Right Hand")
+        if not run.expect("(worn, its script takes the mouse button)", ["clicker controls taken"], m, 20):
+            return
+        time.sleep(1)
+        m = mark()
+        say_in_app(TP_COMMAND)
+        if not run.expect("(a teleport)", ["Arrived"], m, 40):
+            return
+        time.sleep(2)
+        key("f3")
+        if not run.check("(walk mode)", wait_focus(lambda d: d["id"] == "walkPad", 5), focus_label()):
+            return
+        m = mark()
+        key("enter")
+        run.expect("after the teleport, walk mode's Enter still clicks for the worn script", ["clicker clicked"], m, 10)
+        refused = [e.get("text") for e in said_since(m) if "Nothing here takes clicks" in (e.get("text") or "")]
+        run.check("and isn't refused as nothing taking clicks", not refused, " | ".join(refused))
+        key("esc")
+    finally:
+        if attached(item):
+            api("TesselAgent", "detach", 30, item_id=item)
+        back_to_chat()
+        gated(run, "(the clicker deleted)", "TesselInventory", "delete", 30, ids=[item], purge=True)
 
 
 def pilot_walk(run):

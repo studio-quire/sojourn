@@ -879,8 +879,11 @@ public sealed partial class AgentSession
         switch (e.Status)
         {
             case TeleportStatus.Finished:
-                // what scripts there held stays behind: a stale take would keep the stick from walking (VrPilot)
-                ResetControlsTaken();
+                // what scripts hold isn't forgotten here: an attachment's take travels with her and no region sends it
+                // again (the blind tester's tour HUDs, 2026-11-15 and 11-27), and the viewer zeroes its counts only at
+                // its start (LLAgent's constructor); a seat's take ends as it stands her up for the teleport. A reset
+                // here had a worn weapon's or golf club's click refused by walk mode's Enter after any teleport
+                LogControlsKept();
                 Events.Log("LLTeleport", new JsonObject { ["success"] = true });
                 break;
             case TeleportStatus.Failed:
