@@ -1582,6 +1582,16 @@ Read 2026-11-28 (Claude Opus 5.5).
   mode's Enter refused a worn weapon's or golf club's click ("Nothing here takes clicks."). Now a teleport keeps the
   counts and logs what's still held (`controls: still held after the teleport`); the step "a worn script's keys over
   a teleport" checks the click.
+- Both in 0.1.0.1255, sent the same morning (#385) with what her log showed, asking what the item was if it wasn't the
+  link. A fresh agent's review of the three commits found, now fixed (in the build after): driving after someone
+  still read any take as the seat's, so with her tour HUD's passed-on arrows kept over a teleport a //follow from a
+  seat that hadn't taken her keys would have tried to drive it, and a vehicle letting go mid-follow gone unsaid (now
+  kept takes only, as SeatKeys since 32fbe92); walk mode's Enter refused a click taken passed on, which the viewer
+  counts (`leftButtonGrabbed`); Release Keys (the way out, `release_keys`, the VR menu) now clears the counts too, as a
+  take ended in a region she's left would otherwise stay till a relog; and a link's shape kept an app link's third part
+  as written even when it wasn't an app kind (someone's words). On the local grid, teleporting into another region,
+  OpenSim has the old region let go of a worn take as she leaves and the new one never send it, though it holds it;
+  Second Life sends neither (her logs).
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 

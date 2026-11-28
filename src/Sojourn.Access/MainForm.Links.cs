@@ -349,7 +349,8 @@ public sealed partial class MainForm
             : Regex.IsMatch(x, @"^-?\d") ? "[n+]" : "[word]";
         var query = keys.Length > 0 ? $"?[{keys}]" : q >= 0 ? "?" : "";
         if (scheme == "secondlife" && parts.Length > 2 && parts[0].Length == 0 && parts[1].Equals("app", StringComparison.OrdinalIgnoreCase))
-            return $"{scheme}://{string.Join("/", parts.Select((x, i) => i < 3 ? x.ToLowerInvariant() : Part(x)))}{query}";
+            // (the app kind only when it's one: "app/hello%20there" is someone's words)
+            return $"{scheme}://{string.Join("/", parts.Select((x, i) => i < 2 || i == 2 && Regex.IsMatch(x, @"^[A-Za-z_]{1,20}$") ? x.ToLowerInvariant() : Part(x)))}{query}";
         if (scheme is "http" or "https"
             && (parts[0].EndsWith("secondlife.com", StringComparison.OrdinalIgnoreCase) || parts[0].EndsWith("slurl.com", StringComparison.OrdinalIgnoreCase)))
             return $"{scheme}://{parts[0].ToLowerInvariant()}, path /{string.Join("/", parts.Skip(1).Select((x, i) => i == 0 ? x.ToLowerInvariant() : Part(x)))}{query}";

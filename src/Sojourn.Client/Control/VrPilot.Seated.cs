@@ -51,7 +51,9 @@ public sealed partial class VrPilot
         const ScriptControlChange keys = ScriptControlChange.Forward | ScriptControlChange.Back | ScriptControlChange.Left |
             ScriptControlChange.Right | ScriptControlChange.RotateLeft | ScriptControlChange.RotateRight | ScriptControlChange.Up | ScriptControlChange.Down;
         if (input.LeftStick.Length() < 0.3f) _standPush = 0;
-        if (!sitting || (_session.ControlsTaken & keys) != 0 || input.LeftStick.Length() < 0.7f) return;
+        // (kept, as Driving: a HUD or an AO that passes the keys on isn't the seat holding them, and since a teleport no
+        // longer clears takes, one worn would have kept the stick from standing her up anywhere)
+        if (!sitting || (_session.ControlsKept & keys) != 0 || input.LeftStick.Length() < 0.7f) return;
         if (_standPush < 0) return;   // stood already: wait for the stick to come back
         _standPush += dt;
         if (_standPush > 0.35)

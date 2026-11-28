@@ -301,6 +301,10 @@ public sealed partial class Safety
         {
             AgentData = { AgentID = c.Self.AgentID, SessionID = c.Self.SessionID },
         });
+        // the counts start again: the region releases every take it knows of, and one from a region she's left (a seat
+        // whose release never came) it knows nothing of, so its count would stay until a relog, now that a teleport
+        // keeps them (the review of 2026-11-28); a script that takes again is counted afresh
+        _s.ForgetControlsTaken();
         _s.Events.Log("TesselEvents", new JsonObject { ["event"] = "controls_released", ["held"] = (long)(uint)held });
         return held;
     }

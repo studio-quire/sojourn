@@ -210,8 +210,9 @@ public sealed partial class WalkMode
         var mv = c.Self.Movement;
         if (down)
         {
-            var kept = S.ControlsKept;
-            if ((kept & (ScriptControlChange.LeftButton | ScriptControlChange.MouseLookLeftButton)) == 0)
+            // (passed on too, as the viewer's leftButtonGrabbed counts them: the script hears the click either way)
+            var held = S.ControlsTaken;
+            if ((held & (ScriptControlChange.LeftButton | ScriptControlChange.MouseLookLeftButton)) == 0)
             {
                 Line("Nothing here takes clicks. T touches what's ahead.");
                 return;
@@ -219,7 +220,7 @@ public sealed partial class WalkMode
             _click = true;
             lock (_controlsLock)
             {
-                if ((kept & ScriptControlChange.LeftButton) != 0) mv.LButtonDown = true; else mv.MLButtonDown = true;
+                if ((held & ScriptControlChange.LeftButton) != 0) mv.LButtonDown = true; else mv.MLButtonDown = true;
                 mv.SendUpdate(true);
                 _sentAt = Environment.TickCount64;
             }

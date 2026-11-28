@@ -196,7 +196,7 @@ public sealed partial class WalkMode
     {
         if (Me() is not { Sitting: true } b) { Line("You're not seated."); return; }
         string seat = b.SeatName ?? "your seat";
-        string? why = (S.ControlsTaken & MoveKeys) == 0 ? $"{seat} hasn't taken your keys, so you're riding it, not driving it"
+        string? why = !KeysKept ? $"{seat} hasn't taken your keys, so you're riding it, not driving it"
             : _railTrack != null ? $"{seat} runs on rails"
             : Throttle != null ? $"{seat} runs on a throttle"
             : null;
@@ -310,7 +310,7 @@ public sealed partial class WalkMode
         {
             c.CrossedAt = now;
             c.CrossedInto = b.RegionName;
-            string keys = (S.ControlsTaken & MoveKeys) != 0 ? "taken" : "not taken";
+            string keys = KeysKept ? "taken" : KeysAny ? "passed on only" : "not taken";
             ConvoyLog($"crossed into {b.RegionName}{(doubt ? ", the seat not sent yet" : "")}; the keys {keys}");
             if (_testDoubt > 0) { c.TestDoubtUntil = now + _testDoubt; _testDoubt = 0; }
         }
@@ -319,7 +319,7 @@ public sealed partial class WalkMode
         bool crossing = doubt || now - c.CrossedAt < ConvoyCrossingGrace;
         // 0.1.0.996 ended at the first tick of a crossing that read the keys untaken (her scooter into Berbera,
         // 2026-11-08), and with the old region's word and the new one's crossing on the way, a moment of that is expected
-        if ((S.ControlsTaken & MoveKeys) == 0)
+        if (!KeysKept)
         {
             if (c.KeysLostSince == 0)
             {

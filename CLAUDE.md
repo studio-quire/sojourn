@@ -18,8 +18,9 @@ Our own Second Life client, built for VR first, with a personal AI that operates
   launcher), and RLV/RLVa (2026-11-01, off by default: `docs/rlv.md`). The old phases 1-3 are done; phase 4 (embodiment) has its first pass.
 - **Sojourn Access**: milestones M0-M5 built (2026-10-29), M6's uploads (2026-11-01), a first build editor (2026-11-02)
   and About Land (2026-11-03); test builds (the assistant bundled) published as releases on its front door,
-  studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1255 (2026-11-28: a map link with more on its end
-  than the place opens, and a worn script's taken keys kept over a teleport, as the viewer keeps them). A blind tester uses them daily, first on Second Life 2026-10-30, and sends logs
+  studio-quire/sojourn-access, since 2026-10-30, the newest 0.1.0.1259 (2026-11-28: a map link with more on its end
+  than the place opens, and a worn script's taken keys kept over a teleport, as the viewer keeps them; following from a
+  seat reads its kept keys only). A blind tester uses them daily, first on Second Life 2026-10-30, and sends logs
   from the app; most work now follows them, lately walks to her partner up his steps. What each build changed and what
   her logs showed: `docs/access.md` > What a blind tester tells us (newest last) and its Open threads; how a session
   watches for her messages and logs and answers: `docs/access.md` > The builders' line. `docs/access.md` (plan,

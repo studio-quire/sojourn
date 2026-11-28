@@ -12474,15 +12474,26 @@ def teleport(run):
     run.expect("(back by //tp for the steps after)", ["Arrived"], m, 40)
 
 
-CLICKER_SCRIPT = """// Access Clicker (tools/access.py, a worn script's keys over a teleport): takes the mouse button when worn, says each press
+CLICKER_SCRIPT = """// Access Clicker (tools/access.py, a worn script's keys over a teleport): takes the mouse button when worn, says each
+// press; "pass" on channel 7311 takes it again passed on
+integer pass;
 default
 {
-    attach(key id) { if (id != NULL_KEY) llRequestPermissions(id, PERMISSION_TAKE_CONTROLS); }
+    attach(key id) { if (id != NULL_KEY) { llListen(7311, "", id, "pass"); llRequestPermissions(id, PERMISSION_TAKE_CONTROLS); } }
+    listen(integer ch, string n, key id, string m) { llReleaseControls(); pass = TRUE; llRequestPermissions(id, PERMISSION_TAKE_CONTROLS); }
     run_time_permissions(integer p)
     {
-        if (p & PERMISSION_TAKE_CONTROLS) { llTakeControls(CONTROL_LBUTTON, TRUE, FALSE); llSay(0, "clicker controls taken"); }
+        if (p & PERMISSION_TAKE_CONTROLS)
+        {
+            llTakeControls(CONTROL_LBUTTON, TRUE, pass);
+            if (pass) llSay(0, "clicker passes it on"); else llSay(0, "clicker controls taken");
+        }
     }
-    control(key id, integer level, integer edge) { if (level & edge & CONTROL_LBUTTON) llSay(0, "clicker clicked"); }
+    control(key id, integer level, integer edge)
+    {
+        // (its own words passed on: the same line again within 10 s is read once)
+        if (level & edge & CONTROL_LBUTTON) { if (pass) llSay(0, "clicker clicked, passed on"); else llSay(0, "clicker clicked"); }
+    }
 }
 """
 
@@ -12490,8 +12501,12 @@ default
 def worn_keys_teleport(run):
     """A worn script's keys over a teleport (AgentSession.OnTeleport; the blind tester's tour HUDs, 2026-11-15 and 11-27):
     a box worn on her right hand whose script takes the mouse button, a teleport, and walk mode's Enter still clicks for
-    it. The controls were forgotten at a teleport's end, and no region sends an attachment's take again, so Enter said
-    "Nothing here takes clicks." after any teleport with a worn weapon or golf club."""
+    it. The controls were forgotten at a teleport's end, and on Second Life no region sends an attachment's take again
+    (her logs), so Enter said "Nothing here takes clicks." after any teleport with a worn weapon or golf club. The
+    teleport stays in Atelier: into another region OpenSim has the old region let go of the take as she leaves and the
+    new one never send it, though it holds it (2026-11-28), so any viewer's counts read none there; Second Life sends
+    neither. Then the script takes it again passed on, which Enter counts too, as the viewer does (the review of
+    2026-11-28: it counted only takes kept). Back by //tp."""
     name = f"Access Clicker {uuid.uuid4().hex[:4]}"
     root = api("LLInventory", "getBasicFolderID", ft_name="root_inv")["id"]
     x, y, z, _ = tester_where()
@@ -12503,6 +12518,19 @@ def worn_keys_teleport(run):
     item = wait(lambda: inv_items(root).get(name), 10)
     if not run.check("(the clicker in the inventory)", item, ""):
         return
+
+    def click(what, words="clicker clicked"):
+        key("f3")
+        if not run.check(f"(walk mode, {what})", wait_focus(lambda d: d["id"] == "walkPad", 5), focus_label()):
+            return
+        m = mark()
+        key("enter")
+        run.expect(f"{what}: walk mode's Enter clicks for the worn script", [words], m, 10)
+        refused = [e.get("text") for e in said_since(m) if "Nothing here takes clicks" in (e.get("text") or "")]
+        run.check(f"{what}: and isn't refused as nothing taking clicks", not refused, " | ".join(refused))
+        key("esc")
+        back_to_chat()
+
     try:
         back_to_chat()
         m = mark()
@@ -12515,20 +12543,20 @@ def worn_keys_teleport(run):
         if not run.expect("(a teleport)", ["Arrived"], m, 40):
             return
         time.sleep(2)
-        key("f3")
-        if not run.check("(walk mode)", wait_focus(lambda d: d["id"] == "walkPad", 5), focus_label()):
-            return
+        click("after a teleport")
         m = mark()
-        key("enter")
-        run.expect("after the teleport, walk mode's Enter still clicks for the worn script", ["clicker clicked"], m, 10)
-        refused = [e.get("text") for e in said_since(m) if "Nothing here takes clicks" in (e.get("text") or "")]
-        run.check("and isn't refused as nothing taking clicks", not refused, " | ".join(refused))
-        key("esc")
+        say_in_app("/7311 pass")
+        if run.expect("(the script takes it again, passed on)", ["clicker passes it on"], m, 15):
+            time.sleep(1)
+            click("a take passed on", "clicker clicked, passed on")
     finally:
         if attached(item):
             api("TesselAgent", "detach", 30, item_id=item)
         back_to_chat()
         gated(run, "(the clicker deleted)", "TesselInventory", "delete", 30, ids=[item], purge=True)
+        m = mark()
+        say_in_app(TP_COMMAND)
+        run.expect("(back by //tp for the steps after)", ["Arrived"], m, 40)
 
 
 def pilot_walk(run):

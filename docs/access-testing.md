@@ -542,8 +542,11 @@ docstring with its checks in full):
   Escape, `//voice mute all` and `unmute all` said and in `SojournVoice status`, `//voice reconnect` said with its
   outcome.
 - **a worn script's keys over a teleport**: a box worn on her right hand whose script takes the mouse button, a `//tp`,
-  and walk mode's Enter still clicks for it (a teleport's end had cleared every take, and no region sends an
-  attachment's again: the blind tester's tour HUDs, 2026-11-27).
+  and walk mode's Enter still clicks for it (a teleport's end had cleared every take, and on Second Life no region
+  sends an attachment's again: the blind tester's tour HUDs, 2026-11-27); then the script takes it passed on, and Enter
+  clicks for that too. The teleport stays in Atelier: into another region OpenSim has the old region let go of the take
+  as she leaves and the new one never send it, though it holds it, so any viewer's counts read none there (seen
+  2026-11-28); Second Life sends neither.
 - **walking**, **a teleport**, **the assistant's walk**: a `//go`, Ctrl+Shift+H and a `//tp` checked against the
   region's positions; the session's autopilot stopping about its stop distance short. Walking also has a `//go` onto a
   plinth with no steps and a wall put across the way once she's walking, and checks the session log's lines for it

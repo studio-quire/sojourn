@@ -253,7 +253,8 @@ C, F, R recentres, Tab the panel, F8 the assistant's model; F3, F6, F12 as on th
   view rides what you sit on (The rig > Moving things).
 - **Standing up**: while seated, a key with an up arrow sits on the left forearm (`Control/StandKey.cs`); the ray and
   trigger on it stand you up, on anything, as the viewer's Stand button. On something that hasn't taken the movement
-  keys (a chair, a sill, a pose ball), pushing the left stick most of the way for a third of a second stands you up too
+  keys (a chair, a sill, a pose ball; a HUD or an AO that takes them and passes them on doesn't count), pushing the left
+  stick most of the way for a third of a second stands you up too
   (that push doesn't walk until let go). Vehicles and games keep the stick: the key, the way out or the assistant.
 - **Aiming** (`Control/VrPilot.Aim.cs`, `Control/Aim.cs`; `docs/safety.md` > Aiming): while a script holds the
   mouselook button (guns, combat HUDs, shooting games; `aim` auto, always or off), the region is told the headset is in

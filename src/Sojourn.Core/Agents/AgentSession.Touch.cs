@@ -233,6 +233,9 @@ public sealed partial class AgentSession
         lock (_kept) { Array.Clear(_kept); Array.Clear(_passed); }
     }
 
+    /// <summary>Release Keys (Safety.ReleaseControls): every count back to none.</summary>
+    internal void ForgetControlsTaken() => ResetControlsTaken();
+
     /// <summary>After a teleport, what's still held, in the log (nothing when nothing is).</summary>
     void LogControlsKept()
     {
