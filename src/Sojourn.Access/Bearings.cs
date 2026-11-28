@@ -90,6 +90,13 @@ public static class Places
         @"(?<region>[^/]+?)(?:/(?<x>-?[\d.]+)(?:/(?<y>-?[\d.]+)(?:/(?<z>-?[\d.]+))?)?)?/?$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // a link read as the viewer reads one: its region, then whatever number starts each of the next three parts, the
+    // rest ignored ("/22♥", "/22&title=...", a fourth part)
+    static readonly Regex LooseLink = new(
+        @"^(?:secondlife:///app/(?:teleport|region|worldmap)/|secondlife://(?!/)|https?://(?:maps|slurl)\.secondlife\.com/secondlife/|https?://(?:www\.)?slurl\.com/secondlife/|hop://[^/]+/)" +
+        @"(?<region>[^/]+)(?:/(?<x>-?\d+(?:\.\d+)?)[^/]*(?:/(?<y>-?\d+(?:\.\d+)?)[^/]*(?:/(?<z>-?\d+(?:\.\d+)?))?)?)?",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>An SLurl (secondlife://, maps.secondlife.com, hop://), "Region/x/y/z", or "uri:Region&amp;x&amp;y&amp;z";
     /// coordinates default to the middle of the region. Null when it isn't one.</summary>
     public static Place? Parse(string text)
@@ -104,11 +111,15 @@ public static class Places
         bool linked = t.Contains("://");
         // a link's query or anchor isn't part of the place (the map's ?title=...&msg=..., a page's #top)
         if (linked && t.IndexOfAny(['?', '#']) is var q and > 0) t = t[..q];
+        // a link with more on its end than the place (the blind tester's of 2026-11-27, from a group's chat, said it
+        // couldn't be opened) is read as the viewer would; typed words stay strict, as a region alone could be anything
         var m = Slurl.Match(t);
+        if (!m.Success && linked) m = LooseLink.Match(t);
         if (!m.Success) return null;
         var region = Uri.UnescapeDataString(m.Groups["region"].Value.Replace('+', ' ')).Trim();
         // a bare word is only a place when it carries coordinates (a region name alone could be anything typed)
         if (region.Length == 0 || (!linked && !m.Groups["x"].Success)) return null;
+        if (linked && region.Equals("app", StringComparison.OrdinalIgnoreCase)) return null;
         return new Place(region, N(m.Groups["x"].Value, 128), N(m.Groups["y"].Value, 128), N(m.Groups["z"].Value, 30));
     }
 

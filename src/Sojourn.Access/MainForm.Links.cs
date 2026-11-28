@@ -197,7 +197,7 @@ public sealed partial class MainForm
         if (PlaceLink.IsMatch(url))
         {
             if (Places.Parse(url) is { } place) _ = _cmd.GoToAsync(place);
-            else NotOpened(url, "That link is for something Sojourn Access can't open.");
+            else NotOpened(url, "That's a place link, but it doesn't say which region, so it can't be opened.");
             return;
         }
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || u.Scheme is not ("http" or "https"))
@@ -330,9 +330,11 @@ public sealed partial class MainForm
         catch (Exception e) when (e is OperationCanceledException or System.Net.Http.HttpRequestException or InvalidOperationException) { return null; }
     }
 
-    /// <summary>"secondlife:///app/landmark/[id]/[word]", "https://maps.secondlife.com/secondlife/[word]/[n]/[n]/[n]?[title]":
-    /// the scheme, Second Life's hosts and app kinds, then each part only as a number, an id or a word, and the query's
-    /// keys without their values.</summary>
+    /// <summary>"secondlife:///app/landmark/[id]/[word]", "https://maps.secondlife.com, path /secondlife/[word]/[n]/[n]/[n+]?[title]":
+    /// the scheme, Second Life's hosts and app kinds, then each part only as a number ("[n+]" with more after it), an id
+    /// or a word, and the query's keys without their values. A web host is set apart from its path: written whole,
+    /// "https maps secondlife com secondlife" is five words of anyone's map link, and Send a log left the line out as
+    /// repeating someone's words (the blind tester's log of 2026-11-27).</summary>
     static string LinkShape(string url)
     {
         int s = url.IndexOf("://", StringComparison.Ordinal);
@@ -343,14 +345,15 @@ public sealed partial class MainForm
         var path = q < 0 ? after : after[..q];
         var keys = q < 0 ? "" : string.Join(",", after[(q + 1)..].Split('&').Select(kv => kv.Split('=')[0]).Where(k => Regex.IsMatch(k, @"^[A-Za-z_]{1,20}$")));
         var parts = path.Split('/');
-        string Part(string x) => x.Length == 0 ? "" : UUID.TryParse(x, out _) ? "[id]" : Regex.IsMatch(x, @"^-?[\d.]+$") ? "[n]" : "[word]";
-        var keep = 0;
-        if (scheme == "secondlife" && parts.Length > 2 && parts[0].Length == 0 && parts[1].Equals("app", StringComparison.OrdinalIgnoreCase)) keep = 3;
-        else if (scheme is "http" or "https"
-                 && (parts[0].EndsWith("secondlife.com", StringComparison.OrdinalIgnoreCase) || parts[0].EndsWith("slurl.com", StringComparison.OrdinalIgnoreCase)))
-            keep = Math.Min(2, parts.Length);
-        var shape = string.Join("/", parts.Select((x, i) => i < keep ? x.ToLowerInvariant() : Part(x)));
-        return $"{scheme}://{shape}{(keys.Length > 0 ? $"?[{keys}]" : q >= 0 ? "?" : "")}";
+        string Part(string x) => x.Length == 0 ? "" : UUID.TryParse(x, out _) ? "[id]" : Regex.IsMatch(x, @"^-?[\d.]+$") ? "[n]"
+            : Regex.IsMatch(x, @"^-?\d") ? "[n+]" : "[word]";
+        var query = keys.Length > 0 ? $"?[{keys}]" : q >= 0 ? "?" : "";
+        if (scheme == "secondlife" && parts.Length > 2 && parts[0].Length == 0 && parts[1].Equals("app", StringComparison.OrdinalIgnoreCase))
+            return $"{scheme}://{string.Join("/", parts.Select((x, i) => i < 3 ? x.ToLowerInvariant() : Part(x)))}{query}";
+        if (scheme is "http" or "https"
+            && (parts[0].EndsWith("secondlife.com", StringComparison.OrdinalIgnoreCase) || parts[0].EndsWith("slurl.com", StringComparison.OrdinalIgnoreCase)))
+            return $"{scheme}://{parts[0].ToLowerInvariant()}, path /{string.Join("/", parts.Skip(1).Select((x, i) => i == 0 ? x.ToLowerInvariant() : Part(x)))}{query}";
+        return $"{scheme}://{string.Join("/", parts.Select(Part))}{query}";
     }
 
     void ShowLinks()

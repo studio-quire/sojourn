@@ -1547,7 +1547,33 @@ Three logs, read 2026-11-27 (Claude Opus 5.5). Her message that morning (#381): 
   waited, then threw the same switch, by then 53 m behind her, back to the branch: "Switch set to the branch,
   Clearwing passing track.", which read as her throw having failed. Now the answer comes as the stand's word does, a
   press during a throw says it's under way, and a switch behind a moving train isn't thrown (docs/access-app.md > Rail
-  switches). Both in 0.1.0.1248, sent in 1244's place with what the log showed of her throw (#383, 2026-11-27).
+  switches). Both in 0.1.0.1248, sent in 1244's place with what the log showed of her throw (#383, 2026-11-27); then
+  0.1.0.1251 in 1248's place (#384), with a fresh agent's review's fixes: 1248 could say "You're off" on a teleport from
+  a seat or a sit onto another, and refuse a throw of a switch ahead not placed on the track.
+
+### A grid drive's tour, golf, and a link from a group's chat (0.1.0.1251, the blind tester, 2026-11-27 evening)
+
+Her log `tester-20261128T020245-321dfc` (19:09 to 21:02; her note: she got an item she couldn't open in this viewer).
+Read 2026-11-28 (Claude Opus 5.5).
+- **What wouldn't open**: at 21:02:11 and :23 Enter on a line said "That link is for something Sojourn Access can't
+  open.", a second after a line in her group's chat. The log's own line for it (`link not opened:` and the link's
+  shape) was left out of what she sent as repeating someone's words: the shape kept the map's host and path whole,
+  "https maps secondlife com secondlife", five words of anyone's map link. That leaves only one kind of link it can have
+  been: a maps.secondlife.com (or slurl.com) link with more on its end than the place ("/22♥", "/22&...", a fifth
+  part), which `Places.Parse` refused as not a place, while the viewer reads the number starting each part and goes.
+  Now such a link is read as the viewer reads it (`LooseLink`), and the shape sets the host apart ("https://maps.secondlife.com,
+  path /secondlife/[word]/[n]/[n]/[n+]", "[n+]" a number with more after it), which logcheck's filter keeps. Whether the
+  link was what she meant by an item isn't known: asked.
+- The rest went well, by the log and her words in it ("Not getting errors from Sojourn"): a grid drive's tour by its
+  Nav HUD through some forty regions in a tour car and a boat, each crossing said and none lost; group notices'
+  notecards and landmarks taken; a golf course's club, HUD and scorecard rented and worn. She told the group chat
+  that in Radegast no one could take part in grid drives without being teleported all the time, there being no way to
+  press Page Down; here she did, by F3 and Page Down, after the Say box's hint (19:33:28, 20:03:33). Following a
+  person off the boat found their floor out of reach ("no way up from here", a climb steeper than stairs in their
+  trail), and she teleported to them.
+- The golf HUD's own instructions (20:58:25): its Putter button, the arrows to aim, then click the ground and hold for
+  power. Walk mode's Enter held is the mouse button held, for a script that took it; whether this one did, the log
+  can't say (no controls taken in it after 19:12, Open threads).
 
 ### A review against screen-reader and Radegast conventions (2026-10-30)
 
@@ -1631,6 +1657,13 @@ screen reader can confirm (NVDA saying the menus' keys, Alt alone and F10, NVDA+
   lacks what the region has, and a bridge it lacked would read as a drop and hold her at a crossing straight on walks
   today; with them below, the fall takes her to them, which Second Life doesn't hurt. Only a drop with them not below
   is plainly wrong, and the model can't tell that from a bridge it hasn't got.
+- Controls scripts hold are forgotten at a teleport's end (`AgentSession.ResetControlsTaken`, for an object left
+  behind whose take would hold the VR client's stick), but an attachment's take travels with her, and her log of
+  2026-11-27 had no region send it again: her tour's Nav HUD took the arrows, Page Up and Down (passed on) at 19:12, a
+  teleport by it followed at 19:16, and at 19:33 the Say box's Page Down hint said it moves her down rather than
+  "A script has taken Page Down". Nothing else there read the takes. Whether the viewer keeps its counts over a
+  teleport (`LLAgent::mControlsTakenCount`) wasn't checked; worth it if a seat's keys or a HUD's ever read wrong just
+  after a teleport.
 - Cancel during Send a log's sending stops it since 2026-11-13 (before it's on its way; once it is, it says it can't be
   stopped), not run against a slow send.
 - From the reviews of 2026-11-13: positions from parcel, event and classified links are taken modulo 256, wrong on

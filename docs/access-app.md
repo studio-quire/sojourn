@@ -1359,16 +1359,19 @@ the nearest 200 past 30 m). Beyond the draw distance (128 m by default) the regi
 **Links** (`MainForm.Links.cs`; Claude Opus 5.5, 2026-11-04, the blind tester's ask): Control+K in a notecard or script opens the first link on the caret's line (Enter makes a new line there). Enter on a line of a history opens
 the first link on it; Control+Shift+K (`//links`, the Read-out menu) lists the last 50 seen in chat, IMs and notices, newest
 first, with who said them, Enter opening one. A web page (http or https only) goes to her browser, an SLurl teleports (its
-query or anchor, the map's `?title=...`, left off), a person's `app/agent` link opens their profile and a group's its
+query or anchor, the map's `?title=...`, left off; a link with more on its end than the place, "/24♥♥", read as the viewer
+reads one, the number that starts each part: `Places.Parse`'s `LooseLink`, after her group's link of 2026-11-27), a person's `app/agent` link opens their profile and a group's its
 details. The other app links (2026-11-13, after her partner sent a place she couldn't open): `app/parcel`, `app/event` and
 `app/classified` are asked where they are (SojournSearch `where`), said with their name and region, and teleported to;
 `app/landmark` teleports by the landmark when it's hers (asked of the inventory service for up to 2.5 s when its folder
 isn't loaded, "Looking for that landmark in your inventory.") and says why not when it's someone else's (the id is an item in
 the sender's inventory, as the viewer reads it), `app/inventory` says where hers is or that it's theirs to give;
 `app/objectim` says where the object is. Anything else is said as what it would have a viewer do. A link not opened puts
-its shape in the session log (`link not opened: secondlife:///app/landmark/[id]/[word]`: Second Life's hosts and app
-kinds kept, every other part only as a number, an id or a word, the query's keys without values), since the log leaves
-out the words it came in. A script's llLoadURL opens in the browser on Go to page (Access had nothing wired to it
+its shape in the session log (`link not opened: secondlife:///app/landmark/[id]/[word]`, `https://maps.secondlife.com,
+path /secondlife/[word]/[n]/[n]/[n+]`: Second Life's hosts and app kinds kept, every other part only as a number, "[n+]"
+one with more after it, an id or a word, the query's keys without values), since the log leaves out the words it came in.
+A web host is set apart from its path there, as written whole its five words are in anyone's map link, and Send a log
+left the line out as repeating them. A script's llLoadURL opens in the browser on Go to page (Access had nothing wired to it
 before).
 
 **Driving after someone** (`Walk/WalkMode.Convoy.cs`; Claude Opus 5.5, 2026-11-04, after the blind tester steered a

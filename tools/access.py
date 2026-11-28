@@ -14344,6 +14344,10 @@ def links(run):
 
     enter_on(f"mapped https://maps.secondlife.com/secondlife/{REGION}/62/58/24?title=The%20Pier&msg=come", "a map link with a title on teleports",
              ["Teleporting", REGION])
+    # (the blind tester's of 2026-11-27, in a group's chat, "can't open": a map link with more on its end than the place,
+    # read as the viewer reads one)
+    enter_on(f"hearts https://maps.secondlife.com/secondlife/{REGION}/62/58/24♥♥ come", "a map link with something on its end teleports",
+             ["Teleporting", REGION])
     home()
     lm = api("TesselInventory", "createLandmark", name=f"Links Mark {uuid.uuid4().hex[:4]}")
     about = api("TesselInventory", "landmarkAbout", 20, item_id=lm.get("item_id")) if lm.get("item_id") else {}
